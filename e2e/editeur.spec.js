@@ -1,0 +1,422 @@
+import { test, expect } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
+import { depotExemple, lancerYaide, ouvrirYaide } from "./aides.js";
+
+let yaide;
+test.afterEach(async () => {
+  await yaide?.arreter();
+});
+
+async function ouvrir(page, preparer = () => {}) {
+  const dossier = depotExemple();
+  fs.mkdirSync(path.join(dossier, "tests"));
+  fs.writeFileSync(path.join(dossier, "tests", "main.rs"), "// tests\n");
+  fs.writeFileSync(path.join(dossier, "a.txt"), "a");
+  fs.writeFileSync(path.join(dossier, "x.zzz"), "inconnu");
+  preparer(dossier);
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await ouvrirYaide(page, yaide.origine);
+  await expect(arbre(page)).toBeVisible();
+  return dossier;
+}
+const arbre = (page) => page.getByRole("tree", { name: "Fichiers" });
+const ligne = (page, nom) => arbre(page).getByRole("treeitem", { name: nom, exact: true });
+const onglet = (page, nom) => page.getByRole("tab", { name: nom });
+const editeur = (page, nom) => page.getByRole("textbox", { name: `Éditeur ${nom}` });
+const ouvrirMain = async (page) => {
+  await ligne(page, "src").click();
+  await ligne(page, "main.rs").click();
+  await expect(editeur(page, "main.rs")).toBeFocused();
+};
+/** Liste des onglets gardée dans IndexedDB par le navigateur. */
+const gardes = (page) =>
+  page.evaluate(
+    () =>
+      new Promise((ok) => {
+        const d = indexedDB.open("yaide", 1);
+        d.onsuccess = () => {
+          const r = d.result.transaction("cles").objectStore("cles").get("onglets");
+          r.onsuccess = () => ok(r.result?.liste ?? []);
+        };
+      }),
+  );
+const couleurDe = (page, selecteur) => page.locator(selecteur).first().evaluate((e) => getComputedStyle(e).color);
+const taper = async (page, nom, texte) => {
+  await editeur(page, nom).click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type(texte);
+};
+
+test("REQ008_AC1_et_AC2_et_AC6_ouvrir_un_fichier_sans_doublon_focus_dans_l_editeur", async ({ page }) => {
+  await ouvrir(page);
+  await expect(page.getByText("Aucun fichier ouvert.")).toBeVisible();
+  await ouvrirMain(page);
+  await expect(onglet(page, "main.rs")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".cm-content")).toContainText('println!("salut")');
+  await ligne(page, "a.txt").click();
+  await expect(onglet(page, "a.txt")).toHaveAttribute("aria-selected", "true");
+  await ligne(page, "main.rs").click();
+  await expect(onglet(page, "main.rs")).toHaveAttribute("aria-selected", "true");
+  await expect(editeur(page, "main.rs")).toBeFocused();
+  await expect(page.getByRole("tab")).toHaveCount(2 + 3 + 1); // fichiers + rail + shell 1
+});
+
+test("REQ011_AC1_et_AC3_coloration_rust_et_texte_simple_sans_erreur", async ({ page }) => {
+  await ouvrir(page);
+  await ouvrirMain(page);
+  const couleur = (txt) => page.locator(".cm-line span", { hasText: txt }).first().evaluate((e) => getComputedStyle(e).color);
+  const base = await page.locator(".cm-line").first().evaluate((e) => getComputedStyle(e).color);
+  expect(await couleur("fn")).not.toBe(base);
+  const erreurs = [];
+  page.on("pageerror", (e) => erreurs.push(e));
+  await ligne(page, "x.zzz").click();
+  await expect(editeur(page, "x.zzz")).toBeFocused();
+  await expect(page.locator(".cm-content:visible")).toContainText("inconnu");
+  expect(erreurs).toEqual([]);
+});
+
+test("REQ011_AC4_et_AC5_et_AC6_onglets_texte_non_sauvegarde_vide_et_clavier", async ({ page }) => {
+  await ouvrir(page);
+  await expect(page.getByRole("button", { name: "Ouvrir un fichier" })).toBeVisible();
+  await ouvrirMain(page);
+  await taper(page, "main.rs", "// ajout");
+  await ligne(page, "a.txt").click();
+  await expect(page.locator(".cm-content:visible")).toContainText("a");
+  await expect(page.locator(".cm-content:visible")).not.toContainText("// ajout");
+  await onglet(page, /^main\.rs/).click();
+  await expect(page.locator(".cm-content:visible")).toContainText("// ajout");
+  const barre = page.getByRole("tablist", { name: "Fichiers ouverts" });
+  await expect(barre).toBeVisible();
+  await expect(onglet(page, /^main\.rs/)).toHaveAttribute("title", "src/main.rs");
+  await onglet(page, /^main\.rs/).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(onglet(page, "a.txt")).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ArrowLeft");
+  await expect(onglet(page, /^main\.rs/)).toHaveAttribute("aria-selected", "true");
+  await onglet(page, "a.txt").focus();
+  await page.keyboard.press("Enter");
+  await expect(editeur(page, "a.txt")).toBeFocused();
+  await onglet(page, "a.txt").focus();
+  await page.keyboard.press("Delete");
+  await expect(onglet(page, "a.txt")).toHaveCount(0);
+});
+
+test("REQ011_AC8_deux_main_rs_le_dossier_parent_suit_le_nom", async ({ page }) => {
+  await ouvrir(page);
+  await ouvrirMain(page);
+  await ligne(page, "tests").click();
+  await ligne(page, "main.rs").nth(0).waitFor();
+  await arbre(page).getByRole("treeitem", { name: "main.rs", exact: true }).last().click();
+  await expect(onglet(page, "main.rs · src")).toHaveAttribute("title", "src/main.rs");
+  await expect(onglet(page, "main.rs · tests")).toHaveAttribute("title", "tests/main.rs");
+  const attendu = await page.evaluate(() => {
+    const i = document.createElement("i");
+    i.style.color = "var(--texte-attenue)";
+    document.body.append(i);
+    return getComputedStyle(i).color;
+  });
+  expect(await couleurDe(page, ".onglet-detail")).toBe(attendu);
+});
+
+test("REQ012_AC1_et_AC3_et_AC4_apercu_markdown_propre_a_chaque_onglet", async ({ page }) => {
+  await ouvrir(page, (d) => fs.writeFileSync(path.join(d, "notes.md"), "# Notes\n"));
+  await ligne(page, "README.md").click();
+  const bouton = page.getByRole("button", { name: "Aperçu", exact: true });
+  await expect(bouton).toHaveAttribute("aria-pressed", "false");
+  await bouton.click();
+  await expect(bouton).toHaveAttribute("aria-pressed", "true");
+  await taper(page, "README.md", "\n# Mon titre");
+  await expect(page.getByRole("region", { name: "Aperçu" }).getByRole("heading", { name: "Mon titre" })).toBeVisible();
+  await ligne(page, "notes.md").click();
+  await expect(bouton).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("region", { name: "Aperçu" })).toHaveCount(0);
+  await ligne(page, "a.txt").click();
+  await expect(bouton).toHaveCount(0);
+  await ligne(page, "src").click();
+  await ligne(page, "main.rs").click();
+  await expect(bouton).toHaveCount(0);
+  await onglet(page, /^README\.md/).click();
+  await expect(bouton).toHaveAttribute("aria-pressed", "true");
+});
+
+test("REQ012_AC2_le_html_du_markdown_ne_s_execute_pas", async ({ page }) => {
+  await ouvrir(page, (d) => fs.writeFileSync(path.join(d, "README.md"), '<script>window.piege=1</script>\n<img src=x onerror="window.piege=2">\n'));
+  await ligne(page, "README.md").click();
+  await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+  const zone = page.getByRole("region", { name: "Aperçu" });
+  await expect(zone).toContainText("<script>");
+  await expect(zone.locator("script, img")).toHaveCount(0);
+  expect(await page.evaluate(() => window.piege)).toBeUndefined();
+});
+
+test("REQ013_AC1_et_AC2_et_AC4_point_apres_frappe_ecriture_seulement_au_ctrl_s", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  const fichier = path.join(dossier, "src", "main.rs");
+  const avant = fs.readFileSync(fichier, "utf8");
+  await ouvrirMain(page);
+  await taper(page, "main.rs", "// salut");
+  await expect(onglet(page, /non sauvegardé/)).toHaveAccessibleName("main.rs, non sauvegardé");
+  await expect(page.locator("[role=tab]", { hasText: "●" })).toHaveCount(1);
+  await expect.poll(async () => (await gardes(page)).some((o) => o.texte !== undefined)).toBe(true);
+  expect(fs.readFileSync(fichier, "utf8")).toBe(avant);
+  await page.keyboard.press("Control+s");
+  await expect(onglet(page, "main.rs")).toHaveAccessibleName("main.rs");
+  expect(fs.readFileSync(fichier, "utf8")).toBe(avant + "// salut");
+});
+
+test("REQ013_AC6_ctrl_s_hors_de_l_editeur_sauvegarde_sans_dialogue_du_navigateur_et_dans_un_shell_va_au_shell", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  const fichier = path.join(dossier, "a.txt");
+  await page.evaluate(() => {
+    window.__prevenus = [];
+    window.addEventListener("keydown", (e) => {
+      if (e.ctrlKey && e.key === "s") window.__prevenus.push(e.defaultPrevented);
+    });
+  });
+  const prevenus = () => page.evaluate(() => window.__prevenus);
+  await ligne(page, "a.txt").click();
+  await taper(page, "a.txt", "b");
+  await ligne(page, "a.txt").focus();
+  await page.keyboard.press("Control+s");
+  await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt");
+  expect(fs.readFileSync(fichier, "utf8")).toBe("ab");
+  expect(await prevenus()).toEqual([true]);
+  await taper(page, "a.txt", "c");
+  await page.keyboard.press("Control+s");
+  await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt");
+  expect(await prevenus()).toEqual([true, true]);
+  await taper(page, "a.txt", "d");
+  await page.locator(".terminal textarea").first().focus();
+  await page.keyboard.press("Control+s");
+  await page.keyboard.press("Control+q"); // Ctrl+S a gelé la sortie du terminal : le shell l'a bien reçu
+  await page.keyboard.type("echo fini$((1+1))\n");
+  await expect(page.locator(".terminal").first()).toContainText("fini2");
+  expect(await prevenus()).toEqual([true, true]);
+  expect(fs.readFileSync(fichier, "utf8")).toBe("abc");
+  await expect(onglet(page, /non sauvegardé/)).toBeVisible();
+});
+
+test("REQ014_sauvegarder_dans_le_dialogue_pendant_une_ecriture_en_cours_n_perd_aucun_texte", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  let liberer;
+  const retenu = new Promise((r) => (liberer = r));
+  let retenues = 0;
+  await page.route("**/api/fichier?*", async (route) => {
+    if (route.request().method() === "PUT" && retenues++ === 0) await retenu;
+    await route.continue();
+  });
+  await ligne(page, "a.txt").click();
+  await expect(editeur(page, "a.txt")).toBeFocused();
+  await taper(page, "a.txt", "b");
+  await page.keyboard.press("Control+s"); // écriture de « ab », retenue
+  await expect.poll(() => retenues).toBe(1);
+  await page.keyboard.type("c");
+  await page.getByRole("button", { name: "Fermer a.txt" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Sauvegarder" }).click();
+  await page.waitForTimeout(300); // le dialogue doit rester : l'écriture en cours n'est pas finie
+  await expect(page.getByRole("dialog")).toBeVisible();
+  liberer();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(onglet(page, /a\.txt/)).toHaveCount(0);
+  expect(fs.readFileSync(path.join(dossier, "a.txt"), "utf8")).toBe("abc");
+});
+
+test("REQ013_deux_ctrl_s_rapproches_n_affichent_pas_d_echec", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await ligne(page, "a.txt").click();
+  await taper(page, "a.txt", "b");
+  await page.keyboard.press("Control+s");
+  await page.keyboard.press("Control+s");
+  await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt");
+  expect(fs.readFileSync(path.join(dossier, "a.txt"), "utf8")).toBe("ab");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await taper(page, "a.txt", "c");
+  await page.keyboard.press("Control+s");
+  await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("REQ013_AC3_et_AC5_ecriture_impossible_message_et_le_point_reste", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await ouvrirMain(page);
+  await taper(page, "main.rs", "x");
+  fs.chmodSync(path.join(dossier, "src", "main.rs"), 0o444);
+  await page.keyboard.press("Control+s");
+  const alerte = page.getByRole("alert").filter({ hasText: "Sauvegarde impossible pour main.rs :" });
+  await expect(alerte).toBeVisible();
+  await expect(alerte).toContainText("Vos modifications sont gardées.");
+  await expect(onglet(page, /non sauvegardé/)).toBeVisible();
+  fs.chmodSync(path.join(dossier, "src", "main.rs"), 0o644);
+  await page.keyboard.press("Control+s");
+  await expect(onglet(page, "main.rs")).toHaveAccessibleName("main.rs");
+  await expect(alerte).toHaveCount(0);
+});
+
+test("REQ014_echec_de_sauvegarde_dans_le_dialogue_le_laisse_ouvert_avec_le_message", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await ouvrirMain(page);
+  await taper(page, "main.rs", "x");
+  fs.chmodSync(path.join(dossier, "src", "main.rs"), 0o444);
+  await page.getByRole("button", { name: "Fermer main.rs" }).click();
+  const dlg = page.getByRole("dialog", { name: "Sauvegarder main.rs ?" });
+  await dlg.getByRole("button", { name: "Sauvegarder" }).click();
+  await expect(dlg.getByRole("alert")).toContainText("Sauvegarde impossible pour main.rs :");
+  await expect(dlg.getByRole("button", { name: "Sauvegarder" })).toBeEnabled();
+  await expect(onglet(page, /non sauvegardé/)).toBeVisible();
+  fs.chmodSync(path.join(dossier, "src", "main.rs"), 0o644);
+  await dlg.getByRole("button", { name: "Sauvegarder" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(onglet(page, /main\.rs/)).toHaveCount(0);
+});
+
+test("REQ014_AC1_et_AC2_et_AC6_fermer_un_onglet_modifie_puis_sauvegarder", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await ouvrirMain(page);
+  await taper(page, "main.rs", "// fin");
+  await page.getByRole("button", { name: "Fermer main.rs" }).click();
+  const dlg = page.getByRole("dialog", { name: "Sauvegarder main.rs ?" });
+  await expect(dlg).toBeVisible();
+  await expect(dlg).toContainText("Ce fichier a des modifications non sauvegardées.");
+  await expect(dlg.getByRole("button")).toHaveText(["Annuler", "Abandonner", "Sauvegarder"]);
+  await expect(dlg.getByRole("button", { name: "Sauvegarder" })).toBeFocused();
+  await dlg.getByRole("button", { name: "Sauvegarder" }).click();
+  await expect(onglet(page, /main\.rs/)).toHaveCount(0);
+  expect(fs.readFileSync(path.join(dossier, "src", "main.rs"), "utf8")).toContain("// fin");
+});
+
+test("REQ014_AC3_abandonner_ne_touche_pas_au_disque_et_le_texte_n_est_pas_restaure", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  const avant = fs.readFileSync(path.join(dossier, "src", "main.rs"), "utf8");
+  await ouvrirMain(page);
+  await taper(page, "main.rs", "// perdu");
+  await page.getByRole("button", { name: "Fermer main.rs" }).click();
+  await page.getByRole("button", { name: "Abandonner" }).click();
+  await expect(onglet(page, /main\.rs/)).toHaveCount(0);
+  expect(fs.readFileSync(path.join(dossier, "src", "main.rs"), "utf8")).toBe(avant);
+  await expect.poll(async () => (await gardes(page)).length).toBe(0);
+  await page.reload();
+  await expect(page.getByText("Aucun fichier ouvert.")).toBeVisible();
+  await ligne(page, "src").click();
+  await ligne(page, "main.rs").click();
+  await expect(page.locator(".cm-content:visible")).toContainText("println");
+  await expect(page.locator(".cm-content:visible")).not.toContainText("// perdu");
+});
+
+test("REQ014_AC4_et_AC6_annuler_ou_echap_garde_l_onglet_et_son_texte", async ({ page }) => {
+  await ouvrir(page);
+  await ouvrirMain(page);
+  await taper(page, "main.rs", "// garde");
+  await page.getByRole("button", { name: "Fermer main.rs" }).click();
+  await page.getByRole("button", { name: "Annuler" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(onglet(page, /non sauvegardé/)).toBeVisible();
+  await onglet(page, /non sauvegardé/).focus();
+  await page.keyboard.press("Delete");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".cm-content:visible")).toContainText("// garde");
+});
+
+test("REQ014_AC5_et_AC7_onglet_non_modifie_se_ferme_sans_question_puis_droite_sinon_gauche", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "a.txt").click();
+  await ligne(page, "README.md").click();
+  await ligne(page, "x.zzz").click();
+  await onglet(page, "README.md").click();
+  await page.getByRole("button", { name: "Fermer README.md" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(onglet(page, "x.zzz")).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("button", { name: "Fermer x.zzz" }).click();
+  await expect(onglet(page, "a.txt")).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("button", { name: "Fermer a.txt" }).click();
+  await expect(page.getByText("Aucun fichier ouvert.")).toBeVisible();
+});
+
+test("REQ009_AC2_et_REQ010_AC3_onglet_renomme_puis_ferme_a_la_suppression", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "a.txt").click();
+  await expect(onglet(page, "a.txt")).toBeVisible();
+  await ligne(page, "a.txt").focus();
+  await page.keyboard.press("F2");
+  await page.getByLabel("Nouveau chemin").fill("b.txt");
+  await page.keyboard.press("Enter");
+  await expect(onglet(page, "b.txt")).toBeVisible();
+  await expect(onglet(page, "a.txt")).toHaveCount(0);
+  await expect(editeur(page, "b.txt")).toBeVisible();
+  await ligne(page, "b.txt").focus();
+  await page.keyboard.press("Delete");
+  await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+  await expect(onglet(page, "b.txt")).toHaveCount(0);
+  await expect(page.getByText("Aucun fichier ouvert.")).toBeVisible();
+});
+
+test("REQ009_AC8_un_fichier_cree_depuis_le_panneau_s_ouvre_dans_un_onglet", async ({ page }) => {
+  await ouvrir(page);
+  await page.getByRole("button", { name: "+ Fichier" }).click();
+  await page.getByLabel("Chemin").fill("neuf.txt");
+  await page.keyboard.press("Enter");
+  await expect(onglet(page, "neuf.txt")).toHaveAttribute("aria-selected", "true");
+  await expect(editeur(page, "neuf.txt")).toBeFocused();
+});
+
+test("REQ011_AC7_tab_indente_dans_l_editeur", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "x.zzz").click();
+  await expect(editeur(page, "x.zzz")).toBeFocused();
+  await page.keyboard.press("Control+Home");
+  await page.keyboard.press("Tab");
+  await expect.poll(() => page.locator(".cm-content:visible .cm-line").first().evaluate((e) => e.textContent)).toMatch(/^\s+inconnu$/);
+});
+
+test("REQ018_AC1_les_onglets_et_l_onglet_actif_reviennent_apres_rechargement", async ({ page }) => {
+  await ouvrir(page);
+  await ouvrirMain(page);
+  await ligne(page, "README.md").click();
+  await ligne(page, "a.txt").click();
+  await onglet(page, "README.md").click();
+  await taper(page, "README.md", "garde moi");
+  await expect.poll(async () => (await gardes(page)).find((o) => o.chemin === "README.md")?.texte).toContain("garde moi");
+  await page.reload();
+  await expect(onglet(page, /^README\.md.*non sauvegardé/)).toHaveAttribute("aria-selected", "true");
+  await expect(onglet(page, "main.rs")).toBeVisible();
+  await expect(onglet(page, "a.txt")).toBeVisible();
+  await expect(page.locator(".cm-content:visible")).toContainText("garde moi");
+});
+
+test("REQ018_un_fichier_disparu_n_est_pas_rouvert", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await ligne(page, "a.txt").click();
+  await ligne(page, "README.md").click();
+  await expect.poll(async () => (await gardes(page)).map((o) => o.chemin)).toEqual(["a.txt", "README.md"]);
+  fs.rmSync(path.join(dossier, "a.txt"));
+  await page.reload();
+  await expect(onglet(page, "README.md")).toBeVisible();
+  await expect(onglet(page, "a.txt")).toHaveCount(0);
+});
+
+test("V002_chargement_pendant_la_lecture_et_pendant_la_restauration_jamais_aucun_fichier_ouvert", async ({ page }) => {
+  await ouvrir(page);
+  let lenteur = 0;
+  await page.route("**/api/fichier?*", async (route) => {
+    if (lenteur) await new Promise((r) => setTimeout(r, lenteur));
+    await route.continue();
+  });
+  lenteur = 1500;
+  await ligne(page, "a.txt").click();
+  await expect(page.getByText("Chargement…").last()).toBeVisible();
+  await expect(page.getByText("Aucun fichier ouvert.")).toHaveCount(0);
+  await expect(onglet(page, "a.txt")).toBeVisible();
+  await expect(page.getByText("Chargement…")).toHaveCount(0);
+  // Un onglet est déjà actif : le chargement d'un second fichier s'affiche quand même.
+  await ligne(page, "README.md").click();
+  await expect(page.getByText("Chargement…").last()).toBeVisible();
+  await expect(onglet(page, "README.md")).toBeVisible();
+  await expect(page.getByText("Chargement…")).toHaveCount(0);
+  await expect.poll(async () => (await gardes(page)).length).toBe(2);
+  await page.reload();
+  await expect(page.getByText("Chargement…").last()).toBeVisible();
+  await expect(page.getByText("Aucun fichier ouvert.")).toHaveCount(0);
+  await expect(onglet(page, "a.txt")).toBeVisible();
+});

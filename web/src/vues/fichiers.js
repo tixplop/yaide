@@ -25,10 +25,10 @@ function texteErreur(r) {
 
 /**
  * V-003. `dire({ texte, variante, fermable })` affiche un bandeau.
- * Rappels : `surOuvrir({ chemin, contenu, version })`, `surRenomme({ de, vers })`, `surSupprime({ chemin, dossier })`.
+ * Rappels : `surOuvrir({ chemin, contenu, version })`, `surRenomme({ de, vers })`, `surSupprime({ chemin, dossier })`, `surLecture(oui)` (début et fin d'une lecture).
  * Rend `{ corps, pied, rafraichir(), detruire() }`.
  */
-export function vueFichiers({ dire, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {} }) {
+export function vueFichiers({ dire, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {} }) {
   const corps = document.createElement("div");
   corps.className = "fichiers";
   const pied = document.createElement("div");
@@ -147,14 +147,19 @@ export function vueFichiers({ dire, surOuvrir = () => {}, surRenomme = () => {},
 
   async function ouvrirFichier(chemin) {
     const nom = nomDe(chemin);
+    surLecture(true);
     const r = await lireFichier(chemin);
     if (detruit) return;
-    if (r.contenu !== undefined) return surOuvrir({ chemin, contenu: r.contenu, version: r.version });
+    if (r.contenu !== undefined) {
+      surOuvrir({ chemin, contenu: r.contenu, version: r.version });
+      return surLecture(false);
+    }
     let texte;
     if (r.cause === "binaire" || r.cause === "non-utf8") texte = `${nom} est un fichier binaire. Yaide ne l'ouvre pas.`;
     else if (r.cause === "trop-gros") texte = `${nom} dépasse 5 Mo. Yaide ne l'ouvre pas.`;
     else texte = `Impossible d'ouvrir ${nom} : ${raisonDe(r)}.`;
     dire({ texte, variante: "alerte", fermable: true });
+    surLecture(false);
   }
 
   corps.addEventListener("focusin", (e) => {

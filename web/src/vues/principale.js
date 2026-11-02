@@ -4,6 +4,7 @@ import { cadre } from "../ui/cadre.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { surveiller } from "../connexion.js";
+import { vueEditeur } from "./editeur.js";
 import { vueFichiers } from "./fichiers.js";
 import { vueShells } from "./shells.js";
 
@@ -49,11 +50,15 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   };
   let etat = "connecte";
   function dire({ texte, variante, fermable = false }) {
-    montrerBandeau("message", message({ texte, variante, fermable }));
+    const m = message({ texte, variante, fermable });
+    montrerBandeau("message", m);
+    return m;
   }
 
   const shells = vueShells({ dire });
-  const fichiers = vueFichiers({ dire });
+  const editeur = vueEditeur({ dire });
+  const fichiers = vueFichiers({ dire, surOuvrir: editeur.ouvrir, surRenomme: editeur.renomme, surSupprime: editeur.supprime, surLecture: editeur.lecture });
+  editeur.restaurer();
 
   const rail = onglets({
     orientation: "verticale",
@@ -66,7 +71,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     barreHaut: [nom, lieu, droite],
     rail,
     panneau: { titre: "Fichiers", corps: fichiers.corps, pied: fichiers.pied },
-    principal: { bandeaux, shells },
+    principal: { bandeaux, ongletsFichiers: editeur.barre, code: editeur.code, shells },
   });
   const titre = racine.querySelector(".cadre-panneau-titre");
   const corps = racine.querySelector(".cadre-panneau-corps");
@@ -123,6 +128,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     arreter();
     document.removeEventListener("keydown", surTouche);
     shells.detruire();
+    editeur.detruire();
     fichiers.detruire();
   };
   return racine;

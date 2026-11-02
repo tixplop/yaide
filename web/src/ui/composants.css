@@ -87,6 +87,7 @@ textarea.champ-saisie { padding: var(--esp-2) var(--esp-3); }
 .onglet-question { color: var(--alerte); font-weight: var(--graisse-forte); }
 .onglet-fermer { box-sizing: border-box; width: var(--hauteur-controle); height: var(--hauteur-controle); margin-left: calc(-1 * var(--esp-3)); padding: 0; background: transparent; color: var(--texte-attenue); border: 0; cursor: pointer; }
 .onglet-fermer:hover { background: var(--surface-haute); color: var(--texte); }
+.onglet-detail { color: var(--texte-attenue); }
 .onglets-droite { display: flex; align-items: center; margin-left: auto; }
 
 .liste { display: flex; flex-direction: column; font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); color: var(--texte); }
@@ -203,5 +204,7 @@ body { margin: 0; }
 .shells { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
 .shells-corps { flex: 1 1 0; min-height: 0; }
 .terminal[hidden] { display: none; }
+.zone-code[hidden] { display: none; }
+.editeur-code { height: 100%; min-height: 0; }
 .fichiers-pied { display: flex; flex-wrap: wrap; gap: var(--esp-2); padding: var(--esp-2); }
 .fichiers-pied[hidden] { display: none; }

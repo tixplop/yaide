@@ -20,6 +20,13 @@ export function onglets({ orientation = "horizontale", onglets: liste, actif, ac
     t.className = "onglet";
     t.setAttribute("role", "tab");
     t.textContent = o.libelle;
+    if (o.detail) {
+      const d = document.createElement("span");
+      d.className = "onglet-detail";
+      d.textContent = ` · ${o.detail}`;
+      t.append(d);
+    }
+    const nom = o.nomAccessible ?? (o.detail ? `${o.libelle} · ${o.detail}` : o.libelle);
     if (o.titre) t.title = o.titre;
     if (o.modifie) t.append(" ●");
     if (o.question) {
@@ -28,7 +35,7 @@ export function onglets({ orientation = "horizontale", onglets: liste, actif, ac
       q.textContent = " !";
       t.append(q);
     }
-    t.setAttribute("aria-label", (o.nomAccessible ?? o.libelle) + (o.modifie ? ", non sauvegardé" : "") + (o.question ? ", question en attente" : ""));
+    t.setAttribute("aria-label", nom + (o.modifie ? ", non sauvegardé" : "") + (o.question ? ", question en attente" : ""));
     t.addEventListener("click", () => choisir(o.id, true));
     t.addEventListener("keydown", (e) => touche(e, o));
     cellule.append(t);
@@ -38,7 +45,7 @@ export function onglets({ orientation = "horizontale", onglets: liste, actif, ac
       x.className = "onglet-fermer";
       x.tabIndex = -1;
       x.textContent = "×";
-      x.setAttribute("aria-label", `Fermer ${o.nomAccessible ?? o.libelle}`);
+      x.setAttribute("aria-label", `Fermer ${nom}`);
       x.addEventListener("click", () => surFermer?.(o.id));
       cellule.append(x);
     }

@@ -88,3 +88,12 @@ async function action(chemin, options) {
 export const creerChemin = (chemin, type) => action(`/api/fichiers/creer?chemin=${q(chemin)}&type=${type}`, { method: "POST" });
 export const renommerChemin = (de, vers) => action(`/api/fichiers/renommer?de=${q(de)}&vers=${q(vers)}`, { method: "POST" });
 export const supprimerChemin = (chemin) => action(`/api/fichier?chemin=${q(chemin)}`, { method: "DELETE" });
+
+/** Écrit le fichier. `version` : celle lue ou écrite en dernier. Rend `{ version }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function ecrireFichier(chemin, contenu, version) {
+  const v = version ? `&version=${q(version)}` : "";
+  const r = await appeler(`/api/fichier?chemin=${q(chemin)}${v}`, { method: "PUT", body: contenu });
+  if (!r) return { coupure: true };
+  if (r.ok) return r.json();
+  return erreurServeur(r);
+}
