@@ -48,3 +48,43 @@ export async function ouvrirShell() {
   if (r.status === 201) return r.json();
   return { erreur: (await r.text()).trim() || `erreur ${r.status}` };
 }
+
+const q = encodeURIComponent;
+
+/** Lit la réponse d'erreur du serveur : `{ cause, message }`. */
+async function erreurServeur(r) {
+  try {
+    const { cause, message } = await r.json();
+    return { cause, message };
+  } catch {
+    return { cause: "erreur", message: `erreur ${r.status}` };
+  }
+}
+
+/** `{ entrees: [{ nom, dossier, ignore }] }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function listerDossier(chemin) {
+  const r = await appeler(`/api/fichiers?chemin=${q(chemin)}`);
+  if (!r) return { coupure: true };
+  if (r.ok) return r.json();
+  return erreurServeur(r);
+}
+
+/** `{ contenu, version }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function lireFichier(chemin) {
+  const r = await appeler(`/api/fichier?chemin=${q(chemin)}`);
+  if (!r) return { coupure: true };
+  if (r.ok) return { contenu: await r.text(), version: r.headers.get("x-version") };
+  return erreurServeur(r);
+}
+
+async function action(chemin, options) {
+  const r = await appeler(chemin, options);
+  if (!r) return { coupure: true };
+  if (r.ok) return {};
+  return erreurServeur(r);
+}
+
+/** `type` : "fichier" ou "dossier". Rend `{}` ou `{ cause, message }` ou `{ coupure: true }`. */
+export const creerChemin = (chemin, type) => action(`/api/fichiers/creer?chemin=${q(chemin)}&type=${type}`, { method: "POST" });
+export const renommerChemin = (de, vers) => action(`/api/fichiers/renommer?de=${q(de)}&vers=${q(vers)}`, { method: "POST" });
+export const supprimerChemin = (chemin) => action(`/api/fichier?chemin=${q(chemin)}`, { method: "DELETE" });

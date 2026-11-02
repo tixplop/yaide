@@ -56,6 +56,7 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     }
     if (pilotage === "champ") e.append(Object.assign(document.createElement("span"), { className: "liste-marque" }));
     else if (arbre && l.enfants) e.append(Object.assign(document.createElement("span"), { className: "liste-marque", textContent: l.ouvert ? "▾" : "▸" }));
+    e.querySelector(":scope > .liste-marque")?.setAttribute("aria-hidden", "true");
     const t = document.createElement("span");
     t.className = "liste-libelle";
     t.textContent = l.libelle;

@@ -4,6 +4,7 @@ import { cadre } from "../ui/cadre.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { surveiller } from "../connexion.js";
+import { vueFichiers } from "./fichiers.js";
 import { vueShells } from "./shells.js";
 
 const PANNEAUX = [
@@ -52,6 +53,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   }
 
   const shells = vueShells({ dire });
+  const fichiers = vueFichiers({ dire });
 
   const rail = onglets({
     orientation: "verticale",
@@ -63,7 +65,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const racine = cadre({
     barreHaut: [nom, lieu, droite],
     rail,
-    panneau: { titre: "Fichiers" },
+    panneau: { titre: "Fichiers", corps: fichiers.corps, pied: fichiers.pied },
     principal: { bandeaux, shells },
   });
   const titre = racine.querySelector(".cadre-panneau-titre");
@@ -74,6 +76,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     const p = PANNEAUX.find((x) => x.id === id);
     titre.textContent = p.titre;
     corps.setAttribute("aria-label", p.titre);
+    const visible = id === "fichiers";
+    if (visible && fichiers.corps.hidden) fichiers.rafraichir();
+    fichiers.corps.hidden = fichiers.pied.hidden = !visible;
   }
   afficherPanneau("fichiers");
 
@@ -118,6 +123,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     arreter();
     document.removeEventListener("keydown", surTouche);
     shells.detruire();
+    fichiers.detruire();
   };
   return racine;
 }
