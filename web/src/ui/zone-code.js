@@ -130,10 +130,11 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   racine.detruire = () => vue.destroy();
   if (apercu) racine.definirApercu(true);
 
-  if (Number.isInteger(ligne)) {
+  racine.aller = (numero) => {
     const doc = vue.state.doc;
-    const l = doc.line(Math.min(Math.max(ligne, 1), doc.lines));
+    const l = doc.line(Math.min(Math.max(numero, 1), doc.lines));
     vue.dispatch({ selection: { anchor: l.from }, effects: EditorView.scrollIntoView(l.from, { y: "center" }) });
-  }
+  };
+  if (Number.isInteger(ligne)) racine.aller(ligne);
   return racine;
 }

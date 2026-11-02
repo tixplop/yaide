@@ -4,6 +4,7 @@ mod config;
 mod depot;
 mod fichiers;
 mod git;
+mod recherche;
 mod serveur;
 mod shells;
 mod tls;

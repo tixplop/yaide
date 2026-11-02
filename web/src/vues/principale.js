@@ -7,6 +7,7 @@ import { surveiller } from "../connexion.js";
 import { vueEditeur } from "./editeur.js";
 import { vueFichiers } from "./fichiers.js";
 import { vueGit } from "./git.js";
+import { vueRecherche } from "./recherche.js";
 import { vueShells } from "./shells.js";
 
 const PANNEAUX = [
@@ -68,6 +69,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const shells = vueShells({ dire });
   const editeur = vueEditeur({ dire, surAttente: (t) => { attenteTexte = t; montrerCoupure(); } });
   const fichiers = vueFichiers({ dire, surOuvrir: editeur.ouvrir, surRenomme: editeur.renomme, surSupprime: editeur.supprime, surLecture: editeur.lecture });
+  const recherche = vueRecherche({ dire, surOuvrir: editeur.ouvrir, surLecture: editeur.lecture });
   const git = vueGit({
     dire,
     surBranche: (b) => {
@@ -91,7 +93,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const racine = cadre({
     barreHaut: [nom, lieu, droite],
     rail,
-    panneau: { titre: "Fichiers", corps: [fichiers.corps, git.corps], pied: [fichiers.pied, git.pied] },
+    panneau: { titre: "Fichiers", corps: [fichiers.corps, recherche.corps, git.corps], pied: [fichiers.pied, git.pied] },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, code: editeur.code, shells },
   });
   const titre = racine.querySelector(".cadre-panneau-titre");
@@ -105,13 +107,17 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     const visible = id === "fichiers";
     if (visible && fichiers.corps.hidden) fichiers.rafraichir();
     fichiers.corps.hidden = fichiers.pied.hidden = !visible;
+    recherche.montrer(id === "recherche");
     git.montrer(id === "git");
   }
   afficherPanneau("fichiers");
 
   // Clic sur un onglet du rail : le focus entre dans le panneau.
   rail.addEventListener("click", (e) => {
-    if (e.target.closest("[role=tab]")) corps.focus();
+    const onglet = e.target.closest("[role=tab]");
+    if (!onglet) return;
+    corps.focus();
+    if (onglet.getAttribute("aria-label") === "Recherche") recherche.focuser();
   });
   // Focus sur le rail : F, R et G affichent le panneau et y mettent le focus.
   rail.addEventListener("keydown", (e) => {
@@ -121,6 +127,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     rail.choisir(p.id);
     afficherPanneau(p.id);
     corps.focus();
+    if (p.id === "recherche") recherche.focuser();
   });
 
   // Ctrl+Maj+F, partout (même dans un shell) : le focus passe sur le bouton actif du rail.
@@ -152,6 +159,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     editeur.detruire();
     fichiers.detruire();
     git.detruire();
+    recherche.detruire();
   };
   return racine;
 }

@@ -82,8 +82,8 @@ test("REQ005_AC3_deconnexion_avec_session_deja_expiree_ramene_a_la_connexion", a
 
 test("REQ028_AC1_clic_sur_le_rail_change_de_panneau_et_le_focus_y_entre", () => {
   const { vue } = monter();
-  vue.querySelectorAll("[role=tab]")[1].click();
-  expect(vue.querySelector("aside h2").textContent).toBe("Recherche");
+  vue.querySelectorAll("[role=tab]")[2].click();
+  expect(vue.querySelector("aside h2").textContent).toBe("Git");
   expect(document.activeElement).toBe(vue.querySelector(".cadre-panneau-corps"));
 });
 

@@ -137,3 +137,11 @@ export const gitCommit = (texte) => action("/api/git/commit", { method: "POST", 
 export const gitBranche = (nom) => action(`/api/git/branche?nom=${q(nom)}`, { method: "POST" });
 export const gitPull = () => action("/api/git/pull", { method: "POST" });
 export const gitPush = () => action("/api/git/push", { method: "POST" });
+
+/** `{ resultats: [{ chemin, ligne, texte, debut, fin }], limite }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function chercherTexte(texte) {
+  const r = await appeler(`/api/recherche?q=${q(texte)}`);
+  if (!r) return { coupure: true };
+  if (r.ok) return r.json();
+  return erreurServeur(r);
+}

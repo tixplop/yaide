@@ -107,6 +107,7 @@ textarea.champ-saisie { padding: var(--esp-2) var(--esp-3); }
 .liste-libelle { overflow: hidden; text-overflow: ellipsis; }
 .liste-secondaire { color: var(--texte-attenue); overflow: hidden; text-overflow: ellipsis; }
 .liste-code { font-family: var(--police-code); }
+.liste-trouve { font-weight: var(--graisse-forte); }
 .liste-marque { flex: none; min-width: var(--esp-3); }
 .liste-ligne:hover { background: var(--surface-haute); }
 .liste-ligne[aria-selected="true"] { background: var(--surface-haute); font-weight: var(--graisse-forte); }
@@ -221,3 +222,5 @@ body { margin: 0; }
 .git-corps .liste-secondaire { flex: none; margin-left: auto; font: var(--texte-petit) var(--police-ui); }
 .git-corps .git-indexe { color: var(--succes); }
 .git-actions { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
+.recherche-corps { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2); }
+.recherche-corps[hidden] { display: none; }

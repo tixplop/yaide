@@ -3,6 +3,12 @@ import { bouton } from "./bouton.js";
 const VARIANTES = ["plate", "arbre"];
 let compteur = 0;
 
+/** Coupe `texte` en trois selon `[debut, fin[` (en caractères Unicode). */
+function decouper(texte, [debut, fin]) {
+  const c = Array.from(texte);
+  return [c.slice(0, debut).join(""), c.slice(debut, fin).join(""), c.slice(fin).join("")];
+}
+
 export function liste({ variante = "plate", lignes, selection, pilotage = "focus", champ, surActiver, surBasculer }) {
   if (!VARIANTES.includes(variante)) throw new Error(`liste : variante inconnue « ${variante} »`);
   if (pilotage === "champ" && !champ) throw new Error("liste : champ requis avec pilotage « champ »");
@@ -59,7 +65,13 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     e.querySelector(":scope > .liste-marque")?.setAttribute("aria-hidden", "true");
     const t = document.createElement("span");
     t.className = "liste-libelle";
-    t.textContent = l.libelle;
+    if (l.trouve) {
+      const [avant, trouve, apres] = decouper(l.libelle, l.trouve);
+      const b = document.createElement("b");
+      b.className = "liste-trouve";
+      b.textContent = trouve;
+      t.append(avant, b, apres);
+    } else t.textContent = l.libelle;
     e.append(t);
     if (l.secondaire) {
       const s = document.createElement("span");

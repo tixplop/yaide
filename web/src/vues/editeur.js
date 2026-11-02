@@ -158,10 +158,11 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     return o;
   }
 
-  function ouvrir({ chemin, contenu, version }) {
+  function ouvrir({ chemin, contenu, version, ligne }) {
     if (!trouver(chemin)) creer({ chemin, contenu, version });
     actif = chemin;
     afficher();
+    if (Number.isInteger(ligne)) trouver(chemin).zone.aller(ligne);
     trouver(chemin).zone.vue.focus();
     garderListe();
   }

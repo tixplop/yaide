@@ -1,4 +1,4 @@
-use crate::{auth, config, fichiers, git, shells};
+use crate::{auth, config, fichiers, git, recherche, shells};
 use axum::body::Bytes;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{DefaultBodyLimit, Path as CheminUrl, Query, Request, State};
@@ -626,6 +626,46 @@ async fn git_push(State(etat): State<Partage>) -> Response {
 const INDEX: &[u8] = include_bytes!("../web/dist/index.html");
 const MAIN_JS: &[u8] = include_bytes!("../web/dist/main.js");
 
+async fn chercher(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let requete = param(&q, "q").to_string();
+    if requete.is_empty() {
+        return json(
+            StatusCode::BAD_REQUEST,
+            "{\"cause\":\"invalide\",\"message\":\"Saisissez un texte à chercher.\"}".into(),
+        );
+    }
+    let projet = etat.projet_dir.clone();
+    let Ok(rep) = tokio::task::spawn_blocking(move || recherche::chercher(&projet, &requete)).await
+    else {
+        return json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "{\"cause\":\"erreur\",\"message\":\"la recherche s'est interrompue\"}".into(),
+        );
+    };
+    let l: Vec<String> = rep
+        .resultats
+        .iter()
+        .map(|r| {
+            format!(
+                "{{\"chemin\":{},\"ligne\":{},\"texte\":{},\"debut\":{},\"fin\":{}}}",
+                json_texte(&r.chemin),
+                r.ligne,
+                json_texte(&r.texte),
+                r.debut,
+                r.fin
+            )
+        })
+        .collect();
+    json(
+        StatusCode::OK,
+        format!(
+            "{{\"resultats\":[{}],\"limite\":{}}}",
+            l.join(","),
+            rep.limite
+        ),
+    )
+}
+
 async fn index() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], INDEX)
 }
@@ -700,6 +740,7 @@ pub async fn servir(
         .route("/api/fichiers/creer", post(creer_fichier))
         .route("/api/fichiers/renommer", post(renommer_fichier))
         .route("/api/fichiers/versions", post(versions_fichiers))
+        .route("/api/recherche", get(chercher))
         .route("/api/git/etat", get(git_etat))
         .route("/api/git/diff", get(git_diff))
         .route("/api/git/indexer", post(git_indexer))
