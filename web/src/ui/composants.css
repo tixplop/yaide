@@ -1,0 +1,65 @@
+/* Styles des composants : uniquement des tokens de tokens.css. */
+.bouton {
+  box-sizing: border-box;
+  height: var(--hauteur-controle);
+  padding: 0 var(--esp-3);
+  border: var(--trait) solid transparent;
+  border-radius: var(--rayon-petit);
+  font: var(--texte-base) var(--police-ui);
+  font-family: var(--police-ui);
+  cursor: pointer;
+}
+.bouton:focus-visible { outline: var(--trait-fort) solid var(--accent); outline-offset: var(--trait); }
+.bouton-principal { background: var(--accent); color: var(--texte-sur-couleur); }
+.bouton-danger { background: var(--erreur); color: var(--texte-sur-couleur); }
+.bouton-secondaire { background: transparent; border-color: var(--bordure-champ); color: var(--texte); }
+.bouton-discret { background: transparent; color: var(--texte-attenue); }
+.bouton-principal:hover, .bouton-principal:active { background: var(--accent-survol); }
+.bouton-danger:hover, .bouton-danger:active { background: var(--erreur-survol); }
+.bouton-secondaire:hover, .bouton-discret:hover, .bouton-secondaire:active, .bouton-discret:active { background: var(--surface-haute); color: var(--texte); }
+.bouton:active { box-shadow: inset 0 0 0 var(--trait) currentColor; }
+.bouton:disabled { background: transparent; border-color: var(--bordure); color: var(--texte-attenue); cursor: default; box-shadow: none; }
+
+.champ { display: flex; flex-direction: column; gap: var(--esp-2); font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); color: var(--texte); }
+.masque { position: absolute; width: var(--trait); height: var(--trait); overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.champ-saisie {
+  box-sizing: border-box;
+  min-height: var(--hauteur-controle);
+  padding: 0 var(--esp-3);
+  background: var(--fond);
+  color: var(--texte);
+  border: var(--trait) solid var(--bordure-champ);
+  border-radius: var(--rayon-petit);
+  font: var(--texte-base) var(--police-ui);
+  font-family: var(--police-ui);
+  color-scheme: dark;
+}
+textarea.champ-saisie { padding: var(--esp-2) var(--esp-3); }
+.champ-saisie:focus-visible { outline: var(--trait-fort) solid var(--accent); }
+.champ-saisie:disabled { border-color: var(--bordure); color: var(--texte-attenue); }
+.champ-saisie[aria-invalid="true"] { border-color: var(--erreur); }
+.champ-aide { font: var(--texte-petit) var(--police-ui); font-family: var(--police-ui); color: var(--texte-attenue); }
+.champ-erreur { font: var(--texte-petit) var(--police-ui); font-family: var(--police-ui); color: var(--erreur); }
+
+.message {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--esp-2) var(--esp-3);
+  padding: var(--esp-2) var(--esp-3);
+  background: var(--surface-haute);
+  color: var(--texte);
+  border-left: var(--trait-fort) solid var(--texte-attenue);
+  font: var(--texte-base) var(--police-ui);
+  font-family: var(--police-ui);
+}
+.message-succes { border-left-color: var(--succes); }
+.message-alerte { border-left-color: var(--alerte); }
+.message-erreur { border-left-color: var(--erreur); }
+.message-fort { background: var(--alerte); color: var(--texte-sur-couleur); border-left-color: var(--alerte); }
+.message-texte { flex: 1; }
+.message-actions { display: flex; gap: var(--esp-2); }
+.message-detail { flex-basis: 100%; margin: 0; max-height: var(--hauteur-detail); overflow: auto; font-family: var(--police-code); white-space: pre-wrap; }
+
+.indication { display: flex; flex-direction: column; align-items: flex-start; gap: var(--esp-3); padding: var(--esp-3); color: var(--texte-attenue); font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); }
+.indication[hidden] { display: none; }

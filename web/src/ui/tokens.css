@@ -1,0 +1,62 @@
+:root {
+  color-scheme: dark;
+
+  --fond: #14171C;
+  --surface: #1C2027;
+  --surface-haute: #252A33;
+  --texte: #E3E6EB;
+  --texte-attenue: #A0A7B3;
+  --texte-sur-couleur: #14171C;
+  --bordure: #323844;
+  --bordure-champ: #7C8594;
+  --accent: #5C9DFF;
+  --accent-survol: #7AB0FF;
+  --succes: #57C785;
+  --alerte: #E3B341;
+  --erreur: #FF7B72;
+  --erreur-survol: #FF9A93;
+  --selection: #2B4A78;
+  --diff-ajout: #1B3325;
+  --diff-retrait: #3D1F22;
+  --code-mot-cle: #C792EA;
+  --code-chaine: #9CCC8A;
+  --code-nombre: #E5A46C;
+  --code-fonction: #6CC5D9;
+  --code-type: #E3C77D;
+
+  --police-ui: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --police-code: ui-monospace, "SF Mono", "DejaVu Sans Mono", "Liberation Mono", Consolas, monospace;
+  --texte-petit: 12px/16px;
+  --texte-base: 13px/18px;
+  --texte-lecture: 14px/20px;
+  --texte-sous-titre: 16px/22px;
+  --texte-titre: 20px/28px;
+  --graisse-normale: 400;
+  --graisse-forte: 600;
+
+  --esp-1: 2px;
+  --esp-2: 4px;
+  --esp-3: 8px;
+  --esp-4: 12px;
+  --esp-5: 16px;
+  --esp-6: 24px;
+  --rayon-petit: 3px;
+  --rayon-dialogue: 6px;
+  --trait: 1px;
+  --trait-fort: 2px;
+  --ombre-dialogue: 0 8px 24px rgb(0 0 0 / .5);
+  --voile: rgb(0 0 0 / .5);
+
+  --hauteur-barre: 32px;
+  --largeur-rail: 36px;
+  --largeur-panneau: 240px;
+  --hauteur-onglet: 28px;
+  --hauteur-controle: 24px;
+  --hauteur-ligne: 24px;
+  --part-shells: 35%;
+  --largeur-dialogue: 420px;
+  --largeur-ouverture: 560px;
+  --largeur-min: 800px;
+  --hauteur-min: 480px;
+  --hauteur-detail: 160px;
+}
