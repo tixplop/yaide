@@ -973,6 +973,7 @@ dependencies = [
  "axum",
  "axum-server",
  "rcgen",
+ "ring",
  "rustls",
  "tokio",
 ]

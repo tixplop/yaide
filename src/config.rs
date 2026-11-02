@@ -75,7 +75,6 @@ pub fn mot_de_passe_defini(dossier: &Path) -> bool {
 }
 
 /// Relit le fichier à chaque appel : un nouveau mot de passe vaut tout de suite.
-#[allow(dead_code)] // utilisé par la connexion (T-007)
 pub fn verifier_mot_de_passe(dossier: &Path, mot_de_passe: &str) -> bool {
     let Ok(texte) = std::fs::read_to_string(fichier_mot_de_passe(dossier)) else {
         return false;
