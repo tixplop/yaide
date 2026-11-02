@@ -565,8 +565,9 @@ async fn git_etat(State(etat): State<Partage>) -> Response {
             json(
                 StatusCode::OK,
                 format!(
-                    "{{\"branche\":{},\"branches\":[{}],\"changements\":[{}]}}",
+                    "{{\"branche\":{},\"detachee\":{},\"branches\":[{}],\"changements\":[{}]}}",
                     json_texte(&e.branche),
+                    e.detachee,
                     branches.join(","),
                     changements.join(",")
                 ),

@@ -29,6 +29,8 @@ pub struct Changement {
 
 pub struct Etat {
     pub branche: String,
+    /// HEAD ne suit aucune branche : `branche` est alors un identifiant de commit.
+    pub detachee: bool,
     pub branches: Vec<String>,
     pub changements: Vec<Changement>,
 }
@@ -211,15 +213,16 @@ fn verifier_chemin(chemin: &str) -> Result<(), Erreur> {
     }
 }
 
-fn branche_courante(d: &Path) -> String {
+/// Nom de la branche courante et vrai si HEAD est détachée.
+fn branche_courante(d: &Path) -> (String, bool) {
     if let Ok(s) = court(d, &["symbolic-ref", "--short", "-q", "HEAD"], true) {
         if s.ok {
-            return String::from_utf8_lossy(&s.stdout).trim().to_string();
+            return (String::from_utf8_lossy(&s.stdout).trim().to_string(), false);
         }
     }
     match court(d, &["rev-parse", "--short", "HEAD"], true) {
-        Ok(s) if s.ok => String::from_utf8_lossy(&s.stdout).trim().to_string(),
-        _ => String::new(),
+        Ok(s) if s.ok => (String::from_utf8_lossy(&s.stdout).trim().to_string(), true),
+        _ => (String::new(), false),
     }
 }
 
@@ -296,13 +299,14 @@ pub fn etat(d: &Path) -> Result<Etat, Erreur> {
             indexe,
         });
     }
-    let branche = branche_courante(d);
+    let (branche, detachee) = branche_courante(d);
     let mut branches = liste_branches(d);
-    if !branche.is_empty() && !branches.contains(&branche) {
+    if !detachee && !branche.is_empty() && !branches.contains(&branche) {
         branches.push(branche.clone());
     }
     Ok(Etat {
         branche,
+        detachee,
         branches,
         changements,
     })

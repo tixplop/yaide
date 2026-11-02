@@ -114,3 +114,26 @@ export async function versionsFichiers(chemins) {
     return null;
   }
 }
+
+/** `{ branche, detachee, branches, changements: [{ chemin, statut, indexe }] }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function gitEtat() {
+  const r = await appeler("/api/git/etat");
+  if (!r) return { coupure: true };
+  if (r.ok) return r.json();
+  return erreurServeur(r);
+}
+
+/** `{ binaire, trop_gros, diff }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function gitDiff(chemin) {
+  const r = await appeler(`/api/git/diff?chemin=${q(chemin)}`);
+  if (!r) return { coupure: true };
+  if (r.ok) return r.json();
+  return erreurServeur(r);
+}
+
+/** Les actions git rendent `{}`, `{ cause, message }` ou `{ coupure: true }`. */
+export const gitIndexer = (chemin) => action(`/api/git/indexer?chemin=${q(chemin)}`, { method: "POST" });
+export const gitCommit = (texte) => action("/api/git/commit", { method: "POST", body: texte });
+export const gitBranche = (nom) => action(`/api/git/branche?nom=${q(nom)}`, { method: "POST" });
+export const gitPull = () => action("/api/git/pull", { method: "POST" });
+export const gitPush = () => action("/api/git/push", { method: "POST" });

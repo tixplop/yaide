@@ -197,6 +197,8 @@ body { margin: 0; }
 .connexion-chemin { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: center; color: var(--texte-attenue); }
 .barre-nom { font-weight: var(--graisse-forte); }
 .barre-chemin { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--texte-attenue); }
+.barre-branche { color: var(--texte-attenue); }
+.barre-branche[hidden] { display: none; }
 .barre-droite { flex: none; display: flex; align-items: center; gap: var(--esp-3); margin-left: auto; }
 
 /* Zone des shells (V-002) : onglets, puis terminaux. */
@@ -208,3 +210,14 @@ body { margin: 0; }
 .editeur-code { height: 100%; min-height: 0; }
 .fichiers-pied { display: flex; flex-wrap: wrap; gap: var(--esp-2); padding: var(--esp-2); }
 .fichiers-pied[hidden] { display: none; }
+
+/* V-005 : panneau Git */
+.git-corps { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2); }
+.git-corps[hidden] { display: none; }
+.git-titre { margin: 0; font: var(--texte-petit) var(--police-ui); font-weight: var(--graisse-forte); color: var(--texte-attenue); text-transform: uppercase; }
+.git-pied { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2); }
+.git-pied[hidden] { display: none; }
+.git-corps .liste-libelle { flex: 1 1 auto; min-width: 0; direction: rtl; text-align: left; }
+.git-corps .liste-secondaire { flex: none; margin-left: auto; font: var(--texte-petit) var(--police-ui); }
+.git-corps .git-indexe { color: var(--succes); }
+.git-actions { display: flex; flex-wrap: wrap; gap: var(--esp-2); }

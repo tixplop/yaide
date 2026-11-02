@@ -198,6 +198,18 @@ fn req022_ac3_branche_courante() {
 }
 
 #[test]
+fn req022_ac3_tete_detachee_signalee_et_hors_de_la_liste() {
+    let s = lancer("ac3d");
+    s.depot();
+    let p = s.projet.clone();
+    assert!(s.etat().corps.contains("\"detachee\":false"));
+    s.g(&p, &["checkout", "-q", "--detach"]);
+    let r = s.etat();
+    assert!(r.corps.contains("\"detachee\":true"), "{}", r.corps);
+    assert!(r.corps.contains("\"branches\":[\"main\"]"), "{}", r.corps);
+}
+
+#[test]
 fn req022_ac4_hors_depot() {
     let s = lancer("ac4");
     s.ecrire("a.txt", b"x");

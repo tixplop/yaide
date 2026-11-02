@@ -14,6 +14,7 @@ const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const DELAI_DETECTION = 4000;
 const INTERVALLE_DISQUE = 1500;
 const SANS_SUITE = "sans suite";
+const DIFF = "\0diff"; // identifiant de l'onglet de diff, qui n'est pas un fichier ouvert
 const TEXTE_SUPPRIME = "Fichier supprimé du disque. Ctrl+S le recrée.";
 const estMarkdown = (chemin) => /\.(md|markdown)$/i.test(chemin);
 
@@ -30,6 +31,8 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
 
   const liste = []; // { chemin, zone, disque (texte de base), version (de base), apercu, modifie, question, supprime, avis }
   let actif = null;
+  let diff = null; // { chemin, el } : l'onglet de diff, au plus un, jamais gardé
+  let avantDiff = null; // onglet actif quand le diff s'est ouvert
   let pret = false;
   let lectures = 1; // la restauration compte comme une lecture en cours
   let detruit = false;
@@ -53,7 +56,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   function ecrireGarde() {
     garder(
       liste.map((o) => ({ chemin: o.chemin, apercu: o.apercu, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) })),
-      actif,
+      actif === DIFF ? (liste[0]?.chemin ?? null) : actif,
     );
   }
 
@@ -66,7 +69,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   function afficher() {
     if (detruit) return;
     const avaitLeFocus = barre.contains(document.activeElement);
-    const o = trouver(actif);
+    const o = actif === DIFF ? diff : trouver(actif);
     if (!o && lectures > 0) {
       barre.replaceChildren();
       questionOnglet.replaceChildren();
@@ -83,7 +86,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     }
     const noms = libelles(liste.map((x) => x.chemin));
     let actionsDroite = [];
-    if (estMarkdown(o.chemin)) {
+    if (o !== diff && estMarkdown(o.chemin)) {
       const ap = bouton({ libelle: "Aperçu", variante: "discret" });
       ap.setAttribute("aria-pressed", String(o.apercu));
       ap.addEventListener("click", () => {
@@ -95,7 +98,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       actionsDroite = [ap];
     }
     const ongl = onglets({
-      onglets: liste.map((x, i) => ({
+      onglets: [...(diff ? [{ id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true }] : []), ...liste.map((x, i) => ({
         id: x.chemin,
         libelle: noms[i].libelle,
         detail: noms[i].detail,
@@ -103,7 +106,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
         modifie: x.modifie,
         question: Boolean(x.question),
         fermable: true,
-      })),
+      }))],
       actif,
       actionsDroite,
       surChoix: choisir,
@@ -115,11 +118,12 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     if (avaitLeFocus) ongl.querySelector("[role=tab][aria-selected=true]")?.focus();
     const avis = o.avis ?? null;
     if (questionOnglet.firstChild !== avis) questionOnglet.replaceChildren(...(avis ? [avis] : []));
-    for (const x of liste) {
-      if (x.zone.parentNode !== code) code.append(x.zone);
-      x.zone.hidden = x !== o;
+    const zones = [...liste.map((x) => [x, x.zone]), ...(diff ? [[diff, diff.el]] : [])];
+    for (const [x, z] of zones) {
+      if (z.parentNode !== code) code.append(z);
+      z.hidden = x !== o;
     }
-    for (const enfant of [...code.children]) if (!liste.some((x) => x.zone === enfant)) enfant.remove();
+    for (const enfant of [...code.children]) if (!zones.some(([, z]) => z === enfant)) enfant.remove();
     if (lectures > 0) code.prepend(indication({ texte: "Chargement…", variante: "chargement" }));
   }
 
@@ -127,7 +131,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   function choisir(chemin) {
     actif = chemin;
     for (const o of liste) o.zone.hidden = o.chemin !== chemin;
-    trouver(chemin)?.zone.vue.focus();
+    (chemin === DIFF ? diff?.el : trouver(chemin)?.zone)?.vue?.focus();
     queueMicrotask(afficher);
     garderListe();
   }
@@ -187,7 +191,31 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     liste[i].zone.detruire();
     liste[i].zone.remove();
     liste.splice(i, 1);
-    if (actif === chemin) actif = suivant;
+    if (actif === chemin) actif = suivant ?? (diff ? DIFF : null);
+    afficher();
+    garderListe();
+  }
+
+  // ---- Onglet de diff (V-005) ----
+
+  /** Ouvre le diff de `chemin` dans l'onglet de diff, qui remplace le précédent. `avis` : texte à montrer au lieu du diff. */
+  function ouvrirDiff({ chemin, texte, avis }) {
+    if (actif !== DIFF) avantDiff = actif;
+    diff?.el.detruire?.();
+    diff?.el.remove();
+    const el = avis ? indication({ texte: avis }) : zoneCode({ contenu: texte, mode: "diff", nom: nomDe(chemin) });
+    diff = { chemin, el };
+    actif = DIFF;
+    afficher();
+    el.vue?.focus();
+  }
+
+  function fermerDiff() {
+    if (!diff) return;
+    diff.el.detruire?.();
+    diff.el.remove();
+    diff = null;
+    if (actif === DIFF) actif = trouver(avantDiff) ? avantDiff : (liste[0]?.chemin ?? null);
     afficher();
     garderListe();
   }
@@ -384,6 +412,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   }
 
   function fermer(chemin) {
+    if (chemin === DIFF) return fermerDiff();
     const o = trouver(chemin);
     if (!o) return;
     if (o.question) return montrerQuestion(o);
@@ -475,14 +504,14 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       if (o && g.attente) attente.add(o);
     });
     direAttente();
-    if (!trouver(actif)) actif = trouver(gardes.actif) ? gardes.actif : (liste[0]?.chemin ?? null);
+    if (actif !== DIFF && !trouver(actif)) actif = trouver(gardes.actif) ? gardes.actif : (liste[0]?.chemin ?? null);
     pret = true;
     for (const [o, r] of aVerifier) appliquer(o, r, decisionDisque(o, r));
     afficher();
     garderListe();
     if (!coupe) executerAttente();
     planifierDisque();
-    if (actif && document.activeElement === document.body) trouver(actif).zone.vue.focus();
+    if (actif && document.activeElement === document.body) trouver(actif)?.zone.vue.focus();
   }
 
   afficher();
@@ -504,6 +533,12 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       verifierDisque();
     },
     ouvrir,
+    ouvrirDiff,
+    fermerDiff,
+    /** Chemin du fichier dont le diff est ouvert, ou null. */
+    diffOuvert: () => diff?.chemin ?? null,
+    /** Relit le disque tout de suite (après un changement de branche ou un pull). */
+    relireDisque: verifierDisque,
     renomme,
     supprime,
     restaurer,
@@ -514,6 +549,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       if (pret) ecrireGarde(); // le texte tapé dans les dernières 200 ms n'est pas perdu
       document.removeEventListener("keydown", surTouche);
       for (const o of liste) o.zone.detruire();
+      diff?.el.detruire?.();
     },
   };
 }

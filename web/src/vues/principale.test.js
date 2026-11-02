@@ -86,3 +86,26 @@ test("REQ028_AC1_clic_sur_le_rail_change_de_panneau_et_le_focus_y_entre", () => 
   expect(vue.querySelector("aside h2").textContent).toBe("Recherche");
   expect(document.activeElement).toBe(vue.querySelector(".cadre-panneau-corps"));
 });
+
+test("REQ028_AC2_et_AC022_AC3_la_barre_du_haut_affiche_la_branche_entre_le_chemin_et_Deconnexion", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (url === "/api/git/etat") return { ok: true, status: 200, json: async () => ({ branche: "main", detachee: false, branches: ["main"], changements: [] }) };
+    return { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "erreur 500" }) };
+  }));
+  const { vue } = monter();
+  await new Promise((r) => setTimeout(r, 0));
+  const droite = vue.querySelector("header .barre-droite");
+  expect(droite.children[0].textContent).toBe("branche: main");
+  expect(droite.children[0].hidden).toBe(false);
+  expect(droite.children[1].textContent).toBe("Déconnexion");
+});
+
+test("REQ022_AC4_hors_depot_pas_de_branche_dans_la_barre_du_haut", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (url === "/api/git/etat") return { ok: false, status: 409, json: async () => ({ cause: "pas-depot", message: "Ce dossier n'est pas un dépôt git." }) };
+    return { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "erreur 500" }) };
+  }));
+  const { vue } = monter();
+  await new Promise((r) => setTimeout(r, 0));
+  expect(vue.querySelector("header .barre-branche").hidden).toBe(true);
+});

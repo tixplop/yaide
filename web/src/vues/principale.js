@@ -6,6 +6,7 @@ import { onglets } from "../ui/onglets.js";
 import { surveiller } from "../connexion.js";
 import { vueEditeur } from "./editeur.js";
 import { vueFichiers } from "./fichiers.js";
+import { vueGit } from "./git.js";
 import { vueShells } from "./shells.js";
 
 const PANNEAUX = [
@@ -38,7 +39,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (etat !== "coupe" && (await deconnexion())) surDeconnexion();
     else dire({ texte: TEXTE_COUPURE, variante: "alerte" });
   });
-  droite.append(sortir);
+  const branche = document.createElement("span");
+  branche.className = "barre-branche";
+  branche.hidden = true;
+  droite.append(branche, sortir);
 
   // Bandeaux : la coupure d'abord, puis un seul message à la fois.
   const bandeaux = document.createElement("div");
@@ -64,6 +68,17 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const shells = vueShells({ dire });
   const editeur = vueEditeur({ dire, surAttente: (t) => { attenteTexte = t; montrerCoupure(); } });
   const fichiers = vueFichiers({ dire, surOuvrir: editeur.ouvrir, surRenomme: editeur.renomme, surSupprime: editeur.supprime, surLecture: editeur.lecture });
+  const git = vueGit({
+    dire,
+    surBranche: (b) => {
+      branche.hidden = !b;
+      if (b) branche.textContent = `branche: ${b.detachee ? "détachée" : b.branche}`;
+    },
+    surDiff: editeur.ouvrirDiff,
+    diffOuvert: editeur.diffOuvert,
+    fermerDiff: editeur.fermerDiff,
+    surDisque: editeur.relireDisque,
+  });
   editeur.restaurer();
 
   const rail = onglets({
@@ -76,7 +91,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const racine = cadre({
     barreHaut: [nom, lieu, droite],
     rail,
-    panneau: { titre: "Fichiers", corps: fichiers.corps, pied: fichiers.pied },
+    panneau: { titre: "Fichiers", corps: [fichiers.corps, git.corps], pied: [fichiers.pied, git.pied] },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, code: editeur.code, shells },
   });
   const titre = racine.querySelector(".cadre-panneau-titre");
@@ -90,6 +105,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     const visible = id === "fichiers";
     if (visible && fichiers.corps.hidden) fichiers.rafraichir();
     fichiers.corps.hidden = fichiers.pied.hidden = !visible;
+    git.montrer(id === "git");
   }
   afficherPanneau("fichiers");
 
@@ -135,6 +151,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     shells.detruire();
     editeur.detruire();
     fichiers.detruire();
+    git.detruire();
   };
   return racine;
 }
