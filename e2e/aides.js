@@ -28,15 +28,17 @@ export function depotExemple(nom = "projet") {
 }
 
 /** Lance Yaide sur un port libre (ou `port`). Rend `{ origine, port, dossier, arreter, relancer }`. */
-export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple(), port, shell, reprise = false } = {}) {
+export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple(), port, shell, reprise = false, binaire } = {}) {
   port ??= await portLibre();
   const racine = path.dirname(dossier);
   const home = path.join(racine, "home");
   fs.mkdirSync(home, { recursive: true });
+  const cwd = binaire ? path.dirname(binaire) : undefined;
+  const exe = binaire ?? "target/debug/yaide";
   const env = { ...process.env, XDG_CONFIG_HOME: path.join(racine, "cfg"), HOME: home };
   if (shell) env.SHELL = shell;
-  if (!reprise) spawnSync("target/debug/yaide", ["passwd"], { input: `${motDePasse}\n`, env });
-  const proc = spawn("target/debug/yaide", [dossier, "--port", String(port)], { stdio: "ignore", env });
+  if (!reprise) spawnSync(exe, ["passwd"], { input: `${motDePasse}\n`, env, cwd });
+  const proc = spawn(exe, [dossier, "--port", String(port)], { stdio: "ignore", env, cwd });
   const sorti = new Promise((ok) => proc.once("exit", ok));
   const origine = `https://127.0.0.1:${port}`;
   for (let i = 0; i < 100; i++) {
@@ -54,6 +56,7 @@ export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple()
     origine,
     port,
     dossier,
+    pid: proc.pid,
     /** SIGTERM, puis attend la fin du processus. */
     arreter: async () => {
       proc.kill();
@@ -62,7 +65,7 @@ export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple()
     /** Arrête Yaide et le relance sur le même port, avec la même configuration. */
     relancer: async function () {
       await this.arreter();
-      return lancerYaide({ motDePasse, dossier, port, shell, reprise: true });
+      return lancerYaide({ motDePasse, dossier, port, shell, reprise: true, binaire });
     },
   };
 }

@@ -1,0 +1,144 @@
+import { test, expect } from "@playwright/test";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { depotExemple, lancerYaide, ouvrirYaide } from "./aides.js";
+import { lancerRelais } from "./relais.js";
+
+let yaide;
+let relais;
+test.afterEach(async () => {
+  relais?.fermer();
+  relais = undefined;
+  await yaide?.arreter();
+});
+
+const git = (dossier, ...args) => {
+  const r = spawnSync("git", ["-c", "user.name=Test", "-c", "user.email=t@example.org", ...args], { cwd: dossier, encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`git ${args.join(" ")} : ${r.stderr}`);
+  return r.stdout;
+};
+const ecran = (page) => page.locator(".terminal:visible .xterm-rows");
+const terminalPret = async (page) => {
+  await expect(page.locator(".terminal:visible .terminal-attente")).toBeHidden();
+  await page.locator(".terminal:visible .xterm-helper-textarea").focus();
+};
+
+test("REQ030_AC1_parcours_1_corriger_un_fichier_et_faire_un_commit", async ({ page }) => {
+  const dossier = depotExemple();
+  git(dossier, "config", "user.name", "Test");
+  git(dossier, "config", "user.email", "t@example.org");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await page.goto(yaide.origine + "/");
+  const champ = page.getByLabel("Mot de passe");
+  await expect(champ).toBeFocused();
+  await champ.fill("faux");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Mot de passe incorrect.")).toBeVisible();
+  await expect(champ).toBeFocused();
+  expect(await champ.evaluate((e) => e.selectionStart === 0 && e.selectionEnd === e.value.length && e.value.length > 0)).toBe(true);
+  await champ.fill("mdp");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("tree", { name: "Fichiers" })).toBeVisible();
+  await page.getByRole("treeitem", { name: "src", exact: true }).click();
+  await page.getByRole("treeitem", { name: "main.rs", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "main.rs", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+  await page.keyboard.type("// corrigé\n");
+  await expect(page.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
+  await page.keyboard.press("Control+s");
+  await expect(page.getByRole("tab", { name: "main.rs", exact: true })).toBeVisible();
+  expect(fs.readFileSync(path.join(dossier, "src", "main.rs"), "utf8")).toContain("// corrigé");
+  await page.getByRole("tab", { name: "Git" }).click();
+  const ligne = page.getByRole("listbox", { name: "Changements" }).getByRole("option").filter({ hasText: "src/main.rs" });
+  await ligne.click();
+  await expect(page.getByRole("tab", { name: "main.rs (diff)" })).toBeVisible();
+  await expect(page.getByLabel("Diff main.rs")).toContainText("+// corrigé");
+  await page.getByRole("button", { name: "Indexer main.rs" }).click();
+  await expect(ligne).toContainText("indexé");
+  await page.getByRole("textbox", { name: "Message" }).fill("Corrige main");
+  await page.getByRole("button", { name: "Commit" }).click();
+  await expect(page.getByText("Commit créé.")).toBeVisible();
+  await expect(ligne).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "main.rs (diff)" })).toHaveCount(0);
+  expect(git(dossier, "log", "-1", "--format=%s").trim()).toBe("Corrige main");
+});
+
+test("REQ030_AC1_parcours_2_shell_retrouve_et_coupure", async ({ page, context }) => {
+  yaide = await lancerYaide({ shell: "/bin/sh" });
+  relais = await lancerRelais(yaide.port);
+  await ouvrirYaide(page, relais.origine);
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  const onglets = (p) => p.getByRole("tablist", { name: "Shells" }).getByRole("tab");
+  await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
+  await expect(page.locator(".terminal:visible .xterm-helper-textarea")).toBeFocused();
+  await page.getByRole("tab", { name: "shell 1" }).click();
+  await terminalPret(page);
+  // Le témoin n'existe qu'une fois la commande finie : le navigateur est parti avant.
+  const temoin = path.join(yaide.dossier, "temoin.txt");
+  await page.keyboard.type("sleep 1 && echo fini_$((20+2)) && touch temoin.txt");
+  await page.keyboard.press("Enter");
+  await page.close();
+  await expect.poll(() => fs.existsSync(temoin), { timeout: 15000 }).toBe(true);
+  // Retour dans le même contexte : la session est gardée, aucun mot de passe.
+  const retour = await context.newPage();
+  await retour.goto(relais.origine + "/");
+  await expect(onglets(retour)).toHaveText(["shell 1", "shell 2"]);
+  await expect(retour.getByLabel("Mot de passe")).toHaveCount(0);
+  await retour.getByRole("tab", { name: "shell 1" }).click();
+  await expect(ecran(retour)).toContainText("fini_22");
+  const main = path.join(yaide.dossier, "src", "main.rs");
+  await retour.getByRole("treeitem", { name: "src", exact: true }).click();
+  await retour.getByRole("treeitem", { name: "main.rs", exact: true }).click();
+  const editeur = retour.getByRole("textbox", { name: "Éditeur main.rs" });
+  await expect(editeur).toBeFocused();
+  await retour.keyboard.press("Control+End");
+  await retour.keyboard.type("// coupure\n");
+  const bandeau = retour.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." });
+  relais.couper();
+  await expect(bandeau).toBeVisible({ timeout: 5000 });
+  await expect(retour.locator(".terminal:visible .terminal-attente")).toHaveText("(en attente de la connexion)");
+  await expect(editeur).toBeFocused();
+  await retour.keyboard.type("// pendant\n");
+  await expect(editeur).toContainText("// pendant");
+  await expect(retour.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
+  relais.retablir();
+  await expect(bandeau).toHaveCount(0, { timeout: 10000 });
+  await expect(retour.locator(".terminal:visible .terminal-attente")).toBeHidden();
+  await expect(retour.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
+  await retour.keyboard.press("Control+s");
+  await expect.poll(() => fs.readFileSync(main, "utf8")).toContain("// pendant");
+  expect(fs.readFileSync(main, "utf8")).toContain("// coupure");
+  await expect(retour.getByRole("tab", { name: "main.rs", exact: true })).toBeVisible();
+});
+
+test("REQ030_AC1_parcours_3_chercher_ouvrir_apercu", async ({ page }) => {
+  yaide = await lancerYaide({ shell: "/bin/sh" });
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("tab", { name: "Recherche" }).click();
+  const champ = page.getByRole("textbox", { name: "Rechercher" });
+  await expect(champ).toBeFocused();
+  await champ.fill("fn mian");
+  await champ.press("Enter");
+  await expect(page.getByText("Aucun résultat")).toBeVisible();
+  await champ.fill("fn main");
+  await champ.press("Enter");
+  const resultats = page.getByRole("listbox", { name: "Résultats de la recherche" });
+  await expect(resultats.getByRole("option")).toHaveCount(1);
+  await resultats.getByRole("option").click();
+  await expect(page.getByRole("tab", { name: "main.rs", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+  await expect(page.getByLabel("Éditeur main.rs").locator(".cm-activeLine")).toHaveText("fn main() {");
+  await page.keyboard.press("Control+p");
+  const dialogue = page.getByRole("dialog", { name: "Ouvrir un fichier" });
+  await page.getByRole("textbox", { name: "Chemin du fichier" }).fill("read");
+  await expect(dialogue.getByRole("option")).toHaveText(/README\.md/);
+  await page.keyboard.press("Enter");
+  await expect(dialogue).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "README.md", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+  await page.getByLabel("Éditeur README.md").click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("\n# Nouveau titre");
+  await expect(page.getByRole("region", { name: "Aperçu" }).getByRole("heading", { name: "Nouveau titre" })).toBeVisible();
+});
