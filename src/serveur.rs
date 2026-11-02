@@ -1,5 +1,6 @@
-use crate::{auth, config};
-use axum::extract::{Request, State};
+use crate::{auth, config, shells};
+use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
+use axum::extract::{Path as CheminUrl, Request, State};
 use axum::http::{header, HeaderMap, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -16,6 +17,9 @@ struct Etat {
     config: PathBuf,
     projet: String,
     limiteur: tokio::sync::Mutex<auth::Limiteur>,
+    projet_dir: PathBuf,
+    instance: String,
+    shells: Arc<shells::Registre>,
 }
 
 type Partage = Arc<Etat>;
@@ -173,6 +177,115 @@ async fn session() -> StatusCode {
     StatusCode::NO_CONTENT
 }
 
+/// Identifiant tiré au démarrage : change à chaque lancement de Yaide.
+fn identifiant_instance() -> String {
+    use ring::rand::SecureRandom;
+    let mut o = [0u8; 8];
+    ring::rand::SystemRandom::new()
+        .fill(&mut o)
+        .expect("aléa indisponible");
+    o.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+async fn liste_shells(State(etat): State<Partage>) -> Response {
+    let ids: Vec<String> = etat.shells.ids().iter().map(u32::to_string).collect();
+    let corps = format!(
+        "{{\"instance\":\"{}\",\"shells\":[{}]}}",
+        etat.instance,
+        ids.join(",")
+    );
+    ([(header::CONTENT_TYPE, "application/json")], corps).into_response()
+}
+
+async fn ouvrir_shell(State(etat): State<Partage>) -> Response {
+    let registre = etat.shells.clone();
+    let projet = etat.projet_dir.clone();
+    let r = tokio::task::spawn_blocking(move || registre.ouvrir(&projet))
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()));
+    match r {
+        Ok(id) => (
+            StatusCode::CREATED,
+            [(header::CONTENT_TYPE, "application/json")],
+            format!("{{\"id\":{id}}}"),
+        )
+            .into_response(),
+        Err(raison) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            raison,
+        )
+            .into_response(),
+    }
+}
+
+async fn ws_shell(
+    State(etat): State<Partage>,
+    CheminUrl(id): CheminUrl<u32>,
+    ws: WebSocketUpgrade,
+) -> Response {
+    match etat.shells.obtenir(id) {
+        Some(s) => ws.on_upgrade(move |socket| client_shell(socket, s)),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+fn taille_demandee(texte: &str) -> Option<(u16, u16)> {
+    let mut m = texte.split(' ');
+    if m.next()? != "taille" {
+        return None;
+    }
+    let c: u16 = m.next()?.parse().ok()?;
+    let l: u16 = m.next()?.parse().ok()?;
+    (m.next().is_none() && c > 0 && l > 0).then_some((c, l))
+}
+
+/// Un client lent ne gêne que lui : s'il ne suit pas, on le déconnecte et il
+/// reviendra chercher l'affichage récent.
+async fn client_shell(mut socket: WebSocket, shell: Arc<shells::Shell>) {
+    use std::time::Duration;
+    let (recent, mut direct) = shell.abonner();
+    let delai = Duration::from_secs(30);
+    if !recent.is_empty()
+        && !matches!(
+            tokio::time::timeout(delai, socket.send(Message::Binary(recent.into()))).await,
+            Ok(Ok(()))
+        )
+    {
+        return;
+    }
+    loop {
+        tokio::select! {
+            ev = direct.recv() => match ev {
+                Ok(shells::Evenement::Sortie(o)) => {
+                    let envoi = socket.send(Message::Binary(o.as_ref().clone().into()));
+                    if !matches!(tokio::time::timeout(delai, envoi).await, Ok(Ok(()))) {
+                        return;
+                    }
+                }
+                Ok(shells::Evenement::Fin) => break,
+                // En retard : coupure sans Close, le client reprend avec l'affichage récent.
+                Err(_) => return,
+            },
+            msg = socket.recv() => match msg {
+                Some(Ok(Message::Binary(o))) => shell.ecrire(o.to_vec()),
+                Some(Ok(Message::Text(t))) => {
+                    if let Some((c, l)) = taille_demandee(t.as_str()) {
+                        shell.redimensionner(c, l);
+                    }
+                }
+                Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
+                Some(Ok(_)) => {}
+            },
+        }
+    }
+    let close = Message::Close(Some(CloseFrame {
+        code: 1000,
+        reason: "".into(),
+    }));
+    let _ = tokio::time::timeout(delai, socket.send(close)).await;
+}
+
 const INDEX: &[u8] = include_bytes!("../web/dist/index.html");
 const MAIN_JS: &[u8] = include_bytes!("../web/dist/main.js");
 
@@ -221,7 +334,11 @@ pub async fn servir(
         config: config.to_path_buf(),
         projet: projet.display().to_string(),
         limiteur: Default::default(),
+        projet_dir: projet.to_path_buf(),
+        instance: identifiant_instance(),
+        shells: Default::default(),
     });
+    let registre = etat.shells.clone();
     let app = Router::new()
         .route("/", get(index))
         .route("/main.js", get(main_js))
@@ -231,10 +348,28 @@ pub async fn servir(
         .route("/api/connexion", post(connexion))
         .route("/api/deconnexion", post(deconnexion))
         .route("/api/session", get(session))
+        .route("/api/shells", get(liste_shells).post(ouvrir_shell))
+        .route("/api/shells/{id}/ws", get(ws_shell))
         .layer(middleware::from_fn_with_state(etat.clone(), garde))
         .with_state(etat);
-    axum_server::from_tcp_rustls(listener, tls)
-        .serve(app.into_make_service())
-        .await
-        .map_err(|e| format!("le serveur s'est arrêté : {e}"))
+    let serveur = axum_server::from_tcp_rustls(listener, tls).serve(app.into_make_service());
+    tokio::select! {
+        r = serveur => r.map_err(|e| format!("le serveur s'est arrêté : {e}")),
+        _ = arret() => {
+            registre.arreter().await;
+            Ok(())
+        }
+    }
+}
+
+/// Attend SIGTERM ou SIGINT.
+async fn arret() {
+    use tokio::signal::unix::{signal, SignalKind};
+    let (Ok(mut term), Ok(mut int)) = (
+        signal(SignalKind::terminate()),
+        signal(SignalKind::interrupt()),
+    ) else {
+        return std::future::pending().await;
+    };
+    tokio::select! { _ = term.recv() => {}, _ = int.recv() => {} }
 }

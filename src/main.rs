@@ -2,6 +2,7 @@ mod auth;
 mod cli;
 mod config;
 mod serveur;
+mod shells;
 mod tls;
 
 use cli::Commande;
