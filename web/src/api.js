@@ -73,7 +73,13 @@ export async function listerDossier(chemin) {
 export async function lireFichier(chemin) {
   const r = await appeler(`/api/fichier?chemin=${q(chemin)}`);
   if (!r) return { coupure: true };
-  if (r.ok) return { contenu: await r.text(), version: r.headers.get("x-version") };
+  if (r.ok) {
+    try {
+      return { contenu: await r.text(), version: r.headers.get("x-version") };
+    } catch {
+      return { coupure: true };
+    }
+  }
   return erreurServeur(r);
 }
 
@@ -96,4 +102,15 @@ export async function ecrireFichier(chemin, contenu, version) {
   if (!r) return { coupure: true };
   if (r.ok) return r.json();
   return erreurServeur(r);
+}
+
+/** Version de chaque chemin (`null` si le fichier n'existe plus), ou null si le serveur ne répond pas. */
+export async function versionsFichiers(chemins) {
+  const r = await appeler("/api/fichiers/versions", { method: "POST", body: chemins.join("\n"), signal: AbortSignal.timeout(2000) });
+  if (!r || !r.ok) return null;
+  try {
+    return await r.json();
+  } catch {
+    return null;
+  }
 }

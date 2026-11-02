@@ -176,3 +176,16 @@ test("REQ011_AC1_style_zone_de_code_par_tokens_seulement", () => {
   expect(bloc).toMatch(/\.zone-code:focus-within\s*{[^}]*outline:\s*var\(--trait\) solid var\(--accent\)/);
   expect(bloc).toMatch(/\.zone-code-apercu a\s*{[^}]*text-decoration:\s*underline/);
 });
+
+test("REQ017_AC1_remplacer_garde_le_curseur_sur_la_meme_ligne_bornee_au_nouveau_texte", () => {
+  const z = zoneCode({ contenu: "a\nbcd\ne\nf\ng" });
+  z.vue.dispatch({ selection: { anchor: 5 } }); // position 5 : ligne 2, colonne 3
+  z.remplacer("1\n2345\n6\n7");
+  const l = z.vue.state.doc.lineAt(z.vue.state.selection.main.head);
+  expect([l.number, z.vue.state.selection.main.head - l.from]).toEqual([2, 3]);
+  z.vue.dispatch({ selection: { anchor: z.vue.state.doc.length } }); // dernière ligne
+  z.remplacer("x\ny");
+  expect(z.vue.state.doc.lineAt(z.vue.state.selection.main.head).number).toBe(2);
+  z.remplacer("");
+  expect(z.vue.state.selection.main.head).toBe(0);
+});

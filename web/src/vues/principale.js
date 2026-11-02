@@ -77,7 +77,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     barreHaut: [nom, lieu, droite],
     rail,
     panneau: { titre: "Fichiers", corps: fichiers.corps, pied: fichiers.pied },
-    principal: { bandeaux, ongletsFichiers: editeur.barre, code: editeur.code, shells },
+    principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, code: editeur.code, shells },
   });
   const titre = racine.querySelector(".cadre-panneau-titre");
   const corps = racine.querySelector(".cadre-panneau-corps");

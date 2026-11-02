@@ -115,6 +115,18 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     }
     racine.classList.toggle("zone-code-avec-apercu", actif);
   };
+  // Le curseur reste sur la même ligne (bornée au nouveau texte), à la même colonne si elle existe encore.
+  racine.remplacer = (texte) => {
+    const doc = vue.state.doc;
+    const tete = doc.lineAt(vue.state.selection.main.head);
+    const colonne = vue.state.selection.main.head - tete.from;
+    const nouveau = vue.state.update({ changes: { from: 0, to: doc.length, insert: texte } }).state.doc;
+    const ligne = nouveau.line(Math.min(tete.number, nouveau.lines));
+    vue.dispatch({
+      changes: { from: 0, to: doc.length, insert: texte },
+      selection: { anchor: ligne.from + Math.min(colonne, ligne.length) },
+    });
+  };
   racine.detruire = () => vue.destroy();
   if (apercu) racine.definirApercu(true);
 

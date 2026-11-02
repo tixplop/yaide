@@ -38,6 +38,7 @@ const taper = (e, texte) => {
 };
 const ctrlS = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
 const reponse = (corps, version = "v1") => ({ ok: true, status: 200, text: async () => corps, json: async () => ({ version }), headers: { get: () => version } });
+const ecritures = (fetchMock) => fetchMock.mock.calls.filter(([, o]) => o?.method === "PUT").length; // hors vérifications du disque
 const introuvable = { ok: false, status: 404, json: async () => ({ cause: "introuvable", message: "Introuvable." }) };
 
 test("REQ016_decider_ne_reessaie_que_sur_une_coupure", () => {
@@ -63,7 +64,7 @@ test("REQ016_AC1_le_texte_tape_est_garde_en_moins_d_une_seconde", async () => {
   taper(e, "bc");
   await vi.advanceTimersByTimeAsync(900);
   const derniere = mem.ecrit.at(-1);
-  expect(derniere.liste).toEqual([{ chemin: "main.rs", apercu: false, texte: "abc", attente: false }]);
+  expect(derniere.liste).toEqual([{ chemin: "main.rs", apercu: false, texte: "abc", base: "a", version: "v1", attente: false }]);
 });
 
 test("REQ005_AC8_REQ016_AC2_le_texte_tape_juste_avant_la_deconnexion_est_garde", async () => {
@@ -106,6 +107,38 @@ test("REQ016_AC1_un_fichier_disparu_garde_son_onglet_quand_il_a_du_texte", async
   const onglets = [...e.barre.querySelectorAll("[role=tab]")].map((t) => t.getAttribute("aria-label"));
   expect(onglets).toEqual(["main.rs, non sauvegardé"]);
   expect(e.code.querySelector(".cm-content").textContent).toContain("abc");
+});
+
+test("REQ017_AC5_un_brouillon_restaure_garde_sa_version_de_base_et_pose_la_question_si_le_disque_a_change", async () => {
+  mem.gardes = { liste: [{ chemin: "main.rs", apercu: false, texte: "abc", base: "a", version: "v1" }], actif: "main.rs" };
+  const fetchMock = vi.fn(async () => reponse("disque", "v2"));
+  vi.stubGlobal("fetch", fetchMock);
+  const { e } = monter();
+  await e.restaurer();
+  expect(e.question.querySelector("[role=alert]").textContent).toContain("main.rs a changé sur le disque. Quelle version garder ?");
+  expect(e.barre.querySelector("[role=tab]").getAttribute("aria-label")).toBe("main.rs, non sauvegardé, question en attente");
+  expect(e.code.querySelector(".cm-content").textContent).toContain("abc");
+  expect(ecritures(fetchMock)).toBe(0);
+});
+
+test("REQ017_AC5_le_sondage_du_disque_repart_apres_un_corps_illisible_ou_une_absence_de_reponse", async () => {
+  let n = 0;
+  const fetchMock = vi.fn((url, o) => {
+    if (!String(url).includes("/versions")) return Promise.resolve(reponse("a", "v1"));
+    n++;
+    if (n === 1) return Promise.resolve({ ok: true, json: async () => Promise.reject(new Error("corps coupé")) });
+    if (n === 2) return new Promise((_, ko) => o.signal.addEventListener("abort", () => ko(new Error("délai"))));
+    return Promise.resolve({ ok: true, json: async () => ({ "main.rs": null }) });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const { e } = monter();
+  await e.restaurer();
+  e.ouvrir({ chemin: "main.rs", contenu: "a", version: "v1" });
+  await vi.advanceTimersByTimeAsync(1600); // corps illisible
+  await vi.advanceTimersByTimeAsync(1600 + 2100); // pas de réponse : abandon après 2 s
+  await vi.advanceTimersByTimeAsync(1600);
+  expect(n).toBeGreaterThanOrEqual(3);
+  expect(e.question.textContent).toContain("Fichier supprimé du disque.");
 });
 
 test("REQ015_AC5_AC7_ctrl_s_en_coupure_attend_le_retour_puis_ecrit_et_retire_le_point", async () => {
@@ -193,7 +226,7 @@ test("REQ015_AC5_ctrl_s_avant_la_detection_de_la_coupure_est_relance_apres_le_de
   expect(dire).not.toHaveBeenCalled();
   expect(surAttente).toHaveBeenLastCalledWith("main.rs sera sauvegardé au retour.");
   await vi.advanceTimersByTimeAsync(4100);
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(ecritures(fetchMock)).toBe(2);
   expect(e.barre.querySelector("[role=tab]").getAttribute("aria-label")).not.toContain("non sauvegardé");
 });
 
@@ -216,7 +249,7 @@ test("REQ015_AC5_la_connexion_retombe_pendant_l_execution_au_retour_le_ctrl_s_re
   e.definirEtat("coupe");
   e.definirEtat("connecte");
   await vi.advanceTimersByTimeAsync(10);
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(ecritures(fetchMock)).toBe(2);
   expect(surAttente).toHaveBeenLastCalledWith("");
 });
 
@@ -230,7 +263,7 @@ test("DEC019_le_ctrl_s_en_attente_est_garde_puis_execute_apres_un_rechargement",
   ctrlS();
   await vi.advanceTimersByTimeAsync(300);
   const garde = mem.ecrit.at(-1).liste[0];
-  expect(garde).toEqual({ chemin: "main.rs", apercu: false, texte: "ab", attente: true });
+  expect(garde).toEqual({ chemin: "main.rs", apercu: false, texte: "ab", base: "a", version: "v1", attente: true });
 
   mem.gardes = { liste: [garde], actif: "main.rs" };
   const put = vi.fn(async () => reponse("", "v2"));

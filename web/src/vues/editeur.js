@@ -1,5 +1,6 @@
-import { ecrireFichier, lireFichier } from "../api.js";
+import { ecrireFichier, lireFichier, versionsFichiers } from "../api.js";
 import { decider, texteAttente } from "../brouillons.js";
+import { decisionDisque } from "../disque.js";
 import { apresFermeture, estSous, garder, libelles, nomDe, retrouver, suivreRenommage } from "../onglets-fichiers.js";
 import { bouton } from "../ui/bouton.js";
 import { dialogue } from "../ui/dialogue.js";
@@ -11,6 +12,9 @@ import { zoneCode } from "../ui/zone-code.js";
 
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const DELAI_DETECTION = 4000;
+const INTERVALLE_DISQUE = 1500;
+const SANS_SUITE = "sans suite";
+const TEXTE_SUPPRIME = "Fichier supprimé du disque. Ctrl+S le recrée.";
 const estMarkdown = (chemin) => /\.(md|markdown)$/i.test(chemin);
 
 /**
@@ -22,13 +26,16 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   const barre = document.createElement("div");
   const code = document.createElement("div");
   code.className = "editeur-code";
+  const questionOnglet = document.createElement("div");
 
-  const liste = []; // { chemin, zone, disque, version, apercu, modifie }
+  const liste = []; // { chemin, zone, disque (texte de base), version (de base), apercu, modifie, question, supprime, avis }
   let actif = null;
   let pret = false;
   let lectures = 1; // la restauration compte comme une lecture en cours
   let detruit = false;
   let minuteur = null;
+  let minuteurDisque = null;
+  let sondageEnCours = false;
   let coupe = false;
   const attente = new Set(); // onglets dont Ctrl+S attend le retour de la connexion
 
@@ -45,7 +52,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
 
   function ecrireGarde() {
     garder(
-      liste.map((o) => ({ chemin: o.chemin, apercu: o.apercu, texte: o.modifie ? o.zone.contenu() : undefined, attente: attente.has(o) })),
+      liste.map((o) => ({ chemin: o.chemin, apercu: o.apercu, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) })),
       actif,
     );
   }
@@ -62,6 +69,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     const o = trouver(actif);
     if (!o && lectures > 0) {
       barre.replaceChildren();
+      questionOnglet.replaceChildren();
       code.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
       return;
     }
@@ -69,6 +77,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       const b = bouton({ libelle: "Ouvrir un fichier" });
       b.addEventListener("click", ouvrirRapide);
       barre.replaceChildren();
+      questionOnglet.replaceChildren();
       code.replaceChildren(indication({ texte: "Aucun fichier ouvert.", action: b }));
       return;
     }
@@ -92,6 +101,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
         detail: noms[i].detail,
         titre: x.chemin,
         modifie: x.modifie,
+        question: Boolean(x.question),
         fermable: true,
       })),
       actif,
@@ -103,6 +113,8 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     barre.replaceChildren(ongl);
     ongl.choisir(actif);
     if (avaitLeFocus) ongl.querySelector("[role=tab][aria-selected=true]")?.focus();
+    const avis = o.avis ?? null;
+    if (questionOnglet.firstChild !== avis) questionOnglet.replaceChildren(...(avis ? [avis] : []));
     for (const x of liste) {
       if (x.zone.parentNode !== code) code.append(x.zone);
       x.zone.hidden = x !== o;
@@ -182,25 +194,162 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
 
   // ---- Sauvegarde et fermeture ----
 
-  /** Écrit l'onglet. Rend `null` si c'est fait (ou déjà en cours), sinon le texte de l'échec. */
+  async function ecrire(o, texte) {
+    o.ecriture = ecrireFichier(o.chemin, texte, o.version);
+    const r = await o.ecriture;
+    // La version de base change avant la fin de l'écriture : une sauvegarde qui attendait part avec la bonne.
+    if (!r.cause && !r.coupure) changerBase(o, texte, r.version);
+    o.ecriture = null;
+    return r;
+  }
+
+  /**
+   * Écrit l'onglet. Rend `null` si c'est fait, `SANS_SUITE` si une question attend ou si le fichier a été rechargé
+   * (rien n'est écrit), sinon le texte de l'échec.
+   */
   async function sauvegarder(o) {
     // Une écriture en cours finit d'abord : la suivante part avec la version qu'elle rend.
     while (o.ecriture) await o.ecriture;
+    if (o.question) return SANS_SUITE;
     const texte = o.zone.contenu();
-    o.ecriture = ecrireFichier(o.chemin, texte, o.version);
-    const r = await o.ecriture;
-    o.ecriture = null;
+    let r = await ecrire(o, texte);
+    if (r.cause === "conflit" && !detruit) {
+      // Le disque a changé depuis la version de base : jamais d'écrasement sans question.
+      const lecture = await lireFichier(o.chemin);
+      if (detruit) return "";
+      if (lecture.coupure) return TEXTE_COUPURE;
+      const d = decisionDisque(o, lecture);
+      if (d === "adopter") {
+        changerBase(o, lecture.contenu, lecture.version);
+        r = await ecrire(o, texte);
+      } else if (d === "recharger" || d === "demander") {
+        appliquer(o, lecture, d);
+        return SANS_SUITE;
+      }
+    }
     if (detruit) return "";
     if (r.coupure) return TEXTE_COUPURE;
     if (r.cause) return `Sauvegarde impossible pour ${nomDe(o.chemin)} : ${r.message.replace(/\.$/, "")}. Vos modifications sont gardées.`;
-    o.disque = texte;
-    o.version = r.version;
+    effacerAvis(o);
     o.modifie = o.zone.contenu() !== texte;
     o.alerte?.remove();
     o.alerte = null;
     afficher();
     garderListe();
     return null;
+  }
+
+  // ---- Changements sur le disque (REQ-017) ----
+
+  function changerBase(o, contenu, version) {
+    o.disque = contenu;
+    o.version = version;
+    o.rev = (o.rev ?? 0) + 1;
+  }
+
+  function effacerAvis(o) {
+    o.avis = null;
+    o.question = null;
+    o.supprime = false;
+  }
+
+  function poserQuestion(o, lecture) {
+    if (o.question) {
+      o.question.version = lecture.version;
+      o.question.contenu = lecture.contenu;
+      return;
+    }
+    o.supprime = false;
+    const garderMa = bouton({ libelle: "Garder ma version", variante: "secondaire" });
+    const prendre = bouton({ libelle: "Prendre celle du disque", variante: "secondaire" });
+    const q = { version: lecture.version, contenu: lecture.contenu, garder: garderMa };
+    o.question = q;
+    o.avis = message({ texte: `${nomDe(o.chemin)} a changé sur le disque. Quelle version garder ?`, variante: "alerte", actions: [garderMa, prendre] });
+    garderMa.addEventListener("click", () => {
+      changerBase(o, q.contenu, q.version);
+      o.modifie = o.zone.contenu() !== o.disque;
+      effacerAvis(o);
+      afficher();
+      garderListe();
+      o.zone.vue.focus();
+    });
+    prendre.addEventListener("click", () => {
+      changerBase(o, q.contenu, q.version);
+      effacerAvis(o);
+      o.zone.remplacer(q.contenu);
+      o.modifie = false;
+      afficher();
+      garderListe();
+      o.zone.vue.focus();
+    });
+    afficher();
+  }
+
+  function appliquer(o, lecture, decision) {
+    if (decision === "adopter") {
+      changerBase(o, lecture.contenu, lecture.version);
+      effacerAvis(o);
+    } else if (decision === "recharger") {
+      changerBase(o, lecture.contenu, lecture.version);
+      effacerAvis(o);
+      o.zone.remplacer(lecture.contenu);
+      o.modifie = false;
+    } else if (decision === "demander") {
+      return poserQuestion(o, lecture);
+    } else if (decision === "supprime") {
+      if (o.supprime) return;
+      effacerAvis(o);
+      o.supprime = true;
+      o.avis = message({ texte: TEXTE_SUPPRIME, variante: "alerte" });
+    } else return;
+    afficher();
+    garderListe();
+  }
+
+  /** L'onglet de la question devient actif et le focus va sur « Garder ma version ». */
+  function montrerQuestion(o) {
+    actif = o.chemin;
+    afficher();
+    o.question.garder.focus();
+    garderListe();
+  }
+
+  async function verifierDisque() {
+    if (coupe || !pret || detruit || sondageEnCours || liste.length === 0) return;
+    sondageEnCours = true;
+    try {
+      const instantane = new Map(liste.map((o) => [o, o.rev]));
+      const versions = await versionsFichiers(liste.map((o) => o.chemin));
+      if (!versions || detruit) return;
+      const inchange = (o) => liste.includes(o) && o.rev === instantane.get(o) && !o.ecriture;
+      for (const o of instantane.keys()) {
+        if (detruit) return;
+        if (!inchange(o)) continue;
+        const v = versions[o.chemin];
+        if (v === undefined) continue;
+        if (v === null) {
+          appliquer(o, null, "supprime");
+          continue;
+        }
+        if (o.supprime) {
+          effacerAvis(o);
+          afficher();
+        }
+        if (v === o.version || v === o.question?.version) continue;
+        const lecture = await lireFichier(o.chemin);
+        if (detruit || !inchange(o)) continue;
+        appliquer(o, lecture, decisionDisque(o, lecture));
+      }
+    } finally {
+      sondageEnCours = false;
+    }
+  }
+
+  function planifierDisque() {
+    minuteurDisque = setTimeout(async () => {
+      await verifierDisque();
+      if (!detruit) planifierDisque();
+    }, INTERVALLE_DISQUE);
   }
 
   function mettreEnAttente(o) {
@@ -214,12 +363,14 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     const a = [...attente];
     attente.clear();
     direAttente();
+    garderListe(); // « Ctrl+S en attente » ne reste pas gardé
     for (const o of a) sauvegarderEtDire(o);
   }
 
   async function sauvegarderEtDire(o) {
     const echec = await sauvegarder(o);
     if (!echec) return;
+    if (echec === SANS_SUITE) return garderListe(); // refus du serveur : la question remplace le Ctrl+S
     if (echec === TEXTE_COUPURE) {
       mettreEnAttente(o);
       // La coupure n'est pas encore détectée (ou le retour a été trop bref) : sans changement d'état, personne ne relancerait.
@@ -235,6 +386,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   function fermer(chemin) {
     const o = trouver(chemin);
     if (!o) return;
+    if (o.question) return montrerQuestion(o);
     if (!o.modifie) return retirer(chemin);
     const annuler = bouton({ libelle: "Annuler" });
     const abandonner = bouton({ libelle: "Abandonner" });
@@ -259,6 +411,11 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       dlg.enCours(true);
       const echec = await sauvegarder(o);
       if (detruit) return;
+      if (echec === SANS_SUITE) {
+        dlg.fermer({ rendreFocus: false });
+        if (o.question) montrerQuestion(o);
+        return;
+      }
       if (echec) {
         dlg.enCours(false);
         zone.replaceChildren(texte, message({ texte: echec, variante: "alerte" }));
@@ -278,6 +435,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     if (document.querySelector("[role=dialog], dialog[open]")) return;
     const o = trouver(actif);
     if (!o) return;
+    if (o.question) return montrerQuestion(o);
     if (coupe) mettreEnAttente(o);
     else sauvegarderEtDire(o);
   };
@@ -301,22 +459,29 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     const lus = await Promise.all(gardes.liste.map(lireGarde));
     if (detruit) return;
     lectures--;
+    const aVerifier = [];
     gardes.liste.forEach((g, i) => {
       if (trouver(g.chemin)) return;
       const r = lus[i];
       const decision = decider(g, r);
       const apercu = Boolean(g.apercu);
       let o;
-      if (decision === "creer") o = creer({ chemin: g.chemin, contenu: r.contenu, version: r.version, texte: g.texte, apercu });
-      else if (decision === "recreer") o = creer({ chemin: g.chemin, contenu: "", texte: g.texte, apercu });
+      if (decision === "creer") {
+        // Un brouillon garde sa version de base : si le disque a changé pendant l'absence, la question est posée.
+        const brouillon = typeof g.texte === "string" && typeof g.base === "string" && typeof g.version === "string";
+        o = creer({ chemin: g.chemin, contenu: brouillon ? g.base : r.contenu, version: brouillon ? g.version : r.version, texte: g.texte, apercu });
+      } else if (decision === "recreer") o = creer({ chemin: g.chemin, contenu: "", texte: g.texte, apercu });
+      if (o) aVerifier.push([o, r]);
       if (o && g.attente) attente.add(o);
     });
     direAttente();
     if (!trouver(actif)) actif = trouver(gardes.actif) ? gardes.actif : (liste[0]?.chemin ?? null);
     pret = true;
+    for (const [o, r] of aVerifier) appliquer(o, r, decisionDisque(o, r));
     afficher();
     garderListe();
     if (!coupe) executerAttente();
+    planifierDisque();
     if (actif && document.activeElement === document.body) trouver(actif).zone.vue.focus();
   }
 
@@ -324,6 +489,8 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   return {
     barre,
     code,
+    /** Zone de la question de l'onglet actif (C-003 dans `questionOnglet`). */
+    question: questionOnglet,
     /** Une lecture de fichier commence (`oui`) ou se termine. */
     lecture(oui) {
       lectures = Math.max(0, lectures + (oui ? 1 : -1));
@@ -334,6 +501,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       coupe = etat === "coupe";
       if (coupe) return;
       executerAttente();
+      verifierDisque();
     },
     ouvrir,
     renomme,
@@ -342,6 +510,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     detruire() {
       detruit = true;
       clearTimeout(minuteur);
+      clearTimeout(minuteurDisque);
       if (pret) ecrireGarde(); // le texte tapé dans les dernières 200 ms n'est pas perdu
       document.removeEventListener("keydown", surTouche);
       for (const o of liste) o.zone.detruire();
