@@ -1,61 +1,52 @@
-use axum::{http::header, response::IntoResponse, routing::get, Router};
-use std::net::SocketAddr;
+mod cli;
+mod config;
+mod serveur;
+mod tls;
 
-const PORT_PAR_DEFAUT: u16 = 8443;
-const INDEX: &[u8] = include_bytes!("../web/dist/index.html");
-const MAIN_JS: &[u8] = include_bytes!("../web/dist/main.js");
+use cli::Commande;
 
-fn lire_port(args: &[String]) -> Result<u16, String> {
-    match args.iter().position(|a| a == "--port") {
-        None => Ok(PORT_PAR_DEFAUT),
-        Some(i) => args
-            .get(i + 1)
-            .and_then(|v| v.parse::<u16>().ok())
-            .ok_or_else(|| "--port attend un numéro de port entre 0 et 65535".to_string()),
-    }
+fn echec(code: i32, msg: &str) -> ! {
+    eprintln!("Erreur : {msg}");
+    std::process::exit(code);
 }
 
-async fn index() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], INDEX)
-}
-
-async fn main_js() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
-        MAIN_JS,
-    )
-}
-
-#[tokio::main]
-async fn main() {
+fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let port = lire_port(&args).unwrap_or_else(|e| {
-        eprintln!("Erreur : {e}");
-        std::process::exit(2);
-    });
-
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .expect("fournisseur TLS déjà installé");
-    let cert = rcgen::generate_simple_self_signed(vec!["localhost".into(), "127.0.0.1".into()])
-        .expect("génération du certificat impossible");
-    let config = axum_server::tls_rustls::RustlsConfig::from_der(
-        vec![cert.cert.der().to_vec()],
-        cert.key_pair.serialize_der(),
-    )
-    .await
-    .expect("certificat invalide");
-
-    let app = Router::new()
-        .route("/", get(index))
-        .route("/main.js", get(main_js));
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    println!("Yaide écoute sur https://{addr}");
-    if let Err(e) = axum_server::bind_rustls(addr, config)
-        .serve(app.into_make_service())
-        .await
-    {
-        eprintln!("Erreur : le serveur s'est arrêté : {e}");
-        std::process::exit(1);
+    let commande = cli::analyser(&args).unwrap_or_else(|e| echec(2, &e));
+    let config = config::dossier_config().unwrap_or_else(|e| echec(1, &e));
+    match commande {
+        Commande::Passwd => {
+            let mdp = cli::lire_mot_de_passe().unwrap_or_else(|e| echec(1, &e));
+            config::definir_mot_de_passe(&config, &mdp).unwrap_or_else(|e| echec(1, &e));
+            println!("Mot de passe enregistré.");
+        }
+        Commande::Servir { dossier, port } => {
+            if !dossier.is_dir() {
+                echec(
+                    1,
+                    &format!(
+                        "le dossier {} est absent ou n'est pas un dossier",
+                        dossier.display()
+                    ),
+                );
+            }
+            if !config::mot_de_passe_defini(&config) {
+                echec(
+                    1,
+                    "aucun mot de passe défini ; lancez d'abord `yaide passwd`",
+                );
+            }
+            let (cert, cle) = tls::assurer_certificat(&config).unwrap_or_else(|e| echec(1, &e));
+            let listener = serveur::ecouter(port).unwrap_or_else(|e| echec(1, &e));
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .unwrap_or_else(|e| echec(1, &e.to_string()));
+            println!("Yaide écoute sur https://0.0.0.0:{port}");
+            if let Err(e) = rt.block_on(serveur::servir(listener, &cert, &cle)) {
+                echec(1, &e);
+            }
+        }
     }
 }

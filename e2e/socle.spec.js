@@ -1,6 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 function portLibre() {
   return new Promise((res) => {
@@ -13,7 +16,10 @@ function portLibre() {
 
 test("REQ029_AC3_la_page_se_charge_sans_requete_vers_une_autre_origine", async ({ page }) => {
   const port = await portLibre();
-  const proc = spawn("target/debug/yaide", ["--port", String(port)], { stdio: "ignore" });
+  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "socle-"));
+  const env = { ...process.env, XDG_CONFIG_HOME: path.join(dossier, "cfg") };
+  spawnSync("target/debug/yaide", ["passwd"], { input: "mdp\n", env });
+  const proc = spawn("target/debug/yaide", [dossier, "--port", String(port)], { stdio: "ignore", env });
   try {
     const origine = `https://127.0.0.1:${port}`;
     const externes = [];

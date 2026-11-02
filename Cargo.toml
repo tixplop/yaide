@@ -10,6 +10,7 @@ axum-server = { version = "0.7", default-features = false, features = ["tls-rust
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+argon2 = "0.5"
 
 [profile.release]
 opt-level = "s"

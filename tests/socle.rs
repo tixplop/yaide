@@ -48,8 +48,20 @@ fn get(port: u16, chemin: &str) -> Option<String> {
 
 fn lancer(exe: &PathBuf, cwd: &PathBuf) -> Serveur {
     let port = port_libre();
+    let cfg = cwd.join("cfg");
+    let mut passwd = Command::new(exe)
+        .arg("passwd")
+        .env("XDG_CONFIG_HOME", &cfg)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    std::io::Write::write_all(&mut passwd.stdin.take().unwrap(), b"mdp\n").unwrap();
+    assert!(passwd.wait().unwrap().success());
     let child = Command::new(exe)
+        .arg(cwd)
         .args(["--port", &port.to_string()])
+        .env("XDG_CONFIG_HOME", &cfg)
         .current_dir(cwd)
         .stdout(Stdio::null())
         .spawn()
