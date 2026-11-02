@@ -7,6 +7,7 @@ import { surveiller } from "../connexion.js";
 import { vueEditeur } from "./editeur.js";
 import { vueFichiers } from "./fichiers.js";
 import { vueGit } from "./git.js";
+import { vueOuverture } from "./ouverture.js";
 import { vueRecherche } from "./recherche.js";
 import { vueShells } from "./shells.js";
 
@@ -67,7 +68,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   }
 
   const shells = vueShells({ dire });
-  const editeur = vueEditeur({ dire, surAttente: (t) => { attenteTexte = t; montrerCoupure(); } });
+  const editeur = vueEditeur({ dire, ouvrirRapide: () => ouverture.ouvrir(), surAttente: (t) => { attenteTexte = t; montrerCoupure(); } });
+  const ouverture = vueOuverture({ dire, surOuvrir: editeur.ouvrir, surLecture: editeur.lecture });
   const fichiers = vueFichiers({ dire, surOuvrir: editeur.ouvrir, surRenomme: editeur.renomme, surSupprime: editeur.supprime, surLecture: editeur.lecture });
   const recherche = vueRecherche({ dire, surOuvrir: editeur.ouvrir, surLecture: editeur.lecture });
   const git = vueGit({
@@ -160,6 +162,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     fichiers.detruire();
     git.detruire();
     recherche.detruire();
+    ouverture.detruire();
   };
   return racine;
 }

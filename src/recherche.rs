@@ -31,6 +31,35 @@ fn minuscules(texte: &str) -> Vec<char> {
         .collect()
 }
 
+fn marcheur(racine: &Path) -> ignore::Walk {
+    let git = depot::est_un_depot(racine);
+    WalkBuilder::new(racine)
+        .hidden(false)
+        .ignore(false)
+        .git_ignore(git)
+        .git_exclude(git)
+        .git_global(git)
+        .parents(git)
+        .sort_by_file_path(|a, b| a.cmp(b))
+        .filter_entry(|e| e.file_name() != ".git")
+        .build()
+}
+
+/// Chemins (relatifs à `racine`) de tous les fichiers non ignorés par git, triés.
+pub fn lister(racine: &Path) -> Vec<String> {
+    marcheur(racine)
+        .flatten()
+        .filter(|e| e.file_type().is_some_and(|t| t.is_file()))
+        .map(|e| {
+            e.path()
+                .strip_prefix(racine)
+                .unwrap_or(e.path())
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect()
+}
+
 /// Cherche `requete` (texte tel quel, sans tenir compte de la casse) dans les fichiers de `racine`.
 /// Seules les règles de git comptent pour ignorer des fichiers (DEC-020).
 pub fn chercher(racine: &Path, requete: &str) -> Reponse {
@@ -42,17 +71,7 @@ pub fn chercher(racine: &Path, requete: &str) -> Reponse {
     if requete.is_empty() {
         return rep;
     }
-    let git = depot::est_un_depot(racine);
-    let marcheur = WalkBuilder::new(racine)
-        .hidden(false)
-        .ignore(false)
-        .git_ignore(git)
-        .git_exclude(git)
-        .git_global(git)
-        .parents(git)
-        .sort_by_file_path(|a, b| a.cmp(b))
-        .filter_entry(|e| e.file_name() != ".git")
-        .build();
+    let marcheur = marcheur(racine);
     for entree in marcheur.flatten() {
         if !entree.file_type().is_some_and(|t| t.is_file()) {
             continue;

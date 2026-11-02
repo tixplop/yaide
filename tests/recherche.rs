@@ -95,6 +95,10 @@ impl Serveur {
         let chemin = format!("/api/recherche?q={}", enc(q));
         requete(self.port, "GET", &chemin, &self.cookie, &origine, b"")
     }
+    fn chemins(&self, cookie: &str) -> Rep {
+        let origine = format!("https://127.0.0.1:{}", self.port);
+        requete(self.port, "GET", "/api/chemins", cookie, &origine, b"")
+    }
     fn ecrire(&self, c: &str, contenu: &[u8]) {
         let f = self.projet.join(c);
         std::fs::create_dir_all(f.parent().unwrap()).unwrap();
@@ -285,4 +289,36 @@ fn req026_ligne_longue_coupee_autour_du_texte_trouve() {
     let r = s.chercher("cible");
     assert!(r.corps.contains("\"debut\":40,\"fin\":45"), "{}", r.corps);
     assert!(r.corps.len() < 600, "{}", r.corps.len());
+}
+
+#[test]
+fn req027_ac1_ac2_liste_des_chemins_du_projet() {
+    let s = lancer("chemins");
+    s.ecrire("src/main.rs", b"x");
+    s.ecrire("README.md", b"x");
+    let r = s.chemins(&s.cookie);
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert_eq!(r.corps, "{\"chemins\":[\"README.md\",\"src/main.rs\"]}");
+}
+
+#[test]
+fn req027_ac4_fichier_ignore_par_git_absent() {
+    let s = lancer("chemins-ignore");
+    s.git_init();
+    s.ecrire(".gitignore", b"secret.txt\ncible/\n");
+    s.ecrire("secret.txt", b"x");
+    s.ecrire("cible/x.rs", b"x");
+    s.ecrire("visible.rs", b"x");
+    s.ecrire(".git/info/note", b"x");
+    let r = s.chemins(&s.cookie);
+    assert!(r.corps.contains("visible.rs"), "{}", r.corps);
+    assert!(!r.corps.contains("secret.txt"), "{}", r.corps);
+    assert!(!r.corps.contains("cible"), "{}", r.corps);
+    assert!(!r.corps.contains(".git/"), "{}", r.corps);
+}
+
+#[test]
+fn req027_chemins_exige_une_session() {
+    let s = lancer("chemins-session");
+    assert_eq!(s.chemins("").code, 401);
 }

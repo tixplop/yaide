@@ -145,3 +145,11 @@ export async function chercherTexte(texte) {
   if (r.ok) return r.json();
   return erreurServeur(r);
 }
+
+/** `{ chemins: [texte…] }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function listerChemins() {
+  const r = await appeler("/api/chemins");
+  if (!r) return { coupure: true };
+  if (r.ok) return r.json();
+  return erreurServeur(r);
+}

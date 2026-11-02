@@ -224,3 +224,5 @@ body { margin: 0; }
 .git-actions { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
 .recherche-corps { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2); }
 .recherche-corps[hidden] { display: none; }
+
+.ouverture-liste { max-height: calc(12 * var(--hauteur-ligne)); overflow-y: auto; }

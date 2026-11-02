@@ -666,6 +666,18 @@ async fn chercher(State(etat): State<Partage>, Query(q): Requete) -> Response {
     )
 }
 
+async fn chemins(State(etat): State<Partage>) -> Response {
+    let projet = etat.projet_dir.clone();
+    let Ok(liste) = tokio::task::spawn_blocking(move || recherche::lister(&projet)).await else {
+        return json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "{\"cause\":\"erreur\",\"message\":\"la lecture s'est interrompue\"}".into(),
+        );
+    };
+    let l: Vec<String> = liste.iter().map(|c| json_texte(c)).collect();
+    json(StatusCode::OK, format!("{{\"chemins\":[{}]}}", l.join(",")))
+}
+
 async fn index() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], INDEX)
 }
@@ -741,6 +753,7 @@ pub async fn servir(
         .route("/api/fichiers/renommer", post(renommer_fichier))
         .route("/api/fichiers/versions", post(versions_fichiers))
         .route("/api/recherche", get(chercher))
+        .route("/api/chemins", get(chemins))
         .route("/api/git/etat", get(git_etat))
         .route("/api/git/diff", get(git_diff))
         .route("/api/git/indexer", post(git_indexer))
