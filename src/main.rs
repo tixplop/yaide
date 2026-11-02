@@ -1,6 +1,8 @@
 mod auth;
 mod cli;
 mod config;
+mod depot;
+mod fichiers;
 mod serveur;
 mod shells;
 mod tls;

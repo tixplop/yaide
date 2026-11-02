@@ -1,11 +1,13 @@
-use crate::{auth, config, shells};
+use crate::{auth, config, fichiers, shells};
+use axum::body::Bytes;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path as CheminUrl, Request, State};
+use axum::extract::{DefaultBodyLimit, Path as CheminUrl, Query, Request, State};
 use axum::http::{header, HeaderMap, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
+use std::collections::HashMap;
 use std::net::{SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -286,6 +288,219 @@ async fn client_shell(mut socket: WebSocket, shell: Arc<shells::Shell>) {
     let _ = tokio::time::timeout(delai, socket.send(close)).await;
 }
 
+type Requete = Query<HashMap<String, String>>;
+
+fn param<'a>(q: &'a HashMap<String, String>, nom: &str) -> &'a str {
+    q.get(nom).map_or("", String::as_str)
+}
+
+fn erreur_fichier(e: fichiers::Erreur) -> Response {
+    use fichiers::Erreur::*;
+    let (code, cause, message, version) = match e {
+        Interdit => (
+            StatusCode::FORBIDDEN,
+            "interdit",
+            "Ce chemin sort du projet.".to_string(),
+            None,
+        ),
+        Introuvable => (
+            StatusCode::NOT_FOUND,
+            "introuvable",
+            "Fichier introuvable.".to_string(),
+            None,
+        ),
+        Existe => (
+            StatusCode::CONFLICT,
+            "existe",
+            "Ce nom est déjà pris. Choisissez-en un autre.".to_string(),
+            None,
+        ),
+        Binaire => (
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "binaire",
+            "C'est un fichier binaire.".to_string(),
+            None,
+        ),
+        NonUtf8 => (
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "non-utf8",
+            "Le texte n'est pas en UTF-8.".to_string(),
+            None,
+        ),
+        TropGros => (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "trop-gros",
+            "Le fichier dépasse 5 Mo.".to_string(),
+            None,
+        ),
+        Conflit(v) => (
+            StatusCode::PRECONDITION_FAILED,
+            "conflit",
+            "Le fichier a changé sur le disque.".to_string(),
+            Some(v),
+        ),
+        Droits => (
+            StatusCode::FORBIDDEN,
+            "droits",
+            "droits insuffisants".to_string(),
+            None,
+        ),
+        Invalide(m) => (StatusCode::BAD_REQUEST, "invalide", m.to_string(), None),
+        Autre(m) => (StatusCode::INTERNAL_SERVER_ERROR, "erreur", m, None),
+    };
+    let version = version.map_or(String::new(), |v| {
+        format!(",\"version\":{}", json_texte(&v))
+    });
+    (
+        code,
+        [(header::CONTENT_TYPE, "application/json")],
+        format!(
+            "{{\"cause\":\"{cause}\",\"message\":{}{version}}}",
+            json_texte(&message)
+        ),
+    )
+        .into_response()
+}
+
+/// Exécute une opération sur le disque hors du fil asynchrone.
+async fn sur_disque<T: Send + 'static>(
+    etat: &Etat,
+    f: impl FnOnce(&Path) -> Result<T, fichiers::Erreur> + Send + 'static,
+) -> Result<T, fichiers::Erreur> {
+    let projet = etat.projet_dir.clone();
+    tokio::task::spawn_blocking(move || f(&projet))
+        .await
+        .unwrap_or_else(|e| Err(fichiers::Erreur::Autre(e.to_string())))
+}
+
+async fn liste_fichiers(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let rel = param(&q, "chemin").to_string();
+    match sur_disque(&etat, move |p| fichiers::lister(p, &rel)).await {
+        Ok(entrees) => {
+            let l: Vec<String> = entrees
+                .iter()
+                .map(|e| {
+                    format!(
+                        "{{\"nom\":{},\"dossier\":{},\"ignore\":{}}}",
+                        json_texte(&e.nom),
+                        e.dossier,
+                        e.ignore
+                    )
+                })
+                .collect();
+            (
+                [(header::CONTENT_TYPE, "application/json")],
+                format!("{{\"entrees\":[{}]}}", l.join(",")),
+            )
+                .into_response()
+        }
+        Err(e) => erreur_fichier(e),
+    }
+}
+
+async fn lire_fichier(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let rel = param(&q, "chemin").to_string();
+    match sur_disque(&etat, move |p| fichiers::lire(p, &rel)).await {
+        Ok((contenu, version)) => (
+            [
+                (
+                    header::CONTENT_TYPE,
+                    "text/plain; charset=utf-8".to_string(),
+                ),
+                (header::HeaderName::from_static("x-version"), version),
+            ],
+            contenu,
+        )
+            .into_response(),
+        Err(e) => erreur_fichier(e),
+    }
+}
+
+async fn ecrire_fichier(State(etat): State<Partage>, Query(q): Requete, corps: Bytes) -> Response {
+    let rel = param(&q, "chemin").to_string();
+    let base = q.get("version").cloned();
+    match sur_disque(&etat, move |p| {
+        fichiers::ecrire(p, &rel, base.as_deref(), &corps)
+    })
+    .await
+    {
+        Ok(version) => (
+            [
+                (header::CONTENT_TYPE, "application/json".to_string()),
+                (
+                    header::HeaderName::from_static("x-version"),
+                    version.clone(),
+                ),
+            ],
+            format!("{{\"version\":{}}}", json_texte(&version)),
+        )
+            .into_response(),
+        Err(e) => erreur_fichier(e),
+    }
+}
+
+async fn creer_fichier(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let rel = param(&q, "chemin").to_string();
+    let dossier = match param(&q, "type") {
+        "dossier" => true,
+        "fichier" => false,
+        _ => {
+            return erreur_fichier(fichiers::Erreur::Invalide(
+                "Le type doit être « fichier » ou « dossier ».",
+            ))
+        }
+    };
+    match sur_disque(&etat, move |p| fichiers::creer(p, &rel, dossier)).await {
+        Ok(()) => StatusCode::CREATED.into_response(),
+        Err(e) => erreur_fichier(e),
+    }
+}
+
+async fn renommer_fichier(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let (de, vers) = (param(&q, "de").to_string(), param(&q, "vers").to_string());
+    match sur_disque(&etat, move |p| fichiers::renommer(p, &de, &vers)).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => erreur_fichier(e),
+    }
+}
+
+async fn supprimer_fichier(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let rel = param(&q, "chemin").to_string();
+    match sur_disque(&etat, move |p| fichiers::supprimer(p, &rel)).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => erreur_fichier(e),
+    }
+}
+
+/// Corps : un chemin par ligne.
+async fn versions_fichiers(State(etat): State<Partage>, corps: String) -> Response {
+    let r = sur_disque(&etat, move |p| {
+        let chemins: Vec<&str> = corps.lines().filter(|l| !l.is_empty()).collect();
+        fichiers::versions(p, &chemins)
+    })
+    .await;
+    match r {
+        Ok(l) => {
+            let l: Vec<String> = l
+                .iter()
+                .map(|(c, v)| {
+                    format!(
+                        "{}:{}",
+                        json_texte(c),
+                        v.as_deref().map_or("null".to_string(), json_texte)
+                    )
+                })
+                .collect();
+            (
+                [(header::CONTENT_TYPE, "application/json")],
+                format!("{{{}}}", l.join(",")),
+            )
+                .into_response()
+        }
+        Err(e) => erreur_fichier(e),
+    }
+}
+
 const INDEX: &[u8] = include_bytes!("../web/dist/index.html");
 const MAIN_JS: &[u8] = include_bytes!("../web/dist/main.js");
 
@@ -352,6 +567,17 @@ pub async fn servir(
         .route("/api/session", get(session))
         .route("/api/shells", get(liste_shells).post(ouvrir_shell))
         .route("/api/shells/{id}/ws", get(ws_shell))
+        .route("/api/fichiers", get(liste_fichiers))
+        .route(
+            "/api/fichier",
+            get(lire_fichier)
+                .put(ecrire_fichier)
+                .delete(supprimer_fichier)
+                .layer(DefaultBodyLimit::disable()),
+        )
+        .route("/api/fichiers/creer", post(creer_fichier))
+        .route("/api/fichiers/renommer", post(renommer_fichier))
+        .route("/api/fichiers/versions", post(versions_fichiers))
         .layer(middleware::from_fn_with_state(etat.clone(), garde))
         .with_state(etat);
     let serveur = axum_server::from_tcp_rustls(listener, tls).serve(app.into_make_service());
