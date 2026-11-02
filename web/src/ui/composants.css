@@ -63,3 +63,71 @@ textarea.champ-saisie { padding: var(--esp-2) var(--esp-3); }
 
 .indication { display: flex; flex-direction: column; align-items: flex-start; gap: var(--esp-3); padding: var(--esp-3); color: var(--texte-attenue); font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); }
 .indication[hidden] { display: none; }
+
+.onglets { display: flex; background: var(--surface); font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); }
+.onglets-horizontale { align-items: stretch; height: var(--hauteur-onglet); overflow-x: auto; }
+.onglets-verticale { flex-direction: column; width: var(--largeur-rail); }
+.onglet-cellule { display: flex; align-items: center; flex: none; }
+.onglet {
+  box-sizing: border-box;
+  height: var(--hauteur-onglet);
+  padding: 0 var(--esp-3);
+  background: transparent;
+  color: var(--texte-attenue);
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.onglets-verticale .onglet { width: var(--largeur-rail); height: var(--largeur-rail); padding: 0; font-weight: var(--graisse-forte); }
+.onglet:hover { background: var(--surface-haute); color: var(--texte); }
+.onglet[aria-selected="true"] { color: var(--texte); font-weight: var(--graisse-forte); border-bottom: var(--trait-fort) solid var(--accent); }
+.onglets-verticale .onglet[aria-selected="true"] { border-bottom: 0; border-left: var(--trait-fort) solid var(--accent); }
+.onglet:focus-visible { outline: var(--trait-fort) solid var(--accent); outline-offset: calc(-1 * var(--trait-fort)); }
+.onglet-question { color: var(--alerte); font-weight: var(--graisse-forte); }
+.onglet-fermer { box-sizing: border-box; width: var(--hauteur-controle); height: var(--hauteur-controle); margin-left: calc(-1 * var(--esp-3)); padding: 0; background: transparent; color: var(--texte-attenue); border: 0; cursor: pointer; }
+.onglet-fermer:hover { background: var(--surface-haute); color: var(--texte); }
+.onglets-droite { display: flex; align-items: center; margin-left: auto; }
+
+.liste { display: flex; flex-direction: column; font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); color: var(--texte); }
+.liste-groupe { padding: 0 var(--esp-3); height: var(--hauteur-ligne); line-height: var(--hauteur-ligne); color: var(--texte-attenue); font: var(--texte-petit) var(--police-ui); font-family: var(--police-ui); font-weight: var(--graisse-forte); }
+.liste-ligne {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--esp-2);
+  height: var(--hauteur-ligne);
+  padding: 0 var(--esp-3) 0 calc(var(--esp-3) + var(--niveau, 0) * var(--esp-4));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+.liste-libelle { overflow: hidden; text-overflow: ellipsis; }
+.liste-secondaire { color: var(--texte-attenue); overflow: hidden; text-overflow: ellipsis; }
+.liste-code { font-family: var(--police-code); }
+.liste-marque { flex: none; min-width: var(--esp-3); }
+.liste-ligne:hover { background: var(--surface-haute); }
+.liste-ligne[aria-selected="true"] { background: var(--surface-haute); font-weight: var(--graisse-forte); }
+.liste-courante { border-left: var(--trait-fort) solid var(--accent); }
+.liste-ligne:focus-visible { outline: var(--trait-fort) solid var(--accent); outline-offset: calc(-1 * var(--trait-fort)); }
+.liste-attenuee { color: var(--texte-attenue); font-style: italic; }
+
+.dialogue {
+  box-sizing: border-box;
+  width: var(--largeur-dialogue);
+  max-width: 100%;
+  padding: var(--esp-5);
+  background: var(--surface-haute);
+  color: var(--texte);
+  border: var(--trait) solid var(--bordure);
+  border-radius: var(--rayon-dialogue);
+  box-shadow: var(--ombre-dialogue);
+  font: var(--texte-base) var(--police-ui);
+  font-family: var(--police-ui);
+}
+.dialogue::backdrop { background: var(--voile); }
+.dialogue-haut { width: var(--largeur-ouverture); margin-top: 15vh; padding: var(--esp-3); }
+.dialogue-titre { margin: 0 0 var(--esp-4); font: var(--texte-sous-titre) var(--police-ui); font-family: var(--police-ui); font-weight: var(--graisse-forte); }
+.dialogue-contenu { display: flex; flex-direction: column; gap: var(--esp-3); }
+.dialogue-actions { display: flex; justify-content: flex-end; gap: var(--esp-2); margin-top: var(--esp-4); }
