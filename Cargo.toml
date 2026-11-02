@@ -1,0 +1,17 @@
+[package]
+name = "yaide"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+axum = "0.8"
+axum-server = { version = "0.7", default-features = false, features = ["tls-rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
