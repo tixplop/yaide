@@ -1,7 +1,10 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { vuePrincipale } from "./principale.js";
 
+let vues = [];
 afterEach(() => {
+  for (const v of vues) v.detruire();
+  vues = [];
   vi.unstubAllGlobals();
   document.body.replaceChildren();
 });
@@ -10,6 +13,7 @@ function monter(options = {}) {
   const surDeconnexion = vi.fn();
   const vue = vuePrincipale({ chemin: "/home/x/projet", surDeconnexion, ...options });
   document.body.append(vue);
+  vues.push(vue);
   return { vue, surDeconnexion };
 }
 

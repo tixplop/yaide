@@ -68,7 +68,7 @@ fn est_publique(m: &Method, chemin: &str) -> bool {
     (m == Method::GET
         && matches!(
             chemin,
-            "/" | "/main.js" | "/tokens.css" | "/composants.css" | "/api/info"
+            "/" | "/main.js" | "/main.css" | "/tokens.css" | "/composants.css" | "/api/info"
         ))
         || (m == Method::POST && chemin == "/api/connexion")
 }
@@ -280,7 +280,7 @@ async fn client_shell(mut socket: WebSocket, shell: Arc<shells::Shell>) {
         }
     }
     let close = Message::Close(Some(CloseFrame {
-        code: 1000,
+        code: if shell.serveur_arrete() { 1001 } else { 1000 },
         reason: "".into(),
     }));
     let _ = tokio::time::timeout(delai, socket.send(close)).await;
@@ -300,6 +300,7 @@ async fn main_js() -> impl IntoResponse {
     )
 }
 
+const MAIN_CSS: &[u8] = include_bytes!("../web/dist/main.css");
 const TOKENS_CSS: &[u8] = include_bytes!("../web/dist/tokens.css");
 const COMPOSANTS_CSS: &[u8] = include_bytes!("../web/dist/composants.css");
 
@@ -342,6 +343,7 @@ pub async fn servir(
     let app = Router::new()
         .route("/", get(index))
         .route("/main.js", get(main_js))
+        .route("/main.css", get(|| async { css(MAIN_CSS) }))
         .route("/tokens.css", get(|| async { css(TOKENS_CSS) }))
         .route("/composants.css", get(|| async { css(COMPOSANTS_CSS) }))
         .route("/api/info", get(info))

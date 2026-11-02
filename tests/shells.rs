@@ -537,6 +537,34 @@ fn arret_propre(signal: &str) {
     );
 }
 
+/// Code de la trame de fermeture reçue avant `secondes`.
+fn code_de_fermeture(ws: &mut Ws, secondes: u64) -> Option<u16> {
+    let fin = Instant::now() + Duration::from_secs(secondes);
+    while Instant::now() < fin {
+        match ws.read() {
+            Ok(Message::Close(Some(c))) => return Some(u16::from(c.code)),
+            Ok(Message::Close(None)) | Err(tungstenite::Error::ConnectionClosed) => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+#[test]
+fn req021_ac2_la_connexion_se_ferme_en_1001_a_l_arret_et_en_1000_apres_exit() {
+    let s = &mut lancer("code-arret", Some("/bin/sh"));
+    let mut sorti = ws(s, ouvrir(s));
+    taper(&mut sorti, "exit\n");
+    assert_eq!(code_de_fermeture(&mut sorti, 10), Some(1000));
+    let mut reste = ws(s, ouvrir(s));
+    let tue = Command::new("kill")
+        .args(["-TERM", &s.child.id().to_string()])
+        .status()
+        .unwrap();
+    assert!(tue.success());
+    assert_eq!(code_de_fermeture(&mut reste, 15), Some(1001));
+}
+
 #[test]
 fn req021_ac1_sigterm_arrete_les_shells_et_leurs_processus() {
     arret_propre("TERM");

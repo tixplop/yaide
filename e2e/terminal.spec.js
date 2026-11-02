@@ -75,7 +75,9 @@ test("REQ028_AC3_fond_et_couleur_ansi_viennent_des_tokens", async ({ page }) => 
     }, token);
   await page.evaluate(() => window.flux.dispatchEvent(new MessageEvent("message", { data: "\x1b[31mrouge\x1b[0m" })));
   const span = page.locator(".terminal-zone .xterm-rows span", { hasText: "rouge" }).first();
-  expect(await span.evaluate((e) => getComputedStyle(e).color)).toBe(await attendu("--erreur"));
+  // Le terminal s'ajuste à sa zone après l'écriture : l'élément peut être remplacé, on relit.
+  const rouge = await attendu("--erreur");
+  await expect.poll(() => span.evaluate((e) => getComputedStyle(e).color)).toBe(rouge);
   expect(await page.locator(".terminal-zone .xterm-screen").evaluate((e) => getComputedStyle(e.closest(".xterm")).backgroundColor)).toBe(await attendu("--fond"));
 });
 

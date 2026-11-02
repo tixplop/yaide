@@ -43,7 +43,7 @@ function policeDepuisTokens() {
 
 const CTRL_MAJ_F = (e) => e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "f";
 
-export function terminal({ flux, connecte = true, numero } = {}) {
+export function terminal({ flux, connecte = true, numero, surTaille } = {}) {
   if (!flux) throw new Error("terminal : flux requis");
   const racine = document.createElement("div");
   racine.className = "terminal";
@@ -64,7 +64,24 @@ export function terminal({ flux, connecte = true, numero } = {}) {
     term.write(typeof e.data === "string" ? e.data : new Uint8Array(e.data));
   });
 
+  // Sans module d'ajustement : la taille d'une cellule se déduit de l'écran de xterm.
+  function ajuster() {
+    const ecran = zone.querySelector(".xterm-screen");
+    if (!ecran || !zone.clientWidth || !zone.clientHeight) return;
+    const largeur = ecran.offsetWidth / term.cols;
+    const hauteur = ecran.offsetHeight / term.rows;
+    if (!largeur || !hauteur) return;
+    const defilement = zone.querySelector(".xterm-viewport");
+    const barre = defilement ? defilement.offsetWidth - defilement.clientWidth : 0;
+    const colonnes = Math.max(2, Math.floor((zone.clientWidth - barre) / largeur));
+    const lignes = Math.max(1, Math.floor(zone.clientHeight / hauteur));
+    if (colonnes !== term.cols || lignes !== term.rows) term.resize(colonnes, lignes);
+  }
+  term.onResize(({ cols, rows }) => surTaille?.(cols, rows));
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(ajuster).observe(zone);
+
   racine.term = term;
+  racine.ajuster = ajuster;
   racine.focus = () => term.focus();
   racine.definirConnecte = (oui) => {
     attente.hidden = oui;

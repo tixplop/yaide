@@ -197,3 +197,9 @@ body { margin: 0; }
 .barre-nom { font-weight: var(--graisse-forte); }
 .barre-chemin { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--texte-attenue); }
 .barre-droite { flex: none; display: flex; align-items: center; gap: var(--esp-3); margin-left: auto; }
+
+/* Zone des shells (V-002) : onglets, puis terminaux. */
+.cadre-shells { display: flex; flex-direction: column; }
+.shells { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
+.shells-corps { flex: 1 1 0; min-height: 0; }
+.terminal[hidden] { display: none; }

@@ -1,7 +1,10 @@
 import { deconnexion } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { cadre } from "../ui/cadre.js";
+import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
+import { surveiller } from "../connexion.js";
+import { vueShells } from "./shells.js";
 
 const PANNEAUX = [
   { id: "fichiers", libelle: "F", nomAccessible: "Fichiers", touche: "f", titre: "Fichiers" },
@@ -13,8 +16,10 @@ function nomDuDossier(chemin) {
   return chemin.split("/").filter(Boolean).pop() ?? chemin;
 }
 
-/** V-002. `surDeconnexion` est appelé une fois la session fermée. */
-export function vuePrincipale({ chemin, surDeconnexion }) {
+const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
+
+/** V-002. `surDeconnexion` est appelé une fois la session fermée, `surExpiree` si elle expire. */
+export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnexion }) {
   document.title = `${nomDuDossier(chemin)} — Yaide`;
 
   const nom = document.createElement("strong");
@@ -28,9 +33,25 @@ export function vuePrincipale({ chemin, surDeconnexion }) {
   droite.className = "barre-droite";
   const sortir = bouton({ libelle: "Déconnexion" });
   sortir.addEventListener("click", async () => {
-    if (await deconnexion()) surDeconnexion();
+    if (etat !== "coupe" && (await deconnexion())) surDeconnexion();
+    else dire({ texte: TEXTE_COUPURE, variante: "alerte" });
   });
   droite.append(sortir);
+
+  // Bandeaux : la coupure d'abord, puis un seul message à la fois.
+  const bandeaux = document.createElement("div");
+  const places = { coupure: null, message: null };
+  const montrerBandeau = (nom, element) => {
+    places[nom]?.remove();
+    places[nom] = element;
+    if (element) bandeaux.append(element);
+  };
+  let etat = "connecte";
+  function dire({ texte, variante, fermable = false }) {
+    montrerBandeau("message", message({ texte, variante, fermable }));
+  }
+
+  const shells = vueShells({ dire });
 
   const rail = onglets({
     orientation: "verticale",
@@ -43,6 +64,7 @@ export function vuePrincipale({ chemin, surDeconnexion }) {
     barreHaut: [nom, lieu, droite],
     rail,
     panneau: { titre: "Fichiers" },
+    principal: { bandeaux, shells },
   });
   const titre = racine.querySelector(".cadre-panneau-titre");
   const corps = racine.querySelector(".cadre-panneau-corps");
@@ -69,5 +91,33 @@ export function vuePrincipale({ chemin, surDeconnexion }) {
     corps.focus();
   });
 
+  // Ctrl+Maj+F, partout (même dans un shell) : le focus passe sur le bouton actif du rail.
+  const surTouche = (e) => {
+    const f = e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "f";
+    if (!f || document.querySelector("[role=dialog], dialog[open]")) return;
+    e.preventDefault();
+    rail.querySelector("[role=tab][aria-selected=true]")?.focus();
+  };
+  document.addEventListener("keydown", surTouche);
+
+  const arreter = surveiller({
+    surEtat(nouvel) {
+      if (nouvel === "expiree") return surExpiree();
+      etat = nouvel;
+      shells.definirEtat(nouvel);
+      if (nouvel === "coupe") {
+        montrerBandeau("coupure", message({ texte: "Connexion perdue. Modifications gardées.", variante: "alerte", fort: true }));
+      } else {
+        montrerBandeau("coupure", null);
+        if (places.message?.textContent.includes(TEXTE_COUPURE)) montrerBandeau("message", null);
+      }
+    },
+  });
+
+  racine.detruire = () => {
+    arreter();
+    document.removeEventListener("keydown", surTouche);
+    shells.detruire();
+  };
   return racine;
 }

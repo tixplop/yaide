@@ -27,12 +27,17 @@ export function depotExemple(nom = "projet") {
   return dossier;
 }
 
-/** Lance Yaide sur un port libre. Rend `{ origine, port, dossier, arreter }`. */
-export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple() } = {}) {
-  const port = await portLibre();
-  const env = { ...process.env, XDG_CONFIG_HOME: path.join(path.dirname(dossier), "cfg") };
-  spawnSync("target/debug/yaide", ["passwd"], { input: `${motDePasse}\n`, env });
+/** Lance Yaide sur un port libre (ou `port`). Rend `{ origine, port, dossier, arreter, relancer }`. */
+export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple(), port, shell, reprise = false } = {}) {
+  port ??= await portLibre();
+  const racine = path.dirname(dossier);
+  const home = path.join(racine, "home");
+  fs.mkdirSync(home, { recursive: true });
+  const env = { ...process.env, XDG_CONFIG_HOME: path.join(racine, "cfg"), HOME: home };
+  if (shell) env.SHELL = shell;
+  if (!reprise) spawnSync("target/debug/yaide", ["passwd"], { input: `${motDePasse}\n`, env });
   const proc = spawn("target/debug/yaide", [dossier, "--port", String(port)], { stdio: "ignore", env });
+  const sorti = new Promise((ok) => proc.once("exit", ok));
   const origine = `https://127.0.0.1:${port}`;
   for (let i = 0; i < 100; i++) {
     try {
@@ -45,5 +50,27 @@ export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple()
       await new Promise((r) => setTimeout(r, 100));
     }
   }
-  return { origine, port, dossier, arreter: () => proc.kill() };
+  return {
+    origine,
+    port,
+    dossier,
+    /** SIGTERM, puis attend la fin du processus. */
+    arreter: async () => {
+      proc.kill();
+      await sorti;
+    },
+    /** Arrête Yaide et le relance sur le même port, avec la même configuration. */
+    relancer: async function () {
+      await this.arreter();
+      return lancerYaide({ motDePasse, dossier, port, shell, reprise: true });
+    },
+  };
+}
+
+/** Ouvre Yaide, se connecte et attend le premier shell. */
+export async function ouvrirYaide(page, origine, motDePasse = "mdp") {
+  await page.goto(origine + "/");
+  await page.getByLabel("Mot de passe").fill(motDePasse);
+  await page.keyboard.press("Enter");
+  await page.getByRole("tab", { name: "shell 1" }).waitFor();
 }

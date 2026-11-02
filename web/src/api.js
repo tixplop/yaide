@@ -33,3 +33,18 @@ export async function deconnexion() {
   const r = await appeler("/api/deconnexion", { method: "POST" });
   return r?.status === 204 || r?.status === 401;
 }
+
+/** `{ instance, shells: [id…] }`, ou null si le serveur ne répond pas. */
+export async function listeShells() {
+  const r = await appeler("/api/shells");
+  if (!r || !r.ok) return null;
+  return r.json();
+}
+
+/** Renvoie `{ id }`, ou `{ erreur }` (texte du serveur) ; `{ coupure: true }` sans réponse. */
+export async function ouvrirShell() {
+  const r = await appeler("/api/shells", { method: "POST" });
+  if (!r) return { coupure: true };
+  if (r.status === 201) return r.json();
+  return { erreur: (await r.text()).trim() || `erreur ${r.status}` };
+}

@@ -2,7 +2,8 @@
 //!
 //! Protocole WebSocket de `/api/shells/{id}/ws` :
 //! - serveur vers client : trames binaires de sortie (d'abord le dernier 1 Mo, puis le direct) ;
-//!   à la fin du shell, le serveur ferme la connexion ;
+//!   à la fin du shell, le serveur ferme la connexion (code 1000), ou avec le code 1001 si c'est
+//!   l'arrêt de Yaide qui le termine ;
 //! - client vers serveur : trame binaire = touches pour le shell ;
 //!   trame texte `taille COLONNES LIGNES` = nouvelle taille du terminal.
 
@@ -44,6 +45,7 @@ struct Liste {
 #[derive(Default)]
 pub struct Registre {
     liste: Mutex<Liste>,
+    arret: AtomicBool,
 }
 
 fn signaler(pgid: i32, signal: i32) -> bool {
@@ -98,6 +100,11 @@ impl Shell {
             pixel_width: 0,
             pixel_height: 0,
         });
+    }
+
+    /// Vrai si Yaide s'arrête : la fin du shell vient alors de l'arrêt, pas d'un `exit`.
+    pub fn serveur_arrete(&self) -> bool {
+        self.registre.arret.load(Ordering::SeqCst)
     }
 
     fn terminer(&self) {
@@ -206,6 +213,7 @@ impl Registre {
 
     /// Arrêt du serveur : signal au groupe de chaque shell, puis abandon forcé.
     pub async fn arreter(&self) {
+        self.arret.store(true, Ordering::SeqCst);
         let groupes: Vec<i32> = self
             .liste
             .lock()

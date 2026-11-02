@@ -21,7 +21,7 @@ async function seConnecter(page, mdp = "mdp") {
 test("REQ004_AC1_bon_mot_de_passe_affiche_la_vue_principale", async ({ page }) => {
   await seConnecter(page);
   await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
-  await expect(page.getByRole("tablist")).toBeVisible();
+  await expect(page.getByRole("tablist").first()).toBeVisible();
 });
 
 test("REQ004_AC2_mauvais_mot_de_passe_affiche_le_message", async ({ page }) => {
@@ -146,7 +146,7 @@ test("REQ028_AC1_F_R_G_affichent_les_panneaux", async ({ page }) => {
 
 test("REQ028_AC4_le_rail_est_une_liste_d_onglets_verticale", async ({ page }) => {
   await seConnecter(page);
-  const rail = page.getByRole("tablist");
+  const rail = page.getByRole("navigation", { name: "Panneaux" }).getByRole("tablist");
   await expect(rail).toHaveAttribute("aria-orientation", "vertical");
   await expect(rail.getByRole("tab")).toHaveText(["F", "R", "G"]);
   for (const nom of ["Fichiers", "Recherche", "Git"]) await expect(rail.getByRole("tab", { name: nom })).toHaveAttribute("aria-selected", /true|false/);

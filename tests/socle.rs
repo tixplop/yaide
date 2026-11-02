@@ -94,6 +94,16 @@ fn req029_ac1_le_binaire_seul_sert_toute_l_interface() {
 }
 
 #[test]
+fn req029_ac1_la_feuille_main_css_de_xterm_est_servie_dans_le_binaire() {
+    let (exe, d) = binaire_seul("css");
+    let s = lancer(&exe, &d);
+    let index = get(s.port, "/").unwrap();
+    assert!(index.contains("href=\"/main.css\""));
+    let css = get(s.port, "/main.css").unwrap();
+    assert!(css.contains(".xterm"));
+}
+
+#[test]
 fn req029_ac2_memoire_au_repos_sous_50_mo() {
     let (exe, d) = binaire_seul("ac2");
     let s = lancer(&exe, &d);
