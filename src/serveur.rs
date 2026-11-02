@@ -61,7 +61,11 @@ fn origine_ok(req: &Request) -> bool {
 }
 
 fn est_publique(m: &Method, chemin: &str) -> bool {
-    (m == Method::GET && matches!(chemin, "/" | "/main.js" | "/api/info"))
+    (m == Method::GET
+        && matches!(
+            chemin,
+            "/" | "/main.js" | "/tokens.css" | "/composants.css" | "/api/info"
+        ))
         || (m == Method::POST && chemin == "/api/connexion")
 }
 
@@ -183,6 +187,13 @@ async fn main_js() -> impl IntoResponse {
     )
 }
 
+const TOKENS_CSS: &[u8] = include_bytes!("../web/dist/tokens.css");
+const COMPOSANTS_CSS: &[u8] = include_bytes!("../web/dist/composants.css");
+
+fn css(corps: &'static [u8]) -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], corps)
+}
+
 /// Réserve le port sur toutes les adresses de la machine.
 pub fn ecouter(port: u16) -> Result<TcpListener, String> {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
@@ -214,6 +225,8 @@ pub async fn servir(
     let app = Router::new()
         .route("/", get(index))
         .route("/main.js", get(main_js))
+        .route("/tokens.css", get(|| async { css(TOKENS_CSS) }))
+        .route("/composants.css", get(|| async { css(COMPOSANTS_CSS) }))
         .route("/api/info", get(info))
         .route("/api/connexion", post(connexion))
         .route("/api/deconnexion", post(deconnexion))

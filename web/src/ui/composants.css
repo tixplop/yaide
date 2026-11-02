@@ -188,3 +188,12 @@ body { margin: 0; }
 .cadre-bandeaux, .cadre-onglets, .cadre-question { flex: 0 0 auto; }
 .cadre-code { flex: 1 1 0; min-height: 0; }
 .cadre-shells { flex: 0 0 var(--part-shells); min-height: 0; border-top: var(--trait) solid var(--bordure); }
+
+/* Écran de connexion (V-001) et barre du haut (V-002). */
+.connexion { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--fond); color: var(--texte); font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); }
+.connexion-form { display: flex; flex-direction: column; gap: var(--esp-3); width: var(--largeur-connexion); }
+.connexion-titre { margin: 0; text-align: center; font: var(--texte-titre) var(--police-ui); font-family: var(--police-ui); font-weight: var(--graisse-forte); }
+.connexion-chemin { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: center; color: var(--texte-attenue); }
+.barre-nom { font-weight: var(--graisse-forte); }
+.barre-chemin { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--texte-attenue); }
+.barre-droite { flex: none; display: flex; align-items: center; gap: var(--esp-3); margin-left: auto; }

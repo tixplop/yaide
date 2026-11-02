@@ -1,0 +1,230 @@
+import { test, expect } from "@playwright/test";
+import { lancerYaide } from "./aides.js";
+
+let yaide;
+test.beforeEach(async () => {
+  yaide = await lancerYaide();
+});
+test.afterEach(() => yaide.arreter());
+
+async function ouvrir(page) {
+  await page.goto(yaide.origine + "/");
+  await page.getByLabel("Mot de passe").waitFor();
+}
+
+async function seConnecter(page, mdp = "mdp") {
+  await ouvrir(page);
+  await page.getByLabel("Mot de passe").fill(mdp);
+  await page.keyboard.press("Enter");
+}
+
+test("REQ004_AC1_bon_mot_de_passe_affiche_la_vue_principale", async ({ page }) => {
+  await seConnecter(page);
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  await expect(page.getByRole("tablist")).toBeVisible();
+});
+
+test("REQ004_AC2_mauvais_mot_de_passe_affiche_le_message", async ({ page }) => {
+  await seConnecter(page, "faux");
+  await expect(page.getByRole("alert")).toHaveText("Mot de passe incorrect.");
+});
+
+test("REQ004_AC3_cinq_echecs_demandent_d_attendre_une_minute", async ({ page }) => {
+  await ouvrir(page);
+  for (let i = 0; i < 5; i++) {
+    await page.getByLabel("Mot de passe").fill("faux");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("alert")).toHaveText("Mot de passe incorrect.");
+  }
+  await page.getByLabel("Mot de passe").fill("mdp");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("alert")).toHaveText("Trop d'essais. Attendez une minute.");
+});
+
+test("REQ004_AC5_ecran_de_connexion_affiche_le_nom_et_le_chemin", async ({ page }) => {
+  await ouvrir(page);
+  await expect(page.getByRole("heading", { name: "Yaide" })).toBeVisible();
+  await expect(page.locator(".connexion-chemin")).toHaveText(yaide.dossier);
+});
+
+test("REQ004_AC5_chemin_long_coupe_au_debut_avec_info_bulle", async ({ page }) => {
+  await ouvrir(page);
+  await page.setViewportSize({ width: 800, height: 480 });
+  await page.evaluate(() => {
+    const p = document.querySelector(".connexion-chemin");
+    p.title = "/" + "tres-long-dossier/".repeat(10) + "projet";
+    p.firstChild.textContent = p.title;
+  });
+  const p = page.locator(".connexion-chemin");
+  expect(await p.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
+  expect(await p.evaluate((e) => getComputedStyle(e).textOverflow)).toBe("ellipsis");
+  expect(await p.evaluate((e) => getComputedStyle(e).direction)).toBe("rtl");
+  await expect(p).toHaveAttribute("title", /projet$/);
+});
+
+test("REQ004_AC6_focus_dans_le_champ_et_Entree_envoie", async ({ page }) => {
+  await ouvrir(page);
+  const champ = page.getByLabel("Mot de passe");
+  await expect(champ).toHaveAttribute("type", "password");
+  await expect(champ).toBeFocused();
+  await champ.fill("mdp");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+});
+
+test("REQ004_AC7_apres_un_echec_alerte_aria_et_texte_selectionne", async ({ page }) => {
+  await seConnecter(page, "faux");
+  const champ = page.getByLabel("Mot de passe");
+  const alerte = page.getByRole("alert");
+  await expect(alerte).toBeVisible();
+  await expect(champ).toHaveAttribute("aria-invalid", "true");
+  const id = await alerte.getAttribute("id");
+  await expect(champ).toHaveAttribute("aria-describedby", new RegExp(id));
+  await expect(champ).toBeFocused();
+  expect(await champ.evaluate((e) => e.selectionStart === 0 && e.selectionEnd === e.value.length && e.value.length > 0)).toBe(true);
+});
+
+test("REQ004_AC9_champ_vide_ne_fait_aucune_requete_ni_echec", async ({ page }) => {
+  await ouvrir(page);
+  const requetes = [];
+  page.on("request", (r) => r.url().includes("/api/connexion") && requetes.push(r.url()));
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("alert")).toHaveText("Saisissez le mot de passe.");
+  expect(requetes).toEqual([]);
+  await expect(page.getByLabel("Mot de passe")).toBeFocused();
+  // Quatre échecs ensuite : l'envoi à vide n'a pas compté.
+  for (let i = 0; i < 4; i++) {
+    await page.getByLabel("Mot de passe").fill("faux");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("alert")).toHaveText("Mot de passe incorrect.");
+  }
+  await page.getByLabel("Mot de passe").fill("mdp");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+});
+
+test("REQ005_AC3_deconnexion_ramene_a_la_connexion_et_le_cookie_n_est_plus_valide", async ({ page, context }) => {
+  await seConnecter(page);
+  await page.getByRole("button", { name: "Déconnexion" }).click();
+  await expect(page.getByLabel("Mot de passe")).toBeVisible();
+  expect(await context.cookies()).toEqual([]);
+  await page.reload();
+  await expect(page.getByLabel("Mot de passe")).toBeVisible();
+});
+
+test("REQ005_AC4_la_session_reste_valide_au_rechargement", async ({ page }) => {
+  await seConnecter(page);
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+});
+
+test("REQ028_AC2_barre_du_haut_chemin_et_deconnexion", async ({ page }) => {
+  await seConnecter(page);
+  await expect(page.locator("header")).toContainText(yaide.dossier);
+  await expect(page.locator("header").getByRole("button", { name: "Déconnexion" })).toBeVisible();
+});
+
+test("REQ028_AC3_theme_sombre_et_accent_bleu_sur_l_onglet_actif", async ({ page }) => {
+  await seConnecter(page);
+  const fond = await page.locator(".cadre").evaluate((e) => getComputedStyle(e).backgroundColor);
+  expect(fond).toBe("rgb(20, 23, 28)");
+  const actif = page.getByRole("tab", { name: "Fichiers" });
+  expect(await actif.evaluate((e) => getComputedStyle(e).borderLeftColor)).toBe("rgb(92, 157, 255)");
+  const police = await page.locator(".cadre").evaluate((e) => getComputedStyle(e).fontFamily);
+  expect(police).toContain("system-ui");
+});
+
+test("REQ028_AC1_F_R_G_affichent_les_panneaux", async ({ page }) => {
+  await seConnecter(page);
+  for (const [nom, titre] of [["Recherche", "Recherche"], ["Git", "Git"], ["Fichiers", "Fichiers"]]) {
+    await page.getByRole("tab", { name: nom }).click();
+    await expect(page.locator("aside h2")).toHaveText(titre);
+    await expect(page.getByRole("tab", { name: nom })).toHaveAttribute("aria-selected", "true");
+  }
+});
+
+test("REQ028_AC4_le_rail_est_une_liste_d_onglets_verticale", async ({ page }) => {
+  await seConnecter(page);
+  const rail = page.getByRole("tablist");
+  await expect(rail).toHaveAttribute("aria-orientation", "vertical");
+  await expect(rail.getByRole("tab")).toHaveText(["F", "R", "G"]);
+  for (const nom of ["Fichiers", "Recherche", "Git"]) await expect(rail.getByRole("tab", { name: nom })).toHaveAttribute("aria-selected", /true|false/);
+});
+
+test("REQ028_AC5_touches_F_R_G_sur_le_rail_seulement", async ({ page }) => {
+  await seConnecter(page);
+  await page.getByRole("tab", { name: "Fichiers" }).focus();
+  await page.keyboard.press("r");
+  await expect(page.locator("aside h2")).toHaveText("Recherche");
+  expect(await page.evaluate(() => !!document.activeElement.closest("aside"))).toBe(true);
+  // Hors du rail, la lettre ne fait rien.
+  await page.getByRole("button", { name: "Déconnexion" }).focus();
+  await page.keyboard.press("g");
+  await expect(page.locator("aside h2")).toHaveText("Recherche");
+  await page.getByRole("tab", { name: "Recherche" }).focus();
+  await page.keyboard.press("G");
+  await expect(page.locator("aside h2")).toHaveText("Git");
+});
+
+test("REQ028_AC6_titre_de_l_onglet_du_navigateur", async ({ page }) => {
+  await seConnecter(page);
+  const nom = yaide.dossier.split("/").pop();
+  await expect(page).toHaveTitle(`${nom} — Yaide`);
+});
+
+test("REQ028_AC7_contour_de_focus_visible_sur_les_elements_atteints_par_Tab", async ({ page }) => {
+  await seConnecter(page);
+  await page.getByRole("button", { name: "Déconnexion" }).focus();
+  {
+    await page.keyboard.press("Tab");
+    const style = await page.evaluate(() => {
+      const s = getComputedStyle(document.activeElement);
+      return [s.outlineStyle, s.outlineWidth];
+    });
+    expect(style[0]).not.toBe("none");
+    expect(style[1]).not.toBe("0px");
+  }
+  await page.getByRole("button", { name: "Déconnexion" }).focus();
+  expect(await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle)).not.toBe("none");
+});
+
+test("REQ028_AC8_Tab_va_de_Deconnexion_au_rail_puis_au_panneau", async ({ page }) => {
+  await seConnecter(page);
+  await page.getByRole("button", { name: "Déconnexion" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("tab", { name: "Fichiers" })).toBeFocused();
+});
+
+test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", async ({ page }) => {
+  await seConnecter(page);
+  await page.setViewportSize({ width: 800, height: 480 });
+  const boites = async () => {
+    const r = (s) => page.locator(s).first().boundingBox();
+    return { barre: await r("header"), rail: await r("nav"), panneau: await r("aside"), principal: await r("main") };
+  };
+  const b = await boites();
+  expect(b.rail.x + b.rail.width).toBeLessThanOrEqual(b.panneau.x);
+  expect(b.panneau.x + b.panneau.width).toBeLessThanOrEqual(b.principal.x);
+  expect(b.barre.y + b.barre.height).toBeLessThanOrEqual(b.rail.y);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 600, height: 400 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(true);
+});
+
+test("REQ028_AC9_un_chemin_long_ne_deborde_pas_de_la_barre_du_haut", async ({ page }) => {
+  await seConnecter(page);
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  await page.setViewportSize({ width: 800, height: 480 });
+  await page.evaluate(() => {
+    document.querySelector(".barre-chemin").textContent = "/" + "tres-long-dossier/".repeat(10) + "projet";
+  });
+  const chemin = await page.locator(".barre-chemin").boundingBox();
+  const sortir = await page.getByRole("button", { name: "Déconnexion" }).boundingBox();
+  expect(chemin.x + chemin.width).toBeLessThanOrEqual(sortir.x);
+  const rail = await page.locator("nav").boundingBox();
+  expect(chemin.y).toBeGreaterThanOrEqual(0);
+  expect(chemin.y + chemin.height).toBeLessThanOrEqual(rail.y);
+  expect(sortir.x + sortir.width).toBeLessThanOrEqual(800);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

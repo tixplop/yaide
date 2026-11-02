@@ -34,7 +34,7 @@ test("REQ029_AC3_la_page_se_charge_sans_requete_vers_une_autre_origine", async (
         await new Promise((r) => setTimeout(r, 100));
       }
     }
-    await expect(page.locator("#app")).toHaveText("Yaide");
+    await expect(page.locator("#app h1")).toHaveText("Yaide");
     expect(externes).toEqual([]);
   } finally {
     proc.kill();

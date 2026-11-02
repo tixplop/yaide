@@ -1,0 +1,35 @@
+async function appeler(chemin, options) {
+  try {
+    return await fetch(chemin, { credentials: "same-origin", ...options });
+  } catch {
+    return null;
+  }
+}
+
+/** Nom et chemin du projet, ou null si le serveur ne répond pas. */
+export async function info() {
+  const r = await appeler("/api/info");
+  if (!r || !r.ok) return null;
+  return r.json();
+}
+
+export async function sessionValide() {
+  const r = await appeler("/api/session");
+  return r?.status === 204;
+}
+
+/** Renvoie "ok", "incorrect", "trop", "injoignable" ou "erreur". */
+export async function connexion(motDePasse) {
+  const r = await appeler("/api/connexion", { method: "POST", body: motDePasse });
+  if (!r) return "injoignable";
+  if (r.status === 204) return "ok";
+  if (r.status === 401) return "incorrect";
+  if (r.status === 429) return "trop";
+  return "erreur";
+}
+
+/** Vrai si la session est fermée : 204, ou 401 (déjà expirée). */
+export async function deconnexion() {
+  const r = await appeler("/api/deconnexion", { method: "POST" });
+  return r?.status === 204 || r?.status === 401;
+}
