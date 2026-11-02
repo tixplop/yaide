@@ -10,6 +10,7 @@ import { message } from "../ui/message.js";
 const FACTICE = "\0";
 const nomDe = (chemin) => chemin.split("/").pop();
 const dossierDe = (chemin) => chemin.split("/").slice(0, -1).join("/");
+const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const sansPoint = (texte) => texte.replace(/\.$/, "");
 const nettoyer = (chemin) => chemin.trim().replace(/\/+$/, "");
 
@@ -19,6 +20,7 @@ function raisonDe(r) {
 
 /** Texte d'erreur du champ d'un dialogue pour une réponse du serveur. */
 function texteErreur(r) {
+  if (r.coupure) return TEXTE_COUPURE;
   if (r.cause === "existe" || r.cause === "interdit") return r.message;
   return `Action impossible : ${raisonDe(r)}.`;
 }
@@ -117,7 +119,8 @@ export function vueFichiers({ dire, surOuvrir = () => {}, surRenomme = () => {},
     else if (r.cause === "introuvable" && chemin !== "") {
       ouverts.delete(chemin);
       dossiers.delete(chemin);
-    } else dossiers.set(chemin, { etat: "erreur", raison: raisonDe(r) });
+    } else if (!(r.coupure && avant?.entrees)) dossiers.set(chemin, { etat: "erreur", raison: raisonDe(r) });
+    return r;
   }
 
   async function rafraichir() {
@@ -127,7 +130,12 @@ export function vueFichiers({ dire, surOuvrir = () => {}, surRenomme = () => {},
 
   async function deplier(id) {
     ouverts.add(id);
-    await charger(id);
+    const r = await charger(id);
+    if (r?.coupure && !detruit) {
+      ouverts.delete(id);
+      dossiers.delete(id);
+      dire({ texte: TEXTE_COUPURE, variante: "alerte", fermable: true });
+    }
     afficher();
   }
 
@@ -157,6 +165,7 @@ export function vueFichiers({ dire, surOuvrir = () => {}, surRenomme = () => {},
     let texte;
     if (r.cause === "binaire" || r.cause === "non-utf8") texte = `${nom} est un fichier binaire. Yaide ne l'ouvre pas.`;
     else if (r.cause === "trop-gros") texte = `${nom} dépasse 5 Mo. Yaide ne l'ouvre pas.`;
+    else if (r.coupure) texte = TEXTE_COUPURE;
     else texte = `Impossible d'ouvrir ${nom} : ${raisonDe(r)}.`;
     dire({ texte, variante: "alerte", fermable: true });
     surLecture(false);

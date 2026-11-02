@@ -49,6 +49,12 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (element) bandeaux.append(element);
   };
   let etat = "connecte";
+  let attenteTexte = "";
+  function montrerCoupure() {
+    if (etat !== "coupe") return montrerBandeau("coupure", null);
+    const texte = ["Connexion perdue. Modifications gardées.", attenteTexte].filter(Boolean).join(" ");
+    montrerBandeau("coupure", message({ texte, variante: "alerte", fort: true }));
+  }
   function dire({ texte, variante, fermable = false }) {
     const m = message({ texte, variante, fermable });
     montrerBandeau("message", m);
@@ -56,7 +62,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   }
 
   const shells = vueShells({ dire });
-  const editeur = vueEditeur({ dire });
+  const editeur = vueEditeur({ dire, surAttente: (t) => { attenteTexte = t; montrerCoupure(); } });
   const fichiers = vueFichiers({ dire, surOuvrir: editeur.ouvrir, surRenomme: editeur.renomme, surSupprime: editeur.supprime, surLecture: editeur.lecture });
   editeur.restaurer();
 
@@ -115,10 +121,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       if (nouvel === "expiree") return surExpiree();
       etat = nouvel;
       shells.definirEtat(nouvel);
-      if (nouvel === "coupe") {
-        montrerBandeau("coupure", message({ texte: "Connexion perdue. Modifications gardées.", variante: "alerte", fort: true }));
-      } else {
-        montrerBandeau("coupure", null);
+      montrerCoupure();
+      editeur.definirEtat(nouvel);
+      if (nouvel !== "coupe") {
         if (places.message?.textContent.includes(TEXTE_COUPURE)) montrerBandeau("message", null);
       }
     },

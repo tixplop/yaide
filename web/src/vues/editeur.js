@@ -1,4 +1,5 @@
 import { ecrireFichier, lireFichier } from "../api.js";
+import { decider, texteAttente } from "../brouillons.js";
 import { apresFermeture, estSous, garder, libelles, nomDe, retrouver, suivreRenommage } from "../onglets-fichiers.js";
 import { bouton } from "../ui/bouton.js";
 import { dialogue } from "../ui/dialogue.js";
@@ -9,13 +10,15 @@ import { onglets } from "../ui/onglets.js";
 import { zoneCode } from "../ui/zone-code.js";
 
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
+const DELAI_DETECTION = 4000;
 const estMarkdown = (chemin) => /\.(md|markdown)$/i.test(chemin);
 
 /**
  * Éditeur de V-002. `dire({ texte, variante, fermable })` affiche un bandeau ; `ouvrirRapide()` ouvre V-006.
- * Rend `{ barre, code, lecture(oui), ouvrir({ chemin, contenu, version }), renomme({ de, vers }), supprime({ chemin }), restaurer(), detruire() }`.
+ * `surAttente(texte)` : phrase des sauvegardes attendant le retour de la connexion (vide s'il n'y en a plus).
+ * Rend `{ barre, code, lecture(oui), definirEtat(etat), ouvrir(…), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
-export function vueEditeur({ dire, ouvrirRapide = () => {} }) {
+export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {} }) {
   const barre = document.createElement("div");
   const code = document.createElement("div");
   code.className = "editeur-code";
@@ -26,18 +29,29 @@ export function vueEditeur({ dire, ouvrirRapide = () => {} }) {
   let lectures = 1; // la restauration compte comme une lecture en cours
   let detruit = false;
   let minuteur = null;
+  let coupe = false;
+  const attente = new Set(); // onglets dont Ctrl+S attend le retour de la connexion
 
   const trouver = (chemin) => liste.find((o) => o.chemin === chemin);
 
   function garderListe() {
     if (!pret) return;
-    clearTimeout(minuteur);
+    if (minuteur) return; // un minuteur en cours n'est pas réarmé : une frappe continue est écrite en moins d'une seconde
     minuteur = setTimeout(() => {
-      garder(
-        liste.map((o) => ({ chemin: o.chemin, apercu: o.apercu, texte: o.modifie ? o.zone.contenu() : undefined })),
-        actif,
-      );
+      minuteur = null;
+      ecrireGarde();
     }, 200);
+  }
+
+  function ecrireGarde() {
+    garder(
+      liste.map((o) => ({ chemin: o.chemin, apercu: o.apercu, texte: o.modifie ? o.zone.contenu() : undefined, attente: attente.has(o) })),
+      actif,
+    );
+  }
+
+  function direAttente() {
+    surAttente(texteAttente([...attente].map((o) => nomDe(o.chemin))));
   }
 
   // ---- Affichage ----
@@ -157,6 +171,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {} }) {
     const i = liste.findIndex((o) => o.chemin === chemin);
     if (i < 0) return;
     const suivant = apresFermeture(ids, chemin);
+    if (attente.delete(liste[i])) direAttente();
     liste[i].zone.detruire();
     liste[i].zone.remove();
     liste.splice(i, 1);
@@ -188,9 +203,31 @@ export function vueEditeur({ dire, ouvrirRapide = () => {} }) {
     return null;
   }
 
+  function mettreEnAttente(o) {
+    attente.add(o);
+    direAttente();
+    garderListe();
+  }
+
+  /** Lance les Ctrl+S en attente. */
+  function executerAttente() {
+    const a = [...attente];
+    attente.clear();
+    direAttente();
+    for (const o of a) sauvegarderEtDire(o);
+  }
+
   async function sauvegarderEtDire(o) {
     const echec = await sauvegarder(o);
     if (!echec) return;
+    if (echec === TEXTE_COUPURE) {
+      mettreEnAttente(o);
+      // La coupure n'est pas encore détectée (ou le retour a été trop bref) : sans changement d'état, personne ne relancerait.
+      setTimeout(() => {
+        if (!detruit && !coupe && attente.has(o)) executerAttente();
+      }, DELAI_DETECTION);
+      return;
+    }
     o.alerte?.remove();
     o.alerte = dire({ texte: echec, variante: "alerte", fermable: true });
   }
@@ -240,27 +277,46 @@ export function vueEditeur({ dire, ouvrirRapide = () => {} }) {
     e.preventDefault();
     if (document.querySelector("[role=dialog], dialog[open]")) return;
     const o = trouver(actif);
-    if (o) sauvegarderEtDire(o);
+    if (!o) return;
+    if (coupe) mettreEnAttente(o);
+    else sauvegarderEtDire(o);
   };
   document.addEventListener("keydown", surTouche);
 
   // ---- Retour : onglets gardés ----
 
+  const attendre = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
+  /** Lit le fichier d'un onglet gardé ; tant que le serveur ne répond pas, on réessaie : rien n'est effacé. */
+  async function lireGarde(g) {
+    for (;;) {
+      const lecture = await lireFichier(g.chemin);
+      if (detruit || decider(g, lecture) !== "reessayer") return lecture;
+      await attendre(1500);
+    }
+  }
+
   async function restaurer() {
     const gardes = await retrouver();
-    const lus = await Promise.all(gardes.liste.map((g) => lireFichier(g.chemin)));
+    const lus = await Promise.all(gardes.liste.map(lireGarde));
     if (detruit) return;
     lectures--;
     gardes.liste.forEach((g, i) => {
       if (trouver(g.chemin)) return;
       const r = lus[i];
-      if (r.contenu !== undefined) creer({ chemin: g.chemin, contenu: r.contenu, version: r.version, texte: g.texte, apercu: Boolean(g.apercu) });
-      else if (r.cause === "introuvable" && typeof g.texte === "string") creer({ chemin: g.chemin, contenu: "", texte: g.texte, apercu: Boolean(g.apercu) });
+      const decision = decider(g, r);
+      const apercu = Boolean(g.apercu);
+      let o;
+      if (decision === "creer") o = creer({ chemin: g.chemin, contenu: r.contenu, version: r.version, texte: g.texte, apercu });
+      else if (decision === "recreer") o = creer({ chemin: g.chemin, contenu: "", texte: g.texte, apercu });
+      if (o && g.attente) attente.add(o);
     });
+    direAttente();
     if (!trouver(actif)) actif = trouver(gardes.actif) ? gardes.actif : (liste[0]?.chemin ?? null);
     pret = true;
     afficher();
     garderListe();
+    if (!coupe) executerAttente();
     if (actif && document.activeElement === document.body) trouver(actif).zone.vue.focus();
   }
 
@@ -273,6 +329,12 @@ export function vueEditeur({ dire, ouvrirRapide = () => {} }) {
       lectures = Math.max(0, lectures + (oui ? 1 : -1));
       afficher();
     },
+    /** "connecte" ou "coupe" : au retour, les Ctrl+S mis en attente s'exécutent. */
+    definirEtat(etat) {
+      coupe = etat === "coupe";
+      if (coupe) return;
+      executerAttente();
+    },
     ouvrir,
     renomme,
     supprime,
@@ -280,6 +342,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {} }) {
     detruire() {
       detruit = true;
       clearTimeout(minuteur);
+      if (pret) ecrireGarde(); // le texte tapé dans les dernières 200 ms n'est pas perdu
       document.removeEventListener("keydown", surTouche);
       for (const o of liste) o.zone.detruire();
     },
