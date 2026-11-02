@@ -131,3 +131,30 @@ textarea.champ-saisie { padding: var(--esp-2) var(--esp-3); }
 .dialogue-titre { margin: 0 0 var(--esp-4); font: var(--texte-sous-titre) var(--police-ui); font-family: var(--police-ui); font-weight: var(--graisse-forte); }
 .dialogue-contenu { display: flex; flex-direction: column; gap: var(--esp-3); }
 .dialogue-actions { display: flex; justify-content: flex-end; gap: var(--esp-2); margin-top: var(--esp-4); }
+
+.zone-code {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  background: var(--fond);
+  color: var(--texte);
+}
+.zone-code:focus-within { outline: var(--trait) solid var(--accent); outline-offset: calc(-1 * var(--trait)); }
+.zone-code-editeur { flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden; }
+.zone-code-avec-apercu .zone-code-editeur { flex: 0 0 50%; }
+.zone-code-apercu {
+  flex: 0 0 50%;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: auto;
+  padding: var(--esp-3);
+  border-left: var(--trait) solid var(--bordure);
+  font: var(--texte-lecture) var(--police-ui);
+  font-family: var(--police-ui);
+  color: var(--texte);
+}
+.zone-code-apercu h1 { font: var(--texte-titre) var(--police-ui); font-weight: var(--graisse-forte); }
+.zone-code-apercu h2 { font: var(--texte-sous-titre) var(--police-ui); font-weight: var(--graisse-forte); }
+.zone-code-apercu h3, .zone-code-apercu h4, .zone-code-apercu h5, .zone-code-apercu h6 { font: var(--texte-lecture) var(--police-ui); font-weight: var(--graisse-forte); }
+.zone-code-apercu a { color: var(--texte); text-decoration: underline; }
+.zone-code-apercu code, .zone-code-apercu pre { font-family: var(--police-code); background: var(--surface); }
