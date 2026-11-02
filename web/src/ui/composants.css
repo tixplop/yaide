@@ -158,3 +158,33 @@ textarea.champ-saisie { padding: var(--esp-2) var(--esp-3); }
 .zone-code-apercu h3, .zone-code-apercu h4, .zone-code-apercu h5, .zone-code-apercu h6 { font: var(--texte-lecture) var(--police-ui); font-weight: var(--graisse-forte); }
 .zone-code-apercu a { color: var(--texte); text-decoration: underline; }
 .zone-code-apercu code, .zone-code-apercu pre { font-family: var(--police-code); background: var(--surface); }
+
+.terminal { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--fond); }
+.terminal-attente { flex: 0 0 auto; background: var(--surface); color: var(--texte-attenue); font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); }
+.terminal-zone { flex: 1 1 0; min-height: 0; box-sizing: border-box; background: var(--fond); }
+.terminal-zone:focus-within { outline: var(--trait) solid var(--accent); outline-offset: calc(-1 * var(--trait)); }
+.terminal-zone .xterm { height: 100%; }
+
+body { margin: 0; }
+.cadre {
+  display: grid;
+  grid-template-rows: var(--hauteur-barre) minmax(0, 1fr);
+  grid-template-columns: var(--largeur-rail) var(--largeur-panneau) minmax(0, 1fr);
+  min-width: var(--largeur-min);
+  min-height: var(--hauteur-min);
+  height: 100vh;
+  background: var(--fond);
+  color: var(--texte);
+  font: var(--texte-base) var(--police-ui);
+  font-family: var(--police-ui);
+}
+.cadre-barre { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--esp-3); padding: 0 var(--esp-3); background: var(--surface); border-bottom: var(--trait) solid var(--bordure); }
+.cadre-rail { background: var(--surface); border-right: var(--trait) solid var(--bordure); }
+.cadre-panneau { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-right: var(--trait) solid var(--bordure); }
+.cadre-panneau-titre { margin: 0; padding: var(--esp-2) var(--esp-3); font: var(--texte-petit) var(--police-ui); font-family: var(--police-ui); font-weight: var(--graisse-forte); color: var(--texte-attenue); text-transform: uppercase; }
+.cadre-panneau-corps { flex: 1 1 0; min-height: 0; overflow: auto; }
+.cadre-panneau-pied { flex: 0 0 auto; border-top: var(--trait) solid var(--bordure); }
+.cadre-principal { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.cadre-bandeaux, .cadre-onglets, .cadre-question { flex: 0 0 auto; }
+.cadre-code { flex: 1 1 0; min-height: 0; }
+.cadre-shells { flex: 0 0 var(--part-shells); min-height: 0; border-top: var(--trait) solid var(--bordure); }
