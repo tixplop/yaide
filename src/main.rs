@@ -3,6 +3,7 @@ mod cli;
 mod config;
 mod depot;
 mod fichiers;
+mod git;
 mod serveur;
 mod shells;
 mod tls;

@@ -1,4 +1,4 @@
-use crate::{auth, config, fichiers, shells};
+use crate::{auth, config, fichiers, git, shells};
 use axum::body::Bytes;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{DefaultBodyLimit, Path as CheminUrl, Query, Request, State};
@@ -501,6 +501,127 @@ async fn versions_fichiers(State(etat): State<Partage>, corps: String) -> Respon
     }
 }
 
+fn json(code: StatusCode, corps: String) -> Response {
+    (code, [(header::CONTENT_TYPE, "application/json")], corps).into_response()
+}
+
+fn erreur_git(e: git::Erreur) -> Response {
+    use git::Erreur::*;
+    let (code, cause, message) = match e {
+        PasDepot => (
+            StatusCode::CONFLICT,
+            "pas-depot",
+            "Ce dossier n'est pas un dépôt git.".to_string(),
+        ),
+        AucunIndexe => (
+            StatusCode::CONFLICT,
+            "aucun-indexe",
+            "Aucun fichier indexé. Indexez au moins un fichier.".to_string(),
+        ),
+        MessageVide => (
+            StatusCode::BAD_REQUEST,
+            "message-vide",
+            "Écrivez un message de commit.".to_string(),
+        ),
+        Invalide(m) => (StatusCode::BAD_REQUEST, "invalide", m),
+        Git(m) => (StatusCode::CONFLICT, "git", m),
+    };
+    json(
+        code,
+        format!(
+            "{{\"cause\":\"{cause}\",\"message\":{}}}",
+            json_texte(&message)
+        ),
+    )
+}
+
+/// Exécute une opération git hors du fil asynchrone.
+async fn avec_git<T: Send + 'static>(
+    etat: &Etat,
+    f: impl FnOnce(&Path) -> Result<T, git::Erreur> + Send + 'static,
+) -> Result<T, git::Erreur> {
+    let projet = etat.projet_dir.clone();
+    tokio::task::spawn_blocking(move || f(&projet))
+        .await
+        .unwrap_or_else(|e| Err(git::Erreur::Git(e.to_string())))
+}
+
+async fn git_etat(State(etat): State<Partage>) -> Response {
+    match avec_git(&etat, git::etat).await {
+        Ok(e) => {
+            let branches: Vec<String> = e.branches.iter().map(|b| json_texte(b)).collect();
+            let changements: Vec<String> = e
+                .changements
+                .iter()
+                .map(|c| {
+                    format!(
+                        "{{\"chemin\":{},\"statut\":{},\"indexe\":{}}}",
+                        json_texte(&c.chemin),
+                        json_texte(c.statut),
+                        c.indexe
+                    )
+                })
+                .collect();
+            json(
+                StatusCode::OK,
+                format!(
+                    "{{\"branche\":{},\"branches\":[{}],\"changements\":[{}]}}",
+                    json_texte(&e.branche),
+                    branches.join(","),
+                    changements.join(",")
+                ),
+            )
+        }
+        Err(e) => erreur_git(e),
+    }
+}
+
+async fn git_diff(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let rel = param(&q, "chemin").to_string();
+    match avec_git(&etat, move |p| git::diff(p, &rel)).await {
+        Ok(d) => json(
+            StatusCode::OK,
+            format!(
+                "{{\"binaire\":{},\"trop_gros\":{},\"diff\":{}}}",
+                d.binaire,
+                d.trop_gros,
+                json_texte(&d.texte)
+            ),
+        ),
+        Err(e) => erreur_git(e),
+    }
+}
+
+fn fait(r: Result<(), git::Erreur>) -> Response {
+    match r {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => erreur_git(e),
+    }
+}
+
+async fn git_indexer(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let rel = param(&q, "chemin").to_string();
+    fait(avec_git(&etat, move |p| git::indexer(p, &rel)).await)
+}
+
+/// Corps : le message de commit, tel quel.
+async fn git_commit(State(etat): State<Partage>, message: String) -> Response {
+    fait(avec_git(&etat, move |p| git::commit(p, &message)).await)
+}
+
+async fn git_branche(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let nom = param(&q, "nom").to_string();
+    fait(avec_git(&etat, move |p| git::changer_branche(p, &nom)).await)
+}
+
+async fn git_pull(State(etat): State<Partage>) -> Response {
+    fait(avec_git(&etat, |p| git::synchroniser(p, "pull").map(|_| ())).await)
+}
+
+async fn git_push(State(etat): State<Partage>) -> Response {
+    fait(avec_git(&etat, |p| git::synchroniser(p, "push").map(|_| ())).await)
+}
+
 const INDEX: &[u8] = include_bytes!("../web/dist/index.html");
 const MAIN_JS: &[u8] = include_bytes!("../web/dist/main.js");
 
@@ -578,6 +699,13 @@ pub async fn servir(
         .route("/api/fichiers/creer", post(creer_fichier))
         .route("/api/fichiers/renommer", post(renommer_fichier))
         .route("/api/fichiers/versions", post(versions_fichiers))
+        .route("/api/git/etat", get(git_etat))
+        .route("/api/git/diff", get(git_diff))
+        .route("/api/git/indexer", post(git_indexer))
+        .route("/api/git/commit", post(git_commit))
+        .route("/api/git/branche", post(git_branche))
+        .route("/api/git/pull", post(git_pull))
+        .route("/api/git/push", post(git_push))
         .layer(middleware::from_fn_with_state(etat.clone(), garde))
         .with_state(etat);
     let serveur = axum_server::from_tcp_rustls(listener, tls).serve(app.into_make_service());

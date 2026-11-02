@@ -42,7 +42,7 @@ pub fn ignores(dossier: &Path, chemins: &[String]) -> HashSet<String> {
         .collect()
 }
 
-fn est_un_depot(dossier: &Path) -> bool {
+pub fn est_un_depot(dossier: &Path) -> bool {
     Command::new("git")
         .arg("-C")
         .arg(dossier)
