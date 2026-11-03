@@ -275,3 +275,101 @@ test("REQ023_AC6_clic_sur_une_action_de_ligne_desactivee_n_active_pas_la_ligne",
   l.querySelector(".liste-libelle").click();
   expect(surActiver).toHaveBeenCalledWith("a");
 });
+
+function avecMenu(lignes, surMenu) {
+  const l = liste({ variante: "arbre", lignes, surMenu });
+  document.body.append(l);
+  return l;
+}
+const clicDroit = (el, x = 10, y = 20) => {
+  const e = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 2 });
+  el.dispatchEvent(e);
+  return e;
+};
+const lignesMenu = [{ id: "a", libelle: "a.rs" }, { id: "b", libelle: "b.rs" }, { id: "c", libelle: "c.rs", sansMenu: true }];
+
+test("REQ034_AC1_clic_droit_marque_la_ligne_la_focalise_et_appelle_surMenu_sans_menu_du_navigateur", () => {
+  const surMenu = vi.fn();
+  const surActiver = vi.fn();
+  const l = liste({ variante: "arbre", lignes: lignesMenu, surMenu, surActiver });
+  document.body.append(l);
+  const [, b] = items(l);
+  const e = clicDroit(b, 33, 44);
+  expect(e.defaultPrevented).toBe(true);
+  expect(surMenu).toHaveBeenCalledTimes(1);
+  expect(surMenu).toHaveBeenCalledWith("b", { x: 33, y: 44 });
+  expect(b.getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement).toBe(b);
+  expect(surActiver).not.toHaveBeenCalled();
+});
+
+test("REQ034_AC14_lignes_avec_aria_haspopup_menu_sauf_sansMenu", () => {
+  const l = avecMenu(lignesMenu, vi.fn());
+  expect(items(l).map((x) => x.getAttribute("aria-haspopup"))).toEqual(["menu", "menu", null]);
+});
+
+test("REQ034_AC1_ligne_sansMenu_laisse_remonter_l_evenement_a_son_parent", () => {
+  const surMenu = vi.fn();
+  const l = avecMenu(lignesMenu, surMenu);
+  const parent = vi.fn();
+  document.body.addEventListener("contextmenu", parent, { once: true });
+  const e = clicDroit(items(l)[2]);
+  expect(parent).toHaveBeenCalledTimes(1);
+  expect(surMenu).not.toHaveBeenCalledWith("c", expect.anything());
+  expect(e.defaultPrevented).toBe(true);
+});
+
+test("REQ034_AC2_clic_droit_dans_la_partie_vide_appelle_surMenu_sans_ligne", () => {
+  const surMenu = vi.fn();
+  const l = avecMenu(lignesMenu, surMenu);
+  const e = clicDroit(l, 5, 6);
+  expect(e.defaultPrevented).toBe(true);
+  expect(surMenu).toHaveBeenCalledTimes(1);
+  expect(surMenu).toHaveBeenCalledWith(undefined, { x: 5, y: 6 });
+});
+
+test("REQ034_AC11_touches_Menu_et_Maj_F10_ouvrent_sous_le_nom_de_la_ligne", () => {
+  for (const init of [{ key: "ContextMenu" }, { key: "F10", shiftKey: true }]) {
+    const surMenu = vi.fn();
+    const l = avecMenu(lignesMenu, surMenu);
+    const [a] = items(l);
+    a.getBoundingClientRect = () => ({ left: 0, bottom: 48 });
+    a.querySelector(".liste-libelle").getBoundingClientRect = () => ({ left: 40 });
+    a.focus();
+    const e = new KeyboardEvent("keydown", { ...init, bubbles: true, cancelable: true });
+    a.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(surMenu).toHaveBeenCalledWith("a", { x: 40, y: 48 });
+    expect(a.getAttribute("aria-selected")).toBe("true");
+    l.remove();
+  }
+});
+
+test("REQ034_AC11_F10_sans_Maj_et_ligne_sansMenu_n_ouvrent_rien", () => {
+  const surMenu = vi.fn();
+  const l = avecMenu(lignesMenu, surMenu);
+  touche(items(l)[0], "F10");
+  items(l)[2].dispatchEvent(new KeyboardEvent("keydown", { key: "ContextMenu", bubbles: true }));
+  expect(surMenu).not.toHaveBeenCalled();
+});
+
+test("REQ034_AC11_une_seule_ouverture_si_contextmenu_suit_la_touche", () => {
+  const surMenu = vi.fn();
+  const l = avecMenu(lignesMenu, surMenu);
+  const [a] = items(l);
+  a.focus();
+  a.dispatchEvent(new KeyboardEvent("keydown", { key: "ContextMenu", bubbles: true, cancelable: true }));
+  a.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 0 }));
+  expect(surMenu).toHaveBeenCalledTimes(1);
+  // Un vrai clic droit (bouton 2) juste après la touche compte.
+  clicDroit(a);
+  expect(surMenu).toHaveBeenCalledTimes(2);
+});
+
+test("REQ034_AC1_menu_sans_surMenu_ou_en_variante_plate", () => {
+  const l = liste({ variante: "arbre", lignes: lignesMenu });
+  expect(items(l).map((x) => x.getAttribute("aria-haspopup"))).toEqual([null, null, null]);
+  const e = clicDroit(items(l)[0]);
+  expect(e.defaultPrevented).toBe(false);
+  expect(() => liste({ lignes: lignesMenu, surMenu: vi.fn() })).toThrow(/arbre/);
+});

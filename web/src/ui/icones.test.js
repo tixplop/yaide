@@ -6,7 +6,7 @@ import { NOMS, icone } from "./icones.js";
 
 const attendues = [
   "files", "search", "git-branch", "log-out", "file-plus", "folder-plus", "plus", "circle-plus", "pencil", "trash-2",
-  "eye", "x", "arrow-down-to-line", "arrow-up-from-line", "git-commit-horizontal", "folder", "file", "chevron-right", "chevron-down",
+  "eye", "x", "arrow-down-to-line", "arrow-up-from-line", "git-commit-horizontal", "folder", "file", "chevron-right", "chevron-down", "square-terminal", "square-x",
 ];
 
 test("REQ031_AC1_toutes_les_icones_du_design_system_existent", () => {

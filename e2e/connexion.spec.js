@@ -202,7 +202,7 @@ test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", 
   await page.setViewportSize({ width: 800, height: 480 });
   const boites = async () => {
     const r = (s) => page.locator(s).first().boundingBox();
-    return { barre: await r("header"), rail: await r("nav"), panneau: await r("aside"), principal: await r("main") };
+    return { barre: await r("header"), rail: await r(".cadre-rail"), panneau: await r("aside"), principal: await r("main") };
   };
   const b = await boites();
   expect(b.rail.x + b.rail.width).toBeLessThanOrEqual(b.panneau.x);
@@ -223,7 +223,7 @@ test("REQ028_AC9_un_chemin_long_ne_deborde_pas_de_la_barre_du_haut", async ({ pa
   const chemin = await page.locator(".barre-chemin").boundingBox();
   const sortir = await page.getByRole("button", { name: "Déconnexion" }).boundingBox();
   expect(chemin.x + chemin.width).toBeLessThanOrEqual(sortir.x);
-  const rail = await page.locator("nav").boundingBox();
+  const rail = await page.locator(".cadre-rail").boundingBox();
   expect(chemin.y).toBeGreaterThanOrEqual(0);
   expect(chemin.y + chemin.height).toBeLessThanOrEqual(rail.y);
   expect(sortir.x + sortir.width).toBeLessThanOrEqual(800);

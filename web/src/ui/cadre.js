@@ -9,13 +9,20 @@ function zone(balise, classe, contenu) {
 
 const px = (n) => `${Math.round(n)}px`;
 
-/** `tailles` : { panneau, shells } en pixels ; `surChangement(zone, taille)` et `surFin(zone, taille)` viennent des poignées. */
-export function cadre({ barreHaut, rail, panneau = {}, principal = {}, tailles = {}, surChangement, surFin } = {}) {
+/** `rail` : { onglets, commandes } ; `tailles` : { panneau, shells } en pixels ; `surChangement(zone, taille)` et `surFin(zone, taille)` viennent des poignées. */
+export function cadre({ barreHaut, rail = {}, panneau = {}, principal = {}, tailles = {}, surChangement, surFin } = {}) {
   const racine = zone("div", "cadre");
 
   const haut = zone("header", "cadre-barre", barreHaut);
-  const nav = zone("nav", "cadre-rail", rail);
+  const nav = zone("nav", "cadre-rail-onglets", rail.onglets);
   nav.setAttribute("aria-label", "Panneaux");
+  const colonne = zone("div", "cadre-rail", nav);
+  if (rail.commandes?.length) {
+    const groupe = zone("div", "cadre-rail-commandes", rail.commandes);
+    groupe.setAttribute("role", "group");
+    groupe.setAttribute("aria-label", "Shells");
+    colonne.append(groupe);
+  }
 
   const aside = zone("aside", "cadre-panneau");
   if (panneau.titre) {
@@ -50,7 +57,7 @@ export function cadre({ barreHaut, rail, panneau = {}, principal = {}, tailles =
     zone("div", "cadre-shells", principal.shells),
   );
 
-  racine.append(haut, nav, aside, poignees.panneau, main);
+  racine.append(haut, colonne, aside, poignees.panneau, main);
 
   // Pose la taille affichée ; sans taille choisie, les tokens `--largeur-panneau` et `--part-shells` s'appliquent.
   racine.definirTailles = ({ panneau: p, shells: s } = {}) => {

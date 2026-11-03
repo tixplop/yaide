@@ -10,10 +10,11 @@ function decouper(texte, [debut, fin]) {
   return [c.slice(0, debut).join(""), c.slice(debut, fin).join(""), c.slice(fin).join("")];
 }
 
-export function liste({ variante = "plate", lignes, selection, pilotage = "focus", champ, surActiver, surBasculer }) {
+export function liste({ variante = "plate", lignes, selection, pilotage = "focus", champ, surActiver, surBasculer, surMenu }) {
   if (!VARIANTES.includes(variante)) throw new Error(`liste : variante inconnue « ${variante} »`);
   if (pilotage === "champ" && !champ) throw new Error("liste : champ requis avec pilotage « champ »");
   for (const l of lignes) if (!l.libelle) throw new Error("liste : libelle requis");
+  if (surMenu && variante !== "arbre") throw new Error("liste : surMenu demande la variante « arbre »");
   const n = ++compteur;
   const arbre = variante === "arbre";
   const racine = document.createElement("div");
@@ -49,6 +50,16 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     if (arbre) {
       e.setAttribute("aria-level", String((l.niveau ?? 0) + 1));
       if (l.enfants) e.setAttribute("aria-expanded", String(Boolean(l.ouvert)));
+    }
+    if (surMenu && !l.sansMenu) {
+      e.setAttribute("aria-haspopup", "menu");
+      e.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        if (ignorerContextmenu(ev)) return;
+        marquer(l.id);
+        e.focus();
+        surMenu(l.id, { x: ev.clientX, y: ev.clientY });
+      });
     }
     if (l.actionLigne) {
       const a = l.actionLigne;
@@ -121,6 +132,25 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     }
   }
 
+  // Le navigateur envoie aussi `contextmenu` après la touche Menu ou Maj+F10 : une seule ouverture.
+  let cleRecente = false;
+  let minuteur;
+  function ignorerContextmenu(ev) {
+    return cleRecente && ev.button !== 2;
+  }
+  if (surMenu) {
+    racine.addEventListener("pointerdown", () => {
+      cleRecente = false;
+    });
+    // Partie vide de la liste : la ligne est absente. Une ligne qui a déjà traité l'événement l'a annulé.
+    racine.addEventListener("contextmenu", (ev) => {
+      if (ev.defaultPrevented) return;
+      ev.preventDefault();
+      if (ignorerContextmenu(ev)) return;
+      surMenu(undefined, { x: ev.clientX, y: ev.clientY });
+    });
+  }
+
   const ids = donnees.map((l) => l.id);
   // Retourne true si la touche a été traitée.
   function touche(e, id) {
@@ -130,7 +160,19 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     else if (e.key === "ArrowUp") cible = ids[Math.max(i - 1, 0)];
     else if (e.key === "Home") cible = ids[0];
     else if (e.key === "End") cible = ids[ids.length - 1];
-    else if (pilotage === "focus" && donnees[i].actionLigne?.touche?.toLowerCase() === e.key.toLowerCase()) {
+    else if (surMenu && !donnees[i].sansMenu && (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey))) {
+      e.preventDefault();
+      cleRecente = true;
+      clearTimeout(minuteur);
+      minuteur = setTimeout(() => (cleRecente = false), 500);
+      marquer(id);
+      const el = elements.get(id);
+      el.focus();
+      const r = el.getBoundingClientRect();
+      const nom = el.querySelector(".liste-libelle").getBoundingClientRect();
+      surMenu(id, { x: nom.left, y: r.bottom });
+      return;
+    } else if (pilotage === "focus" && donnees[i].actionLigne?.touche?.toLowerCase() === e.key.toLowerCase()) {
       e.preventDefault();
       donnees[i].actionLigne.surClic?.(id);
       return;

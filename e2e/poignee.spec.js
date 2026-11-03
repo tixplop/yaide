@@ -21,7 +21,7 @@ window.monter = (avecTailles = true) => {
   code.textContent = "code";
   const choisies = avecTailles ? { panneau: 240, shells: 200 } : {};
   const c = cadre({
-    barreHaut: "haut", rail: "rail",
+    barreHaut: "haut", rail: { onglets: "rail" },
     panneau: { titre: "Fichiers", corps: document.createElement("p") },
     principal: { code, shells: t },
     tailles: avecTailles ? { ...choisies } : undefined,

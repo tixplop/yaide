@@ -98,7 +98,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   let detruite = false;
   const racine = cadre({
     barreHaut: [nom, lieu, droite],
-    rail,
+    rail: { onglets: rail },
     panneau: { titre: "Fichiers", corps: [fichiers.corps, recherche.corps, git.corps], pied: [fichiers.pied, git.pied] },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, code: editeur.code, shells },
     surChangement: (zone, taille) => {

@@ -93,6 +93,9 @@ test("REQ033_AC6_contrastes_icone_et_poignee_des_paires_nouvelles", () => {
   verifie("--icone-dossier", hautes, 3);
   for (const c of ["--succes", "--erreur", "--bordure-champ"]) verifie(c, hautes, 3);
   verifie("--texte-attenue", ["--surface-haute"], 3);
+  verifie("--succes", ["--fond-rail"], 3);
+  verifie("--erreur", ["--fond-rail"], 3);
+  verifie("--bordure-champ", ["--fond-rail"], 3);
   verifie("--bordure-champ", messages, 3);
 });
 
@@ -102,6 +105,9 @@ test("REQ033_AC6_valeurs_du_tableau_des_contrastes_nouveaux", () => {
   expect(ratio("--statut-conflit", "--surface")).toBe(8.0);
   expect(ratio("--icone-naviguer", "--message-erreur")).toBe(8.5);
   expect(ratio("--bordure-champ", "--message-succes")).toBe(3.3);
+  expect(ratio("--succes", "--fond-rail")).toBe(9.1);
+  expect(ratio("--erreur", "--fond-rail")).toBe(7.7);
+  expect(ratio("--bordure-champ", "--fond-rail")).toBe(5.2);
 });
 
 test("REQ033_AC8_fonds_distincts_et_tokens_de_dimension_nouveaux", () => {
@@ -109,6 +115,7 @@ test("REQ033_AC8_fonds_distincts_et_tokens_de_dimension_nouveaux", () => {
   expect(new Set(fonds).size).toBe(4);
   expect(t["--epaisseur-poignee"]).toBe("8px");
   expect(t["--pas-poignee"]).toBe("16px");
+  expect(t["--largeur-menu-min"]).toBe("180px");
   expect(t["--taille-icone"]).toBe("16px");
   expect(t["--taille-icone-rail"]).toBe("20px");
   expect(t["--taille-icone-petite"]).toBe("14px");

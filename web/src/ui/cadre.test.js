@@ -14,7 +14,7 @@ const p = (texte) => Object.assign(document.createElement("p"), { textContent: t
 function monter() {
   const c = cadre({
     barreHaut: [p("haut")],
-    rail: p("rail"),
+    rail: { onglets: p("rail"), commandes: [p("cmd")] },
     panneau: { titre: "Fichiers", corps: p("corps"), pied: p("pied") },
     principal: { bandeaux: p("bandeau"), ongletsFichiers: p("of"), questionOnglet: p("q"), code: p("code"), shells: p("shells") },
   });
@@ -26,6 +26,7 @@ test("REQ028_AC4_zones_semantiques_header_nav_aside_main", () => {
   const c = monter();
   expect(c.querySelector("header").textContent).toBe("haut");
   expect(c.querySelector('nav[aria-label="Panneaux"]').textContent).toBe("rail");
+  expect(c.querySelector(".cadre-rail").tagName).toBe("DIV");
   expect(c.querySelector("aside").textContent).toContain("corps");
   expect(c.querySelector("main").textContent).toContain("shells");
 });
@@ -33,7 +34,7 @@ test("REQ028_AC4_zones_semantiques_header_nav_aside_main", () => {
 test("REQ028_AC8_ordre_dom_barre_rail_panneau_principal_puis_onglets_code_shells", () => {
   const c = monter();
   const noms = [...c.children].map((e) => e.tagName.toLowerCase());
-  expect(noms).toEqual(["header", "nav", "aside", "div", "main"]);
+  expect(noms).toEqual(["header", "div", "aside", "div", "main"]);
   expect(c.children[3].getAttribute("aria-label")).toBe("Largeur du panneau");
   const textes = [...c.querySelector("main").children].map((e) => e.textContent);
   expect(textes).toEqual(["bandeau", "of", "q", "code", "", "shells"]);
@@ -83,20 +84,20 @@ test("REQ032_AC2_poignees_du_cadre_et_taille_affichee_posee_par_definirTailles",
 
 test("REQ032_AC1_les_poignees_du_cadre_transmettent_changement_et_fin", () => {
   const evts = [];
-  const c = cadre({ barreHaut: p("h"), rail: p("r"), tailles: { panneau: 240, shells: 200 }, surChangement: (z, t) => evts.push(["c", z, t]), surFin: (z, t) => evts.push(["f", z, t]) });
+  const c = cadre({ barreHaut: p("h"), rail: { onglets: p("r") }, tailles: { panneau: 240, shells: 200 }, surChangement: (z, t) => evts.push(["c", z, t]), surFin: (z, t) => evts.push(["f", z, t]) });
   c.poignees.panneau.definir({ min: 160, max: 436 });
   c.poignees.panneau.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
   expect(evts).toEqual([["c", "panneau", 256], ["f", "panneau", 256]]);
 });
 
 test("REQ028_AC2_panneau_sans_titre_ni_pied_n_ajoute_rien", () => {
-  const c = cadre({ barreHaut: p("h"), rail: p("r") });
+  const c = cadre({ barreHaut: p("h"), rail: { onglets: p("r") } });
   expect(c.querySelector("h2")).toBeNull();
   expect(c.querySelector(".cadre-panneau-pied")).toBeNull();
 });
 
 test("REQ032_AC7_sans_taille_choisie_mesurer_pose_la_taille_mesuree_sans_ecrire_les_tokens", () => {
-  const c = cadre({ barreHaut: p("h"), rail: p("r") });
+  const c = cadre({ barreHaut: p("h"), rail: { onglets: p("r") } });
   document.body.append(c);
   Object.defineProperty(c.querySelector("aside"), "offsetWidth", { value: 240 });
   Object.defineProperty(c.querySelector(".cadre-shells"), "offsetHeight", { value: 245 });
@@ -105,4 +106,21 @@ test("REQ032_AC7_sans_taille_choisie_mesurer_pose_la_taille_mesuree_sans_ecrire_
   expect(c.poignees.shells.getAttribute("aria-valuenow")).toBe("245");
   expect(c.style.getPropertyValue("--taille-panneau")).toBe("");
   expect(c.style.getPropertyValue("--taille-shells")).toBe("");
+});
+
+test("REQ028_AC12_rail_nav_en_haut_et_groupe_Shells_en_bas", () => {
+  const c = monter();
+  const rail = c.querySelector(".cadre-rail");
+  expect([...rail.children].map((e) => e.tagName)).toEqual(["NAV", "DIV"]);
+  const g = rail.querySelector('[role="group"]');
+  expect(g.getAttribute("aria-label")).toBe("Shells");
+  expect(g.textContent).toBe("cmd");
+  expect(regle(".cadre-rail")).toContain("flex-direction: column");
+  expect(regle(".cadre-rail-commandes")).toContain("gap: var(--esp-2)");
+  expect(regle(".cadre-rail-commandes")).toContain("padding-bottom: var(--esp-3)");
+});
+
+test("REQ028_AC12_sans_commandes_pas_de_groupe", () => {
+  const c = cadre({ barreHaut: p("h"), rail: { onglets: p("r") } });
+  expect(c.querySelector('[role="group"]')).toBeNull();
 });

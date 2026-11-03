@@ -87,7 +87,7 @@ test("REQ028_AC9_a_800_par_480_les_zones_du_cadre_ne_se_superposent_pas", async 
   await page.evaluate(() => {
     const t = (balise, texte) => Object.assign(document.createElement(balise), { textContent: texte });
     document.body.replaceChildren(
-      window.cadre({ barreHaut: t("span", "haut"), rail: t("span", "rail"), panneau: { titre: "Fichiers", corps: t("p", "corps") }, principal: { ongletsFichiers: t("div", "onglets"), code: t("div", "code"), shells: t("div", "shells") } }),
+      window.cadre({ barreHaut: t("span", "haut"), rail: { onglets: t("span", "rail") }, panneau: { titre: "Fichiers", corps: t("p", "corps") }, principal: { ongletsFichiers: t("div", "onglets"), code: t("div", "code"), shells: t("div", "shells") } }),
     );
   });
   const boite = async (sel) => page.locator(sel).first().boundingBox();

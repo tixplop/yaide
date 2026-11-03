@@ -215,7 +215,9 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
   font-family: var(--police-ui);
 }
 .cadre-barre { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--esp-3); padding: 0 var(--esp-3); background: var(--surface); border-bottom: var(--trait) solid var(--bordure); }
-.cadre-rail { background: var(--fond-rail); border-right: var(--trait) solid var(--bordure); }
+.cadre-rail { display: flex; flex-direction: column; min-height: 0; background: var(--fond-rail); border-right: var(--trait) solid var(--bordure); }
+.cadre-rail-onglets { flex: 1 1 auto; min-height: 0; }
+.cadre-rail-commandes { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: var(--esp-2); padding-bottom: var(--esp-3); }
 .cadre-panneau { display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
 .cadre-panneau-titre { margin: 0; padding: var(--esp-2) var(--esp-3); font: var(--texte-petit) var(--police-ui); font-family: var(--police-ui); font-weight: var(--graisse-forte); color: var(--texte-attenue); text-transform: uppercase; }
 .cadre-panneau-corps { flex: 1 1 0; min-height: 0; overflow: auto; }
@@ -281,3 +283,28 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 }
 .bouton-enveloppe { display: inline-flex; }
 .bouton-enveloppe > :disabled { pointer-events: none; }
+
+/* C-013 : menu */
+.menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  box-sizing: border-box;
+  min-width: var(--largeur-menu-min);
+  padding: var(--esp-2) 0;
+  background: var(--surface);
+  color: var(--texte);
+  border: var(--trait) solid var(--bordure-champ);
+  border-radius: var(--rayon-petit);
+  box-shadow: var(--ombre-dialogue);
+  font: var(--texte-base) var(--police-ui);
+  font-family: var(--police-ui);
+}
+.menu-commande { display: flex; align-items: center; gap: var(--esp-3); height: var(--hauteur-ligne); padding: 0 var(--esp-3); cursor: default; white-space: nowrap; }
+.menu-commande:hover, .menu-commande:focus { background: var(--surface-haute); }
+.menu-commande:focus-visible { outline: var(--trait-fort) solid var(--accent); outline-offset: calc(-1 * var(--trait-fort)); }
+.menu-icone { flex: none; display: inline-flex; }
+.menu-icone svg { width: var(--taille-icone); height: var(--taille-icone); }
+.menu-libelle { flex: 1 1 auto; }
+.menu-touche { margin-left: var(--esp-5); color: var(--texte-attenue); font: var(--texte-petit) var(--police-ui); font-family: var(--police-ui); }
+.menu-separateur { height: 0; margin: var(--esp-2) 0; border-top: var(--trait) solid var(--bordure); }
