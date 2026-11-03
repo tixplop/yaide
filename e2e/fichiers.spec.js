@@ -114,7 +114,7 @@ test("REQ007_AC7_projet_vide", async ({ page }) => {
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "projet") });
   await ouvrirYaide(page, yaide.origine);
   await expect(page.getByText("Dossier vide.")).toBeVisible();
-  await page.getByRole("button", { name: "Nouveau fichier" }).click();
+  await page.locator(".fichiers").getByRole("button", { name: "Nouveau fichier" }).click();
   await expect(page.getByRole("dialog", { name: "Nouveau fichier" })).toBeVisible();
 });
 
@@ -129,7 +129,7 @@ test("REQ007_la_relecture_au_clic_montre_ce_qui_est_cree_hors_de_yaide", async (
 
 test("REQ009_AC5_boutons_du_panneau_et_etat_sans_selection", async ({ page }) => {
   await ouvrir(page);
-  for (const nom of ["+ Fichier", "+ Dossier", "Renommer", "Supprimer"]) await expect(page.getByRole("button", { name: nom })).toBeVisible();
+  for (const nom of ["Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer"]) await expect(page.getByRole("button", { name: nom })).toBeVisible();
   await expect(page.getByRole("button", { name: "Renommer" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Supprimer" })).toBeDisabled();
   await ligne(page, "a.txt").click();
@@ -140,7 +140,7 @@ test("REQ009_AC5_boutons_du_panneau_et_etat_sans_selection", async ({ page }) =>
 test("REQ009_AC1_creer_un_fichier_et_un_dossier_chemin_prérempli_avec_le_dossier_selectionne", async ({ page }) => {
   const dossier = await ouvrir(page);
   await ligne(page, "src").click();
-  await page.getByRole("button", { name: "+ Fichier" }).click();
+  await page.getByRole("button", { name: "Nouveau fichier" }).click();
   const dlg = page.getByRole("dialog", { name: "Nouveau fichier" });
   await expect(dlg.getByLabel("Chemin")).toHaveValue("src/");
   await expect(dlg.getByLabel("Chemin")).toBeFocused();
@@ -153,7 +153,7 @@ test("REQ009_AC1_creer_un_fichier_et_un_dossier_chemin_prérempli_avec_le_dossie
   expect(fs.existsSync(path.join(dossier, "src", "neuf.rs"))).toBe(true);
 
   await ligne(page, "a.txt").click();
-  await page.getByRole("button", { name: "+ Dossier" }).click();
+  await page.getByRole("button", { name: "Nouveau dossier" }).click();
   const dlg2 = page.getByRole("dialog", { name: "Nouveau dossier" });
   await expect(dlg2.getByLabel("Chemin")).toHaveValue("");
   await page.keyboard.type("outils");
@@ -198,7 +198,7 @@ test("REQ009_AC4_et_AC7_nom_deja_pris_le_dialogue_reste_ouvert", async ({ page }
   expect(fs.existsSync(path.join(dossier, "a.txt"))).toBe(true);
 
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "+ Fichier" }).click();
+  await page.getByRole("button", { name: "Nouveau fichier" }).click();
   await page.getByLabel("Chemin").fill("notes.txt");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("alert").filter({ hasText: "Ce nom est déjà pris." })).toBeVisible();
@@ -219,7 +219,7 @@ test("REQ009_AC6_F2_champ_rempli_Echap_rend_le_focus_a_la_ligne", async ({ page 
 
 test("REQ009_erreurs_du_champ_vide_et_chemin_hors_projet", async ({ page }) => {
   await ouvrir(page);
-  await page.getByRole("button", { name: "+ Fichier" }).click();
+  await page.getByRole("button", { name: "Nouveau fichier" }).click();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("alert").filter({ hasText: "Indiquez un chemin." })).toBeVisible();
   await page.getByLabel("Chemin").fill("../dehors.txt");
@@ -250,7 +250,7 @@ test("REQ010_apres_la_derniere_suppression_le_focus_va_sur_Fichier", async ({ pa
   await page.getByRole("button", { name: "Supprimer" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
   await expect(page.getByText("Dossier vide.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "+ Fichier" })).toBeFocused();
+  await expect(page.locator(".fichiers-pied").getByRole("button", { name: "Nouveau fichier" })).toBeFocused();
 });
 
 test("REQ010_AC2_et_AC4_annuler_et_Echap_ne_changent_rien", async ({ page }) => {

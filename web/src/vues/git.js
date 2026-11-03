@@ -8,6 +8,8 @@ import { message } from "../ui/message.js";
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const nomDe = (chemin) => chemin.split("/").pop();
 
+const COULEUR_STATUT = { modifié: "statut-modifie", nouveau: "statut-nouveau", supprimé: "erreur", renommé: "statut-renomme", conflit: "statut-conflit", indexé: "succes" };
+
 /**
  * V-005. Rappels : `surBranche({ branche, detachee } | null)`, `surDiff({ chemin, texte, avis })`,
  * `diffOuvert()` (chemin du diff ouvert ou null), `fermerDiff()`, `surDisque()` (le disque a peut-être changé).
@@ -114,7 +116,8 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
         id: c.chemin,
         libelle: c.chemin,
         secondaire: c.statut,
-        couleurSecondaire: c.statut === "indexé" ? "succes" : undefined,
+        couleurSecondaire: COULEUR_STATUT[c.statut],
+        secondaireFort: c.statut === "conflit",
         actionLigne: c.indexe ? undefined : { icone: "circle-plus", couleurIcone: "creer", nomAccessible: `Indexer ${nomDe(c.chemin)}`, infoBulle: "Indexer", touche: "I", surClic: indexer },
       }));
       contenu = liste({ lignes, selection: diffOuvert() ?? selection ?? undefined, surActiver: ouvrirDiff });
@@ -130,23 +133,24 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
   }
 
   function afficherActions() {
-    const faire = (nom, variante, libelle, clic) => {
-      const b = bouton({ libelle, variante, desactive: occupe, ...(enCours === nom ? { libelleEnCours: `${nom}…` } : {}) });
+    const faire = (nom, variante, icone, couleurIcone, raccourci, touche, clic) => {
+      const b = bouton({ icone, couleurIcone, variante, nomAccessible: nom, raccourci, touche, desactive: occupe, ...(enCours === nom ? { libelleEnCours: `${nom}…` } : {}) });
       b.addEventListener("click", clic);
-      return b;
+      return b.enveloppe;
     };
     actions.replaceChildren(
-      faire("Commit", "principal", "Commit", valider),
-      faire("Pull", "secondaire", "Pull", () => synchroniser("Pull", gitPull)),
-      faire("Push", "secondaire", "Push", () => synchroniser("Push", gitPush)),
+      faire("Commit", "principal", "git-commit-horizontal", "naviguer", "Ctrl+Entrée", "Control+Enter", valider),
+      faire("Pull", "secondaire", "arrow-down-to-line", "distant", undefined, undefined, () => synchroniser("Pull", gitPull)),
+      faire("Push", "secondaire", "arrow-up-from-line", "distant", undefined, undefined, () => synchroniser("Push", gitPush)),
     );
   }
 
   /** Fonction qui redonne le focus au contrôle qui l'a maintenant, même s'il est refait entre-temps. */
   function retenirFocus() {
     const f = document.activeElement;
-    const rang = [...actions.children].indexOf(f);
-    if (rang >= 0) return () => actions.children[rang].focus();
+    // Les enfants de `actions` sont des enveloppes : on compte et on focalise les boutons qu'elles contiennent.
+    const rang = [...actions.querySelectorAll("button")].indexOf(f);
+    if (rang >= 0) return () => actions.querySelectorAll("button")[rang]?.focus();
     if (f?.tagName === "SELECT" && corps.contains(f)) return () => corps.querySelector("select")?.focus();
     if (f === saisie()) return () => saisie().focus();
     return () => {};

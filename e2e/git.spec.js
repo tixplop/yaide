@@ -261,7 +261,8 @@ test("REQ025_AC4_pendant_la_commande_le_bouton_est_occupe_et_les_autres_desactiv
   await ouvrir(page, dossier);
   await panneauGit(page);
   await page.getByRole("button", { name: "Push" }).click();
-  const occupe = page.getByRole("button", { name: "Push…" });
+  const occupe = page.getByRole("button", { name: "Push" });
+  await expect(occupe).toHaveText("Push…");
   await expect(occupe).toBeDisabled();
   await expect(occupe).toHaveAttribute("aria-busy", "true");
   await expect(page.getByRole("button", { name: "Pull" })).toBeDisabled();

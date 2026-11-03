@@ -42,11 +42,11 @@ export function vueFichiers({ dire, surOuvrir = () => {}, surRenomme = () => {},
   let selection = null;
   let detruit = false;
 
-  const bFichier = bouton({ libelle: "+ Fichier", variante: "discret" });
-  const bDossier = bouton({ libelle: "+ Dossier", variante: "discret" });
-  const bRenommer = bouton({ libelle: "Renommer", variante: "discret", titre: "Renommer ou déplacer (F2)" });
-  const bSupprimer = bouton({ libelle: "Supprimer", variante: "discret", titre: "Supprimer (Suppr)" });
-  pied.append(bFichier, bDossier, bRenommer, bSupprimer);
+  const bFichier = bouton({ icone: "file-plus", couleurIcone: "creer", variante: "discret", nomAccessible: "Nouveau fichier" });
+  const bDossier = bouton({ icone: "folder-plus", couleurIcone: "creer", variante: "discret", nomAccessible: "Nouveau dossier" });
+  const bRenommer = bouton({ icone: "pencil", variante: "discret", nomAccessible: "Renommer", infoBulle: "Renommer ou déplacer", raccourci: "F2" });
+  const bSupprimer = bouton({ icone: "trash-2", couleurIcone: "supprimer", variante: "discret", nomAccessible: "Supprimer", raccourci: "Suppr", touche: "Delete" });
+  pied.append(bFichier.enveloppe, bDossier.enveloppe, bRenommer.enveloppe, bSupprimer.enveloppe);
 
   function majBoutons() {
     bRenommer.disabled = bSupprimer.disabled = selection === null;

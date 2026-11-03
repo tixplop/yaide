@@ -43,7 +43,7 @@ async function monter(reponses = {}, options = {}) {
   return { vue, appels, ...rappels };
 }
 
-const bouton = (vue, nom) => [...vue.pied.querySelectorAll("button")].find((b) => b.textContent.startsWith(nom));
+const bouton = (vue, nom) => [...vue.pied.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === nom);
 
 test("REQ022_AC6_chaque_ligne_affiche_son_statut_en_mots", async () => {
   const { vue } = await monter();
@@ -103,7 +103,7 @@ test("REQ023_AC6_bouton_plus_selon_indexe_nom_accessible_et_touche_I", async () 
   expect(plus.querySelector("svg").getAttribute("data-icone")).toBe("circle-plus");
   expect(plus.classList.contains("bouton-icone-creer")).toBe(true);
   expect(a.querySelector(".liste-secondaire").style.getPropertyValue("--couleur-secondaire")).toBe("var(--succes)");
-  expect(b.querySelector(".liste-secondaire").style.getPropertyValue("--couleur-secondaire")).toBe("");
+  expect(b.querySelector(".liste-secondaire").style.getPropertyValue("--couleur-secondaire")).toBe("var(--statut-renomme)");
   vi.useFakeTimers();
   plus.parentElement.dispatchEvent(new Event("pointerenter"));
   vi.advanceTimersByTime(400);
@@ -198,7 +198,9 @@ test("REQ025_AC4_pendant_le_pull_bouton_occupe_et_autres_actions_desactivees_pui
   let fin;
   const { vue } = await monter({ "/api/git/pull": () => new Promise((r) => (fin = r)) });
   bouton(vue, "Pull").click();
-  const pull = bouton(vue, "Pull…");
+  const pull = bouton(vue, "Pull");
+  expect(pull.textContent).toBe("Pull…");
+  expect(pull.querySelector("svg")).toBeTruthy();
   expect(pull.getAttribute("aria-busy")).toBe("true");
   expect(pull.disabled).toBe(true);
   expect(bouton(vue, "Push").disabled).toBe(true);
@@ -312,4 +314,34 @@ test("REQ025_AC4_le_focus_reste_sur_la_branche_quand_une_ligne_est_ouverte", asy
   await attendre();
   await attendre();
   expect(document.activeElement).toBe(vue.corps.querySelector("select"));
+});
+
+test("REQ031_AC1_commit_pull_push_sont_des_icones_sans_texte_avec_leur_info_bulle", async () => {
+  const { vue } = await monter();
+  for (const [nom, info] of [["Commit", "Commit (Ctrl+Entrée)"], ["Pull", "Pull"], ["Push", "Push"]]) {
+    const b = bouton(vue, nom);
+    expect(b.textContent).toBe("");
+    expect(b.querySelector("svg")).toBeTruthy();
+    expect(b.hasAttribute("title")).toBe(false);
+    b.focus();
+    expect(document.querySelector("[role=tooltip]").textContent).toBe(info);
+    b.blur();
+  }
+});
+
+test("REQ033_AC2_AC9_chaque_statut_a_son_token_et_conflit_est_en_graisse_forte", async () => {
+  const statuts = ["modifié", "nouveau", "supprimé", "renommé", "conflit", "indexé"];
+  const etat = { ...ETAT, changements: statuts.map((statut) => ({ chemin: `${statut}.txt`, statut, indexe: statut === "indexé" })) };
+  const { vue } = await monter({ "/api/git/etat": etat });
+  const mots = [...vue.corps.querySelectorAll(".liste-secondaire")];
+  expect(mots.map((m) => m.textContent)).toEqual(statuts);
+  expect(mots.map((m) => m.style.getPropertyValue("--couleur-secondaire"))).toEqual(
+    ["statut-modifie", "statut-nouveau", "erreur", "statut-renomme", "statut-conflit", "succes"].map((t) => `var(--${t})`),
+  );
+  expect(mots.map((m) => m.classList.contains("liste-secondaire-fort"))).toEqual([false, false, false, false, true, false]);
+});
+
+test("REQ031_AC4_raccourcis_aria_valides_pour_commit", async () => {
+  const { vue } = await monter();
+  expect(bouton(vue, "Commit").getAttribute("aria-keyshortcuts")).toBe("Control+Enter");
 });

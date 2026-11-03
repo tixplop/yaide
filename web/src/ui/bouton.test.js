@@ -13,10 +13,10 @@ test("REQ028_AC3_bouton_secondaire_par_defaut_et_variantes", () => {
   expect(bouton({ libelle: "x", variante: "discret" }).classList.contains("bouton-discret")).toBe(true);
 });
 
-test("REQ028_AC3_bouton_titre_nom_accessible_et_desactive", () => {
-  const b = bouton({ libelle: "+", nomAccessible: "Nouveau shell", titre: "Nouveau shell", desactive: true });
+test("REQ028_AC3_bouton_nom_accessible_et_desactive", () => {
+  const b = bouton({ libelle: "+", nomAccessible: "Nouveau shell", desactive: true });
   expect(b.getAttribute("aria-label")).toBe("Nouveau shell");
-  expect(b.title).toBe("Nouveau shell");
+  expect(b.hasAttribute("title")).toBe(false);
   expect(b.disabled).toBe(true);
 });
 
@@ -156,4 +156,9 @@ test("REQ031_AC7_bouton_principal_a_icone_en_cours_reste_visible_sur_fond_transp
   expect(b.querySelector(".bouton-en-cours")).not.toBeNull();
   expect(regle(".bouton-principal.bouton-icone:has(.bouton-en-cours):disabled")).toContain("color: var(--icone-naviguer)");
   expect(css.indexOf(".bouton-principal.bouton-icone:has(.bouton-en-cours):disabled")).toBeGreaterThan(css.indexOf(".bouton-principal.bouton-icone,"));
+});
+
+test("REQ031_AC4_touche_distincte_du_texte_de_l_info_bulle", () => {
+  const b = bouton({ icone: "trash-2", nomAccessible: "Supprimer", raccourci: "Suppr", touche: "Delete" });
+  expect(b.getAttribute("aria-keyshortcuts")).toBe("Delete");
 });

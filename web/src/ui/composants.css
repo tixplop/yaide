@@ -243,7 +243,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .terminal[hidden] { display: none; }
 .zone-code[hidden] { display: none; }
 .editeur-code { height: 100%; min-height: 0; }
-.fichiers-pied { display: flex; flex-wrap: wrap; gap: var(--esp-2); padding: var(--esp-2); }
+.fichiers-pied { display: flex; flex-wrap: nowrap; gap: var(--esp-2); padding: var(--esp-2); }
 .fichiers-pied[hidden] { display: none; }
 
 /* V-005 : panneau Git */
@@ -254,7 +254,10 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .git-pied[hidden] { display: none; }
 .git-corps .liste-libelle { flex: 1 1 auto; min-width: 0; direction: rtl; text-align: left; }
 .git-corps .liste-secondaire { flex: none; margin-left: auto; font: var(--texte-petit) var(--police-ui); }
-.git-actions { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
+.git-corps .liste-secondaire-fort { font-weight: var(--graisse-forte); }
+.git-actions { display: flex; gap: var(--esp-2); }
+.git-actions > .bouton-enveloppe:first-child { flex: 1; }
+.git-actions > .bouton-enveloppe:first-child > .bouton { width: 100%; }
 .recherche-corps { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2); }
 .recherche-corps[hidden] { display: none; }
 

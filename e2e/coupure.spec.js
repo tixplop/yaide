@@ -158,7 +158,7 @@ test("REQ015_AC8_pendant_la_coupure_creer_renommer_supprimer_disent_de_reessayer
   await ouvrirYaide(page, relais.origine);
   await ligne(page, "README.md").click();
   await couper(page);
-  await page.getByRole("button", { name: "+ Fichier" }).click();
+  await page.getByRole("button", { name: "Nouveau fichier" }).click();
   const dlg = page.getByRole("dialog", { name: "Nouveau fichier" });
   await dlg.getByLabel("Chemin").fill("neuf.txt");
   await page.keyboard.press("Enter");

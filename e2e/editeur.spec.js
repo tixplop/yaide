@@ -354,7 +354,7 @@ test("REQ009_AC2_et_REQ010_AC3_onglet_renomme_puis_ferme_a_la_suppression", asyn
 
 test("REQ009_AC8_un_fichier_cree_depuis_le_panneau_s_ouvre_dans_un_onglet", async ({ page }) => {
   await ouvrir(page);
-  await page.getByRole("button", { name: "+ Fichier" }).click();
+  await page.getByRole("button", { name: "Nouveau fichier" }).click();
   await page.getByLabel("Chemin").fill("neuf.txt");
   await page.keyboard.press("Enter");
   await expect(onglet(page, "neuf.txt")).toHaveAttribute("aria-selected", "true");

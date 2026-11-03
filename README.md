@@ -69,6 +69,8 @@ Yaide écoute sur toutes les adresses de la machine. Le mot de passe est la seul
 | F2 | ligne de l'arborescence | Renomme ou déplace |
 | Suppr | ligne de l'arborescence | Supprime, après confirmation |
 | Ctrl+Entrée | champ « Message » (Git) | Lance le commit |
+| Flèches gauche et droite | poignée « Largeur du panneau » | Élargit ou rétrécit le panneau |
+| Flèches haut et bas | poignée « Hauteur des shells » | Agrandit ou réduit la zone des shells |
 | Échap | dialogue | Ferme le dialogue et rend le focus |
 
 Quand le focus est dans un shell, toutes les touches que le navigateur laisse passer vont au shell, dont Ctrl+S et Ctrl+P. Seul Ctrl+Maj+F reste à Yaide.

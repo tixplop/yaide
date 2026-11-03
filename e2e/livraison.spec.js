@@ -78,3 +78,23 @@ test("REQ029_AC2_AC3_deux_shells_memoire_sous_50_Mo_et_aucune_requete_hors_origi
   const ko = residente(yaide.pid);
   expect(ko, `${ko} ko résidents`).toBeLessThan(50 * 1024);
 });
+
+test("REQ031_AC3_afficher_les_icones_ne_declenche_aucune_requete", async ({ page }) => {
+  await lancerLivre(depotExemple());
+  const requetes = [];
+  page.on("request", (r) => requetes.push(r));
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("tab", { name: "Git" }).click();
+  await expect(page.getByRole("button", { name: "Commit" })).toBeVisible();
+  await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
+  await expect(page.locator('.fichiers-pied [aria-label="Supprimer"] svg[data-icone="trash-2"]')).toBeVisible();
+  // Seules les requêtes attendues : le document, les fichiers de l'interface, l'API et ses flux.
+  const inattendues = requetes.filter((r) => {
+    const u = new URL(r.url());
+    if (u.protocol === "data:" || u.protocol === "blob:" || u.protocol === "about:") return false;
+    if (u.origin !== yaide.origine) return true;
+    if (["image", "font", "media"].includes(r.resourceType())) return true;
+    return !(r.resourceType() === "document" || /^\/(assets\/|api\/)/.test(u.pathname) || /\.(js|css)$/.test(u.pathname) || u.pathname === "/");
+  });
+  expect(inattendues.map((r) => `${r.resourceType()} ${r.url()}`)).toEqual([]);
+});

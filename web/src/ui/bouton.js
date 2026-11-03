@@ -9,10 +9,10 @@ export function bouton({
   icone,
   couleurIcone = "naviguer",
   variante = "secondaire",
-  titre,
   nomAccessible,
   infoBulle,
   raccourci,
+  touche = raccourci,
   presse,
   desactive = false,
   libelleEnCours,
@@ -27,9 +27,8 @@ export function bouton({
   const b = document.createElement("button");
   b.type = submit ? "submit" : "button";
   b.className = `bouton bouton-${variante}`;
-  if (titre) b.title = titre;
   if (nomAccessible) b.setAttribute("aria-label", nomAccessible);
-  if (raccourci) b.setAttribute("aria-keyshortcuts", raccourci);
+  if (touche) b.setAttribute("aria-keyshortcuts", touche);
   if (presse !== undefined) b.setAttribute("aria-pressed", String(Boolean(presse)));
   b.disabled = desactive;
 
