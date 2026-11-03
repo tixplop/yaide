@@ -280,7 +280,8 @@ test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_a
   expect(await fond(".cadre-panneau")).toBe(t["--surface"]);
   expect(await fond(".cadre-code .cm-editor")).toBe(t["--fond"]);
   expect(await fond(".cadre-shells")).toBe(t["--fond-shells"]);
-  expect(new Set([t["--fond-rail"], t["--surface"], t["--fond"], t["--fond-shells"]]).size).toBe(4);
+  // Le rail et les shells partagent le fond du cadre (AC-033-1) : trois fonds distincts.
+  expect(new Set([t["--fond-rail"], t["--surface"], t["--fond"], t["--fond-shells"]]).size).toBe(3);
   const pied = (nom) => page.locator(`.fichiers-pied [aria-label="${nom}"]`);
   const ailleurs = (nom) => page.locator(`[aria-label="${nom}"]`).first();
   const icones = [

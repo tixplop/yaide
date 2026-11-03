@@ -164,7 +164,7 @@ test("REQ032_AC13_curseurs_et_place_de_8_px_sans_recouvrement", () => {
 
 test("REQ032_AC8_survol_glisse_et_focus_visibles", () => {
   expect(css).toMatch(/\.poignee:hover, \.poignee:focus-visible, \.poignee-active\s*\{[^}]*background: var\(--surface-haute\)/);
-  expect(css).toMatch(/\.poignee:focus-visible\s*\{[^}]*outline: var\(--trait-fort\) solid var\(--accent\)[^}]*outline-offset: calc\(-1 \* var\(--trait-fort\)\)/);
+  expect(css).toMatch(/\.poignee:focus-visible\s*\{[^}]*outline: var\(--trait-fort\) solid var\(--accent-fg\)[^}]*outline-offset: calc\(-1 \* var\(--trait-fort\)\)/);
   expect(css).toMatch(/\.poignee::after\s*\{[^}]*background: var\(--texte-attenue\)/);
 });
 

@@ -73,7 +73,7 @@ test("REQ034_AC14_style_par_tokens", () => {
   expect(regle(".menu-commande")).toContain("padding: 0 var(--esp-3)");
   expect(regle(".menu-commande")).not.toContain("margin");
   expect(regle(".menu-commande:hover")).toContain("background: var(--surface-haute)");
-  expect(regle(".menu-commande:focus-visible")).toContain("var(--trait-fort) solid var(--accent)");
+  expect(regle(".menu-commande:focus-visible")).toContain("var(--trait-fort) solid var(--accent-fg)");
   expect(regle(".menu-touche")).toContain("color: var(--texte-attenue)");
 });
 

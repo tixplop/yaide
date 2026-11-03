@@ -88,7 +88,7 @@ fn req029_ac1_le_binaire_seul_sert_toute_l_interface() {
     let (exe, d) = binaire_seul("ac1");
     let s = lancer(&exe, &d);
     let index = get(s.port, "/").unwrap();
-    assert!(index.contains("<title>Yaide</title>"));
+    assert!(index.contains("<title>yaide</title>"));
     let js = get(s.port, "/main.js").unwrap();
     assert!(js.contains("Yaide"));
 }
@@ -133,4 +133,67 @@ fn req029_port_invalide_est_refuse_avec_un_message() {
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("--port"));
+}
+
+/// Code, type de contenu et taille d'une réponse, sans session.
+fn reponse(port: u16, chemin: &str) -> (String, String, usize) {
+    let out = Command::new("curl")
+        .args([
+            "-sk",
+            "--max-time",
+            "3",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}|%{content_type}|%{size_download}",
+            &format!("https://127.0.0.1:{port}{chemin}"),
+        ])
+        .output()
+        .unwrap();
+    let texte = String::from_utf8_lossy(&out.stdout).into_owned();
+    let mut p = texte.split('|');
+    (
+        p.next().unwrap().to_string(),
+        p.next().unwrap().to_string(),
+        p.next().unwrap().parse().unwrap(),
+    )
+}
+
+#[test]
+fn req036_ac11_les_polices_et_la_licence_sont_servies_sans_session_avec_le_bon_type() {
+    let (exe, d) = binaire_seul("polices");
+    let s = lancer(&exe, &d);
+    for nom in ["Regular", "Italic", "SemiBold"] {
+        let (code, mime, taille) = reponse(s.port, &format!("/polices/JetBrainsMono-{nom}.woff2"));
+        assert_eq!(code, "200", "{nom}");
+        assert_eq!(mime, "font/woff2", "{nom}");
+        assert!(taille > 80_000, "{nom} : {taille} octets");
+    }
+    let (code, mime, _) = reponse(s.port, "/polices/OFL.txt");
+    assert_eq!(code, "200");
+    assert!(mime.starts_with("text/plain"), "{mime}");
+    let licence = get(s.port, "/polices/OFL.txt").unwrap();
+    assert!(licence.contains("SIL Open Font License"));
+}
+
+#[test]
+fn req036_ac11_une_police_inconnue_est_introuvable() {
+    let (exe, d) = binaire_seul("police-inconnue");
+    let s = lancer(&exe, &d);
+    assert_eq!(reponse(s.port, "/polices/Autre.woff2").0, "404");
+    assert_eq!(reponse(s.port, "/polices/..%2Fmain.js").0, "404");
+}
+
+#[test]
+fn req038_ac3_theme_js_est_servi_sans_session_en_javascript() {
+    let (exe, d) = binaire_seul("theme-js");
+    let s = lancer(&exe, &d);
+    let (code, mime, _) = reponse(s.port, "/theme.js");
+    assert_eq!(code, "200");
+    assert!(mime.starts_with("text/javascript"), "{mime}");
+    let js = get(s.port, "/theme.js").unwrap();
+    assert!(js.contains("yaide-theme") && js.contains("data-theme"));
+    let index = get(s.port, "/").unwrap();
+    assert!(index.contains("<script src=\"/theme.js\"></script>"));
+    assert!(index.contains("<body class=\"ya\">"));
 }

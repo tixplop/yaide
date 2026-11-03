@@ -4,8 +4,8 @@ import { expect, test } from "vitest";
 const css = readFileSync("web/src/ui/composants.css", "utf8");
 
 test("REQ028_AC7_focus_visible_a_contour_accent_sur_boutons_et_champs", () => {
-  expect(css).toMatch(/\.bouton:focus-visible\s*{[^}]*outline:\s*var\(--trait-fort\) solid var\(--accent\)/);
-  expect(css).toMatch(/\.champ-saisie:focus-visible\s*{[^}]*outline:\s*var\(--trait-fort\) solid var\(--accent\)/);
+  expect(css).toMatch(/\.bouton:focus-visible\s*{[^}]*outline:\s*var\(--trait-fort\) solid var\(--accent-fg\)/);
+  expect(css).toMatch(/\.champ-saisie:focus-visible\s*{[^}]*outline:\s*var\(--trait-fort\) solid var\(--accent-fg\)/);
 });
 
 test("REQ028_AC3_composants_n_utilisent_que_des_tokens", () => {

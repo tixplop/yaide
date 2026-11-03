@@ -2,126 +2,298 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 
 const css = readFileSync("web/src/ui/tokens.css", "utf8");
-const t = {};
-for (const m of css.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) t[m[1]] = m[2].trim();
+const composants = readFileSync("web/src/ui/composants.css", "utf8");
 
-function lum(hex) {
-  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
-  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+// Règles du fichier : { selecteurs, decl }.
+const regles = [];
+for (const m of css.replace(/\/\*[^]*?\*\//g, "").matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+  const decl = {};
+  for (const d of m[2].matchAll(/(--[a-z0-9-]+|color-scheme):\s*([^;]+);/g)) decl[d[1]] = d[2].trim();
+  regles.push({ selecteurs: m[1].split(",").map((s) => s.trim()), decl });
 }
-function ratio(a, b) {
-  const [x, y] = [lum(t[a]), lum(t[b])].sort((p, q) => q - p);
-  return Math.floor(((x + 0.05) / (y + 0.05)) * 10) / 10;
+// Déclarations qui s'appliquent à <html data-theme=...> : :root d'abord, puis le thème.
+function jetons(theme) {
+  const t = {};
+  for (const sel of [":root", `[data-theme="${theme}"]`]) {
+    for (const r of regles) if (r.selecteurs.includes(sel)) Object.assign(t, r.decl);
+  }
+  return t;
+}
+const T = { dark: jetons("dark"), light: jetons("light") };
+
+// Couleur { r, g, b, a } (r, g, b de 0 à 255) d'une valeur CSS du fichier.
+function couleur(theme, valeur) {
+  const v = valeur.trim();
+  let m;
+  if ((m = v.match(/^var\((--[a-z0-9-]+)\)$/))) return couleur(theme, T[theme][m[1]]);
+  if ((m = v.match(/^#([0-9a-f]{6})$/i))) return { r: parseInt(m[1].slice(0, 2), 16), g: parseInt(m[1].slice(2, 4), 16), b: parseInt(m[1].slice(4), 16), a: 1 };
+  if ((m = v.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[,/]\s*([\d.]+))?\s*\)$/))) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+  if ((m = v.match(/^color-mix\(in srgb,\s*(var\(--[a-z0-9-]+\))\s+(\d+)%,\s*transparent\)$/))) {
+    const c = couleur(theme, m[1]);
+    return { ...c, a: c.a * (m[2] / 100) };
+  }
+  throw new Error(`valeur de couleur inconnue : ${v}`);
+}
+const jeton = (theme, nom) => couleur(theme, T[theme][nom]);
+// Pose une couleur (avec alpha) sur un fond opaque.
+function poser(c, fond) {
+  const m = (x, y) => x * c.a + y * (1 - c.a);
+  return { r: m(c.r, fond.r), g: m(c.g, fond.g), b: m(c.b, fond.b), a: 1 };
+}
+const ratioOpaque = (fond) => !(fond.startsWith("--msg-") || ["--selection", "--find-match", "--ligne-active", "--accent-soft", "--diff-ajout", "--diff-retrait"].includes(fond));
+function lum(c) {
+  const [r, g, b] = [c.r, c.g, c.b].map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+// Contraste WCAG arrondi vers le bas à 0,1.
+function contraste(a, b) {
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+  return Math.floor(((x + 0.05) / (y + 0.05)) * 10 + 1e-9) / 10;
+}
+// Contraste du jeton `texte` posé sur `fond` (jeton, éventuellement avec alpha, posé sur `sous`).
+function ratio(theme, texte, fond, sous) {
+  let f = jeton(theme, fond);
+  if (f.a < 1) f = poser(f, jeton(theme, sous ?? "--bg-200"));
+  let c = jeton(theme, texte);
+  if (c.a < 1) c = poser(c, f);
+  return contraste(c, f);
 }
 
-const sur = ["--fond", "--surface", "--surface-haute"];
-const tableau = [
-  ["--texte", 4.5, [14.3, 13.0, 11.5]],
-  ["--texte-attenue", 4.5, [7.4, 6.7, 5.9]],
-  ["--bordure-champ", 3, [4.8, 4.3, 3.8]],
-  ["--accent", 3, [6.6, 6.0, 5.2]],
-  ["--succes", 4.5, [8.4, 7.7, 6.8]],
-  ["--alerte", 4.5, [9.2, 8.3, 7.4]],
-  ["--erreur", 4.5, [7.1, 6.4, 5.7]],
-];
-const colores = [
-  ["--texte-sur-couleur", "--accent", 6.6],
-  ["--texte-sur-couleur", "--accent-survol", 8.1],
-  ["--texte-sur-couleur", "--erreur", 7.1],
-  ["--texte-sur-couleur", "--erreur-survol", 8.8],
-  ["--texte-sur-couleur", "--alerte", 9.2],
-  ["--texte", "--selection", 7.1],
-  ["--texte", "--diff-ajout", 10.8],
-  ["--texte", "--diff-retrait", 11.8],
-];
-const code = { "--code-mot-cle": 7.4, "--code-chaine": 9.7, "--code-nombre": 8.4, "--code-fonction": 9.0, "--code-type": 10.8 };
+const THEMES = ["dark", "light"];
+// Le tableau a été mesuré dans le navigateur, qui arrondit chaque mélange à 8 bits : une paire à alpha peut
+// s'écarter de 0,1 du calcul exact. Les paires opaques sont comparées sans écart.
+function egalA(r, attendu, msg) {
+  expect(Math.abs(r - attendu), `${msg} : ${r} au lieu de ${attendu}`).toBeLessThanOrEqual(0.1000001);
+}
 
-test("REQ028_AC3_contrastes_texte_et_interface_sur_les_trois_surfaces", () => {
-  for (const [nom, seuil, attendus] of tableau) {
-    sur.forEach((fond, i) => {
-      const r = ratio(nom, fond);
-      expect(r, `${nom} sur ${fond}`).toBeGreaterThanOrEqual(seuil);
-      expect(r, `${nom} sur ${fond}`).toBe(attendus[i]);
+// AC-036-1 : valeurs de design-system.md, thème par thème.
+const couleurs = {
+  "--bg-000": ["#181818", "#f0f0f0"],
+  "--bg-100": ["#1b1b1c", "#f8f8f8"],
+  "--bg-200": ["#1f1f1f", "#ffffff"],
+  "--bg-300": ["#2a2a2b", "#ffffff"],
+  "--bg-400": ["#37373d", "#e4e6f1"],
+  "--hover": ["#2a2d2e", "#f0f0f3"],
+  "--list-focus": ["#04395e", "#dcebfa"],
+  "--line": ["#2b2b2b", "#e5e5e5"],
+  "--line-strong": ["#737373", "#8a8a8a"],
+  "--ink": ["#cccccc", "#1f1f1f"],
+  "--ink-muted": ["#a0a0a0", "#5c5c5c"],
+  "--ink-faint": ["#8b8b8b", "#6e6e6e"],
+  "--accent": ["#0078d4", "#005fb8"],
+  "--accent-fg": ["#4daafc", "#005fb8"],
+  "--on-accent": ["#ffffff", "#ffffff"],
+  "--accent-soft": ["rgba(0,120,212,.20)", "rgba(0,95,184,.12)"],
+  "--selection": ["rgba(38,79,120,.85)", "rgba(173,214,255,.85)"],
+  "--find-match": ["rgba(230,160,40,.33)", "rgba(240,170,40,.40)"],
+  "--git-added": ["#81b88b", "#2a7034"],
+  "--git-modified": ["#e2c08d", "#865300"],
+  "--git-deleted": ["#f07a6a", "#b0261c"],
+  "--git-untracked": ["#4ec9b0", "#0a6c60"],
+  "--git-conflict": ["#d18bd6", "#8a3ea0"],
+  "--syn-keyword": ["#5aa2e0", "#0b3fd6"],
+  "--syn-control": ["#c98fcf", "#9b2fa0"],
+  "--syn-string": ["#d39a7c", "#a31515"],
+  "--syn-function": ["#dcdcaa", "#6d5520"],
+  "--syn-number": ["#b5cea8", "#08704a"],
+  "--syn-type": ["#4ec9b0", "#1f6f8b"],
+  "--syn-variable": ["#9cdcfe", "#0a3c86"],
+  "--syn-comment": ["#7ba862", "#336d1b"],
+};
+const alias = { "--git-ignored": "--ink-faint", "--danger": "--git-deleted", "--warning": "--git-modified", "--info": "--accent-fg", "--syn-punctuation": "--ink" };
+
+test("REQ036_AC1_chaque_couleur_du_tableau_a_sa_valeur_dans_les_deux_themes", () => {
+  THEMES.forEach((theme, i) => {
+    for (const [nom, valeurs] of Object.entries(couleurs)) {
+      expect(T[theme][nom], `${nom} (${theme})`).toBeDefined();
+      expect(jeton(theme, nom), `${nom} (${theme})`).toEqual(couleur(theme, valeurs[i]));
+    }
+    for (const [nom, cible] of Object.entries(alias)) expect(T[theme][nom], `${nom} (${theme})`).toBe(`var(${cible})`);
+  });
+});
+
+test("REQ036_AC1_ombres_melanges_voile_et_formes", () => {
+  expect(T.dark["--shadow-popover"]).toBe("0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px #454545");
+  expect(T.light["--shadow-popover"]).toBe("0 4px 16px rgba(0,0,0,0.16), 0 0 0 1px #d4d4d4");
+  for (const theme of THEMES) {
+    const t = T[theme];
+    expect(t["--msg-info"]).toBe("color-mix(in srgb, var(--info) 14%, transparent)");
+    expect(t["--msg-succes"]).toBe("color-mix(in srgb, var(--git-added) 14%, transparent)");
+    expect(t["--msg-alerte"]).toBe("color-mix(in srgb, var(--warning) 14%, transparent)");
+    expect(t["--msg-erreur"]).toBe("color-mix(in srgb, var(--danger) 14%, transparent)");
+    expect(t["--diff-ajout"]).toBe("color-mix(in srgb, var(--git-added) 14%, transparent)");
+    expect(t["--diff-retrait"]).toBe("color-mix(in srgb, var(--git-deleted) 14%, transparent)");
+    expect(t["--ligne-active"]).toBe("color-mix(in srgb, var(--ink) 4%, transparent)");
+    expect(t["--voile"]).toBe("rgb(0 0 0 / .4)");
+    expect(t["--space-1"]).toBe("4px");
+    expect(t["--space-2"]).toBe("8px");
+    expect(t["--space-3"]).toBe("12px");
+    expect(t["--space-4"]).toBe("16px");
+    expect(t["--space-6"]).toBe("24px");
+    expect(t["--space-8"]).toBe("32px");
+    expect(t["--radius-sm"]).toBe("4px");
+    expect(t["--radius-md"]).toBe("6px");
+    expect(t["--largeur-menu-min"]).toBe("220px");
+    expect(t["--radius-xs"]).toBe("2px");
+    expect(t["--radius-lg"]).toBe("10px");
+    expect(t["--size-row"]).toBe("22px");
+    expect(t["--size-control"]).toBe("26px");
+    expect(t["--size-tab"]).toBe("35px");
+    expect(t["--size-titlebar"]).toBe("35px");
+    expect(t["--size-status"]).toBe("22px");
+    expect(t["--size-activity"]).toBe("48px");
+    expect(t["--size-indent"]).toBe("8px");
+    expect(t["--largeur-palette"]).toBe("600px");
+    expect(t["--font-sans"]).toBe('"Segoe WPC", "Segoe UI", system-ui, -apple-system, "Ubuntu", "Inter", sans-serif');
+    expect(t["--font-mono"]).toBe('"JetBrains Mono", "Cascadia Code", Consolas, ui-monospace, monospace');
+  }
+});
+
+test("REQ038_AC5_chaque_theme_pose_son_color_scheme", () => {
+  expect(T.dark["color-scheme"]).toBe("dark");
+  expect(T.light["color-scheme"]).toBe("light");
+});
+
+test("REQ033_AC8_les_trois_fonds_de_zone_sont_distincts_dans_les_deux_themes", () => {
+  for (const theme of THEMES) {
+    const fonds = ["--bg-000", "--bg-100", "--bg-200"].map((n) => T[theme][n]);
+    expect(new Set(fonds).size, theme).toBe(3);
+  }
+});
+
+test("REQ036_AC1_les_anciens_noms_sont_des_alias_des_nouveaux", () => {
+  const attendus = {
+    "--fond": "--bg-200", "--fond-rail": "--bg-000", "--fond-shells": "--bg-000", "--surface": "--bg-100", "--surface-haute": "--bg-300",
+    "--texte": "--ink", "--texte-attenue": "--ink-muted", "--texte-sur-couleur": "--on-accent", "--bordure": "--line",
+    "--bordure-champ": "--line-strong", "--police-ui": "--font-sans", "--police-code": "--font-mono",
+  };
+  for (const theme of THEMES) for (const [ancien, nouveau] of Object.entries(attendus)) expect(T[theme][ancien], ancien).toBe(`var(${nouveau})`);
+});
+
+test("REQ036_AC2_le_css_livre_n_a_ni_import_ni_autre_origine", () => {
+  for (const f of [css, composants]) {
+    expect(f).not.toMatch(/@import/);
+    expect(f).not.toMatch(/https?:\/\/|\/\/[a-z]/i);
+  }
+  for (const m of composants.matchAll(/url\(([^)]*)\)/g)) expect(m[1]).toMatch(/^"\/polices\/JetBrainsMono-[A-Za-z]+\.woff2"$/);
+  expect(css).not.toMatch(/url\(|transition|animation/);
+});
+
+test("REQ036_AC11_font_face_des_trois_fichiers_en_swap_dans_composants_css", () => {
+  const faces = [...composants.matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => m[1]);
+  expect(faces).toHaveLength(3);
+  for (const f of faces) {
+    expect(f).toContain('font-family: "JetBrains Mono"');
+    expect(f).toContain("font-display: swap");
+  }
+  const joint = faces.join("\n");
+  expect(joint).toContain("JetBrainsMono-Regular.woff2");
+  expect(joint).toContain("JetBrainsMono-Italic.woff2");
+  expect(joint).toContain("JetBrainsMono-SemiBold.woff2");
+  expect(joint).toMatch(/font-style: italic/);
+  expect(joint).toMatch(/font-weight: 600/);
+});
+
+// AC-033-6 : tableaux « Contrastes » de design-system.md, « sombre / clair ». null = paire non utilisée.
+const fonds = ["--bg-000", "--bg-100", "--bg-200", "--bg-300", "--bg-400", "--hover", "--list-focus"];
+const texte = {
+  "--ink": [[11, 14.4], [10.7, 15.5], [10.2, 16.4], [8.9, 16.4], [7.3, 13.2], [8.6, 14.4], [7.4, 13.5]],
+  "--ink-muted": [[6.7, 5.8], [6.5, 6.2], [6.3, 6.6], [5.4, 6.6], [4.5, 5.3], [5.3, 5.8], [4.5, 5.5]],
+  "--ink-faint": [null, [5, 4.8], [4.8, 5], null, null, null, null],
+  "--git-ignored": [null, [5, 4.8], [4.8, 5], null, null, null, null],
+  "--accent-fg": [null, null, null, [5.7, 6.3], null, null, [4.8, 5.1]],
+  "--git-added": [null, [7.5, 5.7], [7.1, 6], null, [5.1, 4.8], [6, 5.3], [5.2, 4.9]],
+  "--git-modified": [[10.2, 5.6], [9.9, 6], [9.5, 6.4], null, [6.8, 5.1], [8, 5.6], [6.9, 5.3]],
+  "--warning": [[10.2, 5.6], [9.9, 6], [9.5, 6.4], null, [6.8, 5.1], [8, 5.6], [6.9, 5.3]],
+  "--git-deleted": [[6.5, 5.8], [6.3, 6.2], [6, 6.6], [5.2, 6.6], null, [5, 5.8], null],
+  "--danger": [[6.5, 5.8], [6.3, 6.2], [6, 6.6], [5.2, 6.6], null, [5, 5.8], null],
+  "--git-untracked": [null, [8.4, 5.9], [8, 6.3], null, [5.8, 5], [6.8, 5.5], [5.8, 5.2]],
+  "--git-conflict": [null, [6.8, 6], [6.5, 6.4], null, [4.7, 5.1], [5.5, 5.6], [4.7, 5.2]],
+};
+
+test("REQ033_AC6_contrastes_du_texte_sur_les_fonds_dans_les_deux_themes", () => {
+  for (const [nom, ligne] of Object.entries(texte)) {
+    ligne.forEach((paire, i) => {
+      if (!paire) return;
+      THEMES.forEach((theme, k) => {
+        const r = ratio(theme, nom, fonds[i]);
+        expect(r, `${nom} sur ${fonds[i]} (${theme})`).toBe(paire[k]);
+        expect(r, `${nom} sur ${fonds[i]} (${theme})`).toBeGreaterThanOrEqual(4.5);
+      });
     });
   }
 });
 
-test("REQ028_AC3_contrastes_texte_sur_fond_colore", () => {
-  for (const [a, b, attendu] of colores) {
-    const r = ratio(a, b);
-    expect(r, `${a} sur ${b}`).toBeGreaterThanOrEqual(4.5);
-    expect(r, `${a} sur ${b}`).toBe(attendu);
+test("REQ033_AC6_contrastes_des_paires_de_texte_a_alpha_et_melanges", () => {
+  const msg = ["--msg-info", "--msg-succes", "--msg-alerte", "--msg-erreur"];
+  THEMES.forEach((theme, k) => {
+    const verifie = (texte, fond, sous, attendu) => {
+      const r = ratio(theme, texte, fond, sous);
+      if (ratioOpaque(fond)) expect(r, `${texte} sur ${fond} (${theme})`).toBe(attendu);
+      else egalA(r, attendu, `${texte} sur ${fond}/${sous} (${theme})`);
+      expect(r).toBeGreaterThanOrEqual(4.5);
+    };
+    verifie("--on-accent", "--accent", null, [4.5, 6.3][k]);
+    // Survol du bouton principal : accent assombri (brightness .88).
+    const a = jeton(theme, "--accent");
+    const sombre = { r: a.r * 0.88, g: a.g * 0.88, b: a.b * 0.88, a: 1 };
+    expect(contraste(jeton(theme, "--on-accent"), sombre), "bouton survolé").toBe([5.5, 7.5][k]);
+    verifie("--bg-000", "--warning", null, [10.2, 5.6][k]);
+    const sur200 = [[8.1, 7.9, 7.5, 8.3], [13.2, 13.4, 13.4, 13]][k];
+    const sur100 = [[8.4, 8.3, 7.9, 8.6], [12.5, 12.7, 12.6, 12.2]][k];
+    msg.forEach((m, i) => {
+      verifie("--ink", m, "--bg-200", sur200[i]);
+      verifie("--ink", m, "--bg-100", sur100[i]);
+    });
+    verifie("--ink", "--msg-erreur", "--bg-300", [7.1, 13][k]);
+    verifie("--ink", "--diff-ajout", "--bg-200", [7.9, 13.4][k]);
+    verifie("--ink", "--diff-retrait", "--bg-200", [8.3, 13][k]);
+    verifie("--ink", "--selection", "--bg-200", [5.9, 11.5][k]);
+    verifie("--ink", "--selection", "--bg-000", [6, 11.3][k]);
+    verifie("--ink", "--find-match", "--bg-100", [5.4, 12][k]);
+    verifie("--ink", "--ligne-active", "--bg-200", [9.5, 15.2][k]);
+  });
+});
+
+test("REQ033_AC6_contrastes_des_couleurs_du_code", () => {
+  const code = {
+    "--syn-keyword": [[6, 7.7], [5.6, 7.2]],
+    "--syn-control": [[6.5, 6.3], [6, 5.8]],
+    "--syn-string": [[6.8, 7.8], [6.3, 7.2]],
+    "--syn-function": [[11.6, 7], [10.8, 6.5]],
+    "--syn-number": [[9.7, 6.1], [9, 5.6]],
+    "--syn-type": [[8, 5.6], [7.5, 5.2]],
+    "--syn-variable": [[11, 10.4], [10.2, 9.6]],
+    "--syn-comment": [[5.9, 6.2], [5.5, 5.8]],
+  };
+  for (const [nom, [fond, active]] of Object.entries(code)) {
+    THEMES.forEach((theme, k) => {
+      expect(ratio(theme, nom, "--bg-200"), `${nom} sur --bg-200 (${theme})`).toBe(fond[k]);
+      // La ligne active est posée sur le fond de l'éditeur : on pose le texte sur ce résultat.
+      const ligne = poser(jeton(theme, "--ligne-active"), jeton(theme, "--bg-200"));
+      egalA(contraste(jeton(theme, nom), ligne), active[k], `${nom} sur la ligne active (${theme})`);
+      expect(fond[k]).toBeGreaterThanOrEqual(4.5);
+      expect(active[k]).toBeGreaterThanOrEqual(4.5);
+    });
   }
 });
 
-test("REQ028_AC3_contrastes_des_couleurs_du_code_sur_le_fond", () => {
-  for (const [nom, attendu] of Object.entries(code)) {
-    expect(ratio(nom, "--fond"), nom).toBeGreaterThanOrEqual(4.5);
-    expect(ratio(nom, "--fond"), nom).toBe(attendu);
-  }
-});
-
-test("REQ028_AC3_theme_sombre_seul_accent_bleu_polices_et_mesures", () => {
-  expect(t["--fond"]).toBe("#14171C");
-  expect(css).toContain("color-scheme: dark");
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(t["--accent"].slice(i, i + 2), 16));
-  expect(b).toBeGreaterThan(r);
-  expect(b).toBeGreaterThan(g);
-  expect(t["--police-ui"]).toMatch(/sans-serif$/);
-  expect(t["--police-code"]).toMatch(/monospace$/);
-  expect(t["--hauteur-controle"]).toBe("24px");
-  expect(t["--trait-fort"]).toBe("2px");
-  expect(css).not.toMatch(/@import|url\(|transition|animation/);
-});
-
-const messages = ["--message-info", "--message-succes", "--message-alerte", "--message-erreur"];
-const statuts = ["--statut-modifie", "--statut-nouveau", "--statut-renomme", "--statut-conflit"];
-const hautes = ["--surface", "--surface-haute"];
-
-function verifie(nom, fonds, seuil) {
-  for (const fond of fonds) expect(ratio(nom, fond), `${nom} sur ${fond}`).toBeGreaterThanOrEqual(seuil);
-}
-
-test("REQ033_AC6_contrastes_texte_des_paires_nouvelles", () => {
-  for (const texte of ["--texte", "--texte-attenue"]) verifie(texte, ["--fond-rail", "--fond-shells", ...messages], 4.5);
-  for (const c of [...statuts, "--succes", "--erreur"]) verifie(c, hautes, 4.5);
-});
-
-test("REQ033_AC6_contrastes_icone_et_poignee_des_paires_nouvelles", () => {
-  verifie("--icone-naviguer", ["--fond-rail", ...hautes, ...messages], 3);
-  verifie("--icone-distant", hautes, 3);
-  verifie("--icone-dossier", hautes, 3);
-  for (const c of ["--succes", "--erreur", "--bordure-champ"]) verifie(c, hautes, 3);
-  verifie("--texte-attenue", ["--surface-haute"], 3);
-  verifie("--succes", ["--fond-rail"], 3);
-  verifie("--erreur", ["--fond-rail"], 3);
-  verifie("--bordure-champ", ["--fond-rail"], 3);
-  verifie("--bordure-champ", messages, 3);
-});
-
-test("REQ033_AC6_valeurs_du_tableau_des_contrastes_nouveaux", () => {
-  expect(ratio("--texte", "--fond-rail")).toBe(15.5);
-  expect(ratio("--texte", "--fond-shells")).toBe(14.1);
-  expect(ratio("--statut-conflit", "--surface")).toBe(8.0);
-  expect(ratio("--icone-naviguer", "--message-erreur")).toBe(8.5);
-  expect(ratio("--bordure-champ", "--message-succes")).toBe(3.3);
-  expect(ratio("--succes", "--fond-rail")).toBe(9.1);
-  expect(ratio("--erreur", "--fond-rail")).toBe(7.7);
-  expect(ratio("--bordure-champ", "--fond-rail")).toBe(5.2);
-});
-
-test("REQ033_AC8_fonds_distincts_et_tokens_de_dimension_nouveaux", () => {
-  const fonds = ["--fond-rail", "--surface", "--fond", "--fond-shells"].map((n) => t[n]);
-  expect(new Set(fonds).size).toBe(4);
-  expect(t["--epaisseur-poignee"]).toBe("8px");
-  expect(t["--pas-poignee"]).toBe("16px");
-  expect(t["--largeur-menu-min"]).toBe("180px");
-  expect(t["--taille-icone"]).toBe("16px");
-  expect(t["--taille-icone-rail"]).toBe("20px");
-  expect(t["--taille-icone-petite"]).toBe("14px");
-  expect(t["--largeur-panneau-min"]).toBe("160px");
-  expect(t["--largeur-panneau-max"]).toBe("480px");
-  expect(t["--largeur-editeur-min"]).toBe("320px");
-  expect(t["--hauteur-shells-min"]).toBe("120px");
-  expect(t["--hauteur-editeur-min"]).toBe("120px");
+test("REQ033_AC6_contrastes_des_icones_contours_et_poignee", () => {
+  const msg = ["--msg-info", "--msg-succes", "--msg-alerte", "--msg-erreur"];
+  THEMES.forEach((theme, k) => {
+    const egal = (nom, fond, sous, attendu) => {
+      const r = ratio(theme, nom, fond, sous);
+      if (ratioOpaque(fond)) expect(r, `${nom} sur ${fond} (${theme})`).toBe(attendu);
+      else egalA(r, attendu, `${nom} sur ${fond}/${sous} (${theme})`);
+      expect(r).toBeGreaterThanOrEqual(3);
+    };
+    egal("--ink-faint", "--bg-000", null, [5.2, 4.4][k]);
+    ["--bg-000", "--bg-100", "--bg-200"].forEach((f, i) => egal("--ink-muted", f, null, [[6.7, 6.5, 6.3], [5.8, 6.2, 6.6]][k][i]));
+    const minMsg = Math.min(...msg.map((m) => ratio(theme, "--ink-muted", m, "--bg-200")));
+    expect(minMsg, `--ink-muted sur --msg-* (${theme})`).toBeGreaterThanOrEqual([4.6, 5.2][k]);
+    const minFocus = Math.min(...fonds.slice(0, 5).concat(fonds.slice(5)).map((f) => ratio(theme, "--accent-fg", f)));
+    expect(minFocus, `--accent-fg (${theme})`).toBeGreaterThanOrEqual([4.7, 5][k]);
+    ["--bg-000", "--bg-100", "--bg-300"].forEach((f, i) => egal("--accent-fg", "--accent-soft", f, [[5.8, 5.7, 4.8], [4.6, 4.9, 5.2]][k][i]));
+    ["--bg-000", "--bg-100", "--bg-200", "--bg-300"].forEach((f, i) => egal("--line-strong", f, null, [[3.7, 3.6, 3.4, 3], [3, 3.2, 3.4, 3.4]][k][i]));
+  });
 });

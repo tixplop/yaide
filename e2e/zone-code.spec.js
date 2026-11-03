@@ -91,7 +91,7 @@ test("REQ011_AC1_contour_de_focus_accent_et_curseur_fixe", async ({ page }) => {
   expect(o[1]).toBe("1px");
   const accent = await page.evaluate(() => {
     const d = document.createElement("i");
-    d.style.color = "var(--accent)";
+    d.style.color = "var(--accent-fg)";
     document.body.append(d);
     return getComputedStyle(d).color;
   });
@@ -154,7 +154,7 @@ test("REQ011_AC1_selection_visible_sur_ligne_active_et_lignes_de_diff", async ({
       g.drawImage(img, 0, 0);
       const d = g.getImageData(0, 0, c.width, c.height).data;
       let n = 0;
-      for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 0x2b) <= 3 && Math.abs(d[i + 1] - 0x4a) <= 3 && Math.abs(d[i + 2] - 0x78) <= 3) n++;
+      for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 37) <= 3 && Math.abs(d[i + 1] - 72) <= 3 && Math.abs(d[i + 2] - 107) <= 3) n++;
       return n;
     }, png);
   };

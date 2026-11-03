@@ -173,7 +173,7 @@ test("REQ011_AC1_style_zone_de_code_par_tokens_seulement", () => {
   const bloc = css.slice(css.indexOf(".zone-code {"));
   expect(bloc).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
   expect(bloc).not.toMatch(/\d+px/);
-  expect(bloc).toMatch(/\.zone-code:focus-within\s*{[^}]*outline:\s*var\(--trait\) solid var\(--accent\)/);
+  expect(bloc).toMatch(/\.zone-code:focus-within\s*{[^}]*outline:\s*var\(--trait\) solid var\(--accent-fg\)/);
   expect(bloc).toMatch(/\.zone-code-apercu a\s*{[^}]*text-decoration:\s*underline/);
 });
 

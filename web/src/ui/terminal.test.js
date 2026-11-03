@@ -112,7 +112,7 @@ test("REQ019_AC1_flux_requis", () => {
 
 test("REQ028_AC7_focus_du_terminal_a_contour_accent", () => {
   const css = readFileSync("web/src/ui/composants.css", "utf8");
-  expect(css).toMatch(/\.terminal-zone:focus-within\s*{[^}]*outline:\s*var\(--trait\) solid var\(--accent\)/);
+  expect(css).toMatch(/\.terminal-zone:focus-within\s*{[^}]*outline:\s*var\(--trait\) solid var\(--accent-fg\)/);
 });
 
 test("REQ033_AC8_fond_de_la_zone_des_shells", () => {

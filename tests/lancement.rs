@@ -157,7 +157,7 @@ fn req002_ac1_option_port() {
     let _s = lancer_sur(&cfg, &d, p);
     assert!(curl(&[&format!("https://127.0.0.1:{p}/")])
         .unwrap()
-        .contains("Yaide"));
+        .contains("<title>yaide</title>"));
 }
 
 #[test]

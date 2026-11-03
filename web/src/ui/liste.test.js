@@ -161,7 +161,7 @@ test("REQ028_AC3_liste_erreurs", () => {
 });
 
 test("REQ028_AC7_style_liste_focus_accent_et_ellipse", () => {
-  expect(regle(".liste-ligne:focus-visible")).toContain("outline: var(--trait-fort) solid var(--accent)");
+  expect(regle(".liste-ligne:focus-visible")).toContain("outline: var(--trait-fort) solid var(--accent-fg)");
   expect(regle(".liste-ligne")).toContain("height: var(--hauteur-ligne)");
   expect(regle(".liste-ligne")).toContain("text-overflow: ellipsis");
   expect(regle('.liste-ligne[aria-selected="true"]')).toContain("var(--surface-haute)");
@@ -205,7 +205,7 @@ test("REQ028_AC3_deux_listes_sur_le_meme_champ_seule_la_connectee_reagit", () =>
 });
 
 test("REQ028_AC3_style_courante_et_polices_valides", () => {
-  expect(regle(".liste-courante")).toContain("border-left: var(--trait-fort) solid var(--accent)");
+  expect(regle(".liste-courante")).toContain("border-left: var(--trait-fort) solid var(--accent-fg)");
   expect(regle(".liste-groupe")).toContain("font: var(--texte-petit) var(--police-ui)");
   expect(css).not.toMatch(/font-size:\s*var\(--texte/);
 });

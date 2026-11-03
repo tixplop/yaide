@@ -93,7 +93,8 @@ test("REQ031_AC3_afficher_les_icones_ne_declenche_aucune_requete", async ({ page
     const u = new URL(r.url());
     if (u.protocol === "data:" || u.protocol === "blob:" || u.protocol === "about:") return false;
     if (u.origin !== yaide.origine) return true;
-    if (["image", "font", "media"].includes(r.resourceType())) return true;
+    if (r.resourceType() === "font") return !/^\/polices\/JetBrainsMono-[A-Za-z]+\.woff2$/.test(u.pathname);
+    if (["image", "media"].includes(r.resourceType())) return true;
     return !(r.resourceType() === "document" || /^\/(assets\/|api\/)/.test(u.pathname) || /\.(js|css)$/.test(u.pathname) || u.pathname === "/");
   });
   expect(inattendues.map((r) => `${r.resourceType()} ${r.url()}`)).toEqual([]);

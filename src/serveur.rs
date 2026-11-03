@@ -67,12 +67,16 @@ fn origine_ok(req: &Request) -> bool {
 }
 
 fn est_publique(m: &Method, chemin: &str) -> bool {
-    (m == Method::GET
-        && matches!(
-            chemin,
-            "/" | "/main.js" | "/main.css" | "/tokens.css" | "/composants.css" | "/api/info"
-        ))
-        || (m == Method::POST && chemin == "/api/connexion")
+    let fichier_statique = matches!(
+        chemin,
+        "/" | "/main.js"
+            | "/main.css"
+            | "/tokens.css"
+            | "/composants.css"
+            | "/theme.js"
+            | "/api/info"
+    ) || chemin.starts_with("/polices/");
+    (m == Method::GET && fichier_statique) || (m == Method::POST && chemin == "/api/connexion")
 }
 
 async fn garde(State(etat): State<Partage>, req: Request, next: Next) -> Response {
@@ -710,6 +714,39 @@ const MAIN_CSS: &[u8] = include_bytes!("../web/dist/main.css");
 const TOKENS_CSS: &[u8] = include_bytes!("../web/dist/tokens.css");
 const COMPOSANTS_CSS: &[u8] = include_bytes!("../web/dist/composants.css");
 
+const THEME_JS: &[u8] = include_bytes!("../web/dist/theme.js");
+
+/// Polices et licence embarquées : nom, type MIME, contenu.
+const POLICES: [(&str, &str, &[u8]); 4] = [
+    (
+        "JetBrainsMono-Regular.woff2",
+        "font/woff2",
+        include_bytes!("../web/dist/polices/JetBrainsMono-Regular.woff2"),
+    ),
+    (
+        "JetBrainsMono-Italic.woff2",
+        "font/woff2",
+        include_bytes!("../web/dist/polices/JetBrainsMono-Italic.woff2"),
+    ),
+    (
+        "JetBrainsMono-SemiBold.woff2",
+        "font/woff2",
+        include_bytes!("../web/dist/polices/JetBrainsMono-SemiBold.woff2"),
+    ),
+    (
+        "OFL.txt",
+        "text/plain; charset=utf-8",
+        include_bytes!("../web/dist/polices/OFL.txt"),
+    ),
+];
+
+async fn police(CheminUrl(nom): CheminUrl<String>) -> Response {
+    match POLICES.iter().find(|(n, _, _)| *n == nom) {
+        Some((_, mime, corps)) => ([(header::CONTENT_TYPE, *mime)], *corps).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
 fn css(corps: &'static [u8]) -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], corps)
 }
@@ -752,6 +789,16 @@ pub async fn servir(
         .route("/main.css", get(|| async { css(MAIN_CSS) }))
         .route("/tokens.css", get(|| async { css(TOKENS_CSS) }))
         .route("/composants.css", get(|| async { css(COMPOSANTS_CSS) }))
+        .route(
+            "/theme.js",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+                    THEME_JS,
+                )
+            }),
+        )
+        .route("/polices/{nom}", get(police))
         .route("/api/info", get(info))
         .route("/api/connexion", post(connexion))
         .route("/api/deconnexion", post(deconnexion))

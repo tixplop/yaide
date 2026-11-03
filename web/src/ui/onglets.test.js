@@ -140,8 +140,8 @@ test("REQ028_AC4_choisir_depuis_l_exterieur_et_erreurs", () => {
 
 test("REQ028_AC3_style_onglets_accent_pour_l_actif_et_le_focus", () => {
   expect(regle('.onglet[aria-selected="true"]')).toContain("color: var(--texte)");
-  expect(regle('.onglet[aria-selected="true"]')).toContain("var(--trait-fort) solid var(--accent)");
-  expect(regle(".onglet:focus-visible")).toContain("outline: var(--trait-fort) solid var(--accent)");
+  expect(regle('.onglet[aria-selected="true"]')).toContain("var(--trait-fort) solid var(--accent-fg)");
+  expect(regle(".onglet:focus-visible")).toContain("outline: var(--trait-fort) solid var(--accent-fg)");
   expect(regle(".onglet")).toContain("color: var(--texte-attenue)");
   expect(regle(".onglet:hover")).toContain("background: var(--surface-haute)");
   expect(regle(".onglet-question")).toContain("color: var(--alerte)");
@@ -167,7 +167,7 @@ test("REQ028_AC3_variantes_rail_et_horizontale", () => {
   expect(regle(".onglets-verticale .onglet")).toContain("width: var(--largeur-rail)");
   expect(regle(".onglets-verticale .onglet")).toContain("height: var(--largeur-rail)");
   expect(regle(".onglets-verticale .onglet")).toContain("font-weight: var(--graisse-forte)");
-  expect(regle('.onglets-verticale .onglet[aria-selected="true"]')).toContain("border-left: var(--trait-fort) solid var(--accent)");
+  expect(regle('.onglets-verticale .onglet[aria-selected="true"]')).toContain("border-left: var(--trait-fort) solid var(--accent-fg)");
   expect(regle(".onglets-horizontale")).toContain("height: var(--hauteur-onglet)");
   expect(regle(".onglets-horizontale")).toContain("overflow-x: auto");
   expect(regle('.onglet[aria-selected="true"]')).toContain("font-weight: var(--graisse-forte)");
