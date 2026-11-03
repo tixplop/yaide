@@ -224,10 +224,12 @@ test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_san
   for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Fermer le shell", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Commit", "Pull", "Push"]) {
     expect(noms.has(attendu), attendu).toBe(true);
   }
+  // AC-031-6 : 24 × 24 px, sauf une action de ligne (20 × 20) et la fermeture d'un onglet (18 × 18).
+  const minimum = (nom) => (nom.startsWith("Indexer ") ? 20 : nom.startsWith("Fermer ") && nom !== "Fermer le shell" ? 18 : 24);
   for (const c of toutes) {
     expect(c.texte, c.nom).toBe("");
-    expect(c.l, c.nom).toBeGreaterThanOrEqual(24);
-    expect(c.h, c.nom).toBeGreaterThanOrEqual(24);
+    expect(c.l, c.nom).toBeGreaterThanOrEqual(minimum(c.nom));
+    expect(c.h, c.nom).toBeGreaterThanOrEqual(minimum(c.nom));
     expect(c.titre, c.nom).toBe(false);
   }
   // Deux commandes différentes n'ont pas la même icône, sauf les deux « Fermer ».
@@ -274,7 +276,7 @@ test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_a
   await relancerSur(page, depotStatuts());
   await page.getByRole("treeitem", { name: "README.md", exact: true }).click();
   await expect(page.getByRole("button", { name: "Aperçu", exact: true })).toBeVisible();
-  const t = await resoudre(page, ["--fond-rail", "--surface", "--fond", "--fond-shells", "--succes", "--erreur", "--icone-naviguer", "--icone-dossier", "--texte", "--texte-attenue"]);
+  const t = await resoudre(page, ["--fond-rail", "--surface", "--fond", "--fond-shells", "--ink-muted", "--icone-naviguer", "--icone-dossier", "--texte", "--texte-attenue"]);
   const fond = (selecteur) => lire(page.locator(selecteur).first(), "backgroundColor");
   expect(await fond(".cadre-rail")).toBe(t["--fond-rail"]);
   expect(await fond(".cadre-panneau")).toBe(t["--surface"]);
@@ -285,13 +287,13 @@ test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_a
   const pied = (nom) => page.locator(`.fichiers-pied [aria-label="${nom}"]`);
   const ailleurs = (nom) => page.locator(`[aria-label="${nom}"]`).first();
   const icones = [
-    [pied("Nouveau fichier"), "--succes"],
-    [pied("Nouveau dossier"), "--succes"],
-    [pied("Supprimer"), "--erreur"], // README.md est sélectionné
-    [pied("Renommer"), "--icone-naviguer"],
-    [ailleurs("Nouveau shell"), "--succes"],
-    [ailleurs("Fermer le shell"), "--erreur"],
-    [ailleurs("Déconnexion"), "--icone-naviguer"],
+    [pied("Nouveau fichier"), "--ink-muted"],
+    [pied("Nouveau dossier"), "--ink-muted"],
+    [pied("Supprimer"), "--ink-muted"], // README.md est sélectionné
+    [pied("Renommer"), "--ink-muted"],
+    [ailleurs("Nouveau shell"), "--ink-muted"],
+    [ailleurs("Fermer le shell"), "--ink-muted"],
+    [ailleurs("Déconnexion"), "--ink-muted"],
     [ailleurs("Aperçu"), "--icone-naviguer"],
     [ailleurs("Fermer README.md"), "--icone-naviguer"],
     [page.getByRole("tab", { name: "Recherche", exact: true }), "--icone-naviguer"], // rail au repos
@@ -307,10 +309,10 @@ test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_a
   expect(await lire(item("ignore.txt").locator(".liste-libelle")), "nom ignoré").toBe(t["--texte-attenue"]);
   expect(await lire(item("ignore.txt").locator(".liste-libelle"), "fontStyle")).toBe("italic");
   expect(await lire(item("README.md").locator(".liste-libelle"), "fontStyle")).toBe("normal");
-  // Pull et Push : couleur du dépôt distant.
+  // Pull et Push : icônes de commande, en --ink-muted.
   await page.getByRole("tab", { name: "Git", exact: true }).click();
-  const d = await resoudre(page, ["--icone-distant"]);
-  for (const nom of ["Pull", "Push"]) expect(await lire(ailleurs(nom)), nom).toBe(d["--icone-distant"]);
+  const d = await resoudre(page, ["--ink-muted"]);
+  for (const nom of ["Pull", "Push"]) await expect.poll(() => lire(ailleurs(nom)), { message: nom }).toBe(d["--ink-muted"]);
 });
 
 test("REQ033_AC2_AC9_AC4_statuts_git_commit_et_indexer_relus_au_style_calcule_et_commit_prend_la_place_restante", async ({ page }) => {
@@ -318,7 +320,7 @@ test("REQ033_AC2_AC9_AC4_statuts_git_commit_et_indexer_relus_au_style_calcule_et
   await page.getByRole("tab", { name: "Git", exact: true }).click();
   await expect(page.getByRole("button", { name: "Indexer nouveau.txt" })).toBeVisible();
   const jetons = { modifié: "--statut-modifie", nouveau: "--statut-nouveau", supprimé: "--erreur", renommé: "--statut-renomme", conflit: "--statut-conflit", indexé: "--succes" };
-  const t = await resoudre(page, [...Object.values(jetons), "--accent", "--texte-sur-couleur"]);
+  const t = await resoudre(page, [...Object.values(jetons), "--accent", "--texte-sur-couleur", "--ink-muted"]);
   const poids = (await resoudre(page, ["--graisse-forte"], "fontWeight"))["--graisse-forte"];
   await expect(async () => {
     const lignes = await page.getByRole("listbox", { name: "Changements" }).getByRole("option").evaluateAll((l) =>
@@ -335,8 +337,8 @@ test("REQ033_AC2_AC9_AC4_statuts_git_commit_et_indexer_relus_au_style_calcule_et
       else expect(l.poids, l.mot).not.toBe(poids);
     }
   }).toPass({ timeout: 10000 });
-  // Indexer en vert ; Commit en fond d'accent, texte sur couleur.
-  await expect.poll(() => lire(page.getByRole("button", { name: "Indexer README.md" })), { timeout: 10000 }).toBe(t["--succes"]);
+  // Indexer en --ink-muted ; Commit en fond d'accent, texte sur couleur.
+  await expect.poll(() => lire(page.getByRole("button", { name: "Indexer README.md" })), { timeout: 10000 }).toBe(t["--ink-muted"]);
   const commit = page.getByRole("button", { name: "Commit" });
   // Le panneau se relit de temps en temps et refait ses boutons : on attend la valeur plutôt que de la lire une fois.
   await expect.poll(() => lire(commit, "backgroundColor")).toBe(t["--accent"]);
@@ -391,8 +393,13 @@ test("REQ033_AC3_AC10_messages_info_succes_alerte_erreur_relus_au_style_calcule"
 test("REQ031_AC9_Renommer_desactive_montre_son_info_bulle", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
   await expect(page.locator('.fichiers-pied [aria-label="Renommer"]')).toBeDisabled();
-  const t = await resoudre(page, ["--bordure-champ"]);
-  for (const nom of ["Renommer", "Supprimer"]) expect(await lire(page.locator(`.fichiers-pied [aria-label="${nom}"]`)), nom).toBe(t["--bordure-champ"]); // AC-033-11
+  const t = await resoudre(page, ["--ink-muted"]);
+  // AC-033-11 : un bouton à icône désactivé est atténué (opacité .45), pas recoloré.
+  for (const nom of ["Renommer", "Supprimer"]) {
+    const bouton = page.locator(`.fichiers-pied [aria-label="${nom}"]`);
+    expect(await lire(bouton), nom).toBe(t["--ink-muted"]);
+    expect(await lire(bouton, "opacity"), nom).toBe("0.45");
+  }
   await page.locator(".fichiers-pied .bouton-enveloppe").nth(2).hover();
   await expect(page.getByRole("tooltip")).toHaveText("Renommer ou déplacer (F2)");
 });
@@ -409,4 +416,18 @@ test("REQ031_AC6_panneau_de_160_px_les_quatre_boutons_du_pied_restent_dans_le_pi
   expect(new Set(boites.map((b) => Math.round(b.top))).size).toBe(1);
   expect(boites.at(-1).right).toBeLessThanOrEqual(pied.right);
   expect(boites[0].left).toBeGreaterThanOrEqual(pied.left);
+});
+
+test("REQ038_AC5_les_champs_et_la_liste_Branche_suivent_le_theme_de_la_page", async ({ page }) => {
+  await relancerSur(page, depotStatuts());
+  await page.getByRole("tab", { name: "Git", exact: true }).click();
+  const liste = page.getByLabel("Branche");
+  const message = page.getByLabel("Message", { exact: true });
+  await expect(liste).toBeVisible();
+  const schema = (loc) => loc.evaluate((e) => getComputedStyle(e).colorScheme);
+  expect(await schema(liste)).toBe("dark");
+  expect(await schema(message)).toBe("dark");
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
+  await expect.poll(() => schema(liste)).toBe("light");
+  await expect.poll(() => schema(message)).toBe("light");
 });

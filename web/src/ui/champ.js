@@ -1,7 +1,7 @@
 const TYPES = ["texte", "motDePasse", "multiligne", "liste"];
 let compteur = 0;
 
-export function champ({ libelle, type = "texte", valeur = "", options = [], aide, erreur, libelleMasque = false, desactive = false }) {
+export function champ({ libelle, type = "texte", valeur = "", options = [], indication, aide, erreur, libelleMasque = false, desactive = false }) {
   if (!libelle) throw new Error("champ : libelle requis");
   if (!TYPES.includes(type)) throw new Error(`champ : type inconnu « ${type} »`);
   const n = ++compteur;
@@ -33,8 +33,9 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], aide
     saisie.value = valeur;
   }
   if (type === "texte" || type === "multiligne") saisie.spellcheck = false;
+  if (indication && type !== "liste") saisie.placeholder = indication;
   saisie.id = `champ-${n}`;
-  saisie.className = "champ-saisie";
+  saisie.className = type === "multiligne" ? "champ-saisie ya-input ya-textarea" : "champ-saisie ya-input";
   saisie.disabled = desactive;
 
   const decrit = [];

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { infoBulle, placer } from "./info-bulle.js";
 
 beforeEach(() => {
@@ -208,4 +209,13 @@ test("REQ031_AC8_ancre_retiree_du_dom_pas_d_affichage_et_fermeture_au_mouvement"
   expect(visible()).toHaveLength(1);
   document.dispatchEvent(new Event("pointermove"));
   expect(visible()).toHaveLength(0);
+});
+
+test("REQ036_AC1_aspect_ya_tooltip", () => {
+  const b = infoBulle({ texte: "Fichiers (F)", ancre: ancre() });
+  expect(b.classList.contains("ya-tooltip")).toBe(true);
+  expect(b.classList.contains("info-bulle")).toBe(true);
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  const r = css.match(/\.ya-tooltip\s*\{([^}]*)\}/)[1].replace(/\s+/g, " ");
+  for (const d of ["background: var(--bg-300)", "color: var(--ink)", "box-shadow: var(--shadow-popover)", "border-radius: var(--radius-md)", "font-size: 12.5px", "line-height: 18px", "padding: 3px 8px", "white-space: nowrap"]) expect(r, d).toContain(d);
 });

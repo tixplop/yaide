@@ -100,8 +100,8 @@ test("REQ023_AC6_bouton_plus_selon_indexe_nom_accessible_et_touche_I", async () 
   expect(plus.getAttribute("aria-label")).toBe("Indexer a.txt");
   expect(a.getAttribute("aria-keyshortcuts")).toBe("I");
   expect(plus.textContent).toBe("");
-  expect(plus.querySelector("svg").getAttribute("data-icone")).toBe("circle-plus");
-  expect(plus.classList.contains("bouton-icone-creer")).toBe(true);
+  expect(plus.querySelector("svg").getAttribute("data-icone")).toBe("plus");
+  expect(plus.classList.contains("ya-icon-btn-ligne")).toBe(true);
   expect(a.querySelector(".liste-secondaire").style.getPropertyValue("--couleur-secondaire")).toBe("var(--succes)");
   expect(b.querySelector(".liste-secondaire").style.getPropertyValue("--couleur-secondaire")).toBe("var(--statut-renomme)");
   vi.useFakeTimers();

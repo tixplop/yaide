@@ -425,7 +425,12 @@ test("REQ034_AC6_indexer_un_dossier_laisse_de_cote_ce_que_git_ignore", async ({ 
   fs.writeFileSync(path.join(dossier, "Zeta", "x.log"), "x");
   fs.writeFileSync(path.join(dossier, ".gitignore"), "target/\n*.log\n");
   await page.reload();
-  await ligne(page, "Zeta").click({ button: "right" });
+  // L'état git arrive après le rechargement : tant qu'il manque, le menu n'a pas « Indexer ». On rouvre le menu jusqu'à l'avoir.
+  await expect(async () => {
+    await page.keyboard.press("Escape");
+    await ligne(page, "Zeta").click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Indexer" })).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 15000 });
   await page.getByRole("menuitem", { name: "Indexer" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Zeta/ est indexé." })).toBeVisible();
   expect(indexe(dossier)).toEqual(["Zeta/z.txt"]);

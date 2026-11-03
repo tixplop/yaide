@@ -44,10 +44,10 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
   let selection = null;
   let detruit = false;
 
-  const bFichier = bouton({ icone: "file-plus", couleurIcone: "creer", variante: "discret", nomAccessible: "Nouveau fichier" });
-  const bDossier = bouton({ icone: "folder-plus", couleurIcone: "creer", variante: "discret", nomAccessible: "Nouveau dossier" });
+  const bFichier = bouton({ icone: "file-plus", variante: "discret", nomAccessible: "Nouveau fichier" });
+  const bDossier = bouton({ icone: "folder-plus", variante: "discret", nomAccessible: "Nouveau dossier" });
   const bRenommer = bouton({ icone: "pencil", variante: "discret", nomAccessible: "Renommer", infoBulle: "Renommer ou déplacer", raccourci: "F2" });
-  const bSupprimer = bouton({ icone: "trash-2", couleurIcone: "supprimer", variante: "discret", nomAccessible: "Supprimer", raccourci: "Suppr", touche: "Delete" });
+  const bSupprimer = bouton({ icone: "trash", variante: "discret", nomAccessible: "Supprimer", raccourci: "Suppr", touche: "Delete" });
   pied.append(bFichier.enveloppe, bDossier.enveloppe, bRenommer.enveloppe, bSupprimer.enveloppe);
 
   function majBoutons() {
@@ -215,7 +215,7 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
     }
     const base = vide ? "" : dossier ? id : dossierDe(id);
     const depot = estDepot();
-    const commit = { libelle: "Commit", icone: "git-commit-horizontal", couleurIcone: "naviguer", surChoix: surCommit };
+    const commit = { libelle: "Commit", icone: "check", couleurIcone: "naviguer", surChoix: surCommit };
     menu({
       nom: vide ? "Actions sur le projet" : `Actions sur ${id}${dossier ? "/" : ""}`,
       position,
@@ -228,9 +228,9 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
           ? []
           : [
               { libelle: "Renommer", icone: "pencil", touche: "F2", surChoix: ouvrirRenommage },
-              { libelle: "Supprimer", icone: "trash-2", couleurIcone: "supprimer", touche: "Suppr", surChoix: ouvrirSuppression },
+              { libelle: "Supprimer", icone: "trash", couleurIcone: "supprimer", touche: "Suppr", surChoix: ouvrirSuppression },
             ],
-        depot ? (vide ? [commit] : [{ libelle: "Indexer", icone: "circle-plus", couleurIcone: "creer", surChoix: () => indexer(id, dossier) }, commit]) : [],
+        depot ? (vide ? [commit] : [{ libelle: "Indexer", icone: "plus", couleurIcone: "creer", surChoix: () => indexer(id, dossier) }, commit]) : [],
       ],
       surFermeture: () => {
         if (!vide) ligneDe(id)?.focus();

@@ -1,5 +1,12 @@
 import { expect, test } from "vitest";
+import { readFileSync } from "node:fs";
 import { champ } from "./champ.js";
+
+const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+const regle = (sel) => {
+  for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) if (m[1].split(",").map((x) => x.trim()).includes(sel)) return m[2].replace(/\s+/g, " ");
+  throw new Error(`règle absente : ${sel}`);
+};
 
 test("REQ028_AC3_champ_texte_libelle_lie_et_sans_correcteur", () => {
   const c = champ({ libelle: "Nom", valeur: "abc" });
@@ -58,4 +65,17 @@ test("REQ028_AC3_champ_liste_sans_valeur_selectionne_la_premiere_option", () => 
   const l = champ({ libelle: "Branche", type: "liste", options: ["main", "dev"] }).querySelector("select");
   expect(l.selectedIndex).toBe(0);
   expect(l.value).toBe("main");
+});
+
+test("REQ036_AC1_champ_a_les_classes_du_design_system", () => {
+  expect(champ({ libelle: "Nom" }).querySelector("input").classList.contains("ya-input")).toBe(true);
+  const ml = champ({ libelle: "Message", type: "multiligne" }).querySelector("textarea");
+  expect(ml.classList.contains("ya-input") && ml.classList.contains("ya-textarea")).toBe(true);
+  expect(champ({ libelle: "Branche", type: "liste", options: ["a"] }).querySelector("select").classList.contains("ya-input")).toBe(true);
+});
+
+test("REQ033_AC14_indication_devient_le_placeholder_en_ink_muted", () => {
+  expect(champ({ libelle: "Nom", indication: "ex. notes.txt" }).querySelector("input").placeholder).toBe("ex. notes.txt");
+  expect(champ({ libelle: "Nom" }).querySelector("input").placeholder).toBe("");
+  expect(regle(".ya-input::placeholder")).toContain("color: var(--ink-muted)");
 });

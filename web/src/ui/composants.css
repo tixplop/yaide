@@ -3,81 +3,73 @@
 @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("/polices/JetBrainsMono-Regular.woff2") format("woff2"); }
 @font-face { font-family: "JetBrains Mono"; font-style: italic; font-weight: 400; font-display: swap; src: url("/polices/JetBrainsMono-Italic.woff2") format("woff2"); }
 @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 600; font-display: swap; src: url("/polices/JetBrainsMono-SemiBold.woff2") format("woff2"); }
-.bouton {
-  box-sizing: border-box;
-  height: var(--hauteur-controle);
-  padding: 0 var(--esp-3);
-  border: var(--trait) solid transparent;
-  border-radius: var(--rayon-petit);
-  font: var(--texte-base) var(--police-ui);
-  font-family: var(--police-ui);
-  cursor: pointer;
-}
-.bouton:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: var(--trait); }
-.bouton-principal { background: var(--accent); color: var(--texte-sur-couleur); }
-.bouton-danger { background: var(--erreur); color: var(--texte-sur-couleur); }
-.bouton-secondaire { background: transparent; border-color: var(--bordure-champ); color: var(--texte); }
-.bouton-discret { background: transparent; color: var(--texte-attenue); }
-.bouton-principal:hover, .bouton-principal:active { background: var(--accent-survol); }
-.bouton-danger:hover, .bouton-danger:active { background: var(--erreur-survol); }
-.bouton-secondaire:hover, .bouton-discret:hover, .bouton-secondaire:active, .bouton-discret:active { background: var(--surface-haute); color: var(--texte); }
-.bouton:active { box-shadow: inset 0 0 0 var(--trait) currentColor; }
-.bouton:disabled { background: transparent; border-color: var(--bordure); color: var(--texte-attenue); cursor: default; box-shadow: none; }
-.bouton[aria-pressed="true"] { background: var(--surface-haute); border-color: var(--bordure-champ); }
-.bouton-icone { display: inline-flex; align-items: center; justify-content: center; gap: var(--esp-2); }
-.bouton-icone svg { width: var(--taille-icone); height: var(--taille-icone); flex: none; }
-.bouton-icone:not(:has(.bouton-en-cours)) { width: var(--hauteur-controle); padding: 0; }
-.bouton-icone-naviguer, .bouton-icone-naviguer:hover, .bouton-icone-naviguer:active, .bouton-icone-naviguer:disabled { color: var(--icone-naviguer); }
-.bouton-icone-creer, .bouton-icone-creer:hover, .bouton-icone-creer:active, .bouton-icone-creer:disabled { color: var(--succes); }
-.bouton-icone-supprimer, .bouton-icone-supprimer:hover, .bouton-icone-supprimer:active, .bouton-icone-supprimer:disabled { color: var(--erreur); }
-.bouton-icone-distant, .bouton-icone-distant:hover, .bouton-icone-distant:active, .bouton-icone-distant:disabled { color: var(--icone-distant); }
-.bouton-icone:not(:has(.bouton-en-cours)):disabled, .bouton-icone:not(:has(.bouton-en-cours)):disabled:hover { border-color: transparent; color: var(--bordure-champ); }
-.bouton-principal.bouton-icone, .bouton-principal.bouton-icone:hover, .bouton-principal.bouton-icone:active { color: var(--texte-sur-couleur); }
-/* Cas absent de C-001 : en cours, un principal est désactivé donc transparent ; l'icône ne peut plus être sombre. */
-.bouton-principal.bouton-icone:has(.bouton-en-cours):disabled { color: var(--icone-naviguer); }
-.bouton-en-cours { color: var(--texte-attenue); }
+/* C-001 : bouton. Règles `ya-` de design-system/components/bundle.css. `bouton`, `bouton-*` et `message-*` sont des repères sans style propre. */
+.ya-btn { box-sizing: border-box; font-family: var(--font-sans); font-size: 13px; line-height: 20px; font-weight: 500; height: var(--size-control); padding: 0 var(--space-3); display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--bg-300); color: var(--ink); cursor: pointer; white-space: nowrap; }
+.ya-btn:hover { background: var(--bg-400); }
+.ya-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.ya-btn-primary:hover { background: var(--accent); filter: brightness(.88); }
+.ya-btn-danger { color: var(--danger); }
+.ya-btn-danger:hover { background: var(--bg-300); border-color: var(--danger); }
+.ya-icon-btn { box-sizing: border-box; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-muted); cursor: pointer; }
+.ya-icon-btn-ligne { width: 20px; height: 20px; }
+.ya-icon-btn-onglet { width: 18px; height: 18px; }
+.ya-icon-btn-ligne svg { width: 14px; height: 14px; }
+.ya-icon-btn-onglet svg { width: 13px; height: 13px; }
+.ya-icon-btn:hover { background: var(--bg-400); color: var(--ink); }
+.ya-icon-btn[aria-pressed="true"] { color: var(--accent-fg); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-fg); }
+.ya-btn:active, .ya-icon-btn:active { box-shadow: inset 0 0 0 1px currentColor; }
+.ya-btn:focus-visible, .ya-icon-btn:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
+.ya-btn[disabled], .ya-icon-btn[disabled] { opacity: .45; cursor: default; pointer-events: none; }
+.ya-btn[aria-busy="true"] { opacity: 1; cursor: progress; pointer-events: auto; }
+.ya-icon-btn[aria-busy="true"] { opacity: 1; cursor: progress; }
+.ya-icon-btn:has(.bouton-en-cours) { width: auto; padding: 0 6px; display: inline-flex; align-items: center; gap: 4px; }
+.bouton-en-cours { color: var(--ink-muted); }
+/* Écart à C-001 : un principal en cours garde son fond d'accent (sans atténuation), le texte en --ink-muted y serait illisible. */
+.ya-btn-primary .bouton-en-cours { color: var(--on-accent); }
 
-.champ { display: flex; flex-direction: column; gap: var(--esp-2); font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); color: var(--texte); }
+/* C-002 : champ */
+.champ { display: flex; flex-direction: column; gap: var(--space-1); font: var(--texte-petit) var(--font-sans); color: var(--ink); }
 .masque { position: absolute; width: var(--trait); height: var(--trait); overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.champ-saisie {
-  box-sizing: border-box;
-  min-height: var(--hauteur-controle);
-  padding: 0 var(--esp-3);
-  background: var(--fond);
-  color: var(--texte);
-  border: var(--trait) solid var(--bordure-champ);
-  border-radius: var(--rayon-petit);
-  font: var(--texte-base) var(--police-ui);
-  font-family: var(--police-ui);
-  color-scheme: dark;
-}
-textarea.champ-saisie { padding: var(--esp-2) var(--esp-3); }
-.champ-saisie:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); }
-.champ-saisie:disabled { border-color: var(--bordure); color: var(--texte-attenue); }
-.champ-saisie[aria-invalid="true"] { border-color: var(--erreur); }
-.champ-aide { font: var(--texte-petit) var(--police-ui); font-family: var(--police-ui); color: var(--texte-attenue); }
-.champ-erreur { font: var(--texte-petit) var(--police-ui); font-family: var(--police-ui); color: var(--erreur); }
+.ya-input { box-sizing: border-box; font-family: var(--font-sans); font-size: 13px; line-height: 20px; height: var(--size-control); width: 100%; padding: 0 var(--space-2); border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--bg-300); color: var(--ink); }
+.ya-input::placeholder { color: var(--ink-muted); }
+.ya-textarea { height: auto; min-height: 56px; padding: 6px var(--space-2); resize: vertical; }
+.ya-input:focus-visible { outline: 1px solid var(--accent-fg); outline-offset: 0; border-color: var(--accent-fg); }
+.ya-input:disabled { opacity: .45; }
+.ya-input[aria-invalid="true"], .ya-input[aria-invalid="true"]:focus-visible { border-color: var(--danger); }
+.champ-aide { font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+.champ-erreur { font: var(--texte-petit) var(--font-sans); color: var(--danger); }
 
+/* C-003 : message */
 .message {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--esp-2) var(--esp-3);
-  padding: var(--esp-2) var(--esp-3);
-  background: var(--surface-haute);
-  color: var(--texte);
-  border-left: var(--trait-fort) solid var(--texte-attenue);
-  font: var(--texte-base) var(--police-ui);
-  font-family: var(--police-ui);
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  color: var(--ink);
+  border-left: var(--trait-fort) solid var(--info);
+  font: var(--texte-base) var(--font-sans);
 }
-.message-info { background: var(--message-info); }
-.message-succes { background: var(--message-succes); border-left-color: var(--succes); }
-.message-alerte { background: var(--message-alerte); border-left-color: var(--alerte); }
-.message-erreur { background: var(--message-erreur); border-left-color: var(--erreur); }
-.message-fort { background: var(--alerte); color: var(--texte-sur-couleur); border-left-color: var(--alerte); }
+.message-info { background: var(--msg-info); border-left-color: var(--info); }
+.message-succes { background: var(--msg-succes); border-left-color: var(--git-added); }
+.message-alerte { background: var(--msg-alerte); border-left-color: var(--warning); }
+.message-erreur { background: var(--msg-erreur); border-left-color: var(--danger); }
+.message-fort { background: var(--warning); color: var(--bg-000); font-weight: 600; border-left-color: var(--warning); }
 .message-texte { flex: 1; }
-.message-actions { display: flex; gap: var(--esp-2); }
-.message-detail { flex-basis: 100%; margin: 0; max-height: var(--hauteur-detail); overflow: auto; font-family: var(--police-code); white-space: pre-wrap; }
+.message-actions { display: flex; gap: var(--space-2); }
+.message-detail { flex-basis: 100%; margin: 0; max-height: var(--hauteur-detail); overflow: auto; font: var(--texte-petit) var(--font-mono); white-space: pre-wrap; }
+
+/* C-012 : info-bulle. `info-bulle` porte le comportement, `ya-tooltip` l'aspect. */
+.info-bulle { position: fixed; inset: auto; margin: 0; box-sizing: border-box; }
+.ya-tooltip { border: 0; padding: 3px 8px; background: var(--bg-300); color: var(--ink); box-shadow: var(--shadow-popover); border-radius: var(--radius-md); font-family: var(--font-sans); font-size: 12.5px; line-height: 18px; white-space: nowrap; }
+.bouton-enveloppe { display: inline-flex; }
+.bouton-enveloppe > :disabled { pointer-events: none; }
+.bouton-enveloppe:has([aria-busy="true"]) { cursor: progress; }
+
+/* C-014 : compteur */
+.ya-badge { display: inline-flex; align-items: center; height: 16px; min-width: 16px; padding: 0 5px; box-sizing: border-box; border-radius: 8px; font-family: var(--font-sans); font-size: 10.5px; font-weight: 600; line-height: 16px; background: var(--bg-400); color: var(--ink); }
+.ya-badge-accent { background: var(--accent); color: var(--on-accent); }
+.ya-badge[hidden] { display: none; }
 
 .indication { display: flex; flex-direction: column; align-items: flex-start; gap: var(--esp-3); padding: var(--esp-3); color: var(--texte-attenue); font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); }
 .indication[hidden] { display: none; }
@@ -105,7 +97,6 @@ textarea.champ-saisie { padding: var(--esp-2) var(--esp-3); }
 .onglet:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait-fort)); }
 .onglet-question { color: var(--alerte); font-weight: var(--graisse-forte); }
 .onglet-cellule .bouton-enveloppe { margin-left: calc(-1 * var(--esp-3)); }
-.onglet-fermer svg { width: var(--taille-icone-petite); height: var(--taille-icone-petite); }
 .onglet-detail { color: var(--texte-attenue); }
 .onglets-droite { display: flex; align-items: center; margin-left: auto; }
 
@@ -269,25 +260,6 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .recherche-corps[hidden] { display: none; }
 
 .ouverture-liste { max-height: calc(12 * var(--hauteur-ligne)); overflow-y: auto; }
-
-/* C-012 : info-bulle */
-.info-bulle {
-  position: fixed;
-  inset: auto;
-  margin: 0;
-  box-sizing: border-box;
-  padding: var(--esp-1) var(--esp-3);
-  background: var(--surface-haute);
-  color: var(--texte);
-  border: var(--trait) solid var(--bordure-champ);
-  border-radius: var(--rayon-petit);
-  box-shadow: var(--ombre-dialogue);
-  font: var(--texte-petit) var(--police-ui);
-  font-family: var(--police-ui);
-  white-space: nowrap;
-}
-.bouton-enveloppe { display: inline-flex; }
-.bouton-enveloppe > :disabled { pointer-events: none; }
 
 /* C-013 : menu */
 .menu {

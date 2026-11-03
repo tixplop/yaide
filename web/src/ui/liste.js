@@ -63,7 +63,7 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     }
     if (l.actionLigne) {
       const a = l.actionLigne;
-      const b = bouton({ libelle: a.libelle, icone: a.icone, couleurIcone: a.couleurIcone, nomAccessible: a.nomAccessible, infoBulle: a.infoBulle, raccourci: a.icone ? a.touche : undefined, variante: "discret" });
+      const b = bouton({ libelle: a.libelle, icone: a.icone, nomAccessible: a.nomAccessible, infoBulle: a.infoBulle, raccourci: a.icone ? a.touche : undefined, variante: "discret", taille: "ligne" });
       b.tabIndex = -1;
       b.addEventListener("click", (ev) => {
         ev.stopPropagation();

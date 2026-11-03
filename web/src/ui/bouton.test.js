@@ -8,8 +8,10 @@ test("REQ028_AC3_bouton_secondaire_par_defaut_et_variantes", () => {
   expect(b.type).toBe("button");
   expect(b.textContent).toBe("Annuler");
   expect(b.classList.contains("bouton-secondaire")).toBe(true);
-  expect(bouton({ libelle: "OK", variante: "principal" }).classList.contains("bouton-principal")).toBe(true);
-  expect(bouton({ libelle: "Supprimer", variante: "danger" }).classList.contains("bouton-danger")).toBe(true);
+  expect(b.classList.contains("ya-btn")).toBe(true);
+  expect(b.classList.contains("ya-btn-primary") || b.classList.contains("ya-btn-danger")).toBe(false);
+  expect(bouton({ libelle: "OK", variante: "principal" }).classList.contains("ya-btn-primary")).toBe(true);
+  expect(bouton({ libelle: "Supprimer", variante: "danger" }).classList.contains("ya-btn-danger")).toBe(true);
   expect(bouton({ libelle: "x", variante: "discret" }).classList.contains("bouton-discret")).toBe(true);
 });
 
@@ -48,13 +50,14 @@ const regle = (sel) => {
 };
 
 test("REQ031_AC1_bouton_a_icone_sans_texte_ni_title_avec_nom_accessible", () => {
-  const b = bouton({ icone: "trash-2", couleurIcone: "supprimer", nomAccessible: "Supprimer" });
+  const b = bouton({ icone: "trash", nomAccessible: "Supprimer" });
   expect(b.textContent).toBe("");
-  expect(b.querySelector("svg").getAttribute("data-icone")).toBe("trash-2");
+  expect(b.querySelector("svg").getAttribute("data-icone")).toBe("trash");
   expect(b.querySelector("svg").getAttribute("aria-hidden")).toBe("true");
   expect(b.getAttribute("aria-label")).toBe("Supprimer");
   expect(b.hasAttribute("title")).toBe(false);
-  expect(b.classList.contains("bouton-icone-supprimer")).toBe(true);
+  expect(b.classList.contains("ya-icon-btn")).toBe(true);
+  expect(b.classList.contains("ya-btn")).toBe(false);
   expect(b.enveloppe.tagName).toBe("SPAN");
   expect(b.enveloppe.firstChild).toBe(b);
 });
@@ -62,7 +65,7 @@ test("REQ031_AC1_bouton_a_icone_sans_texte_ni_title_avec_nom_accessible", () => 
 test("REQ031_AC1_bouton_sans_icone_ni_libelle_ou_sans_nom_est_refuse", () => {
   expect(() => bouton({ icone: "x" })).toThrow(/nomAccessible/);
   expect(() => bouton({ nomAccessible: "a" })).toThrow(/libelle/);
-  expect(() => bouton({ icone: "x", nomAccessible: "a", couleurIcone: "rose" })).toThrow(/couleurIcone/);
+  expect(() => bouton({ icone: "x", nomAccessible: "a", taille: "enorme" })).toThrow(/taille/);
   expect(() => bouton({ icone: "inconnue", nomAccessible: "a" })).toThrow(/inconnu/);
 });
 
@@ -104,62 +107,12 @@ test("REQ031_AC9_bouton_desactive_garde_son_info_bulle_sur_l_enveloppe", () => {
   vi.useRealTimers();
 });
 
-test("REQ031_AC7_bouton_a_icone_en_cours_affiche_l_icone_et_le_texte", () => {
-  const b = bouton({ icone: "arrow-down-to-line", couleurIcone: "distant", nomAccessible: "Pull", libelleEnCours: "Pull en cours…" });
-  expect(b.disabled).toBe(true);
-  expect(b.getAttribute("aria-busy")).toBe("true");
-  expect(b.querySelector("svg")).not.toBeNull();
-  expect(b.querySelector(".bouton-en-cours").textContent).toBe("Pull en cours…");
-  expect(b.getAttribute("aria-label")).toBe("Pull");
-  expect(regle(".bouton-en-cours")).toContain("color: var(--texte-attenue)");
-  // Le bouton en cours est désactivé : sa règle de rôle doit aussi couvrir :disabled et battre la règle générique.
-  for (const c of ["naviguer", "creer", "supprimer", "distant"]) expect(css).toContain(`.bouton-icone-${c}:disabled`);
-  expect(regle(".bouton-icone-distant:disabled")).toContain("color: var(--icone-distant)");
-});
-
-test("REQ031_AC1_bouton_principal_a_icone_garde_la_couleur_du_texte_sur_accent", () => {
-  const b = bouton({ icone: "git-commit-horizontal", nomAccessible: "Commit", variante: "principal" });
-  expect(b.classList.contains("bouton-principal") && b.classList.contains("bouton-icone")).toBe(true);
-  for (const sel of [".bouton-principal.bouton-icone", ".bouton-principal.bouton-icone:hover", ".bouton-principal.bouton-icone:active"]) expect(regle(sel)).toContain("color: var(--texte-sur-couleur)");
-  // La règle vient après celles des rôles, de même spécificité au survol.
-  expect(css.indexOf(".bouton-principal.bouton-icone,")).toBeGreaterThan(css.indexOf(".bouton-icone-distant,"));
-});
-
 test("REQ031_AC1_icone_et_libelle_s_excluent", () => {
   expect(() => bouton({ icone: "x", libelle: "Fermer" })).toThrow(/s'excluent/);
 });
 
-test("REQ031_AC1_presse_pose_aria_pressed_seulement_si_donne", () => {
-  expect(bouton({ libelle: "Aperçu" }).hasAttribute("aria-pressed")).toBe(false);
-  expect(bouton({ icone: "eye", nomAccessible: "Aperçu", presse: true }).getAttribute("aria-pressed")).toBe("true");
-  expect(bouton({ icone: "eye", nomAccessible: "Aperçu", presse: false }).getAttribute("aria-pressed")).toBe("false");
-  expect(regle('.bouton[aria-pressed="true"]')).toContain("background: var(--surface-haute)");
-});
-
-test("REQ033_AC11_couleurs_des_icones_par_role_et_desactive", () => {
-  expect(regle(".bouton-icone-creer")).toContain("color: var(--succes)");
-  expect(regle(".bouton-icone-supprimer")).toContain("color: var(--erreur)");
-  expect(regle(".bouton-icone-distant")).toContain("color: var(--icone-distant)");
-  expect(regle(".bouton-icone-naviguer")).toContain("color: var(--icone-naviguer)");
-  expect(regle(".bouton-icone-creer:hover")).toContain("color: var(--succes)");
-  expect(regle(".bouton-icone:not(:has(.bouton-en-cours)):disabled")).toContain("color: var(--bordure-champ)");
-});
-
-test("REQ031_AC6_bouton_a_icone_mesure_24_px", () => {
-  expect(regle(".bouton-icone:not(:has(.bouton-en-cours))")).toContain("width: var(--hauteur-controle)");
-  expect(regle(".bouton")).toContain("height: var(--hauteur-controle)");
-});
-
-test("REQ031_AC7_bouton_principal_a_icone_en_cours_reste_visible_sur_fond_transparent", () => {
-  const b = bouton({ icone: "git-commit-horizontal", nomAccessible: "Commit", variante: "principal", libelleEnCours: "Commit en cours…" });
-  expect(b.disabled).toBe(true);
-  expect(b.querySelector(".bouton-en-cours")).not.toBeNull();
-  expect(regle(".bouton-principal.bouton-icone:has(.bouton-en-cours):disabled")).toContain("color: var(--icone-naviguer)");
-  expect(css.indexOf(".bouton-principal.bouton-icone:has(.bouton-en-cours):disabled")).toBeGreaterThan(css.indexOf(".bouton-principal.bouton-icone,"));
-});
-
 test("REQ031_AC4_touche_distincte_du_texte_de_l_info_bulle", () => {
-  const b = bouton({ icone: "trash-2", nomAccessible: "Supprimer", raccourci: "Suppr", touche: "Delete" });
+  const b = bouton({ icone: "trash", nomAccessible: "Supprimer", raccourci: "Suppr", touche: "Delete" });
   expect(b.getAttribute("aria-keyshortcuts")).toBe("Delete");
 });
 
@@ -180,4 +133,91 @@ test("REQ035_AC11_info_bulle_a_droite_sur_demande_et_dessous_par_defaut", () => 
   expect(bulle("droite")).toEqual(["30px", "115px"]);
   expect(bulle(undefined)).toEqual(["15px", "130px"]);
   vi.useRealTimers();
+});
+
+test("REQ033_AC11_bouton_sans_role_de_couleur", () => {
+  const b = bouton({ icone: "trash", nomAccessible: "Supprimer", couleurIcone: "supprimer" });
+  expect([...b.classList].some((c) => c.startsWith("bouton-icone-"))).toBe(false);
+  expect(regle(".ya-icon-btn")).toContain("color: var(--ink-muted)");
+  expect(regle(".ya-icon-btn:hover")).toContain("color: var(--ink)");
+  expect(regle(".ya-icon-btn[disabled]")).toContain("opacity: .45");
+});
+
+test("REQ033_AC11_bouton_presse_en_accent_sur_fond_accent_doux", () => {
+  expect(bouton({ libelle: "Aperçu" }).hasAttribute("aria-pressed")).toBe(false);
+  expect(bouton({ icone: "eye", nomAccessible: "Aperçu", presse: true }).getAttribute("aria-pressed")).toBe("true");
+  expect(bouton({ icone: "eye", nomAccessible: "Aperçu", presse: false }).getAttribute("aria-pressed")).toBe("false");
+  const r = regle('.ya-icon-btn[aria-pressed="true"]');
+  expect(r).toContain("color: var(--accent-fg)");
+  expect(r).toContain("background: var(--accent-soft)");
+  expect(r).toContain("inset 0 0 0 1px var(--accent-fg)");
+});
+
+test("REQ031_AC6_tailles_normale_ligne_et_onglet", () => {
+  const classes = (taille) => [...bouton({ icone: "x", nomAccessible: "Fermer", taille }).classList];
+  expect(classes("normale")).not.toContain("ya-icon-btn-ligne");
+  expect(classes("ligne")).toContain("ya-icon-btn-ligne");
+  expect(classes("onglet")).toContain("ya-icon-btn-onglet");
+  expect(regle(".ya-icon-btn")).toContain("width: 24px");
+  expect(regle(".ya-icon-btn")).toContain("height: 24px");
+  expect(regle(".ya-icon-btn-ligne")).toContain("width: 20px");
+  expect(regle(".ya-icon-btn-onglet")).toContain("width: 18px");
+  expect(regle(".ya-btn")).toContain("height: var(--size-control)");
+});
+
+test("REQ036_AC14_survols_du_principal_et_du_danger", () => {
+  expect(regle(".ya-btn-primary:hover")).toContain("filter: brightness(.88)");
+  expect(regle(".ya-btn-danger:hover")).toContain("background: var(--bg-300)");
+  expect(regle(".ya-btn-danger:hover")).toContain("border-color: var(--danger)");
+  expect(regle(".ya-btn:hover")).toContain("background: var(--bg-400)");
+  expect(regle(".ya-icon-btn:hover")).toContain("background: var(--bg-400)");
+  expect(regle(".ya-btn:active")).toContain("inset 0 0 0 1px currentColor");
+  expect(regle(".ya-btn:focus-visible")).toContain("outline: 2px solid var(--accent-fg)");
+  expect(regle(".ya-btn:focus-visible")).toContain("outline-offset: -2px");
+});
+
+test("REQ031_AC7_bouton_a_icone_en_cours_affiche_l_icone_et_le_texte_sans_attenuation", () => {
+  const b = bouton({ icone: "arrow-down", nomAccessible: "Pull", libelleEnCours: "Pull en cours…" });
+  expect(b.disabled).toBe(true);
+  expect(b.getAttribute("aria-busy")).toBe("true");
+  expect(b.querySelector("svg")).not.toBeNull();
+  expect(b.querySelector(".bouton-en-cours").textContent).toBe("Pull en cours…");
+  expect(b.getAttribute("aria-label")).toBe("Pull");
+  expect(regle(".bouton-en-cours")).toContain("color: var(--ink-muted)");
+  expect(regle('.ya-icon-btn[aria-busy="true"]')).toContain("opacity: 1");
+  expect(regle('.ya-icon-btn[aria-busy="true"]')).toContain("cursor: progress");
+  expect(css.indexOf('.ya-icon-btn[aria-busy="true"]')).toBeGreaterThan(css.indexOf(".ya-icon-btn[disabled]"));
+  const large = regle(".ya-icon-btn:has(.bouton-en-cours)");
+  expect(large).toContain("width: auto");
+  expect(large).toContain("gap: 4px");
+  expect(large).toContain("padding: 0 6px");
+});
+
+test("REQ031_AC1_bouton_principal_a_icone_garde_son_fond_et_le_texte_sur_accent", () => {
+  const b = bouton({ icone: "check", nomAccessible: "Commit", variante: "principal" });
+  expect(b.classList.contains("ya-btn") && b.classList.contains("ya-btn-primary")).toBe(true);
+  expect(b.classList.contains("ya-icon-btn")).toBe(false);
+  expect(regle(".ya-btn-primary")).toContain("background: var(--accent)");
+  expect(regle(".ya-btn-primary")).toContain("color: var(--on-accent)");
+});
+
+test("REQ031_AC7_bouton_principal_en_cours_reste_lisible_sur_son_fond_d_accent", () => {
+  const b = bouton({ icone: "check", nomAccessible: "Commit", variante: "principal", libelleEnCours: "Commit en cours…" });
+  expect(b.disabled).toBe(true);
+  expect(b.getAttribute("aria-busy")).toBe("true");
+  expect(b.querySelector(".bouton-en-cours").textContent).toBe("Commit en cours…");
+  expect(regle(".ya-btn-primary .bouton-en-cours")).toContain("color: var(--on-accent)");
+  expect(css.indexOf(".ya-btn-primary .bouton-en-cours")).toBeGreaterThan(css.indexOf(".bouton-en-cours {"));
+});
+
+test("REQ031_AC7_bouton_desactive_ne_reagit_pas_mais_le_bouton_en_cours_montre_son_curseur", () => {
+  expect(regle(".ya-btn[disabled]")).toContain("pointer-events: none");
+  expect(regle(".ya-icon-btn[disabled]")).toContain("pointer-events: none");
+  // « Se connecter » en cours : le curseur « progress » reste visible.
+  expect(regle('.ya-btn[aria-busy="true"]')).toContain("pointer-events: auto");
+  expect(regle('.ya-btn[aria-busy="true"]')).toContain("cursor: progress");
+  expect(css.indexOf('.ya-btn[aria-busy="true"]')).toBeGreaterThan(css.indexOf(".ya-btn[disabled]"));
+  // Un bouton à icône est sous son enveloppe (C-012) : c'est elle qui porte le curseur.
+  expect(regle(".bouton-enveloppe > :disabled")).toContain("pointer-events: none");
+  expect(regle('.bouton-enveloppe:has([aria-busy="true"])')).toContain("cursor: progress");
 });

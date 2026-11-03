@@ -239,13 +239,13 @@ test("REQ033_AC2_secondaire_prend_sa_couleur_et_sa_graisse", () => {
 
 test("REQ031_AC1_action_de_ligne_a_icone_sans_texte_avec_info_bulle", () => {
   const surClic = vi.fn();
-  const l = liste({ lignes: [{ id: "a", libelle: "a.rs", actionLigne: { icone: "circle-plus", couleurIcone: "creer", nomAccessible: "Indexer a.rs", infoBulle: "Indexer", touche: "I", surClic } }] });
+  const l = liste({ lignes: [{ id: "a", libelle: "a.rs", actionLigne: { icone: "plus", nomAccessible: "Indexer a.rs", infoBulle: "Indexer", touche: "I", surClic } }] });
   document.body.append(l);
   const b = l.querySelector("button");
   expect(b.textContent).toBe("");
   expect(b.getAttribute("aria-label")).toBe("Indexer a.rs");
   expect(b.tabIndex).toBe(-1);
-  expect(b.classList.contains("bouton-icone-creer")).toBe(true);
+  expect(b.classList.contains("ya-icon-btn-ligne")).toBe(true);
   expect(b.parentElement.classList.contains("bouton-enveloppe")).toBe(true);
   b.click();
   expect(surClic).toHaveBeenCalledWith("a");
@@ -265,7 +265,7 @@ test("REQ033_AC12_dossier_ignore_a_son_icone_et_son_nom_en_texte_attenue", () =>
 
 test("REQ023_AC6_clic_sur_une_action_de_ligne_desactivee_n_active_pas_la_ligne", () => {
   const surActiver = vi.fn();
-  const l = liste({ lignes: [{ id: "a", libelle: "a.rs", actionLigne: { icone: "circle-plus", nomAccessible: "Indexer a.rs", surClic: vi.fn() } }], surActiver });
+  const l = liste({ lignes: [{ id: "a", libelle: "a.rs", actionLigne: { icone: "plus", nomAccessible: "Indexer a.rs", surClic: vi.fn() } }], surActiver });
   document.body.append(l);
   const b = l.querySelector("button");
   b.disabled = true;

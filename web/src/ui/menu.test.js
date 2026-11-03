@@ -39,9 +39,9 @@ function ouvrir({ surChoix = vi.fn(), surFermeture = vi.fn(), groupes } = {}) {
     surFermeture,
     groupes: groupes ?? [
       [{ libelle: "Nouveau fichier", icone: "file-plus", couleurIcone: "creer", surChoix: () => surChoix("nf") }, { libelle: "Nouveau dossier", icone: "folder-plus", couleurIcone: "creer", surChoix: () => surChoix("nd") }],
-      [{ libelle: "Renommer", icone: "pencil", touche: "F2", surChoix: () => surChoix("r") }, { libelle: "Supprimer", icone: "trash-2", couleurIcone: "supprimer", touche: "Suppr", surChoix: () => surChoix("s") }],
+      [{ libelle: "Renommer", icone: "pencil", touche: "F2", surChoix: () => surChoix("r") }, { libelle: "Supprimer", icone: "trash", couleurIcone: "supprimer", touche: "Suppr", surChoix: () => surChoix("s") }],
       [],
-      [{ libelle: "Commit", icone: "git-commit-horizontal", surChoix: () => surChoix("c") }],
+      [{ libelle: "Commit", icone: "check", surChoix: () => surChoix("c") }],
     ],
   });
   ouverts.push(m);

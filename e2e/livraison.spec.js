@@ -87,7 +87,7 @@ test("REQ031_AC3_afficher_les_icones_ne_declenche_aucune_requete", async ({ page
   await page.getByRole("tab", { name: "Git" }).click();
   await expect(page.getByRole("button", { name: "Commit" })).toBeVisible();
   await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
-  await expect(page.locator('.fichiers-pied [aria-label="Supprimer"] svg[data-icone="trash-2"]')).toBeVisible();
+  await expect(page.locator('.fichiers-pied [aria-label="Supprimer"] svg[data-icone="trash"]')).toBeVisible();
   // Seules les requêtes attendues : le document, les fichiers de l'interface, l'API et ses flux.
   const inattendues = requetes.filter((r) => {
     const u = new URL(r.url());

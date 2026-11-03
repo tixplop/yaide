@@ -2,12 +2,11 @@ import { icone as dessiner } from "./icones.js";
 import { infoBulle as creerInfoBulle } from "./info-bulle.js";
 
 const VARIANTES = ["principal", "secondaire", "discret", "danger"];
-const COULEURS = ["naviguer", "creer", "supprimer", "distant"];
+const TAILLES = ["normale", "ligne", "onglet"];
 
 export function bouton({
   libelle,
   icone,
-  couleurIcone = "naviguer",
   variante = "secondaire",
   nomAccessible,
   infoBulle,
@@ -18,33 +17,40 @@ export function bouton({
   desactive = false,
   libelleEnCours,
   submit = false,
+  taille = "normale",
 }) {
   if (!libelle && !icone) throw new Error("bouton : libelle requis");
   if (!VARIANTES.includes(variante)) throw new Error(`bouton : variante inconnue « ${variante} »`);
-  if (!COULEURS.includes(couleurIcone)) throw new Error(`bouton : couleurIcone inconnue « ${couleurIcone} »`);
+  if (!TAILLES.includes(taille)) throw new Error(`bouton : taille inconnue « ${taille} »`);
   if (icone && libelle) throw new Error("bouton : icone et libelle s'excluent");
   if (!libelle && !nomAccessible) throw new Error("bouton : nomAccessible requis sans libelle");
   if (libelle && !/[\p{L}\p{N}]/u.test(libelle) && !nomAccessible) throw new Error("bouton : nomAccessible requis pour un libellé qui n'est qu'un signe");
   const b = document.createElement("button");
   b.type = submit ? "submit" : "button";
+  // `bouton` et `bouton-*` sont des repères ; le style vient des classes `ya-`.
   b.className = `bouton bouton-${variante}`;
+  const aIcone = icone && variante !== "principal";
+  if (aIcone) b.classList.add("ya-icon-btn");
+  else b.classList.add("ya-btn");
+  if (variante === "principal") b.classList.add("ya-btn-primary");
+  if (variante === "danger") b.classList.add("ya-btn-danger");
+  if (aIcone && taille !== "normale") b.classList.add(`ya-icon-btn-${taille}`);
   if (nomAccessible) b.setAttribute("aria-label", nomAccessible);
   if (touche) b.setAttribute("aria-keyshortcuts", touche);
   if (presse !== undefined) b.setAttribute("aria-pressed", String(Boolean(presse)));
   b.disabled = desactive;
 
   if (icone) {
-    b.classList.add("bouton-icone", `bouton-icone-${couleurIcone}`);
+    b.classList.add("bouton-icone");
     b.append(dessiner(icone));
   }
   if (libelle) b.textContent = libelle;
   if (libelleEnCours) {
-    if (icone) {
-      const t = document.createElement("span");
-      t.className = "bouton-en-cours";
-      t.textContent = libelleEnCours;
-      b.append(t);
-    } else b.textContent = libelleEnCours;
+    const t = document.createElement("span");
+    t.className = "bouton-en-cours";
+    t.textContent = libelleEnCours;
+    if (!icone) b.textContent = "";
+    b.append(t);
     b.disabled = true;
     b.setAttribute("aria-busy", "true");
   }

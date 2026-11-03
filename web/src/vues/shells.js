@@ -36,8 +36,8 @@ export function vueShells({ dire }) {
   let onglet = null;
   let ouvrirVide = null;
 
-  const boutonNouveau = bouton({ icone: "square-terminal", couleurIcone: "creer", variante: "discret", nomAccessible: "Nouveau shell", positionInfoBulle: "droite" });
-  const boutonFermer = bouton({ icone: "square-x", couleurIcone: "supprimer", variante: "discret", nomAccessible: "Fermer le shell", positionInfoBulle: "droite", desactive: true });
+  const boutonNouveau = bouton({ icone: "terminal", variante: "discret", nomAccessible: "Nouveau shell", positionInfoBulle: "droite" });
+  const boutonFermer = bouton({ icone: "square-x", variante: "discret", nomAccessible: "Fermer le shell", positionInfoBulle: "droite", desactive: true });
   boutonNouveau.addEventListener("click", () => nouveau());
   boutonFermer.addEventListener("click", () => demanderFermeture());
   racine.commandes = [boutonNouveau.enveloppe, boutonFermer.enveloppe];

@@ -178,7 +178,7 @@ test("REQ035_AC1_AC8_deux_boutons_a_icone_dans_le_rail_hors_du_tablist", () => {
   expect(boutons.map((b) => b.getAttribute("aria-label"))).toEqual(["Nouveau shell", "Fermer le shell"]);
   expect(boutons.map((b) => b.textContent)).toEqual(["", ""]);
   const icones = boutons.map((b) => b.querySelector("svg").getAttribute("data-icone"));
-  expect(icones).toEqual(["square-terminal", "square-x"]);
+  expect(icones).toEqual(["terminal", "square-x"]);
   expect(icones).not.toContain("x");
   expect(vue.querySelector("[role=tablist]").contains(groupe)).toBe(false);
   // Aucun shell : « Fermer le shell » est désactivé.

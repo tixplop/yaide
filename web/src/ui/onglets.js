@@ -50,7 +50,7 @@ export function onglets({ orientation = "horizontale", onglets: liste, actif, ac
     t.addEventListener("keydown", (e) => touche(e, o));
     cellule.append(t);
     if (o.fermable) {
-      const x = bouton({ icone: "x", variante: "discret", nomAccessible: `Fermer ${nom}` });
+      const x = bouton({ icone: "x", variante: "discret", taille: "onglet", nomAccessible: `Fermer ${nom}` });
       x.classList.add("onglet-fermer");
       x.tabIndex = -1;
       x.addEventListener("click", () => surFermer?.(o.id));

@@ -61,7 +61,7 @@ export function infoBulle({ texte, ancre, position = "dessous", enveloppe }) {
   if (!POSITIONS.includes(position)) throw new Error(`infoBulle : position inconnue « ${position} »`);
   const ecoute = enveloppe ?? ancre;
   const bulle = document.createElement("div");
-  bulle.className = "info-bulle";
+  bulle.className = "info-bulle ya-tooltip";
   bulle.setAttribute("role", "tooltip");
   bulle.setAttribute("popover", "manual");
   bulle.textContent = texte;

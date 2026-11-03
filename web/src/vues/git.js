@@ -118,7 +118,7 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
         secondaire: c.statut,
         couleurSecondaire: COULEUR_STATUT[c.statut],
         secondaireFort: c.statut === "conflit",
-        actionLigne: c.indexe ? undefined : { icone: "circle-plus", couleurIcone: "creer", nomAccessible: `Indexer ${nomDe(c.chemin)}`, infoBulle: "Indexer", touche: "I", surClic: indexer },
+        actionLigne: c.indexe ? undefined : { icone: "plus", nomAccessible: `Indexer ${nomDe(c.chemin)}`, infoBulle: "Indexer", touche: "I", surClic: indexer },
       }));
       contenu = liste({ lignes, selection: diffOuvert() ?? selection ?? undefined, surActiver: ouvrirDiff });
       contenu.setAttribute("aria-label", "Changements");
@@ -133,15 +133,15 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
   }
 
   function afficherActions() {
-    const faire = (nom, variante, icone, couleurIcone, raccourci, touche, clic) => {
-      const b = bouton({ icone, couleurIcone, variante, nomAccessible: nom, raccourci, touche, desactive: occupe, ...(enCours === nom ? { libelleEnCours: `${nom}…` } : {}) });
+    const faire = (nom, variante, icone, raccourci, touche, clic) => {
+      const b = bouton({ icone, variante, nomAccessible: nom, raccourci, touche, desactive: occupe, ...(enCours === nom ? { libelleEnCours: `${nom}…` } : {}) });
       b.addEventListener("click", clic);
       return b.enveloppe;
     };
     actions.replaceChildren(
-      faire("Commit", "principal", "git-commit-horizontal", "naviguer", "Ctrl+Entrée", "Control+Enter", valider),
-      faire("Pull", "secondaire", "arrow-down-to-line", "distant", undefined, undefined, () => synchroniser("Pull", gitPull)),
-      faire("Push", "secondaire", "arrow-up-from-line", "distant", undefined, undefined, () => synchroniser("Push", gitPush)),
+      faire("Commit", "principal", "check", "Ctrl+Entrée", "Control+Enter", valider),
+      faire("Pull", "secondaire", "arrow-down", undefined, undefined, () => synchroniser("Pull", gitPull)),
+      faire("Push", "secondaire", "arrow-up", undefined, undefined, () => synchroniser("Push", gitPush)),
     );
   }
 

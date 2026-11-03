@@ -16,7 +16,7 @@ import { vueShells } from "./shells.js";
 const PANNEAUX = [
   { id: "fichiers", icone: "files", raccourci: "F", nomAccessible: "Fichiers", touche: "f", titre: "Fichiers" },
   { id: "recherche", icone: "search", raccourci: "R", nomAccessible: "Recherche", touche: "r", titre: "Recherche" },
-  { id: "git", icone: "git-branch", raccourci: "G", nomAccessible: "Git", touche: "g", titre: "Git" },
+  { id: "git", icone: "branch", raccourci: "G", nomAccessible: "Git", touche: "g", titre: "Git" },
 ];
 
 function nomDuDossier(chemin) {
