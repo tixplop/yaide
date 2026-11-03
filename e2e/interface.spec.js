@@ -319,32 +319,36 @@ test("REQ033_AC2_AC9_AC4_statuts_git_commit_et_indexer_relus_au_style_calcule_et
   const jetons = { modifié: "--statut-modifie", nouveau: "--statut-nouveau", supprimé: "--erreur", renommé: "--statut-renomme", conflit: "--statut-conflit", indexé: "--succes" };
   const t = await resoudre(page, [...Object.values(jetons), "--accent", "--texte-sur-couleur"]);
   const poids = (await resoudre(page, ["--graisse-forte"], "fontWeight"))["--graisse-forte"];
-  const lignes = await page.getByRole("listbox", { name: "Changements" }).getByRole("option").evaluateAll((l) =>
-    l.map((e) => {
-      const s = e.querySelector(".liste-secondaire");
-      const c = getComputedStyle(s);
-      return { mot: s.textContent, couleur: c.color, poids: c.fontWeight };
-    }),
-  );
-  expect(new Set(lignes.map((l) => l.mot))).toEqual(new Set(Object.keys(jetons)));
-  for (const l of lignes) {
-    expect(l.couleur, l.mot).toBe(t[jetons[l.mot]]);
-    if (l.mot === "conflit") expect(l.poids).toBe(poids);
-    else expect(l.poids, l.mot).not.toBe(poids);
-  }
+  await expect(async () => {
+    const lignes = await page.getByRole("listbox", { name: "Changements" }).getByRole("option").evaluateAll((l) =>
+      l.map((e) => {
+        const s = e.querySelector(".liste-secondaire");
+        const c = getComputedStyle(s);
+        return { mot: s.textContent, couleur: c.color, poids: c.fontWeight };
+      }),
+    );
+    expect(new Set(lignes.map((l) => l.mot))).toEqual(new Set(Object.keys(jetons)));
+    for (const l of lignes) {
+      expect(l.couleur, l.mot).toBe(t[jetons[l.mot]]);
+      if (l.mot === "conflit") expect(l.poids).toBe(poids);
+      else expect(l.poids, l.mot).not.toBe(poids);
+    }
+  }).toPass({ timeout: 10000 });
   // Indexer en vert ; Commit en fond d'accent, texte sur couleur.
-  expect(await lire(page.getByRole("button", { name: "Indexer README.md" }))).toBe(t["--succes"]);
+  await expect.poll(() => lire(page.getByRole("button", { name: "Indexer README.md" })), { timeout: 10000 }).toBe(t["--succes"]);
   const commit = page.getByRole("button", { name: "Commit" });
   // Le panneau se relit de temps en temps et refait ses boutons : on attend la valeur plutôt que de la lire une fois.
   await expect.poll(() => lire(commit, "backgroundColor")).toBe(t["--accent"]);
   await expect.poll(() => lire(commit)).toBe(t["--texte-sur-couleur"]);
   // Commit prend la place restante de la ligne ; Pull et Push gardent leur taille.
-  const boites = await page.locator(".git-actions > .bouton-enveloppe").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
-  const ligne = await page.locator(".git-actions").evaluate((e) => e.getBoundingClientRect().toJSON());
-  expect(boites).toHaveLength(3);
-  expect(boites[0].width).toBeGreaterThan(boites[1].width * 3);
-  expect(Math.abs(boites[2].right - ligne.right)).toBeLessThanOrEqual(1);
-  expect(boites[1].width).toBeCloseTo(boites[2].width, 0);
+  await expect(async () => {
+    const boites = await page.locator(".git-actions > .bouton-enveloppe").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
+    const ligne = await page.locator(".git-actions").evaluate((e) => e.getBoundingClientRect().toJSON());
+    expect(boites).toHaveLength(3);
+    expect(boites[0].width).toBeGreaterThan(boites[1].width * 3);
+    expect(Math.abs(boites[2].right - ligne.right)).toBeLessThanOrEqual(1);
+    expect(boites[1].width).toBeCloseTo(boites[2].width, 0);
+  }).toPass({ timeout: 10000 });
 });
 
 test("REQ033_AC3_AC10_messages_info_succes_alerte_erreur_relus_au_style_calcule", async ({ page }) => {
