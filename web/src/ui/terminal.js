@@ -25,7 +25,7 @@ const ANSI = {
 function themeDepuisTokens() {
   const style = getComputedStyle(document.documentElement);
   const v = (token) => style.getPropertyValue(token).trim();
-  const theme = { background: v("--fond"), foreground: v("--texte"), cursor: v("--texte"), cursorAccent: v("--fond"), selectionBackground: v("--selection") };
+  const theme = { background: v("--fond-shells"), foreground: v("--texte"), cursor: v("--texte"), cursorAccent: v("--fond-shells"), selectionBackground: v("--selection") };
   for (const [nom, token] of Object.entries(ANSI)) theme[nom] = v(token);
   return theme;
 }
@@ -78,7 +78,24 @@ export function terminal({ flux, connecte = true, numero, surTaille } = {}) {
     if (colonnes !== term.cols || lignes !== term.rows) term.resize(colonnes, lignes);
   }
   term.onResize(({ cols, rows }) => surTaille?.(cols, rows));
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(ajuster).observe(zone);
+  // Au plus un ajustement toutes les 100 ms pendant un glissé, plus un dernier à la fin.
+  let attend = null;
+  let reste = false;
+  function limiter() {
+    if (attend) {
+      reste = true;
+      return;
+    }
+    racine.ajuster();
+    attend = setTimeout(() => {
+      attend = null;
+      if (reste) {
+        reste = false;
+        limiter();
+      }
+    }, 100);
+  }
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(limiter).observe(zone);
 
   racine.term = term;
   racine.ajuster = ajuster;
@@ -87,7 +104,10 @@ export function terminal({ flux, connecte = true, numero, surTaille } = {}) {
     attente.hidden = oui;
     term.options.disableStdin = !oui;
   };
-  racine.detruire = () => term.dispose();
+  racine.detruire = () => {
+    clearTimeout(attend);
+    term.dispose();
+  };
   racine.definirConnecte(connecte);
   return racine;
 }

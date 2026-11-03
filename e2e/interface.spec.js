@@ -23,6 +23,7 @@ const zoneDuFocus = (page) =>
   page.evaluate(() => {
     const e = document.activeElement;
     if (e.closest("header")) return "barre";
+    if (e.getAttribute("role") === "separator") return e.getAttribute("aria-label");
     if (e.closest(".cadre-rail")) return "rail";
     if (e.closest(".cadre-panneau")) return "panneau";
     if (e.closest(".cadre-onglets")) return "onglets de fichiers";
@@ -56,7 +57,7 @@ test("REQ028_AC8_AC7_ordre_de_Tab_complet_et_contour_de_focus_a_chaque_arret", a
     expect(contour.some(Boolean), `contour absent à l'arrêt ${i} (${z})`).toBe(true);
     if (z !== zones.at(-1)) zones.push(z);
   }
-  expect(zones).toEqual(["barre", "rail", "panneau", "onglets de fichiers", "éditeur", "onglets de shells", "Nouveau shell", "terminal"]);
+  expect(zones).toEqual(["barre", "rail", "panneau", "Largeur du panneau", "onglets de fichiers", "éditeur", "Hauteur des shells", "onglets de shells", "Nouveau shell", "terminal"]);
   const contourTerminal = await page.locator(".terminal-zone:visible").evaluate((e) => getComputedStyle(e).outlineStyle);
   expect(contourTerminal).not.toBe("none");
 });

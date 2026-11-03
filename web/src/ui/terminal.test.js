@@ -77,7 +77,7 @@ test("REQ019_AC1_sortie_du_flux_affichee_et_frappe_envoyee", async () => {
 test("REQ028_AC3_theme_sorti_des_tokens_avec_tableau_ansi", () => {
   const { t } = monter();
   const th = t.term.options.theme;
-  expect(th.background).toBe(jeton("--fond"));
+  expect(th.background).toBe(jeton("--fond-shells"));
   expect(th.foreground).toBe(jeton("--texte"));
   expect(th.selectionBackground).toBe(jeton("--selection"));
   expect([th.black, th.brightBlack]).toEqual([jeton("--bordure"), jeton("--bordure-champ")]);
@@ -113,4 +113,41 @@ test("REQ019_AC1_flux_requis", () => {
 test("REQ028_AC7_focus_du_terminal_a_contour_accent", () => {
   const css = readFileSync("web/src/ui/composants.css", "utf8");
   expect(css).toMatch(/\.terminal-zone:focus-within\s*{[^}]*outline:\s*var\(--trait\) solid var\(--accent\)/);
+});
+
+test("REQ033_AC8_fond_de_la_zone_des_shells", () => {
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  expect(css).toMatch(/\.terminal-zone\s*{[^}]*background:\s*var\(--fond-shells\)/);
+  expect(css).toMatch(/\.terminal\s*{[^}]*background:\s*var\(--fond-shells\)/);
+});
+
+test("REQ032_AC3_ajustement_au_plus_toutes_les_100_ms_puis_un_dernier", () => {
+  vi.useFakeTimers();
+  let rappel;
+  vi.stubGlobal("ResizeObserver", class { constructor(f) { rappel = f; } observe() {} disconnect() {} });
+  try {
+    const { t } = monter();
+    t.ajuster = vi.fn();
+    for (let i = 0; i < 5; i++) rappel();
+    expect(t.ajuster).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(99);
+    rappel();
+    expect(t.ajuster).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(t.ajuster).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(100);
+    expect(t.ajuster).toHaveBeenCalledTimes(2);
+    rappel();
+    expect(t.ajuster).toHaveBeenCalledTimes(3);
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("REQ032_AC3_la_nouvelle_taille_est_transmise_au_shell", () => {
+  const surTaille = vi.fn();
+  const { t } = monter({ surTaille });
+  t.term.resize(100, 30);
+  expect(surTaille).toHaveBeenCalledWith(100, 30);
 });

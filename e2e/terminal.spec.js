@@ -78,7 +78,7 @@ test("REQ028_AC3_fond_et_couleur_ansi_viennent_des_tokens", async ({ page }) => 
   // Le terminal s'ajuste à sa zone après l'écriture : l'élément peut être remplacé, on relit.
   const rouge = await attendu("--erreur");
   await expect.poll(() => span.evaluate((e) => getComputedStyle(e).color)).toBe(rouge);
-  expect(await page.locator(".terminal-zone .xterm-screen").evaluate((e) => getComputedStyle(e.closest(".xterm")).backgroundColor)).toBe(await attendu("--fond"));
+  expect(await page.locator(".terminal-zone .xterm-screen").evaluate((e) => getComputedStyle(e.closest(".xterm")).backgroundColor)).toBe(await attendu("--fond-shells"));
 });
 
 test("REQ028_AC9_a_800_par_480_les_zones_du_cadre_ne_se_superposent_pas", async ({ page }) => {
