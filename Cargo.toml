@@ -18,6 +18,7 @@ ignore = "0.4"
 
 [dev-dependencies]
 tungstenite = "0.29"
+tokio = { version = "1", features = ["test-util"] }
 
 [profile.release]
 opt-level = "s"

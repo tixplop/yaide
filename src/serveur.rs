@@ -235,7 +235,13 @@ async fn ws_shell(
     ws: WebSocketUpgrade,
 ) -> Response {
     match etat.shells.obtenir(id) {
-        Some(s) => ws.on_upgrade(move |socket| client_shell(socket, s)),
+        Some(s) => {
+            let garde = etat.shells.client();
+            ws.on_upgrade(move |socket| async move {
+                client_shell(socket, s).await;
+                drop(garde);
+            })
+        }
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }
@@ -256,6 +262,7 @@ async fn client_shell(mut socket: WebSocket, shell: Arc<shells::Shell>) {
     use std::time::Duration;
     let (recent, mut direct) = shell.abonner();
     let delai = Duration::from_secs(30);
+    let deja_fini = shell.est_fini();
     if !recent.is_empty()
         && !matches!(
             tokio::time::timeout(delai, socket.send(Message::Binary(recent.into()))).await,
@@ -264,29 +271,31 @@ async fn client_shell(mut socket: WebSocket, shell: Arc<shells::Shell>) {
     {
         return;
     }
-    loop {
-        tokio::select! {
-            ev = direct.recv() => match ev {
-                Ok(shells::Evenement::Sortie(o)) => {
-                    let envoi = socket.send(Message::Binary(o.as_ref().clone().into()));
-                    if !matches!(tokio::time::timeout(delai, envoi).await, Ok(Ok(()))) {
-                        return;
+    if !deja_fini {
+        loop {
+            tokio::select! {
+                ev = direct.recv() => match ev {
+                    Ok(shells::Evenement::Sortie(o)) => {
+                        let envoi = socket.send(Message::Binary(o.as_ref().clone().into()));
+                        if !matches!(tokio::time::timeout(delai, envoi).await, Ok(Ok(()))) {
+                            return;
+                        }
                     }
-                }
-                Ok(shells::Evenement::Fin) => break,
-                // En retard : coupure sans Close, le client reprend avec l'affichage récent.
-                Err(_) => return,
-            },
-            msg = socket.recv() => match msg {
-                Some(Ok(Message::Binary(o))) => shell.ecrire(o.to_vec()),
-                Some(Ok(Message::Text(t))) => {
-                    if let Some((c, l)) = taille_demandee(t.as_str()) {
-                        shell.redimensionner(c, l);
+                    Ok(shells::Evenement::Fin) => break,
+                    // En retard : coupure sans Close, le client reprend avec l'affichage récent.
+                    Err(_) => return,
+                },
+                msg = socket.recv() => match msg {
+                    Some(Ok(Message::Binary(o))) => shell.ecrire(o.to_vec()),
+                    Some(Ok(Message::Text(t))) => {
+                        if let Some((c, l)) = taille_demandee(t.as_str()) {
+                            shell.redimensionner(c, l);
+                        }
                     }
-                }
-                Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
-                Some(Ok(_)) => {}
-            },
+                    Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
+                    Some(Ok(_)) => {}
+                },
+            }
         }
     }
     let close = Message::Close(Some(CloseFrame {

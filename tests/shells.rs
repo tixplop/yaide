@@ -544,6 +544,12 @@ fn code_de_fermeture(ws: &mut Ws, secondes: u64) -> Option<u16> {
         match ws.read() {
             Ok(Message::Close(Some(c))) => return Some(u16::from(c.code)),
             Ok(Message::Close(None)) | Err(tungstenite::Error::ConnectionClosed) => return None,
+            Err(tungstenite::Error::Io(e))
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) => {}
+            Err(_) => return None,
             _ => {}
         }
     }

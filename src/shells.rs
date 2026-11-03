@@ -11,7 +11,7 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::collections::{BTreeMap, VecDeque};
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
@@ -46,6 +46,16 @@ struct Liste {
 pub struct Registre {
     liste: Mutex<Liste>,
     arret: AtomicBool,
+    clients: AtomicUsize,
+}
+
+/// Connexion WebSocket en cours : `Registre::arreter` attend qu'elle soit libérée.
+pub struct GardeClient(Arc<Registre>);
+
+impl Drop for GardeClient {
+    fn drop(&mut self) {
+        self.0.clients.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 fn signaler(pgid: i32, signal: i32) -> bool {
@@ -107,6 +117,11 @@ impl Shell {
         self.registre.arret.load(Ordering::SeqCst)
     }
 
+    /// Vrai si le shell est terminé (sa fin a déjà été diffusée).
+    pub fn est_fini(&self) -> bool {
+        self.fini.load(Ordering::SeqCst)
+    }
+
     fn terminer(&self) {
         if self.fini.swap(true, Ordering::SeqCst) {
             return;
@@ -120,6 +135,21 @@ impl Shell {
 impl Registre {
     pub fn obtenir(&self, id: u32) -> Option<Arc<Shell>> {
         self.liste.lock().unwrap().shells.get(&id).cloned()
+    }
+
+    pub fn client(self: &Arc<Self>) -> GardeClient {
+        self.clients.fetch_add(1, Ordering::SeqCst);
+        GardeClient(self.clone())
+    }
+
+    /// Attend la libération des gardes de clients, 2 s au plus.
+    async fn attendre_clients(&self) {
+        let attente = async {
+            while self.clients.load(Ordering::SeqCst) != 0 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        };
+        let _ = tokio::time::timeout(Duration::from_secs(2), attente).await;
     }
 
     pub fn ids(&self) -> Vec<u32> {
@@ -249,6 +279,7 @@ impl Registre {
         }
         for _ in 0..30 {
             if groupes.iter().all(|&g| membres(g).is_empty()) {
+                self.attendre_clients().await;
                 return;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -256,5 +287,48 @@ impl Registre {
         for &g in &groupes {
             signaler_tout(g, libc::SIGKILL);
         }
+        self.attendre_clients().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::Instant;
+
+    #[tokio::test(start_paused = true)]
+    async fn arreter_attend_les_gardes_de_clients() {
+        let r = Arc::new(Registre::default());
+        let garde = r.client();
+        let r2 = r.clone();
+        let t = tokio::spawn(async move { r2.arreter().await });
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(
+            !t.is_finished(),
+            "arreter a rendu la main avec un garde vivant"
+        );
+        let debut = Instant::now();
+        drop(garde);
+        t.await.unwrap();
+        assert!(debut.elapsed() < Duration::from_millis(500));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn arreter_rend_la_main_apres_2_s_si_le_garde_reste() {
+        let r = Arc::new(Registre::default());
+        let _garde = r.client();
+        let debut = Instant::now();
+        r.arreter().await;
+        let ecoule = debut.elapsed();
+        assert!(ecoule >= Duration::from_secs(2), "{ecoule:?}");
+        assert!(ecoule <= Duration::from_secs(2), "{ecoule:?}");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn arreter_sans_client_rend_la_main_tout_de_suite() {
+        let r = Arc::new(Registre::default());
+        let debut = Instant::now();
+        r.arreter().await;
+        assert!(debut.elapsed() < Duration::from_millis(200));
     }
 }
