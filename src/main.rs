@@ -50,7 +50,9 @@ fn main() {
                 .enable_all()
                 .build()
                 .unwrap_or_else(|e| echec(1, &e.to_string()));
-            println!("Yaide écoute sur https://0.0.0.0:{port}");
+            println!("Yaide écoute sur le port {port}, sur toutes les adresses de la machine.");
+            println!("Sur cette machine : https://localhost:{port}");
+            println!("Depuis une autre machine : https://<adresse de la machine>:{port}");
             if let Err(e) = rt.block_on(serveur::servir(listener, &cert, &cle, &config, &projet)) {
                 echec(1, &e);
             }

@@ -43,7 +43,7 @@ Seul un haché est écrit, dans `$XDG_CONFIG_HOME/yaide/` (sinon `~/.config/yaid
 yaide <dossier> [--port <n>]
 ```
 
-Le dossier est obligatoire. Le port par défaut est 8443. Ouvrez ensuite `https://<adresse de la machine>:8443`. Plusieurs instances peuvent tourner en même temps, chacune sur son port et son dossier.
+Le dossier est obligatoire. Le port par défaut est 8443. Ouvrez ensuite `https://localhost:8443` sur cette machine, ou `https://<adresse de la machine>:8443` depuis une autre. N'ouvrez pas `https://0.0.0.0:8443` : les navigateurs peuvent refuser cette adresse. Plusieurs instances peuvent tourner en même temps, chacune sur son port et son dossier.
 
 Messages d'erreur courants : sans mot de passe défini, lancez `yaide passwd` ; si le port est occupé, choisissez-en un autre avec `--port` ; le dossier doit exister.
 

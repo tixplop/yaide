@@ -294,3 +294,43 @@ fn req001_ac4_deux_saisies_differentes_sous_terminal_refusees() {
     assert!(texte.contains("différentes"), "{texte}");
     assert_eq!(avant, std::fs::read_to_string(&f).unwrap());
 }
+
+#[test]
+fn req002_ac6_affiche_une_adresse_qui_s_ouvre() {
+    use std::io::Read;
+    let (d, cfg) = prete("d6");
+    let p = port_libre();
+    let mut child = Command::new(EXE)
+        .arg(&d)
+        .args(["--port", &p.to_string()])
+        .env("XDG_CONFIG_HOME", &cfg)
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut sortie = child.stdout.take().unwrap();
+    let mut ok = false;
+    for _ in 0..100 {
+        if curl(&[&format!("https://localhost:{p}/")]).is_some() {
+            ok = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+    let mut texte = String::new();
+    sortie.read_to_string(&mut texte).unwrap();
+    assert!(ok, "localhost ne répond pas");
+    assert!(texte.contains(&format!("https://localhost:{p}")), "{texte}");
+    assert!(
+        texte.contains(&format!(
+            "Yaide écoute sur le port {p}, sur toutes les adresses de la machine."
+        )),
+        "{texte}"
+    );
+    assert!(
+        texte.contains(&format!("https://<adresse de la machine>:{p}")),
+        "{texte}"
+    );
+    assert!(!texte.contains("0.0.0.0"), "{texte}");
+}
