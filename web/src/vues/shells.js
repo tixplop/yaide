@@ -1,7 +1,9 @@
-import { listeShells, ouvrirShell } from "../api.js";
+import { fermerShell, listeShells, ouvrirShell } from "../api.js";
 import { ecrire, lire } from "../stockage.js";
 import { bouton } from "../ui/bouton.js";
+import { dialogue } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
+import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { terminal } from "../ui/terminal.js";
 
@@ -15,6 +17,7 @@ function texteArret(n) {
 
 /**
  * Zone des shells de V-002. `dire({ texte, variante, fermable })` affiche un message dans les bandeaux.
+ * `commandes` : les boutons « Nouveau shell » et « Fermer le shell », que la vue principale place dans le rail.
  * Méthodes : `definirEtat("connecte" | "coupe")`, `detruire()`.
  */
 export function vueShells({ dire }) {
@@ -31,6 +34,13 @@ export function vueShells({ dire }) {
   let etat = "connecte";
   let detruit = false;
   let onglet = null;
+  let ouvrirVide = null;
+
+  const boutonNouveau = bouton({ icone: "square-terminal", couleurIcone: "creer", variante: "discret", nomAccessible: "Nouveau shell", positionInfoBulle: "droite" });
+  const boutonFermer = bouton({ icone: "square-x", couleurIcone: "supprimer", variante: "discret", nomAccessible: "Fermer le shell", positionInfoBulle: "droite", desactive: true });
+  boutonNouveau.addEventListener("click", () => nouveau());
+  boutonFermer.addEventListener("click", () => demanderFermeture());
+  racine.commandes = [boutonNouveau.enveloppe, boutonFermer.enveloppe];
 
   const sauver = () => ecrire("serveur", { instance, nombre: shells.size });
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -49,21 +59,20 @@ export function vueShells({ dire }) {
   }
 
   function afficher() {
+    boutonFermer.disabled = shells.size === 0;
     if (shells.size === 0) {
       onglet = null;
       const ouvrir = bouton({ libelle: "Ouvrir un shell" });
+      ouvrirVide = ouvrir;
       ouvrir.addEventListener("click", nouveau);
       entete.replaceChildren();
       corps.replaceChildren(indication({ texte: "Aucun shell ouvert.", action: ouvrir }));
       return;
     }
     if (!shells.has(actif)) actif = [...shells.keys()][0];
-    const plus = bouton({ icone: "plus", couleurIcone: "creer", variante: "discret", nomAccessible: "Nouveau shell" });
-    plus.addEventListener("click", nouveau);
     onglet = onglets({
       onglets: [...shells.keys()].map((id) => ({ id: String(id), libelle: `shell ${id}` })),
       actif: String(actif),
-      actionsFin: [plus.enveloppe],
       surChoix: (id) => activer(Number(id), true),
     });
     onglet.setAttribute("aria-label", "Shells");
@@ -78,10 +87,57 @@ export function vueShells({ dire }) {
   function retirer(id) {
     const s = shells.get(id);
     if (!s) return;
+    // L'onglet de droite prend la place, sinon celui de gauche.
+    if (actif === id) {
+      const ids = [...shells.keys()];
+      actif = ids[ids.indexOf(id) + 1] ?? ids[ids.indexOf(id) - 1];
+    }
+    const avaitLeFocus = s.terminal.contains(document.activeElement);
     shells.delete(id);
     s.terminal.detruire();
     afficher();
     sauver();
+    if (avaitLeFocus) (shells.size === 0 ? ouvrirVide : shells.get(actif).terminal).focus();
+  }
+
+  function demanderFermeture() {
+    if (etat === "coupe") return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
+    const id = actif;
+    if (!shells.has(id)) return;
+    const phrase = document.createElement("p");
+    phrase.textContent = "Les programmes qui y tournent seront arrêtés. Cette action est définitive.";
+    const zone = document.createElement("div");
+    zone.append(phrase);
+    const annuler = bouton({ libelle: "Annuler" });
+    const ok = bouton({ libelle: "Fermer", variante: "danger" });
+    const annulation = () => {
+      dlg.fermer({ rendreFocus: false });
+      boutonFermer.focus();
+    };
+    const dlg = dialogue({ titre: `Fermer shell ${id} ?`, contenu: [zone], actions: [annuler, ok], focusInitial: annuler, surAnnuler: annulation });
+    annuler.addEventListener("click", annulation);
+    ok.addEventListener("click", async () => {
+      dlg.enCours(true);
+      const r = await fermerShell(id);
+      if (detruit) return;
+      dlg.enCours(false);
+      const texte = r.coupure ? TEXTE_COUPURE : r.erreur ? `Impossible de fermer ce shell : ${r.erreur}.` : null;
+      if (texte) {
+        zone.replaceChildren(phrase, message({ texte, variante: r.coupure ? "alerte" : "erreur" }));
+        return;
+      }
+      dlg.fermer({ rendreFocus: false });
+      const s = shells.get(id);
+      if (s) {
+        // La fermeture de la connexion qui suit n'est pas une coupure : pas de reprise.
+        s.ws.onclose = null;
+        s.ws.close();
+        retirer(id);
+      }
+      if (shells.size === 0) ouvrirVide?.focus();
+      else shells.get(actif)?.terminal.focus();
+    });
+    dlg.ouvrir();
   }
 
   function redemarre(liste) {

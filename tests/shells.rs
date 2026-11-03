@@ -592,3 +592,103 @@ fn acces_refuses_sans_session_ou_avec_mauvaise_origine() {
     assert_eq!(http(s.port, "GET", "/api/shells", "", "").0, 401);
     assert_eq!(http(s.port, "POST", "/api/shells", "", "").0, 401);
 }
+
+#[test]
+fn req035_ac2_fermer_arrete_le_shell_et_ses_programmes() {
+    let s = lancer("fermer", Some("/bin/bash"));
+    let a = ouvrir(&s);
+    let b = ouvrir(&s);
+    let mut w = ws(&s, a);
+    taper(&mut w, "sleep 300 & echo P=$! E$((1+1))\n");
+    let t = lire_jusque(&mut w, "E2\r\n", 10);
+    let sommeil: u32 = t
+        .lines()
+        .find(|l| l.starts_with("P="))
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()[2..]
+        .parse()
+        .unwrap();
+    assert!(vivant(sommeil));
+    let (code, _) = http(s.port, "DELETE", &format!("/api/shells/{a}"), &s.cookie, "");
+    assert_eq!(code, 204);
+    assert_eq!(code_de_fermeture(&mut w, 10), Some(1000));
+    assert!(attendre(10, || !vivant(sommeil)), "sleep 300 tourne encore");
+    let l = liste(&s);
+    assert!(
+        !l.contains(&format!("[{a}")) && l.contains(&b.to_string()),
+        "{l}"
+    );
+}
+
+#[test]
+fn req035_ac2_fermer_tue_ce_qui_ignore_hup_et_term() {
+    let s = lancer("fermer-dur", Some("/bin/bash"));
+    let id = ouvrir(&s);
+    let mut w = ws(&s, id);
+    taper(
+        &mut w,
+        "(trap '' HUP TERM; exec sleep 300) & echo P2=$! E$((1+1))\n",
+    );
+    let t = lire_jusque(&mut w, "E2\r\n", 10);
+    let pid: u32 = t
+        .lines()
+        .find(|l| l.starts_with("P2="))
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()[3..]
+        .parse()
+        .unwrap();
+    assert!(vivant(pid));
+    let debut = Instant::now();
+    let (code, _) = http(
+        s.port,
+        "DELETE",
+        &format!("/api/shells/{id}"),
+        &s.cookie,
+        "",
+    );
+    assert_eq!(code, 204);
+    assert!(
+        debut.elapsed() < Duration::from_secs(2),
+        "la réponse attend"
+    );
+    assert!(attendre(10, || !vivant(pid)), "le programme résiste");
+}
+
+#[test]
+fn req035_ac6_fermer_exige_session_origine_et_shell_connu() {
+    let s = lancer("fermer-acces", Some("/bin/sh"));
+    let id = ouvrir(&s);
+    let chemin = format!("/api/shells/{id}");
+    assert_eq!(http(s.port, "DELETE", &chemin, "", "").0, 401);
+    let (code, _) = http(
+        s.port,
+        "DELETE",
+        &format!("/api/shells/{}", id + 50),
+        &s.cookie,
+        "",
+    );
+    assert_eq!(code, 404);
+    let sortie = Command::new("curl")
+        .args([
+            "-sk",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            "-X",
+            "DELETE",
+        ])
+        .arg(format!("https://127.0.0.1:{}{chemin}", s.port))
+        .args(["-H", "Origin: https://autre.example"])
+        .args(["-H", &format!("Cookie: {}", s.cookie)])
+        .output()
+        .unwrap();
+    assert_eq!(String::from_utf8_lossy(&sortie.stdout), "403");
+    assert!(liste(&s).contains(&id.to_string()));
+    assert_eq!(http(s.port, "DELETE", &chemin, &s.cookie, "").0, 204);
+    assert_eq!(http(s.port, "DELETE", &chemin, &s.cookie, "").0, 404);
+}

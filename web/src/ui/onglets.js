@@ -4,7 +4,7 @@ import { infoBulle } from "./info-bulle.js";
 
 const ORIENTATIONS = ["horizontale", "verticale"];
 
-export function onglets({ orientation = "horizontale", onglets: liste, actif, actionsFin = [], actionsDroite = [], surChoix, surFermer }) {
+export function onglets({ orientation = "horizontale", onglets: liste, actif, actionsDroite = [], surChoix, surFermer }) {
   if (!ORIENTATIONS.includes(orientation)) throw new Error(`onglets : orientation inconnue « ${orientation} »`);
   for (const o of liste) {
     if (!o.libelle && !o.icone) throw new Error("onglets : libelle requis");
@@ -13,7 +13,7 @@ export function onglets({ orientation = "horizontale", onglets: liste, actif, ac
   const vertical = orientation === "verticale";
   const racine = document.createElement("div");
   racine.className = `onglets onglets-${orientation}`;
-  // Le rôle tablist est porté par la racine : les actions de fin en font partie.
+  // Le rôle tablist est porté par la racine : les actions de droite en font partie.
   racine.setAttribute("role", "tablist");
   racine.setAttribute("aria-orientation", vertical ? "vertical" : "horizontal");
 
@@ -59,7 +59,6 @@ export function onglets({ orientation = "horizontale", onglets: liste, actif, ac
     elements.set(o.id, t);
     racine.append(cellule);
   }
-  racine.append(...actionsFin);
   if (actionsDroite.length) {
     const d = document.createElement("div");
     d.className = "onglets-droite";

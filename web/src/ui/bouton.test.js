@@ -162,3 +162,22 @@ test("REQ031_AC4_touche_distincte_du_texte_de_l_info_bulle", () => {
   const b = bouton({ icone: "trash-2", nomAccessible: "Supprimer", raccourci: "Suppr", touche: "Delete" });
   expect(b.getAttribute("aria-keyshortcuts")).toBe("Delete");
 });
+
+test("REQ035_AC11_info_bulle_a_droite_sur_demande_et_dessous_par_defaut", () => {
+  vi.useFakeTimers();
+  const rect = { left: 0, right: 30, top: 100, bottom: 130, width: 30, height: 30 };
+  const bulle = (position) => {
+    const b = bouton({ icone: "square-x", nomAccessible: "Fermer le shell", positionInfoBulle: position });
+    document.body.append(b.enveloppe);
+    b.enveloppe.getBoundingClientRect = () => rect;
+    b.enveloppe.dispatchEvent(new Event("pointerenter"));
+    vi.advanceTimersByTime(400);
+    const t = document.querySelector("[role=tooltip]");
+    const pos = [t.style.left, t.style.top];
+    b.enveloppe.dispatchEvent(new Event("pointerleave"));
+    return pos;
+  };
+  expect(bulle("droite")).toEqual(["30px", "115px"]);
+  expect(bulle(undefined)).toEqual(["15px", "130px"]);
+  vi.useRealTimers();
+});

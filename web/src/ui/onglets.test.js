@@ -122,13 +122,10 @@ test("REQ028_AC4_fermeture_par_bouton_et_par_suppr", () => {
   expect(surFermer).not.toHaveBeenCalled();
 });
 
-test("REQ028_AC8_actions_de_fin_apres_les_onglets_et_actions_de_droite", () => {
-  const plus = document.createElement("button");
+test("REQ028_AC8_actions_de_droite_apres_les_onglets", () => {
   const apercu = document.createElement("button");
-  const r = onglets({ actif: "a", onglets: [{ id: "a", libelle: "a" }], actionsFin: [plus], actionsDroite: [apercu] });
-  expect(r.contains(plus)).toBe(true);
+  const r = onglets({ actif: "a", onglets: [{ id: "a", libelle: "a" }], actionsDroite: [apercu] });
   expect(r.contains(apercu)).toBe(true);
-  expect(plus.previousElementSibling).toBe(tab(r, 0).parentElement);
   expect(r.querySelector(".onglets-droite").contains(apercu)).toBe(true);
 });
 

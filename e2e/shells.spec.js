@@ -246,3 +246,152 @@ test("REQ005_AC7_session_expiree_pendant_que_la_page_est_ouverte", async ({ page
   await expect(page.getByRole("status").filter({ hasText: "Session expirée. Reconnectez-vous." })).toBeVisible({ timeout: 5000 });
   await expect(page.getByLabel("Mot de passe")).toBeVisible();
 });
+
+const fermer = (page) => page.getByRole("button", { name: "Fermer le shell" });
+const dialogue = (page, titre) => page.getByRole("dialog", { name: titre });
+const focusDansTerminal = (page) => page.evaluate(() => document.activeElement?.classList.contains("xterm-helper-textarea"));
+const vivant = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+test("REQ035_AC2_AC4_AC9_AC10_fermer_shell_2_arrete_sleep_et_active_shell_3", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  for (const n of [2, 3]) {
+    await page.getByRole("button", { name: "Nouveau shell" }).click();
+    await expect(onglets(page)).toHaveCount(n);
+  }
+  await page.getByRole("tab", { name: "shell 2" }).click();
+  await taper(page, "sleep 300 & echo PID=$! FIN$((1+1))");
+  await expect(ecran(page)).toContainText("FIN2");
+  const pid = Number((await ecran(page).innerText()).match(/PID=(\d+) FIN2/)[1]);
+  expect(vivant(pid)).toBe(true);
+  await fermer(page).click();
+  const dlg = dialogue(page, "Fermer shell 2 ?");
+  await expect(dlg).toContainText("Les programmes qui y tournent seront arrêtés. Cette action est définitive.");
+  await expect(dlg.getByRole("button", { name: "Annuler" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dlg).toHaveCount(0);
+  await expect(fermer(page)).toBeFocused();
+  await expect(onglets(page)).toHaveText(["shell 1", "shell 2", "shell 3"]);
+  expect(vivant(pid)).toBe(true);
+  await fermer(page).click();
+  await dlg.getByRole("button", { name: "Annuler" }).click();
+  await expect(fermer(page)).toBeFocused();
+  await expect(onglets(page)).toHaveCount(3);
+  await fermer(page).click();
+  await dlg.getByRole("button", { name: "Fermer", exact: true }).click();
+  await expect(dlg).toHaveCount(0);
+  await expect(onglets(page)).toHaveText(["shell 1", "shell 3"]);
+  await expect(page.getByRole("tab", { name: "shell 3" })).toHaveAttribute("aria-selected", "true");
+  await expect.poll(() => focusDansTerminal(page)).toBe(true);
+  await expect.poll(() => vivant(pid)).toBe(false);
+  // Le dernier onglet fermé : celui de gauche devient actif.
+  await fermer(page).click();
+  await dlg.or(dialogue(page, "Fermer shell 3 ?")).getByRole("button", { name: "Fermer", exact: true }).click();
+  await expect(onglets(page)).toHaveText(["shell 1"]);
+  await expect(page.getByRole("tab", { name: "shell 1" })).toHaveAttribute("aria-selected", "true");
+  // Le dernier : état vide, focus sur « Ouvrir un shell », bouton désactivé.
+  await fermer(page).click();
+  await dialogue(page, "Fermer shell 1 ?").getByRole("button", { name: "Fermer", exact: true }).click();
+  await expect(page.getByText("Aucun shell ouvert.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ouvrir un shell" })).toBeFocused();
+  await expect(fermer(page)).toBeDisabled();
+  await page.waitForTimeout(1500);
+  await expect(onglets(page)).toHaveCount(0);
+});
+
+test("REQ035_AC5_un_shell_ferme_disparait_dans_l_autre_fenetre", async ({ page, context }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(onglets(page)).toHaveCount(2);
+  const autre = await context.newPage();
+  await autre.goto(yaide.origine + "/");
+  await expect(onglets(autre)).toHaveText(["shell 1", "shell 2"]);
+  // Le focus est dans le terminal de shell 2 dans l'autre fenêtre : il suit vers shell 1.
+  await autre.getByRole("tab", { name: "shell 2" }).click();
+  await expect.poll(() => focusDansTerminal(autre)).toBe(true);
+  await fermer(page).click();
+  await dialogue(page, "Fermer shell 2 ?").getByRole("button", { name: "Fermer", exact: true }).click();
+  await expect(onglets(autre)).toHaveText(["shell 1"]);
+  await expect(onglets(page)).toHaveText(["shell 1"]);
+  await expect(autre.getByRole("tab", { name: "shell 1" })).toHaveAttribute("aria-selected", "true");
+  await expect.poll(() => focusDansTerminal(autre)).toBe(true);
+});
+
+test("REQ035_AC7_AC12_coupure_avant_et_pendant_le_dialogue", async ({ page }) => {
+  await page.goto(relais.origine + "/");
+  await page.getByLabel("Mot de passe").fill("mdp");
+  await page.keyboard.press("Enter");
+  await page.getByRole("tab", { name: "shell 1" }).waitFor();
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(onglets(page)).toHaveCount(2);
+  // Pendant la coupure, pas de dialogue et le focus reste sur le bouton.
+  relais.couper();
+  await expect(page.getByText("Connexion perdue. Modifications gardées.")).toBeVisible({ timeout: 5000 });
+  await fermer(page).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(fermer(page)).toBeFocused();
+  relais.retablir();
+  await expect(page.getByText("Connexion perdue. Modifications gardées.")).toHaveCount(0, { timeout: 10000 });
+  // Coupure après l'ouverture du dialogue : il reste ouvert et le dit.
+  await fermer(page).click();
+  const dlg = dialogue(page, "Fermer shell 2 ?");
+  await expect(dlg).toBeVisible();
+  relais.couper();
+  await dlg.getByRole("button", { name: "Fermer", exact: true }).click();
+  await expect(dlg).toContainText("Connexion perdue. Réessayez au retour.");
+  await expect(dlg).toBeVisible();
+  relais.retablir();
+  await expect(onglets(page)).toHaveCount(2);
+});
+
+test("REQ035_AC13_shell_deja_ferme_404_ferme_le_dialogue_sans_message_refus_serveur_le_garde_ouvert", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(onglets(page)).toHaveCount(2);
+  // Refus : le dialogue reste ouvert avec la raison.
+  await page.route("**/api/shells/2", (r) => (r.request().method() === "DELETE" ? r.fulfill({ status: 500, contentType: "text/plain", body: "disque plein" }) : r.fallback()));
+  await fermer(page).click();
+  const dlg = dialogue(page, "Fermer shell 2 ?");
+  await dlg.getByRole("button", { name: "Fermer", exact: true }).click();
+  await expect(dlg).toContainText("Impossible de fermer ce shell : disque plein.");
+  await expect(onglets(page)).toHaveCount(2);
+  // 404 : le dialogue se ferme et l'onglet disparaît, sans message.
+  await page.unroute("**/api/shells/2");
+  await page.route("**/api/shells/2", (r) => (r.request().method() === "DELETE" ? r.fulfill({ status: 404, body: "" }) : r.fallback()));
+  await dlg.getByRole("button", { name: "Fermer", exact: true }).click();
+  await expect(dlg).toHaveCount(0);
+  await expect(onglets(page)).toHaveText(["shell 1"]);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("REQ021_AC3_un_shell_ferme_par_le_bouton_n_entraine_pas_de_message_apres_redemarrage", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(onglets(page)).toHaveCount(2);
+  await fermer(page).click();
+  await dialogue(page, "Fermer shell 2 ?").getByRole("button", { name: "Fermer", exact: true }).click();
+  await expect(onglets(page)).toHaveText(["shell 1"]);
+  yaide = await yaide.relancer();
+  await expect(page.getByRole("status").filter({ hasText: "Yaide a été arrêté. 1 shell a été fermé." })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText("Yaide a été arrêté. 2 shells")).toHaveCount(0);
+});
+
+test("REQ028_AC12_F_depuis_les_boutons_du_rail_affiche_les_fichiers", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  const titres = { f: "Fichiers", r: "Recherche", g: "Git" };
+  for (const nom of ["Nouveau shell", "Fermer le shell"]) {
+    for (const touche of ["g", "r", "f"]) {
+      await page.getByRole("button", { name: nom }).focus();
+      await page.keyboard.press(touche);
+      await expect(page.locator("aside h2")).toHaveText(titres[touche]);
+      await expect.poll(() => page.evaluate(() => document.querySelector(".cadre-panneau").contains(document.activeElement))).toBe(true);
+    }
+  }
+});

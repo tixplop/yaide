@@ -170,3 +170,30 @@ test("REQ032_AC12_AC6_la_fenetre_qui_retrecit_borne_l_affichage_sans_effacer_la_
   window.dispatchEvent(new Event("resize"));
   expect(panneau.getAttribute("aria-valuenow")).toBe("450");
 });
+
+test("REQ035_AC1_AC8_deux_boutons_a_icone_dans_le_rail_hors_du_tablist", () => {
+  const { vue } = monter();
+  const groupe = vue.querySelector(".cadre-rail-commandes");
+  const boutons = [...groupe.querySelectorAll("button")];
+  expect(boutons.map((b) => b.getAttribute("aria-label"))).toEqual(["Nouveau shell", "Fermer le shell"]);
+  expect(boutons.map((b) => b.textContent)).toEqual(["", ""]);
+  const icones = boutons.map((b) => b.querySelector("svg").getAttribute("data-icone"));
+  expect(icones).toEqual(["square-terminal", "square-x"]);
+  expect(icones).not.toContain("x");
+  expect(vue.querySelector("[role=tablist]").contains(groupe)).toBe(false);
+  // Aucun shell : « Fermer le shell » est désactivé.
+  expect(boutons[1].disabled).toBe(true);
+});
+
+test("REQ028_AC12_F_R_G_marchent_aussi_depuis_les_boutons_du_rail", () => {
+  const { vue } = monter();
+  const titres = { f: "Fichiers", r: "Recherche", g: "Git" };
+  for (const b of vue.querySelectorAll(".cadre-rail-commandes button")) {
+    for (const touche of ["g", "r", "f"]) {
+      vue.querySelector("[role=tab]").focus();
+      b.dispatchEvent(new KeyboardEvent("keydown", { key: touche, bubbles: true }));
+      expect(vue.querySelector("aside h2").textContent, `${touche} depuis ${b.getAttribute("aria-label")}`).toBe(titres[touche]);
+      expect(vue.querySelector(".cadre-panneau").contains(document.activeElement), `focus après ${touche}`).toBe(true);
+    }
+  }
+});

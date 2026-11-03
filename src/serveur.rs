@@ -5,7 +5,7 @@ use axum::extract::{DefaultBodyLimit, Path as CheminUrl, Query, Request, State};
 use axum::http::{header, HeaderMap, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::Router;
 use std::collections::HashMap;
 use std::net::{SocketAddr, TcpListener};
@@ -218,6 +218,14 @@ async fn ouvrir_shell(State(etat): State<Partage>) -> Response {
             raison,
         )
             .into_response(),
+    }
+}
+
+async fn fermer_shell(State(etat): State<Partage>, CheminUrl(id): CheminUrl<u32>) -> StatusCode {
+    if etat.shells.fermer(id) {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
     }
 }
 
@@ -740,6 +748,7 @@ pub async fn servir(
         .route("/api/deconnexion", post(deconnexion))
         .route("/api/session", get(session))
         .route("/api/shells", get(liste_shells).post(ouvrir_shell))
+        .route("/api/shells/{id}", delete(fermer_shell))
         .route("/api/shells/{id}/ws", get(ws_shell))
         .route("/api/fichiers", get(liste_fichiers))
         .route(

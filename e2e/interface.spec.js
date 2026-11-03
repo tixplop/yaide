@@ -25,6 +25,7 @@ const zoneDuFocus = (page) =>
     const e = document.activeElement;
     if (e.closest("header")) return "barre";
     if (e.getAttribute("role") === "separator") return e.getAttribute("aria-label");
+    if (e.closest(".cadre-rail-commandes")) return e.getAttribute("aria-label");
     if (e.closest(".cadre-rail")) return "rail";
     if (e.closest(".cadre-panneau")) return "panneau";
     if (e.closest(".cadre-onglets")) return "onglets de fichiers";
@@ -58,7 +59,7 @@ test("REQ028_AC8_AC7_ordre_de_Tab_complet_et_contour_de_focus_a_chaque_arret", a
     expect(contour.some(Boolean), `contour absent à l'arrêt ${i} (${z})`).toBe(true);
     if (z !== zones.at(-1)) zones.push(z);
   }
-  expect(zones).toEqual(["barre", "rail", "panneau", "Largeur du panneau", "onglets de fichiers", "éditeur", "Hauteur des shells", "onglets de shells", "Nouveau shell", "terminal"]);
+  expect(zones).toEqual(["barre", "rail", "Nouveau shell", "Fermer le shell", "panneau", "Largeur du panneau", "onglets de fichiers", "éditeur", "Hauteur des shells", "onglets de shells", "terminal"]);
   const contourTerminal = await page.locator(".terminal-zone:visible").evaluate((e) => getComputedStyle(e).outlineStyle);
   expect(contourTerminal).not.toBe("none");
 });
@@ -137,7 +138,7 @@ test("REQ032_AC6_800_par_480_avec_les_tailles_extremes_rien_ne_se_superpose", as
       const b = zones[j];
       expect(a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5, `${a.s} / ${b.s}`).toBe(false);
     }
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 });
 
 /** Valeur calculée de chaque token de couleur (ou d'une autre propriété), telle que le navigateur la rend. */
@@ -220,7 +221,7 @@ test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_san
     toutes.push(...(await commandes(page)));
   }
   const noms = new Set(toutes.map((c) => c.nom));
-  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Commit", "Pull", "Push"]) {
+  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Fermer le shell", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Commit", "Pull", "Push"]) {
     expect(noms.has(attendu), attendu).toBe(true);
   }
   for (const c of toutes) {
@@ -233,6 +234,40 @@ test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_san
   const parIcone = new Map();
   for (const c of toutes) parIcone.set(c.icone, new Set([...(parIcone.get(c.icone) ?? []), c.nom.startsWith("Fermer") ? "Fermer" : c.nom.startsWith("Indexer") ? "Indexer" : c.nom]));
   for (const [icone, ensemble] of parIcone) expect(ensemble.size, `icône ${icone} : ${[...ensemble]}`).toBe(1);
+  // « Fermer le shell » n'a pas l'icône de la fermeture d'un onglet.
+  const icone = (nom) => toutes.find((c) => c.nom === nom).icone;
+  expect(icone("Fermer le shell")).not.toBe(icone("Fermer README.md"));
+  expect(icone("Nouveau shell")).not.toBe(icone("Fermer le shell"));
+});
+
+test("REQ035_AC11_info_bulles_a_droite_et_bouton_desactive_sans_arret_de_Tab", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  const fermer = page.getByRole("button", { name: "Fermer le shell" });
+  for (const nom of ["Nouveau shell", "Fermer le shell"]) {
+    const bouton = page.getByRole("button", { name: nom });
+    await bouton.hover();
+    const info = page.getByRole("tooltip", { name: nom });
+    await expect(info).toBeVisible();
+    await expect(info).toHaveText(nom);
+    const [i, a] = await Promise.all([info.boundingBox(), bouton.boundingBox()]);
+    expect(i.x, nom).toBeGreaterThanOrEqual(a.x + a.width - 1);
+    await page.mouse.move(0, 0);
+    await expect(info).toBeHidden();
+  }
+  const bulle = page.getByRole("tooltip", { name: "Fermer le shell" });
+  // Plus aucun shell : le bouton est désactivé, garde son info-bulle et n'est pas un arrêt de Tab.
+  await page.locator(".terminal:visible .xterm-helper-textarea").focus();
+  await page.keyboard.type("exit");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Aucun shell ouvert.")).toBeVisible();
+  await expect(fermer).toBeDisabled();
+  await page.mouse.move(0, 0);
+  await expect(bulle).toBeHidden();
+  await page.locator(".bouton-enveloppe:has([aria-label='Fermer le shell'])").hover();
+  await expect(bulle).toBeVisible();
+  await page.getByRole("button", { name: "Nouveau shell" }).focus();
+  await page.keyboard.press("Tab");
+  expect(await zoneDuFocus(page)).toBe("panneau");
 });
 
 test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_arbre_relus_au_style_calcule", async ({ page }) => {
@@ -254,6 +289,7 @@ test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_a
     [pied("Supprimer"), "--erreur"], // README.md est sélectionné
     [pied("Renommer"), "--icone-naviguer"],
     [ailleurs("Nouveau shell"), "--succes"],
+    [ailleurs("Fermer le shell"), "--erreur"],
     [ailleurs("Déconnexion"), "--icone-naviguer"],
     [ailleurs("Aperçu"), "--icone-naviguer"],
     [ailleurs("Fermer README.md"), "--icone-naviguer"],

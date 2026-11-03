@@ -49,6 +49,15 @@ export async function ouvrirShell() {
   return { erreur: (await r.text()).trim() || `erreur ${r.status}` };
 }
 
+/** Rend `{}`, `{ introuvable: true }` (404), `{ coupure: true }` ou `{ erreur }` (texte du serveur). */
+export async function fermerShell(id) {
+  const r = await appeler(`/api/shells/${id}`, { method: "DELETE" });
+  if (!r) return { coupure: true };
+  if (r.status === 204) return {};
+  if (r.status === 404) return { introuvable: true };
+  return { erreur: (await r.text()).trim() || `erreur ${r.status}` };
+}
+
 const q = encodeURIComponent;
 
 /** Lit la réponse d'erreur du serveur : `{ cause, message }`. */

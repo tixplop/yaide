@@ -211,6 +211,27 @@ impl Registre {
         Ok(id)
     }
 
+    /// Fermeture d'un shell à la demande : faux si l'identifiant est inconnu. SIGHUP tout de
+    /// suite, puis SIGTERM, puis SIGKILL après 3 s pour ce qui reste, sans faire attendre l'appelant.
+    pub fn fermer(&self, id: u32) -> bool {
+        let Some(shell) = self.obtenir(id) else {
+            return false;
+        };
+        shell.terminer();
+        let pgid = shell.pgid;
+        std::thread::spawn(move || {
+            signaler_tout(pgid, libc::SIGTERM);
+            for _ in 0..30 {
+                if membres(pgid).is_empty() {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            signaler_tout(pgid, libc::SIGKILL);
+        });
+        true
+    }
+
     /// Arrêt du serveur : signal au groupe de chaque shell, puis abandon forcé.
     pub async fn arreter(&self) {
         self.arret.store(true, Ordering::SeqCst);

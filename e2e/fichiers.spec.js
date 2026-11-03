@@ -284,6 +284,6 @@ test("REQ008_AC5_messages_pour_un_binaire_et_un_gros_fichier", async ({ page }) 
   await expect(alerte).toBeVisible();
   await ligne(page, "gros.log").click();
   await expect(page.getByRole("alert").filter({ hasText: "gros.log dépasse 5 Mo. Yaide ne l'ouvre pas." })).toBeVisible();
-  await page.getByRole("button", { name: "Fermer" }).click();
+  await page.getByRole("button", { name: "Fermer", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "gros.log" })).toHaveCount(0);
 });

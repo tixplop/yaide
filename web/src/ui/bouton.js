@@ -11,6 +11,7 @@ export function bouton({
   variante = "secondaire",
   nomAccessible,
   infoBulle,
+  positionInfoBulle,
   raccourci,
   touche = raccourci,
   presse,
@@ -55,7 +56,7 @@ export function bouton({
     const enveloppe = document.createElement("span");
     enveloppe.className = "bouton-enveloppe";
     enveloppe.append(b);
-    creerInfoBulle({ texte: raccourci ? `${nom} (${raccourci})` : nom, ancre: b, enveloppe });
+    creerInfoBulle({ texte: raccourci ? `${nom} (${raccourci})` : nom, ancre: b, enveloppe, position: positionInfoBulle });
     b.enveloppe = enveloppe;
   }
   return b;

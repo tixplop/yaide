@@ -98,7 +98,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   let detruite = false;
   const racine = cadre({
     barreHaut: [nom, lieu, droite],
-    rail: { onglets: rail },
+    rail: { onglets: rail, commandes: shells.commandes },
     panneau: { titre: "Fichiers", corps: [fichiers.corps, recherche.corps, git.corps], pied: [fichiers.pied, git.pied] },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, code: editeur.code, shells },
     surChangement: (zone, taille) => {
@@ -159,8 +159,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (onglet.getAttribute("aria-label") === "Recherche") recherche.focuser();
   });
   // Focus sur le rail : F, R et G affichent le panneau et y mettent le focus.
-  rail.addEventListener("keydown", (e) => {
-    if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.target.closest("[role=tab]")) return;
+  // Les deux boutons de commande du rail comptent aussi : la garde est posée sur toute la colonne.
+  racine.querySelector(".cadre-rail").addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.target.closest("[role=tab], .cadre-rail-commandes button")) return;
     const p = PANNEAUX.find((x) => x.touche === e.key.toLowerCase());
     if (!p) return;
     rail.choisir(p.id);
