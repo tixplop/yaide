@@ -1,11 +1,20 @@
+import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
+import { ecrire, lire } from "../stockage.js";
 import { vuePrincipale } from "./principale.js";
+
+vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
+
+const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
+for (const [, nom, val] of tokens.matchAll(/(--[\w-]+):\s*([^;]+);/g)) document.documentElement.style.setProperty(nom, val.trim());
 
 let vues = [];
 afterEach(() => {
   for (const v of vues) v.detruire();
   vues = [];
   vi.unstubAllGlobals();
+  vi.mocked(lire).mockImplementation(async () => undefined);
+  vi.mocked(ecrire).mockClear();
   document.body.replaceChildren();
 });
 
@@ -27,7 +36,9 @@ test("REQ028_AC2_barre_du_haut", () => {
   const barre = vue.querySelector("header");
   expect(barre.textContent).toContain("Yaide");
   expect(barre.textContent).toContain("/home/x/projet");
-  expect(barre.querySelector("button").textContent).toBe("Déconnexion");
+  const sortir = barre.querySelector("button");
+  expect(sortir.textContent).toBe("");
+  expect(sortir.getAttribute("aria-label")).toBe("Déconnexion");
 });
 
 test("REQ028_AC4_rail_accessible", () => {
@@ -35,7 +46,9 @@ test("REQ028_AC4_rail_accessible", () => {
   const rail = vue.querySelector("[role=tablist]");
   expect(rail.getAttribute("aria-orientation")).toBe("vertical");
   const tabs = [...rail.querySelectorAll("[role=tab]")];
-  expect(tabs.map((t) => t.textContent)).toEqual(["F", "R", "G"]);
+  expect(tabs.map((t) => t.textContent)).toEqual(["", "", ""]);
+  expect(tabs.every((t) => t.querySelector("svg"))).toBe(true);
+  expect(tabs.map((t) => t.getAttribute("aria-keyshortcuts"))).toEqual(["F", "R", "G"]);
   expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual(["Fichiers", "Recherche", "Git"]);
   expect(tabs.map((t) => t.getAttribute("aria-selected"))).toEqual(["true", "false", "false"]);
 });
@@ -97,7 +110,7 @@ test("REQ028_AC2_et_AC022_AC3_la_barre_du_haut_affiche_la_branche_entre_le_chemi
   const droite = vue.querySelector("header .barre-droite");
   expect(droite.children[0].textContent).toBe("branche: main");
   expect(droite.children[0].hidden).toBe(false);
-  expect(droite.children[1].textContent).toBe("Déconnexion");
+  expect(droite.children[1].querySelector("button").getAttribute("aria-label")).toBe("Déconnexion");
 });
 
 test("REQ022_AC4_hors_depot_pas_de_branche_dans_la_barre_du_haut", async () => {
@@ -108,4 +121,52 @@ test("REQ022_AC4_hors_depot_pas_de_branche_dans_la_barre_du_haut", async () => {
   const { vue } = monter();
   await new Promise((r) => setTimeout(r, 0));
   expect(vue.querySelector("header .barre-branche").hidden).toBe(true);
+});
+
+const attendre = () => new Promise((r) => setTimeout(r, 0));
+const poignees = (vue) => ({ panneau: vue.querySelector("[aria-label='Largeur du panneau']"), shells: vue.querySelector("[aria-label='Hauteur des shells']") });
+
+test("REQ032_AC7_les_poignees_ont_valuenow_valuemin_valuemax_des_le_montage", async () => {
+  const { vue } = monter();
+  await attendre();
+  const { panneau, shells } = poignees(vue);
+  for (const p of [panneau, shells]) for (const a of ["aria-valuenow", "aria-valuemin", "aria-valuemax"]) expect(p.hasAttribute(a)).toBe(true);
+  expect(panneau.getAttribute("aria-valuemin")).toBe("160");
+  expect(shells.getAttribute("aria-valuemin")).toBe("120");
+});
+
+test("REQ032_AC5_la_taille_gardee_est_relue_a_l_ouverture_et_bornee", async () => {
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "tailles" ? { panneau: 300, shells: 9999 } : undefined));
+  const { vue } = monter();
+  await attendre();
+  const { panneau, shells } = poignees(vue);
+  expect(panneau.getAttribute("aria-valuenow")).toBe("300");
+  expect(shells.getAttribute("aria-valuenow")).toBe(shells.getAttribute("aria-valuemax"));
+  expect(ecrire).not.toHaveBeenCalled();
+});
+
+test("REQ032_AC12_une_fleche_ecrit_la_taille_choisie_mais_pas_la_fenetre", async () => {
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "tailles" ? { panneau: 300 } : undefined));
+  const { vue } = monter();
+  await attendre();
+  window.dispatchEvent(new Event("resize"));
+  expect(ecrire).not.toHaveBeenCalled();
+  const { panneau } = poignees(vue);
+  panneau.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+  expect(ecrire).toHaveBeenCalledWith("tailles", { panneau: 316 });
+  expect(panneau.getAttribute("aria-valuenow")).toBe("316");
+});
+
+test("REQ032_AC12_AC6_la_fenetre_qui_retrecit_borne_l_affichage_sans_effacer_la_taille_choisie", async () => {
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "tailles" ? { panneau: 450 } : undefined));
+  const { vue } = monter();
+  await attendre();
+  const largeur = window.innerWidth;
+  window.innerWidth = 800;
+  window.dispatchEvent(new Event("resize"));
+  const { panneau } = poignees(vue);
+  expect(panneau.getAttribute("aria-valuenow")).toBe("436");
+  window.innerWidth = largeur;
+  window.dispatchEvent(new Event("resize"));
+  expect(panneau.getAttribute("aria-valuenow")).toBe("450");
 });

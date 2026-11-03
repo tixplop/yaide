@@ -177,9 +177,10 @@ test("REQ032_AC12_clic_sans_mouvement_pas_de_surFin", () => {
   expect(document.documentElement.classList.contains("poignee-glisse-vertical")).toBe(false);
 });
 
-test("REQ032_AC1_AC10_sans_valeur_la_taille_mesuree_sert_de_depart", () => {
-  const { p, surChangement } = monter({ valeur: undefined, mesurer: () => 250 });
+test("REQ032_AC1_AC10_sans_valeur_la_taille_posee_par_definir_sert_de_depart", () => {
+  const { p, surChangement } = monter({ valeur: undefined });
   expect(p.hasAttribute("aria-valuenow")).toBe(false);
+  p.definir({ valeur: 250 });
   touche(p, "ArrowRight");
   expect(surChangement).toHaveBeenLastCalledWith(266);
   p.dispatchEvent(pointeur("pointerdown", 100, 50));

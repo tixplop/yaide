@@ -148,7 +148,8 @@ test("REQ028_AC4_le_rail_est_une_liste_d_onglets_verticale", async ({ page }) =>
   await seConnecter(page);
   const rail = page.getByRole("navigation", { name: "Panneaux" }).getByRole("tablist");
   await expect(rail).toHaveAttribute("aria-orientation", "vertical");
-  await expect(rail.getByRole("tab")).toHaveText(["F", "R", "G"]);
+  await expect(rail.getByRole("tab")).toHaveText(["", "", ""]);
+  expect(await rail.getByRole("tab").evaluateAll((l) => l.map((t) => t.getAttribute("aria-keyshortcuts")))).toEqual(["F", "R", "G"]);
   for (const nom of ["Fichiers", "Recherche", "Git"]) await expect(rail.getByRole("tab", { name: nom })).toHaveAttribute("aria-selected", /true|false/);
 });
 

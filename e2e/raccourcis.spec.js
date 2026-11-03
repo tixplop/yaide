@@ -47,3 +47,27 @@ test("REQ019_AC7_ctrl_maj_f_dans_un_shell_met_le_focus_sur_le_rail_sans_rien_env
   expect(texte).not.toMatch(/[fF]/);
   expect(texte).toContain("cat -v");
 });
+
+test("REQ032_AC11_glisser_une_poignee_au_dessus_du_terminal_laisse_la_frappe_au_shell", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await lancerCat(page);
+  const sep = page.getByRole("separator", { name: "Largeur du panneau" });
+  const valeur = async () => Number(await sep.getAttribute("aria-valuenow"));
+  const avant = await valeur();
+  const p = await sep.boundingBox();
+  const x = p.x + p.width / 2;
+  await page.mouse.move(x, p.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(x + 50, p.y + p.height - 20, { steps: 5 });
+  await page.mouse.up();
+  expect(await valeur()).toBe(avant + 50);
+  await expect(page.locator(".terminal:visible .xterm-helper-textarea")).toBeFocused();
+  await page.keyboard.type("bonjour");
+  await expect(ecran(page)).toContainText("bonjour");
+});
+
+test("REQ031_AC5_l_info_bulle_d_un_onglet_du_rail_donne_son_nom_et_sa_touche", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("tab", { name: "Recherche" }).hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Recherche (R)");
+});

@@ -36,7 +36,6 @@ export function cadre({ barreHaut, rail, panneau = {}, principal = {}, tailles =
       nomAccessible,
       min: lim[cle].min,
       max: lim[cle].max,
-      mesurer: () => (choisies[cle] ? undefined : mesures[cle]()),
       surChangement: (t) => surChangement?.(cle, t),
       surFin: (t) => surFin?.(cle, t),
     });

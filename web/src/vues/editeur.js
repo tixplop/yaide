@@ -87,15 +87,14 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     const noms = libelles(liste.map((x) => x.chemin));
     let actionsDroite = [];
     if (o !== diff && estMarkdown(o.chemin)) {
-      const ap = bouton({ libelle: "Aperçu", variante: "discret" });
-      ap.setAttribute("aria-pressed", String(o.apercu));
+      const ap = bouton({ icone: "eye", variante: "discret", nomAccessible: "Aperçu", presse: o.apercu });
       ap.addEventListener("click", () => {
         o.apercu = !o.apercu;
         o.zone.definirApercu(o.apercu);
         ap.setAttribute("aria-pressed", String(o.apercu));
         garderListe();
       });
-      actionsDroite = [ap];
+      actionsDroite = [ap.enveloppe];
     }
     const ongl = onglets({
       onglets: [...(diff ? [{ id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true }] : []), ...liste.map((x, i) => ({

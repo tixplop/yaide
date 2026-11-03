@@ -30,9 +30,9 @@ const TOUCHES = {
 /**
  * Poignée de redimensionnement. `surChangement(taille)` pendant un glissé ou après une flèche ;
  * `surFin(taille)` à la fin d'un glissé qui a changé la taille ou après une flèche (pour garder la taille).
- * `mesurer()` rend la taille mesurée quand aucune taille n'est choisie (sinon undefined).
+ * Sans `valeur`, la poignée ignore glissé et flèches jusqu'à `definir({ valeur })` (le cadre y pose la taille mesurée).
  */
-export function poignee({ orientation, nomAccessible, valeur, min, max, surChangement, surFin, mesurer } = {}) {
+export function poignee({ orientation, nomAccessible, valeur, min, max, surChangement, surFin } = {}) {
   if (orientation !== "vertical" && orientation !== "horizontal") throw new Error("poignée : orientation vertical ou horizontal requise");
   if (!nomAccessible) throw new Error("poignée : nomAccessible requis");
   const vertical = orientation === "vertical";
@@ -51,12 +51,7 @@ export function poignee({ orientation, nomAccessible, valeur, min, max, surChang
       else e.removeAttribute(attribut);
     }
   }
-  // Sans taille choisie, la valeur de départ est la taille mesurée.
-  function connaitre() {
-    const m = mesurer?.();
-    if (Number.isFinite(m)) e.definir({ valeur: m });
-    return Number.isFinite(etat.valeur);
-  }
+  const connaitre = () => Number.isFinite(etat.valeur);
   e.definir = (v = {}) => {
     Object.assign(etat, v);
     afficher();

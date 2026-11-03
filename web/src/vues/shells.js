@@ -58,12 +58,12 @@ export function vueShells({ dire }) {
       return;
     }
     if (!shells.has(actif)) actif = [...shells.keys()][0];
-    const plus = bouton({ libelle: "+", variante: "discret", nomAccessible: "Nouveau shell" });
+    const plus = bouton({ icone: "plus", couleurIcone: "creer", variante: "discret", nomAccessible: "Nouveau shell" });
     plus.addEventListener("click", nouveau);
     onglet = onglets({
       onglets: [...shells.keys()].map((id) => ({ id: String(id), libelle: `shell ${id}` })),
       actif: String(actif),
-      actionsFin: [plus],
+      actionsFin: [plus.enveloppe],
       surChoix: (id) => activer(Number(id), true),
     });
     onglet.setAttribute("aria-label", "Shells");

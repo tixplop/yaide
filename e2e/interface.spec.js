@@ -107,3 +107,34 @@ test("REQ028_AC10_dialogue_ouvert_les_raccourcis_sont_sans_effet_et_le_focus_rev
   await page.waitForTimeout(300);
   expect(fs.readFileSync(main(), "utf8")).toBe(avant);
 });
+
+test("REQ032_AC6_800_par_480_avec_les_tailles_extremes_rien_ne_se_superpose", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await ouvrirMain(page);
+  await page.getByRole("separator", { name: "Largeur du panneau" }).focus();
+  for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowRight");
+  await page.getByRole("separator", { name: "Hauteur des shells" }).focus();
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowUp");
+  await page.setViewportSize({ width: 800, height: 480 });
+  await expect.poll(() => page.getByRole("separator", { name: "Largeur du panneau" }).getAttribute("aria-valuenow")).toBe("436");
+  await expect.poll(() => page.getByRole("separator", { name: "Hauteur des shells" }).getAttribute("aria-valuenow")).toBe("320");
+  const zones = await page.evaluate(() =>
+    [".cadre-barre", ".cadre-rail", ".cadre-panneau", ".cadre-code", ".cadre-shells"].map((s) => {
+      const r = document.querySelector(s).getBoundingClientRect();
+      return { s, x: r.x, y: r.y, w: r.width, h: r.height };
+    }),
+  );
+  const code = zones.find((z) => z.s === ".cadre-code");
+  const shells = zones.find((z) => z.s === ".cadre-shells");
+  expect(code.w).toBeGreaterThanOrEqual(320 - 1);
+  const haut = await page.evaluate(() => document.querySelector(".cadre-onglets").getBoundingClientRect().y);
+  expect(code.y + code.h - haut).toBeGreaterThanOrEqual(120 - 1);
+  expect(shells.h).toBeGreaterThanOrEqual(120 - 1);
+  for (let i = 0; i < zones.length; i++)
+    for (let j = i + 1; j < zones.length; j++) {
+      const a = zones[i];
+      const b = zones[j];
+      expect(a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5, `${a.s} / ${b.s}`).toBe(false);
+    }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+});

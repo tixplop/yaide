@@ -1,6 +1,8 @@
 import { deconnexion } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { cadre } from "../ui/cadre.js";
+import { borner, limites } from "../ui/poignee.js";
+import { ecrire, lire } from "../stockage.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { surveiller } from "../connexion.js";
@@ -12,9 +14,9 @@ import { vueRecherche } from "./recherche.js";
 import { vueShells } from "./shells.js";
 
 const PANNEAUX = [
-  { id: "fichiers", libelle: "F", nomAccessible: "Fichiers", touche: "f", titre: "Fichiers" },
-  { id: "recherche", libelle: "R", nomAccessible: "Recherche", touche: "r", titre: "Recherche" },
-  { id: "git", libelle: "G", nomAccessible: "Git", touche: "g", titre: "Git" },
+  { id: "fichiers", icone: "files", raccourci: "F", nomAccessible: "Fichiers", touche: "f", titre: "Fichiers" },
+  { id: "recherche", icone: "search", raccourci: "R", nomAccessible: "Recherche", touche: "r", titre: "Recherche" },
+  { id: "git", icone: "git-branch", raccourci: "G", nomAccessible: "Git", touche: "g", titre: "Git" },
 ];
 
 function nomDuDossier(chemin) {
@@ -36,7 +38,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   lieu.title = chemin;
   const droite = document.createElement("div");
   droite.className = "barre-droite";
-  const sortir = bouton({ libelle: "Déconnexion" });
+  const sortir = bouton({ icone: "log-out", nomAccessible: "Déconnexion" });
   sortir.addEventListener("click", async () => {
     if (etat !== "coupe" && (await deconnexion())) surDeconnexion();
     else dire({ texte: TEXTE_COUPURE, variante: "alerte" });
@@ -44,7 +46,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const branche = document.createElement("span");
   branche.className = "barre-branche";
   branche.hidden = true;
-  droite.append(branche, sortir);
+  droite.append(branche, sortir.enveloppe);
 
   // Bandeaux : la coupure d'abord, puis un seul message à la fois.
   const bandeaux = document.createElement("div");
@@ -87,16 +89,51 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
 
   const rail = onglets({
     orientation: "verticale",
-    onglets: PANNEAUX.map(({ id, libelle, nomAccessible }) => ({ id, libelle, nomAccessible })),
+    onglets: PANNEAUX.map(({ id, icone, nomAccessible, raccourci }) => ({ id, icone, nomAccessible, raccourci })),
     actif: "fichiers",
     surChoix: afficherPanneau,
   });
 
+  const choisies = {};
+  let detruite = false;
   const racine = cadre({
     barreHaut: [nom, lieu, droite],
     rail,
     panneau: { titre: "Fichiers", corps: [fichiers.corps, recherche.corps, git.corps], pied: [fichiers.pied, git.pied] },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, code: editeur.code, shells },
+    surChangement: (zone, taille) => {
+      choisies[zone] = taille;
+      racine.definirTailles({ [zone]: taille });
+    },
+    surFin: () => ecrire("tailles", { ...choisies }),
+  });
+
+  // Poignées : limites recalculées à chaque changement de la fenêtre, des bandeaux ou de la question d'onglet.
+  // La taille choisie ne change que par un glissé ou une flèche ; la taille affichée est la choisie, bornée.
+  function recalculer() {
+    if (detruite) return;
+    const hauteurs = [bandeaux, editeur.question].reduce((s, e) => s + e.offsetHeight, 0);
+    const lim = limites({ L: window.innerWidth, H: window.innerHeight, bandeaux: hauteurs });
+    const bornees = {};
+    for (const zone of ["panneau", "shells"]) {
+      racine.poignees[zone].definir(lim[zone]);
+      if (choisies[zone] !== undefined) bornees[zone] = borner(choisies[zone], lim[zone]);
+    }
+    racine.definirTailles(bornees);
+    racine.mesurer();
+  }
+  window.addEventListener("resize", recalculer);
+  const observateur = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(recalculer);
+  observateur?.observe(bandeaux);
+  observateur?.observe(editeur.question);
+  // La vue n'est dans la page qu'après sa création : on mesure juste après le montage.
+  queueMicrotask(recalculer);
+  lire("tailles").then((gardees) => {
+    for (const zone of ["panneau", "shells"]) {
+      const t = gardees?.[zone];
+      if (choisies[zone] === undefined && Number.isFinite(t)) choisies[zone] = t;
+    }
+    recalculer();
   });
   const titre = racine.querySelector(".cadre-panneau-titre");
   const corps = racine.querySelector(".cadre-panneau-corps");
@@ -156,6 +193,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
 
   racine.detruire = () => {
     arreter();
+    detruite = true;
+    window.removeEventListener("resize", recalculer);
+    observateur?.disconnect();
     document.removeEventListener("keydown", surTouche);
     shells.detruire();
     editeur.detruire();
