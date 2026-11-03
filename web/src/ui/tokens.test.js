@@ -73,3 +73,48 @@ test("REQ028_AC3_theme_sombre_seul_accent_bleu_polices_et_mesures", () => {
   expect(t["--trait-fort"]).toBe("2px");
   expect(css).not.toMatch(/@import|url\(|transition|animation/);
 });
+
+const messages = ["--message-info", "--message-succes", "--message-alerte", "--message-erreur"];
+const statuts = ["--statut-modifie", "--statut-nouveau", "--statut-renomme", "--statut-conflit"];
+const hautes = ["--surface", "--surface-haute"];
+
+function verifie(nom, fonds, seuil) {
+  for (const fond of fonds) expect(ratio(nom, fond), `${nom} sur ${fond}`).toBeGreaterThanOrEqual(seuil);
+}
+
+test("REQ033_AC6_contrastes_texte_des_paires_nouvelles", () => {
+  for (const texte of ["--texte", "--texte-attenue"]) verifie(texte, ["--fond-rail", "--fond-shells", ...messages], 4.5);
+  for (const c of [...statuts, "--succes", "--erreur"]) verifie(c, hautes, 4.5);
+});
+
+test("REQ033_AC6_contrastes_icone_et_poignee_des_paires_nouvelles", () => {
+  verifie("--icone-naviguer", ["--fond-rail", ...hautes, ...messages], 3);
+  verifie("--icone-distant", hautes, 3);
+  verifie("--icone-dossier", hautes, 3);
+  for (const c of ["--succes", "--erreur", "--bordure-champ"]) verifie(c, hautes, 3);
+  verifie("--texte-attenue", ["--surface-haute"], 3);
+  verifie("--bordure-champ", messages, 3);
+});
+
+test("REQ033_AC6_valeurs_du_tableau_des_contrastes_nouveaux", () => {
+  expect(ratio("--texte", "--fond-rail")).toBe(15.5);
+  expect(ratio("--texte", "--fond-shells")).toBe(14.1);
+  expect(ratio("--statut-conflit", "--surface")).toBe(8.0);
+  expect(ratio("--icone-naviguer", "--message-erreur")).toBe(8.5);
+  expect(ratio("--bordure-champ", "--message-succes")).toBe(3.3);
+});
+
+test("REQ033_AC8_fonds_distincts_et_tokens_de_dimension_nouveaux", () => {
+  const fonds = ["--fond-rail", "--surface", "--fond", "--fond-shells"].map((n) => t[n]);
+  expect(new Set(fonds).size).toBe(4);
+  expect(t["--epaisseur-poignee"]).toBe("8px");
+  expect(t["--pas-poignee"]).toBe("16px");
+  expect(t["--taille-icone"]).toBe("16px");
+  expect(t["--taille-icone-rail"]).toBe("20px");
+  expect(t["--taille-icone-petite"]).toBe("14px");
+  expect(t["--largeur-panneau-min"]).toBe("160px");
+  expect(t["--largeur-panneau-max"]).toBe("480px");
+  expect(t["--largeur-editeur-min"]).toBe("320px");
+  expect(t["--hauteur-shells-min"]).toBe("120px");
+  expect(t["--hauteur-editeur-min"]).toBe("120px");
+});

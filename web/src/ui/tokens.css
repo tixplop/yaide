@@ -2,6 +2,8 @@
   color-scheme: dark;
 
   --fond: #14171C;
+  --fond-rail: #0B0D10;
+  --fond-shells: #0F1B18;
   --surface: #1C2027;
   --surface-haute: #252A33;
   --texte: #E3E6EB;
@@ -15,6 +17,17 @@
   --alerte: #E3B341;
   --erreur: #FF7B72;
   --erreur-survol: #FF9A93;
+  --statut-modifie: #E3C77D;
+  --statut-nouveau: #6CC5D9;
+  --statut-renomme: #C792EA;
+  --statut-conflit: #FF9F43;
+  --message-info: #22303A;
+  --message-succes: #1C3A2B;
+  --message-alerte: #3D3116;
+  --message-erreur: #45211F;
+  --icone-naviguer: #C4CAD4;
+  --icone-distant: #C792EA;
+  --icone-dossier: #E3C77D;
   --selection: #2B4A78;
   --diff-ajout: #1B3325;
   --diff-retrait: #3D1F22;
@@ -50,10 +63,20 @@
   --hauteur-barre: 32px;
   --largeur-rail: 36px;
   --largeur-panneau: 240px;
+  --largeur-panneau-min: 160px;
+  --largeur-panneau-max: 480px;
+  --largeur-editeur-min: 320px;
   --hauteur-onglet: 28px;
   --hauteur-controle: 24px;
   --hauteur-ligne: 24px;
   --part-shells: 35%;
+  --hauteur-shells-min: 120px;
+  --hauteur-editeur-min: 120px;
+  --epaisseur-poignee: 8px;
+  --pas-poignee: 16px;
+  --taille-icone: 16px;
+  --taille-icone-rail: 20px;
+  --taille-icone-petite: 14px;
   --largeur-dialogue: 420px;
   --largeur-connexion: 320px;
   --largeur-ouverture: 560px;

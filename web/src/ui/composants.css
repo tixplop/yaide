@@ -226,3 +226,22 @@ body { margin: 0; }
 .recherche-corps[hidden] { display: none; }
 
 .ouverture-liste { max-height: calc(12 * var(--hauteur-ligne)); overflow-y: auto; }
+
+/* C-012 : info-bulle */
+.info-bulle {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  box-sizing: border-box;
+  padding: var(--esp-1) var(--esp-3);
+  background: var(--surface-haute);
+  color: var(--texte);
+  border: var(--trait) solid var(--bordure-champ);
+  border-radius: var(--rayon-petit);
+  box-shadow: var(--ombre-dialogue);
+  font: var(--texte-petit) var(--police-ui);
+  font-family: var(--police-ui);
+  white-space: nowrap;
+}
+.bouton-enveloppe { display: inline-flex; }
+.bouton-enveloppe > :disabled { pointer-events: none; }
