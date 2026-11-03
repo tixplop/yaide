@@ -175,3 +175,50 @@ test("REQ028_AC3_variantes_rail_et_horizontale", () => {
   expect(regle(".onglets-horizontale")).toContain("overflow-x: auto");
   expect(regle('.onglet[aria-selected="true"]')).toContain("font-weight: var(--graisse-forte)");
 });
+
+const railIcones = () =>
+  onglets({
+    orientation: "verticale",
+    actif: "f",
+    onglets: [
+      { id: "f", icone: "files", nomAccessible: "Fichiers", raccourci: "F" },
+      { id: "r", icone: "search", nomAccessible: "Recherche", raccourci: "R" },
+    ],
+  });
+
+test("REQ031_AC1_rail_a_icones_sans_texte_noms_et_info_bulle", () => {
+  vi.useFakeTimers();
+  const r = railIcones();
+  document.body.append(r);
+  const t = r.querySelectorAll('[role="tab"]');
+  expect([...t].map((x) => x.textContent)).toEqual(["", ""]);
+  expect([...t].map((x) => x.querySelector("svg").getAttribute("data-icone"))).toEqual(["files", "search"]);
+  expect([...t].map((x) => x.getAttribute("aria-label"))).toEqual(["Fichiers", "Recherche"]);
+  expect(t[0].getAttribute("aria-keyshortcuts")).toBe("F");
+  expect(t[0].hasAttribute("title")).toBe(false);
+  t[0].dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  expect(document.querySelector("[role=tooltip]").textContent).toBe("Fichiers (F)");
+  vi.useRealTimers();
+});
+
+test("REQ033_AC8_rail_fond_et_onglet_actif_aux_couleurs_du_design_system", () => {
+  expect(regle(".onglets-verticale")).toContain("background: var(--fond-rail)");
+  expect(regle(".onglets-verticale .onglet")).toContain("color: var(--icone-naviguer)");
+  expect(regle('.onglets-verticale .onglet[aria-selected="true"]')).toContain("background: var(--surface)");
+});
+
+test("REQ031_AC1_fermeture_d_onglet_par_icone_x_sans_texte", () => {
+  const r = onglets({ actif: "a", onglets: [{ id: "a", libelle: "main.rs", fermable: true, titre: "src/main.rs" }] });
+  const x = r.querySelector(".onglet-fermer");
+  expect(x.textContent).toBe("");
+  expect(x.querySelector("svg").getAttribute("data-icone")).toBe("x");
+  expect(x.getAttribute("aria-label")).toBe("Fermer main.rs");
+  expect(x.hasAttribute("title")).toBe(false);
+  expect(tab(r, 0).title).toBe("src/main.rs");
+});
+
+test("REQ031_AC4_onglet_a_icone_exige_un_nom_accessible", () => {
+  expect(() => onglets({ onglets: [{ id: "a", icone: "files" }] })).toThrow(/nomAccessible/);
+  expect(() => onglets({ onglets: [{ id: "a" }] })).toThrow(/libelle/);
+});

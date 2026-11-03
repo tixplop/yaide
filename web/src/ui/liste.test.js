@@ -104,8 +104,11 @@ test("REQ028_AC3_arbre_treeitem_expanded_marques_et_retrait", () => {
   expect(src.getAttribute("aria-expanded")).toBe("true");
   expect(doc.getAttribute("aria-expanded")).toBe("false");
   expect(a.hasAttribute("aria-expanded")).toBe(false);
-  expect(src.textContent).toContain("▾");
-  expect(doc.textContent).toContain("▸");
+  const icones = (e) => [...e.querySelectorAll("svg")].map((x) => x.getAttribute("data-icone"));
+  expect(icones(src)).toEqual(["chevron-down", "folder"]);
+  expect(icones(doc)).toEqual(["chevron-right", "folder"]);
+  expect(icones(a)).toEqual(["file"]);
+  expect(src.textContent).toBe("src");
   expect(a.getAttribute("aria-level")).toBe("2");
   expect(a.style.getPropertyValue("--niveau")).toBe("1");
   expect(regle(".liste-ligne")).toContain("var(--niveau, 0) * var(--esp-4)");
@@ -205,4 +208,70 @@ test("REQ028_AC3_style_courante_et_polices_valides", () => {
   expect(regle(".liste-courante")).toContain("border-left: var(--trait-fort) solid var(--accent)");
   expect(regle(".liste-groupe")).toContain("font: var(--texte-petit) var(--police-ui)");
   expect(css).not.toMatch(/font-size:\s*var\(--texte/);
+});
+
+test("REQ033_AC5_arbre_dossier_fichier_et_ignore_ont_leurs_icones_et_couleurs", () => {
+  const l = arbre({ lignes: [
+    { id: "d", libelle: "d", enfants: true, ouvert: false },
+    { id: "f", libelle: "f" },
+    { id: "i", libelle: "i", attenuee: true },
+  ] });
+  const [d, f, i] = items(l);
+  expect(d.querySelector(".liste-icone").classList.contains("liste-dossier")).toBe(true);
+  expect(f.querySelector(".liste-icone").classList.contains("liste-fichier")).toBe(true);
+  expect(f.querySelector(".liste-chevron svg")).toBeNull();
+  expect(i.classList.contains("liste-attenuee")).toBe(true);
+  expect(regle(".liste-dossier")).toContain("color: var(--icone-dossier)");
+  expect(regle(".liste-fichier")).toContain("color: var(--texte-attenue)");
+  expect(regle(".liste-attenuee")).toContain("font-style: italic");
+});
+
+test("REQ033_AC2_secondaire_prend_sa_couleur_et_sa_graisse", () => {
+  const l = liste({ lignes: [{ id: "a", libelle: "a", secondaire: "indexé", couleurSecondaire: "succes", secondaireFort: true }, { id: "b", libelle: "b", secondaire: "nouveau" }] });
+  const [a, b] = [...l.querySelectorAll(".liste-secondaire")];
+  expect(a.style.getPropertyValue("--couleur-secondaire")).toBe("var(--succes)");
+  expect(a.classList.contains("liste-secondaire-fort")).toBe(true);
+  expect(b.style.getPropertyValue("--couleur-secondaire")).toBe("");
+  expect(regle(".liste-secondaire")).toContain("color: var(--couleur-secondaire, var(--texte-attenue))");
+  expect(regle(".liste-secondaire-fort")).toContain("font-weight: var(--graisse-forte)");
+  expect(() => liste({ lignes: [{ id: "a", libelle: "a", secondaire: "x", couleurSecondaire: "red; x" }] })).toThrow(/couleurSecondaire/);
+});
+
+test("REQ031_AC1_action_de_ligne_a_icone_sans_texte_avec_info_bulle", () => {
+  const surClic = vi.fn();
+  const l = liste({ lignes: [{ id: "a", libelle: "a.rs", actionLigne: { icone: "circle-plus", couleurIcone: "creer", nomAccessible: "Indexer a.rs", infoBulle: "Indexer", touche: "I", surClic } }] });
+  document.body.append(l);
+  const b = l.querySelector("button");
+  expect(b.textContent).toBe("");
+  expect(b.getAttribute("aria-label")).toBe("Indexer a.rs");
+  expect(b.tabIndex).toBe(-1);
+  expect(b.classList.contains("bouton-icone-creer")).toBe(true);
+  expect(b.parentElement.classList.contains("bouton-enveloppe")).toBe(true);
+  b.click();
+  expect(surClic).toHaveBeenCalledWith("a");
+});
+
+test("REQ033_AC12_dossier_ignore_a_son_icone_et_son_nom_en_texte_attenue", () => {
+  const l = arbre({ lignes: [{ id: "n", libelle: "node_modules", enfants: true, ouvert: false, attenuee: true }, { id: "s", libelle: "src", enfants: true, ouvert: false }] });
+  const [n, s] = items(l);
+  expect(n.classList.contains("liste-attenuee")).toBe(true);
+  expect(n.querySelector(".liste-icone svg").getAttribute("data-icone")).toBe("folder");
+  expect(s.classList.contains("liste-attenuee")).toBe(false);
+  expect(regle(".liste-attenuee .liste-icone")).toContain("color: var(--texte-attenue)");
+  expect(regle(".liste-attenuee")).toContain("color: var(--texte-attenue)");
+  // Le sélecteur de l'icône ignorée bat celui du dossier (même règle, plus spécifique).
+  expect(css.indexOf(".liste-attenuee .liste-icone")).toBeGreaterThan(css.indexOf(".liste-dossier {"));
+});
+
+test("REQ023_AC6_clic_sur_une_action_de_ligne_desactivee_n_active_pas_la_ligne", () => {
+  const surActiver = vi.fn();
+  const l = liste({ lignes: [{ id: "a", libelle: "a.rs", actionLigne: { icone: "circle-plus", nomAccessible: "Indexer a.rs", surClic: vi.fn() } }], surActiver });
+  document.body.append(l);
+  const b = l.querySelector("button");
+  b.disabled = true;
+  // pointer-events: none renvoie le clic à l'enveloppe, puis à la ligne.
+  b.parentElement.click();
+  expect(surActiver).not.toHaveBeenCalled();
+  l.querySelector(".liste-libelle").click();
+  expect(surActiver).toHaveBeenCalledWith("a");
 });

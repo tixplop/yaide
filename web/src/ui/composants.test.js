@@ -97,3 +97,11 @@ test("REQ028_AC3_indication_style_et_masquage", () => {
   a(".indication", "padding: var(--esp-3)");
   a(".indication[hidden]", "display: none");
 });
+
+test("REQ033_AC3_et_AC10_fond_des_messages_selon_la_variante", () => {
+  a(".message-info", "background: var(--message-info)");
+  a(".message-succes", "background: var(--message-succes)");
+  a(".message-alerte", "background: var(--message-alerte)");
+  a(".message-erreur", "background: var(--message-erreur)");
+  expect(css.indexOf(".message-fort {")).toBeGreaterThan(css.indexOf(".message-erreur {"));
+});

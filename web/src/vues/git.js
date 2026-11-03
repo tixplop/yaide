@@ -114,13 +114,13 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
         id: c.chemin,
         libelle: c.chemin,
         secondaire: c.statut,
-        actionLigne: c.indexe ? undefined : { libelle: "+", nomAccessible: `Indexer ${nomDe(c.chemin)}`, touche: "I", surClic: indexer },
+        couleurSecondaire: c.statut === "indexé" ? "succes" : undefined,
+        actionLigne: c.indexe ? undefined : { icone: "circle-plus", couleurIcone: "creer", nomAccessible: `Indexer ${nomDe(c.chemin)}`, infoBulle: "Indexer", touche: "I", surClic: indexer },
       }));
       contenu = liste({ lignes, selection: diffOuvert() ?? selection ?? undefined, surActiver: ouvrirDiff });
       contenu.setAttribute("aria-label", "Changements");
       etat.changements.forEach((c, i) => {
         contenu.children[i].dataset.chemin = c.chemin;
-        if (c.statut === "indexé") contenu.children[i].querySelector(".liste-secondaire").classList.add("git-indexe");
         if (occupe) for (const plus of contenu.children[i].querySelectorAll("button")) plus.disabled = true;
       });
     }

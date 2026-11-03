@@ -18,7 +18,9 @@ test("REQ028_AC3_message_detail_actions_et_fermeture", () => {
   expect(m.querySelector(".message-detail").textContent).toBe("sortie brute");
   expect(m.querySelector(".message-actions button").textContent).toBe("Oui");
   const f = m.querySelector("button[aria-label='Fermer']");
-  expect(f.textContent).toBe("×");
+  expect(f.textContent).toBe("");
+  expect(f.querySelector("svg").getAttribute("data-icone")).toBe("x");
+  expect(f.hasAttribute("title")).toBe(false);
   f.click();
   expect(document.body.contains(m)).toBe(false);
 });

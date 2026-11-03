@@ -1,8 +1,15 @@
+import { bouton } from "./bouton.js";
+import { icone } from "./icones.js";
+import { infoBulle } from "./info-bulle.js";
+
 const ORIENTATIONS = ["horizontale", "verticale"];
 
 export function onglets({ orientation = "horizontale", onglets: liste, actif, actionsFin = [], actionsDroite = [], surChoix, surFermer }) {
   if (!ORIENTATIONS.includes(orientation)) throw new Error(`onglets : orientation inconnue « ${orientation} »`);
-  for (const o of liste) if (!o.libelle) throw new Error("onglets : libelle requis");
+  for (const o of liste) {
+    if (!o.libelle && !o.icone) throw new Error("onglets : libelle requis");
+    if (!o.libelle && !o.nomAccessible) throw new Error("onglets : nomAccessible requis avec une icône");
+  }
   const vertical = orientation === "verticale";
   const racine = document.createElement("div");
   racine.className = `onglets onglets-${orientation}`;
@@ -19,7 +26,8 @@ export function onglets({ orientation = "horizontale", onglets: liste, actif, ac
     t.type = "button";
     t.className = "onglet";
     t.setAttribute("role", "tab");
-    t.textContent = o.libelle;
+    if (o.icone) t.append(icone(o.icone));
+    else t.textContent = o.libelle;
     if (o.detail) {
       const d = document.createElement("span");
       d.className = "onglet-detail";
@@ -27,6 +35,8 @@ export function onglets({ orientation = "horizontale", onglets: liste, actif, ac
       t.append(d);
     }
     const nom = o.nomAccessible ?? (o.detail ? `${o.libelle} · ${o.detail}` : o.libelle);
+    if (o.raccourci) t.setAttribute("aria-keyshortcuts", o.raccourci);
+    if (o.icone) infoBulle({ texte: o.raccourci ? `${nom} (${o.raccourci})` : nom, ancre: t, position: vertical ? "droite" : "dessous" });
     if (o.titre) t.title = o.titre;
     if (o.modifie) t.append(" ●");
     if (o.question) {
@@ -40,14 +50,11 @@ export function onglets({ orientation = "horizontale", onglets: liste, actif, ac
     t.addEventListener("keydown", (e) => touche(e, o));
     cellule.append(t);
     if (o.fermable) {
-      const x = document.createElement("button");
-      x.type = "button";
-      x.className = "onglet-fermer";
+      const x = bouton({ icone: "x", variante: "discret", nomAccessible: `Fermer ${nom}` });
+      x.classList.add("onglet-fermer");
       x.tabIndex = -1;
-      x.textContent = "×";
-      x.setAttribute("aria-label", `Fermer ${nom}`);
       x.addEventListener("click", () => surFermer?.(o.id));
-      cellule.append(x);
+      cellule.append(x.enveloppe);
     }
     elements.set(o.id, t);
     racine.append(cellule);

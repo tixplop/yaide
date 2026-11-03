@@ -1,4 +1,5 @@
 import { bouton } from "./bouton.js";
+import { icone } from "./icones.js";
 
 const VARIANTES = ["plate", "arbre"];
 let compteur = 0;
@@ -51,17 +52,26 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     }
     if (l.actionLigne) {
       const a = l.actionLigne;
-      const b = bouton({ libelle: a.libelle, nomAccessible: a.nomAccessible, variante: "discret" });
+      const b = bouton({ libelle: a.libelle, icone: a.icone, couleurIcone: a.couleurIcone, nomAccessible: a.nomAccessible, infoBulle: a.infoBulle, raccourci: a.icone ? a.touche : undefined, variante: "discret" });
       b.tabIndex = -1;
       b.addEventListener("click", (ev) => {
         ev.stopPropagation();
         a.surClic?.(l.id);
       });
       if (a.touche) e.setAttribute("aria-keyshortcuts", a.touche);
-      e.append(b);
+      e.append(b.enveloppe ?? b);
     }
     if (pilotage === "champ") e.append(Object.assign(document.createElement("span"), { className: "liste-marque" }));
-    else if (arbre && l.enfants) e.append(Object.assign(document.createElement("span"), { className: "liste-marque", textContent: l.ouvert ? "▾" : "▸" }));
+    else if (arbre) {
+      // Chevron (place vide pour un fichier), puis icône du dossier ou du fichier.
+      const c = document.createElement("span");
+      c.className = "liste-chevron";
+      if (l.enfants) c.append(icone(l.ouvert ? "chevron-down" : "chevron-right"));
+      const i = document.createElement("span");
+      i.className = `liste-icone ${l.enfants ? "liste-dossier" : "liste-fichier"}`;
+      i.append(icone(l.enfants ? "folder" : "file"));
+      e.append(c, i);
+    }
     e.querySelector(":scope > .liste-marque")?.setAttribute("aria-hidden", "true");
     const t = document.createElement("span");
     t.className = "liste-libelle";
@@ -77,9 +87,16 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       const s = document.createElement("span");
       s.className = "liste-secondaire";
       s.textContent = l.secondaire;
+      if (l.couleurSecondaire) {
+        if (!/^[a-z-]+$/.test(l.couleurSecondaire)) throw new Error(`liste : couleurSecondaire invalide « ${l.couleurSecondaire} »`);
+        s.style.setProperty("--couleur-secondaire", `var(--${l.couleurSecondaire})`);
+      }
+      if (l.secondaireFort) s.classList.add("liste-secondaire-fort");
       e.append(s);
     }
-    e.addEventListener("click", () => {
+    e.addEventListener("click", (ev) => {
+      // Un clic sur une action désactivée (pointer-events: none) retombe sur la ligne : il ne l'active pas.
+      if (ev.target.closest?.(".bouton-enveloppe")) return;
       marquer(l.id);
       surActiver?.(l.id);
     });

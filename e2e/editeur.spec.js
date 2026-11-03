@@ -420,3 +420,21 @@ test("V002_chargement_pendant_la_lecture_et_pendant_la_restauration_jamais_aucun
   await expect(page.getByText("Aucun fichier ouvert.")).toHaveCount(0);
   await expect(onglet(page, "a.txt")).toBeVisible();
 });
+
+test("REQ031_AC3_le_bundle_de_production_garde_les_notices_Lucide_et_Feather", () => {
+  const bundle = fs.readFileSync("web/dist/main.js", "utf8");
+  expect(bundle).toContain("ISC License");
+  expect(bundle).toContain("Copyright (c) 2026 Lucide Icons and Contributors");
+  expect(bundle).toContain("The MIT License (MIT)");
+  expect(bundle).toContain("Copyright (c) 2013-present Cole Bemis");
+});
+
+test("REQ031_AC1_fermer_un_onglet_de_texte_par_une_icone_sans_title", async ({ page }) => {
+  await ouvrir(page);
+  await ouvrirMain(page);
+  const fermer = page.getByRole("button", { name: "Fermer main.rs" });
+  await expect(fermer).toBeVisible();
+  await expect(fermer).toHaveText("");
+  await expect(fermer).not.toHaveAttribute("title", /.*/);
+  await expect(onglet(page, /^main\.rs/)).toHaveAttribute("title", "src/main.rs");
+});

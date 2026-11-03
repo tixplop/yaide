@@ -28,9 +28,9 @@ export function message({ texte, variante = "info", detail, actions = [], fermab
       m.append(a);
     }
     if (fermable) {
-      const f = bouton({ libelle: "×", variante: "discret", nomAccessible: "Fermer" });
+      const f = bouton({ icone: "x", variante: "discret", nomAccessible: "Fermer" });
       f.addEventListener("click", () => m.remove());
-      m.append(f);
+      m.append(f.enveloppe);
     }
   }
   return m;
