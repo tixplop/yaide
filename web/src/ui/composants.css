@@ -245,6 +245,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .terminal[hidden] { display: none; }
 .zone-code[hidden] { display: none; }
 .editeur-code { height: 100%; min-height: 0; }
+.fichiers { box-sizing: border-box; min-height: 100%; }
 .fichiers-pied { display: flex; flex-wrap: nowrap; gap: var(--esp-2); padding: var(--esp-2); }
 .fichiers-pied[hidden] { display: none; }
 

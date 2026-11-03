@@ -71,3 +71,30 @@ test("REQ031_AC5_l_info_bulle_d_un_onglet_du_rail_donne_son_nom_et_sa_touche", a
   await page.getByRole("tab", { name: "Recherche" }).hover();
   await expect(page.getByRole("tooltip")).toHaveText("Recherche (R)");
 });
+
+test("REQ034_AC1_AC11_AC16_clic_droit_touche_menu_et_maj_f10_ouvrent_une_seule_fois_et_echap_rend_le_focus", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  const ligne = page.getByRole("tree", { name: "Fichiers" }).getByRole("treeitem", { name: "README.md", exact: true });
+  await ligne.click({ button: "right" });
+  await expect(page.getByRole("menu", { name: "Actions sur README.md" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(ligne).toBeFocused();
+  for (const touche of ["ContextMenu", "Shift+F10"]) {
+    await ligne.focus();
+    await page.keyboard.press(touche);
+    await expect(page.getByRole("menu")).toHaveCount(1);
+    await expect(page.getByRole("menuitem", { name: "Nouveau fichier" })).toBeFocused();
+    await page.waitForTimeout(700);
+    await expect(page.getByRole("menu")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(ligne).toBeFocused();
+  }
+  await ligne.focus();
+  await page.keyboard.press("ContextMenu");
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeFocused();
+});

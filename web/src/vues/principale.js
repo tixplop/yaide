@@ -63,8 +63,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     const texte = ["Connexion perdue. Modifications gardées.", attenteTexte].filter(Boolean).join(" ");
     montrerBandeau("coupure", message({ texte, variante: "alerte", fort: true }));
   }
-  function dire({ texte, variante, fermable = false }) {
-    const m = message({ texte, variante, fermable });
+  function dire({ texte, variante, detail, fermable = false }) {
+    const m = message({ texte, variante, detail, fermable });
     montrerBandeau("message", m);
     return m;
   }
@@ -72,7 +72,15 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const shells = vueShells({ dire });
   const editeur = vueEditeur({ dire, ouvrirRapide: () => ouverture.ouvrir(), surAttente: (t) => { attenteTexte = t; montrerCoupure(); } });
   const ouverture = vueOuverture({ dire, surOuvrir: editeur.ouvrir, surLecture: editeur.lecture });
-  const fichiers = vueFichiers({ dire, surOuvrir: editeur.ouvrir, surRenomme: editeur.renomme, surSupprime: editeur.supprime, surLecture: editeur.lecture });
+  const fichiers = vueFichiers({
+    dire,
+    estDepot: () => git.estDepot(),
+    surCommit: () => {
+      rail.choisir("git");
+      afficherPanneau("git");
+      git.focuserMessage();
+    }, surOuvrir: editeur.ouvrir, surRenomme: editeur.renomme, surSupprime: editeur.supprime, surLecture: editeur.lecture,
+  });
   const recherche = vueRecherche({ dire, surOuvrir: editeur.ouvrir, surLecture: editeur.lecture });
   const git = vueGit({
     dire,

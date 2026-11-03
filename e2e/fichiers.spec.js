@@ -2,7 +2,9 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { depotExemple, lancerYaide, ouvrirYaide } from "./aides.js";
+import { lancerRelais } from "./relais.js";
 
 let yaide;
 test.afterEach(async () => {
@@ -286,4 +288,292 @@ test("REQ008_AC5_messages_pour_un_binaire_et_un_gros_fichier", async ({ page }) 
   await expect(page.getByRole("alert").filter({ hasText: "gros.log dépasse 5 Mo. Yaide ne l'ouvre pas." })).toBeVisible();
   await page.getByRole("button", { name: "Fermer", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "gros.log" })).toHaveCount(0);
+});
+
+// ---- REQ-034 : menu de l'arborescence ----
+
+const menu = (page, nom) => page.getByRole("menu", { name: nom });
+const indexe = (dossier) => spawnSync("git", ["diff", "--cached", "--name-only"], { cwd: dossier, encoding: "utf8" }).stdout.split("\n").filter(Boolean);
+const vide = (page) => page.locator(".fichiers").evaluate((e) => {
+  const r = e.getBoundingClientRect();
+  return { x: r.left + 20, y: r.bottom - 5 };
+});
+const clicVide = async (page) => {
+  const p = await vide(page);
+  await page.mouse.click(p.x, p.y, { button: "right" });
+};
+
+test("REQ034_AC1_AC14_clic_droit_sur_une_ligne_ouvre_le_menu_sans_ouvrir_ni_deplier", async ({ page }) => {
+  await ouvrir(page);
+  await expect(ligne(page, "README.md")).toHaveAttribute("aria-haspopup", "menu");
+  await ligne(page, "README.md").click({ button: "right" });
+  const m = menu(page, "Actions sur README.md");
+  await expect(m).toBeVisible();
+  await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit"]);
+  await expect(m.getByRole("menuitem", { name: "Renommer", exact: true })).toBeVisible();
+  await expect(m.getByRole("separator")).toHaveCount(2);
+  await expect(ligne(page, "README.md")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "README.md" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await ligne(page, "src").click({ button: "right" });
+  await expect(menu(page, "Actions sur src/")).toBeVisible();
+  await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "false");
+});
+
+test("REQ034_AC2_AC19_partie_vide_menu_du_projet_sans_changer_la_selection_ni_remplir_le_chemin", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "src").click();
+  await ligne(page, "main.rs").click();
+  await clicVide(page);
+  const m = menu(page, "Actions sur le projet");
+  await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Commit"]);
+  await expect(m.getByRole("separator")).toHaveCount(1);
+  await expect(ligne(page, "main.rs")).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByLabel("Chemin")).toHaveValue("");
+});
+
+test("REQ034_AC2_projet_vide_le_menu_s_ouvre_sur_Dossier_vide", async ({ page }) => {
+  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "vide-"));
+  fs.mkdirSync(path.join(dossier, "p"));
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "p") });
+  await ouvrirYaide(page, yaide.origine);
+  await expect(page.getByText("Dossier vide.")).toBeVisible();
+  await page.getByText("Dossier vide.").click({ button: "right" });
+  await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier"]);
+});
+
+test("REQ034_AC2_projet_vide_dans_un_depot_propose_aussi_commit", async ({ page }) => {
+  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "vide-"));
+  fs.mkdirSync(path.join(dossier, "p"));
+  spawnSync("git", ["init", "-q"], { cwd: path.join(dossier, "p") });
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "p") });
+  await ouvrirYaide(page, yaide.origine);
+  await expect(page.getByText("Dossier vide.")).toBeVisible();
+  await page.getByText("Dossier vide.").click({ button: "right" });
+  const m = menu(page, "Actions sur le projet");
+  await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Commit"]);
+  await expect(m.getByRole("separator")).toHaveCount(1);
+});
+
+test("REQ034_AC16_clic_droit_sur_une_ligne_d_erreur_est_la_partie_vide_et_ne_prend_pas_le_focus", async ({ page }) => {
+  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "noir-"));
+  const projet = path.join(dossier, "p");
+  fs.mkdirSync(path.join(projet, "noir"), { recursive: true });
+  fs.writeFileSync(path.join(projet, "noir", "x"), "x");
+  fs.writeFileSync(path.join(projet, "a.txt"), "a");
+  fs.chmodSync(path.join(projet, "noir"), 0);
+  try {
+    yaide = await lancerYaide({ shell: "/bin/sh", dossier: projet });
+    await ouvrirYaide(page, yaide.origine);
+    await ligne(page, "a.txt").focus();
+    await ligne(page, "noir").click();
+    const erreur = page.getByRole("treeitem", { name: /Impossible de lire ce dossier/ });
+    await expect(erreur).toBeVisible();
+    await ligne(page, "a.txt").focus();
+    await erreur.click({ button: "right" });
+    await expect(menu(page, "Actions sur le projet")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[role=treeitem]:not([data-chemin]):focus")).toHaveCount(0);
+    await expect(ligne(page, "a.txt")).toBeFocused();
+  } finally {
+    fs.chmodSync(path.join(projet, "noir"), 0o755);
+  }
+});
+
+test("REQ034_AC3_nouveau_fichier_depuis_une_ligne_remplit_le_dossier_visé", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "src").click();
+  await ligne(page, "main.rs").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Nouveau fichier" }).click();
+  await expect(page.getByLabel("Chemin")).toHaveValue("src/");
+  await page.keyboard.press("Escape");
+  await ligne(page, "a.txt").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Nouveau dossier" }).click();
+  await expect(page.getByLabel("Chemin")).toHaveValue("");
+});
+
+test("REQ034_AC4_renommer_et_supprimer_ouvrent_les_dialogues_de_la_ligne", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "a.txt").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Renommer" }).click();
+  await expect(page.getByLabel("Nouveau chemin")).toHaveValue("a.txt");
+  await page.keyboard.press("Escape");
+  await ligne(page, "b.txt").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Supprimer" }).click();
+  await expect(page.getByRole("dialog", { name: "Supprimer b.txt ?" })).toBeVisible();
+});
+
+test("REQ034_AC5_AC6_AC18_indexer_un_fichier_puis_un_dossier_avec_message_et_focus", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await ligne(page, "a.txt").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Indexer" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "a.txt est indexé." })).toBeVisible();
+  await expect(page.getByRole("status").getByRole("button", { name: "Fermer" })).toBeVisible();
+  await expect(ligne(page, "a.txt")).toBeFocused();
+  expect(indexe(dossier)).toEqual(["a.txt"]);
+  await ligne(page, "Zeta").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Indexer" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Zeta/ est indexé." })).toBeVisible();
+  await expect(ligne(page, "Zeta")).toBeFocused();
+  expect(indexe(dossier)).toEqual(["Zeta/z.txt", "a.txt"]);
+});
+
+test("REQ034_AC6_indexer_un_dossier_laisse_de_cote_ce_que_git_ignore", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  fs.writeFileSync(path.join(dossier, "Zeta", "x.log"), "x");
+  fs.writeFileSync(path.join(dossier, ".gitignore"), "target/\n*.log\n");
+  await page.reload();
+  await ligne(page, "Zeta").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Indexer" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Zeta/ est indexé." })).toBeVisible();
+  expect(indexe(dossier)).toEqual(["Zeta/z.txt"]);
+});
+
+test("REQ034_AC7_AC18_indexer_un_fichier_ignore_montre_le_refus_de_git_et_l_index_reste", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await page.getByRole("treeitem", { name: "target, ignoré par git" }).click();
+  await page.getByRole("treeitem", { name: "out.txt, ignoré par git" }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Indexer" }).click();
+  const alerte = page.getByRole("alert").filter({ hasText: "Git a refusé." });
+  await expect(alerte).toBeVisible();
+  await expect(alerte).toContainText("ignor");
+  await expect(page.getByRole("treeitem", { name: "out.txt, ignoré par git" })).toBeFocused();
+  expect(indexe(dossier)).toEqual([]);
+});
+
+test("REQ034_P008_indexer_main_rs_modifie_refus_sur_target_puis_commit_depuis_le_vide", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  fs.writeFileSync(path.join(dossier, "src", "main.rs"), "fn main() {}\n");
+  await ligne(page, "src").click();
+  await ligne(page, "main.rs").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Indexer" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "src/main.rs est indexé." })).toBeVisible();
+  expect(indexe(dossier)).toEqual(["src/main.rs"]);
+  await page.getByRole("treeitem", { name: "target, ignoré par git" }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Indexer" }).click();
+  const alerte = page.getByRole("alert").filter({ hasText: "Git a refusé." });
+  await expect(alerte).toBeVisible();
+  await expect(alerte).toContainText("ignor");
+  expect(indexe(dossier)).toEqual(["src/main.rs"]);
+  await clicVide(page);
+  await page.getByRole("menuitem", { name: "Commit" }).click();
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeFocused();
+  await expect(page.getByRole("listbox", { name: "Changements" }).getByRole("option").filter({ hasText: "src/main.rs" })).toContainText("indexé");
+  const log = spawnSync("git", ["log", "--oneline"], { cwd: dossier, encoding: "utf8" }).stdout.trim().split("\n");
+  expect(log).toHaveLength(1);
+  expect(indexe(dossier)).toEqual(["src/main.rs"]);
+});
+
+test("REQ034_AC9_hors_depot_ni_indexer_ni_commit", async ({ page }) => {
+  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "plat-"));
+  fs.mkdirSync(path.join(dossier, "p"));
+  fs.writeFileSync(path.join(dossier, "p", "a.txt"), "a");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "p") });
+  await ouvrirYaide(page, yaide.origine);
+  await ligne(page, "a.txt").click({ button: "right" });
+  const m = menu(page, "Actions sur a.txt");
+  await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr"]);
+  await expect(m.getByRole("separator")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await clicVide(page);
+  await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier"]);
+});
+
+test("REQ034_AC12_clic_droit_dans_l_editeur_et_le_shell_n_ouvre_pas_le_menu_de_Yaide", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "a.txt").click();
+  await expect(page.locator(".cm-content")).toBeVisible();
+  for (const cible of [page.locator(".cm-content"), page.locator(".terminal:visible .xterm-screen")]) {
+    const annule = await cible.evaluate((e) => {
+      const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+      e.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    });
+    expect(annule).toBe(false);
+    await expect(page.getByRole("menu")).toHaveCount(0);
+  }
+});
+
+test("REQ034_AC13_indexer_pendant_une_coupure_dit_connexion_perdue_et_rien_ne_change", async ({ page }) => {
+  const dossier = await demarrer();
+  const relais = await lancerRelais(yaide.port);
+  try {
+    await ouvrirYaide(page, relais.origine);
+    await ligne(page, "a.txt").click({ button: "right" });
+    relais.couper();
+    await page.getByRole("menuitem", { name: "Indexer" }).click();
+    await expect(page.getByText("Connexion perdue. Réessayez au retour.").first()).toBeVisible();
+    expect(indexe(dossier)).toEqual([]);
+  } finally {
+    relais.fermer();
+  }
+});
+
+test("REQ034_AC16_echap_rend_le_focus_a_la_ligne_et_un_clic_ailleurs_n_ouvre_pas_le_fichier", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "a.txt").click({ button: "right" });
+  await page.keyboard.press("Escape");
+  await expect(ligne(page, "a.txt")).toBeFocused();
+  await ligne(page, "a.txt").click({ button: "right" });
+  await ligne(page, "README.md").click({ position: { x: 5, y: 5 } });
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "README.md" })).toHaveCount(0);
+  await ligne(page, "a.txt").click({ button: "right" });
+  await ligne(page, "b.txt").click({ button: "right", position: { x: 5, y: 5 } });
+  await expect(page.getByRole("menu")).toHaveCount(1);
+  await expect(menu(page, "Actions sur b.txt")).toBeVisible();
+});
+
+test("REQ034_AC16_depuis_la_partie_vide_le_panneau_ne_prend_pas_le_focus_et_il_revient", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "a.txt").focus();
+  await clicVide(page);
+  await page.keyboard.press("Escape");
+  await expect(ligne(page, "a.txt")).toBeFocused();
+});
+
+test("REQ034_AC17_a_800_x_480_le_menu_reste_entier_sur_la_derniere_ligne_visible_et_s_ouvre_sous_la_ligne_au_clavier", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 480 });
+  const dossier = await demarrer();
+  for (let i = 0; i < 40; i++) fs.writeFileSync(path.join(dossier, `f${String(i).padStart(2, "0")}.txt`), "x");
+  await ouvrirYaide(page, yaide.origine);
+  await expect(ligne(page, "f39.txt")).toBeAttached();
+  const entier = async () => {
+    const b = await page.getByRole("menu").boundingBox();
+    expect(b.x).toBeGreaterThanOrEqual(0);
+    expect(b.y).toBeGreaterThanOrEqual(0);
+    expect(b.x + b.width).toBeLessThanOrEqual(800);
+    expect(b.y + b.height).toBeLessThanOrEqual(480);
+    return b;
+  };
+  const lignes = arbre(page).getByRole("treeitem");
+  const zone = await page.locator(".cadre-panneau-corps").boundingBox();
+  const visibles = [];
+  for (let i = 0; i < (await lignes.count()); i++) {
+    const b = await lignes.nth(i).boundingBox();
+    if (b && b.y >= zone.y && b.y + b.height <= zone.y + zone.height + 1) visibles.push({ i, b });
+  }
+  const derniere = lignes.nth(visibles.at(-1).i);
+  await derniere.click({ button: "right" });
+  const bas = await entier();
+  // Il ne tient pas sous la ligne : il est retourné au-dessus du point.
+  expect(bas.y).toBeLessThan(visibles.at(-1).b.y);
+  await page.keyboard.press("Escape");
+  const haute = visibles[2];
+  await lignes.nth(haute.i).focus();
+  await page.keyboard.press("ContextMenu");
+  const m = await entier();
+  expect(Math.abs(m.y - (haute.b.y + haute.b.height))).toBeLessThanOrEqual(2);
+});
+
+test("REQ034_la_partie_vide_remplit_la_hauteur_du_panneau", async ({ page }) => {
+  await ouvrir(page);
+  const r = await page.evaluate(() => {
+    const f = document.querySelector(".fichiers").getBoundingClientRect();
+    const p = document.querySelector(".cadre-panneau-corps").getBoundingClientRect();
+    return { f: f.height, p: p.height };
+  });
+  expect(r.f).toBeGreaterThanOrEqual(r.p - 1);
 });

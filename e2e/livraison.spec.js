@@ -98,3 +98,15 @@ test("REQ031_AC3_afficher_les_icones_ne_declenche_aucune_requete", async ({ page
   });
   expect(inattendues.map((r) => `${r.resourceType()} ${r.url()}`)).toEqual([]);
 });
+
+test("REQ034_ouvrir_le_menu_de_l_arborescence_ne_declenche_aucune_requete_hors_origine", async ({ page }) => {
+  await lancerLivre(depotExemple());
+  const requetes = [];
+  page.on("request", (r) => requetes.push(r.url()));
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("treeitem", { name: "README.md", exact: true }).click({ button: "right" });
+  await expect(page.getByRole("menu")).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Indexer" })).toBeVisible();
+  const hors = requetes.filter((u) => !u.startsWith(yaide.origine + "/") && !/^(data|blob|about):/.test(u));
+  expect(hors).toEqual([]);
+});

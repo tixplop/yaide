@@ -245,6 +245,10 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
     corps,
     pied,
     rafraichir,
+    /** Vrai si un état a été lu : le dossier est un dépôt. */
+    estDepot: () => etat !== null,
+    /** Met le focus dans « Message » ; le texte déjà écrit reste. */
+    focuserMessage: () => saisie().focus(),
     /** Affiche ou cache le panneau ; l'afficher relit l'état. */
     montrer(oui) {
       visible = oui;

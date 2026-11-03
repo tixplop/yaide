@@ -1,9 +1,10 @@
-import { creerChemin, lireFichier, listerDossier, renommerChemin, supprimerChemin } from "../api.js";
+import { creerChemin, gitIndexer, lireFichier, listerDossier, renommerChemin, supprimerChemin } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { dialogue } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
 import { liste } from "../ui/liste.js";
+import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 
 // Préfixe impossible dans un chemin relatif : marque les lignes qui ne sont pas des fichiers.
@@ -27,10 +28,11 @@ function texteErreur(r) {
 
 /**
  * V-003. `dire({ texte, variante, fermable })` affiche un bandeau.
+ * `estDepot()` dit si le dossier est un dépôt git ; `surCommit()` mène au message de commit.
  * Rappels : `surOuvrir({ chemin, contenu, version })`, `surRenomme({ de, vers })`, `surSupprime({ chemin, dossier })`, `surLecture(oui)` (début et fin d'une lecture).
  * Rend `{ corps, pied, rafraichir(), detruire() }`.
  */
-export function vueFichiers({ dire, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {} }) {
+export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {} }) {
   const corps = document.createElement("div");
   corps.className = "fichiers";
   const pied = document.createElement("div");
@@ -64,8 +66,8 @@ export function vueFichiers({ dire, surOuvrir = () => {}, surRenomme = () => {},
       if (!ouvert) continue;
       const sous = dossiers.get(id);
       if (sous?.entrees) lignes(id, niveau + 1, sortie);
-      if (sous?.etat === "charge" && sous.lent) sortie.push({ id: `${FACTICE}${id}`, libelle: "Chargement…", niveau: niveau + 1 });
-      if (sous?.etat === "erreur") sortie.push({ id: `${FACTICE}${id}`, libelle: `Impossible de lire ce dossier : ${sous.raison}.`, niveau: niveau + 1 });
+      if (sous?.etat === "charge" && sous.lent) sortie.push({ id: `${FACTICE}${id}`, libelle: "Chargement…", niveau: niveau + 1, sansMenu: true });
+      if (sous?.etat === "erreur") sortie.push({ id: `${FACTICE}${id}`, libelle: `Impossible de lire ce dossier : ${sous.raison}.`, niveau: niveau + 1, sansMenu: true });
     }
     return sortie;
   }
@@ -90,6 +92,7 @@ export function vueFichiers({ dire, surOuvrir = () => {}, surRenomme = () => {},
       selection: selection ?? undefined,
       surActiver: activer,
       surBasculer: (id, ouvrir) => (ouvrir ? deplier(id) : replier(id)),
+      surMenu,
     });
     arbre.setAttribute("aria-label", "Fichiers");
     l.forEach((ligne, i) => {
@@ -189,6 +192,61 @@ export function vueFichiers({ dire, surOuvrir = () => {}, surRenomme = () => {},
     }
   });
 
+  // Partie vide : tout ce qui n'est pas une ligne (le dessous de la liste a déjà son écouteur, les lignes aussi).
+  corps.addEventListener("contextmenu", (e) => {
+    if (e.defaultPrevented) return;
+    e.preventDefault();
+    surMenu(undefined, { x: e.clientX, y: e.clientY });
+  });
+  // Le clic droit dans la partie vide ne donne pas le focus au panneau.
+  corps.addEventListener("mousedown", (e) => {
+    if (e.button === 2 && !e.target.closest?.("[data-chemin]")) e.preventDefault();
+  });
+
+  // ---- Menu ----
+
+  /** `id` : la ligne visée, ou `undefined` pour la partie vide. */
+  function surMenu(id, position) {
+    const vide = id === undefined;
+    const dossier = !vide && Boolean(types.get(id));
+    if (!vide) {
+      selection = id;
+      majBoutons();
+    }
+    const base = vide ? "" : dossier ? id : dossierDe(id);
+    const depot = estDepot();
+    const commit = { libelle: "Commit", icone: "git-commit-horizontal", couleurIcone: "naviguer", surChoix: surCommit };
+    menu({
+      nom: vide ? "Actions sur le projet" : `Actions sur ${id}${dossier ? "/" : ""}`,
+      position,
+      groupes: [
+        [
+          { libelle: "Nouveau fichier", icone: "file-plus", couleurIcone: "creer", surChoix: () => ouvrirCreation(false, base) },
+          { libelle: "Nouveau dossier", icone: "folder-plus", couleurIcone: "creer", surChoix: () => ouvrirCreation(true, base) },
+        ],
+        vide
+          ? []
+          : [
+              { libelle: "Renommer", icone: "pencil", touche: "F2", surChoix: ouvrirRenommage },
+              { libelle: "Supprimer", icone: "trash-2", couleurIcone: "supprimer", touche: "Suppr", surChoix: ouvrirSuppression },
+            ],
+        depot ? (vide ? [commit] : [{ libelle: "Indexer", icone: "circle-plus", couleurIcone: "creer", surChoix: () => indexer(id, dossier) }, commit]) : [],
+      ],
+      surFermeture: () => {
+        if (!vide) ligneDe(id)?.focus();
+      },
+    });
+  }
+
+  async function indexer(chemin, dossier) {
+    const r = await gitIndexer(chemin);
+    if (detruit) return;
+    if (r.coupure) dire({ texte: TEXTE_COUPURE, variante: "alerte", fermable: true });
+    else if (r.cause) dire({ texte: "Git a refusé.", detail: r.message, variante: "erreur", fermable: true });
+    else dire({ texte: `${chemin}${dossier ? "/" : ""} est indexé.`, variante: "succes", fermable: true });
+    ligneDe(chemin)?.focus();
+  }
+
   // ---- Dialogues ----
 
   function montrerChemin(chemin) {
@@ -251,10 +309,10 @@ export function vueFichiers({ dire, surOuvrir = () => {}, surRenomme = () => {},
   }
   let origineArbre = false;
 
-  function ouvrirCreation(dossier) {
+  function ouvrirCreation(dossier, depuisMenu) {
     origineArbre = false;
-    let base = "";
-    if (selection !== null) base = types.get(selection) ? selection : dossierDe(selection);
+    let base = depuisMenu ?? "";
+    if (depuisMenu === undefined && selection !== null) base = types.get(selection) ? selection : dossierDe(selection);
     formulaire({
       titre: dossier ? "Nouveau dossier" : "Nouveau fichier",
       libelle: "Chemin",

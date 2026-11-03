@@ -345,3 +345,19 @@ test("REQ031_AC4_raccourcis_aria_valides_pour_commit", async () => {
   const { vue } = await monter();
   expect(bouton(vue, "Commit").getAttribute("aria-keyshortcuts")).toBe("Control+Enter");
 });
+
+test("REQ034_AC8_estDepot_et_focuserMessage_gardent_le_texte_et_le_focus_apres_rafraichir", async () => {
+  const { vue } = await monter();
+  expect(vue.estDepot()).toBe(true);
+  vue.pied.querySelector("textarea").value = "déjà écrit";
+  vue.focuserMessage();
+  expect(document.activeElement).toBe(vue.pied.querySelector("textarea"));
+  await vue.rafraichir();
+  expect(document.activeElement).toBe(vue.pied.querySelector("textarea"));
+  expect(vue.pied.querySelector("textarea").value).toBe("déjà écrit");
+});
+
+test("REQ034_AC9_estDepot_est_faux_hors_depot", async () => {
+  const { vue } = await monter({ "/api/git/etat": { status: 409, corps: { cause: "pas-depot", message: "Ce dossier n'est pas un dépôt git." } } });
+  expect(vue.estDepot()).toBe(false);
+});

@@ -296,3 +296,20 @@ test("REQ028_AC1_F_R_G_changent_de_panneau_sans_toucher_aux_onglets", async ({ p
   await expect(page.getByRole("tab", { name: "README.md" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "shell 1" })).toBeVisible();
 });
+
+test("REQ034_AC8_commit_du_menu_montre_le_panneau_git_avec_le_focus_dans_message_sans_rien_valider", async ({ page }) => {
+  const dossier = depot();
+  fs.writeFileSync(path.join(dossier, "neuf.txt"), "neuf\n");
+  await ouvrir(page, dossier);
+  await panneauGit(page);
+  await message(page).fill("déjà écrit");
+  await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
+  await page.getByRole("treeitem", { name: "neuf.txt", exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Commit" }).click();
+  await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
+  await expect(message(page)).toBeFocused();
+  await expect(message(page)).toHaveValue("déjà écrit");
+  await expect(page.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
+  expect(g(dossier, "log", "--oneline").trim().split("\n")).toHaveLength(1);
+  expect(g(dossier, "diff", "--cached", "--name-only")).toBe("");
+});
