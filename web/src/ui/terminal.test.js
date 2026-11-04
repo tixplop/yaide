@@ -122,18 +122,17 @@ test("REQ036_AC12_la_mesure_attend_la_police_puis_se_refait", async () => {
     const zone = t.querySelector(".terminal-zone");
     Object.defineProperty(zone, "clientWidth", { value: 800 });
     Object.defineProperty(zone, "clientHeight", { value: 400 });
-    const ecran = zone.querySelector(".xterm-screen");
-    Object.defineProperty(ecran, "offsetWidth", { value: 80 * 8, configurable: true });
-    Object.defineProperty(ecran, "offsetHeight", { value: 24 * 18 });
+    const cellule = (width, height) => Object.assign(t.term._core._renderService.dimensions.css.cell, { width, height });
+    cellule(8, 18);
     t.ajuster();
     expect(surTaille).not.toHaveBeenCalled(); // police pas encore là
     charge();
     await new Promise((r) => setTimeout(r));
     expect(surTaille).toHaveBeenCalledWith(100, 22);
     surTaille.mockClear();
-    Object.defineProperty(ecran, "offsetWidth", { value: 100 * 10, configurable: true });
+    cellule(10, 18);
     ecoute[0](); // la police arrive plus tard : nouvelle mesure
-    expect(surTaille).toHaveBeenCalledWith(80, 20);
+    expect(surTaille).toHaveBeenCalledWith(80, 22);
   } finally {
     delete document.fonts;
   }

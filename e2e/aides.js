@@ -83,6 +83,29 @@ export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple()
   };
 }
 
+/**
+ * Attend que le terminal visible ait la taille de sa zone, police chargée, et rend « lignes colonnes ».
+ * L'ajustement suit la connexion ou un glissé de 100 ms au plus : avant, le terminal et le shell sont sur une mesure de passage.
+ */
+export async function tailleStable(page) {
+  const lire = () =>
+    page.evaluate(() => {
+      const racine = document.querySelector(".terminal:not(.xterm):not([hidden])");
+      const zone = racine?.querySelector(".terminal-zone");
+      const ecran = zone?.querySelector(".xterm-screen");
+      const defilement = zone?.querySelector(".xterm-viewport");
+      if (!defilement || !ecran || !racine.querySelector(".terminal-attente").hidden) return null;
+      if (!document.fonts.check('12.5px "JetBrains Mono"')) return null;
+      const t = racine.term;
+      const barre = defilement.offsetWidth - defilement.clientWidth;
+      const lignes = Math.floor(zone.clientHeight / (ecran.offsetHeight / t.rows));
+      const colonnes = Math.floor((zone.clientWidth - barre) / (ecran.offsetWidth / t.cols));
+      return lignes === t.rows && colonnes === t.cols ? `${lignes} ${colonnes}` : null;
+    });
+  await expect.poll(lire).not.toBeNull();
+  return lire();
+}
+
 /** Ouvre Yaide, se connecte et attend le premier shell. */
 export async function ouvrirYaide(page, origine, motDePasse = "mdp") {
   await page.goto(origine + "/");

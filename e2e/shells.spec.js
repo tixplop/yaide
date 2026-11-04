@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { lancerYaide, ouvrirYaide } from "./aides.js";
+import { lancerYaide, ouvrirYaide, tailleStable } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -57,6 +57,7 @@ test("REQ019_AC2_demarre_dans_le_projet_et_suit_la_taille", async ({ page }) => 
   await expect(ecran(page)).toContainText("projet");
   const lignes = () => ecran(page).locator("> div").count();
   const taille = async () => {
+    await tailleStable(page);
     await taper(page, "stty size");
     await expect.poll(async () => (await ecran(page).locator("> div").allInnerTexts()).some((l) => /^\d+ \d+\s*$/.test(l))).toBe(true);
     const lignes = await ecran(page).locator("> div").allInnerTexts();
@@ -83,6 +84,7 @@ test("REQ036_AC12_stty_size_donne_la_zone_affichee_une_fois_la_police_chargee", 
   await page.setViewportSize({ width: 1200, height: 800 });
   await ouvrirYaide(page, yaide.origine);
   await page.evaluate(() => document.fonts.load('12.5px "JetBrains Mono"'));
+  await tailleStable(page);
   await taper(page, "stty size");
   await expect.poll(async () => (await ecran(page).locator("> div").allInnerTexts()).some((l) => /^\d+ \d+\s*$/.test(l))).toBe(true);
   const [l, c] = (await ecran(page).locator("> div").allInnerTexts()).filter((x) => /^\d+ \d+\s*$/.test(x)).pop().trim().split(" ").map(Number);
@@ -415,4 +417,20 @@ test("REQ028_AC12_F_depuis_les_boutons_du_rail_affiche_les_fichiers", async ({ p
       await expect.poll(() => page.evaluate(() => document.querySelector(".cadre-panneau").contains(document.activeElement))).toBe(true);
     }
   }
+});
+
+test("REQ019_AC2_fenetre_changee_sur_un_autre_onglet_le_shell_repris_remplit_sa_zone", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await ouvrirYaide(page, yaide.origine);
+  const avant = await tailleStable(page);
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
+  await page.setViewportSize({ width: 1000, height: 640 });
+  // xterm met son rendu en pause une fois le terminal hors de la vue : c'est ce cas qu'on vérifie.
+  await page.waitForTimeout(500);
+  await onglets(page).filter({ hasText: "shell 1" }).click();
+  const apres = await tailleStable(page);
+  expect(apres).not.toBe(avant);
+  await taper(page, "stty size");
+  await expect(ecran(page)).toContainText(apres);
 });

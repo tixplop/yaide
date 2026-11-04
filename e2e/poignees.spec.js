@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
+import { lancerYaide, ouvrirYaide, nomLigne, tailleStable } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -21,8 +21,6 @@ const boite = (page, sel) => page.locator(sel).evaluate((e) => {
   const r = e.getBoundingClientRect();
   return { x: r.x, y: r.y, w: r.width, h: r.height };
 });
-const terminal = (page) => page.locator(".shells-corps > .terminal:visible");
-const taille = (page) => terminal(page).evaluate((e) => `${e.term.rows} ${e.term.cols}`);
 
 async function ouvrir(page, viewport = { width: 1000, height: 700 }) {
   await page.setViewportSize(viewport);
@@ -75,7 +73,7 @@ test("REQ032_AC1_AC3_AC11_glisser_le_panneau_au_dessus_du_terminal_garde_le_focu
   await ouvrir(page);
   await page.locator(".terminal:visible .xterm-helper-textarea").focus();
   const avant = (await boite(page, ".cadre-panneau")).w;
-  const tailleAvant = await taille(page);
+  const tailleAvant = await tailleStable(page);
   const p = await boite(page, '[aria-label="Largeur du panneau"]');
   const x = p.x + p.w / 2;
   await page.mouse.move(x, p.y + 100);
@@ -88,20 +86,22 @@ test("REQ032_AC1_AC3_AC11_glisser_le_panneau_au_dessus_du_terminal_garde_le_focu
   const principal = await boite(page, ".cadre-principal");
   expect(principal.x + principal.w).toBeCloseTo(1000, 0);
   await expect(page.locator(".terminal:visible .xterm-helper-textarea")).toBeFocused();
-  await expect.poll(() => taille(page)).not.toBe(tailleAvant);
+  const tailleApres = await tailleStable(page);
+  expect(tailleApres).not.toBe(tailleAvant);
   await taperTaille(page);
-  await expect(page.locator(".terminal:visible .xterm-rows")).toContainText(await taille(page));
+  await expect(page.locator(".terminal:visible .xterm-rows")).toContainText(tailleApres);
 });
 
 test("REQ032_AC2_AC3_glisser_les_shells_change_les_lignes_vues_par_stty", async ({ page }) => {
   await ouvrir(page);
   const h = (await boite(page, ".cadre-shells")).h;
-  const tailleAvant = await taille(page);
+  const tailleAvant = await tailleStable(page);
   await glisser(page, "Hauteur des shells", 0, -100);
   expect((await boite(page, ".cadre-shells")).h).toBeCloseTo(h + 100, 0);
-  await expect.poll(() => taille(page)).not.toBe(tailleAvant);
+  const tailleApres = await tailleStable(page);
+  expect(tailleApres).not.toBe(tailleAvant);
   await taperTaille(page);
-  await expect(page.locator(".terminal:visible .xterm-rows")).toContainText(await taille(page));
+  await expect(page.locator(".terminal:visible .xterm-rows")).toContainText(tailleApres);
 });
 
 test("REQ032_AC5_AC12_la_taille_gardee_revient_apres_rechargement_mais_pas_celle_de_la_fenetre", async ({ page }) => {

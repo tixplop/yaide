@@ -67,10 +67,9 @@ export function terminal({ flux, connecte = true, numero, surTaille } = {}) {
   let policePrete = !document.fonts?.load;
   function ajuster() {
     if (!policePrete) return;
-    const ecran = zone.querySelector(".xterm-screen");
-    if (!ecran || !zone.clientWidth || !zone.clientHeight) return;
-    const largeur = ecran.offsetWidth / term.cols;
-    const hauteur = ecran.offsetHeight / term.rows;
+    if (!zone.clientWidth || !zone.clientHeight) return;
+    // La cellule vient de xterm, comme dans son module d'ajustement : `.xterm-screen` garde l'ancienne taille tant que le rendu est en pause.
+    const { width: largeur, height: hauteur } = term._core._renderService.dimensions.css.cell;
     if (!largeur || !hauteur) return;
     const defilement = zone.querySelector(".xterm-viewport");
     const barre = defilement ? defilement.offsetWidth - defilement.clientWidth : 0;

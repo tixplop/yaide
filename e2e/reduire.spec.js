@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { lancerYaide, ouvrirYaide } from "./aides.js";
+import { lancerYaide, ouvrirYaide, tailleStable } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -26,10 +26,6 @@ const poignee = (page) => page.getByRole("separator", { name: "Hauteur des shell
 const menu = (page) => page.getByRole("menu", { name: "Shells réduits" });
 const focusDansTerminal = (page) => page.evaluate(() => Boolean(document.activeElement?.closest(".terminal")));
 const compteur = (page) => bouton(page, "Shells réduits").locator(".ya-badge");
-const taille = (page) => page.evaluate(() => {
-  const t = document.querySelector(".terminal:not(.xterm):not([hidden])").term;
-  return `${t.rows} ${t.cols}`;
-});
 // L'état gardé dans IndexedDB s'écrit après coup : on l'attend avant de recharger.
 const attendreReduits = (page, n) =>
   expect
@@ -128,25 +124,27 @@ test("REQ040_AC5_stty_size_est_juste_apres_un_changement_de_fenetre_pendant_la_r
   await ouvrirMenu(page);
   await menu(page).getByRole("menuitem", { name: "shell 1" }).click();
   await expect(onglets(page)).toHaveText(["shell 1"]);
+  const stable = await tailleStable(page);
+  expect(stable).not.toBe("24 80");
   await taper(page, "stty size");
-  await expect.poll(() => taille(page)).not.toBe("24 80");
-  await expect(ecran(page)).toContainText(await taille(page));
+  await expect(ecran(page)).toContainText(stable);
   // Même vérification dans le shell que « Nouveau shell » ouvre zone absente.
   await bouton(page, "Réduire le shell").click();
   await expect(poignee(page)).toHaveCount(0);
   await page.setViewportSize({ width: 900, height: 600 });
   await bouton(page, "Nouveau shell").click();
   await expect(onglets(page)).toHaveText(["shell 2"]);
+  const seconde = await tailleStable(page);
+  expect(seconde).not.toBe("24 80");
   await taper(page, "stty size");
-  await expect.poll(() => taille(page)).not.toBe("24 80");
-  await expect(ecran(page)).toContainText(await taille(page));
+  await expect(ecran(page)).toContainText(seconde);
 });
 
 test("REQ040_AC22_la_taille_d_avant_la_reduction_est_gardee_et_un_rechargement_n_impose_pas_80_par_24", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
   await expect(page.locator(".terminal:visible .terminal-attente")).toBeHidden();
-  await expect.poll(() => taille(page)).not.toBe("24 80");
-  const avant = await taille(page);
+  const avant = await tailleStable(page);
+  expect(avant).not.toBe("24 80");
   await taper(page, "sleep 3; stty size");
   await bouton(page, "Réduire le shell").click();
   await attendreReduits(page, 1);
@@ -334,4 +332,20 @@ test("REQ040_AC14_AC18_vingt_shells_reduits_le_menu_reste_entier_et_defile", asy
   const [d, m] = await Promise.all([dernier.boundingBox(), menu(page).boundingBox()]);
   expect(d.y).toBeGreaterThanOrEqual(m.y - 1);
   expect(d.y + d.height).toBeLessThanOrEqual(m.y + m.height + 1);
+});
+
+test("REQ040_AC5_fenetre_changee_pendant_la_reduction_le_terminal_remplit_sa_zone", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  const avant = await tailleStable(page);
+  await bouton(page, "Réduire le shell").click();
+  await expect(poignee(page)).toHaveCount(0);
+  await page.setViewportSize({ width: 1000, height: 640 });
+  // xterm met son rendu en pause une fois le terminal hors de la vue : c'est ce cas qu'on vérifie.
+  await page.waitForTimeout(500);
+  await ouvrirMenu(page);
+  await menu(page).getByRole("menuitem", { name: "shell 1" }).click();
+  const apres = await tailleStable(page);
+  expect(apres).not.toBe(avant);
+  await taper(page, "stty size");
+  await expect(ecran(page)).toContainText(apres);
 });
