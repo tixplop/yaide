@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { lancerYaide, ouvrirYaide } from "./aides.js";
+import { lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
 
 let yaide;
 test.beforeEach(async () => {
@@ -74,7 +74,7 @@ test("REQ031_AC5_l_info_bulle_d_un_onglet_du_rail_donne_son_nom_et_sa_touche", a
 
 test("REQ034_AC1_AC11_AC16_clic_droit_touche_menu_et_maj_f10_ouvrent_une_seule_fois_et_echap_rend_le_focus", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
-  const ligne = page.getByRole("tree", { name: "Fichiers" }).getByRole("treeitem", { name: "README.md", exact: true });
+  const ligne = page.getByRole("tree", { name: "Fichiers" }).getByRole("treeitem", { name: nomLigne("README.md") });
   await ligne.click({ button: "right" });
   await expect(page.getByRole("menu", { name: "Actions sur README.md" })).toBeVisible();
   await page.keyboard.press("Escape");

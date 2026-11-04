@@ -29,6 +29,14 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
   racine.setAttribute("aria-orientation", vertical ? "vertical" : "horizontal");
 
   const elements = new Map();
+  // Le nombre n'entre pas dans le nom accessible : il est masqué aux lecteurs d'écran.
+  function definirCompteur(id, valeur) {
+    const t = elements.get(id);
+    t.querySelector(".ya-badge")?.remove();
+    const c = compteur({ valeur, variante: rail ? "accent" : "neutre" });
+    c.setAttribute("aria-hidden", "true");
+    t.append(c);
+  }
   for (const o of liste) {
     const cellule = document.createElement("span");
     cellule.className = "onglet-cellule";
@@ -64,11 +72,6 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
       q.textContent = " !";
       t.append(q);
     }
-    if (o.compteur !== undefined) {
-      const c = compteur({ valeur: o.compteur, variante: rail ? "accent" : "neutre" });
-      c.setAttribute("aria-hidden", "true");
-      t.append(c);
-    }
     t.setAttribute("aria-label", nom + (o.statut ? `, ${STATUTS[o.statut]}` : "") + (o.modifie ? ", non sauvegardé" : "") + (o.question ? ", question en attente" : ""));
     t.addEventListener("click", () => choisir(o.id, true));
     t.addEventListener("keydown", (e) => touche(e, o));
@@ -82,6 +85,7 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
     }
     elements.set(o.id, t);
     racine.append(cellule);
+    if (o.compteur !== undefined) definirCompteur(o.id, o.compteur);
   }
   if (actionsDroite.length) {
     const d = document.createElement("div");
@@ -120,6 +124,11 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
 
   // L'onglet actif n'est rendu visible qu'une fois la racine insérée : appeler choisir(actif) après l'insertion.
   racine.choisir = (id) => choisir(id);
+  // Mise à jour : à zéro, le nombre est absent (et non seulement masqué).
+  racine.definirCompteur = (id, valeur) => {
+    elements.get(id)?.querySelector(".ya-badge")?.remove();
+    if (valeur > 0) definirCompteur(id, valeur);
+  };
   const premier = liste[0]?.id;
   choisir(elements.has(actif) ? actif : premier);
   return racine;

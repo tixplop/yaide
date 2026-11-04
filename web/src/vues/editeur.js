@@ -23,9 +23,11 @@ const estMarkdown = (chemin) => /\.(md|markdown)$/i.test(chemin);
  * Éditeur de V-002. `dire({ texte, variante, fermable })` affiche un bandeau ; `ouvrirRapide()` ouvre V-006.
  * `surAttente(texte)` : phrase des sauvegardes attendant le retour de la connexion (vide s'il n'y en a plus).
  * `surActif({ position, langage })` : l'onglet actif et sa position pour la barre d'état (`null` sans onglet ; sur un diff, la position seule).
- * Rend `{ barre, fil, code, lecture(oui), definirEtat(etat), ouvrir(…), renomme(…), supprime(…), restaurer(), detruire() }`.
+ * `surSauvegarde()` : une sauvegarde a réussi (l'état git a pu changer).
+ * `surCourant(chemin | null)` : le fichier de l'onglet actif (`null` sans onglet ou sur un diff).
+ * Rend `{ definirStatuts(statuts), barre, fil, code, lecture(oui), definirEtat(etat), ouvrir(…), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
-export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {} }) {
+export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {} }) {
   const barre = document.createElement("div");
   const fil = document.createElement("div");
   fil.className = "ya-crumbs";
@@ -46,6 +48,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   let minuteurDisque = null;
   let sondageEnCours = false;
   let coupe = false;
+  let statuts = new Map(); // chemin -> { lettre, mot } : statuts git (REQ-039)
   const attente = new Set(); // onglets dont Ctrl+S attend le retour de la connexion
 
   const trouver = (chemin) => liste.find((o) => o.chemin === chemin);
@@ -77,6 +80,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     if (!o) {
       fil.hidden = true;
       fil.replaceChildren();
+      surCourant(null);
       return surActif(null);
     }
     const segments = o.chemin.split("/");
@@ -96,8 +100,15 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       const l = etat.doc.lineAt(tete);
       position = `Ln ${l.number}, Col ${tete - l.from + 1}`;
     }
+    surCourant(o === diff ? null : o.chemin);
     surActif({ position, langage: o === diff ? undefined : nomLangage(nomDe(o.chemin)) });
   }
+
+  // Seuls M, A et U colorent un onglet.
+  const statutOnglet = (chemin) => {
+    const l = statuts.get(chemin)?.lettre;
+    return l === "M" || l === "A" || l === "U" ? l : undefined;
+  };
 
   function afficher() {
     if (detruit) return;
@@ -136,6 +147,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
         detail: noms[i].detail,
         titre: x.chemin,
         modifie: x.modifie,
+        statut: statutOnglet(x.chemin),
         question: Boolean(x.question),
         fermable: true,
       }))],
@@ -306,6 +318,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     if (r.coupure) return TEXTE_COUPURE;
     if (r.cause) return `Sauvegarde impossible pour ${nomDe(o.chemin)} : ${r.message.replace(/\.$/, "")}. Vos modifications sont gardées.`;
     effacerAvis(o);
+    surSauvegarde();
     o.modifie = o.zone.contenu() !== texte;
     o.alerte?.remove();
     o.alerte = null;
@@ -580,6 +593,12 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       if (coupe) return;
       executerAttente();
       verifierDisque();
+    },
+    /** Pose les statuts git (`Map` chemin -> `{ lettre, mot }`) ; la barre n'est refaite que si un onglet change. */
+    definirStatuts(nouveaux) {
+      const avant = liste.map((o) => statutOnglet(o.chemin)).join();
+      statuts = nouveaux;
+      if (liste.map((o) => statutOnglet(o.chemin)).join() !== avant) afficher();
     },
     ouvrir,
     ouvrirDiff,

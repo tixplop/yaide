@@ -76,3 +76,31 @@ test("REQ022_AC7_un_second_diff_remplace_le_premier_et_publie_son_fichier", () =
   expect(dernier(surActif)).toEqual({ position: "Ln 1, Col 1", langage: undefined });
   expect(e.barre.querySelectorAll("[role=tab]").length).toBe(1);
 });
+
+test("REQ039_AC5_AC8_le_nom_de_l_onglet_prend_la_couleur_et_le_mot_de_son_statut", () => {
+  const { e } = monter();
+  e.ouvrir({ chemin: "main.rs", contenu: "a", version: "1" });
+  e.ouvrir({ chemin: "notes.txt", contenu: "b", version: "1" });
+  e.definirStatuts(new Map([["main.rs", { lettre: "M", mot: "modifié" }], ["notes.txt", { lettre: "D", mot: "supprimé" }]]));
+  const onglet = (nom) => [...e.barre.querySelectorAll("[role=tab]")].find((t) => t.getAttribute("aria-label").startsWith(nom));
+  expect(onglet("main.rs").getAttribute("aria-label")).toBe("main.rs, modifié");
+  expect(onglet("main.rs").querySelector(".onglet-statut-M")).not.toBeNull();
+  // Seuls M, A et U comptent pour un onglet.
+  expect(onglet("notes.txt").getAttribute("aria-label")).toBe("notes.txt");
+  e.definirStatuts(new Map([["main.rs", { lettre: "U", mot: "nouveau" }]]));
+  expect(onglet("main.rs").getAttribute("aria-label")).toBe("main.rs, nouveau");
+  e.definirStatuts(new Map());
+  expect(onglet("main.rs").getAttribute("aria-label")).toBe("main.rs");
+});
+
+test("REQ039_AC7_le_chemin_de_l_onglet_actif_est_donne_pour_l_arbre", () => {
+  const surCourant = vi.fn();
+  const e = vueEditeur({ dire: vi.fn(), surCourant });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  expect(surCourant).toHaveBeenLastCalledWith(null);
+  e.ouvrir({ chemin: "src/main.rs", contenu: "a", version: "1" });
+  expect(surCourant).toHaveBeenLastCalledWith("src/main.rs");
+  e.ouvrirDiff({ chemin: "src/main.rs", texte: "+a" });
+  expect(surCourant).toHaveBeenLastCalledWith(null);
+});

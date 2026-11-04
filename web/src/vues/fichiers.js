@@ -28,27 +28,37 @@ function texteErreur(r) {
 
 /**
  * V-003. `dire({ texte, variante, fermable })` affiche un bandeau.
- * `estDepot()` dit si le dossier est un dépôt git ; `surCommit()` mène au message de commit.
+ * `projet` : nom affiché dans l'en-tête. `estDepot()` dit si le dossier est un dépôt git ; `surCommit()` mène au message de commit.
+ * `lireEtat()` demande la lecture de l'état git, qui revient par `definirStatuts(Map | null)` (voir `statuts.js`).
  * Rappels : `surOuvrir({ chemin, contenu, version })`, `surRenomme({ de, vers })`, `surSupprime({ chemin, dossier })`, `surLecture(oui)` (début et fin d'une lecture).
- * Rend `{ corps, pied, rafraichir(), detruire() }`.
+ * Rend `{ corps, entete (à poser dans `panneau.entete`, à masquer avec le panneau), rafraichir(), definirStatuts(statuts), definirCourant(chemin | null), detruire() }`.
  */
-export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {} }) {
+export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estDepot = () => false, surCommit = () => {}, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {} }) {
   const corps = document.createElement("div");
   corps.className = "fichiers";
-  const pied = document.createElement("div");
-  pied.className = "fichiers-pied";
+  const entete = document.createElement("div");
+  entete.className = "fichiers-entete";
+  const zoneArbre = document.createElement("div");
+  zoneArbre.className = "fichiers-arbre";
+  corps.append(zoneArbre);
 
   const ouverts = new Set();
   const dossiers = new Map(); // chemin -> { etat: "charge" | "ok" | "erreur", entrees, raison, lent }
   const types = new Map(); // chemin -> vrai si dossier
   let selection = null;
+  let statuts = null; // Map chemin -> { lettre, mot }, ou null hors d'un dépôt
+  let courant = null; // chemin du fichier de l'onglet actif
   let detruit = false;
 
   const bFichier = bouton({ icone: "file-plus", variante: "discret", nomAccessible: "Nouveau fichier" });
   const bDossier = bouton({ icone: "folder-plus", variante: "discret", nomAccessible: "Nouveau dossier" });
   const bRenommer = bouton({ icone: "pencil", variante: "discret", nomAccessible: "Renommer", infoBulle: "Renommer ou déplacer", raccourci: "F2" });
   const bSupprimer = bouton({ icone: "trash", variante: "discret", nomAccessible: "Supprimer", raccourci: "Suppr", touche: "Delete" });
-  pied.append(bFichier.enveloppe, bDossier.enveloppe, bRenommer.enveloppe, bSupprimer.enveloppe);
+  const nomProjet = document.createElement("span");
+  nomProjet.className = "fichiers-projet";
+  nomProjet.textContent = projet;
+  nomProjet.title = projet;
+  entete.append(nomProjet, bFichier.enveloppe, bDossier.enveloppe, bRenommer.enveloppe, bSupprimer.enveloppe);
 
   function majBoutons() {
     bRenommer.disabled = bSupprimer.disabled = selection === null;
@@ -62,7 +72,17 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
       const id = chemin ? `${chemin}/${e.nom}` : e.nom;
       types.set(id, e.dossier);
       const ouvert = e.dossier && ouverts.has(id);
-      sortie.push({ id, libelle: e.nom, niveau, attenuee: e.ignore, enfants: e.dossier, ouvert });
+      const st = e.ignore ? undefined : statuts?.get(id);
+      sortie.push({
+        id,
+        libelle: e.nom,
+        niveau,
+        attenuee: e.ignore,
+        enfants: e.dossier,
+        ouvert,
+        courant: id === courant,
+        ...(st ? (e.dossier ? { statutDossier: st.lettre } : { statut: st.lettre }) : {}),
+      });
       if (!ouvert) continue;
       const sous = dossiers.get(id);
       if (sous?.entrees) lignes(id, niveau + 1, sortie);
@@ -74,16 +94,16 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
 
   function afficher(focaliser = false) {
     if (detruit) return;
-    const avait = focaliser || corps.contains(document.activeElement);
+    const avait = focaliser || zoneArbre.contains(document.activeElement);
     const racine = dossiers.get("");
-    if (!racine || racine.etat === "charge") return corps.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
+    if (!racine || racine.etat === "charge") return zoneArbre.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
     if (racine.etat === "erreur") {
-      return corps.replaceChildren(message({ texte: `Impossible de lire ce dossier : ${racine.raison}.`, variante: "erreur" }));
+      return zoneArbre.replaceChildren(message({ texte: `Impossible de lire ce dossier : ${racine.raison}.`, variante: "erreur" }));
     }
     if (racine.entrees.length === 0) {
       const nouveau = bouton({ libelle: "Nouveau fichier" });
       nouveau.addEventListener("click", () => ouvrirCreation(false));
-      return corps.replaceChildren(indication({ texte: "Dossier vide.", action: nouveau }));
+      return zoneArbre.replaceChildren(indication({ texte: "Dossier vide.", action: nouveau }));
     }
     const l = lignes("", 0, []);
     const arbre = liste({
@@ -98,11 +118,11 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
     l.forEach((ligne, i) => {
       if (!ligne.id.startsWith(FACTICE)) arbre.children[i].dataset.chemin = ligne.id;
     });
-    corps.replaceChildren(arbre);
+    zoneArbre.replaceChildren(arbre);
     if (avait && selection !== null) ligneDe(selection)?.focus();
   }
 
-  const ligneDe = (chemin) => [...corps.querySelectorAll("[data-chemin]")].find((e) => e.dataset.chemin === chemin);
+  const ligneDe = (chemin) => [...zoneArbre.querySelectorAll("[data-chemin]")].find((e) => e.dataset.chemin === chemin);
 
   async function charger(chemin) {
     const avant = dossiers.get(chemin);
@@ -127,12 +147,13 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
   }
 
   async function rafraichir() {
-    await Promise.all(["", ...ouverts].map(charger));
+    await Promise.all(["", ...ouverts].map(charger).concat(lireEtat()));
     afficher();
   }
 
   async function deplier(id) {
     ouverts.add(id);
+    lireEtat(); // l'arbre ne dépend pas de git : les statuts arrivent quand l'état est lu
     const r = await charger(id);
     if (r?.coupure && !detruit) {
       ouverts.delete(id);
@@ -174,13 +195,13 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
     surLecture(false);
   }
 
-  corps.addEventListener("focusin", (e) => {
+  zoneArbre.addEventListener("focusin", (e) => {
     const chemin = e.target.closest?.("[data-chemin]")?.dataset.chemin;
     if (chemin === undefined) return;
     selection = chemin;
     majBoutons();
   });
-  corps.addEventListener("keydown", (e) => {
+  zoneArbre.addEventListener("keydown", (e) => {
     const chemin = e.target.closest?.("[data-chemin]")?.dataset.chemin;
     if (chemin === undefined || e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key === "F2") {
@@ -193,13 +214,13 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
   });
 
   // Partie vide : tout ce qui n'est pas une ligne (le dessous de la liste a déjà son écouteur, les lignes aussi).
-  corps.addEventListener("contextmenu", (e) => {
+  zoneArbre.addEventListener("contextmenu", (e) => {
     if (e.defaultPrevented) return;
     e.preventDefault();
     surMenu(undefined, { x: e.clientX, y: e.clientY });
   });
   // Le clic droit dans la partie vide ne donne pas le focus au panneau.
-  corps.addEventListener("mousedown", (e) => {
+  zoneArbre.addEventListener("mousedown", (e) => {
     if (e.button === 2 && !e.target.closest?.("[data-chemin]")) e.preventDefault();
   });
 
@@ -243,7 +264,11 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
     if (detruit) return;
     if (r.coupure) dire({ texte: TEXTE_COUPURE, variante: "alerte", fermable: true });
     else if (r.cause) dire({ texte: "Git a refusé.", detail: r.message, variante: "erreur", fermable: true });
-    else dire({ texte: `${chemin}${dossier ? "/" : ""} est indexé.`, variante: "succes", fermable: true });
+    else {
+      dire({ texte: `${chemin}${dossier ? "/" : ""} est indexé.`, variante: "succes", fermable: true });
+      await lireEtat();
+      if (detruit) return;
+    }
     ligneDe(chemin)?.focus();
   }
 
@@ -330,7 +355,7 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
 
   function ouvrirRenommage() {
     if (selection === null) return;
-    origineArbre = corps.contains(document.activeElement);
+    origineArbre = zoneArbre.contains(document.activeElement);
     const de = selection;
     formulaire({
       titre: "Renommer ou déplacer",
@@ -392,7 +417,7 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
       majBoutons();
       dlg.fermer();
       await rafraichir();
-      (corps.querySelector("[role=treeitem][tabindex='0']") ?? pied.querySelector("button")).focus();
+      (zoneArbre.querySelector("[role=treeitem][tabindex='0']") ?? entete.querySelector("button")).focus();
       surSupprime({ chemin, dossier });
     });
     dlg.ouvrir();
@@ -407,8 +432,21 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
 
   return {
     corps,
-    pied,
+    entete,
     rafraichir,
+    /** Pose les statuts git et redessine l'arbre, sans relire le disque. */
+    definirStatuts(nouveaux) {
+      const cle = (m) => JSON.stringify(m && [...m]);
+      if (cle(nouveaux) === cle(statuts)) return;
+      statuts = nouveaux;
+      afficher();
+    },
+    /** Fichier de l'onglet actif, ou `null`. */
+    definirCourant(chemin) {
+      if (chemin === courant) return;
+      courant = chemin;
+      afficher();
+    },
     detruire() {
       detruit = true;
     },

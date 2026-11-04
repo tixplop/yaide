@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { lancerYaide, ouvrirYaide } from "./aides.js";
+import { lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -18,7 +18,7 @@ test.afterEach(async () => {
 });
 
 const arbre = (page) => page.getByRole("tree", { name: "Fichiers" });
-const ligne = (page, nom) => arbre(page).getByRole("treeitem", { name: nom, exact: true });
+const ligne = (page, nom) => arbre(page).getByRole("treeitem", { name: nomLigne(nom) });
 const onglet = (page, nom) => page.getByRole("tab", { name: nom });
 const editeur = (page) => page.getByRole("textbox", { name: "Éditeur main.rs" });
 const question = (page) => page.getByRole("alert").filter({ hasText: "main.rs a changé sur le disque. Quelle version garder ?" });

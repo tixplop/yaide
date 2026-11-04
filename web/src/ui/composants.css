@@ -347,9 +347,13 @@ body { margin: 0; }
 .terminal[hidden] { display: none; }
 .zone-code[hidden] { display: none; }
 .editeur-code { height: 100%; min-height: 0; }
-.fichiers { box-sizing: border-box; min-height: 100%; }
-.fichiers-pied { display: flex; flex-wrap: nowrap; gap: var(--esp-2); padding: var(--esp-2); }
-.fichiers-pied[hidden] { display: none; }
+.fichiers { box-sizing: border-box; min-height: 100%; display: flex; flex-direction: column; }
+.fichiers[hidden] { display: none; }
+.fichiers-entete[hidden] { display: none; }
+.fichiers-entete { flex: none; box-sizing: border-box; height: var(--size-control); display: flex; align-items: center; gap: var(--trait); padding: 0 var(--space-2) 0 var(--space-3); }
+.fichiers-projet { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--texte-petit) var(--font-sans); color: var(--ink); }
+.fichiers-entete .bouton-enveloppe { flex: none; display: flex; }
+.fichiers-arbre { flex: 1 1 auto; min-height: 0; }
 
 /* V-005 : panneau Git */
 .git-corps { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2); }

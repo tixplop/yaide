@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { depotExemple, lancerYaide, ouvrirYaide } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
 
 let yaide;
 test.afterEach(async () => {
@@ -21,7 +21,7 @@ async function ouvrir(page, preparer = () => {}) {
   return dossier;
 }
 const arbre = (page) => page.getByRole("tree", { name: "Fichiers" });
-const ligne = (page, nom) => arbre(page).getByRole("treeitem", { name: nom, exact: true });
+const ligne = (page, nom) => arbre(page).getByRole("treeitem", { name: nomLigne(nom) });
 const onglet = (page, nom) => page.getByRole("tab", { name: nom });
 const editeur = (page, nom) => page.getByRole("textbox", { name: `Éditeur ${nom}` });
 const ouvrirMain = async (page) => {
@@ -106,8 +106,8 @@ test("REQ011_AC8_deux_main_rs_le_dossier_parent_suit_le_nom", async ({ page }) =
   await ouvrir(page);
   await ouvrirMain(page);
   await ligne(page, "tests").click();
-  await ligne(page, "main.rs").nth(0).waitFor();
-  await arbre(page).getByRole("treeitem", { name: "main.rs", exact: true }).last().click();
+  await expect(ligne(page, "main.rs")).toHaveCount(2);
+  await arbre(page).getByRole("treeitem", { name: nomLigne("main.rs") }).last().click();
   await expect(onglet(page, "main.rs · src")).toHaveAttribute("title", "src/main.rs");
   await expect(onglet(page, "main.rs · tests")).toHaveAttribute("title", "tests/main.rs");
   const attendu = await page.evaluate(() => {
@@ -186,12 +186,12 @@ test("REQ013_AC6_ctrl_s_hors_de_l_editeur_sauvegarde_sans_dialogue_du_navigateur
   await taper(page, "a.txt", "b");
   await ligne(page, "a.txt").focus();
   await page.keyboard.press("Control+s");
-  await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt");
+  await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt, nouveau");
   expect(fs.readFileSync(fichier, "utf8")).toBe("ab");
   expect(await prevenus()).toEqual([true]);
   await taper(page, "a.txt", "c");
   await page.keyboard.press("Control+s");
-  await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt");
+  await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt, nouveau");
   expect(await prevenus()).toEqual([true, true]);
   await taper(page, "a.txt", "d");
   await page.locator(".terminal textarea").first().focus();
@@ -235,12 +235,12 @@ test("REQ013_deux_ctrl_s_rapproches_n_affichent_pas_d_echec", async ({ page }) =
   await taper(page, "a.txt", "b");
   await page.keyboard.press("Control+s");
   await page.keyboard.press("Control+s");
-  await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt");
+  await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt, nouveau");
   expect(fs.readFileSync(path.join(dossier, "a.txt"), "utf8")).toBe("ab");
   await expect(page.getByRole("alert")).toHaveCount(0);
   await taper(page, "a.txt", "c");
   await page.keyboard.press("Control+s");
-  await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt");
+  await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt, nouveau");
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { depotExemple, lancerYaide, ouvrirYaide } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -40,8 +40,8 @@ test("REQ030_AC1_parcours_1_corriger_un_fichier_et_faire_un_commit", async ({ pa
   await champ.fill("mdp");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("tree", { name: "Fichiers" })).toBeVisible();
-  await page.getByRole("treeitem", { name: "src", exact: true }).click();
-  await page.getByRole("treeitem", { name: "main.rs", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("src") }).click();
+  await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
   await expect(page.getByRole("tab", { name: "main.rs", exact: true })).toBeVisible();
   await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
   await page.keyboard.type("// corrigé\n");
@@ -88,8 +88,8 @@ test("REQ030_AC1_parcours_2_shell_retrouve_et_coupure", async ({ page, context }
   await retour.getByRole("tab", { name: "shell 1" }).click();
   await expect(ecran(retour)).toContainText("fini_22");
   const main = path.join(yaide.dossier, "src", "main.rs");
-  await retour.getByRole("treeitem", { name: "src", exact: true }).click();
-  await retour.getByRole("treeitem", { name: "main.rs", exact: true }).click();
+  await retour.getByRole("treeitem", { name: nomLigne("src") }).click();
+  await retour.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
   const editeur = retour.getByRole("textbox", { name: "Éditeur main.rs" });
   await expect(editeur).toBeFocused();
   await retour.keyboard.press("Control+End");
@@ -109,7 +109,7 @@ test("REQ030_AC1_parcours_2_shell_retrouve_et_coupure", async ({ page, context }
   await retour.keyboard.press("Control+s");
   await expect.poll(() => fs.readFileSync(main, "utf8")).toContain("// pendant");
   expect(fs.readFileSync(main, "utf8")).toContain("// coupure");
-  await expect(retour.getByRole("tab", { name: "main.rs", exact: true })).toBeVisible();
+  await expect(retour.getByRole("tab", { name: "main.rs, modifié", exact: true })).toBeVisible();
 });
 
 test("REQ030_AC1_parcours_3_chercher_ouvrir_apercu", async ({ page }) => {

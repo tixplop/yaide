@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { depotExemple, lancerYaide, ouvrirYaide } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -28,7 +28,7 @@ async function demarrer() {
   return dossier;
 }
 const arbre = (page) => page.getByRole("tree", { name: "Fichiers" });
-const ligne = (page, nom) => arbre(page).getByRole("treeitem", { name: nom, exact: true });
+const ligne = (page, nom) => arbre(page).getByRole("treeitem", { name: nomLigne(nom) });
 const ouvrir = async (page) => {
   const dossier = await demarrer();
   await ouvrirYaide(page, yaide.origine);
@@ -38,7 +38,7 @@ const ouvrir = async (page) => {
 
 test("REQ007_AC1_et_AC3_et_AC8_arbre_deplie_et_replie_dossiers_d_abord_sans_git", async ({ page }) => {
   await ouvrir(page);
-  const noms = await arbre(page).getByRole("treeitem").evaluateAll((l) => l.map((e) => e.textContent.replace(/^[▾▸]/, "")));
+  const noms = await arbre(page).getByRole("treeitem").evaluateAll((l) => l.map((e) => e.querySelector(".liste-libelle").textContent));
   expect(noms).toEqual(["src", "target", "Zeta", ".gitignore", "a.txt", "b.txt", "gros.log", "notes.bin", "notes.txt", "README.md"]);
   await expect(ligne(page, "main.rs")).toHaveCount(0);
   await ligne(page, "src").click();
@@ -116,7 +116,7 @@ test("REQ007_AC7_projet_vide", async ({ page }) => {
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "projet") });
   await ouvrirYaide(page, yaide.origine);
   await expect(page.getByText("Dossier vide.")).toBeVisible();
-  await page.locator(".fichiers").getByRole("button", { name: "Nouveau fichier" }).click();
+  await page.locator(".fichiers-arbre").getByRole("button", { name: "Nouveau fichier" }).click();
   await expect(page.getByRole("dialog", { name: "Nouveau fichier" })).toBeVisible();
 });
 
@@ -252,7 +252,7 @@ test("REQ010_apres_la_derniere_suppression_le_focus_va_sur_Fichier", async ({ pa
   await page.getByRole("button", { name: "Supprimer" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
   await expect(page.getByText("Dossier vide.")).toBeVisible();
-  await expect(page.locator(".fichiers-pied").getByRole("button", { name: "Nouveau fichier" })).toBeFocused();
+  await expect(page.locator(".fichiers-entete").getByRole("button", { name: "Nouveau fichier" })).toBeFocused();
 });
 
 test("REQ010_AC2_et_AC4_annuler_et_Echap_ne_changent_rien", async ({ page }) => {
@@ -576,9 +576,141 @@ test("REQ034_AC17_a_800_x_480_le_menu_reste_entier_sur_la_derniere_ligne_visible
 test("REQ034_la_partie_vide_remplit_la_hauteur_du_panneau", async ({ page }) => {
   await ouvrir(page);
   const r = await page.evaluate(() => {
-    const f = document.querySelector(".fichiers").getBoundingClientRect();
+    const f = document.querySelector(".fichiers-arbre").getBoundingClientRect();
     const p = document.querySelector(".cadre-panneau-corps").getBoundingClientRect();
-    return { f: f.height, p: p.height };
+    return { bas: f.bottom, basCorps: p.bottom };
   });
-  expect(r.f).toBeGreaterThanOrEqual(r.p - 1);
+  expect(r.bas).toBeGreaterThanOrEqual(r.basCorps - 1);
+});
+
+// ---- T-037 : statut git dans l'arborescence et les onglets (REQ-039) ----
+
+const couleurDe = (page, jeton) =>
+  page.evaluate((j) => {
+    const e = document.createElement("span");
+    e.style.color = `var(${j})`;
+    document.body.append(e);
+    const v = getComputedStyle(e).color;
+    e.remove();
+    return v;
+  }, jeton);
+const styleDe = (loc, propriete = "color") => loc.evaluate((e, p) => getComputedStyle(e)[p], propriete);
+
+test("REQ039_AC1_AC2_AC3_AC5_AC6_AC7_AC8_lettres_couleurs_points_et_mots_dans_l_arbre_et_les_onglets", async ({ page }) => {
+  const dossier = depotExemple();
+  const git = (...args) => spawnSync("git", ["-c", "user.name=Test", "-c", "user.email=t@example.org", ...args], { cwd: dossier });
+  fs.writeFileSync(path.join(dossier, ".gitignore"), "ignore.log\n");
+  git("add", ".gitignore");
+  git("commit", "-q", "-m", "ignore");
+  fs.writeFileSync(path.join(dossier, "src", "main.rs"), "fn main() {}\n");
+  fs.writeFileSync(path.join(dossier, "nouveau.txt"), "n\n");
+  fs.writeFileSync(path.join(dossier, "indexe.txt"), "i\n");
+  git("add", "indexe.txt");
+  fs.writeFileSync(path.join(dossier, "ignore.log"), "x\n");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await ouvrirYaide(page, yaide.origine);
+  // Fichiers : lettre à droite, nom coloré, mot complet à la fin du nom accessible.
+  const cas = [
+    ["nouveau.txt", "nouveau", "U", "--git-untracked"],
+    ["indexe.txt", "ajouté", "A", "--git-added"],
+  ];
+  for (const [nom, mot, lettre, jeton] of cas) {
+    const l = arbre(page).getByRole("treeitem", { name: `${nom}, ${mot}`, exact: true });
+    await expect(l.locator(".liste-statut")).toHaveText(lettre);
+    expect(await styleDe(l.locator(".liste-libelle"))).toBe(await couleurDe(page, jeton));
+  }
+  // Dossier : couleur du plus fort, point, aucune lettre, lettre et point masqués aux lecteurs d'écran.
+  const src = arbre(page).getByRole("treeitem", { name: nomLigne("src, modifié") });
+  await expect(src.locator(".liste-point")).toHaveCount(1);
+  await expect(src.locator(".liste-statut")).toHaveCount(0);
+  await expect(src.locator(".liste-point")).toHaveAttribute("aria-hidden", "true");
+  expect(await styleDe(src.locator(".liste-libelle"))).toBe(await couleurDe(page, "--git-modified"));
+  // Ignoré : pas de lettre.
+  const ignore = arbre(page).getByRole("treeitem", { name: nomLigne("ignore.log, ignoré par git") });
+  await expect(ignore).toBeVisible();
+  await expect(ignore.locator(".liste-statut, .liste-point")).toHaveCount(0);
+  // Fichier modifié dans un dossier, onglet coloré, ligne du fichier actif.
+  await src.click();
+  const main = arbre(page).getByRole("treeitem", { name: nomLigne("main.rs, modifié") });
+  await expect(main.locator(".liste-statut")).toHaveText("M");
+  await main.click();
+  const onglet = page.getByRole("tab", { name: "main.rs, modifié", exact: true });
+  await expect(onglet).toBeVisible();
+  expect(await styleDe(onglet.locator(".onglet-nom"))).toBe(await couleurDe(page, "--git-modified"));
+  await expect(main).toHaveAttribute("aria-current", "true");
+  expect(await styleDe(main.locator(".liste-libelle"))).toBe(await couleurDe(page, "--git-modified"));
+  await expect(arbre(page).getByRole("treeitem", { name: nomLigne("nouveau.txt, nouveau") })).not.toHaveAttribute("aria-current", "true");
+  // Le nombre de changements est sur le rail, hors du nom accessible.
+  await expect(page.getByRole("tab", { name: "Git", exact: true }).locator(".ya-badge")).toHaveText("3");
+});
+
+test("REQ039_AC4_hors_depot_aucune_lettre_ni_nombre_sur_le_rail", async ({ page }) => {
+  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "horsdepot-"));
+  fs.writeFileSync(path.join(dossier, "a.txt"), "a");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await ouvrirYaide(page, yaide.origine);
+  await expect(ligne(page, "a.txt")).toBeVisible();
+  await expect(page.locator(".fichiers .liste-statut, .fichiers .liste-point")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Git", exact: true }).locator(".ya-badge")).toHaveCount(0);
+});
+
+test("REQ009_AC9_AC10_en_tete_du_projet_a_240_px_26_px_une_ligne_et_ordre_de_tabulation", async ({ page }) => {
+  await ouvrir(page);
+  const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+  await poignee.focus();
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
+  await expect(poignee).toHaveAttribute("aria-valuenow", "240");
+  const entete = page.locator(".fichiers-entete");
+  expect((await entete.boundingBox()).height).toBe(26);
+  const boites = await entete.locator("button").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
+  expect(boites).toHaveLength(4);
+  expect(new Set(boites.map((b) => Math.round(b.top))).size).toBe(1);
+  await expect(page.locator(".cadre-panneau-pied button:visible")).toHaveCount(0);
+  // Tab : les boutons actifs de l'en-tête (Renommer et Supprimer sont désactivés), puis l'arbre.
+  await page.getByRole("button", { name: "Nouveau fichier" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Nouveau dossier" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(arbre(page).locator("[tabindex='0']")).toBeFocused();
+});
+
+test("REQ039_AC1_indexer_depuis_le_menu_fait_passer_la_lettre_de_U_a_A", async ({ page }) => {
+  await ouvrir(page);
+  const avant = arbre(page).getByRole("treeitem", { name: "notes.txt, nouveau", exact: true });
+  await expect(avant.locator(".liste-statut")).toHaveText("U");
+  await avant.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Indexer" }).click();
+  const apres = arbre(page).getByRole("treeitem", { name: "notes.txt, ajouté", exact: true });
+  await expect(apres.locator(".liste-statut")).toHaveText("A");
+});
+
+test("REQ039_AC1_AC5_AC037_7_ctrl_s_met_a_jour_la_lettre_l_onglet_et_le_compteur_sans_changer_de_panneau", async ({ page }) => {
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier: depotExemple() });
+  await ouvrirYaide(page, yaide.origine);
+  await ligne(page, "src").click();
+  await ligne(page, "main.rs").click();
+  await page.locator(".cm-content").first().click();
+  await page.keyboard.type("// x\n");
+  await page.keyboard.press("Control+s");
+  const main = arbre(page).getByRole("treeitem", { name: "main.rs, modifié", exact: true });
+  await expect(main.locator(".liste-statut")).toHaveText("M");
+  const onglet = page.getByRole("tab", { name: "main.rs, modifié", exact: true });
+  await expect(onglet).toBeVisible();
+  expect(await styleDe(onglet.locator(".onglet-nom"))).toBe(await couleurDe(page, "--git-modified"));
+  await expect(page.getByRole("tab", { name: "Git", exact: true }).locator(".ya-badge")).toHaveText("1");
+});
+
+test("REQ009_AC9_l_en_tete_du_projet_ne_defile_pas_avec_l_arbre", async ({ page }) => {
+  const dossier = depotExemple();
+  for (let i = 0; i < 80; i++) fs.writeFileSync(path.join(dossier, `f${String(i).padStart(2, "0")}.txt`), "x");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await ouvrirYaide(page, yaide.origine);
+  const entete = page.locator(".fichiers-entete");
+  const avant = await entete.boundingBox();
+  await page.locator(".cadre-panneau-corps").evaluate((e) => {
+    e.scrollTop = e.scrollHeight;
+  });
+  expect(await page.locator(".cadre-panneau-corps").evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
+  expect(await entete.boundingBox()).toEqual(avant);
+  await expect(page.getByRole("button", { name: "Supprimer" })).toBeInViewport();
 });

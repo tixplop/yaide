@@ -264,3 +264,131 @@ test("REQ028_AC12_F_R_G_marchent_aussi_depuis_les_boutons_du_rail", () => {
     }
   }
 });
+
+// ---- T-037 : statuts git dans l'arbre, le rail et l'en-tête ----
+
+const ENTREES = [
+  { nom: "src", dossier: true, ignore: false },
+  { nom: "main.rs", dossier: false, ignore: false },
+  { nom: "gris.log", dossier: false, ignore: true },
+];
+function simulerServeur(etat) {
+  const appels = [];
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const chemin = url.split("?")[0];
+    appels.push(url);
+    const rep = (corps, status = 200) => ({ ok: status < 400, status, json: async () => corps });
+    if (chemin === "/api/fichiers") return rep({ entrees: url.includes("chemin=src") ? [{ nom: "a.rs", dossier: false, ignore: false }] : ENTREES });
+    if (chemin === "/api/shells") return { ok: false, status: 503, json: async () => ({}) };
+    if (chemin === "/api/fichier") return { ok: true, status: 200, text: async () => "fn main() {}", headers: { get: () => "1" } };
+    if (chemin === "/api/git/etat") return etat ? rep(etat) : rep({ cause: "pas-depot", message: "pas un dépôt" }, 409);
+    return { ok: true, status: 204, json: async () => ({}) };
+  }));
+  return appels;
+}
+const ETAT_GIT = (changements) => ({ branche: "main", detachee: false, branches: ["main"], changements });
+const ligne = (vue, nom) => [...vue.querySelectorAll(".fichiers [role=treeitem]")].find((l) => l.querySelector(".liste-libelle").textContent === nom);
+
+test("REQ039_AC1_AC2_AC3_AC6_lettre_point_et_mot_dans_l_arbre", async () => {
+  simulerServeur(ETAT_GIT([{ chemin: "main.rs", statut: "modifié", indexe: false, lettre: "M" }, { chemin: "src/a.rs", statut: "nouveau", indexe: false, lettre: "U" }]));
+  const { vue } = monter();
+  await attendre();
+  const main = ligne(vue, "main.rs");
+  expect(main.querySelector(".liste-statut").textContent).toBe("M");
+  expect(main.getAttribute("aria-label")).toBe("main.rs, modifié");
+  const src = ligne(vue, "src");
+  expect(src.querySelector(".liste-point")).not.toBeNull();
+  expect(src.querySelector(".liste-statut")).toBeNull();
+  expect(src.getAttribute("aria-label")).toBe("src, nouveau");
+  expect(src.querySelector(".liste-point").getAttribute("aria-hidden")).toBe("true");
+  const gris = ligne(vue, "gris.log");
+  expect(gris.querySelector(".liste-statut")).toBeNull();
+  expect(gris.querySelector(".liste-point")).toBeNull();
+});
+
+test("REQ039_AC4_hors_depot_aucune_lettre", async () => {
+  simulerServeur(null);
+  const { vue } = monter();
+  await attendre();
+  expect(ligne(vue, "main.rs")).toBeDefined();
+  expect(vue.querySelector(".fichiers .liste-statut, .fichiers .liste-point")).toBeNull();
+});
+
+test("REQ037_AC7_le_rail_porte_le_nombre_de_changements_hors_du_nom_accessible", async () => {
+  simulerServeur(ETAT_GIT([{ chemin: "main.rs", statut: "modifié", indexe: false, lettre: "M" }, { chemin: "src/a.rs", statut: "nouveau", indexe: false, lettre: "U" }]));
+  const { vue } = monter();
+  await attendre();
+  const git = [...vue.querySelectorAll("[role=tab]")].find((t) => t.getAttribute("aria-label") === "Git");
+  expect(git.querySelector(".ya-badge").textContent).toBe("2");
+  expect(git.querySelector(".ya-badge").getAttribute("aria-hidden")).toBe("true");
+});
+
+test("REQ037_AC7_pas_de_nombre_a_zero_ni_hors_depot", async () => {
+  simulerServeur(ETAT_GIT([]));
+  const { vue } = monter();
+  await attendre();
+  expect(vue.querySelector("[role=tab][aria-label=Git] .ya-badge")).toBeNull();
+  vues.forEach((v) => v.detruire());
+  document.body.replaceChildren();
+  simulerServeur(null);
+  const autre = monter();
+  await attendre();
+  expect(autre.vue.querySelector("[role=tab][aria-label=Git] .ya-badge")).toBeNull();
+});
+
+test("REQ037_AC7_le_nombre_est_lu_panneau_Git_masque_et_chaque_relecture_de_l_arbre_demande_une_lecture", async () => {
+  const appels = simulerServeur(ETAT_GIT([{ chemin: "main.rs", statut: "modifié", indexe: false, lettre: "M" }]));
+  const { vue } = monter();
+  await attendre();
+  const lectures = () => appels.filter((u) => u.startsWith("/api/git/etat")).length;
+  expect(vue.querySelector(".git-corps").hidden).toBe(true);
+  expect(lectures()).toBe(1);
+  const onglet = (nom) => [...vue.querySelectorAll("[role=tab]")].find((t) => t.getAttribute("aria-label") === nom);
+  onglet("Git").click();
+  await attendre();
+  expect(lectures()).toBe(2); // afficher le panneau Git relit
+  onglet("Fichiers").click();
+  await attendre();
+  expect(lectures()).toBe(3); // relire l'arbre relit l'état, une seule fois
+  expect(appels.filter((u) => u.startsWith("/api/fichiers?chemin=")).length).toBe(2);
+});
+
+test("REQ009_AC9_AC10_les_quatre_boutons_sont_dans_l_en_tete_du_projet_et_non_sous_l_arbre", async () => {
+  simulerServeur(ETAT_GIT([]));
+  const { vue } = monter();
+  await attendre();
+  const entete = vue.querySelector(".fichiers-entete");
+  expect(entete.firstElementChild.textContent).toBe("projet");
+  expect([...entete.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer"]);
+  expect(vue.querySelector(".fichiers-pied")).toBeNull();
+  expect(vue.querySelector(".cadre-panneau-pied [aria-label='Nouveau fichier']")).toBeNull();
+});
+
+test("REQ039_AC7_la_ligne_du_fichier_actif_porte_aria_current", async () => {
+  simulerServeur(ETAT_GIT([]));
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "onglets" ? { liste: [{ chemin: "main.rs" }], actif: "main.rs" } : undefined));
+  const { vue } = monter();
+  await vi.waitFor(() => expect(ligne(vue, "main.rs")?.getAttribute("aria-current")).toBe("true"));
+  expect(ligne(vue, "gris.log").hasAttribute("aria-current")).toBe(false);
+});
+
+test("REQ039_deplier_un_dossier_relit_aussi_l_etat_git", async () => {
+  const appels = simulerServeur(ETAT_GIT([]));
+  const { vue } = monter();
+  await attendre();
+  const lectures = () => appels.filter((u) => u.startsWith("/api/git/etat")).length;
+  const avant = lectures();
+  ligne(vue, "src").click();
+  await vi.waitFor(() => expect(lectures()).toBe(avant + 1));
+});
+
+test("REQ009_AC9_l_en_tete_du_projet_est_hors_du_corps_defilant_et_masque_avec_le_panneau", async () => {
+  simulerServeur(ETAT_GIT([]));
+  const { vue } = monter();
+  await attendre();
+  const entete = vue.querySelector(".fichiers-entete");
+  expect(vue.querySelector(".cadre-panneau-corps").contains(entete)).toBe(false);
+  expect(entete.hidden).toBe(false);
+  [...vue.querySelectorAll("[role=tab]")].find((t) => t.getAttribute("aria-label") === "Git").click();
+  expect(entete.hidden).toBe(true);
+});

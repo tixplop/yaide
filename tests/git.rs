@@ -276,6 +276,72 @@ fn req022_ac6_statuts_en_mots() {
     assert!(contient_ligne(&r, "main.rs", "conflit"), "{}", r.corps);
 }
 
+fn lettre_de(r: &Rep, chemin: &str) -> String {
+    let cle = format!("\"chemin\":\"{chemin}\",");
+    let debut = r
+        .corps
+        .find(&cle)
+        .unwrap_or_else(|| panic!("{chemin} absent : {}", r.corps));
+    let reste = &r.corps[debut..];
+    let l = reste.find("\"lettre\":\"").unwrap() + "\"lettre\":\"".len();
+    reste[l..].split('"').next().unwrap().to_string()
+}
+
+#[test]
+fn req039_ac1_lettre_de_chaque_statut() {
+    let s = lancer("lettres");
+    s.depot();
+    let p = s.projet.clone();
+    s.ecrire("partiel.txt", b"un\n");
+    s.ecrire("sup-indexe.txt", b"x\n");
+    s.ecrire("sup.txt", b"y\n");
+    s.ecrire(
+        "ancien.txt",
+        b"contenu assez long pour etre reconnu\nsur deux lignes\n",
+    );
+    s.g(&p, &["add", "."]);
+    s.g(&p, &["commit", "-q", "-m", "deux"]);
+    s.ecrire("main.rs", b"autre\n"); // modifié, non indexé : M
+    s.ecrire("nouveau.txt", b"n\n"); // non suivi : U
+    s.ecrire("indexe.txt", b"i\n"); // nouveau indexé : A
+    s.g(&p, &["add", "indexe.txt"]);
+    s.ecrire("partiel.txt", b"deux\n"); // MM
+    s.g(&p, &["add", "partiel.txt"]);
+    s.ecrire("partiel.txt", b"trois\n");
+    s.g(&p, &["rm", "-q", "sup-indexe.txt"]); // D indexé
+    std::fs::remove_file(p.join("sup.txt")).unwrap(); // D non indexé
+    s.g(&p, &["mv", "ancien.txt", "recent.txt"]); // R indexé
+    let r = s.etat();
+    assert_eq!(lettre_de(&r, "main.rs"), "M", "{}", r.corps);
+    assert_eq!(lettre_de(&r, "nouveau.txt"), "U", "{}", r.corps);
+    assert_eq!(lettre_de(&r, "indexe.txt"), "A", "{}", r.corps);
+    assert_eq!(lettre_de(&r, "partiel.txt"), "M", "{}", r.corps);
+    assert_eq!(lettre_de(&r, "sup-indexe.txt"), "D", "{}", r.corps);
+    assert_eq!(lettre_de(&r, "sup.txt"), "D", "{}", r.corps);
+    assert_eq!(lettre_de(&r, "recent.txt"), "R", "{}", r.corps);
+    // `statut` et `indexe` ne changent pas.
+    assert!(contient_ligne(&r, "partiel.txt", "indexé"), "{}", r.corps);
+    assert!(contient_ligne(&r, "sup.txt", "supprimé"), "{}", r.corps);
+    // conflit
+    s.g(&p, &["reset", "-q", "--hard"]);
+    s.g(&p, &["checkout", "-q", "-b", "autre"]);
+    s.ecrire("main.rs", b"version A\n");
+    s.g(&p, &["commit", "-q", "-am", "A"]);
+    s.g(&p, &["checkout", "-q", "main"]);
+    s.ecrire("main.rs", b"version B\n");
+    s.g(&p, &["commit", "-q", "-am", "B"]);
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(&p)
+        .args(["merge", "autre"])
+        .env("HOME", &s.racine)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    let r = s.etat();
+    assert_eq!(lettre_de(&r, "main.rs"), "C", "{}", r.corps);
+}
+
 #[test]
 fn req022_ac8_diff_binaire_et_trop_gros() {
     let s = lancer("ac8");

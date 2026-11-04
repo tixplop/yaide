@@ -576,10 +576,11 @@ async fn git_etat(State(etat): State<Partage>) -> Response {
                 .iter()
                 .map(|c| {
                     format!(
-                        "{{\"chemin\":{},\"statut\":{},\"indexe\":{}}}",
+                        "{{\"chemin\":{},\"statut\":{},\"indexe\":{},\"lettre\":{}}}",
                         json_texte(&c.chemin),
                         json_texte(c.statut),
-                        c.indexe
+                        c.indexe,
+                        json_texte(c.lettre)
                     )
                 })
                 .collect();

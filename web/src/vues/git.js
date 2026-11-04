@@ -12,10 +12,11 @@ const COULEUR_STATUT = { modifié: "statut-modifie", nouveau: "statut-nouveau", 
 
 /**
  * V-005. Rappels : `surBranche({ branche, detachee } | null)`, `surDiff({ chemin, texte, avis })`,
- * `diffOuvert()` (chemin du diff ouvert ou null), `fermerDiff()`, `surDisque()` (le disque a peut-être changé).
+ * `diffOuvert()` (chemin du diff ouvert ou null), `fermerDiff()`, `surDisque()` (le disque a peut-être changé),
+ * `surEtat(etat | null)` (à chaque lecture, panneau masqué ou non ; `null` hors d'un dépôt ou sans lecture possible).
  * Rend `{ corps, pied, rafraichir(), montrer(oui), detruire() }`.
  */
-export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOuvert = () => null, fermerDiff = () => {}, surDisque = () => {} }) {
+export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOuvert = () => null, fermerDiff = () => {}, surDisque = () => {}, surEtat = () => {} }) {
   const corps = document.createElement("div");
   corps.className = "git-corps";
   const pied = document.createElement("div");
@@ -75,6 +76,7 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
       if (ouvert && !etat.changements.some((c) => c.chemin === ouvert)) fermerDiff();
     }
     surBranche(etat ? { branche: etat.branche, detachee: etat.detachee } : null);
+    surEtat(etat);
     afficher();
   }
 

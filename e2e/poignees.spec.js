@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { lancerYaide, ouvrirYaide } from "./aides.js";
+import { lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -189,8 +189,8 @@ test("REQ032_AC12_le_bandeau_de_coupure_reduit_la_place_sans_effacer_la_taille_c
 
 test("REQ032_AC12_la_question_d_onglet_recalcule_les_limites_puis_les_rend", async ({ page }) => {
   await ouvrir(page, { width: 800, height: 480 });
-  await page.getByRole("treeitem", { name: "src", exact: true }).click();
-  await page.getByRole("treeitem", { name: "main.rs", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("src") }).click();
+  await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
   const editeur = page.getByRole("textbox", { name: "Éditeur main.rs" });
   await expect(editeur).toBeFocused();
   const max = async () => Number((await valeurs(page, "Hauteur des shells"))[2]);

@@ -27,6 +27,7 @@ export function symbole(taille) {
 
 /**
  * C-010. `barreTitre` : { projet, chemin, surOuvrir, actions } ; `rail` : { onglets, commandes } ;
+ * `panneau` : { titre, entete (élément fixe sous le titre), corps, pied } ;
  * `barreEtat` : { branche, position, langage } (textes, ou rien) ; `tailles` : { panneau, shells } en pixels ;
  * `surChangement(zone, taille)` et `surFin(zone, taille)` viennent des poignées.
  */
@@ -61,6 +62,7 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}
     h.textContent = panneau.titre;
     aside.append(zone("div", "ya-panel-head", h));
   }
+  if (panneau.entete) aside.append(panneau.entete);
   aside.append(zone("div", "cadre-panneau-corps", panneau.corps));
   if (panneau.pied) aside.append(zone("div", "cadre-panneau-pied", panneau.pied));
 

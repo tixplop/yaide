@@ -25,6 +25,8 @@ pub struct Changement {
     pub chemin: String,
     pub statut: &'static str,
     pub indexe: bool,
+    /// Lettre courte : A, M, D, R, U ou C.
+    pub lettre: &'static str,
 }
 
 pub struct Etat {
@@ -240,20 +242,28 @@ fn liste_branches(d: &Path) -> Vec<String> {
     }
 }
 
-fn statut_de(x: u8, y: u8) -> (&'static str, bool) {
+fn statut_de(x: u8, y: u8) -> (&'static str, bool, &'static str) {
     if x == b'U' || y == b'U' || (x == b'A' && y == b'A') || (x == b'D' && y == b'D') {
-        ("conflit", false)
+        ("conflit", false, "C")
     } else if x == b'?' {
-        ("nouveau", false)
-    } else if x == b'R' || x == b'C' {
-        ("renommé", true)
+        ("nouveau", false, "U")
     } else if x != b' ' {
-        ("indexé", true)
+        let lettre = match x {
+            b'A' => "A",
+            b'D' => "D",
+            b'R' | b'C' => "R",
+            _ => "M",
+        };
+        (
+            if lettre == "R" { "renommé" } else { "indexé" },
+            true,
+            lettre,
+        )
     } else {
         match y {
-            b'D' => ("supprimé", false),
-            b'R' | b'C' => ("renommé", false),
-            _ => ("modifié", false),
+            b'D' => ("supprimé", false, "D"),
+            b'R' | b'C' => ("renommé", false, "R"),
+            _ => ("modifié", false, "M"),
         }
     }
 }
@@ -288,7 +298,7 @@ pub fn etat(d: &Path) -> Result<Etat, Erreur> {
         if x == b'R' || x == b'C' || y == b'R' || y == b'C' {
             champs.next(); // ancien nom
         }
-        let (statut, indexe) = statut_de(x, y);
+        let (statut, indexe, lettre) = statut_de(x, y);
         let chemin = String::from_utf8_lossy(&c[3..]).into_owned();
         let Some(chemin) = chemin.strip_prefix(&prefixe) else {
             continue;
@@ -297,6 +307,7 @@ pub fn etat(d: &Path) -> Result<Etat, Erreur> {
             chemin: chemin.to_string(),
             statut,
             indexe,
+            lettre,
         });
     }
     let (branche, detachee) = branche_courante(d);

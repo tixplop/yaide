@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { depotExemple, lancerYaide, ouvrirYaide } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
 
 let yaide;
 test.beforeEach(async () => {
@@ -14,8 +14,8 @@ const main = () => path.join(yaide.dossier, "src", "main.rs");
 
 async function ouvrirMain(page) {
   await ouvrirYaide(page, yaide.origine);
-  await page.getByRole("treeitem", { name: "src", exact: true }).click();
-  await page.getByRole("treeitem", { name: "main.rs", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("src") }).click();
+  await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
   await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
 }
 
@@ -194,14 +194,14 @@ async function relancerSur(page, dossier) {
   await ouvrirYaide(page, yaide.origine);
 }
 
-/** Les commandes à icône visibles : nom accessible, icône, texte visible et taille. */
+/** Les commandes à icône visibles : nom accessible, icône, texte visible et taille. Le nombre de changements du rail est hors d'AC-031-1 (AC-037-7). */
 const commandes = (page) =>
   page.evaluate(() =>
     [...document.querySelectorAll("button:has(> svg[data-icone]), [role=tab]:has(> svg[data-icone])")]
       .filter((e) => e.getClientRects().length > 0)
       .map((e) => {
         const r = e.getBoundingClientRect();
-        return { nom: e.getAttribute("aria-label"), icone: e.querySelector("svg").dataset.icone, texte: e.textContent.trim(), l: r.width, h: r.height, titre: e.hasAttribute("title") };
+        return { nom: e.getAttribute("aria-label"), icone: e.querySelector("svg").dataset.icone, texte: [...e.childNodes].filter((n) => !n.classList?.contains("ya-badge")).map((n) => n.textContent).join("").trim(), l: r.width, h: r.height, titre: e.hasAttribute("title") };
       }),
   );
 
@@ -209,10 +209,10 @@ test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_san
   fs.writeFileSync(path.join(yaide.dossier, "nouveau.txt"), "x");
   fs.writeFileSync(path.join(yaide.dossier, "notes.bin"), Buffer.from([0, 1, 2, 0]));
   await ouvrirYaide(page, yaide.origine);
-  await page.getByRole("treeitem", { name: "README.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
   await expect(page.getByRole("button", { name: "Aperçu", exact: true })).toBeVisible();
   // Un message fermable : le bandeau d'un fichier binaire.
-  await page.getByRole("treeitem", { name: "notes.bin", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("notes.bin") }).click();
   await expect(page.getByRole("alert").getByRole("button", { name: "Fermer", exact: true })).toBeVisible();
   const toutes = [];
   for (const panneau of ["Fichiers", "Git"]) {
@@ -277,7 +277,7 @@ test("REQ035_AC11_info_bulles_a_droite_et_bouton_desactive_sans_arret_de_Tab", a
 
 test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_arbre_relus_au_style_calcule", async ({ page }) => {
   await relancerSur(page, depotStatuts());
-  await page.getByRole("treeitem", { name: "README.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
   await expect(page.getByRole("button", { name: "Aperçu", exact: true })).toBeVisible();
   const t = await resoudre(page, ["--fond-rail", "--surface", "--fond", "--fond-shells", "--ink-muted", "--ink-faint", "--git-ignored", "--icone-naviguer", "--texte"]);
   const fond = (selecteur) => lire(page.locator(selecteur).first(), "backgroundColor");
@@ -287,7 +287,7 @@ test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_a
   expect(await fond(".cadre-shells")).toBe(t["--fond-shells"]);
   // Le rail et les shells partagent le fond du cadre (AC-033-1) : trois fonds distincts.
   expect(new Set([t["--fond-rail"], t["--surface"], t["--fond"], t["--fond-shells"]]).size).toBe(3);
-  const pied = (nom) => page.locator(`.fichiers-pied [aria-label="${nom}"]`);
+  const pied = (nom) => page.locator(`.fichiers-entete [aria-label="${nom}"]`);
   const ailleurs = (nom) => page.locator(`[aria-label="${nom}"]`).first();
   const icones = [
     [pied("Nouveau fichier"), "--ink-muted"],
@@ -303,15 +303,15 @@ test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_a
   ];
   for (const [loc, token] of icones) expect(await lire(loc), token).toBe(t[token]);
   // Arborescence : dossier, fichier, élément ignoré par git.
-  const item = (nom) => page.getByRole("treeitem", { name: nom === "ignore.txt" ? "ignore.txt, ignoré par git" : nom, exact: true });
+  const item = (nom) => page.getByRole("treeitem", { name: nomLigne(nom) });
   expect(await lire(item("src").locator('svg[data-icone="folder"]')), "icône du dossier").toBe(t["--ink-muted"]);
   expect(await lire(item("src").locator(".liste-libelle")), "nom du dossier").toBe(t["--texte"]);
-  expect(await lire(item("README.md").locator('svg[data-icone="file"]')), "icône du fichier").toBe(t["--ink-muted"]);
-  expect(await lire(item("README.md").locator(".liste-libelle")), "nom du fichier").toBe(t["--texte"]);
+  expect(await lire(item(".gitignore").locator('svg[data-icone="file"]')), "icône du fichier sans statut").toBe(t["--ink-muted"]);
+  expect(await lire(item(".gitignore").locator(".liste-libelle")), "nom du fichier").toBe(t["--texte"]);
   expect(await lire(item("ignore.txt").locator('svg[data-icone="file"]')), "icône ignorée").toBe(t["--git-ignored"]);
   expect(await lire(item("ignore.txt").locator(".liste-libelle")), "nom ignoré").toBe(t["--git-ignored"]);
   expect(await lire(item("ignore.txt").locator(".liste-libelle"), "fontStyle")).toBe("italic");
-  expect(await lire(item("README.md").locator(".liste-libelle"), "fontStyle")).toBe("normal");
+  expect(await lire(item(".gitignore").locator(".liste-libelle"), "fontStyle")).toBe("normal");
   // Pull et Push : icônes de commande, en --ink-muted.
   await page.getByRole("tab", { name: "Git", exact: true }).click();
   const d = await resoudre(page, ["--ink-muted"]);
@@ -372,7 +372,7 @@ test("REQ033_AC3_AC10_messages_info_succes_alerte_erreur_relus_au_style_calcule"
   await expect(info).toBeVisible({ timeout: 15000 });
   expect(await lire(info, "backgroundColor")).toBe(t["--message-info"]);
   // alerte : fichier binaire.
-  await page.getByRole("treeitem", { name: "notes.bin", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("notes.bin") }).click();
   const alerte = page.locator(".message-alerte").filter({ hasText: "notes.bin est un fichier binaire." });
   await expect(alerte).toBeVisible();
   expect(await lire(alerte, "backgroundColor")).toBe(t["--message-alerte"]);
@@ -395,26 +395,26 @@ test("REQ033_AC3_AC10_messages_info_succes_alerte_erreur_relus_au_style_calcule"
 
 test("REQ031_AC9_Renommer_desactive_montre_son_info_bulle", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
-  await expect(page.locator('.fichiers-pied [aria-label="Renommer"]')).toBeDisabled();
+  await expect(page.locator('.fichiers-entete [aria-label="Renommer"]')).toBeDisabled();
   const t = await resoudre(page, ["--ink-muted"]);
   // AC-033-11 : un bouton à icône désactivé est atténué (opacité .45), pas recoloré.
   for (const nom of ["Renommer", "Supprimer"]) {
-    const bouton = page.locator(`.fichiers-pied [aria-label="${nom}"]`);
+    const bouton = page.locator(`.fichiers-entete [aria-label="${nom}"]`);
     expect(await lire(bouton), nom).toBe(t["--ink-muted"]);
     expect(await lire(bouton, "opacity"), nom).toBe("0.45");
   }
-  await page.locator(".fichiers-pied .bouton-enveloppe").nth(2).hover();
+  await page.locator(".fichiers-entete .bouton-enveloppe").nth(2).hover();
   await expect(page.getByRole("tooltip")).toHaveText("Renommer ou déplacer (F2)");
 });
 
-test("REQ031_AC6_panneau_de_240_px_les_quatre_boutons_du_pied_restent_dans_le_pied_sur_une_ligne", async ({ page }) => {
+test("REQ031_AC6_panneau_de_240_px_les_quatre_boutons_restent_dans_l_entete_du_projet_sur_une_ligne", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
   const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
   await poignee.focus();
   for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
   await expect(poignee).toHaveAttribute("aria-valuenow", "240");
-  const boites = await page.locator(".fichiers-pied .bouton").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
-  const pied = await page.locator(".fichiers-pied").evaluate((e) => e.getBoundingClientRect().toJSON());
+  const boites = await page.locator(".fichiers-entete .bouton").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
+  const pied = await page.locator(".fichiers-entete").evaluate((e) => e.getBoundingClientRect().toJSON());
   expect(boites).toHaveLength(4);
   expect(new Set(boites.map((b) => Math.round(b.top))).size).toBe(1);
   expect(boites.at(-1).right).toBeLessThanOrEqual(pied.right);
@@ -445,7 +445,7 @@ test("REQ036_AC3_tailles_du_cadre_barre_onglets_ligne_etat_et_rail", async ({ pa
   expect((await boite(page.locator("header")))[1]).toBe(35);
   expect((await boite(page.locator("footer")))[1]).toBe(22);
   expect((await boite(page.getByRole("tablist", { name: "Fichiers ouverts" })))[1]).toBe(35);
-  expect((await boite(page.getByRole("treeitem", { name: "src", exact: true })))[1]).toBe(22);
+  expect((await boite(page.getByRole("treeitem", { name: nomLigne("src") })))[1]).toBe(22);
   expect((await boite(page.locator(".cadre-rail")))[0]).toBe(48);
   for (const nom of ["Fichiers", "Recherche", "Git"]) expect(await boite(page.getByRole("tab", { name: nom, exact: true }))).toEqual([48, 48]);
   for (const nom of ["Nouveau shell", "Fermer le shell"]) expect(await boite(page.getByRole("button", { name: nom }))).toEqual([48, 48]);
@@ -489,7 +489,7 @@ test("REQ037_AC11_fichier_inconnu_Texte_et_aucun_fichier_rien_a_droite", async (
   fs.writeFileSync(path.join(yaide.dossier, "notes.xyz"), "abc\n");
   await ouvrirYaide(page, yaide.origine);
   await expect(page.locator("footer")).not.toContainText("Ln ");
-  await page.getByRole("treeitem", { name: "notes.xyz", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("notes.xyz") }).click();
   await expect(page.locator("footer")).toContainText("Texte");
 });
 

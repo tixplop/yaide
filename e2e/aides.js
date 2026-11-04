@@ -77,3 +77,8 @@ export async function ouvrirYaide(page, origine, motDePasse = "mdp") {
   await page.keyboard.press("Enter");
   await page.getByRole("tab", { name: "shell 1" }).waitFor();
 }
+
+/** Nom accessible d'une ligne de l'arborescence : le nom, suivi éventuellement de son statut git (« main.rs, modifié »). */
+export function nomLigne(nom) {
+  return new RegExp(`^${nom.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(, [^,]+)*$`);
+}

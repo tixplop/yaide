@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { depotExemple, lancerYaide, ouvrirYaide } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
 
 let yaide;
 test.afterEach(async () => {
@@ -143,7 +143,7 @@ test("REQ026_AC2_fichier_deja_ouvert_va_a_la_ligne", async ({ page }) => {
 test("REQ008_AC7_lecture_tardive_depuis_la_recherche_ne_reprend_pas_l_onglet_actif", async ({ page }) => {
   await ouvrir(page, depot());
   await page.getByRole("tree").getByText("src").first().click();
-  await page.getByRole("treeitem", { name: "main.rs", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
   await expect(page.getByRole("tab", { name: "main.rs" })).toHaveAttribute("aria-selected", "true");
   let liberer;
   const porte = new Promise((r) => (liberer = r));

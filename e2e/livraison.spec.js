@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import tls from "node:tls";
-import { depotExemple, lancerYaide, ouvrirYaide } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
 
 const MUSL = path.resolve("target/x86_64-unknown-linux-musl/release/yaide");
 
@@ -39,8 +39,8 @@ test("REQ029_AC1_binaire_seul_sert_toute_l_interface_et_poignee_de_main_tls", as
   await ouvrirYaide(page, yaide.origine);
   for (const nom of ["Fichiers", "Recherche", "Git"]) await expect(page.getByRole("tab", { name: nom, exact: true })).toBeVisible();
   await expect(page.getByRole("tree", { name: "Fichiers" })).toBeVisible();
-  await page.getByRole("treeitem", { name: "src", exact: true }).click();
-  await page.getByRole("treeitem", { name: "main.rs", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("src") }).click();
+  await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
   await expect(page.getByLabel("Éditeur main.rs").locator(".cm-line").first()).toContainText("fn main");
   await page.locator(".terminal:visible .xterm-helper-textarea").focus();
   await page.keyboard.type("echo livre_$((6*7))");
@@ -59,7 +59,7 @@ test("REQ029_AC2_AC3_deux_shells_memoire_sous_50_Mo_et_aucune_requete_hors_origi
   await expect(page.getByRole("tab", { name: "shell 2" })).toBeVisible();
   await expect(page.locator(".terminal:visible .terminal-attente")).toBeHidden();
   // Usage de l'interface : fichiers, aperçu markdown avec image distante, recherche, git.
-  await page.getByRole("treeitem", { name: "README.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
   await page.getByRole("button", { name: "Aperçu", exact: true }).click();
   const apercu = page.getByRole("region", { name: "Aperçu" });
   await expect(apercu.getByRole("heading", { name: "Titre" })).toBeVisible();
@@ -87,7 +87,7 @@ test("REQ031_AC3_afficher_les_icones_ne_declenche_aucune_requete", async ({ page
   await page.getByRole("tab", { name: "Git" }).click();
   await expect(page.getByRole("button", { name: "Commit" })).toBeVisible();
   await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
-  await expect(page.locator('.fichiers-pied [aria-label="Supprimer"] svg[data-icone="trash"]')).toBeVisible();
+  await expect(page.locator('.fichiers-entete [aria-label="Supprimer"] svg[data-icone="trash"]')).toBeVisible();
   // Seules les requêtes attendues : le document, les fichiers de l'interface, l'API et ses flux.
   const inattendues = requetes.filter((r) => {
     const u = new URL(r.url());
@@ -105,7 +105,9 @@ test("REQ034_ouvrir_le_menu_de_l_arborescence_ne_declenche_aucune_requete_hors_o
   const requetes = [];
   page.on("request", (r) => requetes.push(r.url()));
   await ouvrirYaide(page, yaide.origine);
-  await page.getByRole("treeitem", { name: "README.md", exact: true }).click({ button: "right" });
+  // « Indexer » dépend de la première lecture de l'état git : la barre d'état montre la branche une fois lue.
+  await expect(page.locator("footer")).toHaveText(/\S/);
+  await page.getByRole("treeitem", { name: nomLigne("README.md") }).click({ button: "right" });
   await expect(page.getByRole("menu")).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Indexer" })).toBeVisible();
   const hors = requetes.filter((u) => !u.startsWith(yaide.origine + "/") && !/^(data|blob|about):/.test(u));

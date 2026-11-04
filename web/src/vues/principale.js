@@ -12,6 +12,7 @@ import { vueFichiers } from "./fichiers.js";
 import { vueGit } from "./git.js";
 import { vueOuverture } from "./ouverture.js";
 import { vueRecherche } from "./recherche.js";
+import { statutsDe } from "../statuts.js";
 import { vueShells } from "./shells.js";
 
 const PANNEAUX = [
@@ -67,11 +68,15 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     return m;
   }
 
+  let fichiers = null; // créé après l'éditeur, dont les premiers rappels arrivent avant
+  let git = null; // créé après l'arbre, dont la première lecture le demande
   const shells = vueShells({ dire });
   const editeur = vueEditeur({
     dire,
     ouvrirRapide: () => ouverture.ouvrir(),
     surAttente: (t) => { attenteTexte = t; montrerCoupure(); },
+    surCourant: (chemin) => fichiers?.definirCourant(chemin),
+    surSauvegarde: () => git?.rafraichir(),
     surActif: (a) => {
       barre.position = a?.position;
       barre.langage = a?.langage;
@@ -79,8 +84,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     },
   });
   const ouverture = vueOuverture({ dire, surOuvrir: editeur.ouvrir, surLecture: editeur.lecture });
-  const fichiers = vueFichiers({
+  fichiers = vueFichiers({
     dire,
+    projet: nomDuDossier(chemin),
+    lireEtat: () => git?.rafraichir(),
     estDepot: () => git.estDepot(),
     surCommit: () => {
       rail.choisir("git");
@@ -89,11 +96,18 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     }, surOuvrir: editeur.ouvrir, surRenomme: editeur.renomme, surSupprime: editeur.supprime, surLecture: editeur.lecture,
   });
   const recherche = vueRecherche({ dire, surOuvrir: editeur.ouvrir, surLecture: editeur.lecture });
-  const git = vueGit({
+  git = vueGit({
     dire,
     surBranche: (b) => {
       barre.branche = b ? (b.detachee ? "détachée" : b.branche) : undefined;
       majEtat();
+    },
+    surEtat: (etat) => {
+      const statuts = etat ? statutsDe(etat.changements) : null;
+      fichiers.definirStatuts(statuts);
+      editeur.definirStatuts(statuts ?? new Map());
+      nombre = etat ? etat.changements.length : 0;
+      majRail();
     },
     surDiff: editeur.ouvrirDiff,
     diffOuvert: editeur.diffOuvert,
@@ -102,6 +116,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
   editeur.restaurer();
 
+  let nombre = 0; // changements git, affichés sur l'icône Git du rail
+  const majRail = () => rail.definirCompteur("git", nombre);
   const rail = onglets({
     orientation: "verticale",
     onglets: PANNEAUX.map(({ id, icone, nomAccessible, raccourci }) => ({ id, icone, nomAccessible, raccourci })),
@@ -114,7 +130,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   racine = cadre({
     barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [theme.enveloppe, sortir.enveloppe] },
     rail: { onglets: rail, commandes: shells.commandes },
-    panneau: { titre: "Fichiers", corps: [fichiers.corps, recherche.corps, git.corps], pied: [fichiers.pied, git.pied] },
+    panneau: { titre: "Fichiers", entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps], pied: [git.pied] },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, fil: editeur.fil, code: editeur.code, shells },
     barreEtat: barre,
     surChangement: (zone, taille) => {
@@ -161,7 +177,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     corps.setAttribute("aria-label", p.titre);
     const visible = id === "fichiers";
     if (visible && fichiers.corps.hidden) fichiers.rafraichir();
-    fichiers.corps.hidden = fichiers.pied.hidden = !visible;
+    fichiers.corps.hidden = fichiers.entete.hidden = !visible;
     recherche.montrer(id === "recherche");
     git.montrer(id === "git");
   }

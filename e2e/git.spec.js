@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { depotExemple, lancerYaide, ouvrirYaide } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
 
 let yaide;
 test.afterEach(async () => {
@@ -64,8 +64,8 @@ test("REQ022_AC1_modifier_et_sauvegarder_main_rs_le_fait_apparaitre_dans_les_cha
   await panneauGit(page);
   await expect(page.getByText("Aucun changement.")).toBeVisible();
   await page.getByRole("tab", { name: "Fichiers" }).click();
-  await page.getByRole("treeitem", { name: "src", exact: true }).click();
-  await page.getByRole("treeitem", { name: "main.rs", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("src") }).click();
+  await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
   const editeur = page.getByLabel("Éditeur main.rs");
   await editeur.click();
   await page.keyboard.type("// ajout\n");
@@ -82,7 +82,7 @@ test("REQ022_AC7_fermer_le_dernier_fichier_laisse_l_onglet_de_diff", async ({ pa
   const dossier = depot();
   fs.writeFileSync(path.join(dossier, "src", "main.rs"), "fn main() {}\n");
   await ouvrir(page, dossier);
-  await page.getByRole("treeitem", { name: "README.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
   await panneauGit(page);
   await ligne(page, "src/main.rs").click();
   await expect(ongletDiff(page, "main.rs")).toHaveAttribute("aria-selected", "true");
@@ -197,7 +197,7 @@ test("REQ024_AC1_AC3_changer_de_branche_et_les_fichiers_ouverts_suivent_le_disqu
   g(dossier, "commit", "-q", "-am", "travail");
   g(dossier, "switch", "-q", "main");
   await ouvrir(page, dossier);
-  await page.getByRole("treeitem", { name: "README.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
   await expect(page.getByLabel("Éditeur README.md")).toContainText("# Titre");
   await panneauGit(page);
   const choix = page.getByLabel("Branche");
@@ -286,7 +286,7 @@ test("REQ025_AC2_AC3_AC5_echec_du_push_message_de_git_et_renvoi_vers_le_shell", 
 
 test("REQ028_AC1_F_R_G_changent_de_panneau_sans_toucher_aux_onglets", async ({ page }) => {
   await ouvrir(page, depot());
-  await page.getByRole("treeitem", { name: "README.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
   await expect(page.getByRole("tab", { name: "README.md" })).toBeVisible();
   await page.getByRole("tab", { name: "Fichiers" }).focus();
   await page.keyboard.press("g");
@@ -305,7 +305,7 @@ test("REQ034_AC8_commit_du_menu_montre_le_panneau_git_avec_le_focus_dans_message
   await panneauGit(page);
   await message(page).fill("déjà écrit");
   await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
-  await page.getByRole("treeitem", { name: "neuf.txt", exact: true }).click({ button: "right" });
+  await page.getByRole("treeitem", { name: nomLigne("neuf.txt") }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Commit" }).click();
   await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
   await expect(message(page)).toBeFocused();
