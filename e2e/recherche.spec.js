@@ -37,12 +37,34 @@ test("REQ026_AC1_AC6_clic_sur_R_focus_dans_le_champ_aide_puis_resultats_groupes"
   await chercher(page, "FN MAIN");
   const l = resultats(page);
   await expect(l.getByRole("option")).toHaveCount(2);
-  await expect(l).toContainText("src/lib.rs");
-  await expect(l).toContainText("src/main.rs");
-  await expect(l.getByRole("option").nth(0)).toContainText("30: fn main_lib() {}");
-  await expect(l.getByRole("option").nth(1)).toContainText("1: fn main() {");
-  await expect(l.locator("b.liste-trouve").first()).toHaveText("fn main");
+  const g = l.locator(".liste-groupe");
+  await expect(g).toHaveCount(2);
+  await expect(g.nth(0)).toContainText("lib.rs");
+  await expect(g.nth(0).locator(".liste-parent")).toHaveText("src");
+  await expect(g.nth(1)).toContainText("main.rs");
+  await expect(g.nth(1).locator(".liste-parent")).toHaveText("src");
+  await expect(l.getByRole("option").nth(0).locator(".liste-numero")).toHaveText("30");
+  await expect(l.getByRole("option").nth(0).locator(".liste-libelle")).toHaveText("fn main_lib() {}");
+  await expect(l.getByRole("option").nth(1).locator(".liste-numero")).toHaveText("1");
+  await expect(l.getByRole("option").nth(1).locator(".liste-libelle")).toHaveText("fn main() {");
+  await expect(l.locator("mark").first()).toHaveText("fn main");
   await expect(page.getByText("Entrée pour chercher.")).toHaveCount(0);
+});
+
+test("REQ037_AC8_AC13_resume_groupes_avec_dossier_et_compteur_non_selectionnables", async ({ page }) => {
+  await ouvrir(page, depot());
+  await rail(page).click();
+  await expect(page.getByText(/résultats? dans/)).toHaveCount(0);
+  await chercher(page, "fn main");
+  await expect(page.getByText("2 résultats dans 2 fichiers")).toBeVisible();
+  const groupes = resultats(page).locator(".liste-groupe");
+  await expect(groupes).toHaveCount(2);
+  await expect(groupes.first()).toContainText("lib.rs");
+  await expect(groupes.first().locator(".liste-parent")).toHaveText("src");
+  await expect(groupes.first().locator(".ya-badge")).toHaveText("1");
+  await groupes.first().click();
+  await expect(resultats(page).locator("[aria-selected=true]")).toHaveCount(0);
+  await expect(resultats(page).getByRole("option")).toHaveCount(2);
 });
 
 test("REQ026_AC6_recherche_en_cours_pendant_l_attente", async ({ page }) => {

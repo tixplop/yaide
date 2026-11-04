@@ -103,7 +103,7 @@ export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}
       titre: "Ouvrir un fichier",
       contenu: [saisie, zone],
       focusInitial: entree,
-      position: "haut",
+      position: "palette",
       surAnnuler: () => fermer(),
     });
     afficher();

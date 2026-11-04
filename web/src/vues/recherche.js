@@ -1,7 +1,7 @@
 import { chercherTexte, lireFichier } from "../api.js";
 import { champ } from "../ui/champ.js";
 import { indication } from "../ui/indication.js";
-import { liste } from "../ui/liste.js";
+import { iconeDe, liste } from "../ui/liste.js";
 import { message } from "../ui/message.js";
 
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
@@ -38,15 +38,18 @@ export function vueRecherche({ dire, surOuvrir = () => {}, surLecture = () => {}
     for (const r of etat.resultats) {
       if (r.chemin !== courant) {
         courant = r.chemin;
-        lignes.push({ id: `g:${r.chemin}`, libelle: r.chemin, groupe: true });
+        const nom = nomDe(r.chemin);
+        const { icone, couleur } = iconeDe(nom);
+        const dossier = r.chemin.includes("/") ? r.chemin.slice(0, r.chemin.lastIndexOf("/")) : undefined;
+        const compteur = etat.resultats.filter((x) => x.chemin === r.chemin).length;
+        lignes.push({ id: `g:${r.chemin}`, libelle: nom, dossier, icone, couleurIcone: couleur, compteur, groupe: true });
       }
-      const prefixe = `${r.ligne}: `;
-      const n = Array.from(prefixe).length;
       lignes.push({
         id: `${r.chemin}:${r.ligne}`,
-        libelle: prefixe + r.texte,
+        libelle: r.texte,
+        numero: r.ligne,
+        trouve: [r.debut, r.fin],
         policeCode: true,
-        trouve: [n + r.debut, n + r.fin],
         donnees: r,
       });
     }
@@ -57,6 +60,14 @@ export function vueRecherche({ dire, surOuvrir = () => {}, surLecture = () => {}
     l.setAttribute("aria-label", "Résultats de la recherche");
     const enfants = [];
     if (etat.limite) enfants.push(message({ texte: "500 premiers résultats. Précisez votre recherche." }));
+    else {
+      const resume = document.createElement("p");
+      resume.className = "recherche-resume";
+      const n = etat.resultats.length;
+      const f = new Set(etat.resultats.map((r) => r.chemin)).size;
+      resume.textContent = `${n} résultat${n > 1 ? "s" : ""} dans ${f} fichier${f > 1 ? "s" : ""}`;
+      enfants.push(resume);
+    }
     enfants.push(l);
     zone.replaceChildren(...enfants);
   }

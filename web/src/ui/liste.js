@@ -61,7 +61,23 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       const g = document.createElement("div");
       g.className = "liste-groupe";
       g.setAttribute("role", "presentation");
-      g.textContent = l.libelle;
+      if (l.icone) {
+        const i = document.createElement("span");
+        i.className = "liste-icone";
+        if (l.couleurIcone) i.style.setProperty("--couleur-icone", jeton(l.couleurIcone, "couleurIcone"));
+        i.append(icone(l.icone));
+        g.append(i);
+      }
+      const nom = document.createElement("span");
+      nom.className = "liste-groupe-nom";
+      nom.textContent = l.libelle;
+      g.append(nom);
+      if (l.dossier) {
+        const d = document.createElement("span");
+        d.className = "liste-parent";
+        d.textContent = l.dossier;
+        g.append(d);
+      }
       if (l.compteur !== undefined) {
         const c = compteurDe({ valeur: l.compteur });
         c.classList.add("liste-compteur");
@@ -78,7 +94,7 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     e.style.setProperty("--niveau", String(l.niveau ?? 0));
     if (l.policeCode) e.classList.add("liste-code");
     const etats = [];
-    if (l.attenuee || l.ignore) {
+    if (l.ignore) {
       e.classList.add("liste-attenuee");
       etats.push("ignoré par git");
     }
@@ -158,17 +174,6 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       d.className = "liste-parent";
       d.textContent = l.dossier;
       e.append(d);
-    }
-    if (l.secondaire) {
-      const s = document.createElement("span");
-      s.className = "liste-secondaire";
-      s.textContent = l.secondaire;
-      if (l.couleurSecondaire) {
-        if (!/^[a-z-]+$/.test(l.couleurSecondaire)) throw new Error(`liste : couleurSecondaire invalide « ${l.couleurSecondaire} »`);
-        s.style.setProperty("--couleur-secondaire", `var(--${l.couleurSecondaire})`);
-      }
-      if (l.secondaireFort) s.classList.add("liste-secondaire-fort");
-      e.append(s);
     }
     if (l.statut) {
       const m = document.createElement("span");

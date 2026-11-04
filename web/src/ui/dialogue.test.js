@@ -138,6 +138,7 @@ test("C007_palette_sous_la_barre_de_titre_sans_titre_visible_voile_transparent",
   expect(regle(".ya-palette")).toContain("padding: 6px");
   expect(regle(".ya-palette")).toContain("border-radius: var(--radius-md)");
   expect(regle(".ya-palette::backdrop")).toContain("background: transparent");
+  expect(regle(".ya-palette .liste-marque")).toContain("display: none");
   expect(regle(".ya-palette .liste-ligne")).toContain("height: 24px");
   expect(regle(".ya-palette .liste-ligne")).toContain("border-radius: var(--radius-xs)");
   expect(regle(".ya-palette .liste-trouve")).toContain("color: var(--accent-fg)");

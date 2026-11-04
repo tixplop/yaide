@@ -77,7 +77,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
         id,
         libelle: e.nom,
         niveau,
-        attenuee: e.ignore,
+        ignore: e.ignore,
         enfants: e.dossier,
         ouvert,
         courant: id === courant,

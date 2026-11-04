@@ -58,12 +58,12 @@ test("REQ028_AC3_groupes_non_selectionnables", () => {
   expect(document.activeElement).toBe(items(l)[0]);
 });
 
-test("REQ028_AC3_secondaire_police_code_et_attenuee", () => {
+test("REQ028_AC3_dossier_police_code_et_ignore", () => {
   const l = liste({
-    lignes: [{ id: "a", libelle: "a.rs", secondaire: "src", policeCode: true }, { id: "b", libelle: "b.log", attenuee: true }],
+    lignes: [{ id: "a", libelle: "a.rs", dossier: "src", policeCode: true }, { id: "b", libelle: "b.log", ignore: true }],
   });
   const [a, b] = items(l);
-  expect(a.querySelector(".liste-secondaire").textContent).toBe("src");
+  expect(a.querySelector(".liste-parent").textContent).toBe("src");
   expect(a.classList.contains("liste-code")).toBe(true);
   expect(b.classList.contains("liste-attenuee")).toBe(true);
   expect(b.getAttribute("aria-label")).toBe("b.log, ignoré par git");
@@ -218,7 +218,7 @@ test("REQ033_AC5_arbre_dossier_fichier_et_ignore_ont_leurs_icones_et_couleurs", 
   const l = arbre({ lignes: [
     { id: "d", libelle: "d", enfants: true, ouvert: false },
     { id: "f", libelle: "f" },
-    { id: "i", libelle: "i", attenuee: true },
+    { id: "i", libelle: "i", ignore: true },
   ] });
   const [d, f, i] = items(l);
   expect(d.querySelector(".liste-icone").classList.contains("liste-dossier")).toBe(true);
@@ -230,15 +230,25 @@ test("REQ033_AC5_arbre_dossier_fichier_et_ignore_ont_leurs_icones_et_couleurs", 
   expect(regle(".liste-attenuee")).toContain("font-style: italic");
 });
 
-test("REQ033_AC2_secondaire_prend_sa_couleur_et_sa_graisse", () => {
-  const l = liste({ lignes: [{ id: "a", libelle: "a", secondaire: "indexé", couleurSecondaire: "succes", secondaireFort: true }, { id: "b", libelle: "b", secondaire: "nouveau" }] });
-  const [a, b] = [...l.querySelectorAll(".liste-secondaire")];
-  expect(a.style.getPropertyValue("--couleur-secondaire")).toBe("var(--succes)");
-  expect(a.classList.contains("liste-secondaire-fort")).toBe(true);
-  expect(b.style.getPropertyValue("--couleur-secondaire")).toBe("");
-  expect(regle(".liste-secondaire")).toContain("color: var(--couleur-secondaire, var(--ink-muted))");
-  expect(regle(".liste-secondaire-fort")).toContain("font-weight: var(--graisse-forte)");
-  expect(() => liste({ lignes: [{ id: "a", libelle: "a", secondaire: "x", couleurSecondaire: "red; x" }] })).toThrow(/couleurSecondaire/);
+test("T039_les_options_secondaire_et_attenuee_n_existent_plus", () => {
+  const l = liste({ lignes: [{ id: "a", libelle: "a", secondaire: "x", attenuee: true }] });
+  expect(l.querySelector(".liste-secondaire")).toBeNull();
+  expect(items(l)[0].classList.contains("liste-attenuee")).toBe(false);
+  expect(css).not.toContain("liste-secondaire");
+});
+
+test("REQ037_AC8_groupe_de_resultats_icone_nom_dossier_et_compteur", () => {
+  const l = liste({ lignes: [{ id: "g", libelle: "main.rs", dossier: "src", icone: "file-code", compteur: 2, groupe: true }, { id: "a", libelle: "fn main", numero: 4, trouve: [0, 7] }] });
+  const g = l.querySelector(".liste-groupe");
+  expect(g.querySelector(".liste-icone svg")).not.toBeNull();
+  expect(g.querySelector(".liste-groupe-nom").textContent).toBe("main.rs");
+  expect(g.querySelector(".liste-parent").textContent).toBe("src");
+  expect(g.querySelector(".ya-badge").textContent).toBe("2");
+  expect(items(l)).toHaveLength(1);
+  expect(g.hasAttribute("tabindex")).toBe(false);
+  const hit = items(l)[0];
+  expect(hit.classList.contains("ya-hit")).toBe(true);
+  expect(hit.querySelector("mark").textContent).toBe("fn main");
 });
 
 test("REQ031_AC1_action_de_ligne_a_icone_sans_texte_avec_info_bulle", () => {
@@ -256,7 +266,7 @@ test("REQ031_AC1_action_de_ligne_a_icone_sans_texte_avec_info_bulle", () => {
 });
 
 test("REQ033_AC12_dossier_ignore_a_son_icone_et_son_nom_en_texte_attenue", () => {
-  const l = arbre({ lignes: [{ id: "n", libelle: "node_modules", enfants: true, ouvert: false, attenuee: true }, { id: "s", libelle: "src", enfants: true, ouvert: false }] });
+  const l = arbre({ lignes: [{ id: "n", libelle: "node_modules", enfants: true, ouvert: false, ignore: true }, { id: "s", libelle: "src", enfants: true, ouvert: false }] });
   const [n, s] = items(l);
   expect(n.classList.contains("liste-attenuee")).toBe(true);
   expect(n.querySelector(".liste-icone svg").getAttribute("data-icone")).toBe("folder");

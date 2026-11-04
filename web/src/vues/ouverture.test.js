@@ -76,6 +76,18 @@ test("REQ027_AC5_focus_dans_le_champ_et_aide_a_vide", async () => {
   v.detruire();
 });
 
+test("REQ036_AC9_ouverture_en_palette_caracteres_trouves_en_gras", async () => {
+  simuler(json({ chemins: ["src/main.rs"] }));
+  const { entree, v } = await ouvrir();
+  const dlg = document.querySelector("dialog");
+  expect(dlg.classList.contains("ya-palette")).toBe(true);
+  expect(dlg.classList.contains("dialogue-haut")).toBe(false);
+  taper(entree, "MAIN");
+  expect(dlg.querySelector("[role=option] b.liste-trouve").textContent).toBe("main");
+  expect(dlg.querySelector("[role=option]").classList.contains("liste-courante")).toBe(true);
+  v.detruire();
+});
+
 test("REQ027_AC5_aucun_fichier_trouve", async () => {
   simuler(json({ chemins: ["a.rs"] }));
   const { entree, v } = await ouvrir();
