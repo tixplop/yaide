@@ -30,7 +30,7 @@ export function depotExemple(nom = "projet") {
 
 /** Lance Yaide sur un port libre (ou `port`). Rend `{ origine, port, dossier, arreter, relancer }`. */
 export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple(), port, shell, reprise = false, binaire } = {}) {
-  port ??= await portLibre();
+  const imposé = port !== undefined;
   const racine = path.dirname(dossier);
   const home = path.join(racine, "home");
   fs.mkdirSync(home, { recursive: true });
@@ -39,19 +39,31 @@ export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple()
   const env = { ...process.env, XDG_CONFIG_HOME: path.join(racine, "cfg"), HOME: home };
   if (shell) env.SHELL = shell;
   if (!reprise) spawnSync(exe, ["passwd"], { input: `${motDePasse}\n`, env, cwd });
-  const proc = spawn(exe, [dossier, "--port", String(port)], { stdio: "ignore", env, cwd });
-  const sorti = new Promise((ok) => proc.once("exit", ok));
-  const origine = `https://127.0.0.1:${port}`;
-  for (let i = 0; i < 100; i++) {
-    try {
-      await new Promise((ok, ko) => {
-        const s = net.connect(port, "127.0.0.1", () => (s.destroy(), ok()));
-        s.on("error", ko);
+  let proc, sorti, origine;
+  for (let essai = 0; ; essai++) {
+    if (!imposé) port = await portLibre();
+    proc = spawn(exe, [dossier, "--port", String(port)], { stdio: ["ignore", "pipe", "ignore"], env, cwd });
+    origine = `https://127.0.0.1:${port}`;
+    // Prêt = la ligne « Yaide écoute sur le port » de notre propre processus (affichée après le bind) ;
+    // sorti avant : le port était pris, on en reprend un autre.
+    const issue = await new Promise((ok) => {
+      let texte = "";
+      const delai = setTimeout(() => ok("delai"), 10000);
+      const fin = (r) => (clearTimeout(delai), ok(r));
+      proc.stdout.on("data", (d) => {
+        texte += d;
+        if (texte.includes("Yaide écoute sur le port")) fin("pret");
       });
+      proc.once("exit", () => fin("sorti"));
+    });
+    if (issue === "pret") {
+      proc.stdout.resume();
+      sorti = new Promise((ok) => (proc.exitCode !== null ? ok() : proc.once("exit", ok)));
       break;
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
     }
+    proc.kill();
+    if (issue === "delai") throw new Error(`Yaide n'écoute pas sur le port ${port}`);
+    if (imposé || essai >= 5) throw new Error(`Yaide s'est arrêté au démarrage (port ${port})`);
   }
   return {
     origine,

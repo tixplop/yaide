@@ -1,23 +1,14 @@
 import { test, expect } from "@playwright/test";
-import { spawn, spawnSync } from "node:child_process";
-import net from "node:net";
+import { lancerYaide } from "./aides.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-function portLibre() {
-  return new Promise((res) => {
-    const s = net.createServer().listen(0, "127.0.0.1", () => {
-      const { port } = s.address();
-      s.close(() => res(port));
-    });
-  });
-}
-
-async function lancerYaide(dossier, port) {
-  const env = { ...process.env, XDG_CONFIG_HOME: path.join(dossier, "cfg") };
-  spawnSync("target/debug/yaide", ["passwd"], { input: "mdp\n", env });
-  return spawn("target/debug/yaide", [dossier, "--port", String(port)], { stdio: "ignore", env });
+// Sous-dossier du mkdtemp : lancerYaide range cfg et home dans son parent.
+function dossierSocle() {
+  const d = path.join(fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "socle-")), "projet");
+  fs.mkdirSync(d);
+  return d;
 }
 
 async function ouvrirPage(page, origine) {
@@ -33,11 +24,8 @@ async function ouvrirPage(page, origine) {
 }
 
 test("REQ038_AC1_AC5_premier_affichage_sombre_color_scheme_dark_et_police_chargee", async ({ page }) => {
-  const port = await portLibre();
-  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "socle-"));
-  const proc = await lancerYaide(dossier, port);
+  const { origine, arreter } = await lancerYaide({ dossier: dossierSocle() });
   try {
-    const origine = `https://127.0.0.1:${port}`;
     const externes = [];
     page.on("request", (r) => {
       if (!r.url().startsWith(origine) && !r.url().startsWith("data:")) externes.push(r.url());
@@ -57,16 +45,13 @@ test("REQ038_AC1_AC5_premier_affichage_sombre_color_scheme_dark_et_police_charge
     expect(await page.evaluate(() => document.fonts.check('13.5px "JetBrains Mono"'))).toBe(true);
     expect(externes).toEqual([]);
   } finally {
-    proc.kill();
+    await arreter();
   }
 });
 
 test("REQ038_AC3_AC5_le_theme_garde_est_pose_des_le_premier_rendu_sans_passer_par_l_autre", async ({ page }) => {
-  const port = await portLibre();
-  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "socle-"));
-  const proc = await lancerYaide(dossier, port);
+  const { origine, arreter } = await lancerYaide({ dossier: dossierSocle() });
   try {
-    const origine = `https://127.0.0.1:${port}`;
     await ouvrirPage(page, origine);
     await page.evaluate(() => localStorage.setItem("yaide-theme", "light"));
     // Chaque pose de data-theme est consignée avec l'ancienne valeur : la première pose part de rien.
@@ -84,18 +69,13 @@ test("REQ038_AC3_AC5_le_theme_garde_est_pose_des_le_premier_rendu_sans_passer_pa
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("light");
     expect(await page.evaluate(() => window.__themes)).toEqual([null]);
   } finally {
-    proc.kill();
+    await arreter();
   }
 });
 
 test("REQ029_AC3_la_page_se_charge_sans_requete_vers_une_autre_origine", async ({ page }) => {
-  const port = await portLibre();
-  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "socle-"));
-  const env = { ...process.env, XDG_CONFIG_HOME: path.join(dossier, "cfg") };
-  spawnSync("target/debug/yaide", ["passwd"], { input: "mdp\n", env });
-  const proc = spawn("target/debug/yaide", [dossier, "--port", String(port)], { stdio: "ignore", env });
+  const { origine, arreter } = await lancerYaide({ dossier: dossierSocle() });
   try {
-    const origine = `https://127.0.0.1:${port}`;
     const externes = [];
     page.on("request", (r) => {
       if (!r.url().startsWith(origine)) externes.push(r.url());
@@ -111,6 +91,6 @@ test("REQ029_AC3_la_page_se_charge_sans_requete_vers_une_autre_origine", async (
     await expect(page.locator("#app h1")).toHaveText("yaide");
     expect(externes).toEqual([]);
   } finally {
-    proc.kill();
+    await arreter();
   }
 });
