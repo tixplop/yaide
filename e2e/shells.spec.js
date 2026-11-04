@@ -79,6 +79,26 @@ test("REQ019_AC2_demarre_dans_le_projet_et_suit_la_taille", async ({ page }) => 
   expect(l2).toBe(await lignes());
 });
 
+test("REQ036_AC12_stty_size_donne_la_zone_affichee_une_fois_la_police_chargee", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await ouvrirYaide(page, yaide.origine);
+  await page.evaluate(() => document.fonts.load('12.5px "JetBrains Mono"'));
+  await taper(page, "stty size");
+  await expect.poll(async () => (await ecran(page).locator("> div").allInnerTexts()).some((l) => /^\d+ \d+\s*$/.test(l))).toBe(true);
+  const [l, c] = (await ecran(page).locator("> div").allInnerTexts()).filter((x) => /^\d+ \d+\s*$/.test(x)).pop().trim().split(" ").map(Number);
+  const mesure = await page.evaluate(() => {
+    const zone = document.querySelector(".terminal-zone:not([hidden])");
+    const ecran = zone.querySelector(".xterm-screen");
+    const lignes = document.querySelectorAll(".terminal:not([hidden]) .xterm-rows > div").length;
+    const defilement = zone.querySelector(".xterm-viewport");
+    const barre = defilement.offsetWidth - defilement.clientWidth;
+    const cellW = ecran.offsetWidth / document.querySelector(".terminal:not([hidden])").term.cols;
+    return { cellH: ecran.offsetHeight / lignes, zoneH: zone.clientHeight, zoneW: zone.clientWidth, barre, cellW };
+  });
+  expect(l).toBe(Math.floor(mesure.zoneH / mesure.cellH));
+  expect(c).toBe(Math.floor((mesure.zoneW - mesure.barre) / mesure.cellW));
+});
+
 test("REQ019_AC3_exit_ferme_l_onglet", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
   await page.getByRole("button", { name: "Nouveau shell" }).click();

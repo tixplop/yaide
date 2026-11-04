@@ -1,38 +1,60 @@
-import { EditorState, StateField, RangeSetBuilder } from "@codemirror/state";
-import { EditorView, Decoration, keymap, lineNumbers, drawSelection } from "@codemirror/view";
+import { EditorState, Compartment, StateField, RangeSetBuilder } from "@codemirror/state";
+import { EditorView, Decoration, keymap, lineNumbers, drawSelection, highlightActiveLineGutter } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { supportLangage } from "./langages.js";
 import { apercu as creerApercu } from "./apercu.js";
+import { themeCourant } from "./theme.js";
 
 const MODES = ["edition", "diff"];
 
-const theme = EditorView.theme(
-  {
-    "&": { height: "100%", color: "var(--texte)", backgroundColor: "var(--fond)", font: "var(--texte-lecture) var(--police-code)" },
-    ".cm-scroller": { font: "var(--texte-lecture) var(--police-code)" },
-    ".cm-content": { caretColor: "var(--texte)" },
-    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--texte)" },
-    "&.cm-focused": { outline: "none" },
-    ".cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { backgroundColor: "var(--selection)" },
-    "& ::selection, & .cm-line::selection, & .cm-line > span::selection": { backgroundColor: "var(--selection)" },
-    ".cm-gutters": { backgroundColor: "var(--fond)", color: "var(--texte-attenue)", border: "none" },
-    ".cm-activeLine": { backgroundColor: "var(--surface)" },
-    "&.cm-focused > .cm-scroller > .cm-cursorLayer": { animation: "none !important" },
-    ".cm-ligne-ajout": { backgroundColor: "var(--diff-ajout)" },
-    ".cm-ligne-retrait": { backgroundColor: "var(--diff-retrait)" },
-  },
-  { dark: true },
-);
+// Reprise de cmTheme (design-system) : toutes les valeurs sont des var(--…), changer de thème n'exige aucune reconstruction.
+// Seul l'indice `dark` change : il passe par un Compartment.
+function creerTheme(dark) {
+  return EditorView.theme(
+    {
+      "&": { color: "var(--ink)", backgroundColor: "var(--bg-200)", fontSize: "13.5px", height: "100%" },
+      "&.cm-focused": { outline: "none" },
+      ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "21px" },
+      ".cm-content": { caretColor: "var(--accent-fg)", padding: "6px 0" },
+      ".cm-cursor, .cm-dropCursor": { borderLeft: "2px solid var(--accent-fg)" },
+      "&.cm-focused > .cm-scroller > .cm-cursorLayer": { animation: "none !important" },
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "var(--selection) !important" },
+      ".cm-activeLine": { backgroundColor: "var(--ligne-active)" },
+      ".cm-gutters": { backgroundColor: "var(--bg-200)", color: "var(--ink-faint)", border: "none" },
+      ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--ink)" },
+      ".cm-lineNumbers .cm-gutterElement": { padding: "0 12px 0 18px" },
+      ".cm-selectionMatch": { backgroundColor: "var(--accent-soft)" },
+      "&.cm-focused .cm-matchingBracket": { backgroundColor: "transparent", outline: "1px solid var(--ink-faint)", borderRadius: "2px" },
+      ".cm-tooltip": { backgroundColor: "var(--bg-300)", border: "none", borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-popover)", fontFamily: "var(--font-sans)" },
+      ".cm-foldPlaceholder": { backgroundColor: "var(--bg-400)", border: "none", color: "var(--ink-muted)" },
+      ".cm-ligne-ajout": { backgroundColor: "var(--diff-ajout)" },
+      ".cm-ligne-retrait": { backgroundColor: "var(--diff-retrait)" },
+      ".cm-ligne-entete": { color: "var(--ink-muted)" },
+    },
+    { dark },
+  );
+}
+
+// Créés une fois : EditorView.theme ajoute un module de style à chaque appel.
+const themeSombre = creerTheme(true);
+const themeClair = creerTheme(false);
 
 const couleurs = HighlightStyle.define([
-  { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword], color: "var(--code-mot-cle)" },
-  { tag: [t.string, t.special(t.string), t.regexp], color: "var(--code-chaine)" },
-  { tag: [t.number, t.bool, t.null, t.atom, t.constant(t.name)], color: "var(--code-nombre)" },
-  { tag: [t.function(t.variableName), t.propertyName, t.heading], color: "var(--code-fonction)" },
-  { tag: [t.typeName, t.className, t.namespace], color: "var(--code-type)" },
-  { tag: [t.comment, t.lineComment, t.blockComment], color: "var(--texte-attenue)", fontStyle: "italic" },
+  { tag: [t.keyword, t.definitionKeyword, t.modifier, t.self], color: "var(--syn-keyword)" },
+  { tag: [t.controlKeyword, t.moduleKeyword, t.operatorKeyword], color: "var(--syn-control)" },
+  { tag: [t.string, t.special(t.string), t.regexp], color: "var(--syn-string)" },
+  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--syn-function)" },
+  { tag: [t.number, t.bool, t.null, t.atom], color: "var(--syn-number)" },
+  { tag: [t.typeName, t.className, t.tagName, t.namespace], color: "var(--syn-type)" },
+  { tag: [t.comment, t.lineComment, t.blockComment], color: "var(--syn-comment)", fontStyle: "italic" },
+  { tag: [t.propertyName, t.variableName, t.attributeName], color: "var(--syn-variable)" },
+  { tag: [t.punctuation, t.operator, t.bracket], color: "var(--syn-punctuation)" },
+  { tag: t.heading, color: "var(--ink)", fontWeight: "600" },
+  { tag: t.link, color: "var(--info)", textDecoration: "underline" },
+  { tag: t.emphasis, fontStyle: "italic" },
+  { tag: t.strong, fontWeight: "600" },
 ]);
 
 const lignesDiff = StateField.define({
@@ -55,18 +77,20 @@ function decorerActive(etat) {
 }
 const ajout = Decoration.line({ class: "cm-ligne-ajout" });
 const retrait = Decoration.line({ class: "cm-ligne-retrait" });
+const entete = Decoration.line({ class: "cm-ligne-entete" });
 function decorerDiff(doc) {
   const b = new RangeSetBuilder();
   for (let i = 1; i <= doc.lines; i++) {
     const l = doc.line(i);
     const c = doc.sliceString(l.from, l.from + 1);
-    if (c === "+") b.add(l.from, l.from, ajout);
+    if (doc.sliceString(l.from, l.from + 2) === "@@") b.add(l.from, l.from, entete);
+    else if (c === "+") b.add(l.from, l.from, ajout);
     else if (c === "-") b.add(l.from, l.from, retrait);
   }
   return b.finish();
 }
 
-export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, ligne, nom = "", surChangement } = {}) {
+export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, ligne, nom = "", surChangement, surPosition } = {}) {
   if (!MODES.includes(mode)) throw new Error(`zoneCode : mode inconnu « ${mode} »`);
   const diff = mode === "diff";
   const racine = document.createElement("div");
@@ -75,10 +99,11 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   hote.className = "zone-code-editeur";
   racine.append(hote);
 
+  const compartiment = new Compartment();
   const extensions = [
-    theme,
+    compartiment.of(themeCourant() === "dark" ? themeSombre : themeClair),
     lineNumbers(),
-    ...(diff ? [] : [drawSelection(), ligneActive]),
+    ...(diff ? [] : [drawSelection(), ligneActive, highlightActiveLineGutter()]),
     EditorView.contentAttributes.of({ "aria-label": `${diff ? "Diff" : "Éditeur"} ${nom}`.trim() }),
   ];
   if (diff) {
@@ -93,13 +118,20 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   }
   extensions.push(
     EditorView.updateListener.of((u) => {
-      if (!u.docChanged) return;
-      if (ap) ap.maj(u.state.doc.toString());
-      surChangement?.(u.state.doc.toString());
+      if (u.docChanged) {
+        if (ap) ap.maj(u.state.doc.toString());
+        surChangement?.(u.state.doc.toString());
+      }
+      if ((u.docChanged || u.selectionSet) && surPosition) signalerPosition(u.state);
     }),
   );
 
   let ap = null;
+  function signalerPosition(etat) {
+    const tete = etat.selection.main.head;
+    const l = etat.doc.lineAt(tete);
+    surPosition(l.number, tete - l.from + 1);
+  }
   const vue = new EditorView({ state: EditorState.create({ doc: contenu, extensions }), parent: hote });
 
   racine.vue = vue;
@@ -127,7 +159,12 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
       selection: { anchor: ligne.from + Math.min(colonne, ligne.length) },
     });
   };
-  racine.detruire = () => vue.destroy();
+  const suivreTheme = (e) => vue.dispatch({ effects: compartiment.reconfigure(e.detail === "dark" ? themeSombre : themeClair) });
+  document.addEventListener("yaide-theme", suivreTheme);
+  racine.detruire = () => {
+    document.removeEventListener("yaide-theme", suivreTheme);
+    vue.destroy();
+  };
   if (apercu) racine.definirApercu(true);
 
   racine.aller = (numero) => {
@@ -136,5 +173,6 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     vue.dispatch({ selection: { anchor: l.from }, effects: EditorView.scrollIntoView(l.from, { y: "center" }) });
   };
   if (Number.isInteger(ligne)) racine.aller(ligne);
+  if (surPosition) signalerPosition(vue.state);
   return racine;
 }

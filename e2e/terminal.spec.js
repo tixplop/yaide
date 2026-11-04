@@ -12,6 +12,10 @@ test.beforeAll(async () => {
     resolve(dossier, "entree.js"),
     `import { terminal } from ${JSON.stringify(resolve("web/src/ui/terminal.js"))};
 import { cadre } from ${JSON.stringify(resolve("web/src/ui/cadre.js"))};
+import { zoneCode } from ${JSON.stringify(resolve("web/src/ui/zone-code.js"))};
+import { changerTheme } from ${JSON.stringify(resolve("web/src/ui/theme.js"))};
+window.zoneCode = zoneCode;
+window.changerTheme = changerTheme;
 window.terminal = terminal;
 window.cadre = cadre;
 window.toucheDocument = [];
@@ -76,9 +80,9 @@ test("REQ028_AC3_fond_et_couleur_ansi_viennent_des_tokens", async ({ page }) => 
   await page.evaluate(() => window.flux.dispatchEvent(new MessageEvent("message", { data: "\x1b[31mrouge\x1b[0m" })));
   const span = page.locator(".terminal-zone .xterm-rows span", { hasText: "rouge" }).first();
   // Le terminal s'ajuste à sa zone après l'écriture : l'élément peut être remplacé, on relit.
-  const rouge = await attendu("--erreur");
+  const rouge = await attendu("--git-deleted");
   await expect.poll(() => span.evaluate((e) => getComputedStyle(e).color)).toBe(rouge);
-  expect(await page.locator(".terminal-zone .xterm-screen").evaluate((e) => getComputedStyle(e.closest(".xterm")).backgroundColor)).toBe(await attendu("--fond-shells"));
+  expect(await page.locator(".terminal-zone .xterm-screen").evaluate((e) => getComputedStyle(e.closest(".xterm")).backgroundColor)).toBe(await attendu("--bg-000"));
 });
 
 test("REQ028_AC9_a_800_par_480_les_zones_du_cadre_ne_se_superposent_pas", async ({ page }) => {
@@ -105,4 +109,24 @@ test("REQ028_AC9_a_800_par_480_les_zones_du_cadre_ne_se_superposent_pas", async 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight)).toBe(true);
   await page.setViewportSize({ width: 700, height: 400 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(true);
+});
+
+test("REQ038_AC2_changer_de_theme_garde_le_texte_de_l_editeur_et_la_sortie_du_shell", async ({ page }) => {
+  await ouvrir(page);
+  await page.evaluate(() => document.getElementById("h").append(window.zoneCode({ contenu: "", nom: "a.txt" })));
+  await page.locator(".cm-content").click();
+  await page.keyboard.type("mon texte");
+  await page.evaluate(() => window.flux.dispatchEvent(new MessageEvent("message", { data: "sortie du shell\r\n" })));
+  await expect(page.locator(".terminal-zone")).toContainText("sortie du shell");
+  const fonds = () => page.evaluate(() => [getComputedStyle(document.querySelector(".cm-editor")).backgroundColor, getComputedStyle(document.querySelector(".xterm")).backgroundColor]);
+  const [edSombre, tmSombre] = await fonds();
+  await page.evaluate(() => window.changerTheme("light"));
+  await expect.poll(async () => (await fonds())[1]).not.toBe(tmSombre);
+  expect((await fonds())[0]).not.toBe(edSombre);
+  await expect(page.locator(".cm-content")).toHaveText("mon texte");
+  await expect(page.locator(".terminal-zone")).toContainText("sortie du shell");
+  await page.evaluate(() => window.changerTheme("dark"));
+  await expect.poll(async () => (await fonds())[1]).toBe(tmSombre);
+  await expect(page.locator(".cm-content")).toHaveText("mon texte");
+  await expect(page.locator(".terminal-zone")).toContainText("sortie du shell");
 });

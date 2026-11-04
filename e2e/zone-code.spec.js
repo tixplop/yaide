@@ -131,13 +131,13 @@ const valeur = (page, prop, token) =>
     [prop, token],
   );
 
-test("REQ011_AC1_texte_de_code_14px_interligne_20px", async ({ page }) => {
+test("REQ036_AC4_texte_de_code_13_5px_interligne_21px", async ({ page }) => {
   await ouvrir(page, { contenu: "x", nom: "a.txt" });
   const m = await page.locator(".cm-line").first().evaluate((e) => {
     const s = getComputedStyle(e);
     return [s.fontSize, s.lineHeight];
   });
-  expect(m).toEqual(["14px", "20px"]);
+  expect(m).toEqual(["13.5px", "21px"]);
 });
 
 test("REQ011_AC1_selection_visible_sur_ligne_active_et_lignes_de_diff", async ({ page }) => {
@@ -189,26 +189,26 @@ test("REQ012_AC1_styles_de_l_apercu", async ({ page }) => {
     });
   const police = async (token) => page.evaluate((t) => { const d = document.createElement("i"); d.style.fontFamily = `var(${t})`; document.body.append(d); const f = getComputedStyle(d).fontFamily; d.remove(); return f; }, token);
   const taille = async (token) => page.evaluate((t) => { const d = document.createElement("i"); d.style.font = `var(${t}) serif`; document.body.append(d); const s = getComputedStyle(d); const r = [s.fontSize, s.lineHeight]; d.remove(); return r; }, token);
-  const texte = await valeur(page, "color", "--texte");
+  const texte = await valeur(page, "color", "--ink");
   const poidsFort = await page.evaluate(() => { const d = document.createElement("i"); d.style.fontWeight = "var(--graisse-forte)"; document.body.append(d); return getComputedStyle(d).fontWeight; });
 
   const p = await calc(".zone-code-apercu p");
   expect([p.taille, p.inter]).toEqual(await taille("--texte-lecture"));
-  expect(p.famille).toBe(await police("--police-ui"));
+  expect(p.famille).toBe(await police("--font-sans"));
   expect(p.couleur).toBe(texte);
   for (const [sel, tok] of [["h1", "--texte-titre"], ["h2", "--texte-sous-titre"], ["h3", "--texte-lecture"]]) {
     const h = await calc(`.zone-code-apercu ${sel}`);
     expect([h.taille, h.inter]).toEqual(await taille(tok));
     expect(h.poids).toBe(poidsFort);
-    expect(h.famille).toBe(await police("--police-ui"));
+    expect(h.famille).toBe(await police("--font-sans"));
   }
   const a = await calc(".zone-code-apercu a");
-  expect(a.couleur).toBe(texte);
+  expect(a.couleur).toBe(await valeur(page, "color", "--info"));
   expect(a.deco).toBe("underline");
-  const surface = await valeur(page, "backgroundColor", "--surface");
+  const surface = await valeur(page, "backgroundColor", "--bg-300");
   for (const sel of [".zone-code-apercu p code", ".zone-code-apercu pre"]) {
     const c = await calc(sel);
-    expect(c.famille).toBe(await police("--police-code"));
+    expect(c.famille).toBe(await police("--font-mono"));
     expect(c.fond).toBe(surface);
   }
 });

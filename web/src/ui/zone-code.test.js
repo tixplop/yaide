@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import { expect, test, vi } from "vitest";
+import { EditorView } from "@codemirror/view";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { zoneCode } from "./zone-code.js";
 import { langagePourFichier, IDENTIFIANTS } from "./langages.js";
 import { rendreMarkdown } from "./apercu.js";
+import { changerTheme } from "./theme.js";
 
 // jsdom n'a pas de mise en page : CodeMirror mesure avec ces deux méthodes.
 Range.prototype.getClientRects ??= () => [];
@@ -53,10 +55,10 @@ test("REQ011_AC1_rust_colore_avec_les_tokens", () => {
   const cls = new Set([...z.querySelectorAll(".cm-line span")].map((s) => s.className).filter(Boolean));
   expect(cls.size).toBeGreaterThanOrEqual(2);
   const styles = [...document.querySelectorAll("style")].map((s) => s.textContent).join("");
-  expect(styles).toContain("var(--code-mot-cle)");
-  expect(styles).toContain("var(--code-chaine)");
-  expect(styles).toContain("background-color: var(--fond)");
-  expect(styles).toMatch(/\.cm-activeLine\s*{background-color: var\(--surface\)/);
+  expect(styles).toContain("var(--syn-keyword)");
+  expect(styles).toContain("var(--syn-string)");
+  expect(styles).toContain("background-color: var(--bg-200)");
+  expect(styles).toMatch(/\.cm-activeLine\s*{background-color: var\(--ligne-active\)/);
   expect(styles).toMatch(/cm-cursorLayer\s*{animation: none !important/);
   z.detruire();
 });
@@ -188,4 +190,60 @@ test("REQ017_AC1_remplacer_garde_le_curseur_sur_la_meme_ligne_bornee_au_nouveau_
   expect(z.vue.state.doc.lineAt(z.vue.state.selection.main.head).number).toBe(2);
   z.remplacer("");
   expect(z.vue.state.selection.main.head).toBe(0);
+});
+
+const styles = () => [...document.querySelectorAll("style")].map((x) => x.textContent).join("");
+
+test("REQ036_AC4_theme_cm_police_13_5_ligne_21_curseur_2px", () => {
+  const z = zoneCode({ contenu: "x" });
+  document.body.append(z);
+  const st = styles();
+  expect(st).toContain("font-size: 13.5px");
+  expect(st).toContain("line-height: 21px");
+  expect(st).toMatch(/\.cm-cursor[^{]*{border-left: 2px solid var\(--accent-fg\)/);
+  expect(st).toContain("var(--ink-faint)");
+  z.detruire();
+});
+
+test("REQ036_AC4_changer_de_theme_ne_reconstruit_pas_l_editeur_et_garde_le_texte", () => {
+  const z = zoneCode({ contenu: "texte", langage: "rust" });
+  document.body.append(z);
+  const vue = z.vue;
+  const content = z.querySelector(".cm-content");
+  z.vue.dispatch({ changes: { from: 5, insert: " saisi" } });
+  expect(vue.state.facet(EditorView.darkTheme)).toBe(true);
+  changerTheme("light");
+  expect(z.vue).toBe(vue);
+  expect(z.querySelector(".cm-content")).toBe(content);
+  expect(vue.state.facet(EditorView.darkTheme)).toBe(false);
+  expect(z.contenu()).toBe("texte saisi");
+  changerTheme("dark");
+  expect(vue.state.facet(EditorView.darkTheme)).toBe(true);
+  z.detruire();
+  changerTheme("light");
+  expect(vue.state.facet(EditorView.darkTheme)).toBe(true); // l'écouteur est retiré
+  changerTheme("dark");
+});
+
+test("REQ037_AC5_sur_position_recoit_ligne_et_colonne", () => {
+  const surPosition = vi.fn();
+  const z = zoneCode({ contenu: "ab\ncde", surPosition });
+  expect(surPosition).toHaveBeenLastCalledWith(1, 1);
+  z.vue.dispatch({ selection: { anchor: 5 } });
+  expect(surPosition).toHaveBeenLastCalledWith(2, 3);
+  z.vue.dispatch({ changes: { from: 5, insert: "xy" } });
+  expect(surPosition).toHaveBeenLastCalledWith(2, 3);
+  z.vue.dispatch({ selection: { anchor: 7 } });
+  expect(surPosition).toHaveBeenLastCalledWith(2, 5);
+  z.detruire();
+});
+
+test("REQ036_AC4_diff_entete_de_bloc_en_ink_muted", () => {
+  const z = zoneCode({ contenu: "@@ -1 +1 @@\n+a\n-b", mode: "diff" });
+  document.body.append(z);
+  const l = [...z.querySelectorAll(".cm-line")];
+  expect(l[0].classList.contains("cm-ligne-entete")).toBe(true);
+  expect(l[1].classList.contains("cm-ligne-ajout")).toBe(true);
+  expect(styles()).toMatch(/\.cm-ligne-entete\s*{color: var\(--ink-muted\)/);
+  z.detruire();
 });

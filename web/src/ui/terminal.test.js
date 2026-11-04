@@ -74,23 +74,69 @@ test("REQ019_AC1_sortie_du_flux_affichee_et_frappe_envoyee", async () => {
   expect(flux.envoyes).toEqual(["ls\r"]);
 });
 
-test("REQ028_AC3_theme_sorti_des_tokens_avec_tableau_ansi", () => {
+const TABLE = {
+  background: "--bg-000", foreground: "--ink", cursor: "--accent-fg", cursorAccent: "--bg-000", selectionBackground: "--selection",
+  black: "--bg-400", brightBlack: "--ink-faint", red: "--git-deleted", brightRed: "--syn-string", green: "--git-added", brightGreen: "--syn-number",
+  yellow: "--git-modified", brightYellow: "--syn-function", blue: "--accent-fg", brightBlue: "--syn-variable",
+  magenta: "--git-conflict", brightMagenta: "--syn-control", cyan: "--git-untracked", brightCyan: "--syn-type", white: "--ink-muted", brightWhite: "--ink",
+};
+
+test("REQ036_AC5_theme_sorti_des_tokens_avec_tableau_ansi", () => {
   const { t } = monter();
   const th = t.term.options.theme;
-  expect(th.background).toBe(jeton("--fond-shells"));
-  expect(th.foreground).toBe(jeton("--texte"));
-  expect(th.selectionBackground).toBe(jeton("--selection"));
-  expect([th.black, th.brightBlack]).toEqual([jeton("--bordure"), jeton("--bordure-champ")]);
-  expect([th.red, th.green, th.yellow, th.blue, th.magenta, th.cyan, th.white]).toEqual(
-    ["--erreur", "--succes", "--alerte", "--accent", "--code-mot-cle", "--code-fonction", "--texte-attenue"].map(jeton),
-  );
-  expect([th.brightRed, th.brightGreen, th.brightYellow, th.brightBlue, th.brightMagenta, th.brightCyan, th.brightWhite]).toEqual(
-    ["--erreur", "--succes", "--alerte", "--accent", "--code-mot-cle", "--code-fonction", "--texte"].map(jeton),
-  );
+  for (const [cle, token] of Object.entries(TABLE)) expect([cle, th[cle]]).toEqual([cle, jeton(token)]);
   expect(t.term.options.cursorBlink).toBe(false);
-  expect(t.term.options.fontFamily).toBe(jeton("--police-code"));
-  expect(t.term.options.fontSize).toBe(14);
-  expect(t.term.options.lineHeight).toBeCloseTo(20 / 14);
+  expect(t.term.options.cursorStyle).toBe("block");
+  expect(t.term.options.fontFamily).toBe(jeton("--font-mono"));
+  expect(t.term.options.fontSize).toBe(12.5);
+  expect(t.term.options.lineHeight).toBe(1.44);
+});
+
+test("REQ038_AC2_changer_de_theme_repose_le_theme_sans_toucher_a_l_affichage", async () => {
+  const { flux, t } = monter();
+  flux.recevoir("bonjour");
+  await new Promise((r) => t.term.write("", r));
+  const avant = t.term.options.theme.background;
+  document.documentElement.style.setProperty("--bg-000", "#123456");
+  document.dispatchEvent(new CustomEvent("yaide-theme", { detail: "light" }));
+  expect(t.term.options.theme.background).toBe("#123456");
+  expect(avant).not.toBe("#123456");
+  expect(t.term.buffer.active.getLine(0).translateToString(true)).toBe("bonjour");
+  t.detruire();
+  const apres = t.term.options.theme;
+  document.documentElement.style.setProperty("--bg-000", "#654321");
+  document.dispatchEvent(new CustomEvent("yaide-theme", { detail: "dark" }));
+  expect(t.term.options.theme).toBe(apres); // l'écouteur est retiré
+  document.documentElement.style.setProperty("--bg-000", avant);
+});
+
+test("REQ036_AC12_la_mesure_attend_la_police_puis_se_refait", async () => {
+  let charge;
+  const ecoute = [];
+  const fonts = { load: vi.fn(() => new Promise((r) => (charge = r))), addEventListener: (_, f) => ecoute.push(f) };
+  Object.defineProperty(document, "fonts", { value: fonts, configurable: true });
+  try {
+    const surTaille = vi.fn();
+    const { t } = monter({ surTaille });
+    expect(fonts.load).toHaveBeenCalledWith('12.5px "JetBrains Mono"');
+    const zone = t.querySelector(".terminal-zone");
+    Object.defineProperty(zone, "clientWidth", { value: 800 });
+    Object.defineProperty(zone, "clientHeight", { value: 400 });
+    const ecran = zone.querySelector(".xterm-screen");
+    Object.defineProperty(ecran, "offsetWidth", { value: 80 * 8, configurable: true });
+    Object.defineProperty(ecran, "offsetHeight", { value: 24 * 18 });
+    t.ajuster();
+    expect(surTaille).not.toHaveBeenCalled(); // police pas encore là
+    charge();
+    await new Promise((r) => setTimeout(r));
+    expect(surTaille).toHaveBeenCalledWith(100, 22);
+    surTaille.mockClear();
+    Object.defineProperty(ecran, "offsetWidth", { value: 100 * 10, configurable: true });
+    ecoute[0](); // la police arrive plus tard : nouvelle mesure
+    expect(surTaille).toHaveBeenCalledWith(80, 20);
+  } finally {
+    delete document.fonts;
+  }
 });
 
 test("REQ019_AC6_attente_visible_et_saisie_coupee_hors_connexion", () => {
@@ -117,8 +163,8 @@ test("REQ028_AC7_focus_du_terminal_a_contour_accent", () => {
 
 test("REQ033_AC8_fond_de_la_zone_des_shells", () => {
   const css = readFileSync("web/src/ui/composants.css", "utf8");
-  expect(css).toMatch(/\.terminal-zone\s*{[^}]*background:\s*var\(--fond-shells\)/);
-  expect(css).toMatch(/\.terminal\s*{[^}]*background:\s*var\(--fond-shells\)/);
+  expect(css).toMatch(/\.terminal-zone\s*{[^}]*background:\s*var\(--bg-000\)/);
+  expect(css).toMatch(/\.terminal\s*{[^}]*background:\s*var\(--bg-000\)/);
 });
 
 test("REQ032_AC3_ajustement_au_plus_toutes_les_100_ms_puis_un_dernier", () => {
