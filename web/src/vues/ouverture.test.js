@@ -162,3 +162,19 @@ test("REQ027_fichier_binaire_ferme_le_dialogue_et_dit_pourquoi", async () => {
   expect(document.querySelector("dialog")).toBeNull();
   v.detruire();
 });
+
+test("REQ008_AC7_ouverture_transmet_le_geste_de_la_lecture", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) =>
+    url.startsWith("/api/chemins")
+      ? json({ chemins: ["src/main.rs"] })
+      : { ok: true, status: 200, text: async () => "x", headers: new Headers({ "x-version": "v1" }) },
+  ));
+  const surLecture = vi.fn((oui) => (oui ? 7 : undefined));
+  const { entree, surOuvrir, v } = await ouvrir({ surLecture });
+  taper(entree, "main");
+  touche(entree, "Enter");
+  await attendre();
+  await attendre();
+  expect(surOuvrir).toHaveBeenCalledWith({ chemin: "src/main.rs", contenu: "x", version: "v1", geste: 7 });
+  v.detruire();
+});

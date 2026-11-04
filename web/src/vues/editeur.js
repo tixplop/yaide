@@ -34,6 +34,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   let diff = null; // { chemin, el } : l'onglet de diff, au plus un, jamais gardé
   let avantDiff = null; // onglet actif quand le diff s'est ouvert
   let pret = false;
+  let dernierGeste = 0; // numéro du dernier geste de l'utilisateur : le dernier l'emporte sur une lecture plus ancienne
   let lectures = 1; // la restauration compte comme une lecture en cours
   let detruit = false;
   let minuteur = null;
@@ -128,6 +129,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
 
   // Choix d'un onglet : la barre est refaite après le rappel, qui peut encore donner le focus à l'ancien onglet.
   function choisir(chemin) {
+    dernierGeste++;
     actif = chemin;
     for (const o of liste) o.zone.hidden = o.chemin !== chemin;
     (chemin === DIFF ? diff?.el : trouver(chemin)?.zone)?.vue?.focus();
@@ -157,8 +159,15 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     return o;
   }
 
-  function ouvrir({ chemin, contenu, version, ligne }) {
+  /** `geste` : valeur rendue par `lecture(true)`. Sans valeur, l'ouverture est elle-même un geste. */
+  function ouvrir({ chemin, contenu, version, ligne, geste = ++dernierGeste }) {
     if (!trouver(chemin)) creer({ chemin, contenu, version });
+    if (geste !== dernierGeste && (actif === DIFF || trouver(actif))) {
+      // Un geste plus récent a choisi un autre onglet : le fichier s'ouvre en arrière-plan.
+      afficher();
+      garderListe();
+      return;
+    }
     actif = chemin;
     afficher();
     if (Number.isInteger(ligne)) trouver(chemin).zone.aller(ligne);
@@ -200,6 +209,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
 
   /** Ouvre le diff de `chemin` dans l'onglet de diff, qui remplace le précédent. `avis` : texte à montrer au lieu du diff. */
   function ouvrirDiff({ chemin, texte, avis }) {
+    dernierGeste++;
     if (actif !== DIFF) avantDiff = actif;
     diff?.el.detruire?.();
     diff?.el.remove();
@@ -520,10 +530,11 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     code,
     /** Zone de la question de l'onglet actif (C-003 dans `questionOnglet`). */
     question: questionOnglet,
-    /** Une lecture de fichier commence (`oui`) ou se termine. */
+    /** Une lecture de fichier commence (`oui`, rend son numéro de geste) ou se termine. */
     lecture(oui) {
       lectures = Math.max(0, lectures + (oui ? 1 : -1));
       afficher();
+      if (oui) return ++dernierGeste;
     },
     /** "connecte" ou "coupe" : au retour, les Ctrl+S mis en attente s'exécutent. */
     definirEtat(etat) {

@@ -139,3 +139,25 @@ test("REQ026_AC2_fichier_deja_ouvert_va_a_la_ligne", async ({ page }) => {
   await expect(page.getByLabel("Éditeur lib.rs").locator(".cm-activeLine")).toHaveText("fn main_lib() {}");
   await expect(page.getByRole("tab", { name: /lib\.rs/ })).toHaveCount(1);
 });
+
+test("REQ008_AC7_lecture_tardive_depuis_la_recherche_ne_reprend_pas_l_onglet_actif", async ({ page }) => {
+  await ouvrir(page, depot());
+  await page.getByRole("tree").getByText("src").first().click();
+  await page.getByRole("treeitem", { name: "main.rs", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "main.rs" })).toHaveAttribute("aria-selected", "true");
+  let liberer;
+  const porte = new Promise((r) => (liberer = r));
+  await page.route("**/api/fichier?*", async (route) => {
+    if (new URL(route.request().url()).searchParams.get("chemin") === "src/lib.rs") await porte;
+    await route.continue();
+  });
+  await rail(page).click();
+  await chercher(page, "fn main_lib");
+  await resultats(page).getByRole("option").first().click();
+  await page.getByRole("tab", { name: "main.rs" }).click();
+  await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+  liberer();
+  await expect(page.getByRole("tab", { name: "lib.rs" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "main.rs" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+});

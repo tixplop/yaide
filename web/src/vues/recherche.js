@@ -77,11 +77,11 @@ export function vueRecherche({ dire, surOuvrir = () => {}, surLecture = () => {}
 
   async function ouvrir({ chemin, ligne }) {
     const nom = nomDe(chemin);
-    surLecture(true);
+    const geste = surLecture(true);
     const r = await lireFichier(chemin);
     if (detruit) return;
     if (r.contenu !== undefined) {
-      surOuvrir({ chemin, contenu: r.contenu, version: r.version, ligne });
+      surOuvrir({ chemin, contenu: r.contenu, version: r.version, ligne, geste });
       return surLecture(false);
     }
     let texte;

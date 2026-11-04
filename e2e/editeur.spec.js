@@ -385,6 +385,62 @@ test("REQ018_AC1_les_onglets_et_l_onglet_actif_reviennent_apres_rechargement", a
   await expect(page.locator(".cm-content:visible")).toContainText("garde moi");
 });
 
+/** Retarde la lecture du fichier `chemin` jusqu'à l'appel de la fonction rendue. */
+async function retarder(page, chemin) {
+  let liberer;
+  const porte = new Promise((r) => (liberer = r));
+  await page.route("**/api/fichier?*", async (route) => {
+    if (new URL(route.request().url()).searchParams.get("chemin") === chemin) await porte;
+    await route.continue();
+  });
+  return liberer;
+}
+
+test("REQ008_AC7_une_lecture_tardive_ne_reprend_ni_l_onglet_actif_ni_le_focus", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "README.md").click();
+  await expect(onglet(page, "README.md")).toHaveAttribute("aria-selected", "true");
+  const liberer = await retarder(page, "a.txt");
+  await ligne(page, "a.txt").click();
+  await onglet(page, "README.md").click();
+  liberer();
+  await expect(onglet(page, "a.txt")).toBeVisible();
+  await expect(editeur(page, "README.md")).toBeFocused();
+  await expect(page.locator(".cm-content:visible")).toHaveCount(1);
+  await taper(page, "README.md", "bien ici");
+  await expect(onglet(page, /^README\.md/)).toHaveAttribute("aria-selected", "true");
+  await expect(editeur(page, "README.md")).toContainText("bien ici");
+  await onglet(page, "a.txt").click();
+  await expect(page.locator(".cm-content:visible")).toHaveText("a");
+});
+
+test("REQ008_AC7_lecture_tardive_sans_onglet_actif_ouvre_quand_meme_le_fichier", async ({ page }) => {
+  await ouvrir(page, (d) => fs.writeFileSync(path.join(d, "notes.bin"), Buffer.from([0, 1, 2, 0])));
+  const liberer = await retarder(page, "a.txt");
+  await ligne(page, "a.txt").click();
+  await ligne(page, "notes.bin").click();
+  await expect(page.getByText("notes.bin est un fichier binaire. Yaide ne l'ouvre pas.")).toBeVisible();
+  liberer();
+  await expect(onglet(page, "a.txt")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("Aucun fichier ouvert.")).toHaveCount(0);
+  await expect(editeur(page, "a.txt")).toBeFocused();
+});
+
+test("REQ008_AC8_le_dernier_geste_l_emporte_sur_une_lecture_precedente", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "x.zzz").click();
+  await expect(onglet(page, "x.zzz")).toHaveAttribute("aria-selected", "true");
+  const liberer = await retarder(page, "README.md");
+  await ligne(page, "README.md").click();
+  await ligne(page, "a.txt").click();
+  await expect(onglet(page, "a.txt")).toHaveAttribute("aria-selected", "true");
+  await expect(editeur(page, "a.txt")).toBeFocused();
+  liberer();
+  await expect(onglet(page, "README.md")).toBeVisible();
+  await expect(onglet(page, "a.txt")).toHaveAttribute("aria-selected", "true");
+  await expect(editeur(page, "a.txt")).toBeFocused();
+});
+
 test("REQ018_un_fichier_disparu_n_est_pas_rouvert", async ({ page }) => {
   const dossier = await ouvrir(page);
   await ligne(page, "a.txt").click();

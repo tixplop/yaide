@@ -158,11 +158,11 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
 
   async function ouvrirFichier(chemin) {
     const nom = nomDe(chemin);
-    surLecture(true);
+    const geste = surLecture(true);
     const r = await lireFichier(chemin);
     if (detruit) return;
     if (r.contenu !== undefined) {
-      surOuvrir({ chemin, contenu: r.contenu, version: r.version });
+      surOuvrir({ chemin, contenu: r.contenu, version: r.version, geste });
       return surLecture(false);
     }
     let texte;

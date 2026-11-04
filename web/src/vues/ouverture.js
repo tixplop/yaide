@@ -40,7 +40,7 @@ export function filtrer(chemins, texte) {
 
 /**
  * V-006. Ctrl+P (sauf dans un shell) ou `ouvrir()` affiche le dialogue.
- * Rappels : `surOuvrir({ chemin, contenu, version })`, `surLecture(oui)`.
+ * Rappels : `surOuvrir({ chemin, contenu, version, geste })`, `geste = surLecture(true)`, `surLecture(false)`.
  */
 export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {} }) {
   let detruit = false;
@@ -80,12 +80,12 @@ export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}
 
     async function ouvrirFichier(chemin) {
       const nom = nomDe(chemin);
-      surLecture(true);
+      const geste = surLecture(true);
       const r = await lireFichier(chemin);
       if (detruit) return;
       if (r.contenu !== undefined) {
         if (dlg) fermer(false);
-        surOuvrir({ chemin, contenu: r.contenu, version: r.version });
+        surOuvrir({ chemin, contenu: r.contenu, version: r.version, geste });
         return surLecture(false);
       }
       let texte;
