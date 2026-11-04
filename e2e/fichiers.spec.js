@@ -465,7 +465,7 @@ test("REQ034_P008_indexer_main_rs_modifie_refus_sur_target_puis_commit_depuis_le
   await clicVide(page);
   await page.getByRole("menuitem", { name: "Commit" }).click();
   await expect(page.getByRole("textbox", { name: "Message" })).toBeFocused();
-  await expect(page.getByRole("listbox", { name: "Changements" }).getByRole("option").filter({ hasText: "src/main.rs" })).toContainText("indexé");
+  await expect(page.getByRole("listbox", { name: "Changements" }).getByRole("option", { name: "main.rs, modifié, indexé" })).toBeVisible();
   const log = spawnSync("git", ["log", "--oneline"], { cwd: dossier, encoding: "utf8" }).stdout.trim().split("\n");
   expect(log).toHaveLength(1);
   expect(indexe(dossier)).toEqual(["src/main.rs"]);
@@ -665,7 +665,6 @@ test("REQ009_AC9_AC10_en_tete_du_projet_a_240_px_26_px_une_ligne_et_ordre_de_tab
   const boites = await entete.locator("button").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
   expect(boites).toHaveLength(4);
   expect(new Set(boites.map((b) => Math.round(b.top))).size).toBe(1);
-  await expect(page.locator(".cadre-panneau-pied button:visible")).toHaveCount(0);
   // Tab : les boutons actifs de l'en-tête (Renommer et Supprimer sont désactivés), puis l'arbre.
   await page.getByRole("button", { name: "Nouveau fichier" }).focus();
   await page.keyboard.press("Tab");

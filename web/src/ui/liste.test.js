@@ -491,3 +491,12 @@ test("C006_iconeDe_suit_la_table_du_design_system", () => {
   expect(t("package.json")).toEqual({ icone: "file", couleur: "syn-number" });
   for (const n of ["Makefile", ".gitignore", "a.txt", "archive.tar.gz", "a."]) expect(t(n)).toEqual({ icone: "file", couleur: "ink-muted" });
 });
+
+test("REQ022_AC6_ligne_indexee_ajoute_indexe_au_nom_accessible_et_l_info_bulle_est_libre", () => {
+  const l = liste({ lignes: [{ id: "a", libelle: "a.rs", statut: "M", indexe: true, infoBulle: "src/a.rs, modifié, indexé" }, { id: "b", libelle: "b.rs", statut: "M" }] });
+  const [a, b] = items(l);
+  expect(nom(a)).toBe("a.rs, modifié, indexé");
+  expect(a.title).toBe("src/a.rs, modifié, indexé");
+  expect(nom(b)).toBe("b.rs, modifié");
+  expect(b.title).toBe("b.rs");
+});

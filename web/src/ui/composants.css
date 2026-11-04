@@ -180,6 +180,11 @@
 .liste-attenuee .liste-icone { color: var(--git-ignored); }
 .liste-attenuee:hover, .liste-attenuee[aria-selected="true"], .liste-attenuee:focus-visible, .liste-attenuee.liste-courante { color: var(--ink-muted); }
 .liste-attenuee:hover .liste-icone, .liste-attenuee[aria-selected="true"] .liste-icone, .liste-attenuee:focus-visible .liste-icone, .liste-attenuee.liste-courante .liste-icone { color: var(--ink-muted); }
+/* Action de ligne : à droite, avant la lettre de statut ; visible au survol, au focus et sur la ligne sélectionnée. */
+.liste-ligne > .bouton-enveloppe { order: 1; margin-left: auto; opacity: 0; }
+.liste-ligne > .bouton-enveloppe ~ .liste-statut { margin-left: 0; }
+.liste-ligne > .liste-statut { order: 2; }
+.liste-ligne:hover > .bouton-enveloppe, .liste-ligne:focus-within > .bouton-enveloppe, .liste-ligne[aria-selected="true"] > .bouton-enveloppe, .liste-courante > .bouton-enveloppe { opacity: 1; }
 /* Résultat de recherche. */
 .ya-hit { padding-left: 24px; }
 .ya-hit .liste-numero { flex: none; font-size: 11px; color: var(--ink-faint); }
@@ -282,7 +287,6 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-panel-head { flex: none; box-sizing: border-box; height: var(--size-tab); display: flex; align-items: center; padding: 0 var(--space-2) 0 var(--space-3); }
 .ya-panel-title { margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 16px; font-weight: var(--graisse-forte); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); }
 .cadre-panneau-corps { flex: 1 1 0; min-height: 0; overflow: auto; }
-.cadre-panneau-pied { flex: 0 0 auto; border-top: var(--trait) solid var(--line); }
 .cadre-principal { background: var(--bg-200); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .cadre-bandeaux, .cadre-onglets, .cadre-question, .cadre-fil { flex: 0 0 auto; }
 .cadre-code { flex: 1 1 0; min-height: 0; }
@@ -298,6 +302,22 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-status svg { width: 13px; height: 13px; }
 .ya-status > .ya-status-espace { flex: 1; padding: 0; }
 
+/* V-005 : panneau Git */
+.git-corps { display: flex; flex-direction: column; box-sizing: border-box; height: 100%; min-height: 0; }
+.git-corps[hidden], .git-formulaire[hidden] { display: none; }
+.git-formulaire { flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+.git-branche { display: flex; align-items: center; gap: var(--space-1); }
+.git-branche > svg { flex: none; color: var(--ink-muted); }
+.git-branche > .champ { flex: 1 1 0; min-width: 0; }
+.git-branche .bouton-enveloppe { flex: none; }
+.git-commit, .git-commit .bouton-enveloppe, .git-commit .bouton { display: flex; width: 100%; box-sizing: border-box; align-items: center; justify-content: center; gap: var(--space-1); }
+.git-liste { flex: 1 1 0; min-height: 0; overflow: auto; }
+.git-liste > .indication, .git-liste > .message { margin: var(--space-2) var(--space-3); }
+.git-corps .ya-row .liste-groupe { display: flex; align-items: center; height: var(--size-row); padding: 0 var(--space-3); color: var(--ink); font-family: var(--font-sans); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.git-corps .ya-row .liste-groupe .liste-compteur { margin-left: auto; }
+/* Un dossier parent long se coupe avant le nom, qui garde sa place avec la lettre de statut. */
+.git-corps .ya-row .liste-libelle { flex: 0 1 auto; }
+.git-corps .ya-row .liste-parent { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .zone-code {
   display: flex;
   height: 100%;
@@ -355,18 +375,6 @@ body { margin: 0; }
 .fichiers-entete .bouton-enveloppe { flex: none; display: flex; }
 .fichiers-arbre { flex: 1 1 auto; min-height: 0; }
 
-/* V-005 : panneau Git */
-.git-corps { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2); }
-.git-corps[hidden] { display: none; }
-.git-titre { margin: 0; font: var(--texte-petit) var(--police-ui); font-weight: var(--graisse-forte); color: var(--texte-attenue); text-transform: uppercase; }
-.git-pied { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2); }
-.git-pied[hidden] { display: none; }
-.git-corps .liste-libelle { flex: 1 1 auto; min-width: 0; direction: rtl; text-align: left; }
-.git-corps .liste-secondaire { flex: none; margin-left: auto; font: var(--texte-petit) var(--police-ui); }
-.git-corps .liste-secondaire-fort { font-weight: var(--graisse-forte); }
-.git-actions { display: flex; gap: var(--esp-2); }
-.git-actions > .bouton-enveloppe:first-child { flex: 1; }
-.git-actions > .bouton-enveloppe:first-child > .bouton { width: 100%; }
 .recherche-corps { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2); }
 .recherche-corps[hidden] { display: none; }
 

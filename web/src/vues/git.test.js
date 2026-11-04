@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { vueGit } from "./git.js";
 
@@ -17,8 +18,8 @@ const ETAT = {
   detachee: false,
   branches: ["main", "travail"],
   changements: [
-    { chemin: "src/main.rs", statut: "modifié", indexe: false },
-    { chemin: "notes.md", statut: "indexé", indexe: true },
+    { chemin: "src/main.rs", statut: "modifié", indexe: false, lettre: "M" },
+    { chemin: "notes.md", statut: "indexé", indexe: true, lettre: "A" },
   ],
 };
 
@@ -37,19 +38,48 @@ async function monter(reponses = {}, options = {}) {
   const rappels = { dire: vi.fn(), surBranche: vi.fn(), surDiff: vi.fn(), fermerDiff: vi.fn(), ...options };
   const vue = vueGit(rappels);
   vues.push(vue);
-  document.body.append(vue.corps, vue.pied);
+  document.body.append(vue.corps);
   vue.montrer(true);
   await attendre();
   return { vue, appels, ...rappels };
 }
 
-const bouton = (vue, nom) => [...vue.pied.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === nom);
+const bouton = (vue, nom) => [...vue.corps.querySelectorAll(".git-formulaire button")].find((b) => (b.getAttribute("aria-label") ?? b.textContent.replace("…", "")) === nom);
+const formulaire = (vue) => vue.corps.querySelector(".git-formulaire");
 
-test("REQ022_AC6_chaque_ligne_affiche_son_statut_en_mots", async () => {
+test("REQ022_AC6_AC10_chaque_ligne_affiche_nom_dossier_lettre_et_mot_accessible", async () => {
   const { vue } = await monter();
   const lignes = [...vue.corps.querySelectorAll("[role=option]")];
-  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["src/main.rs", "notes.md"]);
-  expect(lignes.map((l) => l.querySelector(".liste-secondaire").textContent)).toEqual(["modifié", "indexé"]);
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["notes.md", "main.rs"]);
+  expect(lignes.map((l) => l.querySelector(".liste-parent")?.textContent)).toEqual([undefined, "src"]);
+  expect(lignes.map((l) => l.querySelector(".liste-statut").textContent)).toEqual(["A", "M"]);
+  expect(lignes.map((l) => l.getAttribute("aria-label"))).toEqual(["notes.md, ajouté, indexé", "main.rs, modifié"]);
+  expect(lignes.map((l) => l.title)).toEqual(["notes.md, ajouté, indexé", "src/main.rs, modifié"]);
+  expect(lignes[1].querySelector("svg[data-icone]")).toBeTruthy();
+});
+
+test("REQ022_AC9_AC11_deux_sections_avec_compteur_dans_une_seule_liste_a_un_seul_arret_de_tabulation", async () => {
+  const { vue } = await monter();
+  expect([...vue.corps.querySelectorAll(".liste-groupe")].map((g) => g.textContent)).toEqual(["Modifications indexées1", "Modifications1"]);
+  expect(vue.corps.querySelectorAll("[role=listbox]")).toHaveLength(1);
+  expect(vue.corps.querySelectorAll("[role=option][tabindex='0']")).toHaveLength(1);
+  const lignes = [...vue.corps.querySelectorAll("[role=option]")];
+  lignes[0].focus();
+  lignes[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  expect(document.activeElement).toBe(lignes[1]);
+  // De haut en bas : branche, message, Commit, puis la liste.
+  const ordre = [...vue.corps.querySelectorAll("select, textarea, .git-commit button, [role=listbox]")].map((e) => e.tagName.toLowerCase() + (e.getAttribute("role") ?? ""));
+  expect(ordre).toEqual(["select", "textarea", "button", "divlistbox"]);
+});
+
+test("REQ022_AC9_une_section_vide_n_est_pas_affichee", async () => {
+  const { vue } = await monter({ "/api/git/etat": { ...ETAT, changements: [ETAT.changements[0]] } });
+  expect([...vue.corps.querySelectorAll(".liste-groupe")].map((g) => g.textContent)).toEqual(["Modifications1"]);
+});
+
+test("REQ022_AC13_a_la_racine_aucun_dossier_parent", async () => {
+  const { vue } = await monter({ "/api/git/etat": { ...ETAT, changements: [{ chemin: "a.txt", statut: "nouveau", indexe: false, lettre: "U" }] } });
+  expect(vue.corps.querySelector(".liste-parent")).toBeNull();
 });
 
 test("REQ022_AC3_la_branche_est_donnee_a_la_barre_du_haut", async () => {
@@ -59,21 +89,21 @@ test("REQ022_AC3_la_branche_est_donnee_a_la_barre_du_haut", async () => {
 
 test("REQ022_AC4_hors_depot_seul_le_message_est_affiche", async () => {
   const { vue, surBranche } = await monter({ "/api/git/etat": { status: 409, corps: { cause: "pas-depot", message: "Ce dossier n'est pas un dépôt git." } } });
-  expect(vue.corps.textContent).toBe("Ce dossier n'est pas un dépôt git.");
-  expect(vue.pied.hidden).toBe(true);
+  expect(vue.corps.querySelector(".git-liste").textContent).toBe("Ce dossier n'est pas un dépôt git.");
+  expect(formulaire(vue).hidden).toBe(true);
   expect(surBranche).toHaveBeenLastCalledWith(null);
 });
 
 test("REQ022_AC5_aucun_changement_le_formulaire_reste", async () => {
   const { vue } = await monter({ "/api/git/etat": { ...ETAT, changements: [] } });
   expect(vue.corps.textContent).toContain("Aucun changement.");
-  expect(vue.pied.hidden).toBe(false);
+  expect(formulaire(vue).hidden).toBe(false);
   expect(bouton(vue, "Commit")).toBeTruthy();
 });
 
 test("REQ022_AC1_clic_sur_une_ligne_ouvre_son_diff", async () => {
   const { vue, surDiff } = await monter({ "/api/git/diff": { binaire: false, trop_gros: false, diff: "-a\n+b\n" } });
-  vue.corps.querySelector("[role=option]").click();
+  vue.corps.querySelector("[data-chemin='src/main.rs']").click();
   await attendre();
   expect(surDiff).toHaveBeenCalledWith({ chemin: "src/main.rs", texte: "-a\n+b\n", avis: undefined });
 });
@@ -81,20 +111,20 @@ test("REQ022_AC1_clic_sur_une_ligne_ouvre_son_diff", async () => {
 test("REQ022_AC8_diff_binaire_et_trop_gros_donnent_un_avis", async () => {
   let diff = { binaire: true, trop_gros: false, diff: "" };
   const { vue, surDiff } = await monter({ "/api/git/diff": () => diff });
-  vue.corps.querySelector("[role=option]").click();
+  vue.corps.querySelector("[data-chemin='src/main.rs']").click();
   await attendre();
   expect(surDiff).toHaveBeenLastCalledWith(expect.objectContaining({ avis: "Fichier binaire : pas de diff." }));
   diff = { binaire: false, trop_gros: true, diff: "" };
-  vue.corps.querySelector("[role=option]").click();
+  vue.corps.querySelector("[data-chemin='src/main.rs']").click();
   await attendre();
   expect(surDiff).toHaveBeenLastCalledWith(expect.objectContaining({ avis: "Fichier trop gros pour afficher son diff." }));
 });
 
 test("REQ023_AC6_bouton_plus_selon_indexe_nom_accessible_et_touche_I", async () => {
   // Statut « indexé » mais indexe faux, et l'inverse : seul `indexe` décide.
-  const etat = { ...ETAT, changements: [{ chemin: "a.txt", statut: "indexé", indexe: false }, { chemin: "b.txt", statut: "renommé", indexe: true }] };
+  const etat = { ...ETAT, changements: [{ chemin: "a.txt", statut: "indexé", indexe: false, lettre: "M" }, { chemin: "b.txt", statut: "renommé", indexe: true, lettre: "R" }] };
   const { vue, appels } = await monter({ "/api/git/etat": etat });
-  const [a, b] = vue.corps.querySelectorAll("[role=option]");
+  const [b, a] = vue.corps.querySelectorAll("[role=option]");
   expect(b.querySelector("button")).toBeNull();
   const plus = a.querySelector("button");
   expect(plus.getAttribute("aria-label")).toBe("Indexer a.txt");
@@ -102,8 +132,6 @@ test("REQ023_AC6_bouton_plus_selon_indexe_nom_accessible_et_touche_I", async () 
   expect(plus.textContent).toBe("");
   expect(plus.querySelector("svg").getAttribute("data-icone")).toBe("plus");
   expect(plus.classList.contains("ya-icon-btn-ligne")).toBe(true);
-  expect(a.querySelector(".liste-secondaire").style.getPropertyValue("--couleur-secondaire")).toBe("var(--succes)");
-  expect(b.querySelector(".liste-secondaire").style.getPropertyValue("--couleur-secondaire")).toBe("var(--statut-renomme)");
   vi.useFakeTimers();
   plus.parentElement.dispatchEvent(new Event("pointerenter"));
   vi.advanceTimersByTime(400);
@@ -119,39 +147,39 @@ test("REQ023_AC5_sans_message_le_champ_prend_le_focus_avec_une_alerte", async ()
   const { vue } = await monter({ "/api/git/commit": { status: 400, corps: { cause: "message-vide", message: "Écrivez un message de commit." } } });
   bouton(vue, "Commit").click();
   await attendre();
-  const alerte = vue.pied.querySelector("[role=alert]");
+  const alerte = vue.corps.querySelector("[role=alert]");
   expect(alerte.textContent).toBe("Écrivez un message de commit.");
-  expect(document.activeElement).toBe(vue.pied.querySelector("textarea"));
+  expect(document.activeElement).toBe(vue.corps.querySelector("textarea"));
 });
 
 test("REQ023_AC5_sans_fichier_indexe_message_en_alerte", async () => {
   const texte = "Aucun fichier indexé. Indexez au moins un fichier.";
   const { vue } = await monter({ "/api/git/commit": { status: 409, corps: { cause: "aucun-indexe", message: texte } } });
-  vue.pied.querySelector("textarea").value = "x";
+  vue.corps.querySelector("textarea").value = "x";
   bouton(vue, "Commit").click();
   await attendre();
-  expect(vue.pied.querySelector("[role=alert]").textContent).toBe(texte);
+  expect(vue.corps.querySelector("[role=alert]").textContent).toBe(texte);
 });
 
 test("REQ023_AC4_echec_de_git_au_commit_montre_le_message_de_git", async () => {
   const { vue } = await monter({ "/api/git/commit": { status: 409, corps: { cause: "git", message: "Author identity unknown" } } });
-  vue.pied.querySelector("textarea").value = "x";
+  vue.corps.querySelector("textarea").value = "x";
   bouton(vue, "Commit").click();
   await attendre();
-  const alerte = vue.pied.querySelector("[role=alert]");
+  const alerte = vue.corps.querySelector("[role=alert]");
   expect(alerte.textContent).toContain("Git a refusé.");
   expect(alerte.querySelector("pre").textContent).toBe("Author identity unknown");
 });
 
 test("REQ023_AC7_ctrl_entree_lance_le_commit_vide_le_champ_et_annonce", async () => {
   const { vue, appels } = await monter();
-  const champ = vue.pied.querySelector("textarea");
+  const champ = vue.corps.querySelector("textarea");
   champ.value = "Corrige";
   champ.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }));
   await attendre();
   expect(appels.find((x) => x.url === "/api/git/commit").corps).toBe("Corrige");
-  expect(vue.pied.querySelector("textarea").value).toBe("");
-  expect(vue.pied.textContent).toContain("Commit créé.");
+  expect(vue.corps.querySelector("textarea").value).toBe("");
+  expect(vue.corps.textContent).toContain("Commit créé.");
 });
 
 test("REQ023_AC8_un_fichier_qui_quitte_la_liste_ferme_son_diff", async () => {
@@ -182,7 +210,7 @@ test("REQ024_AC2_branche_refusee_message_de_git_et_branche_inchangee", async () 
   select.dispatchEvent(new Event("change"));
   await attendre();
   await attendre();
-  expect(vue.pied.querySelector("[role=alert] pre").textContent).toBe("local changes would be overwritten");
+  expect(vue.corps.querySelector("[role=alert] pre").textContent).toBe("local changes would be overwritten");
   expect(vue.corps.querySelector("select").value).toBe("main");
 });
 
@@ -208,7 +236,7 @@ test("REQ025_AC4_pendant_le_pull_bouton_occupe_et_autres_actions_desactivees_pui
   fin(null);
   await attendre();
   await attendre();
-  expect(vue.pied.textContent).toContain("Pull terminé.");
+  expect(vue.corps.textContent).toContain("Pull terminé.");
   expect(bouton(vue, "Pull").disabled).toBe(false);
 });
 
@@ -217,7 +245,7 @@ test("REQ025_AC5_echec_du_push_renvoie_vers_le_shell_avec_le_message_de_git", as
   bouton(vue, "Push").click();
   await attendre();
   await attendre();
-  const alerte = vue.pied.querySelector("[role=alert]");
+  const alerte = vue.corps.querySelector("[role=alert]");
   expect(alerte.querySelector(".message-texte").textContent).toBe("Git a refusé. Réglez cela dans le shell.");
   expect(alerte.querySelector("pre").textContent).toBe("Permission denied");
 });
@@ -242,17 +270,17 @@ test("REQ023_AC5_l_alerte_du_champ_message_disparait_a_l_action_suivante_en_gard
   bouton(vue, "Commit").click();
   await attendre();
   await attendre();
-  expect(vue.pied.querySelector("[role=alert]")).not.toBeNull();
-  const champ = vue.pied.querySelector("textarea");
+  expect(vue.corps.querySelector("[role=alert]")).not.toBeNull();
+  const champ = vue.corps.querySelector("textarea");
   champ.value = "Brouillon";
   champ.focus();
   reponse = null;
   bouton(vue, "Pull").click();
   await attendre();
   await attendre();
-  expect(vue.pied.querySelector("[role=alert]")).toBeNull();
-  expect(vue.pied.querySelector("textarea").value).toBe("Brouillon");
-  expect(document.activeElement).toBe(vue.pied.querySelector("textarea"));
+  expect(vue.corps.querySelector("[role=alert]")).toBeNull();
+  expect(vue.corps.querySelector("textarea").value).toBe("Brouillon");
+  expect(document.activeElement).toBe(vue.corps.querySelector("textarea"));
 });
 
 test("REQ025_AC4_le_focus_clavier_reste_sur_le_controle_apres_l_action", async () => {
@@ -278,12 +306,12 @@ test("REQ022_AC7_entree_sur_une_ligne_ouvre_le_diff_et_la_marque_selectionnee", 
     { "/api/git/diff": { binaire: false, trop_gros: false, diff: "+x\n" } },
     { diffOuvert: () => ouvert, surDiff: ({ chemin }) => (ouvert = chemin) },
   );
-  const ligne = vue.corps.querySelector("[role=option]");
+  const ligne = vue.corps.querySelector("[data-chemin='src/main.rs']");
   ligne.focus();
   ligne.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   await attendre();
   await attendre();
-  expect(vue.corps.querySelector("[role=option]").getAttribute("aria-selected")).toBe("true");
+  expect(vue.corps.querySelector("[data-chemin='src/main.rs']").getAttribute("aria-selected")).toBe("true");
 });
 
 test("REQ025_AC4_le_focus_parti_ailleurs_pendant_l_action_n_est_pas_repris", async () => {
@@ -302,7 +330,7 @@ test("REQ025_AC4_le_focus_parti_ailleurs_pendant_l_action_n_est_pas_repris", asy
 
 test("REQ025_AC4_le_focus_reste_sur_la_branche_quand_une_ligne_est_ouverte", async () => {
   const { vue } = await monter({ "/api/git/diff": { binaire: false, trop_gros: false, diff: "+x\n" } });
-  const ligne = vue.corps.querySelector("[role=option]");
+  const ligne = vue.corps.querySelector("[data-chemin='src/main.rs']");
   ligne.focus();
   ligne.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   await attendre();
@@ -316,11 +344,11 @@ test("REQ025_AC4_le_focus_reste_sur_la_branche_quand_une_ligne_est_ouverte", asy
   expect(document.activeElement).toBe(vue.corps.querySelector("select"));
 });
 
-test("REQ031_AC1_commit_pull_push_sont_des_icones_sans_texte_avec_leur_info_bulle", async () => {
+test("REQ031_AC1_AC5_commit_garde_son_texte_pull_et_push_sont_des_icones_avec_leur_info_bulle", async () => {
   const { vue } = await monter();
-  for (const [nom, info] of [["Commit", "Commit (Ctrl+Entrée)"], ["Pull", "Pull"], ["Push", "Push"]]) {
+  for (const [nom, texte, info] of [["Commit", "Commit", "Commit (Ctrl+Entrée)"], ["Pull", "", "Pull"], ["Push", "", "Push"]]) {
     const b = bouton(vue, nom);
-    expect(b.textContent).toBe("");
+    expect(b.textContent).toBe(texte);
     expect(b.querySelector("svg")).toBeTruthy();
     expect(b.hasAttribute("title")).toBe(false);
     b.focus();
@@ -329,16 +357,13 @@ test("REQ031_AC1_commit_pull_push_sont_des_icones_sans_texte_avec_leur_info_bull
   }
 });
 
-test("REQ033_AC2_AC9_chaque_statut_a_son_token_et_conflit_est_en_graisse_forte", async () => {
-  const statuts = ["modifié", "nouveau", "supprimé", "renommé", "conflit", "indexé"];
-  const etat = { ...ETAT, changements: statuts.map((statut) => ({ chemin: `${statut}.txt`, statut, indexe: statut === "indexé" })) };
+test("REQ033_AC2_AC9_chaque_lettre_de_statut_a_sa_classe_et_une_seule_lettre_est_affichee", async () => {
+  const lettres = ["M", "U", "D", "R", "C", "A"];
+  const etat = { ...ETAT, changements: lettres.map((lettre) => ({ chemin: `${lettre}.txt`, statut: "x", indexe: lettre === "A", lettre })) };
   const { vue } = await monter({ "/api/git/etat": etat });
-  const mots = [...vue.corps.querySelectorAll(".liste-secondaire")];
-  expect(mots.map((m) => m.textContent)).toEqual(statuts);
-  expect(mots.map((m) => m.style.getPropertyValue("--couleur-secondaire"))).toEqual(
-    ["statut-modifie", "statut-nouveau", "erreur", "statut-renomme", "statut-conflit", "succes"].map((t) => `var(--${t})`),
-  );
-  expect(mots.map((m) => m.classList.contains("liste-secondaire-fort"))).toEqual([false, false, false, false, true, false]);
+  const lignes = [...vue.corps.querySelectorAll("[role=option]")];
+  expect(lignes.map((l) => l.querySelector(".liste-statut").textContent).sort()).toEqual([...lettres].sort());
+  for (const l of lignes) expect(l.classList.contains(`liste-statut-${l.querySelector(".liste-statut").textContent}`)).toBe(true);
 });
 
 test("REQ031_AC4_raccourcis_aria_valides_pour_commit", async () => {
@@ -349,15 +374,45 @@ test("REQ031_AC4_raccourcis_aria_valides_pour_commit", async () => {
 test("REQ034_AC8_estDepot_et_focuserMessage_gardent_le_texte_et_le_focus_apres_rafraichir", async () => {
   const { vue } = await monter();
   expect(vue.estDepot()).toBe(true);
-  vue.pied.querySelector("textarea").value = "déjà écrit";
+  vue.corps.querySelector("textarea").value = "déjà écrit";
   vue.focuserMessage();
-  expect(document.activeElement).toBe(vue.pied.querySelector("textarea"));
+  expect(document.activeElement).toBe(vue.corps.querySelector("textarea"));
   await vue.rafraichir();
-  expect(document.activeElement).toBe(vue.pied.querySelector("textarea"));
-  expect(vue.pied.querySelector("textarea").value).toBe("déjà écrit");
+  expect(document.activeElement).toBe(vue.corps.querySelector("textarea"));
+  expect(vue.corps.querySelector("textarea").value).toBe("déjà écrit");
 });
 
 test("REQ034_AC9_estDepot_est_faux_hors_depot", async () => {
   const { vue } = await monter({ "/api/git/etat": { status: 409, corps: { cause: "pas-depot", message: "Ce dossier n'est pas un dépôt git." } } });
   expect(vue.estDepot()).toBe(false);
+});
+
+test("REQ023_AC10_le_champ_message_a_son_texte_indicatif_et_son_libelle_masque", async () => {
+  const { vue } = await monter();
+  const saisie = vue.corps.querySelector("textarea");
+  expect(saisie.placeholder).toBe("Message (Ctrl+Entrée)");
+  const libelle = vue.corps.querySelector(`label[for="${saisie.id}"]`);
+  expect(libelle.textContent).toBe("Message");
+  expect(libelle.classList.contains("masque")).toBe(true);
+});
+
+test("REQ023_AC11_les_messages_restent_sous_commit_et_avant_la_liste", async () => {
+  const texte = "Aucun fichier indexé. Indexez au moins un fichier.";
+  const { vue } = await monter({ "/api/git/commit": { status: 409, corps: { cause: "aucun-indexe", message: texte } } });
+  vue.corps.querySelector("textarea").value = "x";
+  bouton(vue, "Commit").click();
+  await attendre();
+  const alerte = vue.corps.querySelector("[role=alert]");
+  expect(alerte.textContent).toBe(texte);
+  const suit = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(suit(vue.corps.querySelector(".git-commit"), alerte)).toBe(true);
+  expect(suit(alerte, vue.corps.querySelector(".git-liste"))).toBe(true);
+});
+
+test("REQ022_AC9_en_tete_de_section_en_11_px_sur_16_px", () => {
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  const m = css.match(/\.git-corps \.ya-row \.liste-groupe \{([^}]*)\}/);
+  expect(m[1]).toContain("font-size: 11px");
+  expect(m[1]).toContain("line-height: 16px");
+  expect(m[1]).not.toContain("line-height: normal");
 });

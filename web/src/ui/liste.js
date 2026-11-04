@@ -6,7 +6,7 @@ const VARIANTES = ["plate", "arbre"];
 let compteur = 0;
 
 // Mot dit par le nom accessible pour chaque statut git d'une ligne.
-const STATUTS = { A: "ajouté", M: "modifié", R: "renommé", D: "supprimé", U: "nouveau", C: "conflit" };
+export const STATUTS = { A: "ajouté", M: "modifié", R: "renommé", D: "supprimé", U: "nouveau", C: "conflit" };
 const STATUTS_DOSSIER = ["C", "D", "M", "A", "U"];
 
 const CODE = ["rs", "py", "go", "c", "h", "cpp", "sh"];
@@ -74,7 +74,7 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     e.id = `liste-${n}-${elements.size}`;
     e.className = "liste-ligne";
     e.setAttribute("role", arbre ? "treeitem" : "option");
-    e.title = l.libelle;
+    e.title = l.infoBulle ?? l.libelle;
     e.style.setProperty("--niveau", String(l.niveau ?? 0));
     if (l.policeCode) e.classList.add("liste-code");
     const etats = [];
@@ -90,6 +90,7 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       e.classList.add(`liste-sdossier-${l.statutDossier}`);
       etats.push(STATUTS[l.statutDossier]);
     }
+    if (l.indexe) etats.push("indexé");
     if (etats.length) e.setAttribute("aria-label", [l.libelle, ...etats].join(", "));
     if (l.courant) e.setAttribute("aria-current", "true");
     if (l.numero !== undefined) e.classList.add("ya-hit");

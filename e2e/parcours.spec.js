@@ -50,12 +50,12 @@ test("REQ030_AC1_parcours_1_corriger_un_fichier_et_faire_un_commit", async ({ pa
   await expect(page.getByRole("tab", { name: "main.rs", exact: true })).toBeVisible();
   expect(fs.readFileSync(path.join(dossier, "src", "main.rs"), "utf8")).toContain("// corrigé");
   await page.getByRole("tab", { name: "Git" }).click();
-  const ligne = page.getByRole("listbox", { name: "Changements" }).getByRole("option").filter({ hasText: "src/main.rs" });
+  const ligne = page.getByRole("listbox", { name: "Changements" }).getByRole("option").filter({ has: page.locator(".liste-parent", { hasText: "src" }), hasText: "main.rs" });
   await ligne.click();
   await expect(page.getByRole("tab", { name: "main.rs (diff)" })).toBeVisible();
   await expect(page.getByLabel("Diff main.rs")).toContainText("+// corrigé");
   await page.getByRole("button", { name: "Indexer main.rs" }).click();
-  await expect(ligne).toContainText("indexé");
+  await expect(ligne).toHaveAccessibleName("main.rs, modifié, indexé");
   await page.getByRole("textbox", { name: "Message" }).fill("Corrige main");
   await page.getByRole("button", { name: "Commit" }).click();
   await expect(page.getByText("Commit créé.")).toBeVisible();

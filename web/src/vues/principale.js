@@ -130,7 +130,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   racine = cadre({
     barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [theme.enveloppe, sortir.enveloppe] },
     rail: { onglets: rail, commandes: shells.commandes },
-    panneau: { titre: "Fichiers", entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps], pied: [git.pied] },
+    panneau: { titre: "Fichiers", entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps] },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, fil: editeur.fil, code: editeur.code, shells },
     barreEtat: barre,
     surChangement: (zone, taille) => {

@@ -197,7 +197,7 @@ async function relancerSur(page, dossier) {
 /** Les commandes à icône visibles : nom accessible, icône, texte visible et taille. Le nombre de changements du rail est hors d'AC-031-1 (AC-037-7). */
 const commandes = (page) =>
   page.evaluate(() =>
-    [...document.querySelectorAll("button:has(> svg[data-icone]), [role=tab]:has(> svg[data-icone])")]
+    [...document.querySelectorAll("button:has(> svg[data-icone]):not(.ya-btn-primary), [role=tab]:has(> svg[data-icone])")]
       .filter((e) => e.getClientRects().length > 0)
       .map((e) => {
         const r = e.getBoundingClientRect();
@@ -221,7 +221,7 @@ test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_san
     toutes.push(...(await commandes(page)));
   }
   const noms = new Set(toutes.map((c) => c.nom));
-  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Ouverture rapide", "Thème clair", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Fermer le shell", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Commit", "Pull", "Push"]) {
+  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Ouverture rapide", "Thème clair", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Fermer le shell", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Pull", "Push"]) {
     expect(noms.has(attendu), attendu).toBe(true);
   }
   // AC-031-6 : 24 × 24 px, sauf une action de ligne (20 × 20) et la fermeture d'un onglet (18 × 18).
@@ -318,43 +318,78 @@ test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_a
   for (const nom of ["Pull", "Push"]) await expect.poll(() => lire(ailleurs(nom)), { message: nom }).toBe(d["--ink-muted"]);
 });
 
-test("REQ033_AC2_AC9_AC4_statuts_git_commit_et_indexer_relus_au_style_calcule_et_commit_prend_la_place_restante", async ({ page }) => {
+test("REQ033_AC2_AC9_AC4_lettres_de_statut_et_commit_relus_au_style_calcule_et_commit_sur_toute_la_largeur", async ({ page }) => {
   await relancerSur(page, depotStatuts());
   await page.getByRole("tab", { name: "Git", exact: true }).click();
   await expect(page.getByRole("button", { name: "Indexer nouveau.txt" })).toBeVisible();
-  const jetons = { modifié: "--statut-modifie", nouveau: "--statut-nouveau", supprimé: "--erreur", renommé: "--statut-renomme", conflit: "--statut-conflit", indexé: "--succes" };
-  const t = await resoudre(page, [...Object.values(jetons), "--accent", "--texte-sur-couleur", "--ink-muted"]);
-  const poids = (await resoudre(page, ["--graisse-forte"], "fontWeight"))["--graisse-forte"];
+  const jetons = { M: "--git-modified", R: "--git-modified", A: "--git-added", D: "--git-deleted", U: "--git-untracked", C: "--git-conflict" };
+  const t = await resoudre(page, [...new Set(Object.values(jetons)), "--accent", "--on-accent", "--ink-muted"]);
   await expect(async () => {
     const lignes = await page.getByRole("listbox", { name: "Changements" }).getByRole("option").evaluateAll((l) =>
       l.map((e) => {
-        const s = e.querySelector(".liste-secondaire");
-        const c = getComputedStyle(s);
-        return { mot: s.textContent, couleur: c.color, poids: c.fontWeight };
+        const lettre = e.querySelector(".liste-statut");
+        return { lettre: lettre.textContent, couleur: getComputedStyle(lettre).color, nom: getComputedStyle(e.querySelector(".liste-libelle")).color, barre: getComputedStyle(e.querySelector(".liste-libelle")).textDecorationLine };
       }),
     );
-    expect(new Set(lignes.map((l) => l.mot))).toEqual(new Set(Object.keys(jetons)));
+    expect(new Set(lignes.map((l) => l.lettre))).toEqual(new Set(["M", "R", "D", "U", "C"]));
     for (const l of lignes) {
-      expect(l.couleur, l.mot).toBe(t[jetons[l.mot]]);
-      if (l.mot === "conflit") expect(l.poids).toBe(poids);
-      else expect(l.poids, l.mot).not.toBe(poids);
+      expect(l.couleur, l.lettre).toBe(t[jetons[l.lettre]]);
+      expect(l.nom, l.lettre).toBe(t[jetons[l.lettre]]);
+      expect(l.barre, l.lettre).toBe(l.lettre === "D" ? "line-through" : "none");
     }
   }).toPass({ timeout: 10000 });
   // Indexer en --ink-muted ; Commit en fond d'accent, texte sur couleur.
   await expect.poll(() => lire(page.getByRole("button", { name: "Indexer README.md" })), { timeout: 10000 }).toBe(t["--ink-muted"]);
   const commit = page.getByRole("button", { name: "Commit" });
+  await expect(commit).toHaveText("Commit");
   // Le panneau se relit de temps en temps et refait ses boutons : on attend la valeur plutôt que de la lire une fois.
   await expect.poll(() => lire(commit, "backgroundColor")).toBe(t["--accent"]);
-  await expect.poll(() => lire(commit)).toBe(t["--texte-sur-couleur"]);
-  // Commit prend la place restante de la ligne ; Pull et Push gardent leur taille.
+  await expect.poll(() => lire(commit)).toBe(t["--on-accent"]);
+  // Commit occupe toute la largeur du formulaire.
   await expect(async () => {
-    const boites = await page.locator(".git-actions > .bouton-enveloppe").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
-    const ligne = await page.locator(".git-actions").evaluate((e) => e.getBoundingClientRect().toJSON());
-    expect(boites).toHaveLength(3);
-    expect(boites[0].width).toBeGreaterThan(boites[1].width * 3);
-    expect(Math.abs(boites[2].right - ligne.right)).toBeLessThanOrEqual(1);
-    expect(boites[1].width).toBeCloseTo(boites[2].width, 0);
+    const [c, f] = await Promise.all([page.locator(".git-commit .bouton").evaluate((e) => e.getBoundingClientRect().toJSON()), page.getByRole("textbox", { name: "Message" }).evaluate((e) => e.getBoundingClientRect().toJSON())]);
+    expect(Math.abs(c.width - f.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(c.left - f.left)).toBeLessThanOrEqual(1);
   }).toPass({ timeout: 10000 });
+});
+
+test("REQ023_AC9_REQ031_AC7_panneau_de_240_px_branche_pull_et_push_sur_une_ligne_meme_pendant_pull", async ({ page }) => {
+  const dossier = depotExemple();
+  const git = (cwd, ...args) => spawnSync("git", ["-c", "user.name=Test", "-c", "user.email=t@example.org", ...args], { cwd, encoding: "utf8" });
+  git(dossier, "branch", "-M", "main");
+  const distant = path.join(path.dirname(dossier), "distant.git");
+  git(path.dirname(dossier), "init", "-q", "--bare", distant);
+  git(dossier, "remote", "add", "origin", distant);
+  git(dossier, "push", "-q", "-u", "origin", "main");
+  const libere = path.join(path.dirname(dossier), "libere");
+  const attente = path.join(path.dirname(dossier), "attente.sh");
+  fs.writeFileSync(attente, `#!/bin/sh\nwhile [ ! -f "${libere}" ]; do sleep 0.1; done\nexec git-upload-pack "$@"\n`, { mode: 0o755 });
+  git(dossier, "config", "remote.origin.uploadpack", attente);
+  await relancerSur(page, dossier);
+  const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+  await poignee.focus();
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
+  await expect(poignee).toHaveAttribute("aria-valuenow", "240");
+  await page.getByRole("tab", { name: "Git", exact: true }).click();
+  const ligne = async () => {
+    const boites = await Promise.all([page.getByLabel("Branche"), page.getByRole("button", { name: "Pull" }), page.getByRole("button", { name: "Push" })].map((l) => l.evaluate((e) => e.getBoundingClientRect().toJSON())));
+    const panneau = await page.locator(".cadre-panneau").evaluate((e) => e.getBoundingClientRect().toJSON());
+    expect(new Set(boites.map((b) => Math.round(b.top + b.height / 2))).size, "une seule ligne").toBe(1);
+    expect(boites[0].right).toBeLessThanOrEqual(boites[1].left);
+    expect(boites[1].right).toBeLessThanOrEqual(boites[2].left);
+    expect(boites[2].right).toBeLessThanOrEqual(panneau.right);
+    expect(boites[0].left).toBeGreaterThanOrEqual(panneau.left);
+  };
+  await expect(page.getByLabel("Branche")).toBeVisible();
+  await expect(ligne).toPass();
+  try {
+    await page.getByRole("button", { name: "Pull" }).click();
+    await expect(page.getByRole("button", { name: "Pull" })).toHaveText("Pull…");
+    await expect(ligne).toPass();
+  } finally {
+    fs.writeFileSync(libere, "");
+  }
+  await expect(page.getByText("Pull terminé.")).toBeVisible();
 });
 
 test("REQ033_AC3_AC10_messages_info_succes_alerte_erreur_relus_au_style_calcule", async ({ page }) => {

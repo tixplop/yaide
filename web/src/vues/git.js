@@ -1,29 +1,26 @@
 import { gitBranche, gitCommit, gitDiff, gitEtat, gitIndexer, gitPull, gitPush } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
+import { icone } from "../ui/icones.js";
 import { indication } from "../ui/indication.js";
-import { liste } from "../ui/liste.js";
+import { iconeDe, liste, STATUTS } from "../ui/liste.js";
 import { message } from "../ui/message.js";
 
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const nomDe = (chemin) => chemin.split("/").pop();
 
-const COULEUR_STATUT = { modifié: "statut-modifie", nouveau: "statut-nouveau", supprimé: "erreur", renommé: "statut-renomme", conflit: "statut-conflit", indexé: "succes" };
+const dossierDe = (chemin) => chemin.split("/").slice(0, -1).join("/");
 
 /**
  * V-005. Rappels : `surBranche({ branche, detachee } | null)`, `surDiff({ chemin, texte, avis })`,
  * `diffOuvert()` (chemin du diff ouvert ou null), `fermerDiff()`, `surDisque()` (le disque a peut-être changé),
  * `surEtat(etat | null)` (à chaque lecture, panneau masqué ou non ; `null` hors d'un dépôt ou sans lecture possible).
- * Rend `{ corps, pied, rafraichir(), montrer(oui), detruire() }`.
+ * Rend `{ corps, rafraichir(), montrer(oui), detruire() }`.
  */
 export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOuvert = () => null, fermerDiff = () => {}, surDisque = () => {}, surEtat = () => {} }) {
   const corps = document.createElement("div");
   corps.className = "git-corps";
-  const pied = document.createElement("div");
-  pied.className = "git-pied";
-  pied.hidden = true;
   corps.hidden = true;
-  let visible = false;
 
   let etat = null; // dernier état lu du serveur
   let refus = null; // { pasDepot } ou { texte, detail } quand rien n'a pu être lu
@@ -34,16 +31,25 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
   let refocaliser = null; // focus voulu par l'action en cours, à la place du contrôle d'origine
   let detruit = false;
 
+  // De haut en bas : branche avec Pull et Push, message, Commit, messages ; puis la liste, qui défile.
+  const formulaire = document.createElement("div");
+  formulaire.className = "git-formulaire";
+  formulaire.hidden = true;
+  const ligneBranche = document.createElement("div");
+  ligneBranche.className = "git-branche";
+  const zoneCommit = document.createElement("div");
+  zoneCommit.className = "git-commit";
   const zoneMessage = document.createElement("div");
-  const actions = document.createElement("div");
-  actions.className = "git-actions";
+  const zoneListe = document.createElement("div");
+  zoneListe.className = "git-liste";
   let champMessage = nouveauChamp("");
-  pied.append(champMessage, zoneMessage, actions);
+  formulaire.append(ligneBranche, champMessage, zoneCommit, zoneMessage);
+  corps.append(formulaire, zoneListe);
 
   const saisie = () => champMessage.querySelector("textarea");
 
   function nouveauChamp(valeur, erreur) {
-    const c = champ({ libelle: "Message", type: "multiligne", valeur, erreur });
+    const c = champ({ libelle: "Message", type: "multiligne", valeur, erreur, indication: "Message (Ctrl+Entrée)", libelleMasque: true });
     c.querySelector("textarea").addEventListener("keydown", (e) => {
       if (e.key === "Enter" && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
         e.preventDefault();
@@ -84,17 +90,33 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
 
   const ligneDe = (chemin) => [...corps.querySelectorAll("[data-chemin]")].find((e) => e.dataset.chemin === chemin);
 
+  function ligneChangement(c) {
+    const nom = nomDe(c.chemin);
+    const type = iconeDe(nom);
+    const mot = `${STATUTS[c.lettre]}${c.indexe ? ", indexé" : ""}`;
+    return {
+      id: c.chemin,
+      libelle: nom,
+      dossier: dossierDe(c.chemin) || undefined,
+      icone: type.icone,
+      couleurIcone: type.couleur,
+      statut: c.lettre,
+      indexe: c.indexe,
+      infoBulle: `${c.chemin}, ${mot}`,
+      actionLigne: c.indexe ? undefined : { icone: "plus", nomAccessible: `Indexer ${nom}`, infoBulle: "Indexer", touche: "I", surClic: indexer },
+    };
+  }
+
   function afficher() {
     if (detruit) return;
-    const avait = corps.querySelector("[role=listbox]")?.contains(document.activeElement);
-    pied.hidden = !visible || !etat;
+    const avait = zoneListe.querySelector("[role=listbox]")?.contains(document.activeElement);
+    formulaire.hidden = !etat;
     if (!etat) {
-      if (!refus) return corps.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
-      if (refus.pasDepot) return corps.replaceChildren(indication({ texte: "Ce dossier n'est pas un dépôt git." }));
-      return corps.replaceChildren(message({ texte: refus.texte, detail: refus.detail, variante: "erreur" }));
+      if (!refus) return zoneListe.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
+      if (refus.pasDepot) return zoneListe.replaceChildren(indication({ texte: "Ce dossier n'est pas un dépôt git." }));
+      return zoneListe.replaceChildren(message({ texte: refus.texte, detail: refus.detail, variante: "erreur" }));
     }
-    const options = etat.branches;
-    const b = champ({ libelle: "Branche", type: "liste", options, valeur: etat.detachee ? "" : etat.branche });
+    const b = champ({ libelle: "Branche", libelleMasque: true, type: "liste", options: etat.branches, valeur: etat.detachee ? "" : etat.branche });
     const select = b.querySelector("select");
     if (etat.detachee) {
       const o = document.createElement("option");
@@ -106,53 +128,56 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
     }
     select.disabled = occupe;
     select.addEventListener("change", () => changerBranche(select.value));
-
-    const titre = document.createElement("h3");
-    titre.className = "git-titre";
-    titre.textContent = "Changements";
+    ligneBranche.replaceChildren(icone("branch", 14), b, ...boutonsSynchro());
+    zoneCommit.replaceChildren(boutonAction("Commit", "principal", "check", "Ctrl+Entrée", "Control+Enter", valider));
 
     let contenu;
     if (etat.changements.length === 0) contenu = indication({ texte: "Aucun changement." });
     else {
-      const lignes = etat.changements.map((c) => ({
-        id: c.chemin,
-        libelle: c.chemin,
-        secondaire: c.statut,
-        couleurSecondaire: COULEUR_STATUT[c.statut],
-        secondaireFort: c.statut === "conflit",
-        actionLigne: c.indexe ? undefined : { icone: "plus", nomAccessible: `Indexer ${nomDe(c.chemin)}`, infoBulle: "Indexer", touche: "I", surClic: indexer },
-      }));
+      const indexes = etat.changements.filter((c) => c.indexe);
+      const autres = etat.changements.filter((c) => !c.indexe);
+      const lignes = [];
+      for (const [titre, groupe] of [["Modifications indexées", indexes], ["Modifications", autres]]) {
+        if (groupe.length === 0) continue;
+        lignes.push({ id: `groupe:${titre}`, libelle: titre, groupe: true, compteur: groupe.length }, ...groupe.map(ligneChangement));
+      }
       contenu = liste({ lignes, selection: diffOuvert() ?? selection ?? undefined, surActiver: ouvrirDiff });
       contenu.setAttribute("aria-label", "Changements");
-      etat.changements.forEach((c, i) => {
-        contenu.children[i].dataset.chemin = c.chemin;
-        if (occupe) for (const plus of contenu.children[i].querySelectorAll("button")) plus.disabled = true;
+      // Les lignes suivent l'ordre des sections : indexées, puis les autres.
+      const ordre = [...indexes, ...autres];
+      contenu.querySelectorAll("[role=option]").forEach((e, i) => {
+        e.dataset.chemin = ordre[i].chemin;
+        if (occupe) for (const plus of e.querySelectorAll("button")) plus.disabled = true;
       });
     }
-    corps.replaceChildren(b, titre, contenu);
+    zoneListe.replaceChildren(contenu);
     if (avait && selection !== null) ligneDe(selection)?.focus();
-    afficherActions();
   }
 
-  function afficherActions() {
-    const faire = (nom, variante, icone, raccourci, touche, clic) => {
-      const b = bouton({ icone, variante, nomAccessible: nom, raccourci, touche, desactive: occupe, ...(enCours === nom ? { libelleEnCours: `${nom}…` } : {}) });
-      b.addEventListener("click", clic);
-      return b.enveloppe;
-    };
-    actions.replaceChildren(
-      faire("Commit", "principal", "check", "Ctrl+Entrée", "Control+Enter", valider),
-      faire("Pull", "secondaire", "arrow-down", undefined, undefined, () => synchroniser("Pull", gitPull)),
-      faire("Push", "secondaire", "arrow-up", undefined, undefined, () => synchroniser("Push", gitPush)),
-    );
+  function boutonAction(nom, variante, icone, raccourci, touche, clic) {
+    const b = bouton({
+      icone,
+      variante,
+      ...(variante === "principal" ? { libelle: nom } : { nomAccessible: nom }),
+      raccourci,
+      touche,
+      desactive: occupe,
+      ...(enCours === nom ? { libelleEnCours: `${nom}…` } : {}),
+    });
+    b.addEventListener("click", clic);
+    return b.enveloppe;
   }
+
+  const boutonsSynchro = () => [
+    boutonAction("Pull", "secondaire", "arrow-down", undefined, undefined, () => synchroniser("Pull", gitPull)),
+    boutonAction("Push", "secondaire", "arrow-up", undefined, undefined, () => synchroniser("Push", gitPush)),
+  ];
 
   /** Fonction qui redonne le focus au contrôle qui l'a maintenant, même s'il est refait entre-temps. */
   function retenirFocus() {
     const f = document.activeElement;
-    // Les enfants de `actions` sont des enveloppes : on compte et on focalise les boutons qu'elles contiennent.
-    const rang = [...actions.querySelectorAll("button")].indexOf(f);
-    if (rang >= 0) return () => actions.querySelectorAll("button")[rang]?.focus();
+    const rang = [...formulaire.querySelectorAll("button")].indexOf(f);
+    if (rang >= 0) return () => formulaire.querySelectorAll("button")[rang]?.focus();
     if (f?.tagName === "SELECT" && corps.contains(f)) return () => corps.querySelector("select")?.focus();
     if (f === saisie()) return () => saisie().focus();
     return () => {};
@@ -245,7 +270,6 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
   rafraichir();
   return {
     corps,
-    pied,
     rafraichir,
     /** Vrai si un état a été lu : le dossier est un dépôt. */
     estDepot: () => etat !== null,
@@ -253,9 +277,7 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
     focuserMessage: () => saisie().focus(),
     /** Affiche ou cache le panneau ; l'afficher relit l'état. */
     montrer(oui) {
-      visible = oui;
       corps.hidden = !oui;
-      pied.hidden = !oui || !etat;
       if (oui) rafraichir();
     },
     detruire() {

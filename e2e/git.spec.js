@@ -34,7 +34,8 @@ const panneauGit = async (page) => {
   await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
 };
 const changements = (page) => page.getByRole("listbox", { name: "Changements" });
-const ligne = (page, chemin) => changements(page).getByRole("option").filter({ hasText: chemin });
+/** Une ligne se retrouve par son nom de fichier : le dossier est affiché à part. */
+const ligne = (page, chemin) => changements(page).getByRole("option", { name: nomLigne(chemin.split("/").pop()) });
 const ongletDiff = (page, nom) => page.getByRole("tab", { name: `${nom} (diff)` });
 const message = (page) => page.getByRole("textbox", { name: "Message" });
 const barre = (page) => page.locator("footer");
@@ -45,8 +46,13 @@ test("REQ022_AC1_AC2_AC6_AC7_changements_statuts_et_un_seul_onglet_de_diff", asy
   fs.writeFileSync(path.join(dossier, "neuf.txt"), "tout neuf\n");
   await ouvrir(page, dossier);
   await panneauGit(page);
-  await expect(ligne(page, "src/main.rs")).toContainText("modifié");
-  await expect(ligne(page, "neuf.txt")).toContainText("nouveau");
+  await expect(ligne(page, "src/main.rs")).toHaveAccessibleName("main.rs, modifié");
+  await expect(ligne(page, "src/main.rs").locator(".liste-statut")).toHaveText("M");
+  await expect(ligne(page, "src/main.rs").locator(".liste-parent")).toHaveText("src");
+  await expect(ligne(page, "src/main.rs")).toHaveAttribute("title", "src/main.rs, modifié");
+  await expect(ligne(page, "neuf.txt")).toHaveAccessibleName("neuf.txt, nouveau");
+  await expect(ligne(page, "neuf.txt").locator(".liste-statut")).toHaveText("U");
+  await expect(ligne(page, "neuf.txt").locator(".liste-parent")).toHaveCount(0);
   await ligne(page, "src/main.rs").click();
   await expect(ongletDiff(page, "main.rs")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByLabel("Diff main.rs")).toContainText('-    println!("salut");');
@@ -73,7 +79,7 @@ test("REQ022_AC1_modifier_et_sauvegarder_main_rs_le_fait_apparaitre_dans_les_cha
   await page.keyboard.press("Control+s");
   await expect(page.getByRole("tab", { name: "main.rs", exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Git" }).click();
-  await expect(ligne(page, "src/main.rs")).toContainText("modifié");
+  await expect(ligne(page, "src/main.rs")).toHaveAccessibleName("main.rs, modifié");
   await ligne(page, "src/main.rs").click();
   await expect(page.getByLabel("Diff main.rs")).toContainText("+// ajout");
 });
@@ -138,14 +144,15 @@ test("REQ023_AC1_AC6_AC7_AC8_indexer_valider_les_autres_restent_et_l_onglet_se_f
   await expect(ongletDiff(page, "main.rs")).toBeVisible();
   await expect(ligne(page, "src/main.rs")).toHaveAttribute("aria-keyshortcuts", "I");
   await page.getByRole("button", { name: "Indexer main.rs" }).click();
-  await expect(ligne(page, "src/main.rs")).toContainText("indexé");
+  await expect(ligne(page, "src/main.rs")).toHaveAccessibleName("main.rs, modifié, indexé");
   await expect(page.getByRole("button", { name: "Indexer main.rs" })).toHaveCount(0);
+  await expect(changements(page).getByText("Modifications indexées")).toBeVisible();
   await message(page).fill("Simplifie main");
   await message(page).press("Control+Enter");
   await expect(page.getByText("Commit créé.")).toBeVisible();
   await expect(message(page)).toHaveValue("");
   await expect(ligne(page, "src/main.rs")).toHaveCount(0);
-  await expect(ligne(page, "README.md")).toContainText("modifié");
+  await expect(ligne(page, "README.md")).toHaveAccessibleName("README.md, modifié");
   await expect(ongletDiff(page, "main.rs")).toHaveCount(0);
   expect(g(dossier, "log", "-1", "--format=%s").trim()).toBe("Simplifie main");
 });
@@ -157,7 +164,7 @@ test("REQ023_AC6_touche_I_sur_la_ligne_indexe", async ({ page }) => {
   await panneauGit(page);
   await ligne(page, "README.md").focus();
   await page.keyboard.press("i");
-  await expect(ligne(page, "README.md")).toContainText("indexé");
+  await expect(ligne(page, "README.md")).toHaveAccessibleName("README.md, modifié, indexé");
 });
 
 test("REQ023_AC2_AC3_AC5_refus_du_commit_avec_messages_et_focus", async ({ page }) => {
@@ -273,6 +280,29 @@ test("REQ025_AC4_pendant_la_commande_le_bouton_est_occupe_et_les_autres_desactiv
   await expect(page.getByText("Push terminé.")).toBeVisible();
 });
 
+test("REQ031_AC10_pendant_un_pull_le_bouton_n_est_pas_attenue", async ({ page }) => {
+  const { dossier } = depotAvecDistant();
+  // Le serveur du dépôt distant attend un fichier que le test crée : aucune durée fixe.
+  const libere = path.join(path.dirname(dossier), "libere-pull");
+  const attente = path.join(path.dirname(dossier), "attente-pull.sh");
+  fs.writeFileSync(attente, `#!/bin/sh\nwhile [ ! -f "${libere}" ]; do sleep 0.1; done\nexec git-upload-pack "$@"\n`, { mode: 0o755 });
+  g(dossier, "config", "remote.origin.uploadpack", attente);
+  await ouvrir(page, dossier);
+  await panneauGit(page);
+  await page.getByRole("button", { name: "Pull" }).click();
+  const occupe = page.getByRole("button", { name: "Pull" });
+  await expect(occupe).toHaveAttribute("aria-busy", "true");
+  await expect(occupe).toHaveText("Pull…");
+  // Le panneau peut refaire ses boutons : on relit la valeur jusqu'à ce qu'elle vienne d'un bouton présent.
+  try {
+    await expect.poll(() => occupe.evaluate((e) => getComputedStyle(e).opacity)).toBe("1");
+    await expect.poll(() => page.getByRole("button", { name: "Push" }).evaluate((e) => getComputedStyle(e).opacity)).not.toBe("1");
+  } finally {
+    fs.writeFileSync(libere, "");
+  }
+  await expect(page.getByText("Pull terminé.")).toBeVisible();
+});
+
 test("REQ025_AC2_AC3_AC5_echec_du_push_message_de_git_et_renvoi_vers_le_shell", async ({ page }) => {
   const { dossier } = depotAvecDistant();
   fs.writeFileSync(path.join(dossier, ".git", "hooks", "pre-push"), "#!/bin/sh\necho push interdit ici >&2\nexit 1\n", { mode: 0o755 });
@@ -313,4 +343,45 @@ test("REQ034_AC8_commit_du_menu_montre_le_panneau_git_avec_le_focus_dans_message
   await expect(page.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
   expect(g(dossier, "log", "--oneline").trim().split("\n")).toHaveLength(1);
   expect(g(dossier, "diff", "--cached", "--name-only")).toBe("");
+});
+
+test("REQ022_AC6_AC10_dossier_parent_long_le_nom_et_la_lettre_restent_visibles_a_240_px", async ({ page }) => {
+  const dossier = depot();
+  const long = path.join("dossier-parent-tres-long-pour-la-coupure", "autre-niveau-encore-plus-long-que-le-precedent");
+  fs.mkdirSync(path.join(dossier, long), { recursive: true });
+  fs.writeFileSync(path.join(dossier, long, "fichier.txt"), "x\n");
+  await ouvrir(page, dossier);
+  const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+  await poignee.focus();
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
+  await expect(poignee).toHaveAttribute("aria-valuenow", "240");
+  await panneauGit(page);
+  const l = ligne(page, "fichier.txt");
+  await expect(l).toBeVisible();
+  await expect(async () => {
+    const m = await l.evaluate((e) => {
+      const r = (s) => e.querySelector(s).getBoundingClientRect().toJSON();
+      return { ligne: e.getBoundingClientRect().toJSON(), nom: r(".liste-libelle"), parent: r(".liste-parent"), lettre: r(".liste-statut") };
+    });
+    expect(m.nom.width).toBeGreaterThan(40);
+    expect(m.lettre.right).toBeLessThanOrEqual(m.ligne.right);
+    expect(m.parent.right).toBeLessThanOrEqual(m.lettre.left + 1);
+  }).toPass();
+});
+
+test("REQ031_AC1_V005_indexer_est_invisible_au_repos_et_visible_au_survol_et_sur_la_ligne_selectionnee", async ({ page }) => {
+  const dossier = depot();
+  fs.writeFileSync(path.join(dossier, "README.md"), "# Autre\n");
+  fs.writeFileSync(path.join(dossier, "neuf.txt"), "n\n");
+  await ouvrir(page, dossier);
+  await panneauGit(page);
+  const opacite = (nom) => page.getByRole("button", { name: nom }).evaluate((e) => getComputedStyle(e.parentElement).opacity);
+  await page.mouse.move(0, 0);
+  await expect.poll(() => opacite("Indexer README.md")).toBe("0");
+  await ligne(page, "README.md").hover();
+  await expect.poll(() => opacite("Indexer README.md")).toBe("1");
+  await expect.poll(() => opacite("Indexer neuf.txt")).toBe("0");
+  await ligne(page, "neuf.txt").click();
+  await page.mouse.move(0, 0);
+  await expect.poll(() => opacite("Indexer neuf.txt")).toBe("1");
 });

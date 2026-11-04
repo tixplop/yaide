@@ -107,8 +107,17 @@ test("REQ031_AC9_bouton_desactive_garde_son_info_bulle_sur_l_enveloppe", () => {
   vi.useRealTimers();
 });
 
-test("REQ031_AC1_icone_et_libelle_s_excluent", () => {
-  expect(() => bouton({ icone: "x", libelle: "Fermer" })).toThrow(/s'excluent/);
+test("REQ023_AC9_icone_et_libelle_s_affichent_ensemble_avec_info_bulle", () => {
+  const b = bouton({ icone: "check", libelle: "Commit", variante: "principal", raccourci: "Ctrl+Entrée" });
+  expect(b.textContent).toBe("Commit");
+  expect(b.querySelector("svg").getAttribute("data-icone")).toBe("check");
+  expect(b.classList.contains("ya-icon-btn")).toBe(false);
+  expect(b.parentElement.classList.contains("bouton-enveloppe")).toBe(true);
+  document.body.append(b.enveloppe);
+  b.focus();
+  expect(document.querySelector("[role=tooltip]").textContent).toBe("Commit (Ctrl+Entrée)");
+  b.blur();
+  b.enveloppe.remove();
 });
 
 test("REQ031_AC4_touche_distincte_du_texte_de_l_info_bulle", () => {

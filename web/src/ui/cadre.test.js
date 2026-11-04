@@ -15,7 +15,7 @@ function monter() {
   const c = cadre({
     barreTitre: { projet: "projet", chemin: "/home/x/projet", actions: [p("actions")] },
     rail: { onglets: p("rail"), commandes: [p("cmd")] },
-    panneau: { titre: "Fichiers", corps: p("corps"), pied: p("pied") },
+    panneau: { titre: "Fichiers", corps: p("corps") },
     principal: { bandeaux: p("bandeau"), ongletsFichiers: p("of"), questionOnglet: p("q"), fil: p("fil"), code: p("code"), shells: p("shells") },
     barreEtat: { branche: "main", position: "Ln 6, Col 31", langage: "Rust" },
   });
@@ -43,7 +43,7 @@ test("REQ028_AC8_ordre_dom_barre_rail_panneau_principal_puis_onglets_code_shells
   expect(c.querySelector("main").children[5].getAttribute("aria-label")).toBe("Hauteur des shells");
 });
 
-test("REQ028_AC2_titre_de_panneau_h2_et_pied_hors_du_corps_defilant", () => {
+test("REQ028_AC2_titre_de_panneau_h2_corps_defilant_et_aucun_pied", () => {
   const c = monter();
   const h = c.querySelector("aside h2");
   expect(h.textContent).toBe("Fichiers");
@@ -52,8 +52,7 @@ test("REQ028_AC2_titre_de_panneau_h2_et_pied_hors_du_corps_defilant", () => {
   expect(regle(".ya-panel-title")).toContain("text-transform: uppercase");
   expect(regle(".ya-panel-title")).toContain("color: var(--ink-muted)");
   expect(regle(".cadre-panneau-corps")).toContain("overflow: auto");
-  expect(c.querySelector(".cadre-panneau-pied").textContent).toBe("pied");
-  expect(c.querySelector(".cadre-panneau-corps").contains(c.querySelector(".cadre-panneau-pied"))).toBe(false);
+  expect(c.querySelector(".cadre-panneau-pied")).toBeNull();
 });
 
 test("REQ028_AC9_grille_par_tokens_et_page_qui_defile_sous_le_minimum", () => {
@@ -97,7 +96,7 @@ test("REQ032_AC1_les_poignees_du_cadre_transmettent_changement_et_fin", () => {
   expect(evts).toEqual([["c", "panneau", 256], ["f", "panneau", 256]]);
 });
 
-test("REQ028_AC2_panneau_sans_titre_ni_pied_n_ajoute_rien", () => {
+test("REQ028_AC2_panneau_sans_titre_n_ajoute_rien", () => {
   const c = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") } });
   expect(c.querySelector("h2")).toBeNull();
   expect(c.querySelector(".cadre-panneau-pied")).toBeNull();
