@@ -176,3 +176,32 @@ test("REQ036_AC3_rail_un_seul_filet_et_boutons_de_48_px", () => {
   expect(regle(".ya-activity")).toContain("width: var(--size-activity)");
   expect(regle(".ya-activity .onglet")).toContain("height: var(--size-activity)");
 });
+
+test("REQ040_AC9_zone_des_shells_masquee_puis_rendue_avec_sa_taille_choisie", () => {
+  const c = monter();
+  c.definirTailles({ shells: 200 });
+  const zoneShells = c.querySelector(".cadre-shells");
+  const poignee = c.poignees.shells;
+  c.definirShellsVisibles(false);
+  expect(zoneShells.hidden).toBe(true);
+  expect(poignee.hidden).toBe(true);
+  expect(regle(".cadre-shells[hidden]")).toContain("display: none");
+  expect(c.style.getPropertyValue("--taille-shells")).toBe("200px");
+  expect(zoneShells.textContent).toBe("shells");
+  c.definirShellsVisibles(true);
+  expect(zoneShells.hidden).toBe(false);
+  expect(poignee.hidden).toBe(false);
+  expect(c.style.getPropertyValue("--taille-shells")).toBe("200px");
+  expect(poignee.getAttribute("aria-valuenow")).toBe("200");
+});
+
+test("REQ040_AC9_mesurer_n_interroge_pas_une_zone_masquee", () => {
+  const c = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") } });
+  document.body.append(c);
+  Object.defineProperty(c.querySelector("aside"), "offsetWidth", { value: 240 });
+  Object.defineProperty(c.querySelector(".cadre-shells"), "offsetHeight", { value: 0 });
+  c.definirShellsVisibles(false);
+  c.mesurer();
+  expect(c.poignees.panneau.getAttribute("aria-valuenow")).toBe("240");
+  expect(c.poignees.shells.getAttribute("aria-valuenow")).not.toBe("0");
+});

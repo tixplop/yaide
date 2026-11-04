@@ -1,4 +1,5 @@
 import { icone as dessiner } from "./icones.js";
+import { compteur as creerCompteur } from "./compteur.js";
 import { infoBulle as creerInfoBulle } from "./info-bulle.js";
 
 const VARIANTES = ["principal", "secondaire", "discret", "danger"];
@@ -18,6 +19,8 @@ export function bouton({
   libelleEnCours,
   submit = false,
   taille = "normale",
+  ouvreMenu = false,
+  compteur,
 }) {
   if (!libelle && !icone) throw new Error("bouton : libelle requis");
   if (!VARIANTES.includes(variante)) throw new Error(`bouton : variante inconnue « ${variante} »`);
@@ -38,6 +41,30 @@ export function bouton({
   if (touche) b.setAttribute("aria-keyshortcuts", touche);
   if (presse !== undefined) b.setAttribute("aria-pressed", String(Boolean(presse)));
   b.disabled = desactive;
+
+  if (ouvreMenu) {
+    b.setAttribute("aria-haspopup", "menu");
+    b.setAttribute("aria-expanded", "false");
+  }
+  b.definirOuvert = (oui) => b.setAttribute("aria-expanded", String(Boolean(oui)));
+  let badge = null;
+  b.definirCompteur = (n) => {
+    if (!badge) {
+      badge = creerCompteur({ valeur: n });
+      badge.setAttribute("aria-hidden", "true");
+      b.append(badge);
+    } else {
+      badge.textContent = String(n);
+      badge.hidden = n === 0;
+    }
+  };
+  // Garde le contour de `:focus-visible` quand le focus est donné par code après un clic.
+  b.poserFocus = () => {
+    b.classList.add("ya-focus-garde");
+    b.addEventListener("blur", () => b.classList.remove("ya-focus-garde"), { once: true });
+    b.focus();
+  };
+  if (compteur !== undefined) b.definirCompteur(compteur);
 
   if (icone) {
     b.classList.add("bouton-icone");

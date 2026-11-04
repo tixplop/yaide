@@ -69,6 +69,7 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}
   const lim = limites({ L: window.innerWidth, H: window.innerHeight });
   const choisies = {};
   const mesures = { panneau: () => aside.offsetWidth, shells: () => racine.querySelector(".cadre-shells").offsetHeight };
+  let shellsVisibles = true;
   const creer = (cle, orientation, nomAccessible) =>
     poignee({
       orientation,
@@ -118,9 +119,15 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}
     }
   };
   racine.poignees = poignees;
+  // Sans shell visible, la zone et sa poignée sortent de la page ; les terminaux restent montés et la taille choisie ne change pas.
+  racine.definirShellsVisibles = (oui) => {
+    shellsVisibles = Boolean(oui);
+    main.querySelector(".cadre-shells").hidden = !shellsVisibles;
+    poignees.shells.hidden = !shellsVisibles;
+  };
   // À appeler une fois le cadre dans la page : sans taille choisie, pose la taille mesurée sur les poignées.
   racine.mesurer = () => {
-    for (const cle of ["panneau", "shells"]) if (!choisies[cle]) poignees[cle].definir({ valeur: mesures[cle]() });
+    for (const cle of ["panneau", "shells"]) if (!choisies[cle] && (cle !== "shells" || shellsVisibles)) poignees[cle].definir({ valeur: mesures[cle]() });
   };
   racine.definirTailles(tailles);
   return racine;

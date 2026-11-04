@@ -75,3 +75,10 @@ test("REQ031_AC3_esbuild_garde_les_notices_ISC_et_MIT_dans_le_bundle", () => {
   expect(sortie).toContain("Copyright (c) 2013-present Cole Bemis");
   expect(sortie).toContain("Permission is hereby granted, free of charge, to any person obtaining a copy");
 });
+
+test("REQ040_AC15_icones_minimize_2_et_layers_du_sprite_de_la_maquette", () => {
+  expect(NOMS).toContain("minimize-2");
+  expect(NOMS).toContain("layers");
+  expect(icone("minimize-2").innerHTML).toContain('d="m14 10 7-7"');
+  expect(icone("layers").innerHTML).toContain("M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08");
+});

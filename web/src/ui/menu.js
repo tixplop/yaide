@@ -79,6 +79,7 @@ export function menu({ nom, groupes, position, surFermeture }) {
   // Le menu du navigateur ne s'ouvre jamais par-dessus celui de Yaide.
   racine.addEventListener("contextmenu", (e) => e.preventDefault());
   const commandes = [];
+  const donnees = [];
   pleins.forEach((g, i) => {
     if (i > 0) {
       const s = document.createElement("div");
@@ -109,6 +110,7 @@ export function menu({ nom, groupes, position, surFermeture }) {
         if (ev.button === 0) choisir(c);
       });
       commandes.push(e);
+      donnees.push(c);
       racine.append(e);
     }
   });
@@ -147,7 +149,7 @@ export function menu({ nom, groupes, position, surFermeture }) {
       return;
     } else if ((e.key === "Enter" || e.key === " ") && i >= 0) {
       arreter(e);
-      choisir(pleins.flat()[i]);
+      choisir(donnees[i]);
       return;
     } else return;
     e.preventDefault();
@@ -160,6 +162,28 @@ export function menu({ nom, groupes, position, surFermeture }) {
   racine.style.left = `${p.left}px`;
   racine.style.top = `${p.top}px`;
 
+  // La commande disparaît ; la suivante prend le focus si elle l'avait, sinon la précédente.
+  function retirer(libelle) {
+    const i = donnees.findIndex((c) => c.libelle === libelle);
+    if (i < 0) return;
+    const avaitLeFocus = document.activeElement === commandes[i];
+    const e = commandes[i];
+    commandes.splice(i, 1);
+    donnees.splice(i, 1);
+    e.remove();
+    // Un séparateur ne reste jamais en tête, en queue ou en double.
+    for (const s of [...racine.querySelectorAll(".menu-separateur")]) {
+      const a = s.previousElementSibling;
+      const b = s.nextElementSibling;
+      if (!a || !b || b.classList.contains("menu-separateur")) s.remove();
+    }
+    if (commandes.length === 0) {
+      fermer();
+      return;
+    }
+    if (avaitLeFocus) commandes[Math.min(i, commandes.length - 1)].focus();
+  }
+
   ouvert = { racine, fermer };
   if (!ecoutes) {
     ecoutes = true;
@@ -170,5 +194,5 @@ export function menu({ nom, groupes, position, surFermeture }) {
   window.addEventListener("blur", surPerteDeFocus);
   window.addEventListener("resize", surPerteDeFocus);
   commandes[0]?.focus();
-  return { racine, fermer };
+  return { racine, fermer, retirer };
 }

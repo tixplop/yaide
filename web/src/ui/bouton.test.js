@@ -230,3 +230,53 @@ test("REQ031_AC7_bouton_desactive_ne_reagit_pas_mais_le_bouton_en_cours_montre_s
   expect(regle(".bouton-enveloppe > :disabled")).toContain("pointer-events: none");
   expect(regle('.bouton-enveloppe:has([aria-busy="true"])')).toContain("cursor: progress");
 });
+
+test("REQ040_AC16_bouton_ouvre_menu_porte_aria_haspopup_et_expanded_faux", () => {
+  const b = bouton({ icone: "layers", nomAccessible: "Shells réduits", ouvreMenu: true });
+  expect(b.getAttribute("aria-haspopup")).toBe("menu");
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  b.definirOuvert(true);
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  b.definirOuvert(false);
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  const autre = bouton({ icone: "layers", nomAccessible: "x" });
+  expect(autre.hasAttribute("aria-haspopup")).toBe(false);
+  expect(autre.hasAttribute("aria-expanded")).toBe(false);
+});
+
+test("REQ040_AC13_compteur_absent_a_zero_present_a_deux_et_hors_du_nom_accessible", () => {
+  const b = bouton({ icone: "layers", nomAccessible: "Shells réduits", compteur: 0 });
+  const badge = () => b.querySelector(".ya-badge");
+  expect(badge().hidden).toBe(true);
+  expect(badge().getAttribute("aria-hidden")).toBe("true");
+  b.definirCompteur(2);
+  expect(badge().classList.contains("ya-badge-accent")).toBe(false);
+  expect(badge().hidden).toBe(false);
+  expect(badge().textContent).toBe("2");
+  expect(b.getAttribute("aria-label")).toBe("Shells réduits");
+  b.definirCompteur(0);
+  expect(badge().hidden).toBe(true);
+  expect(b.querySelectorAll(".ya-badge").length).toBe(1);
+  const sans = bouton({ icone: "layers", nomAccessible: "x" });
+  expect(sans.querySelector(".ya-badge")).toBeNull();
+  sans.definirCompteur(3);
+  expect(sans.querySelector(".ya-badge").textContent).toBe("3");
+});
+
+test("REQ040_AC21_poserFocus_donne_le_focus_et_un_contour_retire_au_blur", () => {
+  const b = bouton({ icone: "layers", nomAccessible: "Shells réduits" });
+  document.body.append(b);
+  b.poserFocus();
+  expect(document.activeElement).toBe(b);
+  expect(b.classList.contains("ya-focus-garde")).toBe(true);
+  expect(regle(".cadre-rail-commandes .ya-icon-btn.ya-focus-garde")).toContain("outline: 2px solid var(--accent-fg)");
+  b.blur();
+  expect(b.classList.contains("ya-focus-garde")).toBe(false);
+  b.remove();
+});
+
+test("REQ040_AC13_compteur_du_rail_a_les_dimensions_de_celui_du_rail_d_onglets_et_menu_ouvert_en_ink", () => {
+  expect(regle(".cadre-rail-commandes .ya-badge")).toContain("height: 14px");
+  expect(regle(".cadre-rail-commandes .ya-badge")).toContain("font-size: 9.5px");
+  expect(regle('.cadre-rail-commandes .ya-icon-btn[aria-expanded="true"]')).toContain("color: var(--ink)");
+});

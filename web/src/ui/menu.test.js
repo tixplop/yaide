@@ -323,3 +323,65 @@ test("REQ034_AC11_contextmenu_sur_une_commande_n_ouvre_pas_le_menu_du_navigateur
   expect(e.defaultPrevented).toBe(true);
   expect(document.querySelectorAll(".menu").length).toBe(1);
 });
+
+const trois = () => [[{ libelle: "shell 1" }, { libelle: "shell 2" }], [{ libelle: "shell 3" }]];
+const ouvrirReduits = (groupes = trois(), choix = {}) => {
+  const m = menu({ nom: "Shells réduits", groupes, position: { x: 10, y: 10 }, surFermeture: choix.surFermeture ?? (() => {}) });
+  ouverts.push(m);
+  return m;
+};
+const noms = (m) => [...m.racine.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent);
+
+test("REQ040_AC19_retirer_la_commande_qui_a_le_focus_donne_le_focus_a_la_suivante", () => {
+  const m = ouvrirReduits();
+  const cmds = [...m.racine.querySelectorAll('[role="menuitem"]')];
+  cmds[1].focus();
+  m.retirer("shell 2");
+  expect(noms(m)).toEqual(["shell 1", "shell 3"]);
+  expect(document.activeElement.textContent).toBe("shell 3");
+});
+
+test("REQ040_AC19_retirer_la_derniere_commande_focalisee_donne_le_focus_a_la_precedente", () => {
+  const m = ouvrirReduits();
+  [...m.racine.querySelectorAll('[role="menuitem"]')][2].focus();
+  m.retirer("shell 3");
+  expect(document.activeElement.textContent).toBe("shell 2");
+  expect(m.racine.querySelectorAll('[role="separator"]').length).toBe(0);
+});
+
+test("REQ040_AC19_retirer_une_autre_commande_ne_deplace_pas_le_focus", () => {
+  const m = ouvrirReduits();
+  const cmds = [...m.racine.querySelectorAll('[role="menuitem"]')];
+  cmds[2].focus();
+  m.retirer("shell 1");
+  expect(document.activeElement.textContent).toBe("shell 3");
+  m.retirer("inconnu");
+  expect(noms(m)).toEqual(["shell 2", "shell 3"]);
+});
+
+test("REQ040_AC19_retirer_toutes_les_commandes_ferme_le_menu", () => {
+  const surFermeture = vi.fn();
+  const m = ouvrirReduits([[{ libelle: "a" }, { libelle: "b" }]], { surFermeture });
+  m.retirer("a");
+  expect(surFermeture).not.toHaveBeenCalled();
+  m.retirer("b");
+  expect(surFermeture).toHaveBeenCalledTimes(1);
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+});
+
+test("REQ040_AC19_le_clavier_reste_aligne_sur_les_commandes_apres_un_retrait", () => {
+  const choisi = vi.fn();
+  const m = ouvrirReduits([[{ libelle: "a", surChoix: () => choisi("a") }, { libelle: "b", surChoix: () => choisi("b") }], [{ libelle: "c", surChoix: () => choisi("c") }]]);
+  m.retirer("a");
+  const cmds = [...m.racine.querySelectorAll('[role="menuitem"]')];
+  cmds[0].focus();
+  cle(cmds[0], "Enter");
+  expect(choisi).toHaveBeenCalledWith("b");
+});
+
+test("REQ040_AC18_menu_plus_haut_que_la_fenetre_defile_et_placer_le_borne", () => {
+  expect(regle(".ya-menu")).toContain("max-height: calc(100vh - 2 * var(--space-1))");
+  expect(regle(".ya-menu")).toContain("overflow-y: auto");
+  // Bouton du bas du rail : le menu, plus haut que la place dessous, est retourné puis borné à la fenêtre.
+  expect(placer({ x: 52, y: 450 }, { largeur: 200, hauteur: 470 }, { largeur: 800, hauteur: 480 })).toEqual({ left: 52, top: 0 });
+});
