@@ -112,7 +112,7 @@ test("REQ011_AC8_deux_main_rs_le_dossier_parent_suit_le_nom", async ({ page }) =
   await expect(onglet(page, "main.rs · tests")).toHaveAttribute("title", "tests/main.rs");
   const attendu = await page.evaluate(() => {
     const i = document.createElement("i");
-    i.style.color = "var(--texte-attenue)";
+    i.style.color = "var(--ink-muted)";
     document.body.append(i);
     return getComputedStyle(i).color;
   });

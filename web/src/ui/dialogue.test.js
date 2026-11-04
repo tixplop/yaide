@@ -87,10 +87,10 @@ test("REQ028_AC10_en_cours_desactive_les_actions", () => {
   expect(annuler.disabled || ok.disabled).toBe(false);
 });
 
-test("REQ028_AC10_position_haut_sans_titre_visible_nom_par_aria_label", () => {
-  const { d } = monter({ titre: "Ouvrir un fichier", position: "haut" });
+test("REQ028_AC10_position_palette_sans_titre_visible_nom_par_aria_label", () => {
+  const { d } = monter({ titre: "Ouvrir un fichier", position: "palette" });
   const el = d.element;
-  expect(el.classList.contains("dialogue-haut")).toBe(true);
+  expect(el.classList.contains("ya-palette")).toBe(true);
   expect(el.getAttribute("aria-label")).toBe("Ouvrir un fichier");
   expect(el.querySelector("h2")).toBeNull();
   expect(el.hasAttribute("aria-labelledby")).toBe(false);
@@ -102,6 +102,7 @@ test("REQ028_AC10_dialogue_erreurs", () => {
   expect(() => dialogue({ titre: "t", contenu: [], surAnnuler() {} })).toThrow(/focusInitial/);
   expect(() => dialogue({ titre: "t", contenu: [], focusInitial: f })).toThrow(/surAnnuler/);
   expect(() => dialogue({ titre: "t", contenu: [], focusInitial: f, surAnnuler() {}, position: "bas" })).toThrow(/position/);
+  expect(() => dialogue({ titre: "t", contenu: [], focusInitial: f, surAnnuler() {}, position: "haut" })).toThrow(/position/);
 });
 
 test("REQ036_AC1_style_dialogue_centre_tokens", () => {
@@ -120,10 +121,8 @@ test("REQ036_AC1_style_dialogue_centre_tokens", () => {
   expect(d.element.querySelector("h2").classList.contains("ya-dialog-title")).toBe(true);
 });
 
-test("REQ028_AC3_dialogue_haut_reste_en_service_jusqu_a_T_039", () => {
-  expect(regle(".dialogue-haut")).toContain("width: var(--largeur-ouverture)");
-  expect(regle(".dialogue-haut")).toContain("margin-top: 15vh");
-  expect(regle(".dialogue-haut")).toContain("padding: var(--esp-3)");
+test("REQ028_AC3_dialogue_actions_a_droite_et_plus_de_position_haut", () => {
+  expect(css).not.toMatch(/dialogue-haut|largeur-ouverture/);
   expect(regle(".dialogue-actions")).toContain("justify-content: flex-end");
 });
 
@@ -138,7 +137,6 @@ test("C007_palette_sous_la_barre_de_titre_sans_titre_visible_voile_transparent",
   expect(regle(".ya-palette")).toContain("padding: 6px");
   expect(regle(".ya-palette")).toContain("border-radius: var(--radius-md)");
   expect(regle(".ya-palette::backdrop")).toContain("background: transparent");
-  expect(regle(".ya-palette .liste-marque")).toContain("display: none");
   expect(regle(".ya-palette .liste-ligne")).toContain("height: 24px");
   expect(regle(".ya-palette .liste-ligne")).toContain("border-radius: var(--radius-xs)");
   expect(regle(".ya-palette .liste-trouve")).toContain("color: var(--accent-fg)");

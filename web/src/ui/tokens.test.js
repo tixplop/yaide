@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { expect, test } from "vitest";
 
 const css = readFileSync("web/src/ui/tokens.css", "utf8");
@@ -161,13 +161,37 @@ test("REQ033_AC8_les_trois_fonds_de_zone_sont_distincts_dans_les_deux_themes", (
   }
 });
 
-test("REQ036_AC1_les_anciens_noms_sont_des_alias_des_nouveaux", () => {
-  const attendus = {
-    "--fond": "--bg-200", "--fond-rail": "--bg-000", "--fond-shells": "--bg-000", "--surface": "--bg-100", "--surface-haute": "--bg-300",
-    "--texte": "--ink", "--texte-attenue": "--ink-muted", "--texte-sur-couleur": "--on-accent", "--bordure": "--line",
-    "--bordure-champ": "--line-strong", "--police-ui": "--font-sans", "--police-code": "--font-mono",
-  };
-  for (const theme of THEMES) for (const [ancien, nouveau] of Object.entries(attendus)) expect(T[theme][ancien], ancien).toBe(`var(${nouveau})`);
+const ANCIENS = [
+  "fond", "fond-rail", "fond-shells", "surface", "surface-haute", "texte", "texte-attenue", "texte-sur-couleur", "bordure", "bordure-champ",
+  "accent-survol", "succes", "alerte", "erreur", "erreur-survol", "statut-modifie", "statut-nouveau", "statut-renomme", "statut-conflit",
+  "message-info", "message-succes", "message-alerte", "message-erreur", "icone-naviguer", "icone-distant", "icone-dossier",
+  "code-mot-cle", "code-chaine", "code-nombre", "code-fonction", "code-type", "police-ui", "police-code", "ombre-dialogue",
+  "graisse-normale", "esp-1", "esp-2", "esp-3", "esp-4", "esp-5", "esp-6", "rayon-petit", "rayon-dialogue", "hauteur-onglet", "hauteur-controle", "largeur-ouverture",
+];
+
+// Fichiers .css et .js de web/src, tests exclus.
+function sources(dossier = "web/src") {
+  const fichiers = [];
+  for (const e of readdirSync(dossier, { withFileTypes: true })) {
+    const chemin = `${dossier}/${e.name}`;
+    if (e.isDirectory()) fichiers.push(...sources(chemin));
+    else if (/\.(css|js)$/.test(e.name) && !/\.test\.js$/.test(e.name)) fichiers.push(chemin);
+  }
+  return fichiers;
+}
+
+test("REQ036_AC1_aucun_ancien_nom_de_token_dans_web_src", () => {
+  const motif = new RegExp(`--(${ANCIENS.join("|")})(?![a-z0-9-])`);
+  for (const f of [...sources(), "web/index.html"]) expect(readFileSync(f, "utf8"), f).not.toMatch(motif);
+  expect(css).not.toMatch(/Transition/);
+});
+
+test("REQ036_AC1_aucune_couleur_en_dur_hors_de_tokens_css", () => {
+  for (const f of sources().filter((f) => !f.endsWith("ui/tokens.css") && !f.includes("/polices/"))) {
+    const texte = readFileSync(f, "utf8").replace(/\/\*[^]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(texte, f).not.toMatch(/#[0-9a-fA-F]{3,8}\b(?![-\w])/);
+    expect(texte, f).not.toMatch(/\brgba?\(|\bhsla?\(/);
+  }
 });
 
 test("REQ036_AC2_le_css_livre_n_a_ni_import_ni_autre_origine", () => {

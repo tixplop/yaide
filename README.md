@@ -77,3 +77,20 @@ Yaide écoute sur toutes les adresses de la machine. Le mot de passe est la seul
 « Nouveau shell » et « Fermer le shell » sont des boutons en bas du rail, à gauche.
 
 Quand le focus est dans un shell, toutes les touches que le navigateur laisse passer vont au shell, dont Ctrl+S et Ctrl+P. Seul Ctrl+Maj+F reste à Yaide.
+
+## Thème clair
+
+Le bouton « Thème clair », à droite de la barre de titre, fait passer toute l'interface (éditeur et shells compris) en clair, sans recharger la page ni perdre le texte ou l'affichage des shells. Un nouveau clic revient au sombre. Le choix est gardé dans le navigateur, pour cette adresse, et s'applique dès l'affichage, y compris sur l'écran de connexion. Le sombre est le thème par défaut.
+
+## Ce qui a changé de place
+
+- Le rail, à gauche, porte les panneaux Fichiers, Recherche et Git (Git y affiche le nombre de changements), puis « Nouveau shell » et « Fermer le shell » en bas. La déconnexion est à droite de la barre de titre.
+- L'ouverture d'un fichier par son nom est le bouton central de la barre de titre (ou Ctrl+P) ; sa liste s'ouvre juste en dessous.
+- La branche, la position du curseur et le langage du fichier sont dans la barre d'état, en bas.
+- Le fil d'Ariane du fichier ouvert est au-dessus du code ; les statuts git (M, A, D, U, C) sont dans l'arborescence et sur les onglets.
+- Les largeurs du panneau et la hauteur des shells se règlent en tirant les poignées, ou avec les flèches quand elles ont le focus.
+- Les commandes sont des boutons à icône ; leur nom apparaît dans une info-bulle.
+
+## Police et licences
+
+Le code (éditeur et shells) utilise JetBrains Mono, servie par le binaire lui-même : aucune requête ne part vers une autre adresse. L'interface garde la police du système. La police est sous licence SIL Open Font License 1.1 ; le texte complet est servi par Yaide à l'adresse `/polices/OFL.txt` (source : `web/src/ui/polices/OFL.txt`).

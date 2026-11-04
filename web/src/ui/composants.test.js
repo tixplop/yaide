@@ -13,7 +13,7 @@ test("REQ028_AC3_composants_n_utilisent_que_des_tokens", () => {
   // Les règles `ya-` reprennent les tailles de bundle.css (design-system.md, Typographie) ; les autres passent par les tokens.
   const hors = css.replace(/\/\*[^]*?\*\//g, "").replace(/[^{}]*\bya-[^{}]*\{[^}]*\}/g, "");
   expect(hors).not.toMatch(/\d+px/);
-  expect(css).not.toMatch(/transition|animation/);
+  expect(css).not.toMatch(/animation/);
 });
 
 // Corps de la règle dont le sélecteur (liste exacte) est donné.
@@ -65,9 +65,9 @@ test("REQ028_AC3_message_detail_defile_en_police_mono", () => {
 });
 
 test("REQ028_AC3_indication_style_et_masquage", () => {
-  a(".indication", "color: var(--texte-attenue)");
-  a(".indication", "font: var(--texte-base) var(--police-ui)");
-  a(".indication", "padding: var(--esp-3)");
+  a(".indication", "color: var(--ink-muted)");
+  a(".indication", "font: var(--texte-base) var(--font-sans)");
+  a(".indication", "padding: var(--space-2)");
   a(".indication[hidden]", "display: none");
 });
 
@@ -77,4 +77,20 @@ test("REQ038_AC5_le_champ_suit_le_theme_de_la_page", () => {
   const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
   expect(tokens).toMatch(/\[data-theme="dark"\]\s*{\s*color-scheme:\s*dark;/);
   expect(tokens).toMatch(/\[data-theme="light"\]\s*{\s*color-scheme:\s*light;/);
+});
+
+test("REQ036_AC13_seul_le_chevron_de_l_arbre_a_une_transition_coupee_par_reduced_motion", () => {
+  const sans = css.replace(/\/\*[^]*?\*\//g, "");
+  const lignes = sans.split("\n").filter((l) => /transition/.test(l));
+  expect(lignes).toHaveLength(4);
+  expect(lignes[0]).toMatch(/^\.liste-chevron svg \{[^}]*transition: transform \.12s;/);
+  expect(lignes[1]).toMatch(/^@media \(prefers-reduced-motion: reduce\) \{ \.liste-chevron svg \{ transition: none; \} \}/);
+  a('[aria-expanded="true"] > .liste-chevron svg', "transform: rotate(90deg)");
+});
+
+test("REQ036_AC13_chaque_transition_de_xterm_css_est_annulee", () => {
+  const xterm = readFileSync("node_modules/@xterm/xterm/css/xterm.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  const transitions = [...xterm.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((m) => /transition/.test(m[2])).map((m) => m[1].trim().replace(/\s*>\s*/g, ">"));
+  expect(transitions.length).toBeGreaterThan(0);
+  for (const sel of transitions) expect(regle(sel), sel).toMatch(/transition: none/);
 });

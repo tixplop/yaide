@@ -71,7 +71,7 @@
 .ya-badge-accent { background: var(--accent); color: var(--on-accent); }
 .ya-badge[hidden] { display: none; }
 
-.indication { display: flex; flex-direction: column; align-items: flex-start; gap: var(--esp-3); padding: var(--esp-3); color: var(--texte-attenue); font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); }
+.indication { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-2); color: var(--ink-muted); font: var(--texte-base) var(--font-sans); font-family: var(--font-sans); }
 .indication[hidden] { display: none; }
 
 /* C-005 : onglets. Trois présentations : `ya-tabs` (fichiers), `ya-term-tabs` (shells), `ya-activity` (rail). */
@@ -150,11 +150,15 @@
 .liste-chevron { flex: none; display: inline-flex; width: var(--taille-icone-petite); color: var(--ink-muted); }
 .liste-icone { flex: none; display: inline-flex; color: var(--couleur-icone, var(--ink-muted)); }
 .ya-tree .liste-icone svg { width: 15px; height: 15px; }
-.liste-chevron svg { width: var(--taille-icone-petite); height: var(--taille-icone-petite); }
+.liste-chevron svg { width: var(--taille-icone-petite); height: var(--taille-icone-petite); transition: transform .12s; }
+[aria-expanded="true"] > .liste-chevron svg { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .liste-chevron svg { transition: none; } }
+/* xterm.css anime sa barre de défilement : seul le chevron a une transition (AC-036-13). */
+.xterm .xterm-scrollable-element>.visible { transition: none; }
+.xterm .xterm-scrollable-element>.invisible.fade { transition: none; }
 .liste-dossier { color: var(--ink-muted); }
 .liste-fichier { color: var(--couleur-icone, var(--ink-muted)); }
 .liste-code { font-family: var(--font-mono); }
-.liste-marque { flex: none; min-width: var(--space-3); }
 .liste-compteur { flex: none; }
 .liste-groupe .liste-compteur { margin-left: var(--space-2); vertical-align: middle; }
 .liste-ligne:hover { background: var(--hover); }
@@ -206,17 +210,15 @@
   font-family: var(--font-sans);
 }
 .dialogue::backdrop { background: var(--voile); }
-.dialogue-haut { width: var(--largeur-ouverture); margin-top: 15vh; padding: var(--esp-3); }
 /* Palette : ancrée 4 px sous la barre de titre, centrée, sans titre visible. */
 .ya-palette { width: var(--largeur-palette); margin: calc(var(--size-titlebar) + 4px) auto 0; padding: 6px; border-radius: var(--radius-md); }
 .ya-palette::backdrop { background: transparent; }
 .ya-palette .liste-ligne { height: 24px; border-radius: var(--radius-xs); }
-.ya-palette .liste-marque { display: none; }
 .ya-palette .liste-trouve { color: var(--accent-fg); font-weight: var(--graisse-forte); }
 .dialogue-titre { margin: 0 0 var(--space-4); }
 .ya-dialog-title { font-size: 14px; line-height: 20px; font-weight: var(--graisse-forte); }
-.dialogue-contenu { display: flex; flex-direction: column; gap: var(--esp-3); }
-.dialogue-actions { display: flex; justify-content: flex-end; gap: var(--esp-2); margin-top: var(--esp-4); }
+.dialogue-contenu { display: flex; flex-direction: column; gap: var(--space-2); }
+.dialogue-actions { display: flex; justify-content: flex-end; gap: var(--space-1); margin-top: var(--space-3); }
 
 /* C-013 : menu (`ya-menu`) */
 .menu {
@@ -352,11 +354,11 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 body { margin: 0; }
 
 /* Écran de connexion (V-001). */
-.connexion { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg-000); color: var(--texte); font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); }
-.connexion-form { display: flex; flex-direction: column; gap: var(--esp-3); width: var(--largeur-connexion); }
+.connexion { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg-000); color: var(--ink); font: var(--texte-base) var(--font-sans); font-family: var(--font-sans); }
+.connexion-form { display: flex; flex-direction: column; gap: var(--space-2); width: var(--largeur-connexion); }
 .connexion-symbole { align-self: center; }
-.connexion-titre { margin: 0; text-align: center; font: var(--texte-titre) var(--police-ui); font-family: var(--police-ui); font-weight: var(--graisse-forte); }
-.connexion-chemin { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: center; color: var(--texte-attenue); }
+.connexion-titre { margin: 0; text-align: center; font: var(--texte-titre) var(--font-sans); font-family: var(--font-sans); font-weight: var(--graisse-forte); }
+.connexion-chemin { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: center; color: var(--ink-muted); }
 
 /* Zone des shells (V-002) : onglets, puis terminaux. */
 .cadre-shells { display: flex; flex-direction: column; }
@@ -373,7 +375,7 @@ body { margin: 0; }
 .fichiers-entete .bouton-enveloppe { flex: none; display: flex; }
 .fichiers-arbre { flex: 1 1 auto; min-height: 0; }
 
-.recherche-corps { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2); }
+.recherche-corps { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1); }
 .recherche-corps[hidden] { display: none; }
 .recherche-resume { margin: 0; padding: 0 var(--space-1); font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
 .recherche-corps .liste-groupe { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-2); color: var(--ink); font-weight: normal; }

@@ -113,3 +113,22 @@ test("REQ034_ouvrir_le_menu_de_l_arborescence_ne_declenche_aucune_requete_hors_o
   const hors = requetes.filter((u) => !u.startsWith(yaide.origine + "/") && !/^(data|blob|about):/.test(u));
   expect(hors).toEqual([]);
 });
+
+test("REQ036_AC11_la_police_est_servie_par_le_binaire_avec_sa_licence_et_sans_autre_origine", async ({ page }) => {
+  await lancerLivre(depotExemple());
+  const requetes = [];
+  page.on("request", (r) => requetes.push(r.url()));
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("treeitem", { name: nomLigne("src") }).click();
+  await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
+  await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+  await page.evaluate(() => Promise.all(["13.5px", "italic 13.5px", "600 13.5px"].map((f) => document.fonts.load(`${f} "JetBrains Mono"`))));
+  expect(await page.evaluate(() => document.fonts.check('13.5px "JetBrains Mono"'))).toBe(true);
+  expect(await page.evaluate(() => document.fonts.check('italic 13.5px "JetBrains Mono"') && document.fonts.check('600 13.5px "JetBrains Mono"'))).toBe(true);
+  expect(requetes.some((u) => u === `${yaide.origine}/polices/JetBrainsMono-Regular.woff2`)).toBe(true);
+  const licence = await page.request.get(`${yaide.origine}/polices/OFL.txt`);
+  expect(licence.status()).toBe(200);
+  expect(await licence.text()).toContain("SIL OPEN FONT LICENSE");
+  const horsOrigine = requetes.filter((u) => !u.startsWith(yaide.origine + "/") && !/^(data|blob|about):/.test(u));
+  expect(horsOrigine).toEqual([]);
+});

@@ -92,6 +92,23 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     return sortie;
   }
 
+  // La liste est recréée à chaque affichage : un dossier dont l'état a changé repart de l'angle d'avant pour que la transition du chevron joue.
+  let dossiersAffiches = new Map();
+  function animerChevrons(arbre) {
+    const maintenant = new Map();
+    for (const e of arbre.querySelectorAll("[aria-expanded][data-chemin]")) {
+      const ouvert = e.getAttribute("aria-expanded") === "true";
+      maintenant.set(e.dataset.chemin, ouvert);
+      const avant = dossiersAffiches.get(e.dataset.chemin);
+      const svg = e.querySelector(".liste-chevron svg");
+      if (avant === undefined || avant === ouvert) continue;
+      svg.style.transform = `rotate(${avant ? 90 : 0}deg)`;
+      svg.getBoundingClientRect();
+      svg.style.transform = "";
+    }
+    dossiersAffiches = maintenant;
+  }
+
   function afficher(focaliser = false) {
     if (detruit) return;
     const avait = focaliser || zoneArbre.contains(document.activeElement);
@@ -119,6 +136,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
       if (!ligne.id.startsWith(FACTICE)) arbre.children[i].dataset.chemin = ligne.id;
     });
     zoneArbre.replaceChildren(arbre);
+    animerChevrons(arbre);
     if (avait && selection !== null) ligneDe(selection)?.focus();
   }
 

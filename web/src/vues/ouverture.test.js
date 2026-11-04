@@ -81,7 +81,6 @@ test("REQ036_AC9_ouverture_en_palette_caracteres_trouves_en_gras", async () => {
   const { entree, v } = await ouvrir();
   const dlg = document.querySelector("dialog");
   expect(dlg.classList.contains("ya-palette")).toBe(true);
-  expect(dlg.classList.contains("dialogue-haut")).toBe(false);
   taper(entree, "MAIN");
   expect(dlg.querySelector("[role=option] b.liste-trouve").textContent).toBe("main");
   expect(dlg.querySelector("[role=option]").classList.contains("liste-courante")).toBe(true);

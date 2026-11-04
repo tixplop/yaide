@@ -194,6 +194,20 @@ async function relancerSur(page, dossier) {
   await ouvrirYaide(page, yaide.origine);
 }
 
+/** Relit dans le thème courant (sombre), puis en clair, et rend le thème comme il était. `lecture(theme)` fait les assertions. */
+async function dansLesDeuxThemes(page, lecture) {
+  const bascule = page.getByRole("button", { name: "Thème clair" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await lecture("dark");
+  await bascule.click();
+  await page.mouse.move(0, 400);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await lecture("light");
+  await bascule.click();
+  await page.mouse.move(0, 400);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+}
+
 /** Les commandes à icône visibles : nom accessible, icône, texte visible et taille. Le nombre de changements du rail est hors d'AC-031-1 (AC-037-7). */
 const commandes = (page) =>
   page.evaluate(() =>
@@ -275,47 +289,80 @@ test("REQ035_AC11_info_bulles_a_droite_et_bouton_desactive_sans_arret_de_Tab", a
   expect(await zoneDuFocus(page)).toBe("panneau");
 });
 
-test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_arbre_relus_au_style_calcule", async ({ page }) => {
+test("REQ033_AC1_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_arbre_relus_au_style_calcule_dans_les_deux_themes", async ({ page }) => {
   await relancerSur(page, depotStatuts());
   await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
   await expect(page.getByRole("button", { name: "Aperçu", exact: true })).toBeVisible();
-  const t = await resoudre(page, ["--fond-rail", "--surface", "--fond", "--fond-shells", "--ink-muted", "--ink-faint", "--git-ignored", "--icone-naviguer", "--texte"]);
-  const fond = (selecteur) => lire(page.locator(selecteur).first(), "backgroundColor");
-  expect(await fond(".cadre-rail")).toBe(t["--fond-rail"]);
-  expect(await fond(".cadre-panneau")).toBe(t["--surface"]);
-  expect(await fond(".cadre-code .cm-editor")).toBe(t["--fond"]);
-  expect(await fond(".cadre-shells")).toBe(t["--fond-shells"]);
-  // Le rail et les shells partagent le fond du cadre (AC-033-1) : trois fonds distincts.
-  expect(new Set([t["--fond-rail"], t["--surface"], t["--fond"], t["--fond-shells"]]).size).toBe(3);
   const pied = (nom) => page.locator(`.fichiers-entete [aria-label="${nom}"]`);
   const ailleurs = (nom) => page.locator(`[aria-label="${nom}"]`).first();
-  const icones = [
-    [pied("Nouveau fichier"), "--ink-muted"],
-    [pied("Nouveau dossier"), "--ink-muted"],
-    [pied("Supprimer"), "--ink-muted"], // README.md est sélectionné
-    [pied("Renommer"), "--ink-muted"],
-    [ailleurs("Nouveau shell"), "--ink-faint"], // les commandes du rail sont au repos comme ses onglets
-    [ailleurs("Fermer le shell"), "--ink-faint"],
-    [ailleurs("Déconnexion"), "--ink-muted"],
-    [ailleurs("Aperçu"), "--icone-naviguer"],
-    [ailleurs("Fermer README.md"), "--icone-naviguer"],
-    [page.getByRole("tab", { name: "Recherche", exact: true }), "--ink-faint"], // rail au repos
-  ];
-  for (const [loc, token] of icones) expect(await lire(loc), token).toBe(t[token]);
-  // Arborescence : dossier, fichier, élément ignoré par git.
   const item = (nom) => page.getByRole("treeitem", { name: nomLigne(nom) });
-  expect(await lire(item("src").locator('svg[data-icone="folder"]')), "icône du dossier").toBe(t["--ink-muted"]);
-  expect(await lire(item("src").locator(".liste-libelle")), "nom du dossier").toBe(t["--texte"]);
-  expect(await lire(item(".gitignore").locator('svg[data-icone="file"]')), "icône du fichier sans statut").toBe(t["--ink-muted"]);
-  expect(await lire(item(".gitignore").locator(".liste-libelle")), "nom du fichier").toBe(t["--texte"]);
-  expect(await lire(item("ignore.txt").locator('svg[data-icone="file"]')), "icône ignorée").toBe(t["--git-ignored"]);
-  expect(await lire(item("ignore.txt").locator(".liste-libelle")), "nom ignoré").toBe(t["--git-ignored"]);
-  expect(await lire(item("ignore.txt").locator(".liste-libelle"), "fontStyle")).toBe("italic");
-  expect(await lire(item(".gitignore").locator(".liste-libelle"), "fontStyle")).toBe("normal");
-  // Pull et Push : icônes de commande, en --ink-muted.
-  await page.getByRole("tab", { name: "Git", exact: true }).click();
-  const d = await resoudre(page, ["--ink-muted"]);
-  for (const nom of ["Pull", "Push"]) await expect.poll(() => lire(ailleurs(nom)), { message: nom }).toBe(d["--ink-muted"]);
+  const fond = (selecteur) => lire(page.locator(selecteur).first(), "backgroundColor");
+  const verifier = async (theme) => {
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const t = await resoudre(page, ["--bg-000", "--bg-100", "--bg-200", "--ink", "--ink-muted", "--ink-faint", "--git-ignored"]);
+    const p = (x) => `${theme} : ${x}`;
+    expect(await fond(".cadre-rail"), p("rail")).toBe(t["--bg-000"]);
+    expect(await fond(".cadre-barre"), p("barre de titre")).toBe(t["--bg-000"]);
+    expect(await fond(".cadre-etat"), p("barre d'état")).toBe(t["--bg-000"]);
+    expect(await fond(".cadre-shells"), p("shells")).toBe(t["--bg-000"]);
+    expect(await fond(".cadre-panneau"), p("panneau")).toBe(t["--bg-100"]);
+    expect(await fond(".cadre-onglets .ya-tabs"), p("barre d'onglets")).toBe(t["--bg-100"]);
+    expect(await fond(".cadre-code .cm-editor"), p("éditeur")).toBe(t["--bg-200"]);
+    expect(await fond('.cadre-onglets .onglet-cellule:has(> .onglet[aria-selected="true"])'), p("onglet actif")).toBe(t["--bg-200"]);
+    // AC-033-1 : rail, panneau et éditeur ont chacun un fond différent.
+    expect(new Set([t["--bg-000"], t["--bg-100"], t["--bg-200"]]).size, p("trois fonds")).toBe(3);
+    const icones = [
+      [pied("Nouveau fichier"), "--ink-muted"],
+      [pied("Nouveau dossier"), "--ink-muted"],
+      [pied("Supprimer"), "--ink-muted"], // README.md est sélectionné
+      [pied("Renommer"), "--ink-muted"],
+      [ailleurs("Nouveau shell"), "--ink-faint"], // les commandes du rail sont au repos comme ses onglets
+      [ailleurs("Fermer le shell"), "--ink-faint"],
+      [ailleurs("Déconnexion"), "--ink-muted"],
+      [ailleurs("Aperçu"), "--ink-muted"],
+      [ailleurs("Fermer README.md"), "--ink-muted"],
+      [page.getByRole("tab", { name: "Recherche", exact: true }), "--ink-faint"], // rail au repos
+    ];
+    for (const [loc, token] of icones) expect(await lire(loc), p(token)).toBe(t[token]);
+    // Arborescence : dossier, fichier, élément ignoré par git.
+    expect(await lire(item("src").locator('svg[data-icone="folder"]')), p("icône du dossier")).toBe(t["--ink-muted"]);
+    expect(await lire(item("src").locator(".liste-libelle")), p("nom du dossier")).toBe(t["--ink"]);
+    expect(await lire(item(".gitignore").locator('svg[data-icone="file"]')), p("icône du fichier sans statut")).toBe(t["--ink-muted"]);
+    expect(await lire(item(".gitignore").locator(".liste-libelle")), p("nom du fichier")).toBe(t["--ink"]);
+    expect(await lire(item("ignore.txt").locator('svg[data-icone="file"]')), p("icône ignorée")).toBe(t["--git-ignored"]);
+    expect(await lire(item("ignore.txt").locator(".liste-libelle")), p("nom ignoré")).toBe(t["--git-ignored"]);
+    expect(await lire(item("ignore.txt").locator(".liste-libelle"), "fontStyle")).toBe("italic");
+    expect(await lire(item(".gitignore").locator(".liste-libelle"), "fontStyle")).toBe("normal");
+  };
+  const pullPush = async (theme) => {
+    await page.getByRole("tab", { name: "Git", exact: true }).click();
+    const d = await resoudre(page, ["--ink-muted"]);
+    for (const nom of ["Pull", "Push"]) await expect.poll(() => lire(ailleurs(nom)), { message: `${theme} : ${nom}` }).toBe(d["--ink-muted"]);
+    await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
+  };
+  // Bouton à icône pressé : --accent-fg sur --accent-soft ; au repos, --ink-muted sur fond transparent.
+  const presse = async (theme, bouton, attendu) => {
+    const t = await resoudre(page, ["--accent-fg", "--accent-soft", "--ink-muted"]);
+    await page.mouse.move(0, 400);
+    await expect.poll(() => lire(bouton), { message: `${theme} : couleur` }).toBe(attendu ? t["--accent-fg"] : t["--ink-muted"]);
+    expect(await lire(bouton, "backgroundColor"), `${theme} : fond`).toBe(attendu ? t["--accent-soft"] : "rgba(0, 0, 0, 0)");
+  };
+  const theme = page.getByRole("button", { name: "Thème clair" });
+  await verifier("dark");
+  await presse("dark", theme, false);
+  await pullPush("dark");
+  await theme.click();
+  await verifier("light");
+  await presse("light", theme, true);
+  await pullPush("light");
+  // Aperçu pressé, dans les deux thèmes.
+  const apercu = ailleurs("Aperçu");
+  await apercu.click();
+  await expect(apercu).toHaveAttribute("aria-pressed", "true");
+  await presse("light", apercu, true);
+  await theme.click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await presse("dark", apercu, true);
 });
 
 test("REQ033_AC2_AC9_AC4_lettres_de_statut_et_commit_relus_au_style_calcule_et_commit_sur_toute_la_largeur", async ({ page }) => {
@@ -323,28 +370,30 @@ test("REQ033_AC2_AC9_AC4_lettres_de_statut_et_commit_relus_au_style_calcule_et_c
   await page.getByRole("tab", { name: "Git", exact: true }).click();
   await expect(page.getByRole("button", { name: "Indexer nouveau.txt" })).toBeVisible();
   const jetons = { M: "--git-modified", R: "--git-modified", A: "--git-added", D: "--git-deleted", U: "--git-untracked", C: "--git-conflict" };
-  const t = await resoudre(page, [...new Set(Object.values(jetons)), "--accent", "--on-accent", "--ink-muted"]);
-  await expect(async () => {
-    const lignes = await page.getByRole("listbox", { name: "Changements" }).getByRole("option").evaluateAll((l) =>
-      l.map((e) => {
-        const lettre = e.querySelector(".liste-statut");
-        return { lettre: lettre.textContent, couleur: getComputedStyle(lettre).color, nom: getComputedStyle(e.querySelector(".liste-libelle")).color, barre: getComputedStyle(e.querySelector(".liste-libelle")).textDecorationLine };
-      }),
-    );
-    expect(new Set(lignes.map((l) => l.lettre))).toEqual(new Set(["M", "R", "D", "U", "C"]));
-    for (const l of lignes) {
-      expect(l.couleur, l.lettre).toBe(t[jetons[l.lettre]]);
-      expect(l.nom, l.lettre).toBe(t[jetons[l.lettre]]);
-      expect(l.barre, l.lettre).toBe(l.lettre === "D" ? "line-through" : "none");
-    }
-  }).toPass({ timeout: 10000 });
-  // Indexer en --ink-muted ; Commit en fond d'accent, texte sur couleur.
-  await expect.poll(() => lire(page.getByRole("button", { name: "Indexer README.md" })), { timeout: 10000 }).toBe(t["--ink-muted"]);
-  const commit = page.getByRole("button", { name: "Commit" });
-  await expect(commit).toHaveText("Commit");
-  // Le panneau se relit de temps en temps et refait ses boutons : on attend la valeur plutôt que de la lire une fois.
-  await expect.poll(() => lire(commit, "backgroundColor")).toBe(t["--accent"]);
-  await expect.poll(() => lire(commit)).toBe(t["--on-accent"]);
+  await dansLesDeuxThemes(page, async (theme) => {
+    const t = await resoudre(page, [...new Set(Object.values(jetons)), "--accent", "--on-accent", "--ink-muted"]);
+    await expect(async () => {
+      const lignes = await page.getByRole("listbox", { name: "Changements" }).getByRole("option").evaluateAll((l) =>
+        l.map((e) => {
+          const lettre = e.querySelector(".liste-statut");
+          return { lettre: lettre.textContent, couleur: getComputedStyle(lettre).color, nom: getComputedStyle(e.querySelector(".liste-libelle")).color, barre: getComputedStyle(e.querySelector(".liste-libelle")).textDecorationLine };
+        }),
+      );
+      expect(new Set(lignes.map((l) => l.lettre))).toEqual(new Set(["M", "R", "D", "U", "C"]));
+      for (const l of lignes) {
+        expect(l.couleur, `${theme} ${l.lettre}`).toBe(t[jetons[l.lettre]]);
+        expect(l.nom, `${theme} ${l.lettre}`).toBe(t[jetons[l.lettre]]);
+        expect(l.barre, `${theme} ${l.lettre}`).toBe(l.lettre === "D" ? "line-through" : "none");
+      }
+    }).toPass({ timeout: 10000 });
+    // Indexer en --ink-muted ; Commit en fond d'accent, texte sur couleur.
+    await expect.poll(() => lire(page.getByRole("button", { name: "Indexer README.md" })), { timeout: 10000 }).toBe(t["--ink-muted"]);
+    const commit = page.getByRole("button", { name: "Commit" });
+    await expect(commit).toHaveText("Commit");
+    // Le panneau se relit de temps en temps et refait ses boutons : on attend la valeur plutôt que de la lire une fois.
+    await expect.poll(() => lire(commit, "backgroundColor")).toBe(t["--accent"]);
+    await expect.poll(() => lire(commit)).toBe(t["--on-accent"]);
+  });
   // Commit occupe toute la largeur du formulaire.
   await expect(async () => {
     const [c, f] = await Promise.all([page.locator(".git-commit .bouton").evaluate((e) => e.getBoundingClientRect().toJSON()), page.getByRole("textbox", { name: "Message" }).evaluate((e) => e.getBoundingClientRect().toJSON())]);
@@ -400,18 +449,22 @@ test("REQ033_AC3_AC10_messages_info_succes_alerte_erreur_relus_au_style_calcule"
   fs.writeFileSync(path.join(dossier, "README.md"), "# Autre\n");
   fs.writeFileSync(path.join(dossier, "notes.bin"), Buffer.from([0, 1, 2, 0]));
   await relancerSur(page, dossier);
-  const t = await resoudre(page, ["--message-info", "--message-succes", "--message-alerte", "--message-erreur", "--succes", "--alerte", "--erreur"]);
+  const jetons = ["--msg-info", "--msg-succes", "--msg-alerte", "--msg-erreur", "--git-added", "--warning", "--danger"];
+  const relire = (message, fond, bord) => dansLesDeuxThemes(page, async (theme) => {
+    const t = await resoudre(page, jetons);
+    expect(await lire(message, "backgroundColor"), `${theme} : fond`).toBe(t[fond]);
+    if (bord) expect(await lire(message, "borderLeftColor"), `${theme} : barre`).toBe(t[bord]);
+  });
   // info : l'arrêt de Yaide ferme un shell. Le bandeau est unique : on relit chaque message dès qu'il paraît.
   yaide = await yaide.relancer();
   const info = page.locator(".message-info").filter({ hasText: "Yaide a été arrêté." });
   await expect(info).toBeVisible({ timeout: 15000 });
-  expect(await lire(info, "backgroundColor")).toBe(t["--message-info"]);
+  await relire(info, "--msg-info");
   // alerte : fichier binaire.
   await page.getByRole("treeitem", { name: nomLigne("notes.bin") }).click();
   const alerte = page.locator(".message-alerte").filter({ hasText: "notes.bin est un fichier binaire." });
   await expect(alerte).toBeVisible();
-  expect(await lire(alerte, "backgroundColor")).toBe(t["--message-alerte"]);
-  expect(await lire(alerte, "borderLeftColor")).toBe(t["--alerte"]);
+  await relire(alerte, "--msg-alerte", "--warning");
   // succès puis erreur, dans le panneau Git.
   await page.getByRole("tab", { name: "Git", exact: true }).click();
   await page.getByRole("button", { name: "Indexer README.md" }).click();
@@ -419,13 +472,11 @@ test("REQ033_AC3_AC10_messages_info_succes_alerte_erreur_relus_au_style_calcule"
   await page.getByRole("button", { name: "Commit" }).click();
   const succes = page.locator(".message-succes").filter({ hasText: "Commit créé." });
   await expect(succes).toBeVisible();
-  expect(await lire(succes, "backgroundColor")).toBe(t["--message-succes"]);
-  expect(await lire(succes, "borderLeftColor")).toBe(t["--succes"]);
+  await relire(succes, "--msg-succes", "--git-added");
   await page.getByRole("button", { name: "Pull" }).click();
   const erreur = page.locator(".message-erreur").filter({ hasText: "Git a refusé." });
   await expect(erreur).toBeVisible();
-  expect(await lire(erreur, "backgroundColor")).toBe(t["--message-erreur"]);
-  expect(await lire(erreur, "borderLeftColor")).toBe(t["--erreur"]);
+  await relire(erreur, "--msg-erreur", "--danger");
 });
 
 test("REQ031_AC9_Renommer_desactive_montre_son_info_bulle", async ({ page }) => {
@@ -582,4 +633,26 @@ test("REQ031_AC10_barre_de_titre_info_bulles_sous_le_bouton_et_dans_la_fenetre",
     expect(t.x + t.width, nom).toBeLessThanOrEqual(800);
     expect(t.x, nom).toBeGreaterThanOrEqual(0);
   }
+});
+
+test("REQ036_AC13_le_chevron_d_un_dossier_charge_a_une_transition_de_transform_a_l_ouverture_et_a_la_fermeture", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  const src = page.getByRole("treeitem", { name: nomLigne("src") });
+  await src.click();
+  await expect(page.getByRole("treeitem", { name: nomLigne("main.rs") })).toBeVisible();
+  // Le dossier est chargé : les clics suivants ne passent plus par le serveur. On lit les animations de la ligne recréée.
+  const bascule = () =>
+    page.evaluate(async () => {
+      const attendu = document.querySelector('[data-chemin="src"]').getAttribute("aria-expanded") === "true" ? "false" : "true";
+      document.querySelector('[data-chemin="src"]').click();
+      for (let i = 0; i < 200 && document.querySelector('[data-chemin="src"]').getAttribute("aria-expanded") !== attendu; i++) await new Promise((r) => setTimeout(r, 0));
+      const svg = document.querySelector('[data-chemin="src"] .liste-chevron svg');
+      return { ouvert: document.querySelector('[data-chemin="src"]').getAttribute("aria-expanded"), proprietes: svg.getAnimations().map((a) => a.transitionProperty) };
+    });
+  const ferme = await bascule();
+  expect(ferme.ouvert).toBe("false");
+  expect(ferme.proprietes).toContain("transform");
+  const ouvert = await bascule();
+  expect(ouvert.ouvert).toBe("true");
+  expect(ouvert.proprietes).toContain("transform");
 });

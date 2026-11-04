@@ -148,17 +148,13 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       n.textContent = String(l.numero);
       e.append(n);
     }
-    if (pilotage === "champ") {
-      e.append(Object.assign(document.createElement("span"), { className: "liste-marque" }));
-      if (l.icone) e.append(iconeLigne("liste-fichier"));
-    } else if (arbre) {
+    if (arbre && pilotage !== "champ") {
       // Chevron (place vide pour un fichier), puis icône du dossier ou du fichier.
       const c = document.createElement("span");
       c.className = "liste-chevron";
-      if (l.enfants) c.append(icone(l.ouvert ? "chevron-down" : "chevron-right"));
+      if (l.enfants) c.append(icone("chevron"));
       e.append(c, iconeLigne(l.enfants ? "liste-dossier" : "liste-fichier"));
     } else if (l.icone) e.append(iconeLigne("liste-fichier"));
-    e.querySelector(":scope > .liste-marque")?.setAttribute("aria-hidden", "true");
     const t = document.createElement("span");
     t.className = "liste-libelle";
     if (l.trouve) {
@@ -205,8 +201,6 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       e.setAttribute("aria-selected", String(c && choisie));
       e.classList.toggle("liste-courante", pilotage === "champ" && c);
       e.tabIndex = pilotage === "focus" && c ? 0 : -1;
-      const m = e.querySelector(":scope > .liste-marque");
-      if (m && pilotage === "champ") m.textContent = c ? ">" : "";
     }
     if (pilotage === "champ" && elements.has(id)) {
       champ.setAttribute("aria-activedescendant", elements.get(id).id);

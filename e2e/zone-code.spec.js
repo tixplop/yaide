@@ -38,9 +38,9 @@ test("REQ011_AC1_rust_colore_par_les_tokens_du_design_system", async ({ page }) 
       document.body.append(d);
       return getComputedStyle(d).color;
     }, token);
-  expect(await couleur("fn")).toBe(await attendu("--code-mot-cle"));
-  expect(await couleur('"a"')).toBe(await attendu("--code-chaine"));
-  expect(await page.locator(".cm-editor").evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(await attendu("--fond"));
+  expect(await couleur("fn")).toBe(await attendu("--syn-keyword"));
+  expect(await couleur('"a"')).toBe(await attendu("--syn-string"));
+  expect(await page.locator(".cm-editor").evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(await attendu("--bg-200"));
 });
 
 test("REQ011_AC7_tab_indente_puis_echap_tab_sort_sans_rien_inserer", async ({ page }) => {

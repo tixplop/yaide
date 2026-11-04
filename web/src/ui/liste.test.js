@@ -105,8 +105,8 @@ test("REQ028_AC3_arbre_treeitem_expanded_marques_et_retrait", () => {
   expect(doc.getAttribute("aria-expanded")).toBe("false");
   expect(a.hasAttribute("aria-expanded")).toBe(false);
   const icones = (e) => [...e.querySelectorAll("svg")].map((x) => x.getAttribute("data-icone"));
-  expect(icones(src)).toEqual(["chevron-down", "folder"]);
-  expect(icones(doc)).toEqual(["chevron-right", "folder"]);
+  expect(icones(src)).toEqual(["chevron", "folder"]);
+  expect(icones(doc)).toEqual(["chevron", "folder"]);
   expect(icones(a)).toEqual(["file"]);
   expect(src.textContent).toBe("src");
   expect(a.getAttribute("aria-level")).toBe("2");
@@ -142,8 +142,7 @@ test("REQ028_AC3_pilotage_champ_activedescendant", () => {
   expect(champ.getAttribute("aria-activedescendant")).toBe(a.id);
   expect(a.id).not.toBe("");
   expect(items(l).every((x) => x.tabIndex === -1)).toBe(true);
-  expect(a.textContent.startsWith(">")).toBe(true);
-  expect(b.textContent.startsWith(">")).toBe(false);
+  expect(a.textContent).not.toContain(">");
   champ.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
   expect(champ.getAttribute("aria-activedescendant")).toBe(b.id);
   expect(b.classList.contains("liste-courante")).toBe(true);

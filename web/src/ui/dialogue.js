@@ -1,5 +1,4 @@
-// `haut` est l'ancienne position de l'ouverture rapide, jusqu'à ce que la vue passe à `palette`.
-const POSITIONS = ["centre", "haut", "palette"];
+const POSITIONS = ["centre", "palette"];
 let compteur = 0;
 
 export function dialogue({ titre, contenu = [], actions = [], focusInitial, position = "centre", surAnnuler }) {
@@ -8,7 +7,7 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
   if (!surAnnuler) throw new Error("dialogue : surAnnuler requis");
   if (!POSITIONS.includes(position)) throw new Error(`dialogue : position inconnue « ${position} »`);
   const el = document.createElement("dialog");
-  el.className = { centre: "dialogue", haut: "dialogue dialogue-haut", palette: "dialogue ya-palette" }[position];
+  el.className = { centre: "dialogue", palette: "dialogue ya-palette" }[position];
   if (position !== "centre") el.setAttribute("aria-label", titre);
   else {
     const h = document.createElement("h2");

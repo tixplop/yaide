@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
+import { lancerYaide, ouvrirYaide, nomLigne, gardeContient } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -40,18 +40,6 @@ async function taper(page, texte) {
   await page.keyboard.press("Control+End");
   await page.keyboard.type(texte);
 }
-const lireGarde = (page) =>
-  page.evaluate(
-    () =>
-      new Promise((ok) => {
-        const d = indexedDB.open("yaide", 1);
-        d.onsuccess = () => {
-          const r = d.result.transaction("cles").objectStore("cles").get("onglets");
-          r.onsuccess = () => ok(JSON.stringify(r.result?.liste ?? []));
-        };
-      }),
-  );
-const gardeContient = (page, texte) => expect.poll(() => lireGarde(page)).toContain(texte);
 async function couper(page) {
   relais.couper();
   await expect(bandeau(page)).toBeVisible({ timeout: 5000 });

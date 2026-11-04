@@ -1,3 +1,4 @@
+import { expect } from "@playwright/test";
 import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 import fs from "node:fs";
@@ -82,3 +83,17 @@ export async function ouvrirYaide(page, origine, motDePasse = "mdp") {
 export function nomLigne(nom) {
   return new RegExp(`^${nom.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(, [^,]+)*$`);
 }
+
+// Brouillon des onglets gardé dans IndexedDB (écrit après un délai) : `gardeContient` attend qu'il contienne `texte`.
+const lireGarde = (page) =>
+  page.evaluate(
+    () =>
+      new Promise((ok) => {
+        const d = indexedDB.open("yaide", 1);
+        d.onsuccess = () => {
+          const r = d.result.transaction("cles").objectStore("cles").get("onglets");
+          r.onsuccess = () => ok(JSON.stringify(r.result?.liste ?? []));
+        };
+      }),
+  );
+export const gardeContient = (page, texte) => expect.poll(() => lireGarde(page)).toContain(texte);
