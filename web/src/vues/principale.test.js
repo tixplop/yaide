@@ -238,18 +238,233 @@ test("REQ032_AC9_limites_a_800_par_480_dans_la_vue", async () => {
   window.innerHeight = H;
 });
 
-test("REQ035_AC1_AC8_deux_boutons_a_icone_dans_le_rail_hors_du_tablist", () => {
+test("REQ035_AC1_AC8_REQ040_AC8_AC13_AC15_AC16_quatre_boutons_a_icone_dans_le_rail_hors_du_tablist", () => {
   const { vue } = monter();
   const groupe = vue.querySelector(".cadre-rail-commandes");
   const boutons = [...groupe.querySelectorAll("button")];
-  expect(boutons.map((b) => b.getAttribute("aria-label"))).toEqual(["Nouveau shell", "Fermer le shell"]);
-  expect(boutons.map((b) => b.textContent)).toEqual(["", ""]);
+  expect(boutons.map((b) => b.getAttribute("aria-label"))).toEqual(["Nouveau shell", "Réduire le shell", "Shells réduits", "Fermer le shell"]);
+  expect(boutons.map((b) => b.textContent)).toEqual(["", "", "", ""]);
   const icones = boutons.map((b) => b.querySelector("svg").getAttribute("data-icone"));
-  expect(icones).toEqual(["terminal", "square-x"]);
+  expect(icones).toEqual(["terminal", "minimize-2", "layers", "square-x"]);
+  expect(new Set(icones).size).toBe(4);
   expect(icones).not.toContain("x");
   expect(vue.querySelector("[role=tablist]").contains(groupe)).toBe(false);
-  // Aucun shell : « Fermer le shell » est désactivé.
-  expect(boutons[1].disabled).toBe(true);
+  // Aucun shell : seul « Nouveau shell » est actif.
+  expect(boutons.map((b) => b.disabled)).toEqual([false, true, true, true]);
+  expect(boutons[2].getAttribute("aria-haspopup")).toBe("menu");
+  expect(boutons[2].getAttribute("aria-expanded")).toBe("false");
+});
+
+// ---- T-045 : réduire un shell ----
+
+// jsdom n'a pas matchMedia, dont xterm a besoin.
+window.matchMedia ??= () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+HTMLCanvasElement.prototype.getContext = () => null;
+
+class FauxWebSocket {
+  static tous = [];
+  constructor(url) {
+    this.url = url;
+    this.readyState = 1;
+    this.envoyes = [];
+    FauxWebSocket.tous.push(this);
+    setTimeout(() => this.onopen?.(), 0);
+  }
+  send(m) {
+    this.envoyes.push(m);
+  }
+  close() {}
+}
+const tailles = (id) => FauxWebSocket.tous.filter((w) => w.url.endsWith(`/shells/${id}/ws`)).flatMap((w) => w.envoyes.filter((m) => typeof m === "string" && m.startsWith("taille")));
+
+function simulerShells({ ids, instance = "i1", precedent }) {
+  FauxWebSocket.tous = [];
+  vi.stubGlobal("WebSocket", FauxWebSocket);
+  const appels = [];
+  vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+    const chemin = url.split("?")[0];
+    appels.push(`${opts.method ?? "GET"} ${chemin}`);
+    const rep = (corps, status = 200) => ({ ok: status < 400, status, json: async () => corps, text: async () => "" });
+    if (chemin === "/api/shells" && opts.method === "POST") return rep({ id: 9 }, 201);
+    if (chemin === "/api/shells") return rep({ instance, shells: ids });
+    if (chemin === "/api/fichiers") return rep({ entrees: [] });
+    if (chemin === "/api/session") return rep({}, 204);
+    if (chemin === "/api/git/etat") return rep({ cause: "pas-depot", message: "pas un dépôt" }, 409);
+    return rep({}, 409);
+  }));
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "serveur" ? precedent : undefined));
+  return appels;
+}
+const bout = (vue, nom) => vue.querySelector(`.cadre-rail-commandes [aria-label='${nom}']`);
+const onglets = (vue) => [...vue.querySelectorAll(".shells [role=tab]")].map((t) => t.textContent);
+const actifDe = (vue) => vue.querySelector(".shells [role=tab][aria-selected=true]")?.textContent;
+const zone = (vue) => vue.querySelector(".cadre-shells");
+
+test("REQ040_AC1_AC8_AC20_reduire_le_shell_actif_donne_la_place_au_voisin_de_droite_sinon_de_gauche", async () => {
+  simulerShells({ ids: [1, 2, 3] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toEqual(["shell 1", "shell 2", "shell 3"]));
+  vue.querySelectorAll(".shells [role=tab]")[1].click();
+  expect(bout(vue, "Réduire le shell").disabled).toBe(false);
+  bout(vue, "Réduire le shell").click();
+  expect(onglets(vue)).toEqual(["shell 1", "shell 3"]);
+  expect(actifDe(vue)).toBe("shell 3");
+  bout(vue, "Réduire le shell").click(); // shell 3 : le dernier onglet, celui de gauche prend la place
+  expect(actifDe(vue)).toBe("shell 1");
+  expect(bout(vue, "Shells réduits").disabled).toBe(false);
+  expect(bout(vue, "Shells réduits").querySelector(".ya-badge").textContent).toBe("2");
+  expect(bout(vue, "Shells réduits").getAttribute("aria-label")).toBe("Shells réduits");
+});
+
+test("REQ040_AC4_AC8_AC7_le_dernier_shell_visible_reduit_fait_disparaitre_la_zone_et_le_focus_va_sur_Shells_reduits", async () => {
+  simulerShells({ ids: [1] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toEqual(["shell 1"]));
+  expect(zone(vue).hidden).toBe(false);
+  bout(vue, "Réduire le shell").focus();
+  bout(vue, "Réduire le shell").click();
+  expect(zone(vue).hidden).toBe(true);
+  expect(poignees(vue).shells.hidden).toBe(true);
+  expect(vue.querySelector(".shells [role=tablist]")).toBeNull();
+  expect(vue.textContent).not.toContain("Aucun shell ouvert.");
+  expect(vue.textContent).not.toContain("Ouvrir un shell");
+  expect(["Réduire le shell", "Shells réduits", "Fermer le shell"].map((n) => bout(vue, n).disabled)).toEqual([true, false, true]);
+  expect(document.activeElement).toBe(bout(vue, "Shells réduits"));
+  expect(document.activeElement.classList.contains("ya-focus-garde")).toBe(true);
+});
+
+test("REQ040_AC3_AC16_le_menu_liste_les_shells_reduits_et_en_choisir_un_le_remet_a_sa_place", async () => {
+  simulerShells({ ids: [1, 2, 3] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(3));
+  vue.querySelectorAll(".shells [role=tab]")[1].click();
+  bout(vue, "Réduire le shell").click();
+  vue.querySelectorAll(".shells [role=tab]")[0].click();
+  bout(vue, "Réduire le shell").click();
+  const b = bout(vue, "Shells réduits");
+  b.click();
+  const menu = document.querySelector("[role=menu]");
+  expect(menu.getAttribute("aria-label")).toBe("Shells réduits");
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  const items = [...menu.querySelectorAll("[role=menuitem]")];
+  expect(items.map((i) => i.textContent)).toEqual(["shell 1", "shell 2"]);
+  expect(document.activeElement).toBe(items[0]);
+  items[1].click();
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  expect(onglets(vue)).toEqual(["shell 2", "shell 3"]);
+  expect(actifDe(vue)).toBe("shell 2");
+  expect(document.querySelector("[role=menu]")).toBeNull();
+});
+
+test("REQ040_AC5_AC22_au_reaffichage_la_taille_est_toujours_envoyee", async () => {
+  simulerShells({ ids: [1, 2] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(tailles(2)).toHaveLength(1));
+  vue.querySelectorAll(".shells [role=tab]")[1].click();
+  bout(vue, "Réduire le shell").click();
+  const avant = tailles(2).length;
+  bout(vue, "Shells réduits").click();
+  document.querySelector("[role=menuitem]").click();
+  expect(tailles(2)).toHaveLength(avant + 1);
+  expect(tailles(2).at(-1)).toBe("taille 80 24");
+});
+
+test("REQ040_AC9_AC5_un_shell_garde_reduit_apres_rechargement_n_envoie_pas_de_taille_et_n_ouvre_pas_de_shell", async () => {
+  const appels = simulerShells({ ids: [1, 2], precedent: { instance: "i1", nombre: 2, reduits: [1, 2] } });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(FauxWebSocket.tous).toHaveLength(2));
+  await attendre();
+  expect(zone(vue).hidden).toBe(true);
+  expect(onglets(vue)).toEqual([]);
+  expect(appels).not.toContain("POST /api/shells");
+  expect(tailles(1)).toEqual([]);
+  expect(tailles(2)).toEqual([]);
+  expect(bout(vue, "Shells réduits").querySelector(".ya-badge").textContent).toBe("2");
+});
+
+test("REQ040_AC9_la_poignee_reprend_la_hauteur_gardee_au_retour_de_la_zone", async () => {
+  simulerShells({ ids: [1], precedent: { instance: "i1", nombre: 1, reduits: [1] } });
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "serveur" ? { instance: "i1", nombre: 1, reduits: [1] } : cle === "tailles" ? { shells: 250 } : undefined));
+  const { vue } = monter();
+  await attendre();
+  await attendre();
+  bout(vue, "Shells réduits").click();
+  document.querySelector("[role=menuitem]").click();
+  expect(zone(vue).hidden).toBe(false);
+  expect(poignees(vue).shells.getAttribute("aria-valuenow")).toBe("250");
+});
+
+test("REQ040_AC11_un_redemarrage_vide_les_reduits_et_les_compte_dans_le_message", async () => {
+  simulerShells({ ids: [1, 2, 3], instance: "i2", precedent: { instance: "i1", nombre: 3, reduits: [2] } });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toEqual(["shell 1", "shell 2", "shell 3"]));
+  expect(bout(vue, "Shells réduits").disabled).toBe(true);
+  expect(vue.textContent).toContain("Yaide a été arrêté. 3 shells ont été fermés.");
+});
+
+test("REQ040_AC6_ouvrir_un_shell_ne_rend_pas_un_shell_reduit", async () => {
+  simulerShells({ ids: [1], precedent: { instance: "i1", nombre: 1, reduits: [1] } });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(bout(vue, "Shells réduits").disabled).toBe(false));
+  bout(vue, "Nouveau shell").click();
+  await vi.waitFor(() => expect(onglets(vue)).toEqual(["shell 9"]));
+  expect(bout(vue, "Shells réduits").querySelector(".ya-badge").textContent).toBe("1");
+  expect(zone(vue).hidden).toBe(false);
+});
+
+const terminer = (id) => FauxWebSocket.tous.find((w) => w.url.endsWith(`/shells/${id}/ws`)).onclose({ code: 1000 });
+
+test("REQ040_AC6_AC20_AC35_10_un_shell_visible_qui_se_termine_cede_la_place_au_voisin_visible_jamais_au_reduit", async () => {
+  simulerShells({ ids: [1, 2, 3] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(3));
+  vue.querySelectorAll(".shells [role=tab]")[1].click();
+  bout(vue, "Réduire le shell").click();
+  vue.querySelectorAll(".shells [role=tab]")[0].click();
+  terminer(1);
+  expect(onglets(vue)).toEqual(["shell 3"]);
+  expect(actifDe(vue)).toBe("shell 3");
+  expect(bout(vue, "Shells réduits").querySelector(".ya-badge").textContent).toBe("1");
+});
+
+test("REQ040_AC7_AC35_4_dernier_visible_termine_avec_un_reduit_la_zone_disparait_et_le_focus_va_sur_Shells_reduits", async () => {
+  simulerShells({ ids: [1, 2] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(2));
+  vue.querySelectorAll(".shells [role=tab]")[1].click();
+  bout(vue, "Réduire le shell").click();
+  vue.querySelector(".terminal textarea").focus();
+  terminer(1);
+  expect(zone(vue).hidden).toBe(true);
+  expect(onglets(vue)).toEqual([]);
+  expect(bout(vue, "Shells réduits").querySelector(".ya-badge").textContent).toBe("1");
+  expect(document.activeElement).toBe(bout(vue, "Shells réduits"));
+});
+
+test("REQ040_AC7_la_zone_qui_disparait_ne_deplace_pas_un_focus_hors_de_la_zone", async () => {
+  simulerShells({ ids: [1, 2] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(2));
+  vue.querySelectorAll(".shells [role=tab]")[1].click();
+  bout(vue, "Réduire le shell").click();
+  const ailleurs = vue.querySelector("header [aria-label='Thème clair']");
+  ailleurs.focus();
+  terminer(1);
+  expect(zone(vue).hidden).toBe(true);
+  expect(document.activeElement).toBe(ailleurs);
+});
+
+test("REQ040_AC10_un_shell_reduit_qui_se_termine_laisse_le_focus_sur_l_onglet", async () => {
+  simulerShells({ ids: [1, 2, 3] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(3));
+  vue.querySelectorAll(".shells [role=tab]")[2].click();
+  bout(vue, "Réduire le shell").click();
+  vue.querySelector(".shells [role=tab]").focus();
+  terminer(3);
+  expect(bout(vue, "Shells réduits").disabled).toBe(true);
+  expect(document.activeElement).toBe(vue.querySelector(".shells [role=tab][aria-selected=true]"));
+  expect(document.activeElement.textContent).toBe("shell 2");
 });
 
 test("REQ028_AC12_F_R_G_marchent_aussi_depuis_les_boutons_du_rail", () => {

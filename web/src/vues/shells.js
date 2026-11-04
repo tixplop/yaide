@@ -2,7 +2,7 @@ import { fermerShell, listeShells, ouvrirShell } from "../api.js";
 import { ecrire, lire } from "../stockage.js";
 import { bouton } from "../ui/bouton.js";
 import { dialogue } from "../ui/dialogue.js";
-import { indication } from "../ui/indication.js";
+import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { terminal } from "../ui/terminal.js";
@@ -17,10 +17,11 @@ function texteArret(n) {
 
 /**
  * Zone des shells de V-002. `dire({ texte, variante, fermable })` affiche un message dans les bandeaux.
- * `commandes` : les boutons « Nouveau shell » et « Fermer le shell », que la vue principale place dans le rail.
+ * `surZone(oui)` : la zone a au moins un shell visible, ou n'en a aucun.
+ * `commandes` : les quatre boutons de C-010, que la vue principale place dans le rail.
  * Méthodes : `definirEtat("connecte" | "coupe")`, `detruire()`.
  */
-export function vueShells({ dire }) {
+export function vueShells({ dire, surZone = () => {} }) {
   const racine = document.createElement("div");
   racine.className = "shells";
   const entete = document.createElement("div");
@@ -34,20 +35,36 @@ export function vueShells({ dire }) {
   let etat = "connecte";
   let detruit = false;
   let onglet = null;
-  let ouvrirVide = null;
+  let menuReduits = null;
 
   const boutonNouveau = bouton({ icone: "terminal", variante: "discret", nomAccessible: "Nouveau shell", positionInfoBulle: "droite" });
+  const boutonReduire = bouton({ icone: "minimize-2", variante: "discret", nomAccessible: "Réduire le shell", positionInfoBulle: "droite", desactive: true });
+  const boutonReduits = bouton({ icone: "layers", variante: "discret", nomAccessible: "Shells réduits", positionInfoBulle: "droite", desactive: true, ouvreMenu: true });
   const boutonFermer = bouton({ icone: "square-x", variante: "discret", nomAccessible: "Fermer le shell", positionInfoBulle: "droite", desactive: true });
   boutonNouveau.addEventListener("click", () => nouveau());
+  boutonReduire.addEventListener("click", () => reduire());
+  boutonReduits.addEventListener("click", () => ouvrirMenu());
   boutonFermer.addEventListener("click", () => demanderFermeture());
-  racine.commandes = [boutonNouveau.enveloppe, boutonFermer.enveloppe];
+  racine.commandes = [boutonNouveau.enveloppe, boutonReduire.enveloppe, boutonReduits.enveloppe, boutonFermer.enveloppe];
 
-  const sauver = () => ecrire("serveur", { instance, nombre: shells.size });
+  const parNumero = (liste) => liste.sort((a, b) => a.id - b.id);
+  const visibles = () => parNumero([...shells.values()].filter((s) => !s.reduit));
+  const reduits = () => parNumero([...shells.values()].filter((s) => s.reduit));
+  // Le voisin d'un shell visible : celui de droite, sinon celui de gauche.
+  function voisin(id) {
+    const v = visibles();
+    const i = v.findIndex((s) => s.id === id);
+    return (v[i + 1] ?? v[i - 1])?.id ?? null;
+  }
+
+  const sauver = () => ecrire("serveur", { instance, nombre: shells.size, reduits: reduits().map((s) => s.id) });
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
   function majConnecte(s) {
     s.terminal.definirConnecte(s.ouvert && etat !== "coupe");
   }
+
+  const envoyerTaille = (s) => s.ws?.readyState === 1 && s.ws.send(`taille ${s.terminal.term.cols} ${s.terminal.term.rows}`);
 
   function activer(id, focaliser = false) {
     actif = id;
@@ -59,45 +76,107 @@ export function vueShells({ dire }) {
   }
 
   function afficher() {
-    boutonFermer.disabled = shells.size === 0;
-    if (shells.size === 0) {
+    const vis = visibles();
+    const nombreReduits = reduits().length;
+    boutonReduire.disabled = boutonFermer.disabled = vis.length === 0;
+    boutonReduits.disabled = nombreReduits === 0;
+    if (nombreReduits > 0 || boutonReduits.querySelector(".ya-badge")) boutonReduits.definirCompteur(nombreReduits);
+    // La zone revient avant toute mesure de terminal.
+    surZone(vis.length > 0);
+    const terminaux = [...shells.values()].map((s) => s.terminal);
+    for (const enfant of [...corps.children]) if (!terminaux.includes(enfant)) enfant.remove();
+    for (const t of terminaux) if (t.parentNode !== corps) corps.append(t);
+    if (vis.length === 0) {
+      actif = null;
       onglet = null;
-      const ouvrir = bouton({ libelle: "Ouvrir un shell" });
-      ouvrirVide = ouvrir;
-      ouvrir.addEventListener("click", nouveau);
       entete.replaceChildren();
-      corps.replaceChildren(indication({ texte: "Aucun shell ouvert.", action: ouvrir }));
+      for (const s of shells.values()) s.terminal.hidden = true;
       return;
     }
-    if (!shells.has(actif)) actif = [...shells.keys()][0];
+    if (!vis.some((s) => s.id === actif)) actif = vis[0].id;
     onglet = onglets({
-      onglets: [...shells.keys()].map((id) => ({ id: String(id), libelle: `shell ${id}` })),
+      onglets: vis.map((s) => ({ id: String(s.id), libelle: `shell ${s.id}` })),
       actif: String(actif),
       surChoix: (id) => activer(Number(id), true),
     });
     onglet.setAttribute("aria-label", "Shells");
     entete.replaceChildren(onglet);
-    // Les terminaux déjà présents restent en place : le focus ne bouge pas.
-    const terminaux = [...shells.values()].map((s) => s.terminal);
-    for (const enfant of [...corps.children]) if (!terminaux.includes(enfant)) enfant.remove();
-    for (const t of terminaux) if (t.parentNode !== corps) corps.append(t);
     activer(actif);
+  }
+
+  // Focus quand la zone disparaît, ou qu'un bouton du rail vient d'être grisé : « Shells réduits » s'il en reste un, sinon « Nouveau shell ».
+  const noterFocus = () => {
+    const e = document.activeElement;
+    const dedans = racine.contains(e) || e?.getAttribute?.("aria-label") === "Hauteur des shells";
+    return { e, dedans, menu: Boolean(menuReduits?.racine.contains(e)) };
+  };
+  function replacerFocus(note) {
+    const grise = note.e instanceof HTMLButtonElement && note.e.disabled;
+    const sansZone = visibles().length === 0 && note.dedans;
+    if (!grise && !sansZone && !(note.menu && boutonReduits.disabled)) return;
+    focusSansZone();
+  }
+  function focusSansZone() {
+    (boutonReduits.disabled ? boutonNouveau : boutonReduits).poserFocus();
+  }
+
+  function reduire() {
+    const s = shells.get(actif);
+    if (!s) return;
+    const note = noterFocus();
+    const suivant = voisin(s.id);
+    s.reduit = true;
+    actif = suivant;
+    afficher();
+    sauver();
+    if (suivant !== null) shells.get(suivant).terminal.focus();
+    else replacerFocus(note);
+  }
+
+  function reveler(id) {
+    const s = shells.get(id);
+    if (!s?.reduit) return;
+    s.reduit = false;
+    actif = id;
+    afficher();
+    // `onResize` ne part pas si la mesure égale la valeur par défaut : on envoie toujours la taille.
+    envoyerTaille(s);
+    s.terminal.focus();
+    sauver();
+  }
+
+  function ouvrirMenu() {
+    const liste = reduits();
+    if (liste.length === 0) return;
+    boutonReduits.focus();
+    const r = boutonReduits.getBoundingClientRect();
+    menuReduits = menu({
+      nom: "Shells réduits",
+      position: { x: r.right + 4, y: r.top },
+      groupes: [liste.map((s) => ({ libelle: `shell ${s.id}`, surChoix: () => reveler(s.id) }))],
+      surFermeture: () => {
+        menuReduits = null;
+        boutonReduits.definirOuvert(false);
+      },
+    });
+    boutonReduits.definirOuvert(true);
   }
 
   function retirer(id) {
     const s = shells.get(id);
     if (!s) return;
-    // L'onglet de droite prend la place, sinon celui de gauche.
-    if (actif === id) {
-      const ids = [...shells.keys()];
-      actif = ids[ids.indexOf(id) + 1] ?? ids[ids.indexOf(id) - 1];
-    }
+    const note = noterFocus();
     const avaitLeFocus = s.terminal.contains(document.activeElement);
+    if (!s.reduit && actif === id) actif = voisin(id);
+    const surOnglet = entete.contains(note.e);
     shells.delete(id);
     s.terminal.detruire();
     afficher();
+    menuReduits?.retirer(`shell ${id}`);
     sauver();
-    if (avaitLeFocus) (shells.size === 0 ? ouvrirVide : shells.get(actif).terminal).focus();
+    if (avaitLeFocus && actif !== null) shells.get(actif).terminal.focus();
+    else if (surOnglet && actif !== null) onglet.querySelector("[role=tab][aria-selected=true]")?.focus();
+    else replacerFocus(note);
   }
 
   function demanderFermeture() {
@@ -134,14 +213,16 @@ export function vueShells({ dire }) {
         s.ws.close();
         retirer(id);
       }
-      if (shells.size === 0) ouvrirVide?.focus();
-      else shells.get(actif)?.terminal.focus();
+      if (actif !== null) shells.get(actif).terminal.focus();
+      else focusSansZone();
     });
     dlg.ouvrir();
   }
 
   function redemarre(liste) {
     const fermes = shells.size;
+    const note = noterFocus();
+    menuReduits?.fermer();
     instance = liste.instance;
     for (const s of shells.values()) {
       s.ws.onclose = null;
@@ -150,6 +231,7 @@ export function vueShells({ dire }) {
     }
     shells.clear();
     afficher();
+    replacerFocus(note);
     if (fermes > 0) dire({ texte: texteArret(fermes), variante: "info", fermable: true });
     sauver();
   }
@@ -173,7 +255,8 @@ export function vueShells({ dire }) {
       s.ouvert = true;
       // Le serveur renvoie l'affichage récent : on repart d'un terminal vide.
       s.terminal.term.reset();
-      ws.send(`taille ${s.terminal.term.cols} ${s.terminal.term.rows}`);
+      // Un shell réduit n'a jamais été mesuré : sa taille ne part qu'à son réaffichage.
+      if (!s.reduit) envoyerTaille(s);
       majConnecte(s);
     };
     ws.onmessage = (e) => s.flux.dispatchEvent(new MessageEvent("message", { data: e.data }));
@@ -186,8 +269,8 @@ export function vueShells({ dire }) {
     };
   }
 
-  function ajouter(id) {
-    const s = { id, ws: null, ouvert: false };
+  function ajouter(id, reduit = false) {
+    const s = { id, reduit, ws: null, ouvert: false };
     s.flux = Object.assign(new EventTarget(), {
       send(donnees) {
         if (s.ws?.readyState === 1) s.ws.send(typeof donnees === "string" ? codage.encode(donnees) : donnees);
@@ -228,7 +311,9 @@ export function vueShells({ dire }) {
       dire({ texte: texteArret(precedent.nombre), variante: "info", fermable: true });
     }
     instance = liste.instance;
-    for (const id of liste.shells) ajouter(id);
+    // Les numéros repartent après un redémarrage : les réduits ne se reprennent que pour la même instance.
+    const gardes = precedent?.instance === liste.instance ? (precedent.reduits ?? []) : [];
+    for (const id of liste.shells) ajouter(id, gardes.includes(id));
     if (shells.size === 0) {
       const r = await ouvrirShell();
       if (detruit) return;
@@ -245,6 +330,7 @@ export function vueShells({ dire }) {
   };
   racine.detruire = () => {
     detruit = true;
+    menuReduits?.fermer();
     for (const s of shells.values()) {
       if (s.ws) s.ws.onclose = null;
       s.ws?.close();

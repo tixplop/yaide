@@ -74,7 +74,7 @@ Yaide écoute sur toutes les adresses de la machine. Le mot de passe est la seul
 | Flèches haut et bas | poignée « Hauteur des shells » | Agrandit ou réduit la zone des shells |
 | Échap | dialogue | Ferme le dialogue et rend le focus |
 
-« Nouveau shell » et « Fermer le shell » sont des boutons en bas du rail, à gauche.
+Quatre boutons en bas du rail, à gauche, agissent sur les shells : « Nouveau shell », « Réduire le shell », « Shells réduits » et « Fermer le shell ». « Réduire le shell » retire le shell actif de la barre d'onglets sans l'arrêter : ses programmes continuent. « Shells réduits » liste les shells réduits (avec leur nombre) ; en choisir un le fait revenir à sa place. Sans shell visible, la zone des shells disparaît et l'éditeur prend toute la hauteur ; « Nouveau shell » ou un shell réduit qu'on affiche la fait revenir. Les shells réduits le restent après un rechargement de la page. On ne ferme pas un shell réduit : affichez-le d'abord.
 
 Quand le focus est dans un shell, toutes les touches que le navigateur laisse passer vont au shell, dont Ctrl+S et Ctrl+P. Seul Ctrl+Maj+F reste à Yaide.
 
@@ -84,7 +84,7 @@ Le bouton « Thème clair », à droite de la barre de titre, fait passer toute 
 
 ## Ce qui a changé de place
 
-- Le rail, à gauche, porte les panneaux Fichiers, Recherche et Git (Git y affiche le nombre de changements), puis « Nouveau shell » et « Fermer le shell » en bas. La déconnexion est à droite de la barre de titre.
+- Le rail, à gauche, porte les panneaux Fichiers, Recherche et Git (Git y affiche le nombre de changements), puis les quatre boutons des shells en bas. La déconnexion est à droite de la barre de titre.
 - L'ouverture d'un fichier par son nom est le bouton central de la barre de titre (ou Ctrl+P) ; sa liste s'ouvre juste en dessous.
 - La branche, la position du curseur et le langage du fichier sont dans la barre d'état, en bas.
 - Le fil d'Ariane du fichier ouvert est au-dessus du code ; les statuts git (M, A, D, U, C) sont dans l'arborescence et sur les onglets.

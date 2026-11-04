@@ -59,7 +59,7 @@ test("REQ028_AC8_AC7_ordre_de_Tab_complet_et_contour_de_focus_a_chaque_arret", a
     expect(contour.some(Boolean), `contour absent à l'arrêt ${i} (${z})`).toBe(true);
     if (z !== zones.at(-1)) zones.push(z);
   }
-  expect(zones).toEqual(["Ouverture rapide", "Thème clair", "Déconnexion", "rail", "Nouveau shell", "Fermer le shell", "panneau", "Largeur du panneau", "onglets de fichiers", "éditeur", "Hauteur des shells", "onglets de shells", "terminal"]);
+  expect(zones).toEqual(["Ouverture rapide", "Thème clair", "Déconnexion", "rail", "Nouveau shell", "Réduire le shell", "Fermer le shell", "panneau", "Largeur du panneau", "onglets de fichiers", "éditeur", "Hauteur des shells", "onglets de shells", "terminal"]);
   const contourTerminal = await page.locator(".terminal-zone:visible").evaluate((e) => getComputedStyle(e).outlineStyle);
   expect(contourTerminal).not.toBe("none");
 });
@@ -235,7 +235,7 @@ test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_san
     toutes.push(...(await commandes(page)));
   }
   const noms = new Set(toutes.map((c) => c.nom));
-  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Ouverture rapide", "Thème clair", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Fermer le shell", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Pull", "Push"]) {
+  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Ouverture rapide", "Thème clair", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Réduire le shell", "Fermer le shell", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Pull", "Push"]) {
     expect(noms.has(attendu), attendu).toBe(true);
   }
   // AC-031-6 : 24 × 24 px, sauf une action de ligne (20 × 20) et la fermeture d'un onglet (18 × 18).
@@ -257,12 +257,13 @@ test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_san
   const icone = (nom) => toutes.find((c) => c.nom === nom).icone;
   expect(icone("Fermer le shell")).not.toBe(icone("Fermer README.md"));
   expect(icone("Nouveau shell")).not.toBe(icone("Fermer le shell"));
+  expect(icone("Réduire le shell")).not.toBe(icone("Fermer le shell"));
 });
 
 test("REQ035_AC11_info_bulles_a_droite_et_bouton_desactive_sans_arret_de_Tab", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
   const fermer = page.getByRole("button", { name: "Fermer le shell" });
-  for (const nom of ["Nouveau shell", "Fermer le shell"]) {
+  for (const nom of ["Nouveau shell", "Réduire le shell", "Fermer le shell"]) {
     const bouton = page.getByRole("button", { name: nom });
     await bouton.hover();
     const info = page.getByRole("tooltip", { name: nom });
@@ -278,7 +279,7 @@ test("REQ035_AC11_info_bulles_a_droite_et_bouton_desactive_sans_arret_de_Tab", a
   await page.locator(".terminal:visible .xterm-helper-textarea").focus();
   await page.keyboard.type("exit");
   await page.keyboard.press("Enter");
-  await expect(page.getByText("Aucun shell ouvert.")).toBeVisible();
+  await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
   await expect(fermer).toBeDisabled();
   await page.mouse.move(0, 0);
   await expect(bulle).toBeHidden();
@@ -317,6 +318,7 @@ test("REQ033_AC1_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_arbre_rel
       [pied("Supprimer"), "--ink-muted"], // README.md est sélectionné
       [pied("Renommer"), "--ink-muted"],
       [ailleurs("Nouveau shell"), "--ink-faint"], // les commandes du rail sont au repos comme ses onglets
+      [ailleurs("Réduire le shell"), "--ink-faint"],
       [ailleurs("Fermer le shell"), "--ink-faint"],
       [ailleurs("Déconnexion"), "--ink-muted"],
       [ailleurs("Aperçu"), "--ink-muted"],
@@ -534,7 +536,7 @@ test("REQ036_AC3_tailles_du_cadre_barre_onglets_ligne_etat_et_rail", async ({ pa
   expect((await boite(page.getByRole("treeitem", { name: nomLigne("src") })))[1]).toBe(22);
   expect((await boite(page.locator(".cadre-rail")))[0]).toBe(48);
   for (const nom of ["Fichiers", "Recherche", "Git"]) expect(await boite(page.getByRole("tab", { name: nom, exact: true }))).toEqual([48, 48]);
-  for (const nom of ["Nouveau shell", "Fermer le shell"]) expect(await boite(page.getByRole("button", { name: nom }))).toEqual([48, 48]);
+  for (const nom of ["Nouveau shell", "Réduire le shell", "Fermer le shell"]) expect(await boite(page.getByRole("button", { name: nom }))).toEqual([48, 48]);
 });
 
 test("REQ037_AC3_bouton_central_ouvre_l_ouverture_rapide_avec_son_info_bulle", async ({ page }) => {
@@ -655,4 +657,40 @@ test("REQ036_AC13_le_chevron_d_un_dossier_charge_a_une_transition_de_transform_a
   const ouvert = await bascule();
   expect(ouvert.ouvert).toBe("true");
   expect(ouvert.proprietes).toContain("transform");
+});
+
+test("REQ040_AC13_AC15_AC28_8_AC28_9_AC31_1_Shells_reduits_arret_de_Tab_taille_info_bulle_compteur_et_rail_a_800_par_480", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(page.getByRole("tab", { name: "shell 2" })).toBeVisible();
+  await page.getByRole("button", { name: "Réduire le shell", exact: true }).click();
+  const reduits = page.getByRole("button", { name: "Shells réduits", exact: true });
+  await expect(reduits).toBeEnabled();
+  // Arrêt de Tab entre « Réduire le shell » et « Fermer le shell ».
+  await page.getByRole("button", { name: "Réduire le shell", exact: true }).focus();
+  const nomFocus = () => page.evaluate(() => document.activeElement.getAttribute("aria-label"));
+  await page.keyboard.press("Tab");
+  expect(await nomFocus()).toBe("Shells réduits");
+  await page.keyboard.press("Tab");
+  expect(await nomFocus()).toBe("Fermer le shell");
+  // Icône sans texte, 48 × 48, info-bulle à droite.
+  expect(await reduits.evaluate((e) => [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(""))).toBe("");
+  expect(await reduits.locator(".ya-badge").getAttribute("aria-hidden")).toBe("true");
+  const a = await reduits.boundingBox();
+  expect([Math.round(a.width), Math.round(a.height)]).toEqual([48, 48]);
+  await reduits.hover();
+  const info = page.getByRole("tooltip", { name: "Shells réduits" });
+  await expect(info).toBeVisible();
+  expect((await info.boundingBox()).x).toBeGreaterThanOrEqual(a.x + a.width - 1);
+  // Compteur : fond --bg-400, texte --ink ; celui de Git reste sur --accent.
+  const t = await resoudre(page, ["--bg-400", "--ink"]);
+  const badge = reduits.locator(".ya-badge");
+  expect(await lire(badge, "backgroundColor")).toBe(t["--bg-400"]);
+  expect(await lire(badge)).toBe(t["--ink"]);
+  // 800 × 480 : les onglets du rail et les quatre commandes ne se recouvrent pas.
+  await page.setViewportSize({ width: 800, height: 480 });
+  const [nav, groupe] = await Promise.all([page.locator(".cadre-rail-onglets").boundingBox(), page.locator(".cadre-rail-commandes").boundingBox()]);
+  expect(nav.y + nav.height).toBeLessThanOrEqual(groupe.y + 1);
+  expect(groupe.height).toBe(192);
+  expect(groupe.y + groupe.height).toBeLessThanOrEqual(480);
 });

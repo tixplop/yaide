@@ -70,7 +70,14 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
 
   let fichiers = null; // créé après l'éditeur, dont les premiers rappels arrivent avant
   let git = null; // créé après l'arbre, dont la première lecture le demande
-  const shells = vueShells({ dire });
+  // La zone des shells sort de la page sans shell visible ; la poignée reprend sa taille à son retour.
+  const shells = vueShells({
+    dire,
+    surZone: (oui) => {
+      racine?.definirShellsVisibles(oui);
+      recalculer();
+    },
+  });
   const editeur = vueEditeur({
     dire,
     ouvrirRapide: () => ouverture.ouvrir(),

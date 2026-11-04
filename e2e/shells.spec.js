@@ -110,12 +110,13 @@ test("REQ019_AC3_exit_ferme_l_onglet", async ({ page }) => {
 test("REQ019_AC6_dernier_shell_ferme_par_exit_donne_l_etat_vide_sans_reouverture", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
   await taper(page, "exit");
-  await expect(page.getByText("Aucun shell ouvert.")).toBeVisible();
+  await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
+  await expect(page.getByText("Aucun shell ouvert.")).toHaveCount(0);
   await page.waitForTimeout(2000);
   await expect(onglets(page)).toHaveCount(0);
-  await page.getByRole("button", { name: "Ouvrir un shell" }).click();
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
   await expect(onglets(page)).toHaveCount(1);
-  await expect(page.getByText("Aucun shell ouvert.")).toHaveCount(0);
+  await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toBeVisible();
 });
 
 test("REQ018_AC2_les_shells_ouverts_reviennent_avec_leurs_onglets", async ({ page }) => {
@@ -220,13 +221,13 @@ test("REQ021_AC4_un_seul_shell_ferme_sans_recharger_la_page", async ({ page }) =
   await ouvrirYaide(page, yaide.origine);
   yaide = await yaide.relancer();
   await expect(page.getByRole("status").filter({ hasText: "Yaide a été arrêté. 1 shell a été fermé." })).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText("Aucun shell ouvert.")).toBeVisible();
+  await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
 });
 
 test("REQ021_AC3_un_shell_termine_par_exit_n_entraine_pas_le_message", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
   await taper(page, "exit");
-  await expect(page.getByText("Aucun shell ouvert.")).toBeVisible();
+  await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
   yaide = await yaide.relancer();
   await page.reload();
   await expect(onglets(page)).toHaveText(["shell 1"]);
@@ -236,9 +237,9 @@ test("REQ021_AC3_un_shell_termine_par_exit_n_entraine_pas_le_message", async ({ 
 test("REQ021_AC3_redemarrage_sans_shell_puis_nouveau_shell_ne_donne_pas_de_faux_message", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
   await taper(page, "exit");
-  await expect(page.getByText("Aucun shell ouvert.")).toBeVisible();
+  await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
   yaide = await yaide.relancer();
-  await page.getByRole("button", { name: "Ouvrir un shell" }).click();
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
   await expect(onglets(page)).toHaveText(["shell 1"]);
   await expect(page.locator(".terminal-attente:visible")).toHaveCount(0, { timeout: 10000 });
   await page.reload();
@@ -315,11 +316,11 @@ test("REQ035_AC2_AC4_AC9_AC10_fermer_shell_2_arrete_sleep_et_active_shell_3", as
   await dlg.or(dialogue(page, "Fermer shell 3 ?")).getByRole("button", { name: "Fermer", exact: true }).click();
   await expect(onglets(page)).toHaveText(["shell 1"]);
   await expect(page.getByRole("tab", { name: "shell 1" })).toHaveAttribute("aria-selected", "true");
-  // Le dernier : état vide, focus sur « Ouvrir un shell », bouton désactivé.
+  // Le dernier : la zone disparaît, focus sur « Nouveau shell », bouton désactivé.
   await fermer(page).click();
   await dialogue(page, "Fermer shell 1 ?").getByRole("button", { name: "Fermer", exact: true }).click();
-  await expect(page.getByText("Aucun shell ouvert.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Ouvrir un shell" })).toBeFocused();
+  await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Nouveau shell" })).toBeFocused();
   await expect(fermer(page)).toBeDisabled();
   await page.waitForTimeout(1500);
   await expect(onglets(page)).toHaveCount(0);
