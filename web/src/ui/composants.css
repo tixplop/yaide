@@ -104,6 +104,7 @@
 
 .ya-tabs { align-items: stretch; height: var(--size-tab); overflow-x: auto; scrollbar-width: none; background: var(--bg-100); border-bottom: var(--trait) solid var(--line); font-size: 12.5px; }
 .ya-tabs::-webkit-scrollbar { display: none; }
+.ya-tabs .onglet { height: 100%; }
 .ya-tabs .onglet-cellule:hover .onglet, .ya-tabs .onglet[aria-selected="true"] { color: var(--ink); }
 .ya-tabs .onglet-cellule:has(> .onglet[aria-selected="true"]) { background: var(--bg-200); box-shadow: inset 0 var(--trait-fort) 0 var(--accent-fg); }
 .ya-tabs .onglet-cellule .bouton-enveloppe { margin-left: calc(-1 * var(--space-3)); opacity: 0; }
@@ -120,15 +121,12 @@
 .ya-term-tabs .onglet { height: 22px; padding: 0 var(--space-2); border-radius: var(--radius-sm); }
 .ya-term-tabs .onglet[aria-selected="true"] { background: var(--bg-300); color: var(--ink); }
 
-.ya-activity { flex-direction: column; width: var(--size-activity); background: var(--bg-000); border-right: var(--trait) solid var(--line); }
-.ya-activity .onglet { position: relative; justify-content: center; height: var(--size-activity); padding: 0; color: var(--ink-faint); }
+.ya-activity { flex-direction: column; width: var(--size-activity); background: var(--bg-000); }
+.ya-activity .onglet { position: relative; flex: 1 1 auto; justify-content: center; height: var(--size-activity); padding: 0; color: var(--ink-faint); }
 .ya-activity .onglet:hover { color: var(--ink); }
 .ya-activity .onglet[aria-selected="true"] { color: var(--ink); box-shadow: inset var(--trait-fort) 0 0 var(--accent-fg); }
 .ya-activity .onglet svg { width: var(--taille-icone-rail); height: var(--taille-icone-rail); }
 .ya-activity .ya-badge { position: absolute; right: 6px; bottom: 6px; height: 14px; min-width: 14px; font-size: 9.5px; line-height: 14px; }
-/* Provisoire jusqu'à T-036 : le cadre garde son rail de --largeur-rail et son propre filet. */
-.cadre-rail .ya-activity { width: var(--largeur-rail); border-right: 0; }
-.cadre-rail .ya-activity .onglet { width: var(--largeur-rail); height: var(--largeur-rail); }
 
 /* C-006 : liste. `ya-tree` (arbre) et `ya-row` (plate) portent les mesures du design system. */
 .liste { display: flex; flex-direction: column; font: var(--texte-base) var(--font-sans); font-family: var(--font-sans); color: var(--ink); }
@@ -160,7 +158,7 @@
 .liste-code { font-family: var(--font-mono); }
 .liste-trouve { font-weight: var(--graisse-forte); }
 .liste-marque { flex: none; min-width: var(--space-3); }
-.liste-compteur { flex: none; margin-left: auto; }
+.liste-compteur { flex: none; }
 .liste-groupe .liste-compteur { margin-left: var(--space-2); vertical-align: middle; }
 .liste-ligne:hover { background: var(--hover); }
 .liste-ligne[aria-selected="true"] { background: var(--bg-400); }
@@ -175,7 +173,6 @@
 .liste-statut-D .liste-libelle { text-decoration: line-through; }
 .ya-tree .liste-statut, .ya-row .liste-statut { flex: none; width: 14px; margin-left: auto; text-align: center; font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
 .ya-tree .liste-point, .ya-row .liste-point { flex: none; width: 7px; height: 7px; margin-left: auto; border-radius: 50%; background: currentColor; }
-.liste-compteur + .liste-statut, .liste-compteur + .liste-point { margin-left: 0; }
 /* Ligne D sélectionnée : --git-deleted tomberait sous 4,5:1 sur --bg-400 et --list-focus. */
 .liste-statut-D[aria-selected="true"], .liste-sdossier-D[aria-selected="true"], .liste-statut-D:focus-visible, .liste-sdossier-D:focus-visible, .liste-statut-D.liste-courante { color: var(--ink); }
 /* Ignorée : --git-ignored ne tient pas sur --bg-400, --list-focus et --hover. */
@@ -240,6 +237,67 @@
 .ya-menu .menu-commande:focus .menu-touche { opacity: 1; }
 .ya-menu .menu-separateur { height: 0; margin: 4px 6px; border-top: var(--trait) solid var(--line); }
 
+/* Poignée (C-011) : occupe sa place dans la grille, ne recouvre rien. Au repos, un filet de 1 px au milieu. */
+.poignee { position: relative; box-sizing: border-box; flex: none; touch-action: none; }
+.poignee::after { content: ""; position: absolute; background: var(--line); }
+.poignee-vertical { width: var(--epaisseur-poignee); cursor: col-resize; background: var(--bg-100); }
+.poignee-horizontal { height: var(--epaisseur-poignee); cursor: row-resize; background: var(--bg-000); }
+.poignee-vertical::after { top: 0; bottom: 0; left: 50%; width: var(--trait); margin-left: calc(-1 * var(--trait)); }
+.poignee-horizontal::after { left: 0; right: 0; top: 50%; height: var(--trait); margin-top: calc(-1 * var(--trait)); }
+.poignee:hover, .poignee:focus-visible, .poignee-active { background: var(--accent-fg); }
+.poignee:hover::after, .poignee:focus-visible::after, .poignee-active::after { background: var(--accent-fg); }
+.poignee:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
+html.poignee-glisse-vertical, html.poignee-glisse-vertical * { cursor: col-resize !important; user-select: none !important; }
+html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-resize !important; user-select: none !important; }
+
+/* C-010 : cadre. Barre de titre, rail, panneau, poignée, principal, barre d'état. */
+.cadre {
+  display: grid;
+  grid-template-rows: var(--size-titlebar) minmax(0, 1fr) var(--size-status);
+  grid-template-columns: var(--size-activity) var(--taille-panneau, var(--largeur-panneau)) var(--epaisseur-poignee) minmax(0, 1fr);
+  min-width: var(--largeur-min);
+  min-height: var(--hauteur-min);
+  height: 100vh;
+  background: var(--bg-200);
+  color: var(--ink);
+  font: var(--texte-base) var(--font-sans);
+}
+.ya-titlebar { grid-column: 1 / -1; box-sizing: border-box; display: grid; grid-template-columns: 1fr minmax(240px, 560px) 1fr; align-items: center; gap: var(--space-3); padding: 0 var(--space-2); background: var(--bg-000); border-bottom: var(--trait) solid var(--line); font-size: 13px; color: var(--ink-muted); }
+.ya-titlebar-symbole { display: flex; align-items: center; padding-left: var(--space-1); }
+.ya-titlebar-actions { display: flex; justify-content: flex-end; gap: 2px; }
+.ya-command { box-sizing: border-box; height: 24px; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; padding: 0 var(--space-2); border-radius: var(--radius-md); border: var(--trait) solid var(--line); background: var(--bg-100); color: var(--ink-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.ya-command:hover { background: var(--bg-300); border-color: var(--line-strong); }
+.ya-command:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait-fort)); }
+.ya-command svg { flex: none; width: 14px; height: 14px; }
+.ya-command-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cadre-rail { position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--bg-000); }
+.cadre-rail::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: var(--trait); background: var(--line); pointer-events: none; }
+.cadre-rail-onglets { flex: 1 1 auto; min-height: 0; }
+.cadre-rail-commandes { flex: 0 0 auto; display: flex; flex-direction: column; }
+.cadre-rail-commandes .bouton-enveloppe { display: flex; }
+.cadre-rail-commandes .ya-icon-btn { width: var(--size-activity); height: var(--size-activity); border-radius: 0; color: var(--ink-faint); }
+.cadre-rail-commandes .ya-icon-btn:hover { color: var(--ink); background: transparent; }
+.cadre-rail-commandes .ya-icon-btn svg { width: var(--taille-icone-rail); height: var(--taille-icone-rail); }
+.cadre-panneau { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg-100); }
+.ya-panel-head { flex: none; box-sizing: border-box; height: var(--size-tab); display: flex; align-items: center; padding: 0 var(--space-2) 0 var(--space-3); }
+.ya-panel-title { margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 16px; font-weight: var(--graisse-forte); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); }
+.cadre-panneau-corps { flex: 1 1 0; min-height: 0; overflow: auto; }
+.cadre-panneau-pied { flex: 0 0 auto; border-top: var(--trait) solid var(--line); }
+.cadre-principal { background: var(--bg-200); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.cadre-bandeaux, .cadre-onglets, .cadre-question, .cadre-fil { flex: 0 0 auto; }
+.cadre-code { flex: 1 1 0; min-height: 0; }
+.cadre-shells { flex: 0 0 var(--taille-shells, var(--part-shells)); min-height: 0; background: var(--bg-000); }
+.ya-crumbs { cursor: default; box-sizing: border-box; height: 24px; display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-3); background: var(--bg-200); color: var(--ink-muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
+.ya-crumbs[hidden] { display: none; }
+.ya-crumbs-segment { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ya-crumbs-nom { flex: none; color: var(--ink); }
+.ya-crumbs svg { flex: none; width: 12px; height: 12px; }
+.ya-status { box-sizing: border-box; display: flex; align-items: center; gap: 2px; padding: 0 6px; background: var(--bg-000); border-top: var(--trait) solid var(--line); font-size: 11.5px; color: var(--ink-muted); white-space: nowrap; cursor: default; }
+.ya-status > span { height: 20px; display: flex; align-items: center; gap: 5px; padding: 0 6px; }
+.ya-status > span[hidden] { display: none; }
+.ya-status svg { width: 13px; height: 13px; }
+.ya-status > .ya-status-espace { flex: 1; padding: 0; }
+
 .zone-code {
   display: flex;
   height: 100%;
@@ -275,53 +333,12 @@
 
 body { margin: 0; }
 
-/* Poignée (C-011) : occupe sa place dans la grille, ne recouvre rien. */
-.poignee { position: relative; box-sizing: border-box; flex: none; background: var(--surface); touch-action: none; }
-.poignee-vertical { width: var(--epaisseur-poignee); cursor: col-resize; border-right: var(--trait) solid var(--bordure); }
-.poignee-horizontal { height: var(--epaisseur-poignee); cursor: row-resize; border-top: var(--trait) solid var(--bordure); }
-.poignee::after { content: none; position: absolute; inset: 0; margin: auto; background: var(--texte-attenue); }
-.poignee-vertical::after { width: var(--trait-fort); height: 100%; }
-.poignee-horizontal::after { height: var(--trait-fort); width: 100%; }
-.poignee:hover, .poignee:focus-visible, .poignee-active { background: var(--surface-haute); }
-.poignee:hover::after, .poignee:focus-visible::after, .poignee-active::after { content: ""; }
-.poignee:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait-fort)); }
-html.poignee-glisse-vertical, html.poignee-glisse-vertical * { cursor: col-resize !important; user-select: none !important; }
-html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-resize !important; user-select: none !important; }
-.cadre {
-  display: grid;
-  grid-template-rows: var(--hauteur-barre) minmax(0, 1fr);
-  grid-template-columns: var(--largeur-rail) var(--taille-panneau, var(--largeur-panneau)) var(--epaisseur-poignee) minmax(0, 1fr);
-  min-width: var(--largeur-min);
-  min-height: var(--hauteur-min);
-  height: 100vh;
-  background: var(--fond);
-  color: var(--texte);
-  font: var(--texte-base) var(--police-ui);
-  font-family: var(--police-ui);
-}
-.cadre-barre { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--esp-3); padding: 0 var(--esp-3); background: var(--surface); border-bottom: var(--trait) solid var(--bordure); }
-.cadre-rail { display: flex; flex-direction: column; min-height: 0; background: var(--fond-rail); border-right: var(--trait) solid var(--bordure); }
-.cadre-rail-onglets { flex: 1 1 auto; min-height: 0; }
-.cadre-rail-commandes { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: var(--esp-2); padding-bottom: var(--esp-3); }
-.cadre-panneau { display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
-.cadre-panneau-titre { margin: 0; padding: var(--esp-2) var(--esp-3); font: var(--texte-petit) var(--police-ui); font-family: var(--police-ui); font-weight: var(--graisse-forte); color: var(--texte-attenue); text-transform: uppercase; }
-.cadre-panneau-corps { flex: 1 1 0; min-height: 0; overflow: auto; }
-.cadre-panneau-pied { flex: 0 0 auto; border-top: var(--trait) solid var(--bordure); }
-.cadre-principal { background: var(--fond); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.cadre-bandeaux, .cadre-onglets, .cadre-question { flex: 0 0 auto; }
-.cadre-code { flex: 1 1 0; min-height: 0; }
-.cadre-shells { flex: 0 0 var(--taille-shells, var(--part-shells)); min-height: 0; background: var(--fond-shells); }
-
-/* Écran de connexion (V-001) et barre du haut (V-002). */
-.connexion { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--fond); color: var(--texte); font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); }
+/* Écran de connexion (V-001). */
+.connexion { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg-000); color: var(--texte); font: var(--texte-base) var(--police-ui); font-family: var(--police-ui); }
 .connexion-form { display: flex; flex-direction: column; gap: var(--esp-3); width: var(--largeur-connexion); }
+.connexion-symbole { align-self: center; }
 .connexion-titre { margin: 0; text-align: center; font: var(--texte-titre) var(--police-ui); font-family: var(--police-ui); font-weight: var(--graisse-forte); }
 .connexion-chemin { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: center; color: var(--texte-attenue); }
-.barre-nom { font-weight: var(--graisse-forte); }
-.barre-chemin { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--texte-attenue); }
-.barre-branche { color: var(--texte-attenue); }
-.barre-branche[hidden] { display: none; }
-.barre-droite { flex: none; display: flex; align-items: center; gap: var(--esp-3); margin-left: auto; }
 
 /* Zone des shells (V-002) : onglets, puis terminaux. */
 .cadre-shells { display: flex; flex-direction: column; }

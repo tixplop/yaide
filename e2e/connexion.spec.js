@@ -43,7 +43,7 @@ test("REQ004_AC3_cinq_echecs_demandent_d_attendre_une_minute", async ({ page }) 
 
 test("REQ004_AC5_ecran_de_connexion_affiche_le_nom_et_le_chemin", async ({ page }) => {
   await ouvrir(page);
-  await expect(page.getByRole("heading", { name: "Yaide" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "yaide", exact: true })).toBeVisible();
   await expect(page.locator(".connexion-chemin")).toHaveText(yaide.dossier);
 });
 
@@ -119,9 +119,9 @@ test("REQ005_AC4_la_session_reste_valide_au_rechargement", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
 });
 
-test("REQ028_AC2_barre_du_haut_chemin_et_deconnexion", async ({ page }) => {
+test("REQ028_AC2_barre_de_titre_nom_du_projet_et_deconnexion", async ({ page }) => {
   await seConnecter(page);
-  await expect(page.locator("header")).toContainText(yaide.dossier);
+  await expect(page.locator("header").getByRole("button", { name: "Ouverture rapide" })).toHaveText(yaide.dossier.split("/").pop());
   await expect(page.locator("header").getByRole("button", { name: "Déconnexion" })).toBeVisible();
 });
 
@@ -171,7 +171,7 @@ test("REQ028_AC5_touches_F_R_G_sur_le_rail_seulement", async ({ page }) => {
 test("REQ028_AC6_titre_de_l_onglet_du_navigateur", async ({ page }) => {
   await seConnecter(page);
   const nom = yaide.dossier.split("/").pop();
-  await expect(page).toHaveTitle(`${nom} — Yaide`);
+  await expect(page).toHaveTitle(`${nom} — yaide`);
 });
 
 test("REQ028_AC7_contour_de_focus_visible_sur_les_elements_atteints_par_Tab", async ({ page }) => {
@@ -213,19 +213,20 @@ test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", 
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(true);
 });
 
-test("REQ028_AC9_un_chemin_long_ne_deborde_pas_de_la_barre_du_haut", async ({ page }) => {
+test("REQ028_AC9_un_nom_de_projet_long_ne_deborde_pas_de_la_barre_de_titre", async ({ page }) => {
   await seConnecter(page);
   await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
   await page.setViewportSize({ width: 800, height: 480 });
   await page.evaluate(() => {
-    document.querySelector(".barre-chemin").textContent = "/" + "tres-long-dossier/".repeat(10) + "projet";
+    document.querySelector(".ya-command-nom").textContent = "tres-long-dossier-".repeat(20) + "projet";
   });
-  const chemin = await page.locator(".barre-chemin").boundingBox();
+  const commande = await page.locator(".ya-command").boundingBox();
+  const theme = await page.getByRole("button", { name: "Thème clair" }).boundingBox();
   const sortir = await page.getByRole("button", { name: "Déconnexion" }).boundingBox();
-  expect(chemin.x + chemin.width).toBeLessThanOrEqual(sortir.x);
+  expect(commande.x + commande.width).toBeLessThanOrEqual(theme.x);
   const rail = await page.locator(".cadre-rail").boundingBox();
-  expect(chemin.y).toBeGreaterThanOrEqual(0);
-  expect(chemin.y + chemin.height).toBeLessThanOrEqual(rail.y);
+  expect(commande.y).toBeGreaterThanOrEqual(0);
+  expect(commande.y + commande.height).toBeLessThanOrEqual(rail.y);
   expect(sortir.x + sortir.width).toBeLessThanOrEqual(800);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

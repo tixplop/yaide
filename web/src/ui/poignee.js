@@ -9,11 +9,11 @@ export function limites({ L, H, bandeaux = 0 }) {
   return {
     panneau: {
       min: jeton("--largeur-panneau-min"),
-      max: Math.min(jeton("--largeur-panneau-max"), largeur - jeton("--largeur-rail") - epaisseur - jeton("--largeur-editeur-min")),
+      max: Math.min(jeton("--largeur-panneau-max"), largeur - jeton("--size-activity") - epaisseur - jeton("--largeur-editeur-min")),
     },
     shells: {
       min: minShells,
-      max: Math.max(minShells, hauteur - jeton("--hauteur-barre") - epaisseur - bandeaux - jeton("--hauteur-editeur-min")),
+      max: Math.max(minShells, hauteur - jeton("--size-titlebar") - jeton("--size-status") - epaisseur - bandeaux - jeton("--hauteur-editeur-min")),
     },
   };
 }

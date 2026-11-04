@@ -6,6 +6,7 @@ import { ecrire, lire } from "../stockage.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { surveiller } from "../connexion.js";
+import { changerTheme, themeCourant } from "../ui/theme.js";
 import { vueEditeur } from "./editeur.js";
 import { vueFichiers } from "./fichiers.js";
 import { vueGit } from "./git.js";
@@ -27,26 +28,23 @@ const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 
 /** V-002. `surDeconnexion` est appelé une fois la session fermée, `surExpiree` si elle expire. */
 export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnexion }) {
-  document.title = `${nomDuDossier(chemin)} — Yaide`;
+  document.title = `${nomDuDossier(chemin)} — yaide`;
 
-  const nom = document.createElement("strong");
-  nom.className = "barre-nom";
-  nom.textContent = "Yaide";
-  const lieu = document.createElement("span");
-  lieu.className = "barre-chemin";
-  lieu.textContent = chemin;
-  lieu.title = chemin;
-  const droite = document.createElement("div");
-  droite.className = "barre-droite";
   const sortir = bouton({ icone: "log-out", nomAccessible: "Déconnexion" });
   sortir.addEventListener("click", async () => {
     if (etat !== "coupe" && (await deconnexion())) surDeconnexion();
     else dire({ texte: TEXTE_COUPURE, variante: "alerte" });
   });
-  const branche = document.createElement("span");
-  branche.className = "barre-branche";
-  branche.hidden = true;
-  droite.append(branche, sortir.enveloppe);
+  const theme = bouton({ icone: "sun", nomAccessible: "Thème clair", presse: themeCourant() === "light" });
+  theme.addEventListener("click", () => {
+    changerTheme(themeCourant() === "light" ? "dark" : "light");
+    theme.setAttribute("aria-pressed", String(themeCourant() === "light"));
+  });
+
+  // Barre d'état : la branche, puis la position et le langage de l'onglet actif.
+  let racine = null;
+  const barre = {};
+  const majEtat = () => racine?.definirEtat(barre);
 
   // Bandeaux : la coupure d'abord, puis un seul message à la fois.
   const bandeaux = document.createElement("div");
@@ -70,7 +68,16 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   }
 
   const shells = vueShells({ dire });
-  const editeur = vueEditeur({ dire, ouvrirRapide: () => ouverture.ouvrir(), surAttente: (t) => { attenteTexte = t; montrerCoupure(); } });
+  const editeur = vueEditeur({
+    dire,
+    ouvrirRapide: () => ouverture.ouvrir(),
+    surAttente: (t) => { attenteTexte = t; montrerCoupure(); },
+    surActif: (a) => {
+      barre.position = a?.position;
+      barre.langage = a?.langage;
+      majEtat();
+    },
+  });
   const ouverture = vueOuverture({ dire, surOuvrir: editeur.ouvrir, surLecture: editeur.lecture });
   const fichiers = vueFichiers({
     dire,
@@ -85,8 +92,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const git = vueGit({
     dire,
     surBranche: (b) => {
-      branche.hidden = !b;
-      if (b) branche.textContent = `branche: ${b.detachee ? "détachée" : b.branche}`;
+      barre.branche = b ? (b.detachee ? "détachée" : b.branche) : undefined;
+      majEtat();
     },
     surDiff: editeur.ouvrirDiff,
     diffOuvert: editeur.diffOuvert,
@@ -104,11 +111,12 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
 
   const choisies = {};
   let detruite = false;
-  const racine = cadre({
-    barreHaut: [nom, lieu, droite],
+  racine = cadre({
+    barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [theme.enveloppe, sortir.enveloppe] },
     rail: { onglets: rail, commandes: shells.commandes },
     panneau: { titre: "Fichiers", corps: [fichiers.corps, recherche.corps, git.corps], pied: [fichiers.pied, git.pied] },
-    principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, code: editeur.code, shells },
+    principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, fil: editeur.fil, code: editeur.code, shells },
+    barreEtat: barre,
     surChangement: (zone, taille) => {
       choisies[zone] = taille;
       racine.definirTailles({ [zone]: taille });

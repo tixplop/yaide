@@ -165,11 +165,9 @@
   --rayon-dialogue: 6px;
   --trait: 1px;
   --trait-fort: 2px;
-  --hauteur-barre: 32px;
-  --largeur-rail: 36px;
-  --largeur-panneau: 240px;
-  --largeur-panneau-min: 160px;
-  --largeur-panneau-max: 480px;
+  --largeur-panneau: 280px;
+  --largeur-panneau-min: 240px;
+  --largeur-panneau-max: 360px;
   --largeur-editeur-min: 320px;
   --hauteur-onglet: 28px;
   --hauteur-controle: 24px;
@@ -177,7 +175,7 @@
   --part-shells: 35%;
   --hauteur-shells-min: 120px;
   --hauteur-editeur-min: 120px;
-  --epaisseur-poignee: 8px;
+  --epaisseur-poignee: 4px;
   --pas-poignee: 16px;
   --taille-icone: 16px;
   --taille-icone-rail: 20px;

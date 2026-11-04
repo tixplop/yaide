@@ -28,17 +28,46 @@ function monter(options = {}) {
 
 test("REQ028_AC6_titre_du_navigateur", () => {
   monter();
-  expect(document.title).toBe("projet — Yaide");
+  expect(document.title).toBe("projet — yaide");
 });
 
-test("REQ028_AC2_barre_du_haut", () => {
+test("REQ037_AC2_barre_de_titre_symbole_ouverture_rapide_theme_et_deconnexion", () => {
   const { vue } = monter();
   const barre = vue.querySelector("header");
-  expect(barre.textContent).toContain("Yaide");
-  expect(barre.textContent).toContain("/home/x/projet");
-  const sortir = barre.querySelector("button");
-  expect(sortir.textContent).toBe("");
-  expect(sortir.getAttribute("aria-label")).toBe("Déconnexion");
+  expect(barre.querySelector("svg[aria-hidden=true]")).not.toBeNull();
+  const noms = [...barre.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
+  expect(noms).toEqual(["Ouverture rapide", "Thème clair", "Déconnexion"]);
+  expect(barre.querySelector("button").textContent).toBe("projet");
+  expect(barre.textContent).toBe("projet");
+  expect(barre.querySelector("[aria-label=Déconnexion]").textContent).toBe("");
+  expect(barre.querySelector("nav, [role=menubar]")).toBeNull();
+});
+
+test("REQ037_AC3_le_bouton_central_ouvre_l_ouverture_rapide", () => {
+  const ouvert = vi.fn();
+  HTMLDialogElement.prototype.showModal = function () {
+    ouvert(this);
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute("open");
+  };
+  const { vue } = monter();
+  vue.querySelector("header [aria-label='Ouverture rapide']").click();
+  expect(ouvert).toHaveBeenCalledTimes(1);
+});
+
+test("REQ038_AC2_AC4_le_bouton_Theme_clair_bascule_le_theme_et_aria_pressed", () => {
+  document.documentElement.setAttribute("data-theme", "dark");
+  const { vue } = monter();
+  const b = vue.querySelector("header [aria-label='Thème clair']");
+  expect(b.getAttribute("aria-pressed")).toBe("false");
+  b.click();
+  expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+  expect(b.getAttribute("aria-pressed")).toBe("true");
+  b.click();
+  expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+  expect(b.getAttribute("aria-pressed")).toBe("false");
 });
 
 test("REQ028_AC4_rail_accessible", () => {
@@ -65,14 +94,14 @@ test("REQ028_AC5_touche_sur_le_rail_change_de_panneau_et_prend_le_focus", () => 
 
 test("REQ028_AC5_une_lettre_hors_du_rail_ne_fait_rien", () => {
   const { vue } = monter();
-  vue.querySelector("header button").dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true }));
+  vue.querySelector("header [aria-label=Déconnexion]").dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true }));
   expect(vue.querySelector("aside h2").textContent).toBe("Fichiers");
 });
 
 test("REQ005_AC3_deconnexion_appelle_le_serveur_puis_surDeconnexion", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => ({ status: 204 })));
   const { vue, surDeconnexion } = monter();
-  vue.querySelector("header button").click();
+  vue.querySelector("header [aria-label=Déconnexion]").click();
   await new Promise((r) => setTimeout(r, 0));
   expect(fetch).toHaveBeenCalledWith("/api/deconnexion", expect.objectContaining({ method: "POST" }));
   expect(surDeconnexion).toHaveBeenCalled();
@@ -80,7 +109,7 @@ test("REQ005_AC3_deconnexion_appelle_le_serveur_puis_surDeconnexion", async () =
 
 test("REQ028_AC8_Deconnexion_precede_le_rail_dans_l_ordre_du_document", () => {
   const { vue } = monter();
-  const sortir = vue.querySelector("header button");
+  const sortir = vue.querySelector("header [aria-label=Déconnexion]");
   const rail = vue.querySelector("[role=tab]");
   expect(sortir.compareDocumentPosition(rail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
@@ -88,7 +117,7 @@ test("REQ028_AC8_Deconnexion_precede_le_rail_dans_l_ordre_du_document", () => {
 test("REQ005_AC3_deconnexion_avec_session_deja_expiree_ramene_a_la_connexion", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => ({ status: 401 })));
   const { vue, surDeconnexion } = monter();
-  vue.querySelector("header button").click();
+  vue.querySelector("header [aria-label=Déconnexion]").click();
   await new Promise((r) => setTimeout(r, 0));
   expect(surDeconnexion).toHaveBeenCalled();
 });
@@ -100,27 +129,44 @@ test("REQ028_AC1_clic_sur_le_rail_change_de_panneau_et_le_focus_y_entre", () => 
   expect(document.activeElement).toBe(vue.querySelector(".cadre-panneau-corps"));
 });
 
-test("REQ028_AC2_et_AC022_AC3_la_barre_du_haut_affiche_la_branche_entre_le_chemin_et_Deconnexion", async () => {
+test("REQ022_AC3_et_REQ037_AC4_la_barre_d_etat_affiche_la_branche_et_pas_la_barre_de_titre", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url) => {
     if (url === "/api/git/etat") return { ok: true, status: 200, json: async () => ({ branche: "main", detachee: false, branches: ["main"], changements: [] }) };
     return { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "erreur 500" }) };
   }));
   const { vue } = monter();
   await new Promise((r) => setTimeout(r, 0));
-  const droite = vue.querySelector("header .barre-droite");
-  expect(droite.children[0].textContent).toBe("branche: main");
-  expect(droite.children[0].hidden).toBe(false);
-  expect(droite.children[1].querySelector("button").getAttribute("aria-label")).toBe("Déconnexion");
+  const etat = vue.querySelector("footer");
+  expect(etat.textContent).toBe("main");
+  expect(etat.querySelector("svg[data-icone=branch]")).not.toBeNull();
+  expect(vue.querySelector("header").textContent).not.toContain("main");
 });
 
-test("REQ022_AC4_hors_depot_pas_de_branche_dans_la_barre_du_haut", async () => {
+test("REQ037_AC4_HEAD_detachee_affiche_detachee_seul", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (url === "/api/git/etat") return { ok: true, status: 200, json: async () => ({ branche: "a1b2c3d", detachee: true, branches: [], changements: [] }) };
+    return { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "erreur 500" }) };
+  }));
+  const { vue } = monter();
+  await new Promise((r) => setTimeout(r, 0));
+  expect(vue.querySelector("footer").textContent).toBe("détachée");
+});
+
+test("REQ022_AC4_et_REQ037_AC4_hors_depot_rien_dans_la_barre_d_etat", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url) => {
     if (url === "/api/git/etat") return { ok: false, status: 409, json: async () => ({ cause: "pas-depot", message: "Ce dossier n'est pas un dépôt git." }) };
     return { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "erreur 500" }) };
   }));
   const { vue } = monter();
   await new Promise((r) => setTimeout(r, 0));
-  expect(vue.querySelector("header .barre-branche").hidden).toBe(true);
+  expect(vue.querySelector("footer").textContent).toBe("");
+});
+
+test("REQ037_AC10_la_barre_d_etat_et_le_fil_n_ont_ni_bouton_ni_lien_ni_arret_de_tabulation", () => {
+  const { vue } = monter();
+  for (const z of [vue.querySelector("footer"), vue.querySelector(".cadre-fil")]) {
+    expect(z.querySelector("button, a, [tabindex], input")).toBeNull();
+  }
 });
 
 const attendre = () => new Promise((r) => setTimeout(r, 0));
@@ -131,7 +177,7 @@ test("REQ032_AC7_les_poignees_ont_valuenow_valuemin_valuemax_des_le_montage", as
   await attendre();
   const { panneau, shells } = poignees(vue);
   for (const p of [panneau, shells]) for (const a of ["aria-valuenow", "aria-valuemin", "aria-valuemax"]) expect(p.hasAttribute(a)).toBe(true);
-  expect(panneau.getAttribute("aria-valuemin")).toBe("160");
+  expect(panneau.getAttribute("aria-valuemin")).toBe("240");
   expect(shells.getAttribute("aria-valuemin")).toBe("120");
 });
 
@@ -158,17 +204,38 @@ test("REQ032_AC12_une_fleche_ecrit_la_taille_choisie_mais_pas_la_fenetre", async
 });
 
 test("REQ032_AC12_AC6_la_fenetre_qui_retrecit_borne_l_affichage_sans_effacer_la_taille_choisie", async () => {
-  vi.mocked(lire).mockImplementation(async (cle) => (cle === "tailles" ? { panneau: 450 } : undefined));
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "tailles" ? { shells: 400 } : undefined));
   const { vue } = monter();
   await attendre();
-  const largeur = window.innerWidth;
+  const hauteur = window.innerHeight;
+  window.innerHeight = 480;
+  window.dispatchEvent(new Event("resize"));
+  const { shells } = poignees(vue);
+  expect(shells.getAttribute("aria-valuenow")).toBe("299");
+  window.innerHeight = hauteur;
+  window.dispatchEvent(new Event("resize"));
+  expect(shells.getAttribute("aria-valuenow")).toBe("400");
+  expect(ecrire).not.toHaveBeenCalled();
+});
+
+test("REQ032_AC14_une_taille_de_480_px_d_une_version_precedente_est_ramenee_a_360_sans_etre_reecrite", async () => {
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "tailles" ? { panneau: 480 } : undefined));
+  const { vue } = monter();
+  await attendre();
+  expect(poignees(vue).panneau.getAttribute("aria-valuenow")).toBe("360");
+  expect(ecrire).not.toHaveBeenCalled();
+});
+
+test("REQ032_AC9_limites_a_800_par_480_dans_la_vue", async () => {
+  const [L, H] = [window.innerWidth, window.innerHeight];
   window.innerWidth = 800;
-  window.dispatchEvent(new Event("resize"));
-  const { panneau } = poignees(vue);
-  expect(panneau.getAttribute("aria-valuenow")).toBe("436");
-  window.innerWidth = largeur;
-  window.dispatchEvent(new Event("resize"));
-  expect(panneau.getAttribute("aria-valuenow")).toBe("450");
+  window.innerHeight = 480;
+  const { vue } = monter();
+  await attendre();
+  const { panneau, shells } = poignees(vue);
+  expect([panneau, shells].map((p) => [p.getAttribute("aria-valuemin"), p.getAttribute("aria-valuemax")])).toEqual([["240", "360"], ["120", "299"]]);
+  window.innerWidth = L;
+  window.innerHeight = H;
 });
 
 test("REQ035_AC1_AC8_deux_boutons_a_icone_dans_le_rail_hors_du_tablist", () => {

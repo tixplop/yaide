@@ -1,5 +1,6 @@
 import { connexion } from "../api.js";
 import { bouton } from "../ui/bouton.js";
+import { symbole } from "../ui/cadre.js";
 import { champ } from "../ui/champ.js";
 import { message } from "../ui/message.js";
 
@@ -12,7 +13,7 @@ const TEXTES = {
 };
 
 /** V-001. `surSucces` est appelé une fois connecté. */
-export function vueConnexion({ nom, chemin, expiree = false, surSucces }) {
+export function vueConnexion({ chemin, expiree = false, surSucces }) {
   const racine = document.createElement("div");
   racine.className = "connexion";
   const form = document.createElement("form");
@@ -27,7 +28,10 @@ export function vueConnexion({ nom, chemin, expiree = false, surSucces }) {
   function afficher({ erreur, enCours = false, valeur = "" }) {
     const titre = document.createElement("h1");
     titre.className = "connexion-titre";
-    titre.textContent = nom;
+    titre.textContent = "yaide";
+    const marque = document.createElement("div");
+    marque.className = "connexion-symbole";
+    marque.append(symbole(40));
     const p = document.createElement("p");
     p.className = "connexion-chemin";
     p.title = chemin;
@@ -35,7 +39,7 @@ export function vueConnexion({ nom, chemin, expiree = false, surSucces }) {
     bdo.dir = "ltr";
     bdo.textContent = chemin;
     p.append(bdo);
-    const contenu = [titre, p];
+    const contenu = [marque, titre, p];
     if (expiree) contenu.push(message({ texte: "Session expirée. Reconnectez-vous." }));
     contenu.push(
       champ({ libelle: "Mot de passe", type: "motDePasse", valeur, erreur, desactive: enCours }),

@@ -230,7 +230,8 @@ test("REQ036_AC7_presentations_fichiers_shells_rail", () => {
   expect(regle(".ya-term-tabs .onglet[aria-selected=\"true\"]")).toContain("background: var(--bg-300)");
   expect(regle(".ya-activity")).toContain("width: var(--size-activity)");
   expect(regle(".ya-activity")).toContain("background: var(--bg-000)");
-  expect(regle(".ya-activity")).toContain("border-right: var(--trait) solid var(--line)");
+  // Le filet du rail est celui du cadre (un seul).
+  expect(regle(".ya-activity")).not.toContain("border");
   expect(regle(".ya-activity .onglet")).toContain("height: var(--size-activity)");
   expect(regle(".ya-activity .onglet")).toContain("color: var(--ink-faint)");
   expect(regle(".ya-activity .onglet[aria-selected=\"true\"]")).toContain("inset var(--trait-fort) 0 0 var(--accent-fg)");

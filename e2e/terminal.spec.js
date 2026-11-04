@@ -91,7 +91,7 @@ test("REQ028_AC9_a_800_par_480_les_zones_du_cadre_ne_se_superposent_pas", async 
   await page.evaluate(() => {
     const t = (balise, texte) => Object.assign(document.createElement(balise), { textContent: texte });
     document.body.replaceChildren(
-      window.cadre({ barreHaut: t("span", "haut"), rail: { onglets: t("span", "rail") }, panneau: { titre: "Fichiers", corps: t("p", "corps") }, principal: { ongletsFichiers: t("div", "onglets"), code: t("div", "code"), shells: t("div", "shells") } }),
+      window.cadre({ barreTitre: { projet: "haut" }, rail: { onglets: t("span", "rail") }, panneau: { titre: "Fichiers", corps: t("p", "corps") }, principal: { ongletsFichiers: t("div", "onglets"), code: t("div", "code"), shells: t("div", "shells") } }),
     );
   });
   const boite = async (sel) => page.locator(sel).first().boundingBox();
@@ -99,9 +99,9 @@ test("REQ028_AC9_a_800_par_480_les_zones_du_cadre_ne_se_superposent_pas", async 
   expect(rail.x + rail.width).toBeLessThanOrEqual(panneau.x + 1);
   expect(panneau.x + panneau.width).toBeLessThanOrEqual(principal.x + 1);
   expect(haut.y + haut.height).toBeLessThanOrEqual(rail.y + 1);
-  expect(Math.round(haut.height)).toBe(32);
-  expect(Math.round(rail.width)).toBe(36);
-  expect(Math.round(panneau.width)).toBe(240);
+  expect(Math.round(haut.height)).toBe(35);
+  expect(Math.round(rail.width)).toBe(48);
+  expect(Math.round(panneau.width)).toBe(280);
   const code = await boite(".cadre-code");
   const shells = await boite(".cadre-shells");
   expect(code.y + code.height).toBeLessThanOrEqual(shells.y + 1);

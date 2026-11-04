@@ -43,3 +43,28 @@ export function supportLangage(id) {
   if (!LANGAGES[id]) throw new Error(`langage inconnu « ${id} »`);
   return LANGAGES[id].support();
 }
+
+// Nom affiché par extension, dans la barre d'état : un nom par langage.
+const NOMS = {
+  Rust: ["rs"],
+  JavaScript: ["js", "mjs", "cjs", "jsx"],
+  TypeScript: ["ts", "tsx", "mts", "cts"],
+  Python: ["py", "pyw"],
+  Go: ["go"],
+  C: ["c", "h"],
+  "C++": ["cc", "cpp", "cxx", "hh", "hpp", "hxx"],
+  HTML: ["html", "htm"],
+  CSS: ["css"],
+  JSON: ["json"],
+  YAML: ["yaml", "yml"],
+  TOML: ["toml"],
+  Markdown: ["md", "markdown"],
+  Shell: ["sh", "bash", "zsh"],
+};
+
+// Nom du langage d'après le nom du fichier ; « Texte » pour les autres.
+export function nomLangage(nom) {
+  const point = String(nom ?? "").lastIndexOf(".");
+  const ext = point < 0 ? "" : nom.slice(point + 1).toLowerCase();
+  return Object.keys(NOMS).find((n) => NOMS[n].includes(ext)) ?? "Texte";
+}

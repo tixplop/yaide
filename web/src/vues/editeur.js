@@ -5,7 +5,8 @@ import { apresFermeture, estSous, garder, libelles, nomDe, retrouver, suivreReno
 import { bouton } from "../ui/bouton.js";
 import { dialogue } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
-import { langagePourFichier } from "../ui/langages.js";
+import { icone } from "../ui/icones.js";
+import { langagePourFichier, nomLangage } from "../ui/langages.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { zoneCode } from "../ui/zone-code.js";
@@ -21,10 +22,14 @@ const estMarkdown = (chemin) => /\.(md|markdown)$/i.test(chemin);
 /**
  * Éditeur de V-002. `dire({ texte, variante, fermable })` affiche un bandeau ; `ouvrirRapide()` ouvre V-006.
  * `surAttente(texte)` : phrase des sauvegardes attendant le retour de la connexion (vide s'il n'y en a plus).
- * Rend `{ barre, code, lecture(oui), definirEtat(etat), ouvrir(…), renomme(…), supprime(…), restaurer(), detruire() }`.
+ * `surActif({ position, langage })` : l'onglet actif et sa position pour la barre d'état (`null` sans onglet ; sur un diff, la position seule).
+ * Rend `{ barre, fil, code, lecture(oui), definirEtat(etat), ouvrir(…), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
-export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {} }) {
+export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {} }) {
   const barre = document.createElement("div");
+  const fil = document.createElement("div");
+  fil.className = "ya-crumbs";
+  fil.hidden = true;
   const code = document.createElement("div");
   code.className = "editeur-code";
   const questionOnglet = document.createElement("div");
@@ -67,6 +72,33 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
 
   // ---- Affichage ----
 
+  // Fil d'Ariane (texte sans action) et barre d'état : le fichier actif, ou rien.
+  function publier(o) {
+    if (!o) {
+      fil.hidden = true;
+      fil.replaceChildren();
+      return surActif(null);
+    }
+    const segments = o.chemin.split("/");
+    fil.replaceChildren(
+      ...segments.flatMap((nom, i) => {
+        const e = document.createElement("span");
+        e.className = i === segments.length - 1 ? "ya-crumbs-nom" : "ya-crumbs-segment";
+        e.textContent = nom;
+        return i === 0 ? [e] : [icone("chevron", 12), e];
+      }),
+    );
+    fil.hidden = false;
+    const etat = (o === diff ? diff.el : o.zone).vue?.state;
+    let position;
+    if (etat) {
+      const tete = etat.selection.main.head;
+      const l = etat.doc.lineAt(tete);
+      position = `Ln ${l.number}, Col ${tete - l.from + 1}`;
+    }
+    surActif({ position, langage: o === diff ? undefined : nomLangage(nomDe(o.chemin)) });
+  }
+
   function afficher() {
     if (detruit) return;
     const avaitLeFocus = barre.contains(document.activeElement);
@@ -75,7 +107,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       barre.replaceChildren();
       questionOnglet.replaceChildren();
       code.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
-      return;
+      return publier(null);
     }
     if (!o) {
       const b = bouton({ libelle: "Ouvrir un fichier" });
@@ -83,7 +115,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       barre.replaceChildren();
       questionOnglet.replaceChildren();
       code.replaceChildren(indication({ texte: "Aucun fichier ouvert.", action: b }));
-      return;
+      return publier(null);
     }
     const noms = libelles(liste.map((x) => x.chemin));
     let actionsDroite = [];
@@ -125,6 +157,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     }
     for (const enfant of [...code.children]) if (!zones.some(([, z]) => z === enfant)) enfant.remove();
     if (lectures > 0) code.prepend(indication({ texte: "Chargement…", variante: "chargement" }));
+    publier(o);
   }
 
   // Choix d'un onglet : la barre est refaite après le rappel, qui peut encore donner le focus à l'ancien onglet.
@@ -146,6 +179,9 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       langage: langagePourFichier(nomDe(chemin)) ?? undefined,
       nom: nomDe(chemin),
       apercu,
+      surPosition() {
+        if (trouver(actif) === o) publier(o);
+      },
       surChangement(t) {
         const m = t !== o.disque;
         if (m === o.modifie) return garderListe();
@@ -213,7 +249,8 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     if (actif !== DIFF) avantDiff = actif;
     diff?.el.detruire?.();
     diff?.el.remove();
-    const el = avis ? indication({ texte: avis }) : zoneCode({ contenu: texte, mode: "diff", nom: nomDe(chemin) });
+    // La zone peut signaler sa position pendant sa création : `el` n'existe pas encore, on se repère au chemin.
+    const el = avis ? indication({ texte: avis }) : zoneCode({ contenu: texte, mode: "diff", nom: nomDe(chemin), surPosition: () => actif === DIFF && diff?.chemin === chemin && publier(diff) });
     diff = { chemin, el };
     actif = DIFF;
     afficher();
@@ -527,6 +564,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   afficher();
   return {
     barre,
+    fil,
     code,
     /** Zone de la question de l'onglet actif (C-003 dans `questionOnglet`). */
     question: questionOnglet,

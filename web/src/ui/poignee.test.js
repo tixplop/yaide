@@ -22,13 +22,13 @@ const touche = (p, key, init = {}) => {
 };
 
 test("REQ032_AC9_limites_a_800_par_480_sans_bandeau", () => {
-  expect(limites({ L: 800, H: 480, bandeaux: 0 })).toEqual({ panneau: { min: 160, max: 436 }, shells: { min: 120, max: 320 } });
+  expect(limites({ L: 800, H: 480, bandeaux: 0 })).toEqual({ panneau: { min: 240, max: 360 }, shells: { min: 120, max: 299 } });
 });
 
 test("REQ032_AC9_limites_grande_fenetre_et_bandeaux", () => {
   const l = limites({ L: 1600, H: 1000, bandeaux: 40 });
-  expect(l.panneau).toEqual({ min: 160, max: 480 });
-  expect(l.shells).toEqual({ min: 120, max: 1000 - 32 - 8 - 40 - 120 });
+  expect(l.panneau).toEqual({ min: 240, max: 360 });
+  expect(l.shells).toEqual({ min: 120, max: 1000 - 35 - 22 - 4 - 40 - 120 });
 });
 
 test("REQ032_AC6_limites_figees_sous_800_par_480", () => {
@@ -157,15 +157,24 @@ test("REQ032_AC13_pendant_le_glisse_la_page_porte_le_curseur_et_pas_de_selection
   expect(css).toMatch(/html\.poignee-glisse-horizontal[^{]*\*\s*\{[^}]*cursor: row-resize !important;[^}]*user-select: none !important/);
 });
 
-test("REQ032_AC13_curseurs_et_place_de_8_px_sans_recouvrement", () => {
+test("REQ032_AC13_curseurs_et_place_de_4_px_sans_recouvrement", () => {
   expect(css).toMatch(/\.poignee-vertical\s*\{[^}]*width: var\(--epaisseur-poignee\)[^}]*cursor: col-resize/);
   expect(css).toMatch(/\.poignee-horizontal\s*\{[^}]*height: var\(--epaisseur-poignee\)[^}]*cursor: row-resize/);
 });
 
-test("REQ032_AC8_survol_glisse_et_focus_visibles", () => {
-  expect(css).toMatch(/\.poignee:hover, \.poignee:focus-visible, \.poignee-active\s*\{[^}]*background: var\(--surface-haute\)/);
-  expect(css).toMatch(/\.poignee:focus-visible\s*\{[^}]*outline: var\(--trait-fort\) solid var\(--accent-fg\)[^}]*outline-offset: calc\(-1 \* var\(--trait-fort\)\)/);
-  expect(css).toMatch(/\.poignee::after\s*\{[^}]*background: var\(--texte-attenue\)/);
+test("REQ032_AC8_AC13_AC14_repos_survol_glisse_et_focus_visibles", () => {
+  const sans = css.replace(/\/\*[^]*?\*\//g, "");
+  // Repos : 4 px (token), un filet --line de 1 px au milieu, sur le fond de la zone voisine.
+  expect(sans).toMatch(/\.poignee::after\s*\{[^}]*background: var\(--line\)/);
+  expect(sans).toMatch(/\.poignee-vertical::after\s*\{[^}]*width: var\(--trait\)/);
+  expect(sans).toMatch(/\.poignee-horizontal::after\s*\{[^}]*height: var\(--trait\)/);
+  expect(sans).toMatch(/\.poignee-vertical\s*\{[^}]*width: var\(--epaisseur-poignee\)[^}]*cursor: col-resize[^}]*background: var\(--bg-100\)/);
+  expect(sans).toMatch(/\.poignee-horizontal\s*\{[^}]*height: var\(--epaisseur-poignee\)[^}]*cursor: row-resize[^}]*background: var\(--bg-000\)/);
+  // Survol, glissé, focus : toute l'épaisseur en --accent-fg.
+  expect(sans).toMatch(/\.poignee:hover, \.poignee:focus-visible, \.poignee-active\s*\{[^}]*background: var\(--accent-fg\)/);
+  expect(sans).toMatch(/\.poignee:hover::after, \.poignee:focus-visible::after, \.poignee-active::after\s*\{[^}]*background: var\(--accent-fg\)/);
+  expect(sans).toMatch(/\.poignee:focus-visible\s*\{[^}]*outline: var\(--trait-fort\) solid var\(--accent-fg\)[^}]*outline-offset: calc\(-1 \* var\(--trait\)\)/);
+  expect(document.documentElement.style.getPropertyValue("--epaisseur-poignee")).toBe("4px");
 });
 
 test("REQ032_AC12_clic_sans_mouvement_pas_de_surFin", () => {

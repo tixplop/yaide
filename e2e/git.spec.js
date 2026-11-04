@@ -37,7 +37,7 @@ const changements = (page) => page.getByRole("listbox", { name: "Changements" })
 const ligne = (page, chemin) => changements(page).getByRole("option").filter({ hasText: chemin });
 const ongletDiff = (page, nom) => page.getByRole("tab", { name: `${nom} (diff)` });
 const message = (page) => page.getByRole("textbox", { name: "Message" });
-const barre = (page) => page.locator("header");
+const barre = (page) => page.locator("footer");
 
 test("REQ022_AC1_AC2_AC6_AC7_changements_statuts_et_un_seul_onglet_de_diff", async ({ page }) => {
   const dossier = depot();
@@ -93,10 +93,11 @@ test("REQ022_AC7_fermer_le_dernier_fichier_laisse_l_onglet_de_diff", async ({ pa
   await expect(page.getByLabel("Diff main.rs")).toBeVisible();
 });
 
-test("REQ022_AC3_et_REQ028_AC2_la_barre_du_haut_affiche_la_branche", async ({ page }) => {
+test("REQ022_AC3_et_REQ028_AC2_la_barre_d_etat_affiche_la_branche_et_pas_la_barre_de_titre", async ({ page }) => {
   await ouvrir(page, depot());
-  await expect(barre(page)).toContainText("branche: main");
-  await expect(barre(page).getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  await expect(barre(page)).toContainText("main");
+  await expect(barre(page).locator("[aria-label=Déconnexion]")).toHaveCount(0);
+  await expect(page.locator("header").getByRole("button", { name: "Déconnexion" })).toBeVisible();
 });
 
 test("REQ022_AC4_dossier_sans_depot_git", async ({ page }) => {
@@ -108,7 +109,7 @@ test("REQ022_AC4_dossier_sans_depot_git", async ({ page }) => {
   await panneauGit(page);
   await expect(page.getByText("Ce dossier n'est pas un dépôt git.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Commit" })).toHaveCount(0);
-  await expect(barre(page)).not.toContainText("branche:");
+  await expect(barre(page)).toHaveText("");
 });
 
 test("REQ022_AC5_aucun_changement", async ({ page }) => {
@@ -202,7 +203,7 @@ test("REQ024_AC1_AC3_changer_de_branche_et_les_fichiers_ouverts_suivent_le_disqu
   const choix = page.getByLabel("Branche");
   await expect(choix.locator("option")).toHaveText(["main", "travail"]);
   await choix.selectOption("travail");
-  await expect(barre(page)).toContainText("branche: travail");
+  await expect(barre(page)).toContainText("travail");
   await expect(page.getByLabel("Éditeur README.md")).toContainText("# Branche travail");
   expect(g(dossier, "branch", "--show-current").trim()).toBe("travail");
 });
@@ -219,7 +220,7 @@ test("REQ024_AC2_changement_refuse_message_de_git_et_branche_inchangee", async (
   await page.getByLabel("Branche").selectOption("travail");
   await expect(page.getByRole("alert").filter({ hasText: "Git a refusé." })).toContainText("README.md");
   await expect(page.getByLabel("Branche")).toHaveValue("main");
-  await expect(barre(page)).toContainText("branche: main");
+  await expect(barre(page)).toContainText("main");
 });
 
 /** Dépôt avec un distant nu, cloné une fois. */

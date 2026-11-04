@@ -21,7 +21,7 @@ window.monter = (avecTailles = true) => {
   code.textContent = "code";
   const choisies = avecTailles ? { panneau: 240, shells: 200 } : {};
   const c = cadre({
-    barreHaut: "haut", rail: { onglets: "rail" },
+    barreTitre: { projet: "p" }, rail: { onglets: "rail" },
     panneau: { titre: "Fichiers", corps: document.createElement("p") },
     principal: { code, shells: t },
     tailles: avecTailles ? { ...choisies } : undefined,
@@ -66,8 +66,8 @@ const valeurs = (page, nom) =>
 
 test("REQ032_AC9_limites_affichees_a_800_par_480", async ({ page }) => {
   await ouvrir(page, { width: 800, height: 480 });
-  expect(await valeurs(page, "Largeur du panneau")).toEqual(["240", "160", "436"]);
-  expect(await valeurs(page, "Hauteur des shells")).toEqual(["200", "120", "320"]);
+  expect(await valeurs(page, "Largeur du panneau")).toEqual(["240", "240", "360"]);
+  expect(await valeurs(page, "Hauteur des shells")).toEqual(["200", "120", "299"]);
 });
 
 test("REQ032_AC1_glisse_la_poignee_du_panneau_au_dessus_du_terminal_sans_perdre_le_focus", async ({ page }) => {
@@ -82,20 +82,20 @@ test("REQ032_AC1_glisse_la_poignee_du_panneau_au_dessus_du_terminal_sans_perdre_
   await page.mouse.down();
   // le pointeur traverse l'éditeur puis le terminal
   await page.mouse.move(x0 + 100, y0 + 50, { steps: 5 });
-  await page.mouse.move(x0 + 160, 650, { steps: 5 });
+  await page.mouse.move(x0 + 100, 650, { steps: 5 });
   expect(await page.evaluate(() => getComputedStyle(document.body).cursor)).toBe("col-resize");
   expect(await page.locator(".xterm").evaluate((e) => getComputedStyle(e).cursor)).toBe("col-resize");
   await page.mouse.up();
   const apres = await boite(page, ".cadre-panneau");
-  expect(apres.w).toBeCloseTo(avant.w + 160, 0);
+  expect(apres.w).toBeCloseTo(avant.w + 100, 0);
   const principal = await boite(page, ".cadre-principal");
   expect(principal.x + principal.w).toBeCloseTo(1000, 0);
   expect(await page.evaluate(() => document.activeElement.className)).toBe("xterm-helper-textarea");
   await expect.poll(() => page.evaluate(() => document.querySelector(".terminal").term.cols)).toBeLessThan(colsAvant);
   const cols = await page.evaluate(() => document.querySelector(".terminal").term.cols);
   expect(await page.evaluate(() => window.tailles.at(-1)[0])).toBe(cols);
-  expect(await valeurs(page, "Largeur du panneau")).toEqual(["400", "160", "480"]);
-  expect(await page.evaluate(() => window.fins)).toEqual([["panneau", 400]]);
+  expect(await valeurs(page, "Largeur du panneau")).toEqual(["340", "240", "360"]);
+  expect(await page.evaluate(() => window.fins)).toEqual([["panneau", 340]]);
 });
 
 test("REQ032_AC2_AC3_glisse_la_poignee_des_shells_le_terminal_change_de_lignes", async ({ page }) => {
@@ -112,21 +112,21 @@ test("REQ032_AC2_AC3_glisse_la_poignee_des_shells_le_terminal_change_de_lignes",
   await expect.poll(lignes).toBeGreaterThan(avant);
   const dernier = await page.evaluate(() => window.tailles.at(-1));
   expect(dernier[1]).toBe(await lignes());
-  expect(await valeurs(page, "Hauteur des shells")).toEqual(["320", "120", "540"]);
+  expect(await valeurs(page, "Hauteur des shells")).toEqual(["320", "120", "519"]);
 });
 
 test("REQ032_AC4_la_poignee_s_arrete_aux_limites", async ({ page }) => {
   await ouvrir(page, { width: 800, height: 480 });
   const p = await boite(page, '[aria-label="Largeur du panneau"]');
-  await page.mouse.move(p.x + 4, p.y + 100);
+  await page.mouse.move(p.x + p.w / 2, p.y + 100);
   await page.mouse.down();
   await page.mouse.move(790, p.y + 100, { steps: 4 });
   await page.mouse.up();
   expect((await boite(page, ".cadre-principal")).w).toBeGreaterThanOrEqual(320);
-  expect(await valeurs(page, "Largeur du panneau")).toEqual(["436", "160", "436"]);
+  expect(await valeurs(page, "Largeur du panneau")).toEqual(["360", "240", "360"]);
 });
 
-test("REQ032_AC10_AC13_fleches_pas_de_16_focus_gardé_et_poignee_de_8_px", async ({ page }) => {
+test("REQ032_AC10_AC13_fleches_pas_de_16_focus_gardé_et_poignee_de_4_px", async ({ page }) => {
   await ouvrir(page);
   const sep = page.getByRole("separator", { name: "Hauteur des shells" });
   await sep.focus();
@@ -137,7 +137,7 @@ test("REQ032_AC10_AC13_fleches_pas_de_16_focus_gardé_et_poignee_de_8_px", async
   expect((await valeurs(page, "Hauteur des shells"))[0]).toBe("216");
   await expect(sep).toBeFocused();
   const b = await boite(page, '[aria-label="Hauteur des shells"]');
-  expect(b.h).toBe(8);
+  expect(b.h).toBe(4);
   const haut = await boite(page, ".cadre-code");
   expect(haut.y + haut.h).toBeLessThanOrEqual(b.y);
   expect(await sep.evaluate((e) => getComputedStyle(e).cursor)).toBe("row-resize");
@@ -146,42 +146,42 @@ test("REQ032_AC10_AC13_fleches_pas_de_16_focus_gardé_et_poignee_de_8_px", async
 
 test("REQ032_AC12_la_fenetre_retrecie_puis_rendue_rend_la_taille_choisie", async ({ page }) => {
   await ouvrir(page, { width: 1000, height: 700 });
-  await page.getByRole("separator", { name: "Largeur du panneau" }).focus();
-  for (let i = 0; i < 15; i++) await page.keyboard.press("ArrowRight");
-  expect((await valeurs(page, "Largeur du panneau"))[0]).toBe("480");
+  await page.getByRole("separator", { name: "Hauteur des shells" }).focus();
+  for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowUp");
+  expect((await valeurs(page, "Hauteur des shells"))[0]).toBe("519");
   await page.setViewportSize({ width: 800, height: 480 });
-  await expect.poll(async () => (await valeurs(page, "Largeur du panneau"))[0]).toBe("436");
+  await expect.poll(async () => (await valeurs(page, "Hauteur des shells"))[0]).toBe("299");
   await page.setViewportSize({ width: 1000, height: 700 });
-  await expect.poll(async () => (await valeurs(page, "Largeur du panneau"))[0]).toBe("480");
+  await expect.poll(async () => (await valeurs(page, "Hauteur des shells"))[0]).toBe("519");
   // seule une flèche ou un glissé fait garder une taille
-  expect(await page.evaluate(() => window.fins.at(-1))).toEqual(["panneau", 480]);
-  expect(await page.evaluate(() => window.fins.length)).toBe(15);
+  expect(await page.evaluate(() => window.fins.at(-1))).toEqual(["shells", 519]);
+  expect(await page.evaluate(() => window.fins.length)).toBe(20);
 });
 
 test("REQ032_AC1_AC7_AC10_sans_taille_choisie_la_valeur_de_depart_est_la_taille_mesuree", async ({ page }) => {
   await ouvrir(page, { width: 1000, height: 700 }, false);
-  expect(await valeurs(page, "Largeur du panneau")).toEqual(["240", "160", "480"]);
-  expect((await valeurs(page, "Hauteur des shells"))[0]).toBe("234");
+  expect(await valeurs(page, "Largeur du panneau")).toEqual(["280", "240", "360"]);
+  expect((await valeurs(page, "Hauteur des shells"))[0]).toBe("225");
   // flèche
   await page.getByRole("separator", { name: "Largeur du panneau" }).focus();
   await page.keyboard.press("ArrowRight");
-  expect((await valeurs(page, "Largeur du panneau"))[0]).toBe("256");
-  expect((await boite(page, ".cadre-panneau")).w).toBe(256);
-  expect(await page.evaluate(() => window.fins)).toEqual([["panneau", 256]]);
+  expect((await valeurs(page, "Largeur du panneau"))[0]).toBe("296");
+  expect((await boite(page, ".cadre-panneau")).w).toBe(296);
+  expect(await page.evaluate(() => window.fins)).toEqual([["panneau", 296]]);
   // glissé de la poignée des shells, jamais choisie
   const p = await boite(page, '[aria-label="Hauteur des shells"]');
   await page.mouse.move(p.x + 300, p.y + p.h / 2);
   await page.mouse.down();
   await page.mouse.move(p.x + 300, p.y + p.h / 2 - 55, { steps: 4 });
   await page.mouse.up();
-  expect((await valeurs(page, "Hauteur des shells"))[0]).toBe("289");
-  expect((await boite(page, ".cadre-shells")).h).toBe(289);
-  expect(await page.evaluate(() => window.fins.at(-1))).toEqual(["shells", 289]);
+  expect((await valeurs(page, "Hauteur des shells"))[0]).toBe("280");
+  expect((await boite(page, ".cadre-shells")).h).toBe(280);
+  expect(await page.evaluate(() => window.fins.at(-1))).toEqual(["shells", 280]);
 });
 
 test("REQ032_AC12_un_clic_sans_mouvement_ne_garde_aucune_taille", async ({ page }) => {
   await ouvrir(page);
   const p = await boite(page, '[aria-label="Largeur du panneau"]');
-  await page.mouse.click(p.x + 4, p.y + 100);
+  await page.mouse.click(p.x + p.w / 2, p.y + 100);
   expect(await page.evaluate(() => window.fins)).toEqual([]);
 });

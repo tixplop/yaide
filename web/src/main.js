@@ -3,11 +3,11 @@ import { vueConnexion } from "./vues/connexion.js";
 import { vuePrincipale } from "./vues/principale.js";
 
 export function titre() {
-  return "Yaide";
+  return "yaide";
 }
 
 async function demarrer(app) {
-  const projet = (await info()) ?? { nom: "Yaide", chemin: "" };
+  const projet = (await info()) ?? { chemin: "" };
   let courante = null;
   const montrer = (vue) => {
     courante?.detruire?.();
@@ -16,8 +16,8 @@ async function demarrer(app) {
     vue.focaliser?.();
   };
   const connexion = (expiree) => {
-    document.title = "Yaide";
-    montrer(vueConnexion({ nom: projet.nom, chemin: projet.chemin, expiree, surSucces: principale }));
+    document.title = "yaide";
+    montrer(vueConnexion({ chemin: projet.chemin, expiree, surSucces: principale }));
   };
   const principale = () =>
     montrer(vuePrincipale({ chemin: projet.chemin, surDeconnexion: () => connexion(false), surExpiree: () => connexion(true) }));

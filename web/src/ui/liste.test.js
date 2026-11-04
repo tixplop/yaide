@@ -439,7 +439,7 @@ test("REQ039_AC8_statutDossier_point_masque_colore_sans_lettre_ni_barre", () => 
   expect(() => liste({ lignes: [{ id: "a", libelle: "a", statutDossier: "R" }] })).toThrow(/statutDossier/);
 });
 
-test("C006_courant_dossier_parent_compteur_et_icone_choisie", () => {
+test("C006_courant_dossier_parent_et_icone_choisie", () => {
   const l = liste({ lignes: [
     { id: "a", libelle: "main.rs", dossier: "src", courant: true, icone: "file-code", couleurIcone: "git-modified" },
     { id: "b", libelle: "lib.rs" },

@@ -1,0 +1,78 @@
+import { readFileSync } from "node:fs";
+import { afterEach, expect, test, vi } from "vitest";
+import { vueEditeur } from "./editeur.js";
+import { nomLangage } from "../ui/langages.js";
+
+// jsdom n'a pas de mise en page : CodeMirror mesure avec ces deux méthodes.
+Range.prototype.getClientRects ??= () => [];
+Range.prototype.getBoundingClientRect ??= () => ({ left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 });
+
+let editeurs = [];
+afterEach(() => {
+  for (const e of editeurs) e.detruire();
+  editeurs = [];
+  document.body.replaceChildren();
+});
+
+function monter() {
+  const surActif = vi.fn();
+  const e = vueEditeur({ dire: vi.fn(), surActif });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  return { e, surActif };
+}
+const dernier = (f) => f.mock.calls.at(-1)[0];
+
+test("REQ037_AC4_AC11_barre_d_etat_position_et_langage_de_l_onglet_actif", () => {
+  const { e, surActif } = monter();
+  expect(dernier(surActif)).toBeNull();
+  e.ouvrir({ chemin: "src/main.rs", contenu: "fn main() {\n    let x = 1;\n}\n", version: "1" });
+  expect(dernier(surActif)).toEqual({ position: "Ln 1, Col 1", langage: "Rust" });
+  e.ouvrir({ chemin: "notes.xyz", contenu: "abc", version: "1" });
+  expect(dernier(surActif)).toEqual({ position: "Ln 1, Col 1", langage: "Texte" });
+});
+
+test("REQ037_AC4_la_position_suit_le_curseur", () => {
+  const { e, surActif } = monter();
+  e.ouvrir({ chemin: "a.js", contenu: "const a = 1;\nconst b = 2;\n", version: "1" });
+  const vue = e.code.querySelector(".zone-code").vue;
+  vue.dispatch({ selection: { anchor: 19 } });
+  expect(dernier(surActif).position).toBe("Ln 2, Col 7");
+  expect(dernier(surActif).langage).toBe("JavaScript");
+});
+
+test("REQ037_AC11_sur_un_diff_seule_la_position_s_affiche", () => {
+  const { e, surActif } = monter();
+  e.ouvrirDiff({ chemin: "src/main.rs", texte: "@@ -1 +1 @@\n-a\n+b\n" });
+  const a = dernier(surActif);
+  expect(a.position).toBe("Ln 1, Col 1");
+  expect(a.langage).toBeUndefined();
+  expect([...document.querySelector(".ya-crumbs").children].map((x) => x.textContent)).toContain("main.rs");
+});
+
+test("REQ037_AC5_fil_d_ariane_segments_chevrons_nom_en_dernier_et_absent_sans_fichier", () => {
+  const { e } = monter();
+  expect(e.fil.hidden).toBe(true);
+  e.ouvrir({ chemin: "src/vues/main.rs", contenu: "x", version: "1" });
+  expect(e.fil.hidden).toBe(false);
+  expect(e.fil.textContent).toBe("srcvuesmain.rs");
+  expect(e.fil.querySelectorAll("svg[data-icone=chevron]").length).toBe(2);
+  expect(e.fil.lastElementChild.className).toBe("ya-crumbs-nom");
+  expect(e.fil.querySelector("button, a, [tabindex]")).toBeNull();
+  expect(readFileSync("web/src/ui/composants.css", "utf8")).toMatch(/\.ya-crumbs-nom\s*\{[^}]*color: var\(--ink\)/);
+});
+
+test("REQ037_AC11_nom_de_langage_par_extension", () => {
+  expect(["main.rs", "a.ts", "a.js", "x.py", "a.go", "a.c", "a.cpp", "a.html", "a.css", "a.json", "a.yml", "a.toml", "a.md", "a.sh", "a.zzz", "Makefile"].map(nomLangage)).toEqual([
+    "Rust", "TypeScript", "JavaScript", "Python", "Go", "C", "C++", "HTML", "CSS", "JSON", "YAML", "TOML", "Markdown", "Shell", "Texte", "Texte",
+  ]);
+});
+
+test("REQ022_AC7_un_second_diff_remplace_le_premier_et_publie_son_fichier", () => {
+  const { e, surActif } = monter();
+  e.ouvrirDiff({ chemin: "src/main.rs", texte: "@@ -1 +1 @@\n-a\n+b\n" });
+  e.ouvrirDiff({ chemin: "neuf.txt", texte: "@@ -0,0 +1 @@\n+tout neuf\n" });
+  expect(e.fil.textContent).toBe("neuf.txt");
+  expect(dernier(surActif)).toEqual({ position: "Ln 1, Col 1", langage: undefined });
+  expect(e.barre.querySelectorAll("[role=tab]").length).toBe(1);
+});

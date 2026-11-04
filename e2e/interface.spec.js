@@ -23,7 +23,7 @@ async function ouvrirMain(page) {
 const zoneDuFocus = (page) =>
   page.evaluate(() => {
     const e = document.activeElement;
-    if (e.closest("header")) return "barre";
+    if (e.closest("header")) return e.getAttribute("aria-label");
     if (e.getAttribute("role") === "separator") return e.getAttribute("aria-label");
     if (e.closest(".cadre-rail-commandes")) return e.getAttribute("aria-label");
     if (e.closest(".cadre-rail")) return "rail";
@@ -41,8 +41,8 @@ const zoneDuFocus = (page) =>
 test("REQ028_AC8_AC7_ordre_de_Tab_complet_et_contour_de_focus_a_chaque_arret", async ({ page }) => {
   await ouvrirMain(page);
   await expect(page.locator(".terminal:visible .terminal-attente")).toBeHidden();
-  await page.getByRole("button", { name: "Déconnexion" }).focus();
-  const zones = ["barre"];
+  await page.getByRole("button", { name: "Ouverture rapide" }).focus();
+  const zones = ["Ouverture rapide"];
   for (let i = 0; i < 40 && zones.at(-1) !== "terminal"; i++) {
     // Dans l'éditeur, Tab indente : on le quitte par Échap puis Tab.
     if (zones.at(-1) === "éditeur") await page.keyboard.press("Escape");
@@ -59,7 +59,7 @@ test("REQ028_AC8_AC7_ordre_de_Tab_complet_et_contour_de_focus_a_chaque_arret", a
     expect(contour.some(Boolean), `contour absent à l'arrêt ${i} (${z})`).toBe(true);
     if (z !== zones.at(-1)) zones.push(z);
   }
-  expect(zones).toEqual(["barre", "rail", "Nouveau shell", "Fermer le shell", "panneau", "Largeur du panneau", "onglets de fichiers", "éditeur", "Hauteur des shells", "onglets de shells", "terminal"]);
+  expect(zones).toEqual(["Ouverture rapide", "Thème clair", "Déconnexion", "rail", "Nouveau shell", "Fermer le shell", "panneau", "Largeur du panneau", "onglets de fichiers", "éditeur", "Hauteur des shells", "onglets de shells", "terminal"]);
   const contourTerminal = await page.locator(".terminal-zone:visible").evaluate((e) => getComputedStyle(e).outlineStyle);
   expect(contourTerminal).not.toBe("none");
 });
@@ -70,7 +70,7 @@ test("REQ028_AC9_800_par_480_avec_fichier_et_deux_shells_rien_ne_se_superpose", 
   await page.getByRole("button", { name: "Nouveau shell" }).click();
   await expect(page.getByRole("tab", { name: "shell 2" })).toBeVisible();
   const zones = await page.evaluate(() =>
-    [".cadre-barre", ".cadre-rail", ".cadre-panneau", ".cadre-onglets", ".cadre-code", ".cadre-shells"].map((s) => {
+    [".cadre-barre", ".cadre-rail", ".cadre-panneau", ".cadre-onglets", ".cadre-fil", ".cadre-code", ".cadre-shells", ".cadre-etat"].map((s) => {
       const r = document.querySelector(s).getBoundingClientRect();
       return { s, x: r.x, y: r.y, w: r.width, h: r.height };
     }),
@@ -118,10 +118,10 @@ test("REQ032_AC6_800_par_480_avec_les_tailles_extremes_rien_ne_se_superpose", as
   await page.getByRole("separator", { name: "Hauteur des shells" }).focus();
   for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowUp");
   await page.setViewportSize({ width: 800, height: 480 });
-  await expect.poll(() => page.getByRole("separator", { name: "Largeur du panneau" }).getAttribute("aria-valuenow")).toBe("436");
-  await expect.poll(() => page.getByRole("separator", { name: "Hauteur des shells" }).getAttribute("aria-valuenow")).toBe("320");
+  await expect.poll(() => page.getByRole("separator", { name: "Largeur du panneau" }).getAttribute("aria-valuenow")).toBe("360");
+  await expect.poll(() => page.getByRole("separator", { name: "Hauteur des shells" }).getAttribute("aria-valuenow")).toBe("299");
   const zones = await page.evaluate(() =>
-    [".cadre-barre", ".cadre-rail", ".cadre-panneau", ".cadre-code", ".cadre-shells"].map((s) => {
+    [".cadre-barre", ".cadre-rail", ".cadre-panneau", ".cadre-code", ".cadre-shells", ".cadre-etat"].map((s) => {
       const r = document.querySelector(s).getBoundingClientRect();
       return { s, x: r.x, y: r.y, w: r.width, h: r.height };
     }),
@@ -221,20 +221,23 @@ test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_san
     toutes.push(...(await commandes(page)));
   }
   const noms = new Set(toutes.map((c) => c.nom));
-  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Fermer le shell", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Commit", "Pull", "Push"]) {
+  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Ouverture rapide", "Thème clair", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Fermer le shell", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Commit", "Pull", "Push"]) {
     expect(noms.has(attendu), attendu).toBe(true);
   }
   // AC-031-6 : 24 × 24 px, sauf une action de ligne (20 × 20) et la fermeture d'un onglet (18 × 18).
   const minimum = (nom) => (nom.startsWith("Indexer ") ? 20 : nom.startsWith("Fermer ") && nom !== "Fermer le shell" ? 18 : 24);
   for (const c of toutes) {
-    expect(c.texte, c.nom).toBe("");
+    // « Ouverture rapide » garde le nom du projet : texte voulu par le design (C-010), hors d'AC-031-1.
+    if (c.nom !== "Ouverture rapide") expect(c.texte, c.nom).toBe("");
     expect(c.l, c.nom).toBeGreaterThanOrEqual(minimum(c.nom));
     expect(c.h, c.nom).toBeGreaterThanOrEqual(minimum(c.nom));
     expect(c.titre, c.nom).toBe(false);
   }
   // Deux commandes différentes n'ont pas la même icône, sauf les deux « Fermer ».
   const parIcone = new Map();
-  for (const c of toutes) parIcone.set(c.icone, new Set([...(parIcone.get(c.icone) ?? []), c.nom.startsWith("Fermer") ? "Fermer" : c.nom.startsWith("Indexer") ? "Indexer" : c.nom]));
+  // Exception explicite (DEC-026, AC-031-2) : la loupe sert à « Recherche » et à « Ouverture rapide ».
+  const groupe = (nom) => (nom.startsWith("Fermer") ? "Fermer" : nom.startsWith("Indexer") ? "Indexer" : nom === "Ouverture rapide" ? "Recherche" : nom);
+  for (const c of toutes) parIcone.set(c.icone, new Set([...(parIcone.get(c.icone) ?? []), groupe(c.nom)]));
   for (const [icone, ensemble] of parIcone) expect(ensemble.size, `icône ${icone} : ${[...ensemble]}`).toBe(1);
   // « Fermer le shell » n'a pas l'icône de la fermeture d'un onglet.
   const icone = (nom) => toutes.find((c) => c.nom === nom).icone;
@@ -291,8 +294,8 @@ test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_a
     [pied("Nouveau dossier"), "--ink-muted"],
     [pied("Supprimer"), "--ink-muted"], // README.md est sélectionné
     [pied("Renommer"), "--ink-muted"],
-    [ailleurs("Nouveau shell"), "--ink-muted"],
-    [ailleurs("Fermer le shell"), "--ink-muted"],
+    [ailleurs("Nouveau shell"), "--ink-faint"], // les commandes du rail sont au repos comme ses onglets
+    [ailleurs("Fermer le shell"), "--ink-faint"],
     [ailleurs("Déconnexion"), "--ink-muted"],
     [ailleurs("Aperçu"), "--icone-naviguer"],
     [ailleurs("Fermer README.md"), "--icone-naviguer"],
@@ -404,12 +407,12 @@ test("REQ031_AC9_Renommer_desactive_montre_son_info_bulle", async ({ page }) => 
   await expect(page.getByRole("tooltip")).toHaveText("Renommer ou déplacer (F2)");
 });
 
-test("REQ031_AC6_panneau_de_160_px_les_quatre_boutons_du_pied_restent_dans_le_pied_sur_une_ligne", async ({ page }) => {
+test("REQ031_AC6_panneau_de_240_px_les_quatre_boutons_du_pied_restent_dans_le_pied_sur_une_ligne", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
   const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
   await poignee.focus();
   for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
-  await expect(poignee).toHaveAttribute("aria-valuenow", "160");
+  await expect(poignee).toHaveAttribute("aria-valuenow", "240");
   const boites = await page.locator(".fichiers-pied .bouton").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
   const pied = await page.locator(".fichiers-pied").evaluate((e) => e.getBoundingClientRect().toJSON());
   expect(boites).toHaveLength(4);
@@ -430,4 +433,118 @@ test("REQ038_AC5_les_champs_et_la_liste_Branche_suivent_le_theme_de_la_page", as
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
   await expect.poll(() => schema(liste)).toBe("light");
   await expect.poll(() => schema(message)).toBe("light");
+});
+
+test("REQ036_AC3_tailles_du_cadre_barre_onglets_ligne_etat_et_rail", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await ouvrirMain(page);
+  const boite = (loc) => loc.first().evaluate((e) => {
+    const r = e.getBoundingClientRect();
+    return [Math.round(r.width), Math.round(r.height)];
+  });
+  expect((await boite(page.locator("header")))[1]).toBe(35);
+  expect((await boite(page.locator("footer")))[1]).toBe(22);
+  expect((await boite(page.getByRole("tablist", { name: "Fichiers ouverts" })))[1]).toBe(35);
+  expect((await boite(page.getByRole("treeitem", { name: "src", exact: true })))[1]).toBe(22);
+  expect((await boite(page.locator(".cadre-rail")))[0]).toBe(48);
+  for (const nom of ["Fichiers", "Recherche", "Git"]) expect(await boite(page.getByRole("tab", { name: nom, exact: true }))).toEqual([48, 48]);
+  for (const nom of ["Nouveau shell", "Fermer le shell"]) expect(await boite(page.getByRole("button", { name: nom }))).toEqual([48, 48]);
+});
+
+test("REQ037_AC3_bouton_central_ouvre_l_ouverture_rapide_avec_son_info_bulle", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  const b = page.getByRole("button", { name: "Ouverture rapide" });
+  await b.focus();
+  await expect(page.getByRole("tooltip")).toHaveText(`${yaide.dossier} · Ouverture rapide (Ctrl+P)`);
+  await b.click();
+  await expect(page.getByRole("dialog", { name: "Ouvrir un fichier" })).toBeVisible();
+});
+
+test("REQ037_AC4_AC10_AC11_AC12_barre_d_etat_et_fil_d_Ariane", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 480 });
+  await ouvrirMain(page);
+  const etat = page.locator("footer");
+  await expect(etat).toContainText("Ln 1, Col 1");
+  await expect(etat).toContainText("Rust");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("End");
+  await expect(etat).toContainText(/Ln 2, Col \d+/);
+  const fil = page.locator(".ya-crumbs");
+  await expect(fil).toHaveText("srcmain.rs");
+  for (const z of [etat, fil]) {
+    expect(await z.evaluate((e) => getComputedStyle(e).cursor)).toBe("default");
+    await expect(z.locator("button, a, [tabindex]")).toHaveCount(0);
+  }
+  // Chemin trop long : les premiers segments sont coupés, le nom reste entier.
+  await fil.evaluate((e) => {
+    e.querySelector(".ya-crumbs-segment").textContent = "un-dossier-au-nom-vraiment-tres-long-".repeat(30);
+  });
+  const nom = await fil.locator(".ya-crumbs-nom").evaluate((e) => [e.scrollWidth, e.clientWidth]);
+  expect(nom[0]).toBe(nom[1]);
+  const segment = await fil.locator(".ya-crumbs-segment").evaluate((e) => e.scrollWidth > e.clientWidth);
+  expect(segment).toBe(true);
+});
+
+test("REQ037_AC11_fichier_inconnu_Texte_et_aucun_fichier_rien_a_droite", async ({ page }) => {
+  fs.writeFileSync(path.join(yaide.dossier, "notes.xyz"), "abc\n");
+  await ouvrirYaide(page, yaide.origine);
+  await expect(page.locator("footer")).not.toContainText("Ln ");
+  await page.getByRole("treeitem", { name: "notes.xyz", exact: true }).click();
+  await expect(page.locator("footer")).toContainText("Texte");
+});
+
+test("REQ038_AC2_AC4_le_bouton_Theme_clair_change_tout_sans_recharger_et_revient", async ({ page }) => {
+  await ouvrirMain(page);
+  await page.keyboard.type("// garde");
+  const b = page.getByRole("button", { name: "Thème clair" });
+  await expect(b).toHaveAttribute("aria-pressed", "false");
+  await b.click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(b).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Éditeur main.rs")).toContainText("// garde");
+  await b.click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(b).toHaveAttribute("aria-pressed", "false");
+});
+
+test("REQ032_AC13_poignee_au_repos_un_filet_de_1_px_et_au_survol_toute_l_epaisseur_en_accent", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  const sep = page.getByRole("separator", { name: "Largeur du panneau" });
+  const filet = () => sep.evaluate((e) => {
+    const s = getComputedStyle(e, "::after");
+    return { fond: s.backgroundColor, largeur: s.width };
+  });
+  const fond = () => sep.evaluate((e) => getComputedStyle(e).backgroundColor);
+  const t = await page.evaluate(() => {
+    const lire = (n) => {
+      const e = document.createElement("span");
+      e.style.color = `var(${n})`;
+      document.body.append(e);
+      const v = getComputedStyle(e).color;
+      e.remove();
+      return v;
+    };
+    return { ligne: lire("--line"), accent: lire("--accent-fg") };
+  });
+  expect(await filet()).toEqual({ fond: t.ligne, largeur: "1px" });
+  expect(await fond()).not.toBe(t.accent);
+  await sep.hover();
+  expect(await fond()).toBe(t.accent);
+  expect((await filet()).fond).toBe(t.accent);
+});
+
+test("REQ031_AC10_barre_de_titre_info_bulles_sous_le_bouton_et_dans_la_fenetre", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 480 });
+  await ouvrirYaide(page, yaide.origine);
+  for (const nom of ["Thème clair", "Déconnexion"]) {
+    const b = page.getByRole("button", { name: nom });
+    await b.focus();
+    const bulle = page.getByRole("tooltip");
+    await expect(bulle).toHaveText(nom);
+    const a = await b.boundingBox();
+    const t = await bulle.boundingBox();
+    expect(t.y, nom).toBeGreaterThanOrEqual(a.y + a.height - 1);
+    expect(t.x + t.width, nom).toBeLessThanOrEqual(800);
+    expect(t.x, nom).toBeGreaterThanOrEqual(0);
+  }
 });

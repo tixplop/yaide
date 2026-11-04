@@ -8,7 +8,7 @@ afterEach(() => {
 
 function monter(options = {}) {
   const surSucces = vi.fn();
-  const vue = vueConnexion({ nom: "Yaide", chemin: "/p/projet", surSucces, ...options });
+  const vue = vueConnexion({ chemin: "/p/projet", surSucces, ...options });
   document.body.append(vue);
   return { vue, surSucces };
 }
@@ -22,9 +22,18 @@ const envoyer = async (vue, texte) => {
 
 test("REQ004_AC5_affiche_le_nom_et_le_chemin", () => {
   const { vue } = monter();
-  expect(vue.querySelector("h1").textContent).toBe("Yaide");
+  expect(vue.querySelector("h1").textContent).toBe("yaide");
   expect(vue.querySelector(".connexion-chemin").textContent).toBe("/p/projet");
   expect(vue.querySelector(".connexion-chemin").title).toBe("/p/projet");
+});
+
+test("REQ004_AC5_AC10_symbole_masque_aux_lecteurs_d_ecran_et_ni_barre_ni_rail_ni_etat", () => {
+  const { vue } = monter();
+  const svg = vue.querySelector("svg");
+  expect(svg.getAttribute("aria-hidden")).toBe("true");
+  expect(svg.getAttribute("width")).toBe("40");
+  expect(vue.querySelectorAll("h1").length).toBe(1);
+  expect(vue.querySelector("header, nav, aside, footer, [role=tablist]")).toBeNull();
 });
 
 test("REQ004_AC1_succes_appelle_surSucces", async () => {
