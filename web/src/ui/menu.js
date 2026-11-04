@@ -1,7 +1,3 @@
-import { icone } from "./icones.js";
-
-const COULEURS = ["naviguer", "creer", "supprimer", "distant"];
-
 let ouvert = null;
 let avalerClic = null;
 let avalerMouseDown = false;
@@ -71,13 +67,12 @@ export function menu({ nom, groupes, position, surFermeture }) {
   const pleins = groupes.filter((g) => g.length > 0);
   for (const c of pleins.flat()) {
     if (!c.libelle) throw new Error("menu : libelle requis");
-    if (c.couleurIcone && !COULEURS.includes(c.couleurIcone)) throw new Error(`menu : couleurIcone inconnue « ${c.couleurIcone} »`);
   }
   ouvert?.fermer();
   const origine = document.activeElement;
 
   const racine = document.createElement("div");
-  racine.className = "menu";
+  racine.className = "menu ya-menu";
   racine.setAttribute("role", "menu");
   racine.setAttribute("aria-label", nom);
   racine.setAttribute("popover", "manual");
@@ -96,13 +91,10 @@ export function menu({ nom, groupes, position, surFermeture }) {
       e.className = "menu-commande";
       e.setAttribute("role", "menuitem");
       e.tabIndex = -1;
-      const i = document.createElement("span");
-      i.className = `menu-icone bouton-icone-${c.couleurIcone ?? "naviguer"}`;
-      if (c.icone) i.append(icone(c.icone));
       const t = document.createElement("span");
       t.className = "menu-libelle";
       t.textContent = c.libelle;
-      e.append(i, t);
+      e.append(t);
       if (c.touche) {
         const k = document.createElement("span");
         k.className = "menu-touche";
@@ -110,6 +102,8 @@ export function menu({ nom, groupes, position, surFermeture }) {
         k.textContent = c.touche;
         e.append(k);
       }
+      // Le survol donne le focus à la commande : une seule a l'aplat à la fois.
+      e.addEventListener("mouseenter", () => e.focus());
       // Une commande n'agit qu'au `click` du bouton principal.
       e.addEventListener("click", (ev) => {
         if (ev.button === 0) choisir(c);

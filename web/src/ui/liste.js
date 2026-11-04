@@ -1,8 +1,33 @@
 import { bouton } from "./bouton.js";
+import { compteur as compteurDe } from "./compteur.js";
 import { icone } from "./icones.js";
 
 const VARIANTES = ["plate", "arbre"];
 let compteur = 0;
+
+// Mot dit par le nom accessible pour chaque statut git d'une ligne.
+const STATUTS = { A: "ajouté", M: "modifié", R: "renommé", D: "supprimé", U: "nouveau", C: "conflit" };
+const STATUTS_DOSSIER = ["C", "D", "M", "A", "U"];
+
+const CODE = ["rs", "py", "go", "c", "h", "cpp", "sh"];
+
+/** Icône et couleur (jeton) d'un fichier selon son nom, d'après la table « Type de fichier » du design system. */
+export function iconeDe(nom) {
+  const point = nom.lastIndexOf(".");
+  const ext = point > 0 ? nom.slice(point + 1).toLowerCase() : "";
+  if (["js", "jsx", "ts", "tsx"].includes(ext)) return { icone: "file-code", couleur: "accent-fg" };
+  if (ext === "css") return { icone: "file-code", couleur: "git-modified" };
+  if (ext === "html") return { icone: "file-code", couleur: "syn-keyword" };
+  if (CODE.includes(ext)) return { icone: "file-code", couleur: "ink-muted" };
+  if (ext === "md" || ext === "markdown") return { icone: "md", couleur: "ink-muted" };
+  if (ext === "json") return { icone: "file", couleur: "syn-number" };
+  return { icone: "file", couleur: "ink-muted" };
+}
+
+function jeton(nom, champ) {
+  if (!/^[a-z-]+$/.test(nom)) throw new Error(`liste : ${champ} invalide « ${nom} »`);
+  return `var(--${nom})`;
+}
 
 /** Coupe `texte` en trois selon `[debut, fin[` (en caractères Unicode). */
 function decouper(texte, [debut, fin]) {
@@ -13,12 +38,16 @@ function decouper(texte, [debut, fin]) {
 export function liste({ variante = "plate", lignes, selection, pilotage = "focus", champ, surActiver, surBasculer, surMenu }) {
   if (!VARIANTES.includes(variante)) throw new Error(`liste : variante inconnue « ${variante} »`);
   if (pilotage === "champ" && !champ) throw new Error("liste : champ requis avec pilotage « champ »");
-  for (const l of lignes) if (!l.libelle) throw new Error("liste : libelle requis");
+  for (const l of lignes) {
+    if (!l.libelle) throw new Error("liste : libelle requis");
+    if (l.statut !== undefined && !(l.statut in STATUTS)) throw new Error(`liste : statut inconnu « ${l.statut} »`);
+    if (l.statutDossier !== undefined && !STATUTS_DOSSIER.includes(l.statutDossier)) throw new Error(`liste : statutDossier inconnu « ${l.statutDossier} »`);
+  }
   if (surMenu && variante !== "arbre") throw new Error("liste : surMenu demande la variante « arbre »");
   const n = ++compteur;
   const arbre = variante === "arbre";
   const racine = document.createElement("div");
-  racine.className = "liste";
+  racine.className = arbre ? "liste ya-tree" : "liste ya-row";
   racine.setAttribute("role", arbre ? "tree" : "listbox");
 
   const donnees = lignes.filter((l) => !l.groupe);
@@ -33,6 +62,11 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       g.className = "liste-groupe";
       g.setAttribute("role", "presentation");
       g.textContent = l.libelle;
+      if (l.compteur !== undefined) {
+        const c = compteurDe({ valeur: l.compteur });
+        c.classList.add("liste-compteur");
+        g.append(c);
+      }
       racine.append(g);
       continue;
     }
@@ -43,10 +77,22 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     e.title = l.libelle;
     e.style.setProperty("--niveau", String(l.niveau ?? 0));
     if (l.policeCode) e.classList.add("liste-code");
-    if (l.attenuee) {
+    const etats = [];
+    if (l.attenuee || l.ignore) {
       e.classList.add("liste-attenuee");
-      e.setAttribute("aria-label", `${l.libelle}, ignoré par git`);
+      etats.push("ignoré par git");
     }
+    if (l.statut) {
+      e.classList.add(`liste-statut-${l.statut}`);
+      etats.push(STATUTS[l.statut]);
+    }
+    if (l.statutDossier) {
+      e.classList.add(`liste-sdossier-${l.statutDossier}`);
+      etats.push(STATUTS[l.statutDossier]);
+    }
+    if (etats.length) e.setAttribute("aria-label", [l.libelle, ...etats].join(", "));
+    if (l.courant) e.setAttribute("aria-current", "true");
+    if (l.numero !== undefined) e.classList.add("ya-hit");
     if (arbre) {
       e.setAttribute("aria-level", String((l.niveau ?? 0) + 1));
       if (l.enfants) e.setAttribute("aria-expanded", String(Boolean(l.ouvert)));
@@ -72,28 +118,46 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       if (a.touche) e.setAttribute("aria-keyshortcuts", a.touche);
       e.append(b.enveloppe ?? b);
     }
-    if (pilotage === "champ") e.append(Object.assign(document.createElement("span"), { className: "liste-marque" }));
-    else if (arbre) {
+    function iconeLigne(defaut) {
+      const i = document.createElement("span");
+      i.className = `liste-icone ${defaut}`;
+      i.append(icone(l.icone ?? (l.enfants ? "folder" : "file")));
+      if (l.couleurIcone) i.style.setProperty("--couleur-icone", jeton(l.couleurIcone, "couleurIcone"));
+      return i;
+    }
+    if (l.numero !== undefined) {
+      const n = document.createElement("span");
+      n.className = "liste-numero";
+      n.textContent = String(l.numero);
+      e.append(n);
+    }
+    if (pilotage === "champ") {
+      e.append(Object.assign(document.createElement("span"), { className: "liste-marque" }));
+      if (l.icone) e.append(iconeLigne("liste-fichier"));
+    } else if (arbre) {
       // Chevron (place vide pour un fichier), puis icône du dossier ou du fichier.
       const c = document.createElement("span");
       c.className = "liste-chevron";
       if (l.enfants) c.append(icone(l.ouvert ? "chevron-down" : "chevron-right"));
-      const i = document.createElement("span");
-      i.className = `liste-icone ${l.enfants ? "liste-dossier" : "liste-fichier"}`;
-      i.append(icone(l.enfants ? "folder" : "file"));
-      e.append(c, i);
-    }
+      e.append(c, iconeLigne(l.enfants ? "liste-dossier" : "liste-fichier"));
+    } else if (l.icone) e.append(iconeLigne("liste-fichier"));
     e.querySelector(":scope > .liste-marque")?.setAttribute("aria-hidden", "true");
     const t = document.createElement("span");
     t.className = "liste-libelle";
     if (l.trouve) {
       const [avant, trouve, apres] = decouper(l.libelle, l.trouve);
-      const b = document.createElement("b");
+      const b = document.createElement(l.numero !== undefined ? "mark" : "b");
       b.className = "liste-trouve";
       b.textContent = trouve;
       t.append(avant, b, apres);
     } else t.textContent = l.libelle;
     e.append(t);
+    if (l.dossier) {
+      const d = document.createElement("span");
+      d.className = "liste-parent";
+      d.textContent = l.dossier;
+      e.append(d);
+    }
     if (l.secondaire) {
       const s = document.createElement("span");
       s.className = "liste-secondaire";
@@ -104,6 +168,18 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       }
       if (l.secondaireFort) s.classList.add("liste-secondaire-fort");
       e.append(s);
+    }
+    if (l.statut) {
+      const m = document.createElement("span");
+      m.className = "liste-statut";
+      m.setAttribute("aria-hidden", "true");
+      m.textContent = l.statut;
+      e.append(m);
+    } else if (l.statutDossier) {
+      const m = document.createElement("span");
+      m.className = "liste-point";
+      m.setAttribute("aria-hidden", "true");
+      e.append(m);
     }
     e.addEventListener("click", (ev) => {
       // Un clic sur une action désactivée (pointer-events: none) retombe sur la ligne : il ne l'active pas.

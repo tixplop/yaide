@@ -38,43 +38,60 @@ function ouvrir({ surChoix = vi.fn(), surFermeture = vi.fn(), groupes } = {}) {
     position: { x: 10, y: 10 },
     surFermeture,
     groupes: groupes ?? [
-      [{ libelle: "Nouveau fichier", icone: "file-plus", couleurIcone: "creer", surChoix: () => surChoix("nf") }, { libelle: "Nouveau dossier", icone: "folder-plus", couleurIcone: "creer", surChoix: () => surChoix("nd") }],
-      [{ libelle: "Renommer", icone: "pencil", touche: "F2", surChoix: () => surChoix("r") }, { libelle: "Supprimer", icone: "trash", couleurIcone: "supprimer", touche: "Suppr", surChoix: () => surChoix("s") }],
+      [{ libelle: "Nouveau fichier", surChoix: () => surChoix("nf") }, { libelle: "Nouveau dossier", surChoix: () => surChoix("nd") }],
+      [{ libelle: "Renommer", touche: "F2", surChoix: () => surChoix("r") }, { libelle: "Supprimer", touche: "Suppr", surChoix: () => surChoix("s") }],
       [],
-      [{ libelle: "Commit", icone: "check", surChoix: () => surChoix("c") }],
+      [{ libelle: "Commit", surChoix: () => surChoix("c") }],
     ],
   });
   ouverts.push(m);
   return { m, surChoix, surFermeture, items: [...m.racine.querySelectorAll('[role="menuitem"]')] };
 }
 
-test("REQ034_AC14_structure_role_menu_nom_commandes_icone_masquee_separateurs", () => {
+test("REQ034_AC14_structure_role_menu_nom_commandes_sans_icone_separateurs", () => {
   const { m, items } = ouvrir();
   expect(m.racine.getAttribute("role")).toBe("menu");
   expect(m.racine.getAttribute("aria-label")).toBe("Actions sur src/main.rs");
   expect(m.racine.getAttribute("popover")).toBe("manual");
   expect(items.map((i) => i.querySelector(".menu-libelle").textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Commit"]);
-  expect(items.every((i) => i.tabIndex === -1 && i.querySelector("svg").getAttribute("aria-hidden") === "true")).toBe(true);
+  expect(items.every((i) => i.tabIndex === -1 && i.querySelector("svg") === null)).toBe(true);
+  expect(items.map((i) => i.getAttribute("aria-label") ?? i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Commit"]);
   // Trois groupes pleins, un groupe vide : deux séparateurs seulement, aux bons endroits.
   expect([...m.racine.children].map((c) => c.getAttribute("role"))).toEqual(["menuitem", "menuitem", "separator", "menuitem", "menuitem", "separator", "menuitem"]);
   const touches = [...m.racine.querySelectorAll(".menu-touche")];
   expect(touches.map((t) => t.textContent)).toEqual(["F2", "Suppr"]);
   expect(touches.every((t) => t.getAttribute("aria-hidden") === "true")).toBe(true);
-  expect(items[0].querySelector(".menu-icone").className).toContain("bouton-icone-creer");
-  expect(items[3].querySelector(".menu-icone").className).toContain("bouton-icone-supprimer");
-  expect(items[4].querySelector(".menu-icone").className).toContain("bouton-icone-naviguer");
+  expect(m.racine.querySelector(".menu-icone")).toBeNull();
   expect(document.body.contains(m.racine)).toBe(true);
 });
 
-test("REQ034_AC14_style_par_tokens", () => {
+test("REQ036_AC8_style_par_tokens_aplat_accent_au_survol_et_au_focus", () => {
   const r = regle(".menu");
-  for (const t of ["var(--surface)", "var(--largeur-menu-min)", "var(--rayon-petit)", "var(--ombre-dialogue)", "var(--bordure-champ)"]) expect(r).toContain(t);
-  expect(regle(".menu-commande")).toContain("height: var(--hauteur-ligne)");
-  expect(regle(".menu-commande")).toContain("padding: 0 var(--esp-3)");
-  expect(regle(".menu-commande")).not.toContain("margin");
-  expect(regle(".menu-commande:hover")).toContain("background: var(--surface-haute)");
-  expect(regle(".menu-commande:focus-visible")).toContain("var(--trait-fort) solid var(--accent-fg)");
-  expect(regle(".menu-touche")).toContain("color: var(--texte-attenue)");
+  for (const t of ["var(--bg-300)", "var(--largeur-menu-min)", "var(--radius-md)", "var(--shadow-popover)"]) expect(r).toContain(t);
+  expect(regle(".ya-menu")).toContain("padding: var(--space-1)");
+  expect(regle(".ya-menu .menu-commande")).toContain("height: 26px");
+  expect(regle(".ya-menu .menu-commande")).toContain("padding: 0 10px");
+  expect(regle(".ya-menu .menu-commande")).toContain("border-radius: var(--radius-xs)");
+  expect(regle(".ya-menu .menu-commande")).toContain("color: var(--ink)");
+  const actif = regle(".ya-menu .menu-commande:focus");
+  expect(actif).toContain("background: var(--accent)");
+  expect(actif).toContain("color: var(--on-accent)");
+  // Le survol donne le focus : seul :focus porte l'aplat, sinon deux commandes l'auraient.
+  expect(css).not.toMatch(/\.menu-commande:hover[^{]*\{[^}]*background/);
+  expect(regle(".ya-menu .menu-touche")).toContain("opacity: .75");
+  expect(regle(".ya-menu .menu-touche")).toContain("font-size: 12px");
+  expect(regle(".ya-menu .menu-commande:focus .menu-touche")).toContain("opacity: 1");
+  expect(regle(".ya-menu .menu-separateur")).toContain("margin: 4px 6px");
+  expect(regle(".ya-menu .menu-separateur")).toContain("var(--line)");
+});
+
+test("REQ034_AC20_le_survol_d_une_commande_lui_donne_le_focus", () => {
+  const { items } = ouvrir();
+  expect(document.activeElement).toBe(items[0]);
+  evt(items[3], "mouseenter");
+  expect(document.activeElement).toBe(items[3]);
+  evt(items[1], "mouseenter");
+  expect(document.activeElement).toBe(items[1]);
 });
 
 test("REQ034_AC11_le_focus_va_sur_la_premiere_commande_fleches_en_boucle_debut_fin", () => {
@@ -297,7 +314,6 @@ test("C013_entrees_invalides_refusees", () => {
   expect(() => menu({ ...ok, surFermeture: undefined })).toThrow(/surFermeture/);
   expect(() => menu({ ...ok, position: undefined })).toThrow(/position/);
   expect(() => menu({ ...ok, groupes: [[{ libelle: "" }]] })).toThrow(/libelle/);
-  expect(() => menu({ ...ok, groupes: [[{ libelle: "a", couleurIcone: "rouge" }]] })).toThrow(/couleurIcone/);
 });
 
 test("REQ034_AC11_contextmenu_sur_une_commande_n_ouvre_pas_le_menu_du_navigateur_ni_un_second_menu", () => {

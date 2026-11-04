@@ -130,7 +130,7 @@ test("REQ028_AC3_theme_sombre_et_accent_bleu_sur_l_onglet_actif", async ({ page 
   const fond = await page.locator(".cadre").evaluate((e) => getComputedStyle(e).backgroundColor);
   expect(fond).toBe("rgb(31, 31, 31)");
   const actif = page.getByRole("tab", { name: "Fichiers" });
-  expect(await actif.evaluate((e) => getComputedStyle(e).borderLeftColor)).toBe("rgb(77, 170, 252)");
+  expect(await actif.evaluate((e) => getComputedStyle(e).boxShadow)).toContain("rgb(77, 170, 252)");
   const police = await page.locator(".cadre").evaluate((e) => getComputedStyle(e).fontFamily);
   expect(police).toContain("system-ui");
 });

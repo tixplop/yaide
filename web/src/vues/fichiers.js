@@ -215,22 +215,22 @@ export function vueFichiers({ dire, estDepot = () => false, surCommit = () => {}
     }
     const base = vide ? "" : dossier ? id : dossierDe(id);
     const depot = estDepot();
-    const commit = { libelle: "Commit", icone: "check", couleurIcone: "naviguer", surChoix: surCommit };
+    const commit = { libelle: "Commit", surChoix: surCommit };
     menu({
       nom: vide ? "Actions sur le projet" : `Actions sur ${id}${dossier ? "/" : ""}`,
       position,
       groupes: [
         [
-          { libelle: "Nouveau fichier", icone: "file-plus", couleurIcone: "creer", surChoix: () => ouvrirCreation(false, base) },
-          { libelle: "Nouveau dossier", icone: "folder-plus", couleurIcone: "creer", surChoix: () => ouvrirCreation(true, base) },
+          { libelle: "Nouveau fichier", surChoix: () => ouvrirCreation(false, base) },
+          { libelle: "Nouveau dossier", surChoix: () => ouvrirCreation(true, base) },
         ],
         vide
           ? []
           : [
-              { libelle: "Renommer", icone: "pencil", touche: "F2", surChoix: ouvrirRenommage },
-              { libelle: "Supprimer", icone: "trash", couleurIcone: "supprimer", touche: "Suppr", surChoix: ouvrirSuppression },
+              { libelle: "Renommer", touche: "F2", surChoix: ouvrirRenommage },
+              { libelle: "Supprimer", touche: "Suppr", surChoix: ouvrirSuppression },
             ],
-        depot ? (vide ? [commit] : [{ libelle: "Indexer", icone: "plus", couleurIcone: "creer", surChoix: () => indexer(id, dossier) }, commit]) : [],
+        depot ? (vide ? [commit] : [{ libelle: "Indexer", surChoix: () => indexer(id, dossier) }, commit]) : [],
       ],
       surFermeture: () => {
         if (!vide) ligneDe(id)?.focus();

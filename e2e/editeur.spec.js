@@ -157,7 +157,14 @@ test("REQ013_AC1_et_AC2_et_AC4_point_apres_frappe_ecriture_seulement_au_ctrl_s",
   await ouvrirMain(page);
   await taper(page, "main.rs", "// salut");
   await expect(onglet(page, /non sauvegardé/)).toHaveAccessibleName("main.rs, non sauvegardé");
-  await expect(page.locator("[role=tab]", { hasText: "●" })).toHaveCount(1);
+  await expect(page.locator("[role=tab][data-modifie]")).toHaveCount(1);
+  // Au repos, le point remplace la croix ; au survol, la croix revient et le point disparaît.
+  const cellule = page.locator(".onglet-cellule", { has: page.locator("[role=tab][data-modifie]") });
+  const etat = () => cellule.evaluate((c) => ({ croix: getComputedStyle(c.querySelector(".bouton-enveloppe")).opacity, point: getComputedStyle(c, "::after").display }));
+  await page.mouse.move(0, 0);
+  expect(await etat()).toEqual({ croix: "0", point: "block" });
+  await cellule.hover();
+  expect(await etat()).toEqual({ croix: "1", point: "none" });
   await expect.poll(async () => (await gardes(page)).some((o) => o.texte !== undefined)).toBe(true);
   expect(fs.readFileSync(fichier, "utf8")).toBe(avant);
   await page.keyboard.press("Control+s");

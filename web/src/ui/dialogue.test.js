@@ -104,18 +104,42 @@ test("REQ028_AC10_dialogue_erreurs", () => {
   expect(() => dialogue({ titre: "t", contenu: [], focusInitial: f, surAnnuler() {}, position: "bas" })).toThrow(/position/);
 });
 
-test("REQ028_AC3_style_dialogue_tokens", () => {
-  expect(regle(".dialogue")).toContain("background: var(--surface-haute)");
-  expect(regle(".dialogue")).toContain("border-radius: var(--rayon-dialogue)");
-  expect(regle(".dialogue")).toContain("box-shadow: var(--ombre-dialogue)");
+test("REQ036_AC1_style_dialogue_centre_tokens", () => {
+  expect(regle(".dialogue")).toContain("background: var(--bg-300)");
+  expect(regle(".dialogue")).toContain("border-radius: var(--radius-lg)");
+  expect(regle(".dialogue")).toContain("box-shadow: var(--shadow-popover)");
   expect(regle(".dialogue")).toContain("width: var(--largeur-dialogue)");
+  expect(regle(".dialogue")).toContain("margin: 18vh auto 0");
+  expect(regle(".dialogue")).toContain("padding: var(--space-4)");
   expect(regle(".dialogue::backdrop")).toContain("background: var(--voile)");
-  expect(regle(".dialogue-haut")).toContain("width: var(--largeur-ouverture)");
+  expect(regle(".ya-dialog-title")).toContain("font-size: 14px");
+  expect(regle(".ya-dialog-title")).toContain("line-height: 20px");
+  expect(regle(".ya-dialog-title")).toContain("font-weight: var(--graisse-forte)");
+  expect(regle(".dialogue-actions")).toContain("justify-content: flex-end");
+  const { d } = monter();
+  expect(d.element.querySelector("h2").classList.contains("ya-dialog-title")).toBe(true);
 });
 
-test("REQ028_AC3_dialogue_haut_a_15_pour_cent_et_actions_a_droite", () => {
+test("REQ028_AC3_dialogue_haut_reste_en_service_jusqu_a_T_039", () => {
+  expect(regle(".dialogue-haut")).toContain("width: var(--largeur-ouverture)");
   expect(regle(".dialogue-haut")).toContain("margin-top: 15vh");
+  expect(regle(".dialogue-haut")).toContain("padding: var(--esp-3)");
   expect(regle(".dialogue-actions")).toContain("justify-content: flex-end");
-  expect(regle(".dialogue-titre")).toContain("font: var(--texte-sous-titre) var(--police-ui)");
-  expect(regle(".dialogue-titre")).toContain("font-weight: var(--graisse-forte)");
+});
+
+test("C007_palette_sous_la_barre_de_titre_sans_titre_visible_voile_transparent", () => {
+  const { d } = monter({ titre: "Ouvrir un fichier", position: "palette" });
+  const el = d.element;
+  expect(el.classList.contains("ya-palette")).toBe(true);
+  expect(el.getAttribute("aria-label")).toBe("Ouvrir un fichier");
+  expect(el.querySelector("h2")).toBeNull();
+  expect(regle(".ya-palette")).toContain("width: var(--largeur-palette)");
+  expect(regle(".ya-palette")).toContain("margin: calc(var(--size-titlebar) + 4px) auto 0");
+  expect(regle(".ya-palette")).toContain("padding: 6px");
+  expect(regle(".ya-palette")).toContain("border-radius: var(--radius-md)");
+  expect(regle(".ya-palette::backdrop")).toContain("background: transparent");
+  expect(regle(".ya-palette .liste-ligne")).toContain("height: 24px");
+  expect(regle(".ya-palette .liste-ligne")).toContain("border-radius: var(--radius-xs)");
+  expect(regle(".ya-palette .liste-trouve")).toContain("color: var(--accent-fg)");
+  expect(regle(".ya-palette .liste-trouve")).toContain("font-weight: var(--graisse-forte)");
 });

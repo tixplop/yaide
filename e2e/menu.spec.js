@@ -23,7 +23,7 @@ const l = liste({
       nom: id ? "Actions sur " + id : "Actions sur le projet",
       position,
       surFermeture: () => {},
-      groupes: [[{ libelle: "Renommer", icone: "pencil", touche: "F2", surChoix: () => window.choix.push("r") }, { libelle: "Supprimer", icone: "trash", couleurIcone: "supprimer", surChoix: () => window.choix.push("s") }]],
+      groupes: [[{ libelle: "Renommer", touche: "F2", surChoix: () => window.choix.push("r") }, { libelle: "Supprimer", surChoix: () => window.choix.push("s") }]],
     });
   },
 });

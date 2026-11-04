@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, vi } from "vitest";
-import { liste } from "./liste.js";
+import { iconeDe, liste } from "./liste.js";
 
 const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
 const regle = (sel) => {
@@ -111,7 +111,7 @@ test("REQ028_AC3_arbre_treeitem_expanded_marques_et_retrait", () => {
   expect(src.textContent).toBe("src");
   expect(a.getAttribute("aria-level")).toBe("2");
   expect(a.style.getPropertyValue("--niveau")).toBe("1");
-  expect(regle(".liste-ligne")).toContain("var(--niveau, 0) * var(--esp-4)");
+  expect(regle(".ya-tree .liste-ligne")).toContain("calc(6px + var(--niveau, 0) * var(--size-indent))");
 });
 
 test("REQ028_AC3_arbre_droite_ouvre_gauche_ferme_ou_remonte", () => {
@@ -161,10 +161,13 @@ test("REQ028_AC3_liste_erreurs", () => {
 });
 
 test("REQ028_AC7_style_liste_focus_accent_et_ellipse", () => {
-  expect(regle(".liste-ligne:focus-visible")).toContain("outline: var(--trait-fort) solid var(--accent-fg)");
-  expect(regle(".liste-ligne")).toContain("height: var(--hauteur-ligne)");
+  expect(regle(".liste-ligne:focus-visible")).toContain("outline: var(--trait) solid var(--accent-fg)");
+  expect(regle(".liste-ligne:focus-visible")).toContain("background: var(--list-focus)");
+  expect(regle(".liste-ligne")).toContain("height: var(--size-row)");
   expect(regle(".liste-ligne")).toContain("text-overflow: ellipsis");
-  expect(regle('.liste-ligne[aria-selected="true"]')).toContain("var(--surface-haute)");
+  expect(regle(".liste-ligne:hover")).toContain("background: var(--hover)");
+  expect(regle('.liste-ligne[aria-selected="true"]')).toContain("background: var(--bg-400)");
+  expect(regle('.liste:focus-within .liste-ligne[aria-selected="true"]')).toContain("background: var(--list-focus)");
   expect(regle(".liste-attenuee")).toContain("font-style: italic");
 });
 
@@ -205,8 +208,9 @@ test("REQ028_AC3_deux_listes_sur_le_meme_champ_seule_la_connectee_reagit", () =>
 });
 
 test("REQ028_AC3_style_courante_et_polices_valides", () => {
-  expect(regle(".liste-courante")).toContain("border-left: var(--trait-fort) solid var(--accent-fg)");
-  expect(regle(".liste-groupe")).toContain("font: var(--texte-petit) var(--police-ui)");
+  expect(regle(".liste-courante")).toContain("background: var(--list-focus)");
+  expect(regle(".liste-courante")).toContain("outline: var(--trait) solid var(--accent-fg)");
+  expect(regle(".liste-groupe")).toContain("font: var(--texte-petit) var(--font-sans)");
   expect(css).not.toMatch(/font-size:\s*var\(--texte/);
 });
 
@@ -221,8 +225,8 @@ test("REQ033_AC5_arbre_dossier_fichier_et_ignore_ont_leurs_icones_et_couleurs", 
   expect(f.querySelector(".liste-icone").classList.contains("liste-fichier")).toBe(true);
   expect(f.querySelector(".liste-chevron svg")).toBeNull();
   expect(i.classList.contains("liste-attenuee")).toBe(true);
-  expect(regle(".liste-dossier")).toContain("color: var(--icone-dossier)");
-  expect(regle(".liste-fichier")).toContain("color: var(--texte-attenue)");
+  expect(regle(".liste-dossier")).toContain("color: var(--ink-muted)");
+  expect(regle(".liste-fichier")).toContain("var(--ink-muted)");
   expect(regle(".liste-attenuee")).toContain("font-style: italic");
 });
 
@@ -232,7 +236,7 @@ test("REQ033_AC2_secondaire_prend_sa_couleur_et_sa_graisse", () => {
   expect(a.style.getPropertyValue("--couleur-secondaire")).toBe("var(--succes)");
   expect(a.classList.contains("liste-secondaire-fort")).toBe(true);
   expect(b.style.getPropertyValue("--couleur-secondaire")).toBe("");
-  expect(regle(".liste-secondaire")).toContain("color: var(--couleur-secondaire, var(--texte-attenue))");
+  expect(regle(".liste-secondaire")).toContain("color: var(--couleur-secondaire, var(--ink-muted))");
   expect(regle(".liste-secondaire-fort")).toContain("font-weight: var(--graisse-forte)");
   expect(() => liste({ lignes: [{ id: "a", libelle: "a", secondaire: "x", couleurSecondaire: "red; x" }] })).toThrow(/couleurSecondaire/);
 });
@@ -257,8 +261,8 @@ test("REQ033_AC12_dossier_ignore_a_son_icone_et_son_nom_en_texte_attenue", () =>
   expect(n.classList.contains("liste-attenuee")).toBe(true);
   expect(n.querySelector(".liste-icone svg").getAttribute("data-icone")).toBe("folder");
   expect(s.classList.contains("liste-attenuee")).toBe(false);
-  expect(regle(".liste-attenuee .liste-icone")).toContain("color: var(--texte-attenue)");
-  expect(regle(".liste-attenuee")).toContain("color: var(--texte-attenue)");
+  expect(regle(".liste-attenuee .liste-icone")).toContain("color: var(--git-ignored)");
+  expect(regle(".liste-attenuee")).toContain("color: var(--git-ignored)");
   // Le sélecteur de l'icône ignorée bat celui du dossier (même règle, plus spécifique).
   expect(css.indexOf(".liste-attenuee .liste-icone")).toBeGreaterThan(css.indexOf(".liste-dossier {"));
 });
@@ -372,4 +376,118 @@ test("REQ034_AC1_menu_sans_surMenu_ou_en_variante_plate", () => {
   const e = clicDroit(items(l)[0]);
   expect(e.defaultPrevented).toBe(false);
   expect(() => liste({ lignes: lignesMenu, surMenu: vi.fn() })).toThrow(/arbre/);
+});
+
+// C-006 : nouvelles options.
+const nom = (e) => e.getAttribute("aria-label");
+
+test("REQ039_AC8_lettre_de_statut_masquee_et_nom_accessible_avec_l_etat", () => {
+  const l = liste({ variante: "arbre", lignes: [
+    { id: "a", libelle: "a.rs", statut: "M" },
+    { id: "b", libelle: "b.rs", statut: "A" },
+    { id: "c", libelle: "c.rs", statut: "U" },
+    { id: "d", libelle: "d.rs", statut: "D" },
+    { id: "e", libelle: "e.rs", statut: "R" },
+    { id: "f", libelle: "f.rs", statut: "C" },
+    { id: "g", libelle: "g.rs", ignore: true },
+    { id: "h", libelle: "h.rs" },
+  ] });
+  const it = items(l);
+  expect(it.slice(0, 7).map(nom)).toEqual(["a.rs, modifié", "b.rs, ajouté", "c.rs, nouveau", "d.rs, supprimé", "e.rs, renommé", "f.rs, conflit", "g.rs, ignoré par git"]);
+  expect(it[7].hasAttribute("aria-label")).toBe(false);
+  const lettre = it[0].querySelector(".liste-statut");
+  expect(lettre.textContent).toBe("M");
+  expect(lettre.getAttribute("aria-hidden")).toBe("true");
+  expect(it[6].classList.contains("liste-attenuee")).toBe(true);
+  expect(() => liste({ lignes: [{ id: "a", libelle: "a", statut: "Z" }] })).toThrow(/statut/);
+});
+
+test("REQ039_AC8_couleurs_des_lettres_et_ligne_D_barree", () => {
+  expect(regle(".liste-statut-A")).toContain("color: var(--git-added)");
+  expect(regle(".liste-statut-M")).toContain("color: var(--git-modified)");
+  expect(regle(".liste-statut-R")).toContain("color: var(--git-modified)");
+  expect(regle(".liste-statut-D")).toContain("color: var(--git-deleted)");
+  expect(regle(".liste-statut-U")).toContain("color: var(--git-untracked)");
+  expect(regle(".liste-statut-C")).toContain("color: var(--git-conflict)");
+  expect(regle(".liste-statut-D .liste-libelle")).toContain("text-decoration: line-through");
+  expect(regle(".ya-tree .liste-statut")).toContain("width: 14px");
+  expect(regle(".ya-tree .liste-statut")).toContain("font-family: var(--font-mono)");
+});
+
+test("C006_contraste_ligne_D_selectionnee_ignoree_survolee_et_marque_sur_bg_100", () => {
+  expect(regle('.liste-statut-D[aria-selected="true"]')).toContain("color: var(--ink)");
+  expect(regle(".liste-statut-D:focus-visible")).toContain("color: var(--ink)");
+  expect(regle(".liste-statut-D .liste-libelle")).toContain("line-through");
+  expect(regle(".liste-attenuee")).toContain("font-style: italic");
+  expect(regle(".liste-attenuee:hover")).toContain("color: var(--ink-muted)");
+  expect(regle('.liste-attenuee[aria-selected="true"]')).toContain("color: var(--ink-muted)");
+  expect(regle('.ya-hit[aria-selected="true"] mark')).toContain("var(--bg-100)");
+  expect(regle('.ya-hit[aria-selected="true"] .liste-numero')).toContain("color: var(--ink-muted)");
+});
+
+test("REQ039_AC8_statutDossier_point_masque_colore_sans_lettre_ni_barre", () => {
+  const l = liste({ variante: "arbre", lignes: [{ id: "s", libelle: "src", enfants: true, ouvert: false, statutDossier: "M" }, { id: "t", libelle: "tmp", enfants: true, ouvert: false, statutDossier: "D" }] });
+  const [s, t] = items(l);
+  expect(s.querySelector(".liste-statut")).toBeNull();
+  expect(s.querySelector(".liste-point").getAttribute("aria-hidden")).toBe("true");
+  expect(nom(s)).toBe("src, modifié");
+  expect(nom(t)).toBe("tmp, supprimé");
+  expect(regle(".liste-sdossier-M")).toContain("color: var(--git-modified)");
+  expect(regle(".liste-sdossier-D")).toContain("color: var(--git-deleted)");
+  expect(regle(".ya-tree .liste-point")).toContain("width: 7px");
+  expect(css).not.toMatch(/\.liste-sdossier-D[^{]*\.liste-libelle[^{]*{[^}]*line-through/);
+  expect(() => liste({ lignes: [{ id: "a", libelle: "a", statutDossier: "R" }] })).toThrow(/statutDossier/);
+});
+
+test("C006_courant_dossier_parent_compteur_et_icone_choisie", () => {
+  const l = liste({ lignes: [
+    { id: "a", libelle: "main.rs", dossier: "src", courant: true, icone: "file-code", couleurIcone: "git-modified" },
+    { id: "b", libelle: "lib.rs" },
+  ] });
+  const [a, b] = items(l);
+  expect(a.getAttribute("aria-current")).toBe("true");
+  expect(b.hasAttribute("aria-current")).toBe(false);
+  expect(a.querySelector(".liste-parent").textContent).toBe("src");
+  expect(b.querySelector(".liste-parent")).toBeNull();
+  expect(a.querySelector(".liste-icone svg").getAttribute("data-icone")).toBe("file-code");
+  expect(a.querySelector(".liste-icone").style.getPropertyValue("--couleur-icone")).toBe("var(--git-modified)");
+  expect(regle('.liste-ligne[aria-current="true"]')).toContain("inset var(--trait-fort) 0 0 var(--accent-fg)");
+  expect(() => liste({ lignes: [{ id: "a", libelle: "a", icone: "file", couleurIcone: "x; y" }] })).toThrow(/couleurIcone/);
+});
+
+test("C006_compteur_sur_une_ligne_groupe", () => {
+  const l = liste({ lignes: [{ id: "g", libelle: "Modifications", groupe: true, compteur: 3 }, { id: "a", libelle: "a.rs" }] });
+  const g = l.querySelector(".liste-groupe");
+  expect(g.textContent).toBe("Modifications3");
+  expect(g.querySelector(".ya-badge").textContent).toBe("3");
+  expect(l.querySelector('[role="option"] .ya-badge')).toBeNull();
+});
+
+test("C006_lettre_de_statut_11_px_graisse_600", () => {
+  expect(regle(".ya-tree .liste-statut")).toContain("font-size: 11px");
+  expect(regle(".ya-tree .liste-statut")).toContain("font-weight: 600");
+});
+
+test("C006_resultat_de_recherche_numero_texte_mono_et_mark", () => {
+  const l = liste({ lignes: [{ id: "r", libelle: "let main = 1;", numero: 12, trouve: [4, 8] }] });
+  const [r] = items(l);
+  expect(r.classList.contains("ya-hit")).toBe(true);
+  expect(r.querySelector(".liste-numero").textContent).toBe("12");
+  expect(r.querySelector("mark").textContent).toBe("main");
+  expect(regle(".ya-hit")).toContain("padding-left: 24px");
+  expect(regle(".ya-hit mark")).toContain("background: var(--find-match)");
+  expect(regle(".ya-hit .liste-numero")).toContain("font-size: 11px");
+  expect(regle(".ya-hit .liste-libelle")).toContain("font-family: var(--font-mono)");
+});
+
+test("C006_iconeDe_suit_la_table_du_design_system", () => {
+  const t = (n) => iconeDe(n);
+  for (const n of ["a.js", "a.JSX", "a.ts", "a.tsx"]) expect(t(n)).toEqual({ icone: "file-code", couleur: "accent-fg" });
+  expect(t("a.css")).toEqual({ icone: "file-code", couleur: "git-modified" });
+  expect(t("a.html")).toEqual({ icone: "file-code", couleur: "syn-keyword" });
+  for (const n of ["a.rs", "a.py", "a.go", "a.c", "a.h", "a.cpp", "a.sh"]) expect(t(n)).toEqual({ icone: "file-code", couleur: "ink-muted" });
+  expect(t("README.md")).toEqual({ icone: "md", couleur: "ink-muted" });
+  expect(t("a.markdown")).toEqual({ icone: "md", couleur: "ink-muted" });
+  expect(t("package.json")).toEqual({ icone: "file", couleur: "syn-number" });
+  for (const n of ["Makefile", ".gitignore", "a.txt", "archive.tar.gz", "a."]) expect(t(n)).toEqual({ icone: "file", couleur: "ink-muted" });
 });

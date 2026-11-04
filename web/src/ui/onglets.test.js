@@ -97,7 +97,9 @@ test("REQ028_AC4_modifie_et_question_dans_le_nom_accessible", () => {
       { id: "c", libelle: "c.rs", modifie: true, question: true },
     ],
   });
-  expect(tab(r, 0).textContent).toContain("●");
+  expect(tab(r, 0).hasAttribute("data-modifie")).toBe(true);
+  expect(tab(r, 0).textContent).not.toContain("●");
+  expect(tab(r, 1).hasAttribute("data-modifie")).toBe(false);
   expect(tab(r, 0).getAttribute("aria-label")).toBe("a.rs, non sauvegardé");
   expect(tab(r, 1).textContent).toContain("!");
   expect(tab(r, 1).querySelector(".onglet-question")).not.toBeNull();
@@ -139,12 +141,11 @@ test("REQ028_AC4_choisir_depuis_l_exterieur_et_erreurs", () => {
 });
 
 test("REQ028_AC3_style_onglets_accent_pour_l_actif_et_le_focus", () => {
-  expect(regle('.onglet[aria-selected="true"]')).toContain("color: var(--texte)");
-  expect(regle('.onglet[aria-selected="true"]')).toContain("var(--trait-fort) solid var(--accent-fg)");
   expect(regle(".onglet:focus-visible")).toContain("outline: var(--trait-fort) solid var(--accent-fg)");
-  expect(regle(".onglet")).toContain("color: var(--texte-attenue)");
-  expect(regle(".onglet:hover")).toContain("background: var(--surface-haute)");
-  expect(regle(".onglet-question")).toContain("color: var(--alerte)");
+  expect(regle(".onglet")).toContain("color: var(--ink-muted)");
+  expect(regle(".onglet:hover")).toContain("color: var(--ink)");
+  expect(regle(".onglet-question")).toContain("color: var(--warning)");
+  expect(regle(".onglet-question")).toContain("font-weight: var(--graisse-forte)");
 });
 
 test("REQ028_AC4_l_onglet_actif_est_rendu_visible_par_choisir", () => {
@@ -163,14 +164,95 @@ test("REQ028_AC4_l_onglet_actif_est_rendu_visible_par_choisir", () => {
   }
 });
 
-test("REQ028_AC3_variantes_rail_et_horizontale", () => {
-  expect(regle(".onglets-verticale .onglet")).toContain("width: var(--largeur-rail)");
-  expect(regle(".onglets-verticale .onglet")).toContain("height: var(--largeur-rail)");
-  expect(regle(".onglets-verticale .onglet")).toContain("font-weight: var(--graisse-forte)");
-  expect(regle('.onglets-verticale .onglet[aria-selected="true"]')).toContain("border-left: var(--trait-fort) solid var(--accent-fg)");
-  expect(regle(".onglets-horizontale")).toContain("height: var(--hauteur-onglet)");
-  expect(regle(".onglets-horizontale")).toContain("overflow-x: auto");
-  expect(regle('.onglet[aria-selected="true"]')).toContain("font-weight: var(--graisse-forte)");
+test("REQ036_AC7_fichiers_barre_bg_100_actif_bg_200_filet_accent_en_haut_croix_au_survol", () => {
+  expect(regle(".ya-tabs")).toContain("height: var(--size-tab)");
+  expect(regle(".ya-tabs")).toContain("background: var(--bg-100)");
+  expect(regle(".ya-tabs")).toContain("overflow-x: auto");
+  expect(regle(".ya-tabs")).toContain("scrollbar-width: none");
+  const actif = regle(".ya-tabs .onglet-cellule:has(> .onglet[aria-selected=\"true\"])");
+  expect(actif).toContain("background: var(--bg-200)");
+  expect(actif).toContain("inset 0 var(--trait-fort) 0 var(--accent-fg)");
+  expect(regle(".ya-tabs .onglet-cellule .bouton-enveloppe")).toContain("opacity: 0");
+  expect(regle(".ya-tabs .onglet-cellule:hover .bouton-enveloppe")).toContain("opacity: 1");
+});
+
+test("REQ013_AC4_le_point_est_un_pseudo_element_de_7_px_qui_prend_la_place_de_la_croix", () => {
+  const point = regle(".ya-tabs .onglet-cellule:has(> .onglet[data-modifie])::after");
+  expect(point).toContain("width: 7px");
+  expect(point).toContain("height: 7px");
+  expect(point).toContain("background: var(--ink-muted)");
+  expect(regle(".ya-tabs .onglet-cellule:has(> .onglet[data-modifie]) .bouton-enveloppe")).toContain("opacity: 0");
+  expect(regle(".ya-tabs .onglet-cellule:has(> .onglet[data-modifie]):hover .bouton-enveloppe")).toContain("opacity: 1");
+  expect(regle(".ya-tabs .onglet-cellule:has(> .onglet[data-modifie]):has(> .bouton-enveloppe):hover::after")).toContain("display: none");
+});
+
+test("REQ013_AC7_le_point_n_entre_pas_dans_le_nom_de_la_fermeture", () => {
+  const r = onglets({ actif: "a", onglets: [{ id: "a", libelle: "main.rs", modifie: true, fermable: true }] });
+  expect(r.querySelector(".onglet-fermer").getAttribute("aria-label")).toBe("Fermer main.rs");
+  expect(tab(r, 0).getAttribute("aria-label")).toBe("main.rs, non sauvegardé");
+});
+
+test("REQ039_AC8_nom_accessible_statut_puis_non_sauvegarde_puis_question", () => {
+  const r = onglets({
+    actif: "a",
+    onglets: [
+      { id: "a", libelle: "main.rs", statut: "M", modifie: true },
+      { id: "b", libelle: "b.rs", statut: "A" },
+      { id: "c", libelle: "c.rs", statut: "U", modifie: true, question: true },
+    ],
+  });
+  expect(tab(r, 0).getAttribute("aria-label")).toBe("main.rs, modifié, non sauvegardé");
+  expect(tab(r, 1).getAttribute("aria-label")).toBe("b.rs, ajouté");
+  expect(tab(r, 2).getAttribute("aria-label")).toBe("c.rs, nouveau, non sauvegardé, question en attente");
+  expect(tab(r, 0).querySelector(".onglet-nom").className).toContain("onglet-statut-M");
+  expect(regle(".onglet-statut-M")).toContain("color: var(--git-modified)");
+  expect(regle(".onglet-statut-A")).toContain("color: var(--git-added)");
+  expect(regle(".onglet-statut-U")).toContain("color: var(--git-untracked)");
+  expect(() => onglets({ onglets: [{ id: "a", libelle: "a", statut: "D" }] })).toThrow(/statut/);
+});
+
+test("REQ036_AC7_presentations_fichiers_shells_rail", () => {
+  const f = onglets({ presentation: "fichiers", actif: "a", onglets: [{ id: "a", libelle: "a.rs", icone: "file-code" }] });
+  expect(f.classList.contains("ya-tabs")).toBe(true);
+  expect(f.getAttribute("aria-orientation")).toBe("horizontal");
+  expect(tab(f, 0).querySelector("svg").getAttribute("data-icone")).toBe("file-code");
+  expect(tab(f, 0).textContent).toBe("a.rs");
+  const s = onglets({ presentation: "shells", actif: "a", onglets: [{ id: "a", libelle: "Shell 1", icone: "terminal" }] });
+  expect(s.classList.contains("ya-term-tabs")).toBe(true);
+  expect(tab(s, 0).textContent).toBe("Shell 1");
+  const r = onglets({ presentation: "rail", actif: "a", onglets: [{ id: "a", icone: "files", nomAccessible: "Fichiers" }] });
+  expect(r.classList.contains("ya-activity")).toBe(true);
+  expect(r.getAttribute("aria-orientation")).toBe("vertical");
+  expect(() => onglets({ presentation: "x", onglets: [] })).toThrow(/presentation/);
+  expect(regle(".ya-term-tabs")).toContain("height: 30px");
+  expect(regle(".ya-term-tabs")).toContain("background: var(--bg-000)");
+  expect(regle(".ya-term-tabs .onglet")).toContain("height: 22px");
+  expect(regle(".ya-term-tabs .onglet[aria-selected=\"true\"]")).toContain("background: var(--bg-300)");
+  expect(regle(".ya-activity")).toContain("width: var(--size-activity)");
+  expect(regle(".ya-activity")).toContain("background: var(--bg-000)");
+  expect(regle(".ya-activity")).toContain("border-right: var(--trait) solid var(--line)");
+  expect(regle(".ya-activity .onglet")).toContain("height: var(--size-activity)");
+  expect(regle(".ya-activity .onglet")).toContain("color: var(--ink-faint)");
+  expect(regle(".ya-activity .onglet[aria-selected=\"true\"]")).toContain("inset var(--trait-fort) 0 0 var(--accent-fg)");
+});
+
+test("REQ036_AC3_barre_en_border_box_et_tailles_d_icones_et_de_texte", () => {
+  expect(regle(".onglets")).toContain("box-sizing: border-box");
+  expect(regle(".ya-activity .onglet")).not.toContain("width");
+  expect(regle(".ya-tabs .onglet svg")).toContain("width: 15px");
+  expect(regle(".ya-term-tabs")).toContain("font-size: 12px");
+  expect(regle(".ya-term-tabs .onglet svg")).toContain("width: 14px");
+});
+
+test("REQ036_AC7_le_rail_porte_un_compteur_accent_hors_du_nom_accessible", () => {
+  const r = onglets({ presentation: "rail", actif: "g", onglets: [{ id: "g", icone: "branch", nomAccessible: "Git", compteur: 3 }, { id: "f", icone: "files", nomAccessible: "Fichiers", compteur: 0 }] });
+  const c = tab(r, 0).querySelector(".ya-badge");
+  expect(c.textContent).toBe("3");
+  expect(c.classList.contains("ya-badge-accent")).toBe(true);
+  expect(c.getAttribute("aria-hidden")).toBe("true");
+  expect(tab(r, 0).getAttribute("aria-label")).toBe("Git");
+  expect(tab(r, 1).querySelector(".ya-badge").hidden).toBe(true);
+  expect(() => onglets({ onglets: [{ id: "a", libelle: "a", compteur: -1 }] })).toThrow(/compteur/);
 });
 
 const railIcones = () =>
@@ -197,12 +279,6 @@ test("REQ031_AC1_rail_a_icones_sans_texte_noms_et_info_bulle", () => {
   vi.advanceTimersByTime(400);
   expect(document.querySelector("[role=tooltip]").textContent).toBe("Fichiers (F)");
   vi.useRealTimers();
-});
-
-test("REQ033_AC8_rail_fond_et_onglet_actif_aux_couleurs_du_design_system", () => {
-  expect(regle(".onglets-verticale")).toContain("background: var(--fond-rail)");
-  expect(regle(".onglets-verticale .onglet")).toContain("color: var(--icone-naviguer)");
-  expect(regle('.onglets-verticale .onglet[aria-selected="true"]')).toContain("background: var(--surface)");
 });
 
 test("REQ031_AC1_fermeture_d_onglet_par_icone_x_sans_texte", () => {

@@ -1,18 +1,29 @@
 import { bouton } from "./bouton.js";
+import { compteur } from "./compteur.js";
 import { icone } from "./icones.js";
 import { infoBulle } from "./info-bulle.js";
 
 const ORIENTATIONS = ["horizontale", "verticale"];
+const PRESENTATIONS = { fichiers: "ya-tabs", shells: "ya-term-tabs", rail: "ya-activity" };
+// Mot dit par le nom accessible pour chaque statut git d'un onglet.
+const STATUTS = { M: "modifié", A: "ajouté", U: "nouveau" };
 
-export function onglets({ orientation = "horizontale", onglets: liste, actif, actionsDroite = [], surChoix, surFermer }) {
+export function onglets({ presentation, orientation = "horizontale", onglets: liste, actif, actionsDroite = [], surChoix, surFermer }) {
   if (!ORIENTATIONS.includes(orientation)) throw new Error(`onglets : orientation inconnue « ${orientation} »`);
+  // `orientation` est l'ancienne option : verticale = rail.
+  presentation ??= orientation === "verticale" ? "rail" : "fichiers";
+  if (!(presentation in PRESENTATIONS)) throw new Error(`onglets : presentation inconnue « ${presentation} »`);
+  orientation = presentation === "rail" ? "verticale" : "horizontale";
+  const rail = presentation === "rail";
   for (const o of liste) {
     if (!o.libelle && !o.icone) throw new Error("onglets : libelle requis");
     if (!o.libelle && !o.nomAccessible) throw new Error("onglets : nomAccessible requis avec une icône");
+    if (o.statut !== undefined && !(o.statut in STATUTS)) throw new Error(`onglets : statut inconnu « ${o.statut} »`);
+    if (o.compteur !== undefined && (!Number.isInteger(o.compteur) || o.compteur < 0)) throw new Error("onglets : compteur entier positif ou nul requis");
   }
   const vertical = orientation === "verticale";
   const racine = document.createElement("div");
-  racine.className = `onglets onglets-${orientation}`;
+  racine.className = `onglets onglets-${orientation} ${PRESENTATIONS[presentation]}`;
   // Le rôle tablist est porté par la racine : les actions de droite en font partie.
   racine.setAttribute("role", "tablist");
   racine.setAttribute("aria-orientation", vertical ? "vertical" : "horizontal");
@@ -26,8 +37,15 @@ export function onglets({ orientation = "horizontale", onglets: liste, actif, ac
     t.type = "button";
     t.className = "onglet";
     t.setAttribute("role", "tab");
-    if (o.icone) t.append(icone(o.icone));
-    else t.textContent = o.libelle;
+    const iconeSeule = o.icone && (rail || !o.libelle);
+    if (iconeSeule) t.append(icone(o.icone));
+    else {
+      if (o.icone) t.append(icone(o.icone));
+      const n = document.createElement("span");
+      n.className = o.statut ? `onglet-nom onglet-statut-${o.statut}` : "onglet-nom";
+      n.textContent = o.libelle;
+      t.append(n);
+    }
     if (o.detail) {
       const d = document.createElement("span");
       d.className = "onglet-detail";
@@ -36,16 +54,22 @@ export function onglets({ orientation = "horizontale", onglets: liste, actif, ac
     }
     const nom = o.nomAccessible ?? (o.detail ? `${o.libelle} · ${o.detail}` : o.libelle);
     if (o.raccourci) t.setAttribute("aria-keyshortcuts", o.raccourci);
-    if (o.icone) infoBulle({ texte: o.raccourci ? `${nom} (${o.raccourci})` : nom, ancre: t, position: vertical ? "droite" : "dessous" });
+    if (iconeSeule) infoBulle({ texte: o.raccourci ? `${nom} (${o.raccourci})` : nom, ancre: t, position: vertical ? "droite" : "dessous" });
     if (o.titre) t.title = o.titre;
-    if (o.modifie) t.append(" ●");
+    // Le point est un pseudo-élément (CSS) qui prend la place de la croix : seule cette marque le désigne.
+    if (o.modifie) t.dataset.modifie = "true";
     if (o.question) {
       const q = document.createElement("span");
       q.className = "onglet-question";
       q.textContent = " !";
       t.append(q);
     }
-    t.setAttribute("aria-label", nom + (o.modifie ? ", non sauvegardé" : "") + (o.question ? ", question en attente" : ""));
+    if (o.compteur !== undefined) {
+      const c = compteur({ valeur: o.compteur, variante: rail ? "accent" : "neutre" });
+      c.setAttribute("aria-hidden", "true");
+      t.append(c);
+    }
+    t.setAttribute("aria-label", nom + (o.statut ? `, ${STATUTS[o.statut]}` : "") + (o.modifie ? ", non sauvegardé" : "") + (o.question ? ", question en attente" : ""));
     t.addEventListener("click", () => choisir(o.id, true));
     t.addEventListener("keydown", (e) => touche(e, o));
     cellule.append(t);

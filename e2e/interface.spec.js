@@ -276,7 +276,7 @@ test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_a
   await relancerSur(page, depotStatuts());
   await page.getByRole("treeitem", { name: "README.md", exact: true }).click();
   await expect(page.getByRole("button", { name: "Aperçu", exact: true })).toBeVisible();
-  const t = await resoudre(page, ["--fond-rail", "--surface", "--fond", "--fond-shells", "--ink-muted", "--icone-naviguer", "--icone-dossier", "--texte", "--texte-attenue"]);
+  const t = await resoudre(page, ["--fond-rail", "--surface", "--fond", "--fond-shells", "--ink-muted", "--ink-faint", "--git-ignored", "--icone-naviguer", "--texte"]);
   const fond = (selecteur) => lire(page.locator(selecteur).first(), "backgroundColor");
   expect(await fond(".cadre-rail")).toBe(t["--fond-rail"]);
   expect(await fond(".cadre-panneau")).toBe(t["--surface"]);
@@ -296,17 +296,17 @@ test("REQ033_AC1_AC4_AC5_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_a
     [ailleurs("Déconnexion"), "--ink-muted"],
     [ailleurs("Aperçu"), "--icone-naviguer"],
     [ailleurs("Fermer README.md"), "--icone-naviguer"],
-    [page.getByRole("tab", { name: "Recherche", exact: true }), "--icone-naviguer"], // rail au repos
+    [page.getByRole("tab", { name: "Recherche", exact: true }), "--ink-faint"], // rail au repos
   ];
   for (const [loc, token] of icones) expect(await lire(loc), token).toBe(t[token]);
   // Arborescence : dossier, fichier, élément ignoré par git.
   const item = (nom) => page.getByRole("treeitem", { name: nom === "ignore.txt" ? "ignore.txt, ignoré par git" : nom, exact: true });
-  expect(await lire(item("src").locator('svg[data-icone="folder"]')), "icône du dossier").toBe(t["--icone-dossier"]);
+  expect(await lire(item("src").locator('svg[data-icone="folder"]')), "icône du dossier").toBe(t["--ink-muted"]);
   expect(await lire(item("src").locator(".liste-libelle")), "nom du dossier").toBe(t["--texte"]);
-  expect(await lire(item("README.md").locator('svg[data-icone="file"]')), "icône du fichier").toBe(t["--texte-attenue"]);
+  expect(await lire(item("README.md").locator('svg[data-icone="file"]')), "icône du fichier").toBe(t["--ink-muted"]);
   expect(await lire(item("README.md").locator(".liste-libelle")), "nom du fichier").toBe(t["--texte"]);
-  expect(await lire(item("ignore.txt").locator('svg[data-icone="file"]')), "icône ignorée").toBe(t["--texte-attenue"]);
-  expect(await lire(item("ignore.txt").locator(".liste-libelle")), "nom ignoré").toBe(t["--texte-attenue"]);
+  expect(await lire(item("ignore.txt").locator('svg[data-icone="file"]')), "icône ignorée").toBe(t["--git-ignored"]);
+  expect(await lire(item("ignore.txt").locator(".liste-libelle")), "nom ignoré").toBe(t["--git-ignored"]);
   expect(await lire(item("ignore.txt").locator(".liste-libelle"), "fontStyle")).toBe("italic");
   expect(await lire(item("README.md").locator(".liste-libelle"), "fontStyle")).toBe("normal");
   // Pull et Push : icônes de commande, en --ink-muted.
