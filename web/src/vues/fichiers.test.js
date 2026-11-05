@@ -226,3 +226,163 @@ test("REQ045_generation_une_relecture_croisee_avec_un_rafraichissement_est_jetee
   await lancee;
   expect(noms(vue)).toEqual(["a.txt", "cree.txt"]);
 });
+
+// ---- REQ-049 : plusieurs lignes ----
+
+HTMLDialogElement.prototype.showModal ??= function () {
+  this.setAttribute("open", "");
+};
+HTMLDialogElement.prototype.close ??= function () {
+  this.removeAttribute("open");
+};
+const ctrl = (vue, chemin) => ligne(vue, chemin).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true }));
+const choisies = (vue) => lignes(vue).filter((e) => e.getAttribute("aria-selected") === "true").map((e) => e.dataset.chemin);
+const touche = (vue, chemin, key) => ligne(vue, chemin).dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+
+test("REQ009_AC5_REQ049_AC4_boutons_et_touches_inactifs_a_plusieurs", async () => {
+  const { vue, surOuvrir } = await monter({ "": [f("a.txt"), f("b.txt")] }, { surOuvrir: vi.fn() });
+  ctrl(vue, "a.txt");
+  expect(bouton(vue, "Renommer").disabled).toBe(false);
+  ctrl(vue, "b.txt");
+  expect(choisies(vue)).toEqual(["a.txt", "b.txt"]);
+  expect(bouton(vue, "Renommer").disabled).toBe(true);
+  expect(bouton(vue, "Supprimer").disabled).toBe(true);
+  touche(vue, "b.txt", "F2");
+  touche(vue, "b.txt", "Delete");
+  expect(document.querySelector("dialog[open]")).toBeNull();
+  expect(surOuvrir).not.toHaveBeenCalled();
+});
+
+test("REQ049_AC1_ctrl_clic_n_ouvre_rien_ne_deplie_rien", async () => {
+  const disque = { "": [d("src"), f("a.txt")], src: [f("m.rs")] };
+  const { vue, appels, surOuvrir } = await monter(disque, { surOuvrir: vi.fn() });
+  const avant = appels.length;
+  ctrl(vue, "a.txt");
+  ctrl(vue, "src");
+  await attendre();
+  expect(choisies(vue)).toEqual(["src", "a.txt"]);
+  expect(appels.length).toBe(avant);
+  expect(surOuvrir).not.toHaveBeenCalled();
+  expect(ligne(vue, "src").getAttribute("aria-expanded")).toBe("false");
+  ctrl(vue, "a.txt"); // sur une ligne choisie : elle sort
+  expect(choisies(vue)).toEqual(["src"]);
+  expect(vue.corps.querySelector("[role=tree]").getAttribute("aria-multiselectable")).toBe("true");
+});
+
+test("REQ049_AC3_clic_droit_ramene_a_une_ligne_partie_vide_ne_change_rien", async () => {
+  const { vue } = await monter({ "": [f("a.txt"), f("b.txt"), f("c.txt")] });
+  ctrl(vue, "a.txt");
+  ctrl(vue, "b.txt");
+  ctrl(vue, "c.txt");
+  const zone = vue.corps.querySelector(".fichiers-arbre");
+  zone.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+  expect(document.querySelector("[role=menu]").getAttribute("aria-label")).toBe("Actions sur le projet");
+  expect(choisies(vue)).toEqual(["a.txt", "b.txt", "c.txt"]);
+  ligne(vue, "b.txt").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+  expect(choisies(vue)).toEqual(["b.txt"]);
+  expect(bouton(vue, "Renommer").disabled).toBe(false);
+});
+
+test("REQ049_AC3_clic_simple_ramene_a_une_ligne", async () => {
+  const { vue } = await monter({ "": [f("a.txt"), f("b.txt")] });
+  ctrl(vue, "a.txt");
+  ctrl(vue, "b.txt");
+  ligne(vue, "a.txt").click();
+  expect(choisies(vue)).toEqual(["a.txt"]);
+});
+
+test("REQ049_AC5_nouveau_fichier_d_apres_la_derniere_ligne", async () => {
+  const disque = { "": [d("src"), f("a.txt")], src: [f("m.rs")] };
+  const { vue } = await monter(disque);
+  ligne(vue, "src").click();
+  await attendre();
+  ctrl(vue, "a.txt");
+  ctrl(vue, "src/m.rs");
+  bouton(vue, "Nouveau fichier").click();
+  expect(document.querySelector("dialog input").value).toBe("src/");
+  [...document.querySelectorAll("dialog button")].find((b) => b.textContent === "Annuler").click();
+  ctrl(vue, "src/m.rs"); // la ligne sort, mais reste la dernière cliquée
+  expect(choisies(vue)).toEqual(["src", "a.txt"]);
+  bouton(vue, "Nouveau dossier").click();
+  expect(document.querySelector("dialog input").value).toBe("src/");
+});
+
+test("REQ049_AC6_relecture_garde_la_selection_et_retire_la_disparue", async () => {
+  const disque = { "": [f("a.txt"), f("b.txt"), f("c.txt")] };
+  const { vue } = await monter(disque);
+  ctrl(vue, "a.txt");
+  ctrl(vue, "b.txt");
+  ctrl(vue, "c.txt");
+  disque[""] = [f("a.txt"), f("c.txt"), f("z.txt")];
+  await vue.relire();
+  expect(choisies(vue)).toEqual(["a.txt", "c.txt"]);
+  expect(bouton(vue, "Renommer").disabled).toBe(true);
+  disque[""] = [f("c.txt"), f("z.txt")];
+  await vue.relire();
+  expect(choisies(vue)).toEqual(["c.txt"]);
+  expect(bouton(vue, "Renommer").disabled).toBe(false);
+  disque[""] = [f("z.txt")];
+  await vue.relire();
+  expect(choisies(vue)).toEqual([]);
+  expect(bouton(vue, "Renommer").disabled).toBe(true);
+});
+
+test("REQ049_AC9_AC10_f2_vise_la_ligne_selectionnee_pas_le_focus", async () => {
+  const { vue } = await monter({ "": [f("a.txt"), f("b.txt"), f("c.txt")] });
+  ctrl(vue, "a.txt");
+  ctrl(vue, "b.txt");
+  ctrl(vue, "b.txt");
+  const b = ligne(vue, "b.txt");
+  expect(b.getAttribute("aria-selected")).toBe("false");
+  expect(document.activeElement).toBe(b);
+  touche(vue, "b.txt", "F2");
+  expect(document.querySelector("dialog input").value).toBe("a.txt");
+  expect(bouton(vue, "Renommer").disabled).toBe(false);
+});
+
+test("REQ049_AC10_sans_selection_f2_et_suppr_ne_font_rien_entree_active", async () => {
+  const disque = { "": [d("src"), f("a.txt")], src: [f("m.rs")] };
+  const { vue } = await monter(disque);
+  expect(choisies(vue)).toEqual([]);
+  touche(vue, "a.txt", "F2");
+  touche(vue, "a.txt", "Delete");
+  expect(document.querySelector("dialog[open]")).toBeNull();
+  touche(vue, "src", "Enter");
+  await attendre();
+  expect(choisies(vue)).toEqual(["src"]);
+  expect(ligne(vue, "src").getAttribute("aria-expanded")).toBe("true");
+});
+
+test("REQ049_AC11_ligne_masquee_par_gauche_sort", async () => {
+  const disque = { "": [d("src"), f("a.txt")], src: [f("m.rs")] };
+  const { vue } = await monter(disque);
+  ligne(vue, "src").click();
+  await attendre();
+  ctrl(vue, "src"); // src sort de la sélection
+  ctrl(vue, "src/m.rs");
+  ctrl(vue, "a.txt");
+  expect(choisies(vue)).toEqual(["src/m.rs", "a.txt"]);
+  touche(vue, "src", "ArrowLeft");
+  expect(noms(vue)).toEqual(["src", "a.txt"]);
+  expect(choisies(vue)).toEqual(["a.txt"]);
+  expect(bouton(vue, "Renommer").disabled).toBe(false);
+});
+
+test("REQ049_presser_sans_relacher_garde_la_selection", async () => {
+  const { vue } = await monter({ "": [f("a.txt"), f("b.txt"), f("c.txt")] });
+  ctrl(vue, "a.txt");
+  ctrl(vue, "b.txt");
+  ligne(vue, "c.txt").dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  ligne(vue, "c.txt").focus(); // le navigateur donne le focus dès le mousedown
+  expect(choisies(vue)).toEqual(["a.txt", "b.txt"]);
+});
+
+test("REQ049_focus_du_pointeur_ne_selectionne_pas_mais_tab_selectionne_si_rien_ne_l_est", async () => {
+  const { vue } = await monter({ "": [f("a.txt"), f("b.txt")] });
+  ligne(vue, "a.txt").dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  ligne(vue, "a.txt").focus();
+  expect(choisies(vue)).toEqual([]);
+  await attendre();
+  ligne(vue, "b.txt").focus();
+  expect(choisies(vue)).toEqual(["b.txt"]);
+});

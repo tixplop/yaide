@@ -45,7 +45,9 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   const ouverts = new Set();
   const dossiers = new Map(); // chemin -> { etat: "charge" | "ok" | "erreur", entrees, raison, lent }
   const types = new Map(); // chemin -> vrai si dossier
-  let selection = null;
+  let selection = []; // chemins sélectionnés, dans l'ordre de l'arbre
+  let ancre = null; // départ de Maj+clic
+  let derniere = null; // dernière ligne cliquée
   let statuts = null; // Map chemin -> { lettre, mot }, ou null hors d'un dépôt
   let courant = null; // chemin du fichier de l'onglet actif
   let detruit = false;
@@ -61,8 +63,16 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   nomProjet.title = projet;
   entete.append(nomProjet, bFichier.enveloppe, bDossier.enveloppe, bRenommer.enveloppe, bSupprimer.enveloppe);
 
+  /** La ligne sélectionnée s'il n'y en a qu'une, sinon `null`. */
+  const seule = () => (selection.length === 1 ? selection[0] : null);
+  const choisir = (chemin) => {
+    selection = chemin === null ? [] : [chemin];
+    ancre = derniere = chemin;
+    majBoutons();
+  };
+
   function majBoutons() {
-    bRenommer.disabled = bSupprimer.disabled = selection === null;
+    bRenommer.disabled = bSupprimer.disabled = seule() === null;
   }
 
   // ---- Arbre ----
@@ -130,7 +140,16 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     const arbre = liste({
       variante: "arbre",
       lignes: l,
-      selection: selection ?? undefined,
+      multiple: true,
+      selection,
+      courante: focalisee ?? derniere ?? undefined,
+      ancre: ancre ?? undefined,
+      surSelection: (ids, { ancre: a, derniere: dn }) => {
+        selection = ids;
+        ancre = a;
+        derniere = dn;
+        majBoutons();
+      },
       surActiver: activer,
       surBasculer: (id, ouvrir) => (ouvrir ? deplier(id) : replier(id)),
       surMenu,
@@ -143,7 +162,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     animerChevrons(arbre);
     defile.scrollTop = defilement;
     // Le focus reste sur la ligne qui l'avait, même non sélectionnée (après AC-045-8).
-    const cible = (focalisee !== undefined && ligneDe(focalisee)) || (selection !== null ? ligneDe(selection) : null);
+    const cible = (focalisee !== undefined && ligneDe(focalisee)) || (derniere !== null ? ligneDe(derniere) : null);
     if (avait && cible) {
       sansSelection = true;
       cible.focus({ preventScroll: true });
@@ -208,8 +227,10 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
       const rang = avant.findIndex((l) => l.id === focalisee);
       suivant = avant.slice(0, rang).reverse().find((l) => ids.has(l.id) && !l.id.startsWith(FACTICE))?.id ?? "";
     }
-    if (disparue(selection)) {
-      selection = null;
+    if (selection.some(disparue) || disparue(derniere)) {
+      selection = selection.filter((id) => !disparue(id));
+      if (disparue(derniere)) derniere = null;
+      if (disparue(ancre)) ancre = null;
       majBoutons();
     }
     afficher();
@@ -234,13 +255,19 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
 
   function replier(id) {
     ouverts.delete(id);
+    const sous = (c) => c.startsWith(`${id}/`);
+    if (selection.some(sous)) {
+      selection = selection.filter((c) => !sous(c));
+      if (derniere !== null && sous(derniere)) derniere = null;
+      if (ancre !== null && sous(ancre)) ancre = null;
+      majBoutons();
+    }
     afficher();
   }
 
   function activer(id) {
     if (id.startsWith(FACTICE)) return;
-    selection = id;
-    majBoutons();
+    choisir(id);
     if (!types.get(id)) return ouvrirFichier(id);
     if (!ouverts.has(id) || dossiers.get(id)?.etat === "erreur") deplier(id);
     else replier(id);
@@ -265,12 +292,22 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   }
 
   let sansSelection = false;
+  // Le navigateur donne le focus dès le mousedown : le pointeur ne doit pas écraser la sélection avant le clic.
+  let pointeur = false;
+  zoneArbre.addEventListener(
+    "mousedown",
+    () => {
+      pointeur = true;
+      setTimeout(() => (pointeur = false), 0);
+    },
+    true,
+  );
   zoneArbre.addEventListener("focusin", (e) => {
-    if (sansSelection) return;
+    if (sansSelection || pointeur || selection.length > 0) return;
     const chemin = e.target.closest?.("[data-chemin]")?.dataset.chemin;
     if (chemin === undefined) return;
-    selection = chemin;
-    majBoutons();
+    choisir(chemin);
+    afficher(); // la liste peint la sélection ; le focus reste sur la ligne
   });
   zoneArbre.addEventListener("keydown", (e) => {
     const chemin = e.target.closest?.("[data-chemin]")?.dataset.chemin;
@@ -301,10 +338,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   function surMenu(id, position) {
     const vide = id === undefined;
     const dossier = !vide && Boolean(types.get(id));
-    if (!vide) {
-      selection = id;
-      majBoutons();
-    }
+    if (!vide) choisir(id);
     const base = vide ? "" : dossier ? id : dossierDe(id);
     const depot = estDepot();
     const commit = { libelle: "Commit", surChoix: surCommit };
@@ -397,8 +431,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
 
   async function terminer(chemin, dlg, { ouvrir = false } = {}) {
     montrerChemin(chemin);
-    selection = chemin;
-    majBoutons();
+    choisir(chemin);
     dlg.fermer({ rendreFocus: !ouvrir });
     await rafraichir();
     if (!ouvrir && origineArbre) afficher(true);
@@ -408,7 +441,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   function ouvrirCreation(dossier, depuisMenu) {
     origineArbre = false;
     let base = depuisMenu ?? "";
-    if (depuisMenu === undefined && selection !== null) base = types.get(selection) ? selection : dossierDe(selection);
+    if (depuisMenu === undefined && selection.length > 0 && derniere !== null) base = types.get(derniere) ? derniere : dossierDe(derniere);
     formulaire({
       titre: dossier ? "Nouveau dossier" : "Nouveau fichier",
       libelle: "Chemin",
@@ -425,9 +458,9 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   }
 
   function ouvrirRenommage() {
-    if (selection === null) return;
+    const de = seule();
+    if (de === null) return;
     origineArbre = zoneArbre.contains(document.activeElement);
-    const de = selection;
     formulaire({
       titre: "Renommer ou déplacer",
       libelle: "Nouveau chemin",
@@ -455,8 +488,8 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   }
 
   function ouvrirSuppression() {
-    if (selection === null) return;
-    const chemin = selection;
+    const chemin = seule();
+    if (chemin === null) return;
     const dossier = Boolean(types.get(chemin));
     const zone = document.createElement("div");
     const phrase = document.createElement("p");
@@ -484,8 +517,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
         return;
       }
       for (const o of [...ouverts]) if (o === chemin || o.startsWith(`${chemin}/`)) ouverts.delete(o);
-      selection = null;
-      majBoutons();
+      choisir(null);
       dlg.fermer();
       await rafraichir();
       (zoneArbre.querySelector("[role=treeitem][tabindex='0']") ?? entete.querySelector("button")).focus();

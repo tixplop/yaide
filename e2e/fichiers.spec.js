@@ -725,3 +725,24 @@ test("REQ009_AC9_l_en_tete_du_projet_ne_defile_pas_avec_l_arbre", async ({ page 
   expect(await entete.boundingBox()).toEqual(avant);
   await expect(page.getByRole("button", { name: "Supprimer" })).toBeInViewport();
 });
+
+test("REQ049_AC2_AC9_AC12_plage_contour_et_aucun_texte_selectionne", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "a.txt").click();
+  await ligne(page, "notes.txt").click({ modifiers: ["Shift"] });
+  const choisies = arbre(page).locator("[aria-selected=true] .liste-libelle");
+  await expect(choisies).toHaveText(["a.txt", "b.txt", "gros.log", "notes.bin", "notes.txt"]);
+  expect(await page.evaluate(() => String(getSelection()))).toBe("");
+  await expect(page.getByRole("tab", { name: "notes.txt" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Renommer" })).toBeDisabled();
+  await expect(arbre(page).locator("[aria-selected=true] .liste-coche")).toHaveCount(5);
+  // Ctrl+clic sur une ligne choisie : elle sort, garde le focus et son contour, pas le fond.
+  await ligne(page, "b.txt").click({ modifiers: ["Control"] });
+  const b = ligne(page, "b.txt");
+  await expect(b).toHaveAttribute("aria-selected", "false");
+  await expect(b).toBeFocused();
+  await expect(b).toHaveCSS("outline-style", "solid");
+  const fond = (l) => l.evaluate((e) => getComputedStyle(e).backgroundColor);
+  expect(await fond(b)).not.toBe(await fond(ligne(page, "a.txt")));
+  await expect(ligne(page, "a.txt")).not.toHaveCSS("outline-style", "solid");
+});
