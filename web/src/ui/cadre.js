@@ -28,10 +28,10 @@ export function symbole(taille) {
 /**
  * C-010. `barreTitre` : { projet, chemin, surOuvrir, actions } ; `rail` : { onglets, commandes } ;
  * `panneau` : { titre, entete (élément fixe sous le titre), corps } ;
- * `barreEtat` : { branche, position, langage } (textes, ou rien) ; `tailles` : { panneau, shells } en pixels ;
+ * `barreEtat` : { branche, position, langage } (textes, ou rien) ; `tailles` : { panneau, shells } en pixels ; `replis` : { panneau, shells } (faux par défaut) ;
  * `surChangement(zone, taille)` et `surFin(zone, taille)` viennent des poignées.
  */
-export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}, barreEtat = {}, tailles = {}, surChangement, surFin } = {}) {
+export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}, barreEtat = {}, tailles = {}, replis = {}, surChangement, surFin } = {}) {
   const racine = zone("div", "cadre");
 
   const haut = zone("header", "cadre-barre ya-titlebar");
@@ -70,6 +70,8 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}
   const choisies = {};
   const mesures = { panneau: () => aside.offsetWidth, shells: () => racine.querySelector(".cadre-shells").offsetHeight };
   let shellsVisibles = true;
+  let panneauReplie = false;
+  let shellsReplies = false;
   const creer = (cle, orientation, nomAccessible) =>
     poignee({
       orientation,
@@ -119,16 +121,31 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}
     }
   };
   racine.poignees = poignees;
-  // Sans shell visible, la zone et sa poignée sortent de la page ; les terminaux restent montés et la taille choisie ne change pas.
+  // La zone des shells et sa poignée sortent de la page sans shell visible ou une fois repliées ; les terminaux
+  // restent montés et la taille choisie ne change pas. Le panneau replié laisse la place à `main` (classe sur la racine).
+  const appliquer = () => {
+    const cache = !shellsVisibles || shellsReplies;
+    main.querySelector(".cadre-shells").hidden = cache;
+    poignees.shells.hidden = cache;
+    aside.hidden = panneauReplie;
+    poignees.panneau.hidden = panneauReplie;
+    racine.classList.toggle("cadre-panneau-replie", panneauReplie);
+  };
   racine.definirShellsVisibles = (oui) => {
     shellsVisibles = Boolean(oui);
-    main.querySelector(".cadre-shells").hidden = !shellsVisibles;
-    poignees.shells.hidden = !shellsVisibles;
+    appliquer();
+  };
+  // Seules les clés présentes changent.
+  racine.definirReplis = ({ panneau: p, shells: s } = {}) => {
+    if (p !== undefined) panneauReplie = Boolean(p);
+    if (s !== undefined) shellsReplies = Boolean(s);
+    appliquer();
   };
   // À appeler une fois le cadre dans la page : sans taille choisie, pose la taille mesurée sur les poignées.
   racine.mesurer = () => {
-    for (const cle of ["panneau", "shells"]) if (!choisies[cle] && (cle !== "shells" || shellsVisibles)) poignees[cle].definir({ valeur: mesures[cle]() });
+    for (const cle of ["panneau", "shells"]) if (!choisies[cle] && !poignees[cle].hidden) poignees[cle].definir({ valeur: mesures[cle]() });
   };
   racine.definirTailles(tailles);
+  racine.definirReplis(replis);
   return racine;
 }

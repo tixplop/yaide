@@ -82,3 +82,21 @@ test("REQ040_AC15_icones_minimize_2_et_layers_du_sprite_de_la_maquette", () => {
   expect(icone("minimize-2").innerHTML).toContain('d="m14 10 7-7"');
   expect(icone("layers").innerHTML).toContain("M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08");
 });
+
+test("REQ046_AC16_icones_de_repli_du_sprite_de_la_maquette", () => {
+  const dessins = {
+    "panel-left-close": 'd="m16 15-3-3 3-3"',
+    "panel-left-open": 'd="m14 9 3 3-3 3"',
+    "panel-bottom-close": 'd="m15 8-3 3-3-3"',
+    "panel-bottom-open": 'd="m9 10 3-3 3 3"',
+  };
+  for (const [n, d] of Object.entries(dessins)) {
+    expect(NOMS, n).toContain(n);
+    expect(icone(n).innerHTML, n).toContain(d);
+  }
+  const entete = readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000);
+  for (const n of Object.keys(dessins)) expect(entete, n).toContain(n);
+  // Une icône par commande (AC-031-2).
+  const html = Object.keys(dessins).map((n) => icone(n).innerHTML);
+  expect(new Set(html).size).toBe(4);
+});

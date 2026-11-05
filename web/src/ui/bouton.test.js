@@ -280,3 +280,27 @@ test("REQ040_AC13_compteur_du_rail_a_les_dimensions_de_celui_du_rail_d_onglets_e
   expect(regle(".cadre-rail-commandes .ya-badge")).toContain("font-size: 9.5px");
   expect(regle('.cadre-rail-commandes .ya-icon-btn[aria-expanded="true"]')).toContain("color: var(--ink)");
 });
+
+test("REQ046_AC17_definirCommande_change_nom_icone_et_info_bulle_sans_aria_pressed", () => {
+  vi.useFakeTimers();
+  document.body.innerHTML = "";
+  const b = bouton({ icone: "panel-left-close", nomAccessible: "Replier le panneau" });
+  document.body.append(b.enveloppe);
+  expect(b.getAttribute("aria-pressed")).toBeNull();
+  b.definirCommande({ nomAccessible: "Déplier le panneau", icone: "panel-left-open" });
+  expect(b.getAttribute("aria-label")).toBe("Déplier le panneau");
+  expect(b.querySelectorAll("svg").length).toBe(1);
+  expect(b.querySelector("svg").getAttribute("data-icone")).toBe("panel-left-open");
+  expect(b.getAttribute("aria-pressed")).toBeNull();
+  b.enveloppe.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(500);
+  expect(document.querySelector('[role="tooltip"][data-ouverte="true"]').textContent).toBe("Déplier le panneau");
+  vi.useRealTimers();
+});
+
+test("REQ046_AC17_focus_garde_s_applique_aussi_dans_la_barre_de_titre", () => {
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  let r = null;
+  for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) if (m[1].split(",").map((x) => x.trim()).includes(".ya-icon-btn.ya-focus-garde")) r = m[2];
+  expect(r).toContain("outline: 2px solid var(--accent-fg)");
+});

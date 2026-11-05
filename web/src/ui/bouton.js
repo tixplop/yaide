@@ -82,13 +82,22 @@ export function bouton({
 
   // Une commande à icône seule n'a que son info-bulle (C-012) : le bouton désactivé n'émet pas
   // d'événements dans tous les navigateurs, l'appelant insère donc l'enveloppe à sa place.
+  let bulle = null;
   if (icone) {
     const nom = infoBulle ?? nomAccessible ?? libelle;
     const enveloppe = document.createElement("span");
     enveloppe.className = "bouton-enveloppe";
     enveloppe.append(b);
-    creerInfoBulle({ texte: raccourci ? `${nom} (${raccourci})` : nom, ancre: b, enveloppe, position: positionInfoBulle });
+    bulle = creerInfoBulle({ texte: raccourci ? `${nom} (${raccourci})` : nom, ancre: b, enveloppe, position: positionInfoBulle });
     b.enveloppe = enveloppe;
   }
+  // Change la commande d'un bouton à icône : nom accessible, dessin et texte de la bulle. Jamais d'`aria-pressed`.
+  b.definirCommande = ({ nomAccessible: nom, icone: dessin }) => {
+    if (!bulle) throw new Error("bouton : definirCommande demande un bouton à icône");
+    if (!nom || !dessin) throw new Error("bouton : nomAccessible et icone requis");
+    b.setAttribute("aria-label", nom);
+    b.querySelector("svg").replaceWith(dessiner(dessin));
+    bulle.definirTexte(raccourci ? `${nom} (${raccourci})` : nom);
+  };
   return b;
 }

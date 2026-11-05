@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { cadre } from "./cadre.js";
+import { bouton } from "./bouton.js";
 
 const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
 for (const [, nom, val] of tokens.matchAll(/(--[\w-]+):\s*([^;]+);/g)) document.documentElement.style.setProperty(nom, val.trim());
@@ -204,4 +205,73 @@ test("REQ040_AC9_mesurer_n_interroge_pas_une_zone_masquee", () => {
   c.mesurer();
   expect(c.poignees.panneau.getAttribute("aria-valuenow")).toBe("240");
   expect(c.poignees.shells.getAttribute("aria-valuenow")).not.toBe("0");
+});
+
+test("REQ046_AC17_replis_a_la_creation_et_par_definirReplis", () => {
+  const c = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") }, principal: { shells: p("s") }, replis: { panneau: true } });
+  const aside = c.querySelector("aside");
+  expect(aside.hidden).toBe(true);
+  expect(c.poignees.panneau.hidden).toBe(true);
+  expect(c.classList.contains("cadre-panneau-replie")).toBe(true);
+  expect(c.querySelector(".cadre-shells").hidden).toBe(false);
+  c.definirReplis({ shells: true });
+  expect(c.querySelector(".cadre-shells").hidden).toBe(true);
+  expect(c.poignees.shells.hidden).toBe(true);
+  expect(aside.hidden).toBe(true);
+  c.definirReplis({ panneau: false });
+  expect(aside.hidden).toBe(false);
+  expect(c.poignees.panneau.hidden).toBe(false);
+  expect(c.classList.contains("cadre-panneau-replie")).toBe(false);
+  expect(c.querySelector(".cadre-shells").hidden).toBe(true);
+  // Le repli des shells ne rouvre pas une zone cachée par définirShellsVisibles, et inversement.
+  c.definirReplis({ shells: false });
+  expect(c.querySelector(".cadre-shells").hidden).toBe(false);
+  c.definirShellsVisibles(false);
+  c.definirReplis({ shells: false });
+  expect(c.querySelector(".cadre-shells").hidden).toBe(true);
+});
+
+test("REQ046_AC17_css_du_cadre_replie_et_elements_caches", () => {
+  expect(regle(".cadre.cadre-panneau-replie")).toContain("grid-template-columns: var(--size-activity) minmax(0, 1fr)");
+  expect(regle(".cadre-panneau[hidden]")).toContain("display: none");
+  expect(regle(".poignee-vertical[hidden]")).toContain("display: none");
+});
+
+test("REQ046_AC17_un_repli_ne_change_pas_la_taille_choisie_et_mesurer_n_ecrit_pas_0", () => {
+  const c = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") }, tailles: { panneau: 300, shells: 200 } });
+  document.body.append(c);
+  c.definirReplis({ panneau: true, shells: true });
+  expect(c.style.getPropertyValue("--taille-panneau")).toBe("300px");
+  expect(c.style.getPropertyValue("--taille-shells")).toBe("200px");
+  const c2 = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") }, replis: { panneau: true } });
+  document.body.append(c2);
+  Object.defineProperty(c2.querySelector("aside"), "offsetWidth", { value: 0 });
+  Object.defineProperty(c2.querySelector(".cadre-shells"), "offsetHeight", { value: 245 });
+  c2.mesurer();
+  expect(c2.poignees.panneau.getAttribute("aria-valuenow")).not.toBe("0");
+  expect(c2.poignees.shells.getAttribute("aria-valuenow")).toBe("245");
+});
+
+test("REQ046_AC17_les_boutons_de_actions_restent_dans_l_ordre_recu", () => {
+  const c = cadre({ barreTitre: { projet: "p", actions: [p("a"), p("b"), p("c"), p("d")] }, rail: { onglets: p("r") } });
+  expect([...c.querySelector(".ya-titlebar-actions").children].map((e) => e.textContent)).toEqual(["a", "b", "c", "d"]);
+});
+
+test("REQ046_AC17_replis_shells_puis_shellsVisibles_vrai_gardent_la_zone_cachee", () => {
+  const c = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") }, principal: { shells: p("s") } });
+  c.definirReplis({ shells: true });
+  c.definirShellsVisibles(true);
+  expect(c.querySelector(".cadre-shells").hidden).toBe(true);
+  expect(c.poignees.shells.hidden).toBe(true);
+});
+
+test("REQ047_AC6_compteur_du_rail_affiche_12_et_reste_a_6_px_du_bord_droit_et_du_bas", () => {
+  const b = bouton({ icone: "terminal", nomAccessible: "Nouveau shell" });
+  b.definirCompteur(12);
+  expect(b.querySelector(".ya-badge").textContent).toBe("12");
+  const r = regle(".cadre-rail-commandes .ya-badge");
+  expect(r).toContain("right: 6px");
+  expect(r).toContain("bottom: 6px");
+  expect(r).not.toMatch(/\bleft\b/);
+  expect(r).not.toContain("max-width");
 });

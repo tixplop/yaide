@@ -66,6 +66,11 @@ export function infoBulle({ texte, ancre, position = "dessous", enveloppe }) {
   bulle.setAttribute("popover", "manual");
   bulle.textContent = texte;
   let minuterie = null;
+  // Le texte vit dans l'élément : une bulle ouverte le montre aussitôt, une bulle fermée à sa prochaine ouverture.
+  bulle.definirTexte = (t) => {
+    if (!t) throw new Error("infoBulle : texte requis");
+    bulle.textContent = t;
+  };
 
   function afficher() {
     clearTimeout(minuterie);

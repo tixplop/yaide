@@ -219,3 +219,22 @@ test("REQ036_AC1_aspect_ya_tooltip", () => {
   const r = css.match(/\.ya-tooltip\s*\{([^}]*)\}/)[1].replace(/\s+/g, " ");
   for (const d of ["background: var(--bg-300)", "color: var(--ink)", "box-shadow: var(--shadow-popover)", "border-radius: var(--radius-md)", "font-size: 12.5px", "line-height: 18px", "padding: 3px 8px", "white-space: nowrap"]) expect(r, d).toContain(d);
 });
+
+test("REQ046_AC17_definirTexte_bulle_fermee_donne_le_nouveau_texte_a_l_ouverture", () => {
+  const a = ancre();
+  const bulle = infoBulle({ texte: "Avant", ancre: a });
+  bulle.definirTexte("Après");
+  a.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(500);
+  expect(visible()[0].textContent).toBe("Après");
+});
+
+test("REQ046_AC17_definirTexte_bulle_ouverte_change_le_texte_affiche", () => {
+  const a = ancre();
+  const bulle = infoBulle({ texte: "Avant", ancre: a });
+  a.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(500);
+  expect(visible()[0].textContent).toBe("Avant");
+  bulle.definirTexte("Après");
+  expect(visible()[0].textContent).toBe("Après");
+});

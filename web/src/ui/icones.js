@@ -16,6 +16,8 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+Icônes Lucide (ISC) utilisées ici : panel-left-close, panel-left-open, panel-bottom-close, panel-bottom-open.
+
 ---
 
 The following Lucide icons are derived from the Feather project:
@@ -72,6 +74,10 @@ const CHEMINS = {
   "chevron": "<path d=\"m9 6 6 6-6 6\"/>",
   "chevron-down": "<path d=\"m6 9 6 6 6-6\"/>",
   "chevron-right": "<path d=\"m9 18 6-6-6-6\"/>",
+  "panel-left-close": "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M9 3v18\"/><path d=\"m16 15-3-3 3-3\"/>",
+  "panel-left-open": "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M9 3v18\"/><path d=\"m14 9 3 3-3 3\"/>",
+  "panel-bottom-close": "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M3 15h18\"/><path d=\"m15 8-3 3-3-3\"/>",
+  "panel-bottom-open": "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M3 15h18\"/><path d=\"m9 10 3-3 3 3\"/>",
 };
 
 export const NOMS = Object.keys(CHEMINS);
