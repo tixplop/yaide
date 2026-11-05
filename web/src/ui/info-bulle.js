@@ -47,6 +47,11 @@ function fermer() {
   b.remove();
 }
 
+// Ferme la bulle ouverte si son ancre est dans la zone (zone repliée).
+export function fermerInfoBulleDans(zone) {
+  if (ouverte && zone.contains(ancreOuverte)) fermer();
+}
+
 function surEchap(e) {
   if (e.key === "Escape") fermer();
 }
@@ -75,7 +80,7 @@ export function infoBulle({ texte, ancre, position = "dessous", enveloppe }) {
   function afficher() {
     clearTimeout(minuterie);
     minuterie = null;
-    if (ouverte === bulle || !ancre.isConnected) return;
+    if (ouverte === bulle || !ancre.isConnected || ancre.closest("[hidden]")) return;
     fermer();
     document.body.append(bulle);
     bulle.dataset.ouverte = "true";
@@ -108,6 +113,7 @@ export function infoBulle({ texte, ancre, position = "dessous", enveloppe }) {
     masquer();
   });
   ancre.addEventListener("focus", () => {
+    if (ancre.classList.contains("ya-focus-garde")) return;
     if (focusVisible(ancre)) afficher();
   });
   ancre.addEventListener("blur", masquer);

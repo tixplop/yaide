@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { cadre } from "./cadre.js";
 import { bouton } from "./bouton.js";
+import { infoBulle } from "./info-bulle.js";
 
 const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
 for (const [, nom, val] of tokens.matchAll(/(--[\w-]+):\s*([^;]+);/g)) document.documentElement.style.setProperty(nom, val.trim());
@@ -274,4 +275,42 @@ test("REQ047_AC6_compteur_du_rail_affiche_12_et_reste_a_6_px_du_bord_droit_et_du
   expect(r).toContain("bottom: 6px");
   expect(r).not.toMatch(/\bleft\b/);
   expect(r).not.toContain("max-width");
+});
+
+test("REQ048_AC1_en_tete_titre_puis_repli", () => {
+  const repli = document.createElement("button");
+  const avec = cadre({ panneau: { titre: "Fichiers", repli, corps: p("corps") } });
+  const tete = avec.querySelector(".ya-panel-head");
+  expect([...tete.children]).toEqual([tete.querySelector("h2"), repli]);
+  const sans = cadre({ panneau: { titre: "Fichiers", corps: p("corps") } });
+  expect(sans.querySelector(".ya-panel-head").children).toHaveLength(1);
+});
+
+test("REQ048_AC5_AC8_marges_de_l_en_tete", () => {
+  expect(regle(".ya-panel-head")).toContain("height: var(--size-tab)");
+  expect(regle(".ya-panel-head")).toContain("padding: 0 var(--space-1) 0 var(--space-3)");
+  expect(regle(".fichiers-entete")).toContain("padding: 0 var(--space-1) 0 var(--space-3)");
+});
+
+test("REQ048_AC9_definirReplis_ferme_la_bulle_d_une_ancre_du_panneau", async () => {
+  vi.useFakeTimers();
+  const repli = document.createElement("button");
+  const c = cadre({ panneau: { titre: "Fichiers", repli, corps: p("corps") } });
+  document.body.append(c);
+  const dehors = document.createElement("button");
+  document.body.append(dehors);
+  infoBulle({ texte: "Replier", ancre: repli });
+  infoBulle({ texte: "Dehors", ancre: dehors });
+  const ouvertes = () => [...document.querySelectorAll('[role="tooltip"]')].filter((e) => e.dataset.ouverte === "true");
+  dehors.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  c.definirReplis({ panneau: true });
+  expect(ouvertes().map((e) => e.textContent)).toEqual(["Dehors"]);
+  c.definirReplis({ panneau: false });
+  repli.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  expect(ouvertes().map((e) => e.textContent)).toEqual(["Replier"]);
+  c.definirReplis({ panneau: true });
+  expect(ouvertes()).toHaveLength(0);
+  vi.useRealTimers();
 });

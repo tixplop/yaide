@@ -1,5 +1,5 @@
 import { icone } from "./icones.js";
-import { infoBulle } from "./info-bulle.js";
+import { fermerInfoBulleDans, infoBulle } from "./info-bulle.js";
 import { limites, poignee } from "./poignee.js";
 
 function zone(balise, classe, contenu) {
@@ -27,7 +27,7 @@ export function symbole(taille) {
 
 /**
  * C-010. `barreTitre` : { projet, chemin, surOuvrir, actions } ; `rail` : { onglets, commandes } ;
- * `panneau` : { titre, entete (élément fixe sous le titre), corps } ;
+ * `panneau` : { titre, repli (bouton de repli, après le titre), entete (élément fixe sous le titre), corps } ;
  * `barreEtat` : { branche, position, langage } (textes, ou rien) ; `tailles` : { panneau, shells } en pixels ; `replis` : { panneau, shells } (faux par défaut) ;
  * `surChangement(zone, taille)` et `surFin(zone, taille)` viennent des poignées.
  */
@@ -60,7 +60,7 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}
   if (panneau.titre) {
     const h = zone("h2", "cadre-panneau-titre ya-panel-title");
     h.textContent = panneau.titre;
-    aside.append(zone("div", "ya-panel-head", h));
+    aside.append(zone("div", "ya-panel-head", [h, panneau.repli]));
   }
   if (panneau.entete) aside.append(panneau.entete);
   aside.append(zone("div", "cadre-panneau-corps", panneau.corps));
@@ -128,6 +128,7 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}
     main.querySelector(".cadre-shells").hidden = cache;
     poignees.shells.hidden = cache;
     aside.hidden = panneauReplie;
+    if (panneauReplie) fermerInfoBulleDans(aside);
     poignees.panneau.hidden = panneauReplie;
     racine.classList.toggle("cadre-panneau-replie", panneauReplie);
   };

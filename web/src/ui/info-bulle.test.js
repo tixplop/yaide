@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { infoBulle, placer } from "./info-bulle.js";
+import { fermerInfoBulleDans, infoBulle, placer } from "./info-bulle.js";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -237,4 +237,47 @@ test("REQ046_AC17_definirTexte_bulle_ouverte_change_le_texte_affiche", () => {
   expect(visible()[0].textContent).toBe("Avant");
   bulle.definirTexte("Après");
   expect(visible()[0].textContent).toBe("Après");
+});
+
+test("REQ048_AC9_ancre_sous_un_hidden_pendant_le_delai_n_ouvre_rien", () => {
+  const zone = document.createElement("div");
+  document.body.append(zone);
+  const a = document.createElement("button");
+  zone.append(a);
+  infoBulle({ texte: "Replier", ancre: a });
+  a.dispatchEvent(new Event("pointerenter"));
+  zone.hidden = true;
+  vi.advanceTimersByTime(400);
+  expect(visible()).toHaveLength(0);
+});
+
+test("REQ048_AC9_fermerInfoBulleDans_ferme_une_ancre_dedans_pas_une_dehors", () => {
+  const zone = document.createElement("div");
+  document.body.append(zone);
+  const dedans = document.createElement("button");
+  zone.append(dedans);
+  const dehors = ancre("dehors");
+  infoBulle({ texte: "Dedans", ancre: dedans });
+  infoBulle({ texte: "Dehors", ancre: dehors });
+  dehors.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  fermerInfoBulleDans(zone);
+  expect(visible()).toHaveLength(1);
+  dedans.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  expect(visible()[0].textContent).toBe("Dedans");
+  fermerInfoBulleDans(zone);
+  expect(visible()).toHaveLength(0);
+});
+
+test("REQ048_AC9_focus_sur_une_ancre_ya_focus_garde_n_ouvre_rien", () => {
+  const a = ancre();
+  infoBulle({ texte: "Déplier le panneau", ancre: a });
+  a.classList.add("ya-focus-garde");
+  a.matches = () => true;
+  a.dispatchEvent(new Event("focus"));
+  expect(visible()).toHaveLength(0);
+  a.classList.remove("ya-focus-garde");
+  a.dispatchEvent(new Event("focus"));
+  expect(visible()).toHaveLength(1);
 });

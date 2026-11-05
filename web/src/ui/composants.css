@@ -297,7 +297,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre-rail-commandes .ya-badge { position: absolute; right: 6px; bottom: 6px; height: 14px; min-width: 14px; font-size: 9.5px; line-height: 14px; }
 .cadre-rail-commandes .ya-icon-btn svg { width: var(--taille-icone-rail); height: var(--taille-icone-rail); }
 .cadre-panneau { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg-100); }
-.ya-panel-head { flex: none; box-sizing: border-box; height: var(--size-tab); display: flex; align-items: center; padding: 0 var(--space-2) 0 var(--space-3); }
+.ya-panel-head { flex: none; box-sizing: border-box; height: var(--size-tab); display: flex; align-items: center; padding: 0 var(--space-1) 0 var(--space-3); }
 .ya-panel-title { margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 16px; font-weight: var(--graisse-forte); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); }
 .cadre-panneau-corps { flex: 1 1 0; min-height: 0; overflow: auto; }
 .cadre-principal { background: var(--bg-200); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -395,7 +395,7 @@ body { margin: 0; }
 .fichiers { box-sizing: border-box; min-height: 100%; display: flex; flex-direction: column; }
 .fichiers[hidden] { display: none; }
 .fichiers-entete[hidden] { display: none; }
-.fichiers-entete { flex: none; box-sizing: border-box; height: var(--size-control); display: flex; align-items: center; gap: var(--trait); padding: 0 var(--space-2) 0 var(--space-3); }
+.fichiers-entete { flex: none; box-sizing: border-box; height: var(--size-control); display: flex; align-items: center; gap: var(--trait); padding: 0 var(--space-1) 0 var(--space-3); }
 .fichiers-projet { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--texte-petit) var(--font-sans); color: var(--ink); }
 .fichiers-entete .bouton-enveloppe { flex: none; display: flex; }
 .fichiers-arbre { flex: 1 1 auto; min-height: 0; }
