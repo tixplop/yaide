@@ -7,7 +7,8 @@ test.beforeEach(async () => {
 });
 test.afterEach(() => yaide.arreter());
 
-const bouton = (page, nom) => page.getByRole("button", { name: nom, exact: true });
+// Panneau déplié, deux boutons portent « Replier le panneau » : ceux de la barre de titre se cherchent dans `header`.
+const bouton = (page, nom) => (/ le panneau$/.test(nom) ? page.locator("header") : page).getByRole("button", { name: nom, exact: true });
 const ecran = (page) => page.locator(".terminal:visible .xterm-rows");
 const taper = async (page, commande) => {
   await expect(page.locator(".terminal:visible .terminal-attente")).toBeHidden();
@@ -223,4 +224,81 @@ test("REQ032_AC15_zone_repliee_fenetre_reduite_puis_depliee_la_hauteur_est_borne
   await expect(poignee).toHaveAttribute("aria-valuenow", "299");
   await page.setViewportSize({ width: 800, height: 600 });
   await expect(poignee).toHaveAttribute("aria-valuenow", "350");
+});
+
+// ---- T-060 : replier le panneau depuis son en-tête ----
+
+test("REQ048_AC5_AC8_AC9_en_tete_a_240_et_280_px", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 700 });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+  const aside = page.locator("aside");
+  const repli = aside.getByRole("button", { name: "Replier le panneau", exact: true });
+  for (const largeur of ["240", "280"]) {
+    await poignee.focus();
+    if (largeur === "240") for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
+    else {
+      const p = await poignee.boundingBox();
+      await page.mouse.move(p.x + p.width / 2, 300);
+      await page.mouse.down();
+      await page.mouse.move(p.x + p.width / 2 + 40, 300, { steps: 5 });
+      await page.mouse.up();
+    }
+    await expect(poignee).toHaveAttribute("aria-valuenow", largeur);
+    for (const vue of ["Fichiers", "Recherche", "Git"]) {
+      await page.getByRole("tab", { name: vue, exact: true }).click();
+      const tete = await boite(page, "aside .ya-panel-head");
+      expect(tete.h, `${vue} ${largeur}`).toBe(35);
+      const b = await repli.boundingBox();
+      const a = await boite(page, "aside");
+      expect(Math.round(a.x + a.w - (b.x + b.width)), `${vue} ${largeur}`).toBe(4);
+      if (vue === "Fichiers") {
+        const s = await aside.getByRole("button", { name: "Supprimer", exact: true }).boundingBox();
+        expect(Math.round(s.x + s.width)).toBe(Math.round(b.x + b.width));
+      }
+      if (largeur === "240" && vue === "Recherche") {
+        const h = await aside.locator("h2").evaluate((e) => {
+          const r = document.createRange();
+          r.selectNodeContents(e);
+          const q = r.getBoundingClientRect();
+          return { droite: q.right, large: e.scrollWidth <= e.clientWidth };
+        });
+        expect(h.droite).toBeLessThan(b.x);
+        expect(h.large).toBe(true);
+      }
+      const verifierBulle = async (mode) => {
+        if (mode === "survol") await repli.hover();
+        else {
+          await page.keyboard.press("Shift");
+          await repli.focus();
+        }
+        const bulle = page.getByRole("tooltip");
+        await expect(bulle, `${vue} ${largeur} ${mode}`).toHaveText("Replier le panneau");
+        const t = await bulle.boundingBox();
+        expect(t.x).toBeGreaterThanOrEqual(b.x + b.width - 1);
+        for (const autre of await aside.getByRole("button").all()) {
+          const o = await autre.boundingBox();
+          if (!o || (o.x === b.x && o.y === b.y)) continue;
+          const separes = t.x + t.width <= o.x || o.x + o.width <= t.x || t.y + t.height <= o.y || o.y + o.height <= t.y;
+          expect(separes, `${vue} ${largeur} ${mode} bulle sur un bouton`).toBe(true);
+        }
+        await repli.blur();
+        await page.mouse.move(600, 600);
+        await expect(page.getByRole("tooltip")).toHaveCount(0);
+      };
+      await verifierBulle("survol");
+      await verifierBulle("focus");
+    }
+  }
+});
+
+test("REQ048_AC11_menu_ouvert_le_premier_clic_ferme_le_menu", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await page.locator("aside").getByRole("treeitem").first().click({ button: "right" });
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.locator("aside").getByRole("button", { name: "Replier le panneau", exact: true }).click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(page.locator("aside")).toBeVisible();
+  await page.locator("aside").getByRole("button", { name: "Replier le panneau", exact: true }).click();
+  await expect(page.locator("aside")).toBeHidden();
 });

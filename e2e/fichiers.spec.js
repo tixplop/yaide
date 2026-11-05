@@ -679,6 +679,10 @@ test("REQ009_AC9_AC10_en_tete_du_projet_a_240_px_26_px_une_ligne_et_ordre_de_tab
   await expect(page.getByRole("button", { name: "Nouveau dossier" })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(arbre(page).locator("[tabindex='0']")).toBeFocused();
+  // AC-009-10 : Maj+Tab depuis « Nouveau fichier » arrive sur le bouton de repli de l'en-tête du panneau.
+  await page.getByRole("button", { name: "Nouveau fichier" }).focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.locator("aside").getByRole("button", { name: "Replier le panneau", exact: true })).toBeFocused();
 });
 
 test("REQ039_AC1_indexer_depuis_le_menu_fait_passer_la_lettre_de_U_a_A", async ({ page }) => {

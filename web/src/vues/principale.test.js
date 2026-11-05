@@ -1074,3 +1074,82 @@ test("REQ028_AC16_panneau_replie_sans_onglet_le_focus_va_sur_Ouvrir_un_fichier",
   await vi.waitFor(() => expect(document.activeElement.textContent).toBe("Ouvrir un fichier"));
   expect(vue.contains(document.activeElement)).toBe(true);
 });
+
+// ---- T-060 : replier le panneau depuis son en-tête ----
+
+const repliDuPanneau = (vue) => [...aside(vue).querySelectorAll("button")].find((b) => !b.closest("[hidden]"));
+const resultatsVides = () => {
+  const base = vi.mocked(fetch);
+  vi.stubGlobal("fetch", vi.fn(async (url, ...r) => (url.startsWith("/api/recherche") ? { ok: true, status: 200, json: async () => ({ resultats: [], limite: false }) } : base(url, ...r))));
+};
+
+test("REQ048_AC1_AC4_AC7_dans_les_trois_vues", async () => {
+  simulerServeur(null);
+  resultatsVides();
+  const { vue } = monter();
+  await attendre();
+  const tabs = vue.querySelectorAll("[role=tab]");
+  for (const [i, titre] of ["Fichiers", "Recherche", "Git"].entries()) {
+    tabs[i].click();
+    await attendre();
+    expect(aside(vue).querySelector("h2").textContent).toBe(titre);
+    const b = repliDuPanneau(vue);
+    expect(b.getAttribute("aria-label"), titre).toBe("Replier le panneau");
+    expect(b.textContent).toBe("");
+    expect(icone(b)).toBe("panel-left-close");
+    expect(b.hasAttribute("aria-pressed")).toBe(false);
+    expect(b.hasAttribute("title")).toBe(false);
+  }
+});
+
+test("REQ048_AC2_AC6_replier_depuis_l_en_tete", async () => {
+  simulerServeur(null);
+  const { vue } = monter();
+  await attendre();
+  repliDuPanneau(vue).click();
+  expect(aside(vue).hidden).toBe(true);
+  expect(poignees(vue).panneau.hidden).toBe(true);
+  const b = barreTitre(vue, "Déplier le panneau");
+  expect(document.activeElement).toBe(b);
+  expect(b.classList.contains("ya-focus-garde")).toBe(true);
+  expect(ecrire).toHaveBeenLastCalledWith("replis", { panneau: true });
+});
+
+test("REQ048_AC3_le_rail_deplie_depuis_chaque_onglet", async () => {
+  simulerServeur(null);
+  const { vue } = monter();
+  await attendre();
+  const tabs = vue.querySelectorAll("[role=tab]");
+  for (const [i, titre] of ["Fichiers", "Recherche", "Git"].entries()) {
+    for (const actif of [true, false]) {
+      tabs[actif ? i : (i + 1) % 3].click();
+      await attendre();
+      if (!actif) expect(aside(vue).querySelector("h2").textContent).not.toBe(titre);
+      repliDuPanneau(vue).click();
+      expect(aside(vue).hidden).toBe(true);
+      tabs[i].click();
+      await attendre();
+      expect(aside(vue).hidden, `${titre} ${actif}`).toBe(false);
+      expect(aside(vue).querySelector("h2").textContent).toBe(titre);
+      expect(aside(vue).contains(document.activeElement)).toBe(true);
+    }
+  }
+});
+
+test("REQ048_AC10_etats_vides_et_hors_depot_gardent_le_bouton", async () => {
+  simulerShells({ ids: [] });
+  resultatsVides();
+  const { vue } = monter();
+  await attendre();
+  expect(aside(vue).textContent).toContain("Dossier vide.");
+  expect(repliDuPanneau(vue).getAttribute("aria-label")).toBe("Replier le panneau");
+  const tabs = vue.querySelectorAll("[role=tab]");
+  tabs[1].click();
+  vue.querySelector("aside input").value = "zzz";
+  vue.querySelector("aside input").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await vi.waitFor(() => expect(aside(vue).textContent).toContain("Aucun résultat"));
+  expect(repliDuPanneau(vue).getAttribute("aria-label")).toBe("Replier le panneau");
+  tabs[2].click();
+  await vi.waitFor(() => expect(aside(vue).textContent).toContain("Ce dossier n'est pas un dépôt git."));
+  expect(repliDuPanneau(vue).getAttribute("aria-label")).toBe("Replier le panneau");
+});

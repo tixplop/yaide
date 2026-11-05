@@ -626,7 +626,7 @@ test("REQ031_AC10_barre_de_titre_info_bulles_sous_le_bouton_et_dans_la_fenetre",
   await page.setViewportSize({ width: 800, height: 480 });
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   for (const nom of ["Replier le panneau", "Thème clair", "Déconnexion"]) {
-    const b = page.getByRole("button", { name: nom, exact: true });
+    const b = page.locator("header").getByRole("button", { name: nom, exact: true });
     await b.focus();
     const bulle = page.getByRole("tooltip");
     await expect(bulle).toHaveText(nom);

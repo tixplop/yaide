@@ -50,6 +50,11 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (panneauReplie) boutonPanneau.poserFocus();
     else entrerDansPanneau();
   });
+  const repliEntete = bouton({ icone: "panel-left-close", nomAccessible: "Replier le panneau", positionInfoBulle: "droite" });
+  repliEntete.addEventListener("click", () => {
+    replierPanneau(true);
+    boutonPanneau.poserFocus();
+  });
   function replierPanneau(oui) {
     panneauReplie = oui;
     racine.definirReplis({ panneau: oui });
@@ -159,7 +164,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   racine = cadre({
     barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [boutonPanneau.enveloppe, shells.repli.enveloppe, theme.enveloppe, sortir.enveloppe] },
     rail: { onglets: rail, commandes: shells.commandes },
-    panneau: { titre: "Fichiers", entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps] },
+    panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps] },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, fil: editeur.fil, code: editeur.code, shells },
     barreEtat: barre,
     surChangement: (zone, taille) => {

@@ -295,7 +295,7 @@ test("REQ046_parcours_14_replier_pour_lire_le_code", async ({ page }) => {
   await expect(nouveau.locator(".ya-badge")).toHaveText("2");
   const larges = async () => (await tailleStable(page)).split(" ")[1];
   const avant = Number(await larges());
-  await page.getByRole("button", { name: "Replier le panneau", exact: true }).click();
+  await page.locator("header").getByRole("button", { name: "Replier le panneau", exact: true }).click();
   await expect(page.getByRole("button", { name: "Déplier le panneau", exact: true })).toBeFocused();
   expect(Number(await larges())).toBeGreaterThan(avant);
   await page.getByRole("button", { name: "Replier les shells", exact: true }).click();
@@ -358,4 +358,101 @@ test("REQ019_REQ046_REQ047_parcours_15_arriver_sans_shell", async ({ page }) => 
   await expect(bouton("Nouveau shell")).toBeFocused();
   await expect(bouton("Nouveau shell").locator(".ya-badge")).toBeHidden();
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("REQ048_parcours_16_replier_depuis_l_en_tete", async ({ page }) => {
+  yaide = await lancerYaide({ shell: "/bin/sh" });
+  await page.setViewportSize({ width: 1100, height: 700 });
+  await ouvrirYaide(page, yaide.origine);
+  const aside = page.locator("aside");
+  const replierEntete = aside.getByRole("button", { name: "Replier le panneau", exact: true });
+  const deplier = page.locator("header").getByRole("button", { name: "Déplier le panneau", exact: true });
+  const tooltip = page.getByRole("tooltip");
+  const contour = (b) => b.evaluate((e) => getComputedStyle(e).outlineStyle !== "none" && getComputedStyle(e).outlineWidth !== "0px");
+  const panneauRetourne = async (nom) => {
+    await page.getByRole("tab", { name: nom, exact: true }).click();
+    await expect(aside).toBeVisible();
+    await expect(aside.locator("h2")).toHaveText(nom);
+  };
+  // Situation : main.rs ouvert, recherche sans résultat gardée, panneau à 280 px.
+  await page.getByRole("treeitem", { name: nomLigne("src") }).click();
+  await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
+  await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+  await panneauRetourne("Recherche");
+  await page.getByRole("textbox").first().fill("fn mian");
+  await page.keyboard.press("Enter");
+  await expect(aside).toContainText("Aucun résultat");
+  await panneauRetourne("Fichiers");
+  const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+  const p = await poignee.boundingBox();
+  await page.mouse.move(p.x + p.width / 2, 300);
+  await page.mouse.down();
+  await page.mouse.move(p.x + p.width / 2 + 100, 300, { steps: 5 });
+  await page.mouse.up();
+  const largeur = Number(await poignee.getAttribute("aria-valuenow"));
+  expect(largeur).toBeGreaterThan(240);
+  // 1. Survol : info-bulle à droite du bouton.
+  await replierEntete.hover();
+  await expect(tooltip).toHaveText("Replier le panneau");
+  const b = await replierEntete.boundingBox();
+  expect((await tooltip.boundingBox()).x).toBeGreaterThanOrEqual(b.x + b.width - 1);
+  await expect(aside.getByRole("button", { name: "Nouveau fichier", exact: true })).toBeVisible();
+  // 2. Clic : panneau replié, focus sur « Déplier le panneau », contour, sans info-bulle.
+  await replierEntete.click();
+  await expect(aside).toBeHidden();
+  await expect(poignee).toBeHidden();
+  await expect(deplier).toBeFocused();
+  expect(await contour(deplier)).toBe(true);
+  await expect(tooltip).toHaveCount(0);
+  // 3. Rail Recherche : le panneau revient à la même largeur, la recherche est là, le focus dans le champ.
+  await page.getByRole("tab", { name: "Recherche", exact: true }).click();
+  await expect(aside).toBeVisible();
+  await expect(poignee).toHaveAttribute("aria-valuenow", String(largeur));
+  await expect(aside).toContainText("Aucun résultat");
+  await expect(aside.getByRole("textbox")).toHaveValue("fn mian");
+  await expect(aside.getByRole("textbox")).toBeFocused();
+  // 4. Maj+Tab : focus sur « Replier le panneau », contour et info-bulle.
+  await page.keyboard.press("Shift+Tab");
+  await expect(replierEntete).toBeFocused();
+  expect(await contour(replierEntete)).toBe(true);
+  await expect(tooltip).toHaveText("Replier le panneau");
+  // 5. Entrée : comme à l'étape 2.
+  await page.keyboard.press("Enter");
+  await expect(aside).toBeHidden();
+  await expect(deplier).toBeFocused();
+  expect(await contour(deplier)).toBe(true);
+  await expect(tooltip).toHaveCount(0);
+  // 6. Rechargement : le panneau reste replié, le focus est dans l'éditeur.
+  await page.reload();
+  await deplier.waitFor();
+  await expect(aside).toBeHidden();
+  await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+  // 7. Rail Git : le panneau revient, le focus est dans le panneau, le bouton est au même endroit.
+  await page.getByRole("tab", { name: "Git", exact: true }).click();
+  await expect(aside).toBeVisible();
+  await expect(aside.locator("h2")).toHaveText("Git");
+  expect(await page.evaluate(() => Boolean(document.activeElement.closest("aside")))).toBe(true);
+  const bGit = await replierEntete.boundingBox();
+  expect(Math.round(bGit.x)).toBe(Math.round(b.x));
+  expect(Math.round(bGit.y)).toBe(Math.round(b.y));
+  // 8. Rail Fichiers, puis Maj+Tab depuis l'arbre jusqu'en haut.
+  await panneauRetourne("Fichiers");
+  await page.getByRole("treeitem", { name: nomLigne("src") }).click();
+  await aside.getByRole("tree", { name: "Fichiers" }).locator("[tabindex='0']").focus();
+  for (const nom of ["Supprimer", "Renommer", "Nouveau dossier", "Nouveau fichier", "Replier le panneau"]) {
+    await page.keyboard.press("Shift+Tab");
+    await expect(aside.getByRole("button", { name: nom, exact: true })).toBeFocused();
+  }
+  // 9. 800 x 480, panneau à 240 px : titre et bouton sur une ligne, rien n'est coupé.
+  await page.setViewportSize({ width: 800, height: 480 });
+  await poignee.focus();
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
+  await expect(poignee).toHaveAttribute("aria-valuenow", "240");
+  const h = await aside.locator("h2").boundingBox();
+  const r = await replierEntete.boundingBox();
+  expect(Math.abs(h.y + h.height / 2 - (r.y + r.height / 2))).toBeLessThan(3);
+  expect(h.x + h.width).toBeLessThanOrEqual(r.x);
+  const a = await aside.boundingBox();
+  expect(r.x + r.width).toBeLessThanOrEqual(a.x + a.width);
+  expect(await aside.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
 });
