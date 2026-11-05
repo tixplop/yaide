@@ -52,6 +52,11 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   let courant = null; // chemin du fichier de l'onglet actif
   let detruit = false;
   let generation = 0; // incrémenté par chaque lecture bruyante : une relecture qui la croise est jetée
+  let enGlisse = false; // un glissé est en cours : rien ne redessine l'arbre, la ligne saisie doit rester dans le document
+  let deplacement = false; // des déplacements sont en cours
+  let aRedessiner = false;
+  let relireEnAttente = false;
+  let messageDepot = null; // bandeau du dernier dépôt
 
   const bFichier = bouton({ icone: "file-plus", variante: "discret", nomAccessible: "Nouveau fichier" });
   const bDossier = bouton({ icone: "folder-plus", variante: "discret", nomAccessible: "Nouveau dossier" });
@@ -122,6 +127,10 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
 
   function afficher(focaliser = false) {
     if (detruit) return;
+    if (enGlisse || deplacement) {
+      aRedessiner = true;
+      return;
+    }
     const avait = focaliser || zoneArbre.contains(document.activeElement);
     const focalisee = focaliser ? undefined : document.activeElement?.closest?.("[data-chemin]")?.dataset.chemin;
     const defile = zoneArbre.closest(".cadre-panneau-corps") ?? zoneArbre; // le conteneur qui défile
@@ -153,6 +162,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
       surActiver: activer,
       surBasculer: (id, ouvrir) => (ouvrir ? deplier(id) : replier(id)),
       surMenu,
+      surDepot: deposer,
     });
     arbre.setAttribute("aria-label", "Fichiers");
     l.forEach((ligne, i) => {
@@ -203,6 +213,10 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   /** Relecture silencieuse (toutes les 3 s) des dossiers déjà lus : ni message, ni « Chargement… », rien de redessiné sans changement. */
   async function relire() {
     if (!dossiers.get("")?.entrees) return;
+    if (enGlisse || deplacement) {
+      relireEnAttente = true;
+      return;
+    }
     const g = generation;
     const cibles = ["", ...ouverts].filter((c) => dossiers.get(c)?.entrees);
     const reponses = await Promise.all(cibles.map((c) => listerDossier(c)));
@@ -303,11 +317,37 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     true,
   );
   zoneArbre.addEventListener("focusin", (e) => {
-    if (sansSelection || pointeur || selection.length > 0) return;
+    if (sansSelection || pointeur || enGlisse || selection.length > 0) return;
     const chemin = e.target.closest?.("[data-chemin]")?.dataset.chemin;
     if (chemin === undefined) return;
     choisir(chemin);
     afficher(); // la liste peint la sélection ; le focus reste sur la ligne
+  });
+  // En capture : avant l'écouteur de la liste, qui donne le focus à la ligne saisie.
+  zoneArbre.addEventListener(
+    "dragstart",
+    (e) => {
+      if (!e.target.closest?.("[draggable=true]")) return;
+      if (deplacement) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      enGlisse = true;
+    },
+    true,
+  );
+  zoneArbre.addEventListener("dragend", () => {
+    enGlisse = false;
+    if (deplacement) return;
+    if (aRedessiner) {
+      aRedessiner = false;
+      afficher();
+    }
+    if (relireEnAttente) {
+      relireEnAttente = false;
+      relire();
+    }
   });
   zoneArbre.addEventListener("keydown", (e) => {
     const chemin = e.target.closest?.("[data-chemin]")?.dataset.chemin;
@@ -331,6 +371,60 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   zoneArbre.addEventListener("mousedown", (e) => {
     if (e.button === 2 && !e.target.closest?.("[data-chemin]")) e.preventDefault();
   });
+
+  // ---- Glisser-déposer ----
+
+  /** Un dépôt : `aDeplacer` dans l'ordre de l'arbre, `cible` le dossier ("" = racine), `saisie` la ligne saisie. */
+  async function deposer(aDeplacer, cible = "", saisie) {
+    generation++;
+    enGlisse = false;
+    deplacement = true;
+    messageDepot?.remove();
+    messageDepot = null;
+    const apres = new Map(); // ligne déplacée -> son chemin d'après
+    const refus = [];
+    let coupure = false;
+    try {
+      for (const de of aDeplacer) {
+        const vers = cible ? `${cible}/${nomDe(de)}` : nomDe(de);
+        if (vers === de) continue;
+        const r = await renommerChemin(de, vers);
+        if (detruit) return;
+        if (r.coupure) {
+          coupure = true;
+          break;
+        }
+        if (r.cause) {
+          const raison = r.cause === "existe" ? `ce nom est déjà pris ${cible ? `dans ${cible}/` : "à la racine du projet"}` : sansPoint(r.message);
+          refus.push({ nom: `${nomDe(de)}${types.get(de) ? "/" : ""}`, raison, existe: r.cause === "existe" });
+          continue;
+        }
+        suivreOuverts(de, vers);
+        apres.set(de, vers);
+        surRenomme({ de, vers });
+      }
+    } finally {
+      deplacement = false;
+      aRedessiner = false;
+      relireEnAttente = false;
+    }
+    selection = aDeplacer.map((de) => apres.get(de) ?? de);
+    const premiere = apres.size > 0 ? apres.values().next().value : saisie;
+    ancre = derniere = premiere;
+    majBoutons();
+    if (apres.size > 0 && cible) ouverts.add(cible);
+    if (coupure) messageDepot = dire({ texte: TEXTE_COUPURE, variante: "alerte", fermable: true }) ?? null;
+    else if (refus.length === 1) {
+      const [{ nom, raison, existe }] = refus;
+      messageDepot = dire({ texte: `${nom} n'a pas été déplacé : ${raison}.${existe ? " Renommez-le, puis réessayez." : ""}`, variante: "erreur", fermable: true }) ?? null;
+    } else if (refus.length > 1) {
+      messageDepot = dire({ texte: `${refus.length} éléments n'ont pas été déplacés.`, detail: refus.map((x) => `${x.nom} : ${x.raison}`).join("\n"), variante: "erreur", fermable: true }) ?? null;
+    }
+    await rafraichir();
+    if (detruit) return;
+    afficher(true);
+    ligneDe(premiere)?.scrollIntoView({ block: "nearest" });
+  }
 
   // ---- Menu ----
 
@@ -457,6 +551,16 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     });
   }
 
+  /** Les dossiers dépliés sous `de` suivent leur dossier déplacé. */
+  function suivreOuverts(de, vers) {
+    for (const o of [...ouverts]) {
+      if (o === de || o.startsWith(`${de}/`)) {
+        ouverts.delete(o);
+        ouverts.add(vers + o.slice(de.length));
+      }
+    }
+  }
+
   function ouvrirRenommage() {
     const de = seule();
     if (de === null) return;
@@ -474,12 +578,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
         }
         const r = await renommerChemin(de, vers);
         if (r.coupure || r.cause) return r;
-        for (const o of [...ouverts]) {
-          if (o === de || o.startsWith(`${de}/`)) {
-            ouverts.delete(o);
-            ouverts.add(vers + o.slice(de.length));
-          }
-        }
+        suivreOuverts(de, vers);
         await terminer(vers, dlg);
         surRenomme({ de, vers });
         return { fait: true };

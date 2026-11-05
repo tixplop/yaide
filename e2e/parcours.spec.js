@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, gardeContient, tailleStable } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, gardeContient, tailleStable, saisir, survoler, lacher } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -455,4 +455,106 @@ test("REQ048_parcours_16_replier_depuis_l_en_tete", async ({ page }) => {
   const a = await aside.boundingBox();
   expect(r.x + r.width).toBeLessThanOrEqual(a.x + a.width);
   expect(await aside.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+});
+
+const rangee = (page, chemin) => page.locator(`[role=tree] [data-chemin="${chemin}"]`);
+
+test("REQ050_parcours_17_deplacer_plusieurs_fichiers", async ({ page }) => {
+  const dossier = depotExemple();
+  fs.writeFileSync(path.join(dossier, ".gitignore"), "target/\n");
+  fs.mkdirSync(path.join(dossier, "target"));
+  fs.writeFileSync(path.join(dossier, "target", "out.txt"), "x");
+  fs.mkdirSync(path.join(dossier, "doc"));
+  fs.writeFileSync(path.join(dossier, "doc", "d.txt"), "d");
+  for (const n of ["a.txt", "b.txt", "Cargo.toml", "notes.md"]) fs.writeFileSync(path.join(dossier, n), n);
+  fs.writeFileSync(path.join(dossier, "src", "a.txt"), "dedans");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await ouvrirYaide(page, yaide.origine);
+  await rangee(page, "src").click();
+  await rangee(page, "b.txt").click();
+  await expect(page.getByLabel("Éditeur b.txt")).toBeFocused();
+  await page.keyboard.type("modif");
+  await rangee(page, "a.txt").click();
+  await expect(page.getByLabel("Éditeur a.txt")).toBeFocused();
+  await rangee(page, "notes.md").click({ modifiers: ["Shift"] });
+  await expect(page.locator("[role=tree] [aria-selected=true]")).toHaveCount(4);
+  await expect(rangee(page, "notes.md")).toBeFocused();
+  await expect(page.getByRole("button", { name: "Renommer" })).toBeDisabled();
+  await rangee(page, "Cargo.toml").click({ modifiers: ["Control"] });
+  await expect(page.locator("[role=tree] [aria-selected=true]")).toHaveCount(3);
+  // Au-dessus de src/main.rs : src et son contenu surlignés.
+  await saisir(page, rangee(page, "b.txt"));
+  await survoler(page, rangee(page, "src/main.rs"));
+  await expect(rangee(page, "src")).toHaveAttribute("data-depot", "");
+  await expect(rangee(page, "src/main.rs")).toHaveAttribute("data-depot-contenu", "");
+  await expect(rangee(page, "src")).toHaveCSS("outline-width", "1px");
+  // Au-dessus de Cargo.toml : les trois lignes sont déjà à la racine, rien n'est surligné.
+  await survoler(page, rangee(page, "Cargo.toml"));
+  await expect(page.locator("[role=tree][data-depot], [role=tree] [data-depot]")).toHaveCount(0);
+  await survoler(page, rangee(page, "src/main.rs"));
+  await lacher(page);
+  await expect(rangee(page, "src/b.txt")).toBeFocused();
+  await expect(page.locator("[role=tree] [aria-selected=true]")).toHaveCount(3);
+  await expect(rangee(page, "a.txt")).toHaveAttribute("aria-selected", "true");
+  await expect(rangee(page, "src/notes.md")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("alert").filter({ hasText: "a.txt n'a pas été déplacé : ce nom est déjà pris dans src/. Renommez-le, puis réessayez." })).toBeVisible();
+  expect(fs.existsSync(path.join(dossier, "src", "b.txt"))).toBe(true);
+  expect(fs.readFileSync(path.join(dossier, "a.txt"), "utf8")).toBe("a.txt");
+  await page.getByRole("tab", { name: /^b\.txt.*non sauvegardé/ }).click();
+  await page.keyboard.press("Control+s");
+  await expect.poll(() => fs.readFileSync(path.join(dossier, "src", "b.txt"), "utf8")).toContain("modif");
+  expect(fs.existsSync(path.join(dossier, "b.txt"))).toBe(false);
+});
+
+test("REQ050_parcours_18_dossier_refus_coupure", async ({ page, browserName }) => {
+  const dossier = depotExemple();
+  fs.mkdirSync(path.join(dossier, "src", "lib"));
+  fs.writeFileSync(path.join(dossier, "src", "lib", "util.rs"), "//");
+  fs.mkdirSync(path.join(dossier, "doc"));
+  fs.writeFileSync(path.join(dossier, "doc", "b.txt"), "b");
+  for (const n of ["a.txt", "Cargo.toml", "notes.md"]) fs.writeFileSync(path.join(dossier, n), n);
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  relais = await lancerRelais(yaide.port);
+  await ouvrirYaide(page, relais.origine);
+  await rangee(page, "src").click();
+  await rangee(page, "src/lib").click();
+  await expect(rangee(page, "src/lib/util.rs")).toBeVisible();
+  const tout = page.locator("[role=tree][data-depot], [role=tree] [data-depot]");
+  // 1. Refus : le dossier est au-dessus de son propre contenu.
+  await saisir(page, rangee(page, "src/lib"));
+  await survoler(page, rangee(page, "src/lib/util.rs"));
+  await expect(tout).toHaveCount(0);
+  // 2. Échap arrête le glissé. Firefox ne pilote pas Échap pendant un glissé natif : Chromium seulement ;
+  // REQ050_AC20 de T-062 couvre la fin du glissé sans dépôt au niveau du composant.
+  if (browserName === "chromium") {
+    await page.keyboard.press("Escape");
+    await lacher(page);
+    await expect(rangee(page, "src/lib")).toBeFocused();
+    expect(fs.existsSync(path.join(dossier, "src", "lib", "util.rs"))).toBe(true);
+  } else await lacher(page);
+  // 3-4. Sur la racine : tout l'arbre est surligné, puis lib est déplacé et reste déplié.
+  await saisir(page, rangee(page, "src/lib"));
+  await survoler(page, rangee(page, "Cargo.toml"));
+  await expect(page.locator("[role=tree]")).toHaveAttribute("data-depot", "");
+  await lacher(page);
+  await expect(rangee(page, "lib/util.rs")).toBeVisible();
+  await expect(rangee(page, "lib")).toBeFocused();
+  await expect(rangee(page, "lib")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(fs.existsSync(path.join(dossier, "lib", "util.rs"))).toBe(true);
+  // 5. notes.md sur doc : seul doc est surligné, il ne se déplie pas avant le dépôt.
+  await saisir(page, rangee(page, "notes.md"));
+  await survoler(page, rangee(page, "doc"));
+  await expect(page.locator("[role=tree] [data-depot]")).toHaveCount(1);
+  await expect(rangee(page, "doc")).toHaveAttribute("aria-expanded", "false");
+  await lacher(page);
+  await expect(rangee(page, "doc/notes.md")).toBeFocused();
+  await expect(rangee(page, "doc")).toHaveAttribute("aria-expanded", "true");
+  // 6. Coupure : le dépôt dans la partie vide est refusé.
+  relais.couper();
+  await saisir(page, rangee(page, "doc/notes.md"));
+  await survoler(page, page.locator("[role=tree]"), { bas: true });
+  await lacher(page);
+  await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." })).toBeVisible();
+  expect(fs.existsSync(path.join(dossier, "doc", "notes.md"))).toBe(true);
 });

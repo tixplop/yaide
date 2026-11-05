@@ -104,3 +104,24 @@ test("REQ039_AC7_le_chemin_de_l_onglet_actif_est_donne_pour_l_arbre", () => {
   e.ouvrirDiff({ chemin: "src/main.rs", texte: "+a" });
   expect(surCourant).toHaveBeenLastCalledWith(null);
 });
+
+test("REQ050_AC6_onglet_deplace_garde_son_texte_et_ctrl_s_ecrit_au_nouveau_chemin", async () => {
+  const appels = [];
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    appels.push({ url, methode: init?.method, corps: init?.body });
+    return { ok: true, status: 200, json: async () => ({ version: "2" }) };
+  }));
+  const { e } = monter();
+  e.ouvrir({ chemin: "a.txt", contenu: "abc", version: "1" });
+  const vue = e.code.querySelector(".zone-code").vue;
+  vue.dispatch({ changes: { from: 3, insert: "def" } });
+  e.renomme({ de: "a.txt", vers: "src/a.txt" });
+  expect(e.fil.textContent).toBe("srca.txt");
+  expect(e.code.querySelector(".zone-code").vue.state.doc.toString()).toBe("abcdef");
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 20));
+  const put = appels.find((a) => a.methode === "PUT");
+  expect(decodeURIComponent(put.url)).toContain("chemin=src/a.txt");
+  expect(put.corps).toBe("abcdef");
+  vi.unstubAllGlobals();
+});

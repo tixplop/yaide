@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, saisir, survoler, lacher } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -745,4 +745,67 @@ test("REQ049_AC2_AC9_AC12_plage_contour_et_aucun_texte_selectionne", async ({ pa
   const fond = (l) => l.evaluate((e) => getComputedStyle(e).backgroundColor);
   expect(await fond(b)).not.toBe(await fond(ligne(page, "a.txt")));
   await expect(ligne(page, "a.txt")).not.toHaveCSS("outline-style", "solid");
+});
+
+const parChemin = (page, chemin) => arbre(page).locator(`[data-chemin="${chemin}"]`);
+
+test("REQ050_AC4_partie_vide_reste_atteignable_a_800x480", async ({ page }) => {
+  const dossier = depotExemple();
+  fs.mkdirSync(path.join(dossier, "lot"));
+  for (let i = 10; i < 50; i++) fs.writeFileSync(path.join(dossier, "lot", `f${i}.txt`), "x");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await page.setViewportSize({ width: 800, height: 480 });
+  await ouvrirYaide(page, yaide.origine);
+  await parChemin(page, "lot").click();
+  await expect(parChemin(page, "lot/f49.txt")).toBeAttached();
+  const defile = page.locator(".cadre-panneau-corps");
+  await defile.evaluate((e) => (e.scrollTop = e.scrollHeight));
+  const derniere = arbre(page).getByRole("treeitem").last();
+  await expect(derniere).toBeInViewport();
+  const source = parChemin(page, "lot/f49.txt");
+  await saisir(page, source);
+  // Sous la dernière ligne, il reste au moins une ligne de partie vide, même défilé au bout.
+  const b = await derniere.boundingBox();
+  const zone = await defile.boundingBox();
+  expect(zone.y + zone.height - (b.y + b.height)).toBeGreaterThanOrEqual(b.height);
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height + 10, { steps: 6 });
+  await expect(arbre(page)).toHaveAttribute("data-depot", "");
+  await lacher(page);
+  await expect.poll(() => fs.existsSync(path.join(dossier, "f49.txt"))).toBe(true);
+  expect(fs.existsSync(path.join(dossier, "lot", "f49.txt"))).toBe(false);
+});
+
+test("REQ050_AC12_depot_sur_editeur_et_shell_n_insere_rien", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await ligne(page, "a.txt").click();
+  const editeur = page.getByRole("textbox", { name: "Éditeur a.txt" });
+  await expect(editeur).toBeFocused();
+  await saisir(page, ligne(page, "b.txt"));
+  await survoler(page, editeur);
+  await expect(arbre(page)).not.toHaveAttribute("data-depot", "");
+  await lacher(page);
+  await expect(editeur).toHaveText("a");
+  const shell = page.locator(".terminal.xterm:visible");
+  await saisir(page, ligne(page, "b.txt"));
+  await survoler(page, shell);
+  await lacher(page);
+  await expect(page.locator(".terminal:visible .xterm-rows")).not.toContainText("b.txt");
+  await expect(editeur).toHaveText("a");
+  expect(fs.existsSync(path.join(dossier, "b.txt"))).toBe(true);
+  await expect(ligne(page, "b.txt")).toBeVisible();
+});
+
+test("REQ050_AC13_relecture_pendant_un_vrai_glisse", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await saisir(page, ligne(page, "a.txt"));
+  await survoler(page, ligne(page, "Zeta"));
+  fs.writeFileSync(path.join(dossier, "cree-pendant.txt"), "x");
+  // Plus de deux relectures passent pendant que le bouton reste pressé : rien ne bouge.
+  await page.waitForTimeout(3500);
+  await expect(parChemin(page, "cree-pendant.txt")).toHaveCount(0);
+  await expect(ligne(page, "Zeta")).toHaveAttribute("data-depot", "");
+  await lacher(page);
+  await expect(parChemin(page, "Zeta/a.txt")).toBeVisible();
+  await expect(parChemin(page, "cree-pendant.txt")).toBeVisible();
+  expect(fs.existsSync(path.join(dossier, "Zeta", "a.txt"))).toBe(true);
 });

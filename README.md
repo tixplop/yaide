@@ -71,6 +71,7 @@ Yaide écoute sur toutes les adresses de la machine. Le mot de passe est la seul
 | F2 | ligne de l'arborescence | Renomme ou déplace |
 | Suppr | onglet de shell qui a le focus | Ferme le shell, après confirmation |
 | Suppr | ligne de l'arborescence | Supprime, après confirmation |
+| Ctrl+clic, Maj+clic | ligne de l'arborescence | Sélectionne plusieurs lignes ; les glisser sur un dossier les déplace |
 | Menu ou Maj+F10 | ligne de l'arborescence | Ouvre le menu de la ligne (comme le clic droit) |
 | Ctrl+Entrée | champ « Message » (Git) | Lance le commit |
 | Flèches gauche et droite | poignée « Largeur du panneau » | Élargit ou rétrécit le panneau |

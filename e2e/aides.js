@@ -137,3 +137,16 @@ const lireGarde = (page) =>
       }),
   );
 export const gardeContient = (page, texte) => expect.poll(() => lireGarde(page)).toContain(texte);
+
+/** Glisser-déposer à la souris : presser sur `source`, puis `survoler` une cible ; `lacher` relâche. Le point `bas` d'un élément est son bord inférieur moins quelques pixels. */
+export async function saisir(page, source) {
+  const b = await source.boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2 + 6, b.y + b.height / 2 + 6, { steps: 3 });
+}
+export async function survoler(page, cible, { bas = false } = {}) {
+  const b = await cible.boundingBox();
+  await page.mouse.move(b.x + b.width / 2, bas ? b.y + b.height - 4 : b.y + b.height / 2, { steps: 8 });
+}
+export const lacher = (page) => page.mouse.up();
