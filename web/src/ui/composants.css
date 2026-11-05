@@ -171,6 +171,17 @@
 .liste-ligne:hover { background: var(--hover); }
 .liste-ligne[aria-selected="true"] { background: var(--bg-400); }
 .liste:focus-within .liste-ligne[aria-selected="true"], .liste-ligne:focus-visible, .liste-courante { background: var(--list-focus); outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
+/* Sélection de plusieurs lignes (C-006). */
+.liste[aria-multiselectable="true"] .liste-ligne { user-select: none; }
+.liste[aria-multiselectable="true"]:focus-within .liste-ligne[aria-selected="true"]:not(:focus) { outline: none; }
+.liste[aria-multiselectable="true"] .liste-ligne:focus { outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
+.liste[aria-multiselectable="true"] .liste-ligne:focus:not([aria-selected="true"]) { background: none; }
+.ya-tree .liste-coche { flex: none; order: 2; display: inline-flex; justify-content: center; width: 14px; margin-left: auto; color: var(--ink); }
+.ya-tree .liste-coche svg { width: 12px; height: 12px; stroke-width: 2; }
+.ya-tree .liste-ligne > .bouton-enveloppe ~ .liste-coche { margin-left: 0; }
+.ya-tree .liste-coche + .liste-statut { margin-left: 0; }
+.ya-tree .liste-coche + .liste-point { order: 2; margin-left: 7px; margin-right: 0; }
+.ya-tree .liste-coche:last-child { margin-right: calc(14px + var(--space-1)); }
 .liste-ligne[aria-current="true"] { box-shadow: inset var(--trait-fort) 0 0 var(--accent-fg); }
 /* Lignes de statut : la lettre (14 px, mono) ou le point (7 px) est à droite. */
 .liste-statut-A, .liste-sdossier-A { color: var(--git-added); }

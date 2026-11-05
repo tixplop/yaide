@@ -509,3 +509,185 @@ test("REQ022_AC6_ligne_indexee_ajoute_indexe_au_nom_accessible_et_l_info_bulle_e
   expect(nom(b)).toBe("b.rs, modifié");
   expect(b.title).toBe("b.rs");
 });
+
+const arbre5 = [
+  { id: "a", libelle: "a.txt" },
+  { id: "b", libelle: "b.txt", statut: "M" },
+  { id: "c", libelle: "c.txt" },
+  { id: "d", libelle: "d.txt" },
+  { id: "e", libelle: "e.txt", sansMenu: true },
+];
+const multi = (extra = {}) => {
+  const surSelection = vi.fn();
+  const surActiver = vi.fn();
+  const l = liste({ variante: "arbre", multiple: true, lignes: arbre5, surActiver, surSelection, ...extra });
+  document.body.replaceChildren(l);
+  return { l, surSelection, surActiver, el: items(l) };
+};
+const clic = (el, opts = {}) => el.dispatchEvent(new MouseEvent("click", { bubbles: true, ...opts }));
+const sel = (l) => items(l).filter((x) => x.getAttribute("aria-selected") === "true").map((x) => x.querySelector(".liste-libelle").textContent);
+
+test("REQ049_AC1_ctrl_et_cmd_ajoutent_et_retirent_sans_activer", () => {
+  const { l, surSelection, surActiver, el } = multi({ selection: ["a"] });
+  clic(el[2], { ctrlKey: true });
+  expect(sel(l)).toEqual(["a.txt", "c.txt"]);
+  expect(surSelection).toHaveBeenLastCalledWith(["a", "c"], { ancre: "c", derniere: "c" });
+  clic(el[1], { metaKey: true });
+  expect(sel(l)).toEqual(["a.txt", "b.txt", "c.txt"]);
+  clic(el[1], { metaKey: true });
+  expect(sel(l)).toEqual(["a.txt", "c.txt"]);
+  expect(surSelection).toHaveBeenLastCalledWith(["a", "c"], { ancre: "b", derniere: "b" });
+  expect(surActiver).not.toHaveBeenCalled();
+});
+
+test("REQ049_AC2_maj_prend_la_plage_depuis_l_ancre", () => {
+  const { l, surSelection, surActiver, el } = multi();
+  clic(el[0]);
+  clic(el[3], { shiftKey: true });
+  expect(sel(l)).toEqual(["a.txt", "b.txt", "c.txt", "d.txt"]);
+  expect(surSelection).toHaveBeenLastCalledWith(["a", "b", "c", "d"], { ancre: "a", derniere: "d" });
+  expect(surActiver).toHaveBeenCalledTimes(1);
+  clic(el[2]);
+  clic(el[0], { shiftKey: true });
+  expect(sel(l)).toEqual(["a.txt", "b.txt", "c.txt"]);
+  // Après recréation, l'ancre revient par l'option.
+  const r = multi({ selection: ["c"], ancre: "c" });
+  clic(r.el[1], { shiftKey: true });
+  expect(sel(r.l)).toEqual(["b.txt", "c.txt"]);
+  expect(r.surSelection).toHaveBeenLastCalledWith(["b", "c"], { ancre: "c", derniere: "b" });
+});
+
+test("REQ049_AC3_clic_simple_et_fleches_ramenent_a_une_ligne", () => {
+  const { l, surSelection, surActiver, el } = multi({ selection: ["a", "b", "c"] });
+  clic(el[1]);
+  expect(sel(l)).toEqual(["b.txt"]);
+  expect(surActiver).toHaveBeenCalledWith("b");
+  expect(surSelection).toHaveBeenLastCalledWith(["b"], { ancre: "b", derniere: "b" });
+  const m = multi({ selection: ["a", "b", "c"] });
+  m.el[1].focus();
+  touche(m.el[1], "ArrowDown");
+  expect(sel(m.l)).toEqual(["c.txt"]);
+  expect(m.surSelection).toHaveBeenLastCalledWith(["c"], { ancre: "c", derniere: "c" });
+  const n = multi({ selection: ["a", "b", "c"] });
+  n.el[1].focus();
+  touche(n.el[1], "ArrowUp");
+  expect(sel(n.l)).toEqual(["a.txt"]);
+  const o = multi({ selection: ["a", "b", "c"] });
+  o.el[2].focus();
+  touche(o.el[2], "Enter");
+  expect(sel(o.l)).toEqual(["c.txt"]);
+  expect(o.surActiver).toHaveBeenCalledWith("c");
+});
+
+test("REQ049_AC7_AC8_aria_et_coche_a_partir_de_deux", () => {
+  const { l, el } = multi({ selection: ["a"] });
+  expect(l.getAttribute("aria-multiselectable")).toBe("true");
+  expect(el.map((x) => x.getAttribute("aria-selected"))).toEqual(["true", "false", "false", "false", "false"]);
+  expect(l.querySelector(".liste-coche")).toBeNull();
+  clic(el[1], { ctrlKey: true });
+  const coches = [...l.querySelectorAll(".liste-coche")];
+  expect(coches.length).toBe(2);
+  expect(coches[0].getAttribute("aria-hidden")).toBe("true");
+  expect(coches[0].querySelector("svg").getAttribute("data-icone")).toBe("check");
+  expect(coches[0].querySelector("svg").getAttribute("width")).toBe("12");
+  // La coche précède la lettre de statut.
+  expect(el[1].querySelector(".liste-coche").nextElementSibling.className).toBe("liste-statut");
+  // Ligne à point : la coche précède le point, dans l'ordre d'affichage aussi.
+  const p = liste({ variante: "arbre", multiple: true, selection: ["d", "x"], lignes: [{ id: "d", libelle: "dir", enfants: true, statutDossier: "M" }, { id: "x", libelle: "x" }] });
+  document.body.replaceChildren(p);
+  expect(items(p)[0].querySelector(".liste-coche").nextElementSibling.className).toBe("liste-point");
+  expect(regle(".ya-tree .liste-coche + .liste-point")).toContain("order: 2");
+  clic(el[1], { ctrlKey: true });
+  expect(l.querySelector(".liste-coche")).toBeNull();
+  expect(items(liste({ variante: "arbre", lignes: arbre5 })).every((x) => x.getAttribute("aria-selected") === "false")).toBe(true);
+});
+
+test("REQ049_AC7_ligne_sans_menu_jamais_selectionnee", () => {
+  const { l, surSelection, el } = multi({ selection: ["a", "e"] });
+  expect(sel(l)).toEqual(["a.txt"]);
+  clic(el[4], { ctrlKey: true });
+  clic(el[4], { shiftKey: true });
+  expect(sel(l)).toEqual(["a.txt"]);
+  expect(surSelection).not.toHaveBeenCalled();
+  clic(el[0]);
+  clic(el[4]);
+  expect(sel(l)).toEqual(["a.txt"]);
+});
+
+test("REQ049_AC9_focus_suit_le_ctrl_clic_et_regles_css", () => {
+  const { l, el } = multi({ selection: ["a", "b", "c"] });
+  clic(el[1], { ctrlKey: true });
+  expect(document.activeElement).toBe(el[1]);
+  expect(el[1].getAttribute("aria-selected")).toBe("false");
+  expect(el.map((x) => x.tabIndex)).toEqual([-1, 0, -1, -1, -1]);
+  el[3].focus();
+  expect(el.map((x) => x.tabIndex)).toEqual([-1, -1, -1, 0, -1]);
+  expect(sel(l)).toEqual(["a.txt", "c.txt"]);
+  expect(regle('.liste[aria-multiselectable="true"] .liste-ligne')).toContain("user-select: none");
+  expect(regle('.liste[aria-multiselectable="true"]:focus-within .liste-ligne[aria-selected="true"]:not(:focus)')).toContain("outline: none");
+  expect(regle('.liste[aria-multiselectable="true"] .liste-ligne:focus')).toContain("outline: var(--trait) solid var(--accent-fg)");
+  expect(regle('.liste[aria-multiselectable="true"] .liste-ligne:focus:not([aria-selected="true"])')).toContain("background: none");
+  expect(regle(".ya-tree .liste-coche")).toContain("width: 14px");
+  expect(regle(".ya-tree .liste-coche svg")).toContain("width: 12px");
+});
+
+const dossiers = [
+  { id: "d", libelle: "dir", enfants: true, ouvert: true },
+  { id: "d/x", libelle: "x", niveau: 1 },
+  { id: "d/y", libelle: "y", niveau: 1 },
+  { id: "z", libelle: "z" },
+];
+
+test("REQ049_AC11_debut_fin_et_gauche_ramenent_droite_garde", () => {
+  const surBasculer = vi.fn();
+  const surSelection = vi.fn();
+  const l = liste({ variante: "arbre", multiple: true, lignes: dossiers, selection: ["d", "d/x", "z"], surBasculer, surSelection });
+  document.body.replaceChildren(l);
+  const el = items(l);
+  el[1].focus();
+  touche(el[1], "Home");
+  expect(sel(l)).toEqual(["dir"]);
+  touche(el[0], "End");
+  expect(sel(l)).toEqual(["z"]);
+  const m = liste({ variante: "arbre", multiple: true, lignes: dossiers, selection: ["d/x", "z"], surSelection });
+  document.body.replaceChildren(m);
+  items(m)[1].focus();
+  touche(items(m)[1], "ArrowLeft");
+  expect(sel(m)).toEqual(["dir"]);
+  expect(surSelection).toHaveBeenLastCalledWith(["d"], { ancre: "d", derniere: "d" });
+  // Droite garde ; Gauche qui replie garde les autres et retire les lignes masquées.
+  const n = liste({ variante: "arbre", multiple: true, lignes: dossiers, selection: ["d", "d/x", "z"], surBasculer, surSelection });
+  document.body.replaceChildren(n);
+  items(n)[0].focus();
+  touche(items(n)[0], "ArrowRight");
+  expect(sel(n)).toEqual(["dir", "x", "z"]);
+  touche(items(n)[0], "ArrowLeft");
+  expect(surBasculer).toHaveBeenLastCalledWith("d", false);
+  expect(sel(n)).toEqual(["dir", "z"]);
+  expect(surSelection).toHaveBeenLastCalledWith(["d", "z"], { ancre: "d", derniere: "d" });
+});
+
+test("sans_multiple_selection_reste_un_id", () => {
+  const l = liste({ variante: "arbre", lignes: arbre5, selection: "b" });
+  expect(l.hasAttribute("aria-multiselectable")).toBe(false);
+  expect(items(l).map((x) => x.getAttribute("aria-selected"))).toEqual(["false", "true", "false", "false", "false"]);
+  expect(() => liste({ lignes: lignes3, multiple: true })).toThrow(/arbre/);
+});
+
+test("REQ049_AC3_clic_droit_menu_et_maj_f10_ramenent_a_une_ligne", () => {
+  const cas = {
+    "clic droit": (el) => el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 5, clientY: 6 })),
+    Menu: (el) => touche(el, "ContextMenu"),
+    "Maj+F10": (el) => el.dispatchEvent(new KeyboardEvent("keydown", { key: "F10", shiftKey: true, bubbles: true })),
+  };
+  for (const [nom, geste] of Object.entries(cas)) {
+    const surMenu = vi.fn();
+    const { l, surSelection, el } = multi({ selection: ["a", "b", "c"], surMenu });
+    el[1].focus();
+    geste(el[1]);
+    expect(sel(l), nom).toEqual(["b.txt"]);
+    expect(surSelection, nom).toHaveBeenLastCalledWith(["b"], { ancre: "b", derniere: "b" });
+    expect(surMenu, nom).toHaveBeenCalledTimes(1);
+    expect(surMenu.mock.calls[0][0], nom).toBe("b");
+  }
+});

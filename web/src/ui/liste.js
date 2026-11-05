@@ -35,7 +35,7 @@ function decouper(texte, [debut, fin]) {
   return [c.slice(0, debut).join(""), c.slice(debut, fin).join(""), c.slice(fin).join("")];
 }
 
-export function liste({ variante = "plate", lignes, selection, pilotage = "focus", champ, surActiver, surBasculer, surMenu }) {
+export function liste({ variante = "plate", lignes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, surActiver, surBasculer, surMenu }) {
   if (!VARIANTES.includes(variante)) throw new Error(`liste : variante inconnue « ${variante} »`);
   if (pilotage === "champ" && !champ) throw new Error("liste : champ requis avec pilotage « champ »");
   for (const l of lignes) {
@@ -44,15 +44,24 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     if (l.statutDossier !== undefined && !STATUTS_DOSSIER.includes(l.statutDossier)) throw new Error(`liste : statutDossier inconnu « ${l.statutDossier} »`);
   }
   if (surMenu && variante !== "arbre") throw new Error("liste : surMenu demande la variante « arbre »");
+  if (multiple && variante !== "arbre") throw new Error("liste : multiple demande la variante « arbre »");
   const n = ++compteur;
   const arbre = variante === "arbre";
   const racine = document.createElement("div");
   racine.className = arbre ? "liste ya-tree" : "liste ya-row";
   racine.setAttribute("role", arbre ? "tree" : "listbox");
+  if (multiple) racine.setAttribute("aria-multiselectable", "true");
 
   const donnees = lignes.filter((l) => !l.groupe);
   const elements = new Map();
-  let courante = donnees.some((l) => l.id === selection) ? selection : donnees[0]?.id;
+  const ids = donnees.map((l) => l.id);
+  const selectionnables = new Set(donnees.filter((l) => !l.sansMenu).map((l) => l.id));
+  // Avec `multiple` : les lignes choisies, et le point de départ de Maj+clic.
+  const choisies = new Set(multiple ? [].concat(selection ?? []).filter((id) => selectionnables.has(id)) : []);
+  let ancre = ids.includes(ancrePrevue) ? ancrePrevue : ids.find((id) => choisies.has(id));
+  let courante = multiple
+    ? [courantePrevue, ids.find((id) => choisies.has(id))].find((id) => ids.includes(id)) ?? ids[0]
+    : donnees.some((l) => l.id === selection) ? selection : donnees[0]?.id;
   // En mode focus, rien n'est sélectionné tant qu'on n'a pas choisi une ligne.
   let choisie = pilotage === "champ" || courante === selection;
 
@@ -119,7 +128,7 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       e.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
         if (ignorerContextmenu(ev)) return;
-        marquer(l.id);
+        seul(l.id);
         e.focus();
         surMenu(l.id, { x: ev.clientX, y: ev.clientY });
       });
@@ -186,15 +195,67 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     e.addEventListener("click", (ev) => {
       // Un clic sur une action désactivée (pointer-events: none) retombe sur la ligne : il ne l'active pas.
       if (ev.target.closest?.(".bouton-enveloppe")) return;
-      marquer(l.id);
+      if (multiple) {
+        if (ev.shiftKey || ev.ctrlKey || ev.metaKey) {
+          if (!selectionnables.has(l.id)) return;
+          if (ev.shiftKey) {
+            const a = ids.indexOf(ancre ?? courante);
+            const b = ids.indexOf(l.id);
+            changer(ids.slice(Math.min(a, b), Math.max(a, b) + 1).filter((id) => selectionnables.has(id)), ancre ?? courante, l.id);
+          } else {
+            const voulues = new Set(choisies);
+            if (!voulues.delete(l.id)) voulues.add(l.id);
+            changer(ids.filter((id) => voulues.has(id)), l.id, l.id);
+          }
+          courante = l.id;
+          peindre();
+          e.focus();
+          return;
+        }
+        if (selectionnables.has(l.id)) seul(l.id);
+        else marquer(l.id);
+        e.focus();
+      } else marquer(l.id);
       surActiver?.(l.id);
     });
     elements.set(l.id, e);
     racine.append(e);
   }
 
+  // Remplace la sélection (multiple) et prévient la vue.
+  function changer(liste, depart, derniere) {
+    choisies.clear();
+    for (const id of liste) choisies.add(id);
+    ancre = depart;
+    surSelection?.(ids.filter((id) => choisies.has(id)), { ancre, derniere });
+  }
+
+  function seul(id) {
+    if (!selectionnables.has(id)) return marquer(id);
+    changer([id], id, id);
+    marquer(id);
+  }
+
+  function peindre() {
+    const plusieurs = choisies.size >= 2;
+    for (const [i, e] of elements) {
+      e.setAttribute("aria-selected", String(choisies.has(i)));
+      e.tabIndex = i === courante ? 0 : -1;
+      const coche = e.querySelector(":scope > .liste-coche");
+      if (plusieurs && choisies.has(i)) {
+        if (coche) continue;
+        const c = document.createElement("span");
+        c.className = "liste-coche";
+        c.setAttribute("aria-hidden", "true");
+        c.append(icone("check", 12));
+        e.insertBefore(c, e.querySelector(":scope > .liste-statut, :scope > .liste-point"));
+      } else coche?.remove();
+    }
+  }
+
   function marquer(id) {
     courante = id;
+    if (multiple) return peindre();
     choisie = true;
     for (const [i, e] of elements) {
       const c = i === id;
@@ -227,7 +288,6 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     });
   }
 
-  const ids = donnees.map((l) => l.id);
   // Retourne true si la touche a été traitée.
   function touche(e, id) {
     const i = ids.indexOf(id);
@@ -241,7 +301,7 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       cleRecente = true;
       clearTimeout(minuteur);
       minuteur = setTimeout(() => (cleRecente = false), 500);
-      marquer(id);
+      seul(id);
       const el = elements.get(id);
       el.focus();
       const r = el.getBoundingClientRect();
@@ -254,6 +314,7 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       return;
     } else if (e.key === "Enter") {
       e.preventDefault();
+      if (multiple) seul(id);
       surActiver?.(id);
       return;
     } else if (arbre && pilotage === "focus" && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
@@ -261,12 +322,21 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
       e.preventDefault();
       if (e.key === "ArrowRight") {
         if (l.enfants && !l.ouvert) surBasculer?.(id, true);
-      } else if (l.enfants && l.ouvert) surBasculer?.(id, false);
-      else {
+      } else if (l.enfants && l.ouvert) {
+        // Les lignes que Gauche masque quittent la sélection.
+        if (multiple) {
+          const niveau = l.niveau ?? 0;
+          const masquees = new Set();
+          for (let j = i + 1; j < donnees.length && (donnees[j].niveau ?? 0) > niveau; j++) masquees.add(donnees[j].id);
+          if (ids.some((x) => choisies.has(x) && masquees.has(x))) changer(ids.filter((x) => choisies.has(x) && !masquees.has(x)), ancre, id);
+          peindre();
+        }
+        surBasculer?.(id, false);
+      } else {
         const niveau = l.niveau ?? 0;
         for (let j = i - 1; j >= 0 && niveau > 0; j--) {
           if ((donnees[j].niveau ?? 0) < niveau) {
-            marquer(donnees[j].id);
+            seul(donnees[j].id);
             elements.get(donnees[j].id).focus();
             break;
           }
@@ -276,14 +346,22 @@ export function liste({ variante = "plate", lignes, selection, pilotage = "focus
     } else return;
     e.preventDefault();
     if (cible === undefined) return;
-    marquer(cible);
+    seul(cible);
     if (pilotage === "focus") elements.get(cible).focus();
   }
 
   if (pilotage === "champ") champ.addEventListener("keydown", (e) => racine.isConnected && courante !== undefined && touche(e, courante));
   else for (const [id, e] of elements) e.addEventListener("keydown", (ev) => touche(ev, id));
 
-  if (courante !== undefined) {
+  if (multiple) {
+    racine.addEventListener("focusin", (ev) => {
+      const id = [...elements].find(([, e]) => e === ev.target.closest(".liste-ligne"))?.[0];
+      if (id === undefined) return;
+      courante = id;
+      for (const [i, e] of elements) e.tabIndex = i === id ? 0 : -1;
+    });
+    peindre();
+  } else if (courante !== undefined) {
     const initiale = choisie;
     marquer(courante);
     choisie = initiale;
