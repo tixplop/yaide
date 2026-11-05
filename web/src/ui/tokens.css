@@ -89,6 +89,8 @@
   --diff-retrait: color-mix(in srgb, var(--git-deleted) 14%, transparent);
   --ligne-active: color-mix(in srgb, var(--ink) 4%, transparent);
   --voile: rgb(0 0 0 / .4);
+  --apercu-fond: var(--hover);
+  --apercu-entete: var(--bg-400);
   --largeur-palette: 600px;
   --space-1: 4px;
   --space-2: 8px;
@@ -118,9 +120,12 @@
   --texte-lecture: 14px/20px;
   --texte-sous-titre: 16px/22px;
   --texte-titre: 20px/28px;
+  --texte-code: 13.5px/21px;
+  --texte-code-ligne: 13px/20px;
   --graisse-forte: 600;
   --trait: 1px;
   --trait-fort: 2px;
+  --filet-note: 3px;
   --largeur-panneau: 280px;
   --largeur-panneau-min: 240px;
   --largeur-panneau-max: 360px;

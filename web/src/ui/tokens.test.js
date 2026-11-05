@@ -100,7 +100,7 @@ const couleurs = {
   "--syn-variable": ["#9cdcfe", "#0a3c86"],
   "--syn-comment": ["#7ba862", "#336d1b"],
 };
-const alias = { "--git-ignored": "--ink-faint", "--danger": "--git-deleted", "--warning": "--git-modified", "--info": "--accent-fg", "--syn-punctuation": "--ink" };
+const alias = { "--git-ignored": "--ink-faint", "--danger": "--git-deleted", "--warning": "--git-modified", "--info": "--accent-fg", "--syn-punctuation": "--ink", "--apercu-fond": "--hover", "--apercu-entete": "--bg-400" };
 
 test("REQ036_AC1_chaque_couleur_du_tableau_a_sa_valeur_dans_les_deux_themes", () => {
   THEMES.forEach((theme, i) => {
@@ -321,5 +321,52 @@ test("REQ033_AC6_contrastes_des_icones_contours_et_poignee", () => {
     expect(minFocus, `--accent-fg (${theme})`).toBeGreaterThanOrEqual([4.7, 5][k]);
     ["--bg-000", "--bg-100", "--bg-300"].forEach((f, i) => egal("--accent-fg", "--accent-soft", f, [[5.8, 5.7, 4.8], [4.6, 4.9, 5.2]][k][i]));
     ["--bg-000", "--bg-100", "--bg-200", "--bg-300"].forEach((f, i) => egal("--line-strong", f, null, [[3.7, 3.6, 3.4, 3], [3, 3.2, 3.4, 3.4]][k][i]));
+  });
+});
+
+// AC-042-4, AC-043-2, AC-043-3, AC-043-4, AC-044-7 : contrastes de l'aperçu markdown (design-system.md).
+test("REQ042_AC4_REQ043_AC2_contrastes_du_texte_de_l_apercu", () => {
+  const fonds = ["--bg-200", "--apercu-fond", "--apercu-entete", "--msg-info"];
+  const attendu = {
+    "--ink": [[10.2, 8.6, 7.3, 8.1], [16.4, 14.4, 13.2, 13.2]],
+    "--info": [[6.6, 5.5, 4.7, 5.2], [6.3, 5.5, 5, 5]],
+  };
+  THEMES.forEach((theme, k) => {
+    for (const [texte, valeurs] of Object.entries(attendu)) {
+      fonds.forEach((fond, i) => {
+        const r = ratio(theme, texte, fond);
+        egalA(r, valeurs[k][i], `${texte} sur ${fond} (${theme})`);
+        expect(r, `${texte} sur ${fond} (${theme})`).toBeGreaterThanOrEqual(4.5);
+      });
+    }
+  });
+});
+
+test("REQ044_AC7_contrastes_des_couleurs_du_code_de_l_apercu", () => {
+  const attendu = {
+    "--syn-keyword": [5, 6.8], "--syn-control": [5.4, 5.5], "--syn-string": [5.7, 6.9], "--syn-function": [9.8, 6.2],
+    "--syn-number": [8.1, 5.3], "--syn-type": [6.8, 4.9], "--syn-variable": [9.3, 9.2], "--syn-comment": [5, 5.5], "--syn-punctuation": [8.6, 14.4],
+  };
+  THEMES.forEach((theme, k) => {
+    for (const [nom, valeurs] of Object.entries(attendu)) {
+      const r = ratio(theme, nom, "--apercu-fond");
+      expect(r, `${nom} (${theme})`).toBe(valeurs[k]);
+      expect(r).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
+test("REQ042_AC4_REQ043_AC3_contrastes_des_traits_de_l_apercu", () => {
+  THEMES.forEach((theme, k) => {
+    const ls = ratio(theme, "--line-strong", "--bg-200");
+    expect(ls, `bordure de tableau (${theme})`).toBe(3.4);
+    const filet = ratio(theme, "--info", "--bg-200");
+    expect(filet, `filet sur l'aperçu (${theme})`).toBe([6.6, 6.3][k]);
+    const surNote = ratio(theme, "--info", "--msg-info");
+    egalA(surNote, [5.2, 5][k], `filet sur la note (${theme})`);
+    for (const fond of ["--msg-info", "--apercu-fond", "--apercu-entete"]) {
+      expect(ratio(theme, "--accent-fg", fond), `focus sur ${fond} (${theme})`).toBeGreaterThanOrEqual(3);
+    }
+    for (const r of [ls, filet, surNote]) expect(r).toBeGreaterThanOrEqual(3);
   });
 });

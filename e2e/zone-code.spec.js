@@ -205,7 +205,7 @@ test("REQ012_AC1_styles_de_l_apercu", async ({ page }) => {
   const a = await calc(".zone-code-apercu a");
   expect(a.couleur).toBe(await valeur(page, "color", "--info"));
   expect(a.deco).toBe("underline");
-  const surface = await valeur(page, "backgroundColor", "--bg-300");
+  const surface = await valeur(page, "backgroundColor", "--apercu-fond");
   for (const sel of [".zone-code-apercu p code", ".zone-code-apercu pre"]) {
     const c = await calc(sel);
     expect(c.famille).toBe(await police("--font-mono"));
@@ -224,3 +224,124 @@ test("REQ011_AC1_ligne_demandee_est_centree", async ({ page }) => {
   });
   expect(Math.abs(centre[0] - centre[1])).toBeLessThanOrEqual(30);
 });
+
+// T-053 : tableaux, notes et code de l'aperçu, dans les deux thèmes.
+const TRANSPARENT = "rgba(0, 0, 0, 0)";
+async function apercuEn(page, theme, contenu, largeur) {
+  await page.goto(pathToFileURL(resolve(dossier, "index.html")).href);
+  await page.evaluate(([t, l]) => {
+    document.documentElement.dataset.theme = t;
+    if (l) document.getElementById("h").style.width = `${l}px`;
+  }, [theme, largeur]);
+  await page.evaluate((c) => document.getElementById("h").append(window.zoneCode({ contenu: c, langage: "markdown", nom: "a.md", apercu: true })), contenu);
+}
+const style = (page, sel, props) =>
+  page.locator(sel).first().evaluate((e, ps) => {
+    const s = getComputedStyle(e);
+    return Object.fromEntries(ps.map((p) => [p, s[p]]));
+  }, props);
+
+for (const theme of ["dark", "light"]) {
+  test(`REQ042_AC1_AC2_AC3_AC5_tableau_bordures_entete_et_lignes_${theme}`, async ({ page }) => {
+    await apercuEn(page, theme, "| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n| 5 | 6 |");
+    const trait = await valeur(page, "borderTopColor", "--line-strong");
+    for (const sel of [".zone-code-apercu th", ".zone-code-apercu td"]) {
+      const b = await style(page, sel, ["borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor", "borderTopStyle"]);
+      expect([b.borderTopWidth, b.borderRightWidth, b.borderBottomWidth, b.borderLeftWidth]).toEqual(["1px", "1px", "1px", "1px"]);
+      expect([b.borderTopColor, b.borderRightColor, b.borderBottomColor, b.borderLeftColor]).toEqual([trait, trait, trait, trait]);
+      expect(b.borderTopStyle).toBe("solid");
+    }
+    const th = await style(page, ".zone-code-apercu th", ["backgroundColor", "fontWeight"]);
+    expect(th.backgroundColor).toBe(await valeur(page, "backgroundColor", "--apercu-entete"));
+    expect(th.fontWeight).toBe("600");
+    const fond = (i) => page.locator(".zone-code-apercu tbody tr").nth(i).locator("td").first().evaluate((e) => getComputedStyle(e).backgroundColor);
+    expect(await fond(0)).toBe(TRANSPARENT);
+    expect(await fond(2)).toBe(await fond(0));
+    expect(await fond(1)).toBe(await valeur(page, "backgroundColor", "--apercu-fond"));
+    expect(await fond(1)).not.toBe(await fond(0));
+  });
+
+  test(`REQ042_AC6_alignement_des_colonnes_${theme}`, async ({ page }) => {
+    await apercuEn(page, theme, "| G | D | C |\n|---|---:|:---:|\n| 1 | 2 | 3 |");
+    for (const sel of ["th", "td"]) {
+      const al = await page.locator(`.zone-code-apercu ${sel}`).evaluateAll((es) => es.map((e) => getComputedStyle(e).textAlign));
+      expect(al).toEqual(["left", "right", "center"]);
+    }
+  });
+
+  test(`REQ042_AC7_tableau_large_ne_depasse_pas_l_apercu_${theme}`, async ({ page }) => {
+    const chemin = "src/".concat("dossier/".repeat(10)).slice(0, 80);
+    expect(chemin).toHaveLength(80);
+    await apercuEn(page, theme, `| a | b | c | d | e | f |\n|---|---|---|---|---|---|\n| ${chemin} | 2 | 3 | 4 | 5 | 6 |`, 508);
+    const m = await page.locator(".zone-code-apercu").evaluate((e) => ({ sw: e.scrollWidth, cw: e.clientWidth, droite: e.getBoundingClientRect().right }));
+    expect(await page.locator(".zone-code-apercu").evaluate((e) => e.offsetWidth)).toBe(254);
+    expect(m.sw).toBe(m.cw);
+    const cellule = await page.locator(".zone-code-apercu td").first().boundingBox();
+    expect(cellule.x + cellule.width).toBeLessThanOrEqual(m.droite);
+  });
+
+  test(`REQ043_AC1_AC3_note_filet_fond_et_texte_${theme}`, async ({ page }) => {
+    await apercuEn(page, theme, "> Une note");
+    const b = await style(page, ".zone-code-apercu blockquote", ["borderLeftWidth", "borderLeftStyle", "borderLeftColor", "backgroundColor"]);
+    expect([b.borderLeftWidth, b.borderLeftStyle]).toEqual(["3px", "solid"]);
+    expect(b.borderLeftColor).toBe(await valeur(page, "borderTopColor", "--info"));
+    expect(b.backgroundColor).toBe(await valeur(page, "backgroundColor", "--msg-info"));
+    expect(b.backgroundColor).not.toBe((await style(page, ".zone-code-apercu", ["backgroundColor"])).backgroundColor);
+    expect((await style(page, ".zone-code-apercu blockquote p", ["color"])).color).toBe(await valeur(page, "color", "--ink"));
+  });
+
+  test(`REQ043_AC4_note_dans_une_note_sans_fond_propre_${theme}`, async ({ page }) => {
+    await apercuEn(page, theme, "> > texte");
+    const i = await style(page, ".zone-code-apercu blockquote blockquote", ["borderLeftWidth", "borderLeftColor", "backgroundColor"]);
+    expect(i.borderLeftWidth).toBe("3px");
+    expect(i.borderLeftColor).toBe(await valeur(page, "borderTopColor", "--info"));
+    expect(i.backgroundColor).toBe(TRANSPARENT);
+  });
+
+  test(`REQ043_AC5_marqueur_de_note_reste_du_texte_${theme}`, async ({ page }) => {
+    await apercuEn(page, theme, "> [!NOTE] Il faut Rust 1.80");
+    const bq = page.locator(".zone-code-apercu blockquote");
+    await expect(bq).toHaveText("[!NOTE] Il faut Rust 1.80");
+    expect(await bq.evaluate((e) => [e.children.length, e.children[0].tagName])).toEqual([1, "P"]);
+    await expect(bq.locator("svg, img, h1, h2, h3, h4, h5, h6, strong")).toHaveCount(0);
+  });
+
+  test(`REQ044_AC8_AC9_bloc_et_code_en_ligne_${theme}`, async ({ page }) => {
+    await apercuEn(page, theme, "texte `ligne` fin\n\n```\nbloc\n```\n\n| `cel` |\n|---|\n| x |");
+    const fond = await valeur(page, "backgroundColor", "--apercu-fond");
+    const mono = await valeur(page, "fontFamily", "--font-mono");
+    const pre = await style(page, ".zone-code-apercu pre", ["backgroundColor", "fontFamily", "fontSize", "lineHeight"]);
+    expect(pre.backgroundColor).toBe(fond);
+    expect(pre.backgroundColor).not.toBe((await style(page, ".zone-code-apercu", ["backgroundColor"])).backgroundColor);
+    expect([pre.fontFamily, pre.fontSize, pre.lineHeight]).toEqual([mono, "13.5px", "21px"]);
+    const pc = await style(page, ".zone-code-apercu pre code", ["backgroundColor", "fontFamily", "fontSize", "lineHeight"]);
+    expect(pc.backgroundColor).toBe(TRANSPARENT);
+    expect([pc.fontFamily, pc.fontSize, pc.lineHeight]).toEqual([mono, "13.5px", "21px"]);
+    const c = await style(page, ".zone-code-apercu p code", ["backgroundColor", "fontFamily", "fontSize", "color"]);
+    expect([c.backgroundColor, c.fontFamily, c.fontSize]).toEqual([fond, mono, "13px"]);
+    expect(c.color).toBe((await style(page, ".zone-code-apercu p", ["color"])).color);
+    expect((await style(page, ".zone-code-apercu th code", ["color"])).color).toBe((await style(page, ".zone-code-apercu th", ["color"])).color);
+  });
+
+  test(`REQ044_AC10_ligne_longue_sans_espace_${theme}`, async ({ page }) => {
+    const ligne = "x".repeat(300);
+    await apercuEn(page, theme, "```\n" + ligne + "\n```", 508);
+    const m = await page.locator(".zone-code-apercu").evaluate((e) => [e.scrollWidth, e.clientWidth]);
+    expect(m[0]).toBe(m[1]);
+    expect(await page.locator(".zone-code-apercu pre").evaluate((e) => e.textContent)).toBe(ligne + "\n");
+  });
+
+  test(`REQ044_AC11_focus_des_liens_dans_l_apercu_${theme}`, async ({ page }) => {
+    await apercuEn(page, theme, "[un](https://a.org)\n\n| t |\n|---|\n| x |\n\n> note\n\n```\nbloc\n```\n\n[deux](https://b.org)");
+    const liens = page.locator(".zone-code-apercu a");
+    await liens.nth(0).focus();
+    await expect(liens.nth(0)).toBeFocused();
+    const o = await style(page, ".zone-code-apercu a:focus", ["outlineWidth", "outlineStyle", "outlineColor", "outlineOffset"]);
+    expect([o.outlineWidth, o.outlineStyle, o.outlineOffset]).toEqual(["2px", "solid", "2px"]);
+    expect(o.outlineColor).toBe(await valeur(page, "color", "--accent-fg"));
+    await page.keyboard.press("Tab");
+    await expect(liens.nth(1)).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.locator("#apres")).toBeFocused();
+  });
+}
