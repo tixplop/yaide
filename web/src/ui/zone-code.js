@@ -1,10 +1,10 @@
 import { EditorState, Compartment, StateField, RangeSetBuilder } from "@codemirror/state";
 import { EditorView, Decoration, keymap, lineNumbers, drawSelection, highlightActiveLineGutter } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { tags as t } from "@lezer/highlight";
+import { syntaxHighlighting } from "@codemirror/language";
 import { supportLangage } from "./langages.js";
 import { apercu as creerApercu } from "./apercu.js";
+import { couleurs } from "./couleurs-code.js";
 import { themeCourant } from "./theme.js";
 
 const MODES = ["edition", "diff"];
@@ -40,22 +40,6 @@ function creerTheme(dark) {
 // Créés une fois : EditorView.theme ajoute un module de style à chaque appel.
 const themeSombre = creerTheme(true);
 const themeClair = creerTheme(false);
-
-const couleurs = HighlightStyle.define([
-  { tag: [t.keyword, t.definitionKeyword, t.modifier, t.self], color: "var(--syn-keyword)" },
-  { tag: [t.controlKeyword, t.moduleKeyword, t.operatorKeyword], color: "var(--syn-control)" },
-  { tag: [t.string, t.special(t.string), t.regexp], color: "var(--syn-string)" },
-  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--syn-function)" },
-  { tag: [t.number, t.bool, t.null, t.atom], color: "var(--syn-number)" },
-  { tag: [t.typeName, t.className, t.tagName, t.namespace], color: "var(--syn-type)" },
-  { tag: [t.comment, t.lineComment, t.blockComment], color: "var(--syn-comment)", fontStyle: "italic" },
-  { tag: [t.propertyName, t.variableName, t.attributeName], color: "var(--syn-variable)" },
-  { tag: [t.punctuation, t.operator, t.bracket], color: "var(--syn-punctuation)" },
-  { tag: t.heading, color: "var(--ink)", fontWeight: "600" },
-  { tag: t.link, color: "var(--info)", textDecoration: "underline" },
-  { tag: t.emphasis, fontStyle: "italic" },
-  { tag: t.strong, fontWeight: "600" },
-]);
 
 const lignesDiff = StateField.define({
   create: (etat) => decorerDiff(etat.doc),

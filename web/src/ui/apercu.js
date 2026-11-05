@@ -1,6 +1,33 @@
 import MarkdownIt from "markdown-it";
+import { highlightCode } from "@lezer/highlight";
+import { couleurs } from "./couleurs-code.js";
+import { langagePourMot, supportLangage } from "./langages.js";
 
-const md = new MarkdownIt({ html: false, linkify: false });
+// Un seul analyseur par langage : l'aperçu se refait à chaque frappe, et `supportLangage` crée un StreamLanguage à chaque appel.
+const analyseurs = new Map();
+function analyseur(id) {
+  if (!analyseurs.has(id)) {
+    const s = supportLangage(id);
+    analyseurs.set(id, (s.language ?? s).parser); // TOML et shell rendent un StreamLanguage, sans `.language`
+  }
+  return analyseurs.get(id);
+}
+
+// "" : markdown-it échappe le texte lui-même et le laisse sans couleur.
+function colorer(code, mot) {
+  const id = langagePourMot(mot);
+  if (!id) return "";
+  let html = "";
+  highlightCode(code, analyseur(id).parse(code), couleurs,
+    (texte, classes) => {
+      const sur = md.utils.escapeHtml(texte);
+      html += classes ? `<span class="${classes}">${sur}</span>` : sur;
+    },
+    () => { html += "\n"; });
+  return html;
+}
+
+const md = new MarkdownIt({ html: false, linkify: false, highlight: colorer });
 // Une image n'est jamais chargée : son texte de remplacement la remplace.
 md.renderer.rules.image = (tokens, i) => md.utils.escapeHtml(tokens[i].content);
 

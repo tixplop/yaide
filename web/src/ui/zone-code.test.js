@@ -247,3 +247,72 @@ test("REQ036_AC4_diff_entete_de_bloc_en_ink_muted", () => {
   expect(styles()).toMatch(/\.cm-ligne-entete\s*{color: var\(--ink-muted\)/);
   z.detruire();
 });
+
+// T-054 : coloration des blocs de code de l'aperçu.
+function htmlDe(md) {
+  const d = document.createElement("div");
+  d.innerHTML = rendreMarkdown(md);
+  return d;
+}
+
+test("REQ044_AC1_le_texte_du_bloc_est_celui_de_la_source_et_fn_est_colore", () => {
+  const source = "fn main() {\n\n    let a = 1; // <b>\n}\n";
+  const d = htmlDe("```rust\n" + source + "```");
+  expect(d.querySelector("pre").textContent).toBe(source);
+  const fn = [...d.querySelectorAll("pre span")].find((s) => s.textContent === "fn");
+  expect(fn).toBeTruthy();
+  expect(d.querySelector("pre b")).toBeNull();
+});
+
+const EXEMPLES_APERCU = {
+  rust: ["rust", "rs", "fn main() {}"],
+  javascript: ["javascript", "js", "const a = 1;"],
+  typescript: ["typescript", "ts", "const a: number = 1;"],
+  python: ["python", "py", "def f(): return 1"],
+  go: ["go", "go", "func main() {}"],
+  c: ["c", "h", "int main() { return 0; }"],
+  cpp: ["c++", "cpp", "class A { int x; };"],
+  html: ["html", "htm", '<a href="x">y</a>'],
+  css: ["css", "css", "a { color: red; }"],
+  json: ["json", "json", '{"a": 1}'],
+  yaml: ["yaml", "yml", "a: 1\nb: [x]"],
+  toml: ["toml", "toml", 'a = 1\n[t]\nb = "x"'],
+  markdown: ["markdown", "md", "# Titre\n\n*x*"],
+  shell: ["shell", "sh", 'echo "a" | grep a'],
+  bash: ["bash", "bash", "if true; then echo 1; fi"],
+};
+
+for (const [langue, [nom, ext, code]] of Object.entries(EXEMPLES_APERCU)) {
+  test(`REQ044_AC2_${langue}_colore_par_son_nom_et_par_une_extension`, () => {
+    for (const mot of [nom, ext, nom.toUpperCase()]) {
+      const d = htmlDe("```" + mot + "\n" + code + "\n```");
+      expect(d.querySelectorAll("pre span").length, mot).toBeGreaterThan(0);
+      expect(d.querySelector("pre").textContent).toBe(code + "\n");
+    }
+  });
+}
+
+test("REQ044_AC3_sans_langage_ou_langage_inconnu_aucune_couleur_et_texte_exact", () => {
+  for (const ouverture of ["```", "```inconnu", "```a.rs"]) {
+    const d = htmlDe(ouverture + "\nfn main() { <i>x</i> }\n```");
+    expect(d.querySelectorAll("pre span").length, ouverture).toBe(0);
+    expect(d.querySelector("pre").textContent).toBe("fn main() { <i>x</i> }\n");
+    expect(d.querySelector("pre i")).toBeNull();
+  }
+});
+
+test("REQ044_AC4_script_et_img_dans_un_bloc_restent_du_texte", () => {
+  for (const mot of ["html", "rust", "inconnu"]) {
+    const d = htmlDe("```" + mot + '\n<script>alert(1)</script><img src=x onerror="alert(1)">\n```');
+    expect(d.querySelector("script"), mot).toBeNull();
+    expect(d.querySelector("img"), mot).toBeNull();
+    expect(d.querySelector("[onerror]"), mot).toBeNull();
+    expect(d.querySelector("pre").textContent).toContain('<script>alert(1)</script><img src=x onerror="alert(1)">');
+  }
+});
+
+test("REQ044_le_code_en_ligne_n_est_pas_colore", () => {
+  const d = htmlDe("voir `fn main() {}` ici");
+  expect(d.querySelector("code").textContent).toBe("fn main() {}");
+  expect(d.querySelectorAll("code span").length).toBe(0);
+});

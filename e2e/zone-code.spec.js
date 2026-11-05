@@ -345,3 +345,49 @@ for (const theme of ["dark", "light"]) {
     await expect(page.locator("#apres")).toBeFocused();
   });
 }
+
+// T-054 : coloration des blocs de code de l'aperçu.
+const BLOC_RUST = "```rust\n// note\nfn main() {}\n```";
+
+test("REQ044_AC1_AC8_fn_en_syn_keyword_et_commentaire_en_syn_comment_italique", async ({ page }) => {
+  await apercuEn(page, "dark", BLOC_RUST);
+  const fn = page.locator(".zone-code-apercu pre span", { hasText: /^fn$/ });
+  await expect(fn).toHaveCount(1);
+  expect(await fn.evaluate((e) => getComputedStyle(e).color)).toBe(await valeur(page, "color", "--syn-keyword"));
+  const com = page.locator(".zone-code-apercu pre span", { hasText: "// note" });
+  const s = await com.evaluate((e) => ({ c: getComputedStyle(e).color, i: getComputedStyle(e).fontStyle }));
+  expect(s.c).toBe(await valeur(page, "color", "--syn-comment"));
+  expect(s.i).toBe("italic");
+});
+
+test("REQ044_AC4_script_et_img_dans_un_bloc_colore_ne_s_executent_pas", async ({ page }) => {
+  await apercuEn(page, "dark", '```html\n<script>window.piege=1</script><img src=x onerror="window.piege=2">\n```');
+  await expect(page.locator(".zone-code-apercu pre span").first()).toBeVisible();
+  await expect(page.locator(".zone-code-apercu script, .zone-code-apercu img")).toHaveCount(0);
+  await expect(page.locator(".zone-code-apercu pre")).toContainText("<script>window.piege=1</script>");
+  expect(await page.evaluate(() => window.piege)).toBeUndefined();
+});
+
+test("REQ044_AC5_remplacer_inconnu_par_rs_colore_le_bloc", async ({ page }) => {
+  await apercuEn(page, "dark", "```inconnu\nfn main() {}\n```");
+  await expect(page.locator(".zone-code-apercu pre")).toContainText("fn main() {}");
+  await expect(page.locator(".zone-code-apercu pre span")).toHaveCount(0);
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Control+Home");
+  await page.keyboard.press("End");
+  for (let i = 0; i < 7; i++) await page.keyboard.press("Backspace");
+  await page.keyboard.type("rs");
+  await expect(page.locator(".zone-code-apercu pre span", { hasText: /^fn$/ })).toHaveCount(1);
+});
+
+test("REQ044_AC6_changer_de_theme_change_la_couleur_du_bloc_sans_refaire_l_apercu", async ({ page }) => {
+  await apercuEn(page, "dark", BLOC_RUST);
+  const fn = page.locator(".zone-code-apercu pre span", { hasText: /^fn$/ });
+  await fn.evaluate((e) => (e.dataset.marque = "1"));
+  const sombre = await fn.evaluate((e) => getComputedStyle(e).color);
+  await page.evaluate(() => (document.documentElement.dataset.theme = "light"));
+  const clair = await fn.evaluate((e) => getComputedStyle(e).color);
+  expect(clair).not.toBe(sombre);
+  expect(clair).toBe(await valeur(page, "color", "--syn-keyword"));
+  await expect(page.locator(".zone-code-apercu pre span[data-marque]")).toHaveCount(1);
+});

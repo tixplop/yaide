@@ -232,3 +232,21 @@ test("REQ005_AC8_deconnexion_avec_du_texte_non_sauvegarde_sans_question_puis_le_
   await expect(editeur(page)).toContainText("// avant sortie");
   expect(fs.readFileSync(main(), "utf8")).toBe(ORIGINE);
 });
+
+test("REQ044_AC5_pendant_la_coupure_le_bloc_se_colore_a_la_frappe", async ({ page }) => {
+  fs.writeFileSync(path.join(dossier, "README.md"), "```inconnu\nfn main() {}\n```\n");
+  await ouvrirYaide(page, relais.origine);
+  await ligne(page, "README.md").click();
+  await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+  const apercu = page.getByRole("region", { name: "Aperçu" });
+  await expect(apercu.locator("pre")).toContainText("fn main() {}");
+  await expect(apercu.locator("pre span")).toHaveCount(0);
+  await couper(page);
+  await page.getByLabel("Éditeur README.md").click();
+  await page.keyboard.press("Control+Home");
+  await page.keyboard.press("End");
+  for (let i = 0; i < 7; i++) await page.keyboard.press("Backspace");
+  await page.keyboard.type("rs");
+  await expect(apercu.locator("pre span", { hasText: /^fn$/ })).toHaveCount(1);
+  await expect(bandeau(page)).toBeVisible();
+});

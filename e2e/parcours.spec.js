@@ -224,3 +224,60 @@ test("REQ038_AC1_AC2_AC3_parcours_10_passer_en_theme_clair", async ({ page }) =>
   await page.mouse.move(0, 400);
   expect(await contour()).toBe("none");
 });
+
+test("REQ042_REQ043_REQ044_parcours_13_relire_un_readme_dans_l_apercu", async ({ page }) => {
+  const dossier = depotExemple();
+  fs.writeFileSync(
+    path.join(dossier, "README.md"),
+    "| Commande | Rôle |\n|---|---|\n| build | Construire le projet avec une longue phrase qui doit passer à la ligne |\n| test | Lancer les tests |\n| lint | Vérifier |\n\n> Une citation.\n\n```rust\nfn main() {}\n```\n\n```inconnu\nfn main() {}\n```\n",
+  );
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
+  await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+  const apercu = page.getByRole("region", { name: "Aperçu" });
+  const th = apercu.locator("th").first();
+  await expect(th).toBeVisible();
+  const fond = (sel, i = 0) => apercu.locator(sel).nth(i).evaluate((e) => getComputedStyle(e).backgroundColor);
+  expect(await fond("th")).not.toBe("rgba(0, 0, 0, 0)");
+  expect(await th.evaluate((e) => getComputedStyle(e).fontWeight)).toBe("600");
+  expect(await apercu.locator("td").first().evaluate((e) => getComputedStyle(e).borderTopWidth)).toBe("1px");
+  expect(await fond("tbody tr td", 2)).not.toBe(await fond("tbody tr td", 0));
+  expect(await apercu.locator("blockquote").evaluate((e) => getComputedStyle(e).borderLeftWidth)).not.toBe("0px");
+  const fnRust = apercu.locator("pre span", { hasText: /^fn$/ });
+  await expect(fnRust).toHaveCount(1);
+  const sombre = await fnRust.evaluate((e) => getComputedStyle(e).color);
+  // 2. Bloc de notes de plus.
+  const editeur = page.getByLabel("Éditeur README.md");
+  await editeur.click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("\n> [!NOTE] Il faut Rust 1.80 ou plus.");
+  await expect(apercu.locator("blockquote")).toHaveCount(2);
+  await expect(apercu.locator("blockquote").last()).toContainText("[!NOTE]");
+  // 3. Le bloc inconnu reste en texte simple, sur le même fond.
+  const inconnu = apercu.locator("pre", { hasText: "fn main" }).last();
+  await expect(inconnu.locator("span")).toHaveCount(0);
+  expect(await inconnu.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(await apercu.locator("pre").first().evaluate((e) => getComputedStyle(e).backgroundColor));
+  // 4. Fenêtre étroite, panneau à 240 px.
+  await page.setViewportSize({ width: 800, height: 480 });
+  const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+  await poignee.focus();
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
+  await expect(poignee).toHaveAttribute("aria-valuenow", "240");
+  expect(await apercu.evaluate((e) => e.scrollWidth === e.clientWidth)).toBe(true);
+  // 5. Thème clair, sans retaper.
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.getByRole("button", { name: "Thème clair" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(await fnRust.evaluate((e) => getComputedStyle(e).color)).not.toBe(sombre);
+  // 6. Remplacer inconnu par rs colore le bloc, sans sauvegarder.
+  await editeur.click();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+Home");
+  for (let i = 0; i < 12; i++) await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("End");
+  for (let i = 0; i < 7; i++) await page.keyboard.press("Backspace");
+  await page.keyboard.type("rs");
+  await expect(apercu.locator("pre span", { hasText: /^fn$/ })).toHaveCount(2);
+  await expect(page.getByRole("tab", { name: "README.md, modifié, non sauvegardé" })).toBeVisible();
+});

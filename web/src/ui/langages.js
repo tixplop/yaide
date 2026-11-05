@@ -68,3 +68,11 @@ export function nomLangage(nom) {
   const ext = point < 0 ? "" : nom.slice(point + 1).toLowerCase();
   return Object.keys(NOMS).find((n) => NOMS[n].includes(ext)) ?? "Texte";
 }
+
+// Langage d'un bloc de code : un nom de la barre d'état ou une extension ; null sinon.
+export function langagePourMot(mot) {
+  const m = String(mot ?? "").toLowerCase();
+  const nom = Object.keys(NOMS).find((n) => n.toLowerCase() === m);
+  const ext = nom ? NOMS[nom][0] : m;
+  return IDENTIFIANTS.find((id) => LANGAGES[id].extensions.includes(ext)) ?? null;
+}
