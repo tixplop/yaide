@@ -147,6 +147,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     surFin: () => ecrire("tailles", { ...choisies }),
   });
 
+  // Sans shell à l'arrivée : la zone reste hors page le temps de lire la liste.
+  racine.definirShellsVisibles(false);
+
   // Poignées : limites recalculées à chaque changement de la fenêtre, des bandeaux ou de la question d'onglet.
   // La taille choisie ne change que par un glissé ou une flèche ; la taille affichée est la choisie, bornée.
   function recalculer() {

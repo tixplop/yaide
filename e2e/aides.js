@@ -107,11 +107,16 @@ export async function tailleStable(page) {
 }
 
 /** Ouvre Yaide, se connecte et attend le premier shell. */
-export async function ouvrirYaide(page, origine, motDePasse = "mdp") {
+export async function ouvrirYaide(page, origine, motDePasse = "mdp", { shell = true } = {}) {
   await page.goto(origine + "/");
   await page.getByLabel("Mot de passe").fill(motDePasse);
   await page.keyboard.press("Enter");
-  await page.getByRole("tab", { name: "shell 1" }).waitFor();
+  await page.getByRole("button", { name: "Nouveau shell" }).waitFor();
+  if (!shell) return;
+  // Plus de shell d'office : on en ouvre un seulement si l'instance n'en a aucun.
+  const { shells } = await page.evaluate(() => fetch("/api/shells").then((r) => r.json()));
+  if (shells.length === 0) await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await page.getByRole("tab", { name: /^shell \d+$/ }).first().waitFor();
 }
 
 /** Nom accessible d'une ligne de l'arborescence : le nom, suivi éventuellement de son statut git (« main.rs, modifié »). */

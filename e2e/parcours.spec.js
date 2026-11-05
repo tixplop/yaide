@@ -40,7 +40,7 @@ test("REQ030_AC1_parcours_1_corriger_un_fichier_et_faire_un_commit", async ({ pa
   await champ.fill("mdp");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("tree", { name: "Fichiers" })).toBeVisible();
-  await expect(page.getByRole("tablist", { name: "Shells" }).getByRole("tab")).toHaveText(["shell 1"]);
+  await expect(page.getByRole("tablist", { name: "Shells" }).getByRole("tab")).toHaveCount(0);
   await expect(page.locator("footer")).toContainText(git(dossier, "branch", "--show-current").trim());
   await page.getByRole("treeitem", { name: nomLigne("src") }).click();
   const arbreMain = page.getByRole("treeitem", { name: nomLigne("main.rs") });

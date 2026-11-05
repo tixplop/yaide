@@ -173,8 +173,9 @@ const attendre = () => new Promise((r) => setTimeout(r, 0));
 const poignees = (vue) => ({ panneau: vue.querySelector("[aria-label='Largeur du panneau']"), shells: vue.querySelector("[aria-label='Hauteur des shells']") });
 
 test("REQ032_AC7_les_poignees_ont_valuenow_valuemin_valuemax_des_le_montage", async () => {
+  simulerShells({ ids: [1] });
   const { vue } = monter();
-  await attendre();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(1));
   const { panneau, shells } = poignees(vue);
   for (const p of [panneau, shells]) for (const a of ["aria-valuenow", "aria-valuemin", "aria-valuemax"]) expect(p.hasAttribute(a)).toBe(true);
   expect(panneau.getAttribute("aria-valuemin")).toBe("240");
@@ -640,4 +641,57 @@ test("REQ015_AC10_une_lecture_git_perdue_pendant_la_coupure_est_refaite_au_retou
   } finally {
     vi.useRealTimers();
   }
+});
+
+// ---- T-056 : aucun shell au départ, compteur sur « Nouveau shell » ----
+
+test("REQ019_AC1_sans_shell_a_l_arrivee_aucun_POST_et_la_zone_reste_cachee", async () => {
+  const appels = simulerShells({ ids: [] });
+  const { vue } = monter();
+  expect(zone(vue).hidden).toBe(true);
+  await vi.waitFor(() => expect(appels).toContain("GET /api/shells"));
+  await attendre();
+  expect(appels).not.toContain("POST /api/shells");
+  expect(zone(vue).hidden).toBe(true);
+  expect(poignees(vue).shells.hidden).toBe(true);
+});
+
+test("REQ019_AC10_sans_shell_seul_Nouveau_shell_est_actif_sans_pastille_et_le_focus_est_hors_des_terminaux", async () => {
+  const appels = simulerShells({ ids: [] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(appels).toContain("GET /api/shells"));
+  await attendre();
+  expect(["Nouveau shell", "Réduire le shell", "Shells réduits", "Fermer le shell"].map((n) => bout(vue, n).disabled)).toEqual([false, true, true, true]);
+  expect(bout(vue, "Nouveau shell").querySelector(".ya-badge")).toBeNull();
+  expect(document.activeElement.closest(".terminal")).toBeNull();
+});
+
+test("REQ047_AC1_AC3_AC4_AC5_le_bouton_compte_tous_les_shells_reduits_compris", async () => {
+  simulerShells({ ids: [1, 2] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(2));
+  const b = bout(vue, "Nouveau shell");
+  expect(b.querySelector(".ya-badge").textContent).toBe("2");
+  bout(vue, "Réduire le shell").click();
+  expect(b.querySelector(".ya-badge").textContent).toBe("2");
+  const p = b.querySelector(".ya-badge");
+  expect(p.getAttribute("aria-hidden")).toBe("true");
+  expect(p.classList.contains("ya-badge-accent")).toBe(false);
+  expect(b.getAttribute("aria-label")).toBe("Nouveau shell");
+  b.enveloppe.dispatchEvent(new Event("pointerenter"));
+  await vi.waitFor(() => expect(document.querySelector("[role=tooltip]").textContent).toBe("Nouveau shell"));
+});
+
+test("REQ047_AC2_ouvrir_ajoute_un_et_la_fermeture_1000_retire_un", async () => {
+  simulerShells({ ids: [1] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(1));
+  const b = bout(vue, "Nouveau shell");
+  expect(b.querySelector(".ya-badge").textContent).toBe("1");
+  b.click();
+  await vi.waitFor(() => expect(b.querySelector(".ya-badge").textContent).toBe("2"));
+  terminer(9);
+  expect(b.querySelector(".ya-badge").textContent).toBe("1");
+  terminer(1);
+  expect(b.querySelector(".ya-badge").hidden).toBe(true);
 });

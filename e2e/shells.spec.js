@@ -24,8 +24,13 @@ const taper = async (page, commande) => {
 };
 const onglets = (page) => page.getByRole("tablist", { name: "Shells" }).getByRole("tab");
 
-test("REQ019_AC1_un_shell_a_l_ouverture_puis_un_deuxieme_avec_sa_propre_session", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
+test("REQ019_AC1_aucun_shell_a_l_ouverture_puis_deux_avec_leur_session", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  const liste = () => page.evaluate(() => fetch("/api/shells").then((r) => r.json()));
+  expect((await liste()).shells).toEqual([]);
+  await expect(page.locator(".cadre-shells")).toBeHidden();
+  await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
   await expect(onglets(page)).toHaveText(["shell 1"]);
   await taper(page, "V=un; echo une_valeur_$V");
   await expect(ecran(page)).toContainText("une_valeur_un");
@@ -36,6 +41,17 @@ test("REQ019_AC1_un_shell_a_l_ouverture_puis_un_deuxieme_avec_sa_propre_session"
   await page.getByRole("tab", { name: "shell 1" }).click();
   await expect(ecran(page)).toContainText("une_valeur_un");
   await expect(ecran(page)).not.toContainText("autre_[]");
+});
+
+test("REQ019_AC9_apres_un_redemarrage_le_message_s_affiche_et_aucun_shell_n_est_ouvert", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
+  yaide = await yaide.relancer();
+  await page.reload();
+  await expect(page.getByRole("status").filter({ hasText: "Yaide a été arrêté. 2 shells ont été fermés." })).toBeVisible();
+  await expect(onglets(page)).toHaveCount(0);
+  expect((await page.evaluate(() => fetch("/api/shells").then((r) => r.json()))).shells).toEqual([]);
 });
 
 test("REQ019_AC5_noms_des_onglets_et_focus_dans_le_terminal", async ({ page }) => {
@@ -152,10 +168,7 @@ test("REQ020_AC1_le_shell_continue_apres_le_depart_du_navigateur", async ({ page
 });
 
 test("REQ020_AC2_REQ015_AC1_coupure_puis_reprise_sans_recharger_ni_doublon", async ({ page }) => {
-  await page.goto(relais.origine + "/");
-  await page.getByLabel("Mot de passe").fill("mdp");
-  await page.keyboard.press("Enter");
-  await page.getByRole("tab", { name: "shell 1" }).waitFor();
+  await ouvrirYaide(page, relais.origine);
   await taper(page, "echo MARQUE_UNIQUE");
   await expect(ecran(page)).toContainText("MARQUE_UNIQUE");
   const compter = async () => ((await ecran(page).innerText()).match(/MARQUE_UNIQUE/g) ?? []).length;
@@ -181,10 +194,7 @@ test("REQ020_AC2_REQ015_AC1_coupure_puis_reprise_sans_recharger_ni_doublon", asy
 });
 
 test("REQ015_AC8_pendant_la_coupure_un_nouveau_shell_est_refuse_avec_un_message", async ({ page }) => {
-  await page.goto(relais.origine + "/");
-  await page.getByLabel("Mot de passe").fill("mdp");
-  await page.keyboard.press("Enter");
-  await page.getByRole("tab", { name: "shell 1" }).waitFor();
+  await ouvrirYaide(page, relais.origine);
   relais.couper();
   await expect(page.getByText("Connexion perdue. Modifications gardées.")).toBeVisible({ timeout: 5000 });
   await page.getByRole("button", { name: "Nouveau shell" }).click();
@@ -221,7 +231,7 @@ test("REQ021_AC2_AC4_apres_un_redemarrage_un_message_dit_combien_de_shells_sont_
   await page.reload();
   const message = page.getByRole("status").filter({ hasText: "Yaide a été arrêté. 2 shells ont été fermés." });
   await expect(message).toBeVisible();
-  await expect(onglets(page)).toHaveText(["shell 1"]);
+  await expect(onglets(page)).toHaveCount(0);
   await page.waitForTimeout(1500);
   await expect(message).toBeVisible();
   await message.getByRole("button", { name: "Fermer" }).click();
@@ -233,6 +243,7 @@ test("REQ021_AC4_un_seul_shell_ferme_sans_recharger_la_page", async ({ page }) =
   yaide = await yaide.relancer();
   await expect(page.getByRole("status").filter({ hasText: "Yaide a été arrêté. 1 shell a été fermé." })).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Nouveau shell" }).locator(".ya-badge")).toBeHidden();
 });
 
 test("REQ021_AC3_un_shell_termine_par_exit_n_entraine_pas_le_message", async ({ page }) => {
@@ -241,7 +252,7 @@ test("REQ021_AC3_un_shell_termine_par_exit_n_entraine_pas_le_message", async ({ 
   await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
   yaide = await yaide.relancer();
   await page.reload();
-  await expect(onglets(page)).toHaveText(["shell 1"]);
+  await expect(onglets(page)).toHaveCount(0);
   await expect(page.getByText("Yaide a été arrêté.")).toHaveCount(0);
 });
 
@@ -356,10 +367,7 @@ test("REQ035_AC5_un_shell_ferme_disparait_dans_l_autre_fenetre", async ({ page, 
 });
 
 test("REQ035_AC7_AC12_coupure_avant_et_pendant_le_dialogue", async ({ page }) => {
-  await page.goto(relais.origine + "/");
-  await page.getByLabel("Mot de passe").fill("mdp");
-  await page.keyboard.press("Enter");
-  await page.getByRole("tab", { name: "shell 1" }).waitFor();
+  await ouvrirYaide(page, relais.origine);
   await page.getByRole("button", { name: "Nouveau shell" }).click();
   await expect(onglets(page)).toHaveCount(2);
   // Pendant la coupure, pas de dialogue et le focus reste sur le bouton.
@@ -525,10 +533,7 @@ test("REQ041_AC6_suppr_sur_l_onglet_meme_dialogue_echap_rend_le_focus_a_l_onglet
 });
 
 test("REQ041_AC7_coupure_croix_puis_suppr_sans_dialogue", async ({ page }) => {
-  await page.goto(relais.origine + "/");
-  await page.getByLabel("Mot de passe").fill("mdp");
-  await page.keyboard.press("Enter");
-  await page.getByRole("tab", { name: "shell 1" }).waitFor();
+  await ouvrirYaide(page, relais.origine);
   await page.getByRole("button", { name: "Nouveau shell" }).click();
   await expect(onglets(page)).toHaveCount(2);
   relais.couper();

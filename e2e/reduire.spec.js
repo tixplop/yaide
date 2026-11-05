@@ -278,17 +278,14 @@ test("REQ040_AC11_apres_un_redemarrage_les_reduits_comptent_dans_le_message_et_l
   yaide = await yaide.relancer();
   await page.reload();
   await expect(page.getByRole("status").filter({ hasText: "Yaide a été arrêté. 2 shells ont été fermés." })).toBeVisible();
-  await expect(onglets(page)).toHaveText(["shell 1"]);
+  await expect(onglets(page)).toHaveCount(0);
   await expect(bouton(page, "Shells réduits")).toBeDisabled();
   await bouton(page, "Nouveau shell").click();
-  await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
+  await expect(onglets(page)).toHaveText(["shell 1"]);
 });
 
 test("REQ040_AC12_pendant_une_coupure_reduire_et_afficher_marchent_et_la_connexion_revient", async ({ page }) => {
-  await page.goto(relais.origine + "/");
-  await page.getByLabel("Mot de passe").fill("mdp");
-  await page.keyboard.press("Enter");
-  await page.getByRole("tab", { name: "shell 1" }).waitFor();
+  await ouvrirYaide(page, relais.origine);
   await bouton(page, "Nouveau shell").click();
   await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
   const bandeau = page.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." });
@@ -348,4 +345,32 @@ test("REQ040_AC5_fenetre_changee_pendant_la_reduction_le_terminal_remplit_sa_zon
   expect(apres).not.toBe(avant);
   await taper(page, "stty size");
   await expect(ecran(page)).toContainText(apres);
+});
+
+test("REQ047_AC5_AC6_pastille_de_Nouveau_shell_fond_et_texte_lus_a_l_ecran_et_douze_shells_dans_le_bouton", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 480 });
+  await ouvrirYaide(page, yaide.origine);
+  const nouveau = bouton(page, "Nouveau shell");
+  const pastille = nouveau.locator(".ya-badge");
+  await expect(pastille).toHaveText("1");
+  const attendu = await page.evaluate(() => {
+    const lire = (prop, v) => {
+      const e = document.createElement("span");
+      e.style[prop] = `var(${v})`;
+      document.body.append(e);
+      const r = getComputedStyle(e)[prop];
+      e.remove();
+      return r;
+    };
+    return { fond: lire("backgroundColor", "--bg-400"), texte: lire("color", "--ink") };
+  });
+  expect(await pastille.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(attendu.fond);
+  expect(await pastille.evaluate((e) => getComputedStyle(e).color)).toBe(attendu.texte);
+  for (let i = 0; i < 11; i++) await nouveau.click();
+  await expect(pastille).toHaveText("12");
+  const [b, p] = await Promise.all([nouveau.boundingBox(), pastille.boundingBox()]);
+  expect(p.x).toBeGreaterThanOrEqual(b.x);
+  expect(p.y).toBeGreaterThanOrEqual(b.y);
+  expect(p.x + p.width).toBeLessThanOrEqual(b.x + b.width);
+  expect(p.y + p.height).toBeLessThanOrEqual(b.y + b.height);
 });

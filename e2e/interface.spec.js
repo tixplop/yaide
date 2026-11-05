@@ -262,6 +262,7 @@ test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_san
 
 test("REQ035_AC11_info_bulles_a_droite_et_bouton_desactive_sans_arret_de_Tab", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
+  await page.mouse.move(0, 0); // le clic d'ouverture laisse la souris sur « Nouveau shell »
   const fermer = page.getByRole("button", { name: "Fermer le shell" });
   for (const nom of ["Nouveau shell", "Réduire le shell", "Fermer le shell"]) {
     const bouton = page.getByRole("button", { name: nom });
@@ -540,7 +541,7 @@ test("REQ036_AC3_tailles_du_cadre_barre_onglets_ligne_etat_et_rail", async ({ pa
 });
 
 test("REQ037_AC3_bouton_central_ouvre_l_ouverture_rapide_avec_son_info_bulle", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   const b = page.getByRole("button", { name: "Ouverture rapide" });
   await b.focus();
   await expect(page.getByRole("tooltip")).toHaveText(`${yaide.dossier} · Ouverture rapide (Ctrl+P)`);
@@ -623,7 +624,7 @@ test("REQ032_AC13_poignee_au_repos_un_filet_de_1_px_et_au_survol_toute_l_epaisse
 
 test("REQ031_AC10_barre_de_titre_info_bulles_sous_le_bouton_et_dans_la_fenetre", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 480 });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   for (const nom of ["Thème clair", "Déconnexion"]) {
     const b = page.getByRole("button", { name: nom });
     await b.focus();

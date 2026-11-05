@@ -10,7 +10,7 @@ test.afterEach(async () => {
 
 async function ouvrir(page, dossier = depotExemple()) {
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
 }
 const dialogue = (page) => page.getByRole("dialog", { name: "Ouvrir un fichier" });
 const champ = (page) => page.getByRole("textbox", { name: "Chemin du fichier" });

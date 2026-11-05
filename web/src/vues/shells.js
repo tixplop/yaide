@@ -81,6 +81,7 @@ export function vueShells({ dire, surZone = () => {} }) {
     boutonReduire.disabled = boutonFermer.disabled = vis.length === 0;
     boutonReduits.disabled = nombreReduits === 0;
     if (nombreReduits > 0 || boutonReduits.querySelector(".ya-badge")) boutonReduits.definirCompteur(nombreReduits);
+    if (shells.size > 0 || boutonNouveau.querySelector(".ya-badge")) boutonNouveau.definirCompteur(shells.size);
     // La zone revient avant toute mesure de terminal.
     surZone(vis.length > 0);
     const terminaux = [...shells.values()].map((s) => s.terminal);
@@ -328,12 +329,6 @@ export function vueShells({ dire, surZone = () => {} }) {
     // Les numéros repartent après un redémarrage : les réduits ne se reprennent que pour la même instance.
     const gardes = precedent?.instance === liste.instance ? (precedent.reduits ?? []) : [];
     for (const id of liste.shells) ajouter(id, gardes.includes(id));
-    if (shells.size === 0) {
-      const r = await ouvrirShell();
-      if (detruit) return;
-      if (r.id) ajouter(r.id);
-      else if (r.erreur) dire({ texte: `Impossible d'ouvrir un shell : ${r.erreur}.`, variante: "erreur" });
-    }
     afficher();
     sauver();
   }
