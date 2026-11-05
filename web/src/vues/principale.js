@@ -42,6 +42,27 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     theme.setAttribute("aria-pressed", String(themeCourant() === "light"));
   });
 
+  // Le panneau replié laisse la place à l'éditeur ; la vue et les tailles restent en mémoire.
+  const boutonPanneau = bouton({ icone: "panel-left-close", nomAccessible: "Replier le panneau" });
+  let panneauReplie = false;
+  boutonPanneau.addEventListener("click", () => {
+    replierPanneau(!panneauReplie);
+    if (panneauReplie) boutonPanneau.poserFocus();
+    else entrerDansPanneau();
+  });
+  function replierPanneau(oui) {
+    panneauReplie = oui;
+    racine.definirReplis({ panneau: oui });
+    boutonPanneau.definirCommande(oui ? { nomAccessible: "Déplier le panneau", icone: "panel-left-open" } : { nomAccessible: "Replier le panneau", icone: "panel-left-close" });
+    recalculer();
+    ecrire("replis", { panneau: oui });
+  }
+  // Dépliage : l'arborescence est relue (silencieusement), puis le focus entre dans le panneau.
+  function entrerDansPanneau() {
+    if (!fichiers.corps.hidden) fichiers.relire().catch(() => {});
+    corps.focus();
+  }
+
   // Barre d'état : la branche, puis la position et le langage de l'onglet actif.
   let racine = null;
   const barre = {};
@@ -73,8 +94,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   // La zone des shells sort de la page sans shell visible ; la poignée reprend sa taille à son retour.
   const shells = vueShells({
     dire,
-    surZone: (oui) => {
+    surZone: (oui, replie) => {
       racine?.definirShellsVisibles(oui);
+      racine?.definirReplis({ shells: replie });
       recalculer();
     },
   });
@@ -121,7 +143,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     fermerDiff: editeur.fermerDiff,
     surDisque: editeur.relireDisque,
   });
-  editeur.restaurer();
+  const restauration = editeur.restaurer();
 
   let nombre = 0; // changements git, affichés sur l'icône Git du rail
   const majRail = () => rail.definirCompteur("git", nombre);
@@ -135,7 +157,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const choisies = {};
   let detruite = false;
   racine = cadre({
-    barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [theme.enveloppe, sortir.enveloppe] },
+    barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [boutonPanneau.enveloppe, shells.repli.enveloppe, theme.enveloppe, sortir.enveloppe] },
     rail: { onglets: rail, commandes: shells.commandes },
     panneau: { titre: "Fichiers", entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps] },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, fil: editeur.fil, code: editeur.code, shells },
@@ -177,6 +199,13 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     }
     recalculer();
   });
+  // Repli gardé : le panneau reste replié, et le focus va sur « Ouvrir un fichier » s'il n'y a aucun onglet.
+  Promise.all([lire("replis"), restauration]).then(([gardes]) => {
+    if (detruite || !gardes?.panneau) return;
+    replierPanneau(true);
+    if (document.activeElement && document.activeElement !== document.body) return;
+    racine.querySelector(".editeur-code button")?.focus();
+  });
   const titre = racine.querySelector(".cadre-panneau-titre");
   const corps = racine.querySelector(".cadre-panneau-corps");
   corps.tabIndex = -1;
@@ -186,7 +215,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     titre.textContent = p.titre;
     corps.setAttribute("aria-label", p.titre);
     const visible = id === "fichiers";
-    if (visible && fichiers.corps.hidden) fichiers.rafraichir();
+    if (visible && fichiers.corps.hidden && !panneauReplie) fichiers.rafraichir();
     fichiers.corps.hidden = fichiers.entete.hidden = !visible;
     recherche.montrer(id === "recherche");
     git.montrer(id === "git");
@@ -197,6 +226,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   rail.addEventListener("click", (e) => {
     const onglet = e.target.closest("[role=tab]");
     if (!onglet) return;
+    if (panneauReplie) {
+      replierPanneau(false);
+      entrerDansPanneau();
+    }
     corps.focus();
     if (onglet.getAttribute("aria-label") === "Recherche") recherche.focuser();
   });
@@ -208,6 +241,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (!p) return;
     rail.choisir(p.id);
     afficherPanneau(p.id);
+    if (panneauReplie) {
+      replierPanneau(false);
+      entrerDansPanneau();
+    }
     corps.focus();
     if (p.id === "recherche") recherche.focuser();
   });
@@ -243,7 +280,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   async function relire() {
     if (etat !== "coupe") {
       try {
-        await Promise.all([git.relire(), fichiers.corps.hidden ? null : fichiers.relire()]);
+        await Promise.all([git.relire(), fichiers.corps.hidden || panneauReplie ? null : fichiers.relire()]);
       } catch {
         // Une réponse illisible ne doit pas arrêter la boucle : la suivante réessaie.
       }

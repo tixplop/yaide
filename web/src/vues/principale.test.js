@@ -36,7 +36,7 @@ test("REQ037_AC2_barre_de_titre_symbole_ouverture_rapide_theme_et_deconnexion", 
   const barre = vue.querySelector("header");
   expect(barre.querySelector("svg[aria-hidden=true]")).not.toBeNull();
   const noms = [...barre.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
-  expect(noms).toEqual(["Ouverture rapide", "Thème clair", "Déconnexion"]);
+  expect(noms).toEqual(["Ouverture rapide", "Replier le panneau", "Replier les shells", "Thème clair", "Déconnexion"]);
   expect(barre.querySelector("button").textContent).toBe("projet");
   expect(barre.textContent).toBe("projet");
   expect(barre.querySelector("[aria-label=Déconnexion]").textContent).toBe("");
@@ -813,3 +813,264 @@ test("REQ045_AC9_une_reponse_illisible_n_arrete_pas_la_boucle_de_relecture", () 
     await vi.advanceTimersByTimeAsync(3100);
     expect(s.git).toBe(g + 1);
   }));
+
+// ---- T-058 : replier le panneau et la zone des shells ----
+
+const barreTitre = (vue, nom) => vue.querySelector(`header [aria-label='${nom}']`);
+const icone = (b) => b.querySelector("svg").getAttribute("data-icone");
+const aside = (vue) => vue.querySelector("aside");
+
+test("REQ046_AC9_AC10_etats_des_boutons_de_repli", async () => {
+  simulerShells({ ids: [1, 2] });
+  const { vue } = monter();
+  // Sans shell visible : désactivé, icône et nom de repli.
+  const repli = barreTitre(vue, "Replier les shells");
+  expect(repli.disabled).toBe(true);
+  expect(icone(repli)).toBe("panel-bottom-close");
+  expect(repli.hasAttribute("aria-pressed")).toBe(false);
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(2));
+  expect(repli.disabled).toBe(false);
+  repli.click();
+  const deplier = barreTitre(vue, "Déplier les shells");
+  expect(deplier).toBe(repli);
+  expect(icone(deplier)).toBe("panel-bottom-open");
+  expect(zone(vue).hidden).toBe(true);
+  expect(poignees(vue).shells.hidden).toBe(true);
+  expect(document.activeElement).toBe(deplier);
+  expect(bout(vue, "Réduire le shell").disabled).toBe(true);
+  expect(bout(vue, "Fermer le shell").disabled).toBe(true);
+  expect(bout(vue, "Nouveau shell").disabled).toBe(false);
+  expect(bout(vue, "Nouveau shell").querySelector(".ya-badge").textContent).toBe("2");
+  expect(vi.mocked(ecrire)).toHaveBeenLastCalledWith("serveur", expect.objectContaining({ replie: true, nombre: 2 }));
+  deplier.click();
+  expect(icone(barreTitre(vue, "Replier les shells"))).toBe("panel-bottom-close");
+  expect(zone(vue).hidden).toBe(false);
+  expect(onglets(vue)).toEqual(["shell 1", "shell 2"]);
+  expect(bout(vue, "Réduire le shell").disabled).toBe(false);
+  expect(document.activeElement.closest(".terminal")).not.toBeNull();
+  expect(tailles(1).length).toBeGreaterThan(0);
+});
+
+test("REQ046_AC9_Shells_reduits_suit_son_etat_zone_repliee", async () => {
+  simulerShells({ ids: [1, 2] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(2));
+  bout(vue, "Réduire le shell").click();
+  barreTitre(vue, "Replier les shells").click();
+  expect(bout(vue, "Shells réduits").disabled).toBe(false);
+  expect(bout(vue, "Shells réduits").querySelector(".ya-badge").textContent).toBe("1");
+});
+
+test("REQ046_AC8_Nouveau_shell_deplie_la_zone_et_un_shell_reduit_choisi_aussi", async () => {
+  simulerShells({ ids: [1, 2] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(2));
+  barreTitre(vue, "Replier les shells").click();
+  bout(vue, "Nouveau shell").click();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(3));
+  expect(zone(vue).hidden).toBe(false);
+  expect(actifDe(vue)).toBe("shell 9");
+  expect(barreTitre(vue, "Replier les shells")).not.toBeNull();
+});
+
+test("REQ046_AC11_zone_repliee_un_shell_termine_ne_deplace_pas_le_focus_et_le_repli_est_oublie_sans_shell", async () => {
+  simulerShells({ ids: [1, 2] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(2));
+  const repli = barreTitre(vue, "Replier les shells");
+  repli.click();
+  terminer(1);
+  expect(onglets(vue)).toEqual(["shell 2"]);
+  expect(document.activeElement).toBe(repli);
+  expect(zone(vue).hidden).toBe(true);
+  expect(document.querySelector("dialog[open], [role=dialog]")).toBeNull();
+  // Le dernier shell : le repli est oublié, le bouton est grisé, le focus va sur « Nouveau shell ».
+  terminer(2);
+  expect(repli.disabled).toBe(true);
+  expect(icone(repli)).toBe("panel-bottom-close");
+  expect(document.activeElement).toBe(bout(vue, "Nouveau shell"));
+  bout(vue, "Nouveau shell").click();
+  await vi.waitFor(() => expect(zone(vue).hidden).toBe(false));
+});
+
+test("REQ046_AC18_le_dernier_shell_visible_se_termine_focus_sur_Replier_les_shells_va_sur_Shells_reduits", async () => {
+  simulerShells({ ids: [1, 2] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(2));
+  vue.querySelectorAll(".shells [role=tab]")[1].click();
+  bout(vue, "Réduire le shell").click();
+  const repli = barreTitre(vue, "Replier les shells");
+  repli.focus();
+  terminer(1);
+  expect(repli.disabled).toBe(true);
+  expect(document.activeElement).toBe(bout(vue, "Shells réduits"));
+});
+
+test("REQ046_AC12_le_repli_est_garde_pour_la_meme_instance_et_oublie_pour_une_autre", async () => {
+  simulerShells({ ids: [1], precedent: { instance: "i1", nombre: 1, reduits: [], replie: true } });
+  let { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(1));
+  expect(zone(vue).hidden).toBe(true);
+  expect(barreTitre(vue, "Déplier les shells")).not.toBeNull();
+  vues.forEach((v) => v.detruire());
+  document.body.replaceChildren();
+  simulerShells({ ids: [1], instance: "i2", precedent: { instance: "i1", nombre: 1, reduits: [], replie: true } });
+  ({ vue } = monter());
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(1));
+  expect(zone(vue).hidden).toBe(false);
+  expect(barreTitre(vue, "Replier les shells")).not.toBeNull();
+});
+
+test("REQ046_AC12_le_panneau_replie_est_garde_et_relu_au_montage", async () => {
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "replis" ? { panneau: true } : undefined));
+  const { vue } = monter();
+  await vi.waitFor(() => expect(aside(vue).hidden).toBe(true));
+  expect(poignees(vue).panneau.hidden).toBe(true);
+  expect(barreTitre(vue, "Déplier le panneau")).not.toBeNull();
+  vues.forEach((v) => v.detruire());
+  document.body.replaceChildren();
+  vi.mocked(lire).mockImplementation(async () => undefined);
+  const autre = monter();
+  await attendre();
+  expect(aside(autre.vue).hidden).toBe(false);
+});
+
+test("REQ046_AC1_AC2_AC12_replier_et_deplier_le_panneau_ecrit_replis_garde_la_vue_et_relit_l_arbre", async () => {
+  const appels = simulerServeur(null);
+  const { vue } = monter();
+  await attendre();
+  const b = barreTitre(vue, "Replier le panneau");
+  expect(icone(b)).toBe("panel-left-close");
+  expect(b.hasAttribute("aria-pressed")).toBe(false);
+  b.click();
+  expect(aside(vue).hidden).toBe(true);
+  expect(icone(b)).toBe("panel-left-open");
+  expect(b.getAttribute("aria-label")).toBe("Déplier le panneau");
+  expect(document.activeElement).toBe(b);
+  expect(ecrire).toHaveBeenLastCalledWith("replis", { panneau: true });
+  const avant = appels.filter((u) => u.startsWith("/api/fichiers")).length;
+  b.click();
+  expect(aside(vue).hidden).toBe(false);
+  expect(ecrire).toHaveBeenLastCalledWith("replis", { panneau: false });
+  expect(document.activeElement).toBe(vue.querySelector(".cadre-panneau-corps"));
+  await attendre();
+  expect(appels.filter((u) => u.startsWith("/api/fichiers")).length).toBeGreaterThan(avant);
+});
+
+test("REQ046_AC3_REQ028_AC15_clic_F_R_G_deplient_mais_les_fleches_non", async () => {
+  const { vue } = monter();
+  await attendre();
+  const replier = () => barreTitre(vue, "Replier le panneau")?.click();
+  replier();
+  expect(aside(vue).hidden).toBe(true);
+  const tabs = vue.querySelectorAll("[role=tab]");
+  // Les flèches : l'onglet suivant devient actif, le panneau reste replié.
+  tabs[0].focus();
+  tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  expect(vue.querySelector("[role=tab][aria-selected=true]").getAttribute("aria-label")).toBe("Recherche");
+  expect(aside(vue).hidden).toBe(true);
+  // Clic sur un onglet : déplie sur sa vue.
+  tabs[2].click();
+  expect(aside(vue).hidden).toBe(false);
+  expect(aside(vue).querySelector("h2").textContent).toBe("Git");
+  expect(barreTitre(vue, "Replier le panneau")).not.toBeNull();
+  // Touche R depuis le rail.
+  barreTitre(vue, "Replier le panneau").click();
+  tabs[2].focus();
+  tabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true }));
+  expect(aside(vue).hidden).toBe(false);
+  expect(aside(vue).querySelector("h2").textContent).toBe("Recherche");
+  expect(aside(vue).contains(document.activeElement)).toBe(true);
+});
+
+test("REQ028_AC15_panneau_replie_l_onglet_actif_garde_aria_selected", async () => {
+  const { vue } = monter();
+  await attendre();
+  barreTitre(vue, "Replier le panneau").click();
+  expect(vue.querySelector("[role=tab][aria-selected=true]").getAttribute("aria-label")).toBe("Fichiers");
+});
+
+test("REQ046_AC13_coupure_replier_et_deplier_panneau_et_shells_sans_message", async () => {
+  simulerShells({ ids: [1] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(1));
+  const tabs = vue.querySelectorAll("[role=tab]");
+  tabs[2].click();
+  await attendre();
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    throw new TypeError("coupure");
+  }));
+  const texte = () => vue.querySelector(".cadre-principal").textContent + vue.querySelector("aside").textContent;
+  const avant = texte();
+  // Panneau replié sur Git, coupure, clic sur Fichiers : le panneau se déplie sans lecture bruyante.
+  barreTitre(vue, "Replier le panneau").click();
+  tabs[0].click();
+  await attendre();
+  expect(aside(vue).hidden).toBe(false);
+  expect(aside(vue).querySelector("h2").textContent).toBe("Fichiers");
+  barreTitre(vue, "Replier le panneau").click();
+  barreTitre(vue, "Déplier le panneau").click();
+  barreTitre(vue, "Replier les shells").click();
+  barreTitre(vue, "Déplier les shells").click();
+  await attendre();
+  expect(zone(vue).hidden).toBe(false);
+  const apres = texte();
+  for (const mot of ["Connexion perdue", "Impossible"]) expect(apres.includes(mot), mot).toBe(avant.includes(mot));
+  expect(vue.querySelector(".fichiers").textContent).not.toContain("Impossible");
+});
+
+test("REQ046_AC8_un_shell_reduit_choisi_deplie_la_zone_le_rend_actif_et_le_focus_va_dans_son_terminal", async () => {
+  simulerShells({ ids: [1, 2] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(2));
+  vue.querySelectorAll(".shells [role=tab]")[1].click();
+  bout(vue, "Réduire le shell").click();
+  barreTitre(vue, "Replier les shells").click();
+  expect(zone(vue).hidden).toBe(true);
+  bout(vue, "Shells réduits").click();
+  document.querySelectorAll("[role=menuitem]")[0].click();
+  expect(zone(vue).hidden).toBe(false);
+  expect(onglets(vue)).toEqual(["shell 1", "shell 2"]);
+  expect(actifDe(vue)).toBe("shell 2");
+  expect(document.activeElement.closest(".terminal")).not.toBeNull();
+  expect(barreTitre(vue, "Replier les shells")).not.toBeNull();
+});
+
+test("REQ046_AC3_REQ028_AC15_Ctrl_Maj_F_ne_deplie_pas_Entree_apres_Bas_et_F_G_deplient", async () => {
+  const { vue } = monter();
+  await attendre();
+  const tabs = vue.querySelectorAll("[role=tab]");
+  barreTitre(vue, "Replier le panneau").click();
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "F", ctrlKey: true, shiftKey: true, bubbles: true }));
+  expect(aside(vue).hidden).toBe(true);
+  expect(document.activeElement).toBe(vue.querySelector("[role=tab][aria-selected=true]"));
+  // Bas puis Entrée (qui arrive en click sur un button) : déplie sur la vue de l'onglet devenu actif.
+  tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  expect(aside(vue).hidden).toBe(true);
+  vue.querySelector("[role=tab][aria-selected=true]").click();
+  expect(aside(vue).hidden).toBe(false);
+  expect(aside(vue).querySelector("h2").textContent).toBe("Recherche");
+  for (const [touche, titre] of [["g", "Git"], ["f", "Fichiers"]]) {
+    barreTitre(vue, "Replier le panneau").click();
+    tabs[0].focus();
+    tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: touche, bubbles: true }));
+    expect(aside(vue).hidden, touche).toBe(false);
+    expect(aside(vue).querySelector("h2").textContent).toBe(titre);
+    expect(aside(vue).contains(document.activeElement)).toBe(true);
+  }
+});
+
+test("REQ047_AC1_zone_repliee_le_compteur_reste_a_2", async () => {
+  simulerShells({ ids: [1, 2] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(2));
+  barreTitre(vue, "Replier les shells").click();
+  expect(bout(vue, "Nouveau shell").querySelector(".ya-badge").textContent).toBe("2");
+});
+
+test("REQ028_AC16_panneau_replie_sans_onglet_le_focus_va_sur_Ouvrir_un_fichier", async () => {
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "replis" ? { panneau: true } : undefined));
+  const { vue } = monter();
+  await vi.waitFor(() => expect(document.activeElement.textContent).toBe("Ouvrir un fichier"));
+  expect(vue.contains(document.activeElement)).toBe(true);
+});

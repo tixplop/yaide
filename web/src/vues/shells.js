@@ -17,7 +17,8 @@ function texteArret(n) {
 
 /**
  * Zone des shells de V-002. `dire({ texte, variante, fermable })` affiche un message dans les bandeaux.
- * `surZone(oui)` : la zone a au moins un shell visible, ou n'en a aucun.
+ * `surZone(oui, replie)` : la zone a au moins un shell visible, ou n'en a aucun ; `replie` : elle est repliée.
+ * `repli` : le bouton « Replier les shells », que la vue principale place dans la barre de titre.
  * `commandes` : les quatre boutons de C-010, que la vue principale place dans le rail.
  * Méthodes : `definirEtat("connecte" | "coupe")`, `detruire()`.
  */
@@ -36,11 +37,15 @@ export function vueShells({ dire, surZone = () => {} }) {
   let detruit = false;
   let onglet = null;
   let menuReduits = null;
+  let replie = false;
 
   const boutonNouveau = bouton({ icone: "terminal", variante: "discret", nomAccessible: "Nouveau shell", positionInfoBulle: "droite" });
   const boutonReduire = bouton({ icone: "minimize-2", variante: "discret", nomAccessible: "Réduire le shell", positionInfoBulle: "droite", desactive: true });
   const boutonReduits = bouton({ icone: "layers", variante: "discret", nomAccessible: "Shells réduits", positionInfoBulle: "droite", desactive: true, ouvreMenu: true });
   const boutonFermer = bouton({ icone: "square-x", variante: "discret", nomAccessible: "Fermer le shell", positionInfoBulle: "droite", desactive: true });
+  const boutonRepli = bouton({ icone: "panel-bottom-close", nomAccessible: "Replier les shells", desactive: true });
+  racine.repli = boutonRepli;
+  boutonRepli.addEventListener("click", () => basculerRepli());
   boutonNouveau.addEventListener("click", () => nouveau());
   boutonReduire.addEventListener("click", () => reduire());
   boutonReduits.addEventListener("click", () => ouvrirMenu());
@@ -57,7 +62,7 @@ export function vueShells({ dire, surZone = () => {} }) {
     return (v[i + 1] ?? v[i - 1])?.id ?? null;
   }
 
-  const sauver = () => ecrire("serveur", { instance, nombre: shells.size, reduits: reduits().map((s) => s.id) });
+  const sauver = () => ecrire("serveur", { instance, nombre: shells.size, reduits: reduits().map((s) => s.id), replie });
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
   function majConnecte(s) {
@@ -78,12 +83,18 @@ export function vueShells({ dire, surZone = () => {} }) {
   function afficher() {
     const vis = visibles();
     const nombreReduits = reduits().length;
-    boutonReduire.disabled = boutonFermer.disabled = vis.length === 0;
+    if (vis.length === 0) replie = false;
+    boutonRepli.disabled = vis.length === 0;
+    const nomRepli = replie ? "Déplier les shells" : "Replier les shells";
+    if (boutonRepli.getAttribute("aria-label") !== nomRepli) {
+      boutonRepli.definirCommande({ nomAccessible: nomRepli, icone: replie ? "panel-bottom-open" : "panel-bottom-close" });
+    }
+    boutonReduire.disabled = boutonFermer.disabled = vis.length === 0 || replie;
     boutonReduits.disabled = nombreReduits === 0;
     if (nombreReduits > 0 || boutonReduits.querySelector(".ya-badge")) boutonReduits.definirCompteur(nombreReduits);
     if (shells.size > 0 || boutonNouveau.querySelector(".ya-badge")) boutonNouveau.definirCompteur(shells.size);
     // La zone revient avant toute mesure de terminal.
-    surZone(vis.length > 0);
+    surZone(vis.length > 0, replie);
     const terminaux = [...shells.values()].map((s) => s.terminal);
     for (const enfant of [...corps.children]) if (!terminaux.includes(enfant)) enfant.remove();
     for (const t of terminaux) if (t.parentNode !== corps) corps.append(t);
@@ -123,6 +134,25 @@ export function vueShells({ dire, surZone = () => {} }) {
     (boutonReduits.disabled ? boutonNouveau : boutonReduits).poserFocus();
   }
 
+  function basculerRepli() {
+    if (!replie) {
+      replie = true;
+      afficher();
+      sauver();
+      boutonRepli.poserFocus();
+      return;
+    }
+    replie = false;
+    afficher();
+    const s = shells.get(actif);
+    if (s) {
+      // `onResize` ne part pas si la mesure égale la valeur par défaut : on envoie toujours la taille.
+      envoyerTaille(s);
+      s.terminal.focus();
+    }
+    sauver();
+  }
+
   function reduire() {
     const s = shells.get(actif);
     if (!s) return;
@@ -140,6 +170,7 @@ export function vueShells({ dire, surZone = () => {} }) {
     const s = shells.get(id);
     if (!s?.reduit) return;
     s.reduit = false;
+    replie = false;
     actif = id;
     afficher();
     // `onResize` ne part pas si la mesure égale la valeur par défaut : on envoie toujours la taille.
@@ -309,6 +340,7 @@ export function vueShells({ dire, surZone = () => {} }) {
     // Sans shell ouvert, Yaide a pu redémarrer sans que la page le sache : on relit l'instance.
     if (shells.size === 0) instance = (await listeShells())?.instance ?? instance;
     ajouter(r.id);
+    replie = false;
     afficher();
     activer(r.id, true);
     sauver();
@@ -327,6 +359,7 @@ export function vueShells({ dire, surZone = () => {} }) {
     }
     instance = liste.instance;
     // Les numéros repartent après un redémarrage : les réduits ne se reprennent que pour la même instance.
+    replie = precedent?.instance === liste.instance && Boolean(precedent.replie);
     const gardes = precedent?.instance === liste.instance ? (precedent.reduits ?? []) : [];
     for (const id of liste.shells) ajouter(id, gardes.includes(id));
     afficher();

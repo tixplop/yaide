@@ -59,7 +59,7 @@ test("REQ028_AC8_AC7_ordre_de_Tab_complet_et_contour_de_focus_a_chaque_arret", a
     expect(contour.some(Boolean), `contour absent à l'arrêt ${i} (${z})`).toBe(true);
     if (z !== zones.at(-1)) zones.push(z);
   }
-  expect(zones).toEqual(["Ouverture rapide", "Thème clair", "Déconnexion", "rail", "Nouveau shell", "Réduire le shell", "Fermer le shell", "panneau", "Largeur du panneau", "onglets de fichiers", "éditeur", "Hauteur des shells", "onglets de shells", "terminal"]);
+  expect(zones).toEqual(["Ouverture rapide", "Replier le panneau", "Replier les shells", "Thème clair", "Déconnexion", "rail", "Nouveau shell", "Réduire le shell", "Fermer le shell", "panneau", "Largeur du panneau", "onglets de fichiers", "éditeur", "Hauteur des shells", "onglets de shells", "terminal"]);
   const contourTerminal = await page.locator(".terminal-zone:visible").evaluate((e) => getComputedStyle(e).outlineStyle);
   expect(contourTerminal).not.toBe("none");
 });
@@ -235,7 +235,7 @@ test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_san
     toutes.push(...(await commandes(page)));
   }
   const noms = new Set(toutes.map((c) => c.nom));
-  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Ouverture rapide", "Thème clair", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Réduire le shell", "Fermer le shell", "Fermer shell 1", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Pull", "Push"]) {
+  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Ouverture rapide", "Thème clair", "Replier le panneau", "Replier les shells", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Réduire le shell", "Fermer le shell", "Fermer shell 1", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Pull", "Push"]) {
     expect(noms.has(attendu), attendu).toBe(true);
   }
   // AC-031-6 : 24 × 24 px, sauf une action de ligne (20 × 20) et la fermeture d'un onglet (18 × 18).
@@ -625,8 +625,8 @@ test("REQ032_AC13_poignee_au_repos_un_filet_de_1_px_et_au_survol_toute_l_epaisse
 test("REQ031_AC10_barre_de_titre_info_bulles_sous_le_bouton_et_dans_la_fenetre", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 480 });
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  for (const nom of ["Thème clair", "Déconnexion"]) {
-    const b = page.getByRole("button", { name: nom });
+  for (const nom of ["Replier le panneau", "Thème clair", "Déconnexion"]) {
+    const b = page.getByRole("button", { name: nom, exact: true });
     await b.focus();
     const bulle = page.getByRole("tooltip");
     await expect(bulle).toHaveText(nom);
