@@ -52,7 +52,7 @@ test("REQ028_AC8_AC7_ordre_de_Tab_complet_et_contour_de_focus_a_chaque_arret", a
       const e = document.activeElement;
       const s = getComputedStyle(e);
       // Le contour peut être porté par l'élément ou par la zone qui le contient (éditeur, terminal).
-      const z = e.closest(".zone-code, .terminal-zone");
+      const z = e.closest(".zone-code, .terminal-zone, .ya-term-tabs .onglet-cellule");
       const t = z ? getComputedStyle(z) : s;
       return [s.outlineStyle !== "none" && s.outlineWidth !== "0px", t.outlineStyle !== "none" && t.outlineWidth !== "0px"];
     });
@@ -211,7 +211,7 @@ async function dansLesDeuxThemes(page, lecture) {
 /** Les commandes à icône visibles : nom accessible, icône, texte visible et taille. Le nombre de changements du rail est hors d'AC-031-1 (AC-037-7). */
 const commandes = (page) =>
   page.evaluate(() =>
-    [...document.querySelectorAll("button:has(> svg[data-icone]):not(.ya-btn-primary), [role=tab]:has(> svg[data-icone])")]
+    [...document.querySelectorAll("button:has(> svg[data-icone]):not(.ya-btn-primary, .ya-term-tabs .onglet), .ya-activity [role=tab]:has(> svg[data-icone])")]
       .filter((e) => e.getClientRects().length > 0)
       .map((e) => {
         const r = e.getBoundingClientRect();
@@ -235,7 +235,7 @@ test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_san
     toutes.push(...(await commandes(page)));
   }
   const noms = new Set(toutes.map((c) => c.nom));
-  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Ouverture rapide", "Thème clair", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Réduire le shell", "Fermer le shell", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Pull", "Push"]) {
+  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Ouverture rapide", "Thème clair", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Réduire le shell", "Fermer le shell", "Fermer shell 1", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Pull", "Push"]) {
     expect(noms.has(attendu), attendu).toBe(true);
   }
   // AC-031-6 : 24 × 24 px, sauf une action de ligne (20 × 20) et la fermeture d'un onglet (18 × 18).

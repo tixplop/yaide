@@ -443,3 +443,137 @@ test("REQ019_AC2_fenetre_changee_sur_un_autre_onglet_le_shell_repris_remplit_sa_
   await taper(page, "stty size");
   await expect(ecran(page)).toContainText(apres);
 });
+
+const croix = (page, n) => page.getByRole("button", { name: `Fermer shell ${n}`, exact: true });
+const pleinFermer = (page, n) => dialogue(page, `Fermer shell ${n} ?`).getByRole("button", { name: "Fermer", exact: true });
+const estActif = (page, n) => expect(page.getByRole("tab", { name: `shell ${n}`, exact: true })).toHaveAttribute("aria-selected", "true");
+
+test("REQ041_AC1_AC2_AC3_AC5_croix_de_shell_2_depuis_shell_1_actif", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(onglets(page)).toHaveCount(2);
+  await page.getByRole("tab", { name: "shell 2", exact: true }).click();
+  await taper(page, "sleep 300 & echo PID=$! FIN$((1+1))");
+  await expect(ecran(page)).toContainText("FIN2");
+  const pid = Number((await ecran(page).innerText()).match(/PID=(\d+) FIN2/)[1]);
+  await page.getByRole("tab", { name: "shell 1", exact: true }).click();
+  await estActif(page, 1);
+  for (const n of [1, 2]) expect(await croix(page, n).evaluate((e) => getComputedStyle(e.closest(".bouton-enveloppe") ?? e).opacity)).toBe("1");
+  await croix(page, 2).click();
+  const dlg = dialogue(page, "Fermer shell 2 ?");
+  await expect(dlg).toBeVisible();
+  await estActif(page, 1);
+  await page.keyboard.press("Escape");
+  await expect(dlg).toHaveCount(0);
+  await expect(onglets(page)).toHaveCount(2);
+  await expect.poll(() => focusDansTerminal(page)).toBe(true);
+  expect(vivant(pid)).toBe(true);
+  await croix(page, 2).click();
+  await pleinFermer(page, 2).click();
+  await expect(dlg).toHaveCount(0);
+  await expect(onglets(page)).toHaveText(["shell 1"]);
+  await estActif(page, 1);
+  await expect.poll(() => focusDansTerminal(page)).toBe(true);
+  await expect.poll(() => vivant(pid)).toBe(false);
+});
+
+test("REQ041_AC4_croix_de_l_onglet_actif_voisin_puis_dernier_shell", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  for (const n of [2, 3]) {
+    await page.getByRole("button", { name: "Nouveau shell" }).click();
+    await expect(onglets(page)).toHaveCount(n);
+  }
+  await page.getByRole("tab", { name: "shell 2", exact: true }).click();
+  await croix(page, 2).click();
+  await pleinFermer(page, 2).click();
+  await expect(onglets(page)).toHaveText(["shell 1", "shell 3"]);
+  await estActif(page, 3);
+  await expect.poll(() => focusDansTerminal(page)).toBe(true);
+  await croix(page, 3).click();
+  await pleinFermer(page, 3).click();
+  await expect(onglets(page)).toHaveText(["shell 1"]);
+  await estActif(page, 1);
+  await expect.poll(() => focusDansTerminal(page)).toBe(true);
+  await croix(page, 1).click();
+  await pleinFermer(page, 1).click();
+  await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Nouveau shell" })).toBeFocused();
+});
+
+test("REQ041_AC6_suppr_sur_l_onglet_meme_dialogue_echap_rend_le_focus_a_l_onglet", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(onglets(page)).toHaveCount(2);
+  const tab2 = page.getByRole("tab", { name: "shell 2", exact: true });
+  await tab2.focus();
+  await page.keyboard.press("Delete");
+  const dlg = dialogue(page, "Fermer shell 2 ?");
+  await expect(dlg).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dlg).toHaveCount(0);
+  await expect(tab2).toBeFocused();
+  await page.keyboard.press("Delete");
+  await pleinFermer(page, 2).click();
+  await expect(onglets(page)).toHaveText(["shell 1"]);
+  await expect.poll(() => focusDansTerminal(page)).toBe(true);
+  // Dernier shell : Suppr sur son onglet, puis « Fermer » → focus sur « Nouveau shell ».
+  await page.getByRole("tab", { name: "shell 1", exact: true }).focus();
+  await page.keyboard.press("Delete");
+  await pleinFermer(page, 1).click();
+  await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Nouveau shell" })).toBeFocused();
+});
+
+test("REQ041_AC7_coupure_croix_puis_suppr_sans_dialogue", async ({ page }) => {
+  await page.goto(relais.origine + "/");
+  await page.getByLabel("Mot de passe").fill("mdp");
+  await page.keyboard.press("Enter");
+  await page.getByRole("tab", { name: "shell 1" }).waitFor();
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(onglets(page)).toHaveCount(2);
+  relais.couper();
+  await expect(page.getByText("Connexion perdue. Modifications gardées.")).toBeVisible({ timeout: 5000 });
+  const alerte = page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." });
+  await croix(page, 2).click();
+  await expect(alerte.first()).toBeVisible();
+  await alerte.first().evaluate((e) => { e.dataset.vu = "1"; });
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect.poll(() => focusDansTerminal(page)).toBe(true);
+  const actif = page.getByRole("tab", { name: "shell 2", exact: true });
+  await actif.focus();
+  await page.keyboard.press("Delete");
+  await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." }).and(page.locator(":not([data-vu])")).first()).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(actif).toBeFocused();
+  await expect(onglets(page)).toHaveCount(2);
+  relais.retablir();
+});
+
+test("REQ041_AC8_AC9_presentation_de_la_barre_et_de_la_croix", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(onglets(page)).toHaveCount(2);
+  const barre = page.getByRole("tablist", { name: "Shells" });
+  await expect(barre).toHaveClass(/ya-term-tabs/);
+  await expect(barre).not.toHaveClass(/ya-tabs/);
+  expect((await barre.boundingBox()).height).toBe(30);
+  expect(await barre.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(await page.evaluate(() => {
+    const t = document.createElement("div");
+    t.style.backgroundColor = "var(--bg-000)";
+    document.body.append(t);
+    const c = getComputedStyle(t).backgroundColor;
+    t.remove();
+    return c;
+  }));
+  const tab = page.getByRole("tab", { name: "shell 1", exact: true });
+  expect((await tab.boundingBox()).height).toBe(22);
+  const icone = await tab.locator("svg").first().boundingBox();
+  expect([icone.width, icone.height]).toEqual([14, 14]);
+  const x = await croix(page, 2).boundingBox();
+  expect(x.width).toBeGreaterThanOrEqual(18);
+  expect(x.height).toBeGreaterThanOrEqual(18);
+  await expect(croix(page, 2)).toHaveAttribute("tabindex", "-1");
+  await expect(croix(page, 2)).toHaveText("");
+  await croix(page, 2).hover();
+  await expect(page.getByRole("tooltip", { name: "Fermer shell 2" })).toBeVisible();
+});

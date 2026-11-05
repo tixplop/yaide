@@ -44,7 +44,7 @@ export function vueShells({ dire, surZone = () => {} }) {
   boutonNouveau.addEventListener("click", () => nouveau());
   boutonReduire.addEventListener("click", () => reduire());
   boutonReduits.addEventListener("click", () => ouvrirMenu());
-  boutonFermer.addEventListener("click", () => demanderFermeture());
+  boutonFermer.addEventListener("click", () => demanderFermeture(actif, "rail"));
   racine.commandes = [boutonNouveau.enveloppe, boutonReduire.enveloppe, boutonReduits.enveloppe, boutonFermer.enveloppe];
 
   const parNumero = (liste) => liste.sort((a, b) => a.id - b.id);
@@ -95,9 +95,11 @@ export function vueShells({ dire, surZone = () => {} }) {
     }
     if (!vis.some((s) => s.id === actif)) actif = vis[0].id;
     onglet = onglets({
-      onglets: vis.map((s) => ({ id: String(s.id), libelle: `shell ${s.id}` })),
+      presentation: "shells",
+      onglets: vis.map((s) => ({ id: String(s.id), libelle: `shell ${s.id}`, icone: "terminal", fermable: true })),
       actif: String(actif),
       surChoix: (id) => activer(Number(id), true),
+      surFermer: (id, origine) => demanderFermeture(Number(id), origine),
     });
     onglet.setAttribute("aria-label", "Shells");
     entete.replaceChildren(onglet);
@@ -179,9 +181,21 @@ export function vueShells({ dire, surZone = () => {} }) {
     else replacerFocus(note);
   }
 
-  function demanderFermeture() {
-    if (etat === "coupe") return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
-    const id = actif;
+  // Rend le focus selon l'origine de la demande, après une annulation ou une coupure.
+  function rendreFocus(origine, coupure) {
+    if (origine === "rail") {
+      if (!coupure) boutonFermer.focus();
+    } else if (origine === "croix") {
+      if (actif !== null) shells.get(actif).terminal.focus();
+      else focusSansZone();
+    } else onglet?.querySelector("[role=tab][aria-selected=true]")?.focus();
+  }
+
+  function demanderFermeture(id = actif, origine = "rail") {
+    if (etat === "coupe") {
+      dire({ texte: TEXTE_COUPURE, variante: "alerte" });
+      return rendreFocus(origine, true);
+    }
     if (!shells.has(id)) return;
     const phrase = document.createElement("p");
     phrase.textContent = "Les programmes qui y tournent seront arrêtés. Cette action est définitive.";
@@ -191,7 +205,7 @@ export function vueShells({ dire, surZone = () => {} }) {
     const ok = bouton({ libelle: "Fermer", variante: "danger" });
     const annulation = () => {
       dlg.fermer({ rendreFocus: false });
-      boutonFermer.focus();
+      rendreFocus(origine, false);
     };
     const dlg = dialogue({ titre: `Fermer shell ${id} ?`, contenu: [zone], actions: [annuler, ok], focusInitial: annuler, surAnnuler: annulation });
     annuler.addEventListener("click", annulation);

@@ -67,6 +67,7 @@ Yaide écoute sur toutes les adresses de la machine. Le mot de passe est la seul
 | Suppr | onglet de fichier qui a le focus | Ferme l'onglet |
 | Entrée | onglet qui a le focus | Met le focus dans l'éditeur ou le terminal |
 | F2 | ligne de l'arborescence | Renomme ou déplace |
+| Suppr | onglet de shell qui a le focus | Ferme le shell, après confirmation |
 | Suppr | ligne de l'arborescence | Supprime, après confirmation |
 | Menu ou Maj+F10 | ligne de l'arborescence | Ouvre le menu de la ligne (comme le clic droit) |
 | Ctrl+Entrée | champ « Message » (Git) | Lance le commit |
@@ -74,7 +75,7 @@ Yaide écoute sur toutes les adresses de la machine. Le mot de passe est la seul
 | Flèches haut et bas | poignée « Hauteur des shells » | Agrandit ou réduit la zone des shells |
 | Échap | dialogue | Ferme le dialogue et rend le focus |
 
-Quatre boutons en bas du rail, à gauche, agissent sur les shells : « Nouveau shell », « Réduire le shell », « Shells réduits » et « Fermer le shell ». « Réduire le shell » retire le shell actif de la barre d'onglets sans l'arrêter : ses programmes continuent. « Shells réduits » liste les shells réduits (avec leur nombre) ; en choisir un le fait revenir à sa place. Sans shell visible, la zone des shells disparaît et l'éditeur prend toute la hauteur ; « Nouveau shell » ou un shell réduit qu'on affiche la fait revenir. Les shells réduits le restent après un rechargement de la page. On ne ferme pas un shell réduit : affichez-le d'abord.
+Quatre boutons en bas du rail, à gauche, agissent sur les shells : « Nouveau shell », « Réduire le shell », « Shells réduits » et « Fermer le shell ». Chaque onglet de shell a aussi sa croix, qui ferme son shell après la même confirmation. « Réduire le shell » retire le shell actif de la barre d'onglets sans l'arrêter : ses programmes continuent. « Shells réduits » liste les shells réduits (avec leur nombre) ; en choisir un le fait revenir à sa place. Sans shell visible, la zone des shells disparaît et l'éditeur prend toute la hauteur ; « Nouveau shell » ou un shell réduit qu'on affiche la fait revenir. Les shells réduits le restent après un rechargement de la page. On ne ferme pas un shell réduit : affichez-le d'abord.
 
 Quand le focus est dans un shell, toutes les touches que le navigateur laisse passer vont au shell, dont Ctrl+S et Ctrl+P. Seul Ctrl+Maj+F reste à Yaide.
 
