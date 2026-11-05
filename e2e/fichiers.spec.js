@@ -326,6 +326,7 @@ test("REQ034_AC2_AC19_partie_vide_menu_du_projet_sans_changer_la_selection_ni_re
   await ouvrir(page);
   await ligne(page, "src").click();
   await ligne(page, "main.rs").click();
+  await expect(page.locator(".cm-content")).toBeFocused(); // la lecture du fichier est finie : elle ne prendra plus le focus au menu
   await clicVide(page);
   const m = menu(page, "Actions sur le projet");
   await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Commit"]);

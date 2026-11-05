@@ -15,7 +15,7 @@ const dossierDe = (chemin) => chemin.split("/").slice(0, -1).join("/");
  * V-005. Rappels : `surBranche({ branche, detachee } | null)`, `surDiff({ chemin, texte, avis })`,
  * `diffOuvert()` (chemin du diff ouvert ou null), `fermerDiff()`, `surDisque()` (le disque a peut-être changé),
  * `surEtat(etat | null)` (à chaque lecture, panneau masqué ou non ; `null` hors d'un dépôt ou sans lecture possible).
- * Rend `{ corps, rafraichir(), montrer(oui), detruire() }`.
+ * Rend `{ corps, rafraichir(), relire() (silencieuse), montrer(oui), detruire() }`.
  */
 export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOuvert = () => null, fermerDiff = () => {}, surDisque = () => {}, surEtat = () => {} }) {
   const corps = document.createElement("div");
@@ -30,6 +30,8 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
   let sequence = 0;
   let refocaliser = null; // focus voulu par l'action en cours, à la place du contrôle d'origine
   let detruit = false;
+  let derniere = null; // clé de la dernière réponse appliquée, pour que la relecture ignore ce qui n'a pas changé
+  let cleHaut = null; // clé de ce qui est affiché dans la ligne « Branche » et près de « Commit »
 
   // De haut en bas : branche avec Pull et Push, message, Commit, messages ; puis la liste, qui défile.
   const formulaire = document.createElement("div");
@@ -67,8 +69,29 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
     if (detruit || n !== sequence) return;
     if (r.coupure) {
       if (etat) dire({ texte: TEXTE_COUPURE, variante: "alerte", fermable: true });
-      else refus = { texte: TEXTE_COUPURE };
-    } else if (r.cause === "pas-depot") {
+      else {
+        refus = { texte: TEXTE_COUPURE };
+        derniere = null;
+      }
+      surBranche(etat ? { branche: etat.branche, detachee: etat.detachee } : null);
+      surEtat(etat);
+      afficher();
+    } else appliquer(r);
+  }
+
+  /** Relecture silencieuse (toutes les 3 s) : ni message, ni « Chargement… », et rien n'est redessiné sans changement. */
+  async function relire() {
+    if (occupe) return;
+    const n = sequence;
+    const r = await gitEtat();
+    if (detruit || occupe || n !== sequence || r.coupure || (r.cause && r.cause !== "pas-depot")) return;
+    if (JSON.stringify(r) === derniere) return;
+    appliquer(r);
+  }
+
+  function appliquer(r) {
+    derniere = JSON.stringify(r);
+    if (r.cause === "pas-depot") {
       etat = null;
       refus = { pasDepot: true };
     } else if (r.cause) {
@@ -109,27 +132,47 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
 
   function afficher() {
     if (detruit) return;
-    const avait = zoneListe.querySelector("[role=listbox]")?.contains(document.activeElement);
+    const f = document.activeElement;
+    const listeAvant = zoneListe.querySelector("[role=listbox]");
+    const avait = listeAvant?.contains(f);
+    const focusChemin = avait ? (f.closest("[data-chemin]")?.dataset.chemin ?? selection) : null;
+    const ligneFocus = avait ? f.closest("[data-chemin]") : null;
+    let precedente = ligneFocus?.previousElementSibling;
+    while (precedente && !precedente.dataset.chemin) precedente = precedente.previousElementSibling;
+    const voisine = precedente?.dataset.chemin;
+    const defilement = zoneListe.scrollTop;
     formulaire.hidden = !etat;
     if (!etat) {
+      cleHaut = null;
       if (!refus) return zoneListe.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
       if (refus.pasDepot) return zoneListe.replaceChildren(indication({ texte: "Ce dossier n'est pas un dépôt git." }));
       return zoneListe.replaceChildren(message({ texte: refus.texte, detail: refus.detail, variante: "erreur" }));
     }
-    const b = champ({ libelle: "Branche", libelleMasque: true, type: "liste", options: etat.branches, valeur: etat.detachee ? "" : etat.branche });
-    const select = b.querySelector("select");
-    if (etat.detachee) {
-      const o = document.createElement("option");
-      o.textContent = "(détachée)";
-      o.value = "";
-      o.disabled = true;
-      select.prepend(o);
-      select.value = "";
+    const cle = JSON.stringify([etat.branche, etat.branches, etat.detachee, occupe, enCours]);
+    if (cle !== cleHaut) {
+      cleHaut = cle;
+      const label = ligneBranche.contains(f) ? f.getAttribute("aria-label") : null;
+      const dansBranche = ligneBranche.contains(f);
+      const dansCommit = zoneCommit.contains(f);
+      const b = champ({ libelle: "Branche", libelleMasque: true, type: "liste", options: etat.branches, valeur: etat.detachee ? "" : etat.branche });
+      const select = b.querySelector("select");
+      if (etat.detachee) {
+        const o = document.createElement("option");
+        o.textContent = "(détachée)";
+        o.value = "";
+        o.disabled = true;
+        select.prepend(o);
+        select.value = "";
+      }
+      select.disabled = occupe;
+      select.addEventListener("change", () => changerBranche(select.value));
+      ligneBranche.replaceChildren(icone("branch", 14), b, ...boutonsSynchro());
+      zoneCommit.replaceChildren(boutonAction("Commit", "principal", "check", "Ctrl+Entrée", "Control+Enter", valider));
+      if (dansBranche) {
+        const cible = label ? [...ligneBranche.querySelectorAll("button")].find((x) => x.getAttribute("aria-label") === label) : null;
+        (cible ?? select).focus({ preventScroll: true });
+      } else if (dansCommit) zoneCommit.querySelector("button")?.focus({ preventScroll: true });
     }
-    select.disabled = occupe;
-    select.addEventListener("change", () => changerBranche(select.value));
-    ligneBranche.replaceChildren(icone("branch", 14), b, ...boutonsSynchro());
-    zoneCommit.replaceChildren(boutonAction("Commit", "principal", "check", "Ctrl+Entrée", "Control+Enter", valider));
 
     let contenu;
     if (etat.changements.length === 0) contenu = indication({ texte: "Aucun changement." });
@@ -151,7 +194,12 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
       });
     }
     zoneListe.replaceChildren(contenu);
-    if (avait && selection !== null) ligneDe(selection)?.focus();
+    zoneListe.scrollTop = defilement;
+    if (avait) {
+      const cible = (focusChemin !== null && ligneDe(focusChemin)) || (ligneFocus && voisine !== undefined ? ligneDe(voisine) : null);
+      if (cible) cible.focus({ preventScroll: true });
+      else if (ligneFocus) saisie().focus({ preventScroll: true });
+    }
   }
 
   function boutonAction(nom, variante, icone, raccourci, touche, clic) {
@@ -271,6 +319,7 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
   return {
     corps,
     rafraichir,
+    relire,
     /** Vrai si un état a été lu : le dossier est un dépôt. */
     estDepot: () => etat !== null,
     /** Met le focus dans « Message » ; le texte déjà écrit reste. */

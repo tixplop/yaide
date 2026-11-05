@@ -237,7 +237,22 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     },
   });
 
+  // Relecture de l'état git, et de l'arbre s'il est affiché, toutes les 3 s ; la suivante part à la fin de la précédente.
+  const INTERVALLE_RELECTURE = 3000;
+  let minuteurRelecture = setTimeout(relire, INTERVALLE_RELECTURE);
+  async function relire() {
+    if (etat !== "coupe") {
+      try {
+        await Promise.all([git.relire(), fichiers.corps.hidden ? null : fichiers.relire()]);
+      } catch {
+        // Une réponse illisible ne doit pas arrêter la boucle : la suivante réessaie.
+      }
+    }
+    if (!detruite) minuteurRelecture = setTimeout(relire, INTERVALLE_RELECTURE);
+  }
+
   racine.detruire = () => {
+    clearTimeout(minuteurRelecture);
     arreter();
     detruite = true;
     window.removeEventListener("resize", recalculer);

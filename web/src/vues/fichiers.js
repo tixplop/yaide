@@ -31,7 +31,7 @@ function texteErreur(r) {
  * `projet` : nom affiché dans l'en-tête. `estDepot()` dit si le dossier est un dépôt git ; `surCommit()` mène au message de commit.
  * `lireEtat()` demande la lecture de l'état git, qui revient par `definirStatuts(Map | null)` (voir `statuts.js`).
  * Rappels : `surOuvrir({ chemin, contenu, version })`, `surRenomme({ de, vers })`, `surSupprime({ chemin, dossier })`, `surLecture(oui)` (début et fin d'une lecture).
- * Rend `{ corps, entete (à poser dans `panneau.entete`, à masquer avec le panneau), rafraichir(), definirStatuts(statuts), definirCourant(chemin | null), detruire() }`.
+ * Rend `{ corps, entete (à poser dans `panneau.entete`, à masquer avec le panneau), rafraichir(), relire() (silencieuse), definirStatuts(statuts), definirCourant(chemin | null), detruire() }`.
  */
 export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estDepot = () => false, surCommit = () => {}, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {} }) {
   const corps = document.createElement("div");
@@ -49,6 +49,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   let statuts = null; // Map chemin -> { lettre, mot }, ou null hors d'un dépôt
   let courant = null; // chemin du fichier de l'onglet actif
   let detruit = false;
+  let generation = 0; // incrémenté par chaque lecture bruyante : une relecture qui la croise est jetée
 
   const bFichier = bouton({ icone: "file-plus", variante: "discret", nomAccessible: "Nouveau fichier" });
   const bDossier = bouton({ icone: "folder-plus", variante: "discret", nomAccessible: "Nouveau dossier" });
@@ -112,6 +113,9 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   function afficher(focaliser = false) {
     if (detruit) return;
     const avait = focaliser || zoneArbre.contains(document.activeElement);
+    const focalisee = focaliser ? undefined : document.activeElement?.closest?.("[data-chemin]")?.dataset.chemin;
+    const defile = zoneArbre.closest(".cadre-panneau-corps") ?? zoneArbre; // le conteneur qui défile
+    const defilement = defile.scrollTop;
     const racine = dossiers.get("");
     if (!racine || racine.etat === "charge") return zoneArbre.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
     if (racine.etat === "erreur") {
@@ -137,12 +141,20 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     });
     zoneArbre.replaceChildren(arbre);
     animerChevrons(arbre);
-    if (avait && selection !== null) ligneDe(selection)?.focus();
+    defile.scrollTop = defilement;
+    // Le focus reste sur la ligne qui l'avait, même non sélectionnée (après AC-045-8).
+    const cible = (focalisee !== undefined && ligneDe(focalisee)) || (selection !== null ? ligneDe(selection) : null);
+    if (avait && cible) {
+      sansSelection = true;
+      cible.focus({ preventScroll: true });
+      sansSelection = false;
+    }
   }
 
   const ligneDe = (chemin) => [...zoneArbre.querySelectorAll("[data-chemin]")].find((e) => e.dataset.chemin === chemin);
 
   async function charger(chemin) {
+    generation++;
     const avant = dossiers.get(chemin);
     if (!avant?.entrees) {
       const d = { etat: "charge", lent: false };
@@ -167,6 +179,45 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   async function rafraichir() {
     await Promise.all(["", ...ouverts].map(charger).concat(lireEtat()));
     afficher();
+  }
+
+  /** Relecture silencieuse (toutes les 3 s) des dossiers déjà lus : ni message, ni « Chargement… », rien de redessiné sans changement. */
+  async function relire() {
+    if (!dossiers.get("")?.entrees) return;
+    const g = generation;
+    const cibles = ["", ...ouverts].filter((c) => dossiers.get(c)?.entrees);
+    const reponses = await Promise.all(cibles.map((c) => listerDossier(c)));
+    if (detruit || g !== generation) return;
+    const avant = lignes("", 0, []);
+    const cleAvant = JSON.stringify(avant);
+    cibles.forEach((c, i) => {
+      const r = reponses[i];
+      if (r.entrees) dossiers.set(c, { etat: "ok", entrees: r.entrees });
+      else if (r.cause === "introuvable" && c !== "") {
+        ouverts.delete(c);
+        dossiers.delete(c);
+      }
+    });
+    const apres = lignes("", 0, []);
+    if (JSON.stringify(apres) === cleAvant) return;
+    const ids = new Set(apres.map((l) => l.id));
+    const focalisee = zoneArbre.contains(document.activeElement) ? document.activeElement.closest?.("[data-chemin]")?.dataset.chemin : undefined;
+    const disparue = (id) => id !== null && id !== undefined && !ids.has(id) && avant.some((l) => l.id === id);
+    let suivant = null;
+    if (disparue(focalisee)) {
+      const rang = avant.findIndex((l) => l.id === focalisee);
+      suivant = avant.slice(0, rang).reverse().find((l) => ids.has(l.id) && !l.id.startsWith(FACTICE))?.id ?? "";
+    }
+    if (disparue(selection)) {
+      selection = null;
+      majBoutons();
+    }
+    afficher();
+    if (suivant === null) return;
+    // Le focus passe sur la ligne voisine sans la sélectionner : AC-045-8 veut « plus de ligne sélectionnée ».
+    sansSelection = true;
+    (suivant === "" ? bFichier : (ligneDe(suivant) ?? bFichier)).focus({ preventScroll: true });
+    sansSelection = false;
   }
 
   async function deplier(id) {
@@ -213,7 +264,9 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     surLecture(false);
   }
 
+  let sansSelection = false;
   zoneArbre.addEventListener("focusin", (e) => {
+    if (sansSelection) return;
     const chemin = e.target.closest?.("[data-chemin]")?.dataset.chemin;
     if (chemin === undefined) return;
     selection = chemin;
@@ -452,6 +505,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     corps,
     entete,
     rafraichir,
+    relire,
     /** Pose les statuts git et redessine l'arbre, sans relire le disque. */
     definirStatuts(nouveaux) {
       const cle = (m) => JSON.stringify(m && [...m]);

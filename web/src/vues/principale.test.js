@@ -695,3 +695,121 @@ test("REQ047_AC2_ouvrir_ajoute_un_et_la_fermeture_1000_retire_un", async () => {
   terminer(1);
   expect(b.querySelector(".ya-badge").hidden).toBe(true);
 });
+
+// ---- T-057 : relecture toutes les 3 s ----
+
+/** Serveur simulé pour la relecture : compte les appels git et arbre ; `etat.coupe` coupe la session. */
+function simulerRelecture() {
+  const s = { coupe: false, git: 0, arbre: 0, retenir: null, casse: false };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url) => {
+      if (url === "/api/session") {
+        if (s.coupe) throw new TypeError("coupure");
+        return { status: 204 };
+      }
+      if (url === "/api/git/etat") {
+        s.git += 1;
+        if (s.retenir) await s.retenir;
+        if (s.casse) return { ok: true, status: 200, json: async () => { throw new SyntaxError("JSON illisible"); } };
+        return { ok: true, status: 200, json: async () => ({ branche: "main", detachee: false, branches: ["main"], changements: [] }) };
+      }
+      if (url.startsWith("/api/fichiers?")) {
+        s.arbre += 1;
+        return { ok: true, status: 200, json: async () => ({ entrees: [{ nom: "a.txt", dossier: false }] }) };
+      }
+      return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
+    }),
+  );
+  return s;
+}
+
+async function avecHorloge(corps) {
+  vi.useFakeTimers();
+  try {
+    await corps();
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+test("REQ045_AC1_AC2_toutes_les_3_s_l_arbre_et_git_sont_relus_sur_le_panneau_Fichiers", () =>
+  avecHorloge(async () => {
+    const s = simulerRelecture();
+    monter();
+    await vi.advanceTimersByTimeAsync(100);
+    const [g, a] = [s.git, s.arbre];
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(s.git).toBe(g + 1);
+    expect(s.arbre).toBe(a + 1);
+  }));
+
+test("REQ045_AC2_sur_le_panneau_Git_git_est_relu_et_l_arbre_ne_l_est_pas", () =>
+  avecHorloge(async () => {
+    const s = simulerRelecture();
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(100);
+    [...vue.querySelectorAll("[role=tab]")].find((t) => t.getAttribute("aria-label") === "Git").click();
+    await vi.advanceTimersByTimeAsync(100);
+    const [g, a] = [s.git, s.arbre];
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(s.git).toBe(g + 1);
+    expect(s.arbre).toBe(a);
+  }));
+
+test("REQ045_AC9_aucune_relecture_pendant_la_coupure_et_reprise_au_retour", () =>
+  avecHorloge(async () => {
+    const s = simulerRelecture();
+    monter();
+    await vi.advanceTimersByTimeAsync(100);
+    s.coupe = true;
+    await vi.advanceTimersByTimeAsync(1600);
+    const [g, a] = [s.git, s.arbre];
+    await vi.advanceTimersByTimeAsync(9000);
+    expect([s.git, s.arbre]).toEqual([g, a]);
+    s.coupe = false;
+    await vi.advanceTimersByTimeAsync(1600);
+    const apres = s.arbre;
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(s.arbre).toBeGreaterThan(apres);
+  }));
+
+test("REQ045_AC11_une_relecture_de_plus_de_3_s_n_en_lance_pas_une_seconde", () =>
+  avecHorloge(async () => {
+    const s = simulerRelecture();
+    monter();
+    await vi.advanceTimersByTimeAsync(100);
+    const g = s.git;
+    let liberer;
+    s.retenir = new Promise((r) => (liberer = r));
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(s.git).toBe(g + 1);
+    s.retenir = null;
+    liberer();
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(s.git).toBe(g + 2);
+  }));
+
+test("REQ045_plus_aucun_appel_apres_detruire", () =>
+  avecHorloge(async () => {
+    const s = simulerRelecture();
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(100);
+    vue.detruire();
+    const [g, a] = [s.git, s.arbre];
+    await vi.advanceTimersByTimeAsync(10000);
+    expect([s.git, s.arbre]).toEqual([g, a]);
+  }));
+
+test("REQ045_AC9_une_reponse_illisible_n_arrete_pas_la_boucle_de_relecture", () =>
+  avecHorloge(async () => {
+    const s = simulerRelecture();
+    monter();
+    await vi.advanceTimersByTimeAsync(100);
+    s.casse = true;
+    await vi.advanceTimersByTimeAsync(3100);
+    const g = s.git;
+    s.casse = false;
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(s.git).toBe(g + 1);
+  }));

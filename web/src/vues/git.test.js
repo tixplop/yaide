@@ -30,7 +30,7 @@ async function monter(reponses = {}, options = {}) {
     const chemin = url.split("?")[0];
     appels.push({ url, methode: opts.method ?? "GET", corps: opts.body });
     const r = reponses[chemin] ?? (chemin === "/api/git/etat" ? ETAT : null);
-    const v = typeof r === "function" ? r() : r;
+    const v = await (typeof r === "function" ? r() : r);
     if (v === null || v === undefined) return { ok: true, status: 204 };
     if (v.status) return json(v.corps, v.status);
     return json(v);
@@ -415,4 +415,157 @@ test("REQ022_AC9_en_tete_de_section_en_11_px_sur_16_px", () => {
   expect(m[1]).toContain("font-size: 11px");
   expect(m[1]).toContain("line-height: 16px");
   expect(m[1]).not.toContain("line-height: normal");
+});
+
+// ---- Relecture silencieuse (REQ-045) ----
+
+const ETAT2 = { ...ETAT, changements: [...ETAT.changements, { chemin: "zeta.txt", statut: "nouveau", indexe: false, lettre: "U" }] };
+
+test("REQ045_AC5_la_relecture_garde_le_focus_sur_Pull_Commit_et_le_champ_Message", async () => {
+  let courant = ETAT;
+  const { vue } = await monter({ "/api/git/etat": () => courant });
+  const saisie = vue.corps.querySelector("textarea");
+  saisie.value = "brouillon";
+  saisie.focus();
+  saisie.setSelectionRange(2, 4);
+  courant = ETAT2;
+  await vue.relire();
+  expect(vue.corps.querySelectorAll("[role=option]")).toHaveLength(3);
+  expect(document.activeElement).toBe(saisie);
+  expect(saisie.value).toBe("brouillon");
+  expect([saisie.selectionStart, saisie.selectionEnd]).toEqual([2, 4]);
+  bouton(vue, "Pull").focus();
+  courant = ETAT;
+  await vue.relire();
+  expect(vue.corps.querySelectorAll("[role=option]")).toHaveLength(2);
+  expect(document.activeElement).toBe(bouton(vue, "Pull"));
+  courant = { ...ETAT2, branche: "travail" };
+  const avant = bouton(vue, "Pull");
+  await vue.relire();
+  expect(document.activeElement).not.toBe(avant);
+  expect(document.activeElement).toBe(bouton(vue, "Pull"));
+  bouton(vue, "Commit").focus();
+  courant = ETAT;
+  await vue.relire();
+  expect(document.activeElement).toBe(bouton(vue, "Commit"));
+});
+
+test("REQ045_AC5_la_ligne_qui_a_le_focus_le_garde_et_la_disparue_passe_a_la_precedente", async () => {
+  let courant = ETAT2;
+  const { vue } = await monter({ "/api/git/etat": () => courant });
+  const ligne = (n) => [...vue.corps.querySelectorAll("[role=option]")].find((e) => e.dataset.chemin === n);
+  ligne("src/main.rs").focus();
+  courant = { ...ETAT2, changements: [...ETAT2.changements].reverse() };
+  await vue.relire();
+  expect(document.activeElement).toBe(ligne("src/main.rs"));
+  courant = { ...ETAT2, changements: ETAT2.changements.filter((c) => c.chemin !== "src/main.rs") };
+  await vue.relire();
+  expect(document.activeElement).toBe(ligne("zeta.txt"));
+});
+
+test("REQ045_AC6_sans_changement_rien_n_est_redessine_et_la_liste_Branche_reste_ouverte", async () => {
+  const { vue, appels } = await monter();
+  const lignes = [...vue.corps.querySelectorAll("[role=option]")];
+  const select = vue.corps.querySelector("select");
+  select.focus();
+  const n = appels.length;
+  await vue.relire();
+  await vue.relire();
+  expect(appels.length).toBe(n + 2);
+  expect([...vue.corps.querySelectorAll("[role=option]")].every((e, i) => e === lignes[i])).toBe(true);
+  expect(vue.corps.querySelector("select")).toBe(select);
+  expect(document.activeElement).toBe(select);
+  expect(vue.corps.textContent).not.toContain("Chargement");
+});
+
+test("REQ045_AC9_AC10_coupure_ou_refus_git_laissent_l_affichage_et_ne_disent_rien", async () => {
+  let reponse = ETAT;
+  const { vue, dire } = await monter({ "/api/git/etat": () => reponse });
+  const avant = vue.corps.innerHTML;
+  reponse = { status: 409, corps: { cause: "git", message: "boum" } };
+  await vue.relire();
+  expect(vue.corps.innerHTML).toBe(avant);
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("réseau"); }));
+  await vue.relire();
+  expect(vue.corps.innerHTML).toBe(avant);
+  expect(dire).not.toHaveBeenCalled();
+});
+
+test("REQ045_AC4_un_dossier_qui_devient_un_depot_remplace_le_message", async () => {
+  let reponse = { status: 409, corps: { cause: "pas-depot", message: "x" } };
+  const { vue } = await monter({ "/api/git/etat": () => reponse });
+  expect(vue.corps.textContent).toContain("Ce dossier n'est pas un dépôt git.");
+  reponse = ETAT;
+  await vue.relire();
+  expect(vue.corps.textContent).not.toContain("pas un dépôt");
+  expect(vue.corps.querySelector("select").value).toBe("main");
+});
+
+test("REQ045_AC2_AC3_la_relecture_apporte_statuts_et_branche_aux_rappels", async () => {
+  let reponse = ETAT;
+  const surEtat = vi.fn();
+  const { vue, surBranche } = await monter({ "/api/git/etat": () => reponse }, { surEtat });
+  reponse = { ...ETAT2, branche: "essai", branches: ["main", "essai"] };
+  await vue.relire();
+  expect(surBranche).toHaveBeenLastCalledWith({ branche: "essai", detachee: false });
+  expect(surEtat.mock.lastCall[0].changements).toHaveLength(3);
+});
+
+test("REQ045_relecture_jetee_si_une_action_a_incremente_sequence", async () => {
+  let reponse = ETAT;
+  let retenue = null;
+  const { vue } = await monter({ "/api/git/etat": () => (retenue ? retenue.then(() => ETAT) : reponse) });
+  let liberer;
+  retenue = new Promise((r) => (liberer = r));
+  const lancee = vue.relire(); // reçoit l'ancien état, après la fin de l'action
+  reponse = ETAT2;
+  retenue = null;
+  await vue.rafraichir(); // une action incrémente `sequence` et affiche le nouvel état
+  expect(vue.corps.querySelectorAll("[role=option]")).toHaveLength(3);
+  liberer();
+  await lancee;
+  expect(vue.corps.querySelectorAll("[role=option]")).toHaveLength(3);
+});
+
+test("REQ045_relecture_jetee_si_occupe_pendant_un_Pull_ou_levee_pendant_la_lecture", async () => {
+  let reponse = ETAT;
+  let retenue = null;
+  let finPull;
+  const { vue, appels } = await monter({
+    "/api/git/etat": () => (retenue ? retenue.then(() => ETAT) : reponse),
+    "/api/git/pull": () => new Promise((r) => (finPull = () => r({ status: 204 }))),
+  });
+  bouton(vue, "Pull").click(); // occupe
+  await attendre();
+  reponse = ETAT2;
+  const n = appels.length;
+  await vue.relire();
+  expect(appels.length).toBe(n);
+  expect(vue.corps.querySelectorAll("[role=option]")).toHaveLength(2);
+  finPull();
+  await attendre();
+  await attendre();
+  expect(vue.corps.querySelectorAll("[role=option]")).toHaveLength(3);
+  // Une relecture en cours quand une action commence est jetée.
+  reponse = { ...ETAT2, changements: ETAT2.changements.slice(0, 1) };
+  let liberer;
+  retenue = new Promise((r) => (liberer = r));
+  const lancee = vue.relire();
+  bouton(vue, "Pull").click();
+  await attendre();
+  liberer();
+  await lancee;
+  expect(vue.corps.querySelectorAll("[role=option]")).toHaveLength(3);
+  finPull();
+});
+
+test("REQ045_AC10_apres_un_refus_la_relecture_suivante_met_l_affichage_a_jour", async () => {
+  let reponse = ETAT;
+  const { vue } = await monter({ "/api/git/etat": () => reponse });
+  reponse = { status: 409, corps: { cause: "git", message: "boum" } };
+  await vue.relire();
+  expect(vue.corps.querySelectorAll("[role=option]")).toHaveLength(2);
+  reponse = ETAT2;
+  await vue.relire();
+  expect(vue.corps.querySelectorAll("[role=option]")).toHaveLength(3);
 });
