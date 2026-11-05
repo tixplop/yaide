@@ -221,12 +221,15 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const arreter = surveiller({
     surEtat(nouvel) {
       if (nouvel === "expiree") return surExpiree();
+      const retour = etat === "coupe";
       etat = nouvel;
       shells.definirEtat(nouvel);
       montrerCoupure();
       editeur.definirEtat(nouvel);
       if (nouvel !== "coupe") {
         if (places.message?.textContent.includes(TEXTE_COUPURE)) montrerBandeau("message", null);
+        // Une lecture de l'état git perdue pendant la coupure : personne d'autre ne la relance.
+        if (retour) git.rafraichir();
       }
     },
   });

@@ -607,3 +607,37 @@ test("REQ009_AC9_l_en_tete_du_projet_est_hors_du_corps_defilant_et_masque_avec_l
   [...vue.querySelectorAll("[role=tab]")].find((t) => t.getAttribute("aria-label") === "Git").click();
   expect(entete.hidden).toBe(true);
 });
+
+test("REQ015_AC10_une_lecture_git_perdue_pendant_la_coupure_est_refaite_au_retour", async () => {
+  vi.useFakeTimers();
+  let coupe = false;
+  let lectures = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url) => {
+      if (url === "/api/session") {
+        if (coupe) throw new TypeError("coupure");
+        return { status: 204 };
+      }
+      if (url === "/api/git/etat") {
+        lectures += 1;
+        if (lectures === 1) throw new TypeError("coupure");
+        return { ok: true, status: 200, json: async () => ({ branche: "master", detachee: false, branches: ["master"], changements: [] }) };
+      }
+      return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
+    }),
+  );
+  try {
+    const { vue } = monter();
+    coupe = true;
+    await vi.advanceTimersByTimeAsync(1600);
+    expect(vue.querySelector(".git-liste .message")?.textContent).toBe("Connexion perdue. Réessayez au retour.");
+    coupe = false;
+    await vi.advanceTimersByTimeAsync(1600);
+    expect(lectures).toBe(2);
+    expect(vue.querySelector(".git-liste .message")).toBeNull();
+    expect(vue.querySelector(".ya-status-branche").textContent).toBe("master");
+  } finally {
+    vi.useRealTimers();
+  }
+});
