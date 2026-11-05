@@ -144,6 +144,7 @@ test("REQ016_AC3_apres_une_sauvegarde_recharger_affiche_le_disque_sans_point", a
 test("REQ015_AC8_pendant_la_coupure_deplier_un_dossier_est_refuse", async ({ page }) => {
   await ouvrirYaide(page, relais.origine);
   await expect(arbre(page)).toBeVisible();
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
   await couper(page);
   await ligne(page, "src").click();
   await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." })).toBeVisible();

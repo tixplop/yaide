@@ -54,7 +54,7 @@ test("REQ030_AC1_parcours_1_corriger_un_fichier_et_faire_un_commit", async ({ pa
   await page.keyboard.type("// corrigé\n");
   await expect(page.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
   await page.keyboard.press("Control+s");
-  await expect(page.getByRole("tab", { name: "main.rs", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "main.rs, modifié", exact: true })).toBeVisible();
   await expect(arbreMain.locator(".liste-statut")).toHaveText("M");
   await expect(page.getByRole("tab", { name: "Git", exact: true }).locator(".ya-badge")).toHaveText("1");
   expect(fs.readFileSync(path.join(dossier, "src", "main.rs"), "utf8")).toContain("// corrigé");

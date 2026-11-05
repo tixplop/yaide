@@ -29,7 +29,7 @@ export function depotExemple(nom = "projet") {
 }
 
 /** Lance Yaide sur un port libre (ou `port`). Rend `{ origine, port, dossier, arreter, relancer }`. */
-export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple(), port, shell, reprise = false, binaire } = {}) {
+export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple(), port, shell = "/bin/sh", reprise = false, binaire } = {}) {
   const imposé = port !== undefined;
   const racine = path.dirname(dossier);
   const home = path.join(racine, "home");

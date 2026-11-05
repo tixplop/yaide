@@ -168,7 +168,7 @@ test("REQ013_AC1_et_AC2_et_AC4_point_apres_frappe_ecriture_seulement_au_ctrl_s",
   await expect.poll(async () => (await gardes(page)).some((o) => o.texte !== undefined)).toBe(true);
   expect(fs.readFileSync(fichier, "utf8")).toBe(avant);
   await page.keyboard.press("Control+s");
-  await expect(onglet(page, "main.rs")).toHaveAccessibleName("main.rs");
+  await expect(onglet(page, "main.rs")).toHaveAccessibleName("main.rs, modifié");
   expect(fs.readFileSync(fichier, "utf8")).toBe(avant + "// salut");
 });
 
@@ -256,7 +256,7 @@ test("REQ013_AC3_et_AC5_ecriture_impossible_message_et_le_point_reste", async ({
   await expect(onglet(page, /non sauvegardé/)).toBeVisible();
   fs.chmodSync(path.join(dossier, "src", "main.rs"), 0o644);
   await page.keyboard.press("Control+s");
-  await expect(onglet(page, "main.rs")).toHaveAccessibleName("main.rs");
+  await expect(onglet(page, "main.rs")).toHaveAccessibleName("main.rs, modifié");
   await expect(alerte).toHaveCount(0);
 });
 

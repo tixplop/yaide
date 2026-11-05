@@ -33,6 +33,8 @@ const ouvrir = async (page) => {
   const dossier = await demarrer();
   await ouvrirYaide(page, yaide.origine);
   await expect(arbre(page)).toBeVisible();
+  // état git lu : le menu de l'arbre a « Indexer »
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
   return dossier;
 };
 
@@ -176,7 +178,7 @@ test("REQ009_AC2_renommer_et_AC3_deplacer", async ({ page }) => {
   expect(fs.existsSync(path.join(dossier, "a.txt"))).toBe(false);
   expect(fs.existsSync(path.join(dossier, "c.txt"))).toBe(true);
 
-  await ligne(page, "c.txt").click();
+  await ligne(page, "c.txt").focus();
   await page.keyboard.press("F2");
   await page.getByLabel("Nouveau chemin").fill("src/c.txt");
   await page.keyboard.press("Enter");
@@ -188,7 +190,7 @@ test("REQ009_AC2_renommer_et_AC3_deplacer", async ({ page }) => {
 
 test("REQ009_AC4_et_AC7_nom_deja_pris_le_dialogue_reste_ouvert", async ({ page }) => {
   const dossier = await ouvrir(page);
-  await ligne(page, "a.txt").click();
+  await ligne(page, "a.txt").focus();
   await page.keyboard.press("F2");
   const champ = page.getByLabel("Nouveau chemin");
   await champ.fill("b.txt");
@@ -231,7 +233,7 @@ test("REQ009_erreurs_du_champ_vide_et_chemin_hors_projet", async ({ page }) => {
 
 test("REQ010_AC1_et_AC4_supprimer_un_fichier_apres_confirmation", async ({ page }) => {
   const dossier = await ouvrir(page);
-  await ligne(page, "notes.txt").click();
+  await ligne(page, "notes.txt").focus();
   await page.keyboard.press("Delete");
   const dlg = page.getByRole("dialog", { name: "Supprimer notes.txt ?" });
   await expect(dlg.getByText("Cette action est définitive.")).toBeVisible();
@@ -351,6 +353,8 @@ test("REQ034_AC2_projet_vide_dans_un_depot_propose_aussi_commit", async ({ page 
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "p") });
   await ouvrirYaide(page, yaide.origine);
   await expect(page.getByText("Dossier vide.")).toBeVisible();
+  // état git lu : le menu du projet a « Commit »
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
   await page.getByText("Dossier vide.").click({ button: "right" });
   const m = menu(page, "Actions sur le projet");
   await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Commit"]);
@@ -506,7 +510,10 @@ test("REQ034_AC13_indexer_pendant_une_coupure_dit_connexion_perdue_et_rien_ne_ch
   const relais = await lancerRelais(yaide.port);
   try {
     await ouvrirYaide(page, relais.origine);
+    // état git lu : le menu de l'arbre a « Indexer »
+    await expect(page.locator(".ya-status-branche")).toBeVisible();
     await ligne(page, "a.txt").click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Indexer" })).toBeVisible();
     relais.couper();
     await page.getByRole("menuitem", { name: "Indexer" }).click();
     await expect(page.getByText("Connexion perdue. Réessayez au retour.").first()).toBeVisible();

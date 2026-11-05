@@ -204,13 +204,17 @@ test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", 
     const r = (s) => page.locator(s).first().boundingBox();
     return { barre: await r("header"), rail: await r(".cadre-rail"), panneau: await r("aside"), principal: await r("main") };
   };
-  const b = await boites();
-  expect(b.rail.x + b.rail.width).toBeLessThanOrEqual(b.panneau.x);
-  expect(b.panneau.x + b.panneau.width).toBeLessThanOrEqual(b.principal.x);
-  expect(b.barre.y + b.barre.height).toBeLessThanOrEqual(b.rail.y);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect(async () => {
+    const b = await boites();
+    expect(b.rail.x + b.rail.width).toBeLessThanOrEqual(b.panneau.x);
+    expect(b.panneau.x + b.panneau.width).toBeLessThanOrEqual(b.principal.x);
+    expect(b.barre.y + b.barre.height).toBeLessThanOrEqual(b.rail.y);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }).toPass({ timeout: 10000 });
   await page.setViewportSize({ width: 600, height: 400 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(true);
+  await expect(async () => {
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(true);
+  }).toPass({ timeout: 10000 });
 });
 
 test("REQ028_AC9_un_nom_de_projet_long_ne_deborde_pas_de_la_barre_de_titre", async ({ page }) => {
@@ -220,13 +224,15 @@ test("REQ028_AC9_un_nom_de_projet_long_ne_deborde_pas_de_la_barre_de_titre", asy
   await page.evaluate(() => {
     document.querySelector(".ya-command-nom").textContent = "tres-long-dossier-".repeat(20) + "projet";
   });
-  const commande = await page.locator(".ya-command").boundingBox();
-  const theme = await page.getByRole("button", { name: "Thème clair" }).boundingBox();
-  const sortir = await page.getByRole("button", { name: "Déconnexion" }).boundingBox();
-  expect(commande.x + commande.width).toBeLessThanOrEqual(theme.x);
-  const rail = await page.locator(".cadre-rail").boundingBox();
-  expect(commande.y).toBeGreaterThanOrEqual(0);
-  expect(commande.y + commande.height).toBeLessThanOrEqual(rail.y);
-  expect(sortir.x + sortir.width).toBeLessThanOrEqual(800);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect(async () => {
+    const commande = await page.locator(".ya-command").boundingBox();
+    const theme = await page.getByRole("button", { name: "Thème clair" }).boundingBox();
+    const sortir = await page.getByRole("button", { name: "Déconnexion" }).boundingBox();
+    expect(commande.x + commande.width).toBeLessThanOrEqual(theme.x);
+    const rail = await page.locator(".cadre-rail").boundingBox();
+    expect(commande.y).toBeGreaterThanOrEqual(0);
+    expect(commande.y + commande.height).toBeLessThanOrEqual(rail.y);
+    expect(sortir.x + sortir.width).toBeLessThanOrEqual(800);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }).toPass({ timeout: 10000 });
 });

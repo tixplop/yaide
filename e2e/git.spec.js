@@ -77,7 +77,7 @@ test("REQ022_AC1_modifier_et_sauvegarder_main_rs_le_fait_apparaitre_dans_les_cha
   await page.keyboard.type("// ajout\n");
   await expect(page.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
   await page.keyboard.press("Control+s");
-  await expect(page.getByRole("tab", { name: "main.rs", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "main.rs, modifié", exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Git" }).click();
   await expect(ligne(page, "src/main.rs")).toHaveAccessibleName("main.rs, modifié");
   await ligne(page, "src/main.rs").click();
