@@ -52,7 +52,7 @@ export function terminal({ flux, connecte = true, numero, surTaille } = {}) {
     theme: themeDepuisTokens(),
     fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim(),
     fontSize: 12.5,
-    lineHeight: 1.44,
+    lineHeight: 1,
   });
   term.open(zone);
   // Ctrl+Maj+F reste à l'application : xterm ne le traite pas, il remonte jusqu'au document.

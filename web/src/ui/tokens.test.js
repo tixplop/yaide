@@ -313,6 +313,8 @@ test("REQ033_AC6_contrastes_des_icones_contours_et_poignee", () => {
     };
     egal("--ink-faint", "--bg-000", null, [5.2, 4.4][k]);
     ["--bg-000", "--bg-100", "--bg-200"].forEach((f, i) => egal("--ink-muted", f, null, [[6.7, 6.5, 6.3], [5.8, 6.2, 6.6]][k][i]));
+    egal("--ink-muted", "--bg-300", null, [5.4, 6.6][k]);
+    egal("--ink", "--bg-400", null, [7.3, 13.2][k]);
     const minMsg = Math.min(...msg.map((m) => ratio(theme, "--ink-muted", m, "--bg-200")));
     expect(minMsg, `--ink-muted sur --msg-* (${theme})`).toBeGreaterThanOrEqual([4.6, 5.2][k]);
     const minFocus = Math.min(...fonds.slice(0, 5).concat(fonds.slice(5)).map((f) => ratio(theme, "--accent-fg", f)));

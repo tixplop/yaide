@@ -89,7 +89,7 @@ test("REQ036_AC5_theme_sorti_des_tokens_avec_tableau_ansi", () => {
   expect(t.term.options.cursorStyle).toBe("block");
   expect(t.term.options.fontFamily).toBe(jeton("--font-mono"));
   expect(t.term.options.fontSize).toBe(12.5);
-  expect(t.term.options.lineHeight).toBe(1.44);
+  expect(t.term.options.lineHeight).toBe(1);
 });
 
 test("REQ038_AC2_changer_de_theme_repose_le_theme_sans_toucher_a_l_affichage", async () => {

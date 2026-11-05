@@ -101,6 +101,15 @@ test("REQ036_AC12_stty_size_donne_la_zone_affichee_une_fois_la_police_chargee", 
   expect(c).toBe(Math.floor((mesure.zoneW - mesure.barre) / mesure.cellW));
 });
 
+test("REQ036_AC5_une_ligne_du_terminal_mesure_au_plus_18_px", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await ouvrirYaide(page, yaide.origine);
+  await page.evaluate(() => document.fonts.load('12.5px "JetBrains Mono"'));
+  await tailleStable(page);
+  const h = await page.evaluate(() => document.querySelector(".terminal:not([hidden]) .xterm-rows > div").getBoundingClientRect().height);
+  expect(h).toBeLessThanOrEqual(18);
+});
+
 test("REQ019_AC3_exit_ferme_l_onglet", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
   await page.getByRole("button", { name: "Nouveau shell" }).click();

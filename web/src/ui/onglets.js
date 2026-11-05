@@ -80,7 +80,7 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
       const x = bouton({ icone: "x", variante: "discret", taille: "onglet", nomAccessible: `Fermer ${nom}` });
       x.classList.add("onglet-fermer");
       x.tabIndex = -1;
-      x.addEventListener("click", () => surFermer?.(o.id));
+      x.addEventListener("click", () => surFermer?.(o.id, "croix"));
       cellule.append(x.enveloppe);
     }
     elements.set(o.id, t);
@@ -114,7 +114,7 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
     else if (e.key === "Home") cible = ids[0];
     else if (e.key === "End") cible = ids[ids.length - 1];
     else if (e.key === "Delete") {
-      if (o.fermable) surFermer?.(o.id);
+      if (o.fermable) surFermer?.(o.id, "touche");
       return;
     } else return;
     e.preventDefault();

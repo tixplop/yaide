@@ -115,10 +115,10 @@ test("REQ028_AC4_fermeture_par_bouton_et_par_suppr", () => {
   expect(x.tabIndex).toBe(-1);
   expect(r.querySelectorAll(".onglet-fermer").length).toBe(1);
   x.click();
-  expect(surFermer).toHaveBeenCalledWith("a");
+  expect(surFermer).toHaveBeenCalledWith("a", "croix");
   surFermer.mockClear();
   touche(tab(r, 0), "Delete");
-  expect(surFermer).toHaveBeenCalledWith("a");
+  expect(surFermer).toHaveBeenCalledWith("a", "touche");
   surFermer.mockClear();
   touche(tab(r, 1), "Delete");
   expect(surFermer).not.toHaveBeenCalled();
@@ -227,7 +227,8 @@ test("REQ036_AC7_presentations_fichiers_shells_rail", () => {
   expect(regle(".ya-term-tabs")).toContain("height: 30px");
   expect(regle(".ya-term-tabs")).toContain("background: var(--bg-000)");
   expect(regle(".ya-term-tabs .onglet")).toContain("height: 22px");
-  expect(regle(".ya-term-tabs .onglet[aria-selected=\"true\"]")).toContain("background: var(--bg-300)");
+  expect(regle(".ya-term-tabs .onglet-cellule:has(> .onglet[aria-selected=\"true\"])")).toContain("background: var(--bg-300)");
+  expect(regle(".ya-term-tabs .onglet[aria-selected=\"true\"]")).not.toContain("background");
   expect(regle(".ya-activity")).toContain("width: var(--size-activity)");
   expect(regle(".ya-activity")).toContain("background: var(--bg-000)");
   // Le filet du rail est celui du cadre (un seul).
@@ -295,4 +296,30 @@ test("REQ031_AC1_fermeture_d_onglet_par_icone_x_sans_texte", () => {
 test("REQ031_AC4_onglet_a_icone_exige_un_nom_accessible", () => {
   expect(() => onglets({ onglets: [{ id: "a", icone: "files" }] })).toThrow(/nomAccessible/);
   expect(() => onglets({ onglets: [{ id: "a" }] })).toThrow(/libelle/);
+});
+
+test("REQ041_AC1_shells_fermables_une_croix_par_onglet_a_opacite_1", () => {
+  const surFermer = vi.fn();
+  const surChoix = vi.fn();
+  const r = onglets({ presentation: "shells", actif: "1", surFermer, surChoix, onglets: [{ id: "1", libelle: "shell 1", icone: "terminal", fermable: true }, { id: "2", libelle: "shell 2", icone: "terminal", fermable: true }] });
+  const croix = r.querySelectorAll(".onglet-fermer");
+  expect(croix.length).toBe(2);
+  expect(croix[1].getAttribute("aria-label")).toBe("Fermer shell 2");
+  expect(croix[1].tabIndex).toBe(-1);
+  croix[1].click();
+  expect(surFermer).toHaveBeenCalledWith("2", "croix");
+  expect(surChoix).not.toHaveBeenCalled();
+  expect(tab(r, 0).getAttribute("aria-selected")).toBe("true");
+  touche(tab(r, 0), "Delete");
+  expect(surFermer).toHaveBeenCalledWith("1", "touche");
+  expect(regle(".ya-term-tabs .onglet-cellule .bouton-enveloppe")).toContain("opacity: 1");
+  expect(regle(".ya-term-tabs")).toContain("flex: none");
+  expect(regle(".ya-term-tabs")).toContain("scrollbar-width: none");
+  expect(regle(".ya-term-tabs .onglet-cellule")).toContain("height: 22px");
+  expect(regle(".ya-term-tabs .onglet-cellule")).toContain("padding-right");
+  expect(regle(".ya-term-tabs")).toContain("overflow-x: auto");
+  expect(regle(".ya-term-tabs .onglet-cellule:hover .onglet")).toContain("color: var(--ink)");
+  expect(regle(".ya-term-tabs .onglet:focus-visible")).toContain("outline: none");
+  expect(regle(".ya-term-tabs .onglet")).toContain("padding: 0 var(--space-1) 0 var(--space-2)");
+  expect(regle(".ya-term-tabs .onglet-cellule:has(> .onglet:focus-visible)")).toContain("outline: var(--trait-fort) solid var(--accent-fg)");
 });
