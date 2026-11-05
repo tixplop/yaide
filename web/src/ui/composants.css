@@ -59,6 +59,15 @@
 .message-actions { display: flex; gap: var(--space-2); }
 .message-detail { flex-basis: 100%; margin: 0; max-height: var(--hauteur-detail); overflow: auto; font: var(--texte-petit) var(--font-mono); white-space: pre-wrap; }
 
+/* C-006 : glisser-déposer. L'identifiant inexistant dans `:not(#depot)` fait passer la cible avant les fonds de sélection et de survol. */
+.ya-tree .liste-ligne[data-depot]:not(#depot) { background: var(--accent-soft); outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
+.ya-tree .liste-ligne[data-depot-contenu]:not(#depot) { background: var(--accent-soft); }
+.ya-tree[data-depot]:not(#depot) { background: var(--accent-soft); outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
+.ya-tree[data-depot]:not(#depot) .liste-ligne { background: none; }
+.liste-attenuee[data-depot]:not(#depot), .liste-attenuee[data-depot-contenu]:not(#depot), .ya-tree[data-depot]:not(#depot) .liste-attenuee { color: var(--ink-muted); }
+.ya-glisse { position: fixed; left: -1000px; top: 0; box-sizing: border-box; max-width: 240px; display: flex; align-items: center; gap: var(--space-1); padding: 3px 8px; background: var(--bg-300); color: var(--ink); box-shadow: var(--shadow-popover); border-radius: var(--radius-md); font-family: var(--font-sans); font-size: 12.5px; line-height: 18px; white-space: nowrap; }
+.ya-glisse .liste-icone svg { width: 15px; height: 15px; }
+
 /* C-012 : info-bulle. `info-bulle` porte le comportement, `ya-tooltip` l'aspect. */
 .info-bulle { position: fixed; inset: auto; margin: 0; box-sizing: border-box; }
 .ya-tooltip { border: 0; padding: 3px 8px; background: var(--bg-300); color: var(--ink); box-shadow: var(--shadow-popover); border-radius: var(--radius-md); font-family: var(--font-sans); font-size: 12.5px; line-height: 18px; white-space: nowrap; }
@@ -409,7 +418,8 @@ body { margin: 0; }
 .fichiers-entete { flex: none; box-sizing: border-box; height: var(--size-control); display: flex; align-items: center; gap: var(--trait); padding: 0 var(--space-1) 0 var(--space-3); }
 .fichiers-projet { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--texte-petit) var(--font-sans); color: var(--ink); }
 .fichiers-entete .bouton-enveloppe { flex: none; display: flex; }
-.fichiers-arbre { flex: 1 1 auto; min-height: 0; }
+.fichiers-arbre { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.fichiers-arbre > .ya-tree { flex: 1 0 auto; padding-bottom: var(--size-row); }
 
 .recherche-corps { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1); }
 .recherche-corps[hidden] { display: none; }

@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test, vi } from "vitest";
+import { icone } from "./icones.js";
+import { infoBulle } from "./info-bulle.js";
 import { iconeDe, liste } from "./liste.js";
 
 const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
@@ -690,4 +692,280 @@ test("REQ049_AC3_clic_droit_menu_et_maj_f10_ramenent_a_une_ligne", () => {
     expect(surMenu, nom).toHaveBeenCalledTimes(1);
     expect(surMenu.mock.calls[0][0], nom).toBe("b");
   }
+});
+
+// Glisser-déposer : jsdom n'a pas de dataTransfer, on en pose un faux.
+function fauxTransfert() {
+  return { donnees: {}, effectAllowed: "", dropEffect: "", setData(t, v) { this.donnees[t] = v; }, setDragImage: vi.fn() };
+}
+function evt(type, cible, extra = {}) {
+  const e = new Event(type, { bubbles: true, cancelable: true });
+  e.dataTransfer = extra.dt ?? fauxTransfert();
+  if ("relatedTarget" in extra) Object.defineProperty(e, "relatedTarget", { value: extra.relatedTarget });
+  cible.dispatchEvent(e);
+  return e;
+}
+const lignesDepot = [
+  { id: "src", libelle: "src", enfants: true, ouvert: true },
+  { id: "src/a.txt", libelle: "a.txt", niveau: 1 },
+  { id: "src/lib", libelle: "lib", niveau: 1, enfants: true, ouvert: true },
+  { id: "src/lib/x.txt", libelle: "x.txt", niveau: 2 },
+  { id: "doc", libelle: "doc", enfants: true, ouvert: true },
+  { id: "chg", libelle: "Chargement…", niveau: 1, sansMenu: true },
+  { id: "b.txt", libelle: "b.txt" },
+  { id: "c.txt", libelle: "c.txt" },
+];
+function depot(options = {}, lignes = lignesDepot) {
+  const surDepot = vi.fn();
+  const surSelection = vi.fn();
+  const surActiver = vi.fn();
+  const surBasculer = vi.fn();
+  const l = liste({ variante: "arbre", multiple: true, lignes, surDepot, surSelection, surActiver, surBasculer, ...options });
+  document.body.append(l);
+  const ligne = (id) => items(l)[lignes.filter((x) => !x.groupe).findIndex((x) => x.id === id)];
+  return { l, surDepot, surSelection, surActiver, surBasculer, ligne };
+}
+const marques = (l) => items(l).filter((e) => e.hasAttribute("data-depot")).map((e) => e.querySelector(".liste-libelle").textContent);
+const contenus = (l) => items(l).filter((e) => e.hasAttribute("data-depot-contenu")).map((e) => e.querySelector(".liste-libelle").textContent);
+
+test("REQ050_AC14_AC17_draggable_type_unique_sans_text_plain", () => {
+  const { l, ligne, surActiver, surBasculer } = depot();
+  expect(items(l).map((e) => e.getAttribute("draggable"))).toEqual(["true", "true", "true", "true", "true", null, "true", "true"]);
+  for (const id of ["b.txt", "src"]) {
+    evt("dragstart", ligne(id));
+    evt("dragover", ligne("doc"));
+    evt("drop", ligne("doc"));
+    evt("dragend", ligne(id));
+  }
+  expect(surActiver).not.toHaveBeenCalled();
+  expect(surBasculer).not.toHaveBeenCalled();
+  const dt = fauxTransfert();
+  evt("dragstart", ligne("b.txt"), { dt });
+  expect(dt.effectAllowed).toBe("move");
+  expect(Object.keys(dt.donnees)).toEqual(["application/x-yaide-lignes"]);
+  expect(dt.setDragImage).toHaveBeenCalledTimes(1);
+  expect(dt.setDragImage.mock.calls[0][1]).toBe(12);
+  expect(dt.setDragImage.mock.calls[0][2]).toBe(12);
+  evt("dragend", ligne("b.txt"));
+  expect(liste({ variante: "arbre", lignes: lignesDepot }).querySelector("[draggable]")).toBeNull();
+});
+
+test("REQ050_AC17_image_nom_ou_nombre", () => {
+  const { l, ligne } = depot({ selection: ["src", "src/a.txt"] });
+  const dt = fauxTransfert();
+  evt("dragstart", ligne("src"), { dt });
+  const image = dt.setDragImage.mock.calls[0][0];
+  expect(image.textContent).toBe("src");
+  expect(image.getAttribute("aria-hidden")).toBe("true");
+  expect(image.isConnected).toBe(true);
+  evt("dragend", ligne("src"));
+  expect(image.isConnected).toBe(false);
+  const d2 = depot({ selection: ["b.txt", "c.txt", "doc"] });
+  const dt2 = fauxTransfert();
+  evt("dragstart", d2.ligne("b.txt"), { dt: dt2 });
+  expect(dt2.setDragImage.mock.calls[0][0].textContent).toBe("3 éléments");
+  evt("dragend", d2.ligne("b.txt"));
+  l.remove();
+  d2.l.remove();
+});
+
+test("REQ050_AC4_cible_dossier_fichier_racine", () => {
+  const { l, surDepot, ligne } = depot();
+  evt("dragstart", ligne("b.txt"));
+  const sur = (el) => {
+    const o = evt("dragover", el);
+    expect(o.defaultPrevented).toBe(true);
+    evt("drop", el);
+  };
+  // Les écouteurs sont retirés au dépôt : on relance le glissé à chaque fois.
+  sur(ligne("doc"));
+  expect(surDepot).toHaveBeenLastCalledWith(["b.txt"], "doc", "b.txt");
+  evt("dragstart", ligne("b.txt"));
+  sur(ligne("src/a.txt"));
+  expect(surDepot).toHaveBeenLastCalledWith(["b.txt"], "src", "b.txt");
+  evt("dragstart", ligne("src/a.txt"));
+  sur(ligne("c.txt"));
+  expect(surDepot).toHaveBeenLastCalledWith(["src/a.txt"], undefined, "src/a.txt");
+  evt("dragstart", ligne("src/a.txt"));
+  sur(l);
+  expect(surDepot).toHaveBeenLastCalledWith(["src/a.txt"], undefined, "src/a.txt");
+});
+
+test("REQ050_AC18_marques_dossier_replie_racine", () => {
+  const { l, ligne } = depot();
+  evt("dragstart", ligne("b.txt"));
+  evt("dragover", ligne("src/a.txt"));
+  expect(marques(l)).toEqual(["src"]);
+  expect(contenus(l)).toEqual(["a.txt", "lib", "x.txt"]);
+  expect(l.hasAttribute("data-depot")).toBe(false);
+  evt("dragover", ligne("doc"));
+  expect(marques(l)).toEqual(["doc"]);
+  expect(contenus(l)).toEqual(["Chargement…"]);
+  evt("dragend", ligne("b.txt"));
+  evt("dragstart", ligne("src/a.txt"));
+  evt("dragover", l);
+  expect(l.hasAttribute("data-depot")).toBe(true);
+  expect(marques(l)).toEqual([]);
+  evt("dragover", ligne("c.txt"));
+  expect(l.hasAttribute("data-depot")).toBe(true);
+  expect(contenus(l)).toEqual([]);
+  evt("dragend", ligne("src/a.txt"));
+  const d = depot({}, [{ id: "a.txt", libelle: "a.txt" }, { id: "b.txt", libelle: "b.txt" }, { id: "d", libelle: "d", enfants: true }, { id: "z.txt", libelle: "z.txt" }]);
+  evt("dragstart", d.ligne("a.txt"));
+  evt("dragover", d.ligne("d"));
+  expect(marques(d.l)).toEqual(["d"]);
+  expect(contenus(d.l)).toEqual([]);
+  expect(d.ligne("d").getAttribute("aria-expanded")).toBe("false");
+  evt("dragend", d.ligne("a.txt"));
+});
+
+test("REQ050_AC18_marques_refaites_seulement_si_la_cible_change", () => {
+  const { l, ligne } = depot();
+  evt("dragstart", ligne("b.txt"));
+  evt("dragover", ligne("doc"));
+  ligne("doc").removeAttribute("data-depot");
+  evt("dragover", ligne("doc"));
+  expect(marques(l)).toEqual([]);
+  evt("dragend", ligne("b.txt"));
+});
+
+test("REQ050_AC8_AC19_cibles_refusees_sans_preventDefault", () => {
+  const { l, surDepot, ligne } = depot();
+  const dehors = document.createElement("div");
+  const ecouteur = vi.fn();
+  dehors.addEventListener("dragover", ecouteur);
+  document.body.append(dehors);
+  // Le dossier lui-même, un sous-dossier : refus.
+  evt("dragstart", ligne("src"));
+  for (const el of [ligne("src"), ligne("src/lib"), ligne("src/lib/x.txt"), ligne("chg"), dehors]) {
+    const o = evt("dragover", el);
+    expect(o.defaultPrevented).toBe(false);
+    expect(marques(l)).toEqual([]);
+    expect(l.hasAttribute("data-depot")).toBe(false);
+    evt("drop", el);
+  }
+  expect(ecouteur).not.toHaveBeenCalled();
+  expect(surDepot).not.toHaveBeenCalled();
+  evt("dragend", ligne("src"));
+  // Le dossier actuel : refus (a.txt est déjà dans src, b.txt à la racine).
+  evt("dragstart", ligne("src/a.txt"));
+  expect(evt("dragover", ligne("src/lib")).defaultPrevented).toBe(true);
+  expect(evt("dragover", ligne("src")).defaultPrevented).toBe(false);
+  expect(evt("dragover", ligne("src/lib/x.txt")).defaultPrevented).toBe(true);
+  evt("dragend", ligne("src/a.txt"));
+  evt("dragstart", ligne("b.txt"));
+  expect(evt("dragover", ligne("c.txt")).defaultPrevented).toBe(false);
+  expect(evt("dragover", l).defaultPrevented).toBe(false);
+  evt("dragend", ligne("b.txt"));
+  dehors.remove();
+});
+
+test("REQ050_AC15_marques_retirees_a_la_sortie_et_a_dragend", () => {
+  const { l, ligne } = depot();
+  evt("dragstart", ligne("b.txt"));
+  evt("dragover", ligne("doc"));
+  evt("dragleave", ligne("doc"), { relatedTarget: ligne("src") });
+  expect(marques(l)).toEqual(["doc"]);
+  evt("dragleave", ligne("doc"), { relatedTarget: null });
+  expect(marques(l)).toEqual([]);
+  evt("dragover", ligne("doc"));
+  expect(marques(l)).toEqual(["doc"]);
+  evt("dragend", ligne("b.txt"));
+  expect(marques(l)).toEqual([]);
+  evt("dragstart", ligne("b.txt"));
+  evt("dragover", ligne("src/a.txt"));
+  expect(marques(l)).toEqual(["src"]);
+  evt("drop", ligne("src/a.txt"));
+  expect(marques(l)).toEqual([]);
+  expect(contenus(l)).toEqual([]);
+});
+
+test("REQ050_AC2_AC3_lignes_a_deplacer", () => {
+  const { surDepot, ligne, l } = depot({ selection: ["b.txt", "c.txt"] });
+  evt("dragstart", ligne("c.txt"));
+  evt("drop", ligne("doc"));
+  expect(surDepot).toHaveBeenLastCalledWith(["b.txt", "c.txt"], "doc", "c.txt");
+  evt("dragstart", ligne("src/a.txt"));
+  evt("drop", ligne("doc"));
+  expect(surDepot).toHaveBeenLastCalledWith(["src/a.txt"], "doc", "src/a.txt");
+  l.remove();
+});
+
+test("REQ050_AC9_ligne_contenue_retiree", () => {
+  const { surDepot, ligne } = depot({ selection: ["src", "src/a.txt", "src/lib/x.txt", "b.txt"] });
+  evt("dragstart", ligne("src/a.txt"));
+  evt("drop", ligne("doc"));
+  expect(surDepot).toHaveBeenCalledWith(["src", "b.txt"], "doc", "src/a.txt");
+});
+
+test("REQ050_AC20_dragend_sans_depot_garde_la_selection", () => {
+  const { l, surDepot, surSelection, ligne } = depot({ selection: ["b.txt", "c.txt", "src"] });
+  evt("dragstart", ligne("doc"));
+  expect(document.activeElement).toBe(ligne("doc"));
+  evt("dragend", ligne("doc"));
+  expect(surDepot).not.toHaveBeenCalled();
+  expect(surSelection).not.toHaveBeenCalled();
+  expect(items(l).filter((e) => e.getAttribute("aria-selected") === "true").map((e) => e.textContent)).toEqual(["src", "b.txt", "c.txt"]);
+});
+
+test("REQ050_ecouteurs_de_document_retires_a_dragend", () => {
+  const ajouts = vi.spyOn(document, "addEventListener");
+  const retraits = vi.spyOn(document, "removeEventListener");
+  const { ligne } = depot();
+  evt("dragstart", ligne("b.txt"));
+  const poses = ajouts.mock.calls.filter(([t, , c]) => ["dragenter", "dragover", "drop"].includes(t) && c === true);
+  expect(poses.map(([t]) => t).sort()).toEqual(["dragenter", "dragover", "drop"]);
+  evt("dragend", ligne("b.txt"));
+  for (const [t, f] of poses) expect(retraits).toHaveBeenCalledWith(t, f, true);
+  ajouts.mockRestore();
+  retraits.mockRestore();
+});
+
+test("REQ050_surDepot_demande_la_variante_arbre", () => {
+  expect(() => liste({ lignes: lignes3, surDepot: () => {} })).toThrow(/surDepot/);
+});
+
+test("REQ050_AC17_dragstart_ferme_l_info_bulle_ouverte", () => {
+  vi.useFakeTimers();
+  const { ligne } = depot();
+  const a = document.createElement("button");
+  document.body.append(a);
+  infoBulle({ texte: "Renommer", ancre: a });
+  a.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  const ouverte = () => [...document.querySelectorAll('[role="tooltip"]')].filter((e) => e.dataset.ouverte === "true");
+  expect(ouverte()).toHaveLength(1);
+  evt("dragstart", ligne("b.txt"));
+  expect(ouverte()).toHaveLength(0);
+  evt("dragend", ligne("b.txt"));
+  vi.useRealTimers();
+});
+
+test("REQ050_AC17_image_plusieurs_lignes_porte_l_icone_files", () => {
+  const { ligne } = depot({ selection: ["b.txt", "c.txt"] });
+  const dt = fauxTransfert();
+  evt("dragstart", ligne("b.txt"), { dt });
+  const image = dt.setDragImage.mock.calls[0][0];
+  expect(image.querySelector("svg").innerHTML).toBe(icone("files").innerHTML);
+  evt("dragend", ligne("b.txt"));
+});
+
+test("REQ050_AC15_AC18_css_cible_de_depot_image_et_partie_vide", () => {
+  const cibleLigne = regle(".ya-tree .liste-ligne[data-depot]:not(#depot)");
+  expect(cibleLigne).toContain("background: var(--accent-soft)");
+  expect(cibleLigne).toContain("outline: var(--trait) solid var(--accent-fg)");
+  expect(cibleLigne).toContain("outline-offset: calc(-1 * var(--trait))");
+  expect(regle(".ya-tree .liste-ligne[data-depot-contenu]:not(#depot)")).toBe(" background: var(--accent-soft); ");
+  const racine = regle(".ya-tree[data-depot]:not(#depot)");
+  expect(racine).toContain("background: var(--accent-soft)");
+  expect(racine).toContain("outline: var(--trait) solid var(--accent-fg)");
+  expect(regle(".ya-tree[data-depot]:not(#depot) .liste-ligne")).toContain("background: none");
+  expect(regle(".ya-tree[data-depot]:not(#depot) .liste-attenuee")).toContain("color: var(--ink-muted)");
+  expect(regle(".liste-attenuee[data-depot]:not(#depot)")).toContain("color: var(--ink-muted)");
+  const image = regle(".ya-glisse");
+  for (const d of ["max-width: 240px", "background: var(--bg-300)", "box-shadow: var(--shadow-popover)", "border-radius: var(--radius-md)", "font-size: 12.5px", "line-height: 18px", "padding: 3px 8px"]) expect(image).toContain(d);
+  expect(regle(".fichiers-arbre")).toContain("flex-direction: column");
+  const arbre = regle(".fichiers-arbre > .ya-tree");
+  expect(arbre).toContain("flex: 1 0 auto");
+  expect(arbre).toContain("padding-bottom: var(--size-row)");
 });

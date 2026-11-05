@@ -1,6 +1,7 @@
 import { bouton } from "./bouton.js";
 import { compteur as compteurDe } from "./compteur.js";
 import { icone } from "./icones.js";
+import { fermerInfoBulleDans } from "./info-bulle.js";
 
 const VARIANTES = ["plate", "arbre"];
 let compteur = 0;
@@ -35,7 +36,7 @@ function decouper(texte, [debut, fin]) {
   return [c.slice(0, debut).join(""), c.slice(debut, fin).join(""), c.slice(fin).join("")];
 }
 
-export function liste({ variante = "plate", lignes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, surActiver, surBasculer, surMenu }) {
+export function liste({ variante = "plate", lignes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, surActiver, surBasculer, surMenu, surDepot }) {
   if (!VARIANTES.includes(variante)) throw new Error(`liste : variante inconnue « ${variante} »`);
   if (pilotage === "champ" && !champ) throw new Error("liste : champ requis avec pilotage « champ »");
   for (const l of lignes) {
@@ -44,6 +45,7 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
     if (l.statutDossier !== undefined && !STATUTS_DOSSIER.includes(l.statutDossier)) throw new Error(`liste : statutDossier inconnu « ${l.statutDossier} »`);
   }
   if (surMenu && variante !== "arbre") throw new Error("liste : surMenu demande la variante « arbre »");
+  if (surDepot && variante !== "arbre") throw new Error("liste : surDepot demande la variante « arbre »");
   if (multiple && variante !== "arbre") throw new Error("liste : multiple demande la variante « arbre »");
   const n = ++compteur;
   const arbre = variante === "arbre";
@@ -55,6 +57,14 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
   const donnees = lignes.filter((l) => !l.groupe);
   const elements = new Map();
   const ids = donnees.map((l) => l.id);
+  // id -> id du dossier parent (undefined à la racine), déduit de `niveau`.
+  const parents = new Map();
+  const dernierParNiveau = [];
+  for (const l of donnees) {
+    const niveau = l.niveau ?? 0;
+    parents.set(l.id, niveau > 0 ? dernierParNiveau[niveau - 1] : undefined);
+    dernierParNiveau[niveau] = l.id;
+  }
   const selectionnables = new Set(donnees.filter((l) => !l.sansMenu).map((l) => l.id));
   // Avec `multiple` : les lignes choisies, et le point de départ de Maj+clic.
   const choisies = new Set(multiple ? [].concat(selection ?? []).filter((id) => selectionnables.has(id)) : []);
@@ -122,6 +132,10 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
     if (arbre) {
       e.setAttribute("aria-level", String((l.niveau ?? 0) + 1));
       if (l.enfants) e.setAttribute("aria-expanded", String(Boolean(l.ouvert)));
+    }
+    if (surDepot && !l.sansMenu) {
+      e.setAttribute("draggable", "true");
+      e.addEventListener("dragstart", (ev) => debuterGlisse(ev, l.id));
     }
     if (surMenu && !l.sansMenu) {
       e.setAttribute("aria-haspopup", "menu");
@@ -267,6 +281,120 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
       champ.setAttribute("aria-activedescendant", elements.get(id).id);
       elements.get(id).scrollIntoView?.({ block: "nearest" });
     }
+  }
+
+  // Glisser-déposer du navigateur : les lignes viennent de la fermeture, jamais de `dataTransfer`.
+  const AUCUNE = Symbol("aucune");
+  let glisse = null; // { lignes, saisie, image, marque }
+
+  function ancetreDans(id, ensemble) {
+    for (let p = parents.get(id); p !== undefined; p = parents.get(p)) if (ensemble.has(p)) return true;
+    return false;
+  }
+
+  function debuterGlisse(ev, saisie) {
+    if (!ev.dataTransfer) return;
+    finirGlisse();
+    const voulues = multiple && choisies.has(saisie) ? new Set(choisies) : new Set([saisie]);
+    const lignesADeplacer = ids.filter((id) => voulues.has(id) && !ancetreDans(id, voulues));
+    const dt = ev.dataTransfer;
+    dt.effectAllowed = "move";
+    dt.setData("application/x-yaide-lignes", JSON.stringify(lignesADeplacer));
+    const image = document.createElement("div");
+    image.className = "ya-glisse";
+    image.setAttribute("aria-hidden", "true");
+    const nom = document.createElement("span");
+    nom.className = "liste-libelle";
+    if (lignesADeplacer.length === 1) {
+      const source = elements.get(lignesADeplacer[0]);
+      const i = source.querySelector(".liste-icone");
+      if (i) image.append(i.cloneNode(true));
+      nom.textContent = source.querySelector(".liste-libelle").textContent;
+    } else {
+      const i = document.createElement("span");
+      i.className = "liste-icone";
+      i.append(icone("files"));
+      image.append(i);
+      nom.textContent = `${lignesADeplacer.length} éléments`;
+    }
+    image.append(nom);
+    document.body.append(image);
+    dt.setDragImage?.(image, 12, 12);
+    fermerInfoBulleDans(document.body);
+    elements.get(saisie).focus();
+    glisse = { lignes: lignesADeplacer, saisie, image, marque: AUCUNE };
+    document.addEventListener("dragenter", survol, true);
+    document.addEventListener("dragover", survol, true);
+    document.addEventListener("drop", deposer, true);
+  }
+
+  // Dossier visé par l'événement : { cible } ou null si le dépôt est refusé.
+  function viser(ev) {
+    const cibleDom = ev.target;
+    if (!racine.contains(cibleDom)) return null;
+    const ligne = cibleDom.closest?.(".liste-ligne");
+    let cible;
+    if (ligne) {
+      const id = [...elements].find(([, e]) => e === ligne)[0];
+      if (donnees.find((l) => l.id === id).sansMenu) return null;
+      cible = donnees.find((l) => l.id === id).enfants ? id : parents.get(id);
+    }
+    const partants = new Set(glisse.lignes);
+    if (cible !== undefined && (partants.has(cible) || ancetreDans(cible, partants))) return null;
+    if (glisse.lignes.every((id) => parents.get(id) === cible)) return null;
+    return { cible };
+  }
+
+  function retirerMarques() {
+    if (!glisse) return;
+    glisse.marque = AUCUNE;
+    racine.removeAttribute("data-depot");
+    for (const e of elements.values()) {
+      e.removeAttribute("data-depot");
+      e.removeAttribute("data-depot-contenu");
+    }
+  }
+
+  function survol(ev) {
+    ev.stopPropagation();
+    const v = viser(ev);
+    if (!v) return retirerMarques();
+    ev.preventDefault();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+    if (glisse.marque === v.cible) return;
+    retirerMarques();
+    glisse.marque = v.cible;
+    if (v.cible === undefined) return racine.setAttribute("data-depot", "");
+    elements.get(v.cible).setAttribute("data-depot", "");
+    const niveau = donnees.find((l) => l.id === v.cible).niveau ?? 0;
+    for (let j = ids.indexOf(v.cible) + 1; j < donnees.length && (donnees[j].niveau ?? 0) > niveau; j++) elements.get(donnees[j].id).setAttribute("data-depot-contenu", "");
+  }
+
+  function deposer(ev) {
+    ev.stopPropagation();
+    const v = viser(ev);
+    if (!v) return;
+    ev.preventDefault();
+    const { lignes: partantes, saisie } = glisse;
+    finirGlisse();
+    surDepot(partantes, v.cible, saisie);
+  }
+
+  function finirGlisse() {
+    if (!glisse) return;
+    retirerMarques();
+    document.removeEventListener("dragenter", survol, true);
+    document.removeEventListener("dragover", survol, true);
+    document.removeEventListener("drop", deposer, true);
+    glisse.image.remove();
+    glisse = null;
+  }
+
+  if (surDepot) {
+    racine.addEventListener("dragend", finirGlisse);
+    racine.addEventListener("dragleave", (ev) => {
+      if (!ev.relatedTarget) retirerMarques();
+    });
   }
 
   // Le navigateur envoie aussi `contextmenu` après la touche Menu ou Maj+F10 : une seule ouverture.
