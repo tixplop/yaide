@@ -332,6 +332,7 @@ test("REQ019_REQ046_REQ047_parcours_15_arriver_sans_shell", async ({ page }) => 
   await page.getByRole("treeitem", { name: nomLigne("src") }).click();
   await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
   await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+  await gardeContient(page, "src/main.rs");
   await page.reload();
   await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
   const bouton = (nom) => page.getByRole("button", { name: nom, exact: true });
