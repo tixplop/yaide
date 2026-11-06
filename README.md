@@ -57,6 +57,18 @@ Yaide sert en HTTPS avec un certificat auto-signé, créé au premier lancement 
 
 Yaide écoute sur toutes les adresses de la machine. Le mot de passe est la seule protection, et le certificat auto-signé ne prouve pas l'identité du serveur. Quiconque atteint le port peut tenter de deviner le mot de passe, et quiconque se connecte donne accès à un shell et aux fichiers du dossier avec vos droits. Sur un réseau public, ce risque est accepté : choisissez un mot de passe long et unique, limitez l'accès avec un pare-feu ou un VPN si vous le pouvez, et ne lancez pas Yaide en administrateur.
 
+## Agent
+
+La vue Agent est le quatrième onglet du rail (touche A quand le focus est sur le rail). L'agent lit et modifie les fichiers du projet et lance des commandes pour mener à bien ce que vous lui demandez.
+
+- **Réglages.** Ctrl+P puis `>` ouvre les commandes : « Providers LLM » (adresse et clé d'API de OpenAI, Anthropic, Google, OpenRouter, LiteLLM, Ollama) et « Profils de modèle » (provider, modèle, effort, température, sortie max., fenêtre de contexte). Une conversation utilise un profil ; le profil par défaut sert aux nouvelles conversations.
+- **Dossier `.yaide/`.** Il est créé dans le projet. `config.json` garde les adresses et les profils, `secrets` les clés d'API chiffrées, `conversations/` une conversation par fichier. Pensez à l'ajouter à `.gitignore` si vous ne voulez pas le versionner.
+- **Clé de chiffrement.** Les clés d'API sont chiffrées (AES-256-GCM) avec la clé `~/.config/yaide/cle-secrets`, créée au premier besoin (le dossier suit `XDG_CONFIG_HOME` s'il est défini). Si vous la perdez, les clés enregistrées deviennent illisibles : saisissez-les de nouveau.
+- **`AGENTS.md`.** S'il existe à la racine du projet, son contenu est ajouté aux instructions de l'agent à chaque requête.
+- **Sept outils.** `read`, `write`, `edit`, `bash`, `glob` (fichiers du projet, sans ceux que git ignore), `websearch` et `webfetch` (web).
+- **Aucune confirmation.** L'agent exécute ses outils sans vous demander : il écrit des fichiers et lance des commandes avec vos droits, dans le dossier du projet. Le bouton « Arrêter » interrompt le tour en cours. Ne lui confiez que des projets dont vous acceptez qu'ils soient modifiés ; un fichier qu'il écrit et que vous n'avez pas modifié se recharge dans l'éditeur.
+- **Ce qui part vers l'extérieur.** Rien tant que vous n'envoyez pas de message. Ensuite : vos messages, les instructions, le contenu des fichiers lus et les sorties des commandes vont au provider du profil choisi (à l'adresse réglée dans « Providers LLM », donc sur votre machine pour Ollama) ; `websearch` interroge la page HTML de DuckDuckGo ; `webfetch` télécharge les pages que l'agent demande.
+
 ## Raccourcis
 
 | Raccourci | Où | Effet |

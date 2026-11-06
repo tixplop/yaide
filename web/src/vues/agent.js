@@ -29,6 +29,9 @@ export function quand(ms, maintenant = new Date()) {
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 
+/** Le serveur donne le texte de l'agent en `texte` ; le fil le rend en markdown. */
+const pourLeFil = (e) => (e.type === "agent" && e.markdown === undefined ? { ...e, markdown: e.texte ?? "" } : e);
+
 function texteRefus(r) {
   if (r.coupure) return "Connexion perdue. Réessayez au retour.";
   if (r.refus === "sans-cle") return `Aucune clé pour ${r.provider}. Ajoutez-la avec Ctrl+P, puis > Providers LLM.`;
@@ -225,7 +228,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
       else planifier(gen);
       return;
     }
-    entrees = [...entrees.slice(0, depuis), ...r.entrees];
+    entrees = [...entrees.slice(0, depuis), ...r.entrees.map(pourLeFil)];
     titre = r.titre ?? titre;
     tokens = r.tokens ?? tokens;
     enCours = Boolean(r.enCours);
@@ -300,7 +303,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     convId = id;
     titre = r.titre ?? null;
     tokens = r.tokens ?? 0;
-    entrees = r.entrees;
+    entrees = r.entrees.map(pourLeFil);
     enCours = Boolean(r.enCours);
     profilId = r.profil ?? null;
     effacerRefus();

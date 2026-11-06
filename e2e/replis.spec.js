@@ -26,7 +26,7 @@ const onglets = (page) => page.getByRole("tablist", { name: "Shells" }).getByRol
 test("REQ046_AC1_AC2_AC3_panneau_replie_largeurs_meme_vue_et_Ctrl_P_ne_deplie_pas", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await page.getByRole("tab", { name: "Git", exact: true }).click();
-  await page.getByLabel("Message").fill("brouillon");
+  await page.getByLabel("Message", { exact: true }).fill("brouillon");
   const avant = await boite(page, "main");
   await bouton(page, "Replier le panneau").click();
   await expect(page.locator("aside")).toBeHidden();
@@ -40,7 +40,7 @@ test("REQ046_AC1_AC2_AC3_panneau_replie_largeurs_meme_vue_et_Ctrl_P_ne_deplie_pa
   await bouton(page, "Déplier le panneau").click();
   await expect(page.locator("aside")).toBeVisible();
   expect((await boite(page, "main")).w).toBeCloseTo(avant.w, 0);
-  await expect(page.getByLabel("Message")).toHaveValue("brouillon");
+  await expect(page.getByLabel("Message", { exact: true })).toHaveValue("brouillon");
   await expect(page.locator(".cadre-panneau-corps")).toBeFocused();
   // Clic sur un onglet du rail, panneau replié : il se déplie sur cette vue.
   await bouton(page, "Replier le panneau").click();

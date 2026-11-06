@@ -246,6 +246,15 @@ test("REQ056_AC8_AC15_compteur_850_12k_1_5M_et_absent", async () => {
   expect(compteur(vue).hidden).toBe(true);
 });
 
+test("REQ056_AC5_la_reponse_de_l_agent_du_serveur_en_texte_est_rendue", async () => {
+  const { vue } = await monter({ lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }, { type: "agent", texte: "Réponse forte." }], enCours: false, total: 1, tokens: 1 }] });
+  taper(vue, "go");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  await tick(500);
+  expect(fil(vue).querySelector(".ya-chat-agent").textContent).toContain("Réponse forte.");
+});
+
 test("REQ056_AC10_focus_d_arreter_va_dans_le_champ_a_la_fin", async () => {
   const { vue } = await monter({ lectures: [{ entrees: [{ type: "agent", markdown: "Fini." }], enCours: false, total: 2, tokens: 1 }] });
   taper(vue, "go");

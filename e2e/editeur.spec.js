@@ -59,7 +59,7 @@ test("REQ008_AC1_et_AC2_et_AC6_ouvrir_un_fichier_sans_doublon_focus_dans_l_edite
   await ligne(page, "main.rs").click();
   await expect(onglet(page, "main.rs")).toHaveAttribute("aria-selected", "true");
   await expect(editeur(page, "main.rs")).toBeFocused();
-  await expect(page.getByRole("tab")).toHaveCount(2 + 3 + 1); // fichiers + rail + shell 1
+  await expect(page.getByRole("tab")).toHaveCount(2 + 4 + 1); // fichiers + rail + shell 1
 });
 
 test("REQ011_AC1_et_AC3_coloration_rust_et_texte_simple_sans_erreur", async ({ page }) => {

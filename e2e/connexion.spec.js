@@ -211,6 +211,19 @@ test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", 
     expect(b.barre.y + b.barre.height).toBeLessThanOrEqual(b.rail.y);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }).toPass({ timeout: 10000 });
+  // AC-028-14 : quatre onglets et quatre boutons de 48 px, entiers, sans défilement du rail.
+  const rail = await page.locator(".cadre-rail").boundingBox();
+  const elements = page.locator(".cadre-rail [role=tab], .cadre-rail-commandes button");
+  await expect(elements).toHaveCount(8);
+  for (const e of await elements.all()) {
+    const m = await e.boundingBox();
+    expect([m.width, m.height]).toEqual([48, 48]);
+    expect(m.x).toBeGreaterThanOrEqual(rail.x);
+    expect(m.x + m.width).toBeLessThanOrEqual(rail.x + rail.width);
+    expect(m.y).toBeGreaterThanOrEqual(rail.y);
+    expect(m.y + m.height).toBeLessThanOrEqual(rail.y + rail.height);
+    expect(m.y + m.height).toBeLessThanOrEqual(480);
+  }
   await page.setViewportSize({ width: 600, height: 400 });
   await expect(async () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(true);
