@@ -2,6 +2,16 @@
 
 Un éditeur de code, un shell et un suivi Git dans le navigateur, servis par un seul binaire. Rien n'est envoyé vers l'extérieur.
 
+## Installer ou mettre à jour
+
+Sous Linux x86_64, WSL2 compris, sans sudo :
+
+```
+curl -fsSL https://raw.githubusercontent.com/tixplop/yaide/master/install.sh | sh
+```
+
+La même commande installe la dernière release, ou met à jour une installation existante ; elle ne fait rien si la version est déjà la bonne. Le binaire est placé dans `~/.local/bin/yaide`, après vérification de son empreinte SHA-256. Pour une version précise, ajoutez-la : `… | sh -s -- v0.3.0`. Pour un autre dossier, définissez `YAIDE_BIN_DIR`. Une instance déjà lancée garde l'ancienne version jusqu'à son redémarrage.
+
 ## Compiler
 
 Il faut Rust, Node.js, npm et gcc.
@@ -15,7 +25,7 @@ cargo build --release --target x86_64-unknown-linux-musl
 
 `npm run build` produit l'interface dans `web/dist/` ; le binaire l'embarque. Le binaire obtenu, `target/x86_64-unknown-linux-musl/release/yaide`, est statique et se suffit à lui-même : aucun fichier à côté.
 
-## Installer
+## Installer un binaire compilé
 
 Copiez le binaire dans un dossier de votre `PATH` :
 
