@@ -1,3 +1,4 @@
+use crate::agent::reglages::{Erreur, Reglages};
 use crate::{auth, config, fichiers, git, recherche, shells};
 use axum::body::Bytes;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
@@ -5,7 +6,7 @@ use axum::extract::{DefaultBodyLimit, Path as CheminUrl, Query, Request, State};
 use axum::http::{header, HeaderMap, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use std::collections::HashMap;
 use std::net::{SocketAddr, TcpListener};
@@ -22,6 +23,7 @@ struct Etat {
     projet_dir: PathBuf,
     instance: String,
     shells: Arc<shells::Registre>,
+    reglages: Reglages,
 }
 
 type Partage = Arc<Etat>;
@@ -762,6 +764,86 @@ pub fn ecouter(port: u16) -> Result<TcpListener, String> {
     Ok(l)
 }
 
+fn json_rep(code: StatusCode, v: serde_json::Value) -> Response {
+    (
+        code,
+        [(header::CONTENT_TYPE, "application/json")],
+        v.to_string(),
+    )
+        .into_response()
+}
+
+/// Réponse d'une écriture de réglages : les réglages à jour, ou le refus.
+fn reponse_reglages(etat: &Etat, res: Result<(), Erreur>) -> Response {
+    match res {
+        Ok(()) => json_rep(StatusCode::OK, etat.reglages.vue()),
+        Err(Erreur::Inconnu) => StatusCode::NOT_FOUND.into_response(),
+        Err(Erreur::Champs(c)) if c == ["adresse"] => json_rep(
+            StatusCode::BAD_REQUEST,
+            serde_json::json!({ "champ": "adresse" }),
+        ),
+        Err(Erreur::Champs(c)) => {
+            let erreurs: Vec<_> = c
+                .iter()
+                .map(|c| serde_json::json!({ "champ": c }))
+                .collect();
+            json_rep(
+                StatusCode::BAD_REQUEST,
+                serde_json::json!({ "erreurs": erreurs }),
+            )
+        }
+        Err(Erreur::Systeme(m)) => json_rep(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "erreur": m }),
+        ),
+    }
+}
+
+fn corps_json(corps: &Bytes) -> Option<serde_json::Value> {
+    serde_json::from_slice(corps).ok()
+}
+
+fn corps_invalide() -> Response {
+    texte(StatusCode::BAD_REQUEST, "Corps JSON invalide.")
+}
+
+/// Ne contacte aucun provider (AC-029-4).
+async fn agent_reglages(State(etat): State<Partage>) -> Response {
+    json_rep(StatusCode::OK, etat.reglages.vue())
+}
+
+async fn agent_provider(
+    State(etat): State<Partage>,
+    CheminUrl(id): CheminUrl<String>,
+    corps: Bytes,
+) -> Response {
+    match corps_json(&corps) {
+        Some(v) => reponse_reglages(&etat, etat.reglages.enregistrer_provider(&id, &v)),
+        None => corps_invalide(),
+    }
+}
+
+async fn agent_supprimer_cle(
+    State(etat): State<Partage>,
+    CheminUrl(id): CheminUrl<String>,
+) -> Response {
+    reponse_reglages(&etat, etat.reglages.supprimer_cle(&id))
+}
+
+async fn agent_profil(State(etat): State<Partage>, corps: Bytes) -> Response {
+    match corps_json(&corps) {
+        Some(v) => reponse_reglages(&etat, etat.reglages.enregistrer_profil(&v)),
+        None => corps_invalide(),
+    }
+}
+
+async fn agent_supprimer_profil(
+    State(etat): State<Partage>,
+    CheminUrl(id): CheminUrl<String>,
+) -> Response {
+    reponse_reglages(&etat, etat.reglages.supprimer_profil(&id))
+}
+
 pub async fn servir(
     listener: TcpListener,
     cert: &Path,
@@ -782,6 +864,7 @@ pub async fn servir(
         projet_dir: projet.to_path_buf(),
         instance: identifiant_instance(),
         shells: Default::default(),
+        reglages: Reglages::new(projet.join(".yaide"), config.to_path_buf()),
     });
     let registre = etat.shells.clone();
     let app = Router::new()
@@ -820,6 +903,11 @@ pub async fn servir(
         .route("/api/fichiers/versions", post(versions_fichiers))
         .route("/api/recherche", get(chercher))
         .route("/api/chemins", get(chemins))
+        .route("/api/agent/reglages", get(agent_reglages))
+        .route("/api/agent/providers/{id}", put(agent_provider))
+        .route("/api/agent/providers/{id}/cle", delete(agent_supprimer_cle))
+        .route("/api/agent/profils", put(agent_profil))
+        .route("/api/agent/profils/{id}", delete(agent_supprimer_profil))
         .route("/api/git/etat", get(git_etat))
         .route("/api/git/diff", get(git_diff))
         .route("/api/git/indexer", post(git_indexer))
