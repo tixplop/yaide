@@ -547,3 +547,80 @@ test("REQ031_AC1_fermer_un_onglet_de_texte_par_une_icone_sans_title", async ({ p
   await expect(fermer).not.toHaveAttribute("title", /.*/);
   await expect(onglet(page, /^main\.rs/)).toHaveAttribute("title", "src/main.rs");
 });
+
+
+test("REQ061_parcours_P024_fermer_des_onglets_d_un_coup", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  const dossier = await ouvrir(page, (d) => fs.appendFileSync(path.join(d, "README.md"), "\nmodifié sur le disque\n"));
+  const ong = (nom) => page.getByRole("tab", { name: new RegExp(`^${nom.replace(".", "\\.")}(,|$)`) });
+  await ouvrirMain(page);
+  await taper(page, "main.rs", "X");
+  await ligne(page, "README.md").click();
+  await ligne(page, "a.txt").click();
+  await taper(page, "a.txt", "Y");
+  // L'onglet de diff de README.md (modifié sur le disque) est ouvert depuis le panneau Git.
+  await page.getByRole("tab", { name: "Git", exact: true }).click();
+  await page.getByRole("listbox", { name: "Changements" }).getByRole("option").filter({ hasText: "README.md" }).click();
+  await expect(page.getByRole("tab", { name: "README.md (diff)" })).toBeVisible();
+  const nbShells = await page.getByRole("tab", { name: /shell/i }).count();
+  const menu = page.getByRole("menu", { name: "Actions sur README.md" });
+  // 1. Clic droit : le menu du navigateur ne s'ouvre pas, le menu de Yaide est au pointeur.
+  const cible = await ong("README.md").boundingBox();
+  await page.evaluate(() => {
+    window.__prevenu = null;
+    document.addEventListener("contextmenu", (e) => (window.__prevenu = e.defaultPrevented), { once: true });
+  });
+  await ong("README.md").click({ button: "right", position: { x: 20, y: 10 } });
+  await expect(menu).toBeVisible();
+  expect(await page.evaluate(() => window.__prevenu)).toBe(true);
+  await expect(ong("README.md")).toHaveAttribute("aria-selected", "true");
+  await expect(menu.getByRole("menuitem")).toHaveText(["Fermer les autres onglets", "Fermer tous les onglets"]);
+  await expect(menu.getByRole("menuitem").first()).toBeFocused();
+  const m1 = await menu.boundingBox();
+  expect(Math.abs(m1.x - (cible.x + 20))).toBeLessThanOrEqual(2);
+  expect(Math.abs(m1.y - (cible.y + 10))).toBeLessThanOrEqual(2);
+  // 2. Échap : le menu se ferme, le focus revient à l'onglet.
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(ong("README.md")).toBeFocused();
+  // 3. Maj+F10 : le menu s'ouvre sous l'onglet ; Bas, Entrée sur « Fermer tous les onglets ».
+  await page.keyboard.press("Shift+F10");
+  await expect(menu).toBeVisible();
+  const o = await ong("README.md").boundingBox();
+  const m2 = await menu.boundingBox();
+  expect(Math.abs(m2.y - (o.y + o.height + 4))).toBeLessThanOrEqual(2);
+  expect(Math.abs(m2.x - o.x)).toBeLessThanOrEqual(2);
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  const dlgMain = page.getByRole("dialog", { name: "Sauvegarder main.rs ?" });
+  await expect(dlgMain).toBeVisible();
+  await expect(ong("main.rs")).toHaveAttribute("aria-selected", "true");
+  await expect(dlgMain.getByRole("button", { name: "Sauvegarder" })).toBeFocused();
+  // 4. Échap : la série s'arrête.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(ong("README.md")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "README.md (diff)" })).toHaveCount(0);
+  await expect(ong("a.txt")).toBeVisible();
+  await expect(ong("main.rs")).toHaveAttribute("aria-selected", "true");
+  await expect(editeur(page, "main.rs")).toBeFocused();
+  // 5. Clic droit sur main.rs, « Fermer les autres onglets » : a.txt, puis Abandonner.
+  await ong("main.rs").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Fermer les autres onglets" }).click();
+  const dlgA = page.getByRole("dialog", { name: "Sauvegarder a.txt ?" });
+  await expect(dlgA).toBeVisible();
+  await expect(ong("a.txt")).toHaveAttribute("aria-selected", "true");
+  await dlgA.getByRole("button", { name: "Abandonner" }).click();
+  await expect(ong("a.txt")).toHaveCount(0);
+  expect(fs.readFileSync(path.join(dossier, "a.txt"), "utf8")).toBe("a");
+  await expect(editeur(page, "main.rs")).toBeFocused();
+  // 6. Un seul onglet : « Fermer tous les onglets », puis Sauvegarder écrit le fichier.
+  await ong("main.rs").click({ button: "right" });
+  await expect(page.getByRole("menuitem")).toHaveText(["Fermer tous les onglets"]);
+  await page.getByRole("menuitem", { name: "Fermer tous les onglets" }).click();
+  await page.getByRole("dialog", { name: "Sauvegarder main.rs ?" }).getByRole("button", { name: "Sauvegarder" }).click();
+  await expect(page.getByText("Aucun fichier ouvert.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ouvrir un fichier" })).toBeFocused();
+  expect(fs.readFileSync(path.join(dossier, "src", "main.rs"), "utf8")).toContain("X");
+  expect(await page.getByRole("tab", { name: /shell/i }).count()).toBe(nbShells);
+});

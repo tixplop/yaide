@@ -7,6 +7,7 @@ import { dialogue } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
 import { icone } from "../ui/icones.js";
 import { langagePourFichier, nomLangage } from "../ui/langages.js";
+import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { zoneCode } from "../ui/zone-code.js";
@@ -155,6 +156,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       actionsDroite,
       surChoix: choisir,
       surFermer: fermer,
+      surMenu: ouvrirMenu,
     });
     ongl.setAttribute("aria-label", "Fichiers ouverts");
     barre.replaceChildren(ongl);
@@ -471,49 +473,128 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     o.alerte = dire({ texte: echec, variante: "alerte", fermable: true });
   }
 
-  function fermer(chemin) {
-    if (chemin === DIFF) return fermerDiff();
+  const fermer = (chemin) => {
+    fermerOnglet(chemin, false);
+  };
+
+  /**
+   * Ferme un onglet, avec le dialogue de REQ-014 s'il est modifié. Rend une promesse de l'issue :
+   * `fermé`, `annulé` ou `échec` (dans une série, une sauvegarde impossible ferme le dialogue et affiche un bandeau).
+   */
+  function fermerOnglet(chemin, serie) {
+    if (chemin === DIFF) {
+      fermerDiff();
+      return Promise.resolve("fermé");
+    }
     const o = trouver(chemin);
-    if (!o) return;
-    if (o.question) return montrerQuestion(o);
-    if (!o.modifie) return retirer(chemin);
-    const annuler = bouton({ libelle: "Annuler" });
-    const abandonner = bouton({ libelle: "Abandonner" });
-    const ok = bouton({ libelle: "Sauvegarder", variante: "principal" });
-    const zone = document.createElement("div");
-    const texte = document.createElement("p");
-    texte.textContent = "Ce fichier a des modifications non sauvegardées.";
-    zone.append(texte);
-    const dlg = dialogue({
-      titre: `Sauvegarder ${nomDe(chemin)} ?`,
-      contenu: [zone],
-      actions: [annuler, abandonner, ok],
-      focusInitial: ok,
-      surAnnuler: () => dlg.fermer(),
-    });
-    annuler.addEventListener("click", () => dlg.fermer());
-    abandonner.addEventListener("click", () => {
-      dlg.fermer({ rendreFocus: false });
+    if (!o) return Promise.resolve("fermé");
+    if (o.question) {
+      montrerQuestion(o);
+      return Promise.resolve("annulé");
+    }
+    if (!o.modifie) {
       retirer(chemin);
-    });
-    ok.addEventListener("click", async () => {
-      dlg.enCours(true);
-      const echec = await sauvegarder(o);
-      if (detruit) return;
-      if (echec === SANS_SUITE) {
+      return Promise.resolve("fermé");
+    }
+    return new Promise((resolve) => {
+      const annuler = bouton({ libelle: "Annuler" });
+      const abandonner = bouton({ libelle: "Abandonner" });
+      const ok = bouton({ libelle: "Sauvegarder", variante: "principal" });
+      const zone = document.createElement("div");
+      const texte = document.createElement("p");
+      texte.textContent = "Ce fichier a des modifications non sauvegardées.";
+      zone.append(texte);
+      const annulerTout = () => {
+        dlg.fermer();
+        resolve("annulé");
+      };
+      const dlg = dialogue({
+        titre: `Sauvegarder ${nomDe(chemin)} ?`,
+        contenu: [zone],
+        actions: [annuler, abandonner, ok],
+        focusInitial: ok,
+        surAnnuler: annulerTout,
+      });
+      annuler.addEventListener("click", annulerTout);
+      abandonner.addEventListener("click", () => {
         dlg.fermer({ rendreFocus: false });
-        if (o.question) montrerQuestion(o);
-        return;
-      }
-      if (echec) {
-        dlg.enCours(false);
-        zone.replaceChildren(texte, message({ texte: echec, variante: "alerte" }));
-        return;
-      }
-      dlg.fermer({ rendreFocus: false });
-      retirer(chemin);
+        retirer(chemin);
+        resolve("fermé");
+      });
+      ok.addEventListener("click", async () => {
+        dlg.enCours(true);
+        const echec = await sauvegarder(o);
+        if (detruit) return;
+        if (echec === SANS_SUITE) {
+          dlg.fermer({ rendreFocus: false });
+          if (o.question) montrerQuestion(o);
+          return resolve("annulé");
+        }
+        if (echec && serie) {
+          dlg.fermer({ rendreFocus: false });
+          o.alerte?.remove();
+          o.alerte = dire({ texte: echec, variante: "alerte", fermable: true });
+          return resolve("échec");
+        }
+        if (echec) {
+          dlg.enCours(false);
+          zone.replaceChildren(texte, message({ texte: echec, variante: "alerte" }));
+          return;
+        }
+        dlg.fermer({ rendreFocus: false });
+        retirer(chemin);
+        resolve("fermé");
+      });
+      dlg.ouvrir();
     });
-    dlg.ouvrir();
+  }
+
+  // ---- Menu des onglets et série de fermetures (REQ-061) ----
+
+  const ordre = () => [...(diff ? [DIFF] : []), ...liste.map((o) => o.chemin)];
+  const existe = (id) => (id === DIFF ? Boolean(diff) : Boolean(trouver(id)));
+
+  /** Ferme `ids` : d'abord les onglets sans modification, sans question ; puis chaque onglet modifié, un dialogue à la fois. */
+  async function fermerSerie(ids, vise) {
+    for (const id of ids) {
+      if (id === DIFF) fermerDiff();
+      else if (trouver(id) && !trouver(id).modifie && !trouver(id).question) retirer(id);
+    }
+    let arret = null;
+    for (const id of ids) {
+      const o = id === DIFF ? null : trouver(id);
+      if (!o || o.question) continue;
+      actif = id;
+      afficher();
+      if ((await fermerOnglet(id, true)) !== "fermé") {
+        arret = id;
+        break;
+      }
+      if (detruit) return;
+    }
+    if (detruit) return;
+    const reste = ordre();
+    actif = arret && existe(arret) ? arret : existe(vise) ? vise : (reste[0] ?? null);
+    afficher();
+    garderListe();
+    if (actif === null) code.querySelector("button")?.focus();
+    else (actif === DIFF ? diff.el : trouver(actif).zone).vue?.focus();
+  }
+
+  function ouvrirMenu(id, position) {
+    if (!existe(id)) return;
+    dernierGeste++;
+    actif = id;
+    afficher();
+    const onglet = barre.querySelector("[role=tab][aria-selected=true]");
+    onglet?.focus();
+    const noms = libelles(liste.map((x) => x.chemin));
+    const libelle = id === DIFF ? `${nomDe(diff.chemin)} (diff)` : noms[liste.findIndex((x) => x.chemin === id)].libelle;
+    const tous = ordre();
+    const commandes = [];
+    if (tous.length >= 2) commandes.push({ libelle: "Fermer les autres onglets", surChoix: () => fermerSerie(tous.filter((x) => x !== id), id) });
+    commandes.push({ libelle: "Fermer tous les onglets", surChoix: () => fermerSerie(tous, id) });
+    menu({ nom: `Actions sur ${libelle}`, groupes: [commandes], ...(position ? { position } : { ancre: onglet }), surFermeture: () => {} });
   }
 
   // Ctrl+S, partout sauf dans un shell : le dialogue du navigateur ne s'ouvre jamais.
