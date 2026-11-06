@@ -29,24 +29,24 @@ test("REQ046_AC1_AC2_AC3_panneau_replie_largeurs_meme_vue_et_Ctrl_P_ne_deplie_pa
   await page.getByLabel("Message", { exact: true }).fill("brouillon");
   const avant = await boite(page, "main");
   await bouton(page, "Replier le panneau").click();
-  await expect(page.locator("aside")).toBeHidden();
+  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
   await expect(page.getByRole("separator", { name: "Largeur du panneau" })).toBeHidden();
   const replie = await boite(page, "main");
   expect(replie.w).toBeGreaterThan(avant.w + 200);
   await expect(bouton(page, "Déplier le panneau")).toBeFocused();
   await page.keyboard.press("Control+p");
   await page.keyboard.press("Escape");
-  await expect(page.locator("aside")).toBeHidden();
+  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
   await bouton(page, "Déplier le panneau").click();
-  await expect(page.locator("aside")).toBeVisible();
+  await expect(page.locator("aside.cadre-panneau")).toBeVisible();
   expect((await boite(page, "main")).w).toBeCloseTo(avant.w, 0);
   await expect(page.getByLabel("Message", { exact: true })).toHaveValue("brouillon");
-  await expect(page.locator(".cadre-panneau-corps")).toBeFocused();
+  await expect(page.locator("aside.cadre-panneau .cadre-panneau-corps")).toBeFocused();
   // Clic sur un onglet du rail, panneau replié : il se déplie sur cette vue.
   await bouton(page, "Replier le panneau").click();
   await page.getByRole("tab", { name: "Recherche", exact: true }).click();
-  await expect(page.locator("aside h2")).toHaveText("Recherche");
-  await expect(page.locator("aside")).toBeVisible();
+  await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Recherche");
+  await expect(page.locator("aside.cadre-panneau")).toBeVisible();
 });
 
 test("REQ046_AC4_le_shell_connait_sa_nouvelle_largeur", async ({ page }) => {
@@ -133,7 +133,7 @@ test("REQ046_AC12_rechargement_les_deux_replis_restent", async ({ page }) => {
   await page.reload();
   await bouton(page, "Déplier le panneau").waitFor();
   await expect(bouton(page, "Déplier les shells")).toBeVisible();
-  await expect(page.locator("aside")).toBeHidden();
+  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
   await expect(page.locator(".cadre-shells")).toBeHidden();
   await bouton(page, "Déplier les shells").click();
   await expect(onglets(page)).toHaveText(["shell 1"]);
@@ -153,19 +153,19 @@ test("REQ046_AC3_REQ028_AC15_Entree_apres_Bas_deplie_et_Ctrl_Maj_F_ne_deplie_pas
   const fichiers = page.getByRole("tab", { name: "Fichiers", exact: true });
   await expect(fichiers).toBeFocused();
   await expect(fichiers).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator("aside")).toBeHidden();
+  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
   await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("tab", { name: "Recherche", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator("aside")).toBeHidden();
+  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
   await page.keyboard.press("Enter");
-  await expect(page.locator("aside h2")).toHaveText("Recherche");
-  await expect(page.locator("aside")).toBeVisible();
+  await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Recherche");
+  await expect(page.locator("aside.cadre-panneau")).toBeVisible();
   for (const [touche, titre] of [["g", "Git"], ["f", "Fichiers"], ["r", "Recherche"]]) {
     await bouton(page, "Replier le panneau").click();
     await page.getByRole("tab", { selected: true }).focus();
     await page.keyboard.press(touche);
-    await expect(page.locator("aside h2")).toHaveText(titre);
-    await expect(page.locator("aside")).toBeVisible();
+    await expect(page.locator("aside.cadre-panneau h2")).toHaveText(titre);
+    await expect(page.locator("aside.cadre-panneau")).toBeVisible();
   }
 });
 
@@ -232,7 +232,7 @@ test("REQ048_AC5_AC8_AC9_en_tete_a_240_et_280_px", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 700 });
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
-  const aside = page.locator("aside");
+  const aside = page.locator("aside.cadre-panneau");
   const repli = aside.getByRole("button", { name: "Replier le panneau", exact: true });
   for (const largeur of ["240", "280"]) {
     await poignee.focus();
@@ -247,10 +247,10 @@ test("REQ048_AC5_AC8_AC9_en_tete_a_240_et_280_px", async ({ page }) => {
     await expect(poignee).toHaveAttribute("aria-valuenow", largeur);
     for (const vue of ["Fichiers", "Recherche", "Git"]) {
       await page.getByRole("tab", { name: vue, exact: true }).click();
-      const tete = await boite(page, "aside .ya-panel-head");
+      const tete = await boite(page, "aside.cadre-panneau .ya-panel-head");
       expect(tete.h, `${vue} ${largeur}`).toBe(35);
       const b = await repli.boundingBox();
-      const a = await boite(page, "aside");
+      const a = await boite(page, "aside.cadre-panneau");
       expect(Math.round(a.x + a.w - (b.x + b.width)), `${vue} ${largeur}`).toBe(4);
       if (vue === "Fichiers") {
         const s = await aside.getByRole("button", { name: "Supprimer", exact: true }).boundingBox();
@@ -294,11 +294,11 @@ test("REQ048_AC5_AC8_AC9_en_tete_a_240_et_280_px", async ({ page }) => {
 
 test("REQ048_AC11_menu_ouvert_le_premier_clic_ferme_le_menu", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await page.locator("aside").getByRole("treeitem").first().click({ button: "right" });
+  await page.locator("aside.cadre-panneau").getByRole("treeitem").first().click({ button: "right" });
   await expect(page.getByRole("menu")).toBeVisible();
-  await page.locator("aside").getByRole("button", { name: "Replier le panneau", exact: true }).click();
+  await page.locator("aside.cadre-panneau").getByRole("button", { name: "Replier le panneau", exact: true }).click();
   await expect(page.getByRole("menu")).toHaveCount(0);
-  await expect(page.locator("aside")).toBeVisible();
-  await page.locator("aside").getByRole("button", { name: "Replier le panneau", exact: true }).click();
-  await expect(page.locator("aside")).toBeHidden();
+  await expect(page.locator("aside.cadre-panneau")).toBeVisible();
+  await page.locator("aside.cadre-panneau").getByRole("button", { name: "Replier le panneau", exact: true }).click();
+  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
 });

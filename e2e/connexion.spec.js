@@ -139,7 +139,7 @@ test("REQ028_AC1_F_R_G_affichent_les_panneaux", async ({ page }) => {
   await seConnecter(page);
   for (const [nom, titre] of [["Recherche", "Recherche"], ["Git", "Git"], ["Fichiers", "Fichiers"]]) {
     await page.getByRole("tab", { name: nom }).click();
-    await expect(page.locator("aside h2")).toHaveText(titre);
+    await expect(page.locator("aside.cadre-panneau h2")).toHaveText(titre);
     await expect(page.getByRole("tab", { name: nom })).toHaveAttribute("aria-selected", "true");
   }
 });
@@ -148,24 +148,27 @@ test("REQ028_AC4_le_rail_est_une_liste_d_onglets_verticale", async ({ page }) =>
   await seConnecter(page);
   const rail = page.getByRole("navigation", { name: "Panneaux" }).getByRole("tablist");
   await expect(rail).toHaveAttribute("aria-orientation", "vertical");
-  await expect(rail.getByRole("tab")).toHaveText(["", "", "", ""]);
-  expect(await rail.getByRole("tab").evaluateAll((l) => l.map((t) => t.getAttribute("aria-keyshortcuts")))).toEqual(["F", "R", "G", "A"]);
-  for (const nom of ["Fichiers", "Recherche", "Git", "Agent"]) await expect(rail.getByRole("tab", { name: nom })).toHaveAttribute("aria-selected", /true|false/);
+  await expect(rail.getByRole("tab")).toHaveText(["", "", ""]);
+  expect(await rail.getByRole("tab").evaluateAll((l) => l.map((t) => t.getAttribute("aria-keyshortcuts")))).toEqual(["F", "R", "G"]);
+  for (const nom of ["Fichiers", "Recherche", "Git"]) await expect(rail.getByRole("tab", { name: nom })).toHaveAttribute("aria-selected", /true|false/);
+  // « Agent » est en haut du rail droit, hors de cette liste.
+  await expect(rail.getByRole("tab", { name: "Agent" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Agent", exact: true })).toBeVisible();
 });
 
 test("REQ028_AC5_touches_F_R_G_sur_le_rail_seulement", async ({ page }) => {
   await seConnecter(page);
   await page.getByRole("tab", { name: "Fichiers" }).focus();
   await page.keyboard.press("r");
-  await expect(page.locator("aside h2")).toHaveText("Recherche");
+  await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Recherche");
   expect(await page.evaluate(() => !!document.activeElement.closest("aside"))).toBe(true);
   // Hors du rail, la lettre ne fait rien.
   await page.getByRole("button", { name: "Déconnexion" }).focus();
   await page.keyboard.press("g");
-  await expect(page.locator("aside h2")).toHaveText("Recherche");
+  await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Recherche");
   await page.getByRole("tab", { name: "Recherche" }).focus();
   await page.keyboard.press("G");
-  await expect(page.locator("aside h2")).toHaveText("Git");
+  await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Git");
 });
 
 test("REQ028_AC6_titre_de_l_onglet_du_navigateur", async ({ page }) => {
@@ -202,7 +205,7 @@ test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", 
   await page.setViewportSize({ width: 800, height: 480 });
   const boites = async () => {
     const r = (s) => page.locator(s).first().boundingBox();
-    return { barre: await r("header"), rail: await r(".cadre-rail"), panneau: await r("aside"), principal: await r("main") };
+    return { barre: await r("header"), rail: await r(".cadre-rail"), panneau: await r("aside.cadre-panneau"), principal: await r("main") };
   };
   await expect(async () => {
     const b = await boites();
@@ -211,10 +214,10 @@ test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", 
     expect(b.barre.y + b.barre.height).toBeLessThanOrEqual(b.rail.y);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }).toPass({ timeout: 10000 });
-  // AC-028-14 : quatre onglets et quatre boutons de 48 px, entiers, sans défilement du rail.
+  // AC-028-14 : trois onglets et quatre boutons de 48 px, entiers, sans défilement du rail ; « Agent » entier en haut du rail droit.
   const rail = await page.locator(".cadre-rail").boundingBox();
   const elements = page.locator(".cadre-rail [role=tab], .cadre-rail-commandes button");
-  await expect(elements).toHaveCount(8);
+  await expect(elements).toHaveCount(7);
   for (const e of await elements.all()) {
     const m = await e.boundingBox();
     expect([m.width, m.height]).toEqual([48, 48]);
@@ -224,6 +227,12 @@ test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", 
     expect(m.y + m.height).toBeLessThanOrEqual(rail.y + rail.height);
     expect(m.y + m.height).toBeLessThanOrEqual(480);
   }
+  const agent = await page.getByRole("button", { name: "Agent", exact: true }).boundingBox();
+  expect([agent.width, agent.height]).toEqual([48, 48]);
+  expect(agent.x).toBeGreaterThanOrEqual(0);
+  expect(agent.x + agent.width).toBeLessThanOrEqual(800);
+  expect(agent.y).toBeGreaterThanOrEqual(0);
+  expect(agent.y + agent.height).toBeLessThanOrEqual(480);
   await page.setViewportSize({ width: 600, height: 400 });
   await expect(async () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(true);

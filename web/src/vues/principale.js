@@ -317,6 +317,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
   racine.querySelector(".cadre-rail-droit").addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.target.closest("button") || e.key.toLowerCase() !== "a") return;
+    // Sans cela, la lettre serait tapée dans le champ qui reçoit le focus.
+    e.preventDefault();
     entrerDansAgent();
   });
 

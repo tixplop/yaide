@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { lancerYaide, ouvrirYaide, depotExemple, nomLigne } from "./aides.js";
+import { lancerYaide, ouvrirYaide, depotExemple, nomLigne, tailleStable } from "./aides.js";
 import { lancerFauxProvider, reponse, erreur } from "./faux-provider.js";
 
 let yaide;
@@ -32,7 +32,8 @@ const profil = (page) => page.getByRole("combobox", { name: "Profil" });
 const fil = (page) => page.getByRole("log", { name: "Conversation" });
 const arreter = (page) => page.getByRole("button", { name: "Arrêter", exact: true });
 const envoyer = (page) => page.getByRole("button", { name: "Envoyer", exact: true });
-const rail = (page, nom) => page.getByRole("navigation", { name: "Panneaux" }).getByRole("tab", { name: nom });
+const rail = (page, nom) =>
+  nom === "Agent" ? page.getByRole("button", { name: "Agent", exact: true }) : page.getByRole("navigation", { name: "Panneaux" }).getByRole("tab", { name: nom });
 
 /** Appelle l'API de Yaide depuis la page, comme le fait l'interface (session déjà ouverte). */
 const api = (page, methode, chemin, corps) =>
@@ -314,4 +315,151 @@ test("REQ053_parcours_21_gerer_ses_profils", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(dlg).toHaveCount(0);
   await expect(rail(page, "Fichiers")).toBeFocused();
+});
+
+test("REQ059_parcours_23_garder_l_agent_a_cote_de_son_code", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  // Parcours P-023 : la colonne de l'agent à droite, sa largeur, le repli du panneau, le rechargement.
+  faux = await lancerFauxProvider([
+    reponse({ outils: [{ id: "h1", nom: "bash", entree: { command: "echo hier" } }], tokens: 1000 }),
+    reponse({ texte: "Hier, rien à signaler.", tokens: 1200 }),
+    reponse({ outils: [{ id: "a1", nom: "bash", entree: { command: "sleep 4; echo suite-ok" } }], tokens: 1500 }),
+    reponse({ texte: "La suite est passée.", tokens: 1800 }),
+  ]);
+  yaide = await lancerYaide({ dossier: depotAgent() });
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await ouvrirYaide(page, yaide.origine);
+  await reglerAnthropic(page);
+  await page.reload();
+  await page.getByRole("tab", { name: /^shell \d+$/ }).first().waitFor();
+
+  // La veille : une conversation, puis l'agent est replié et la page rechargée.
+  await rail(page, "Agent").click();
+  await expect(profil(page)).toHaveValue(/sonnet/);
+  await expect(champMessage(page)).toBeFocused();
+  await champMessage(page).fill(MESSAGE);
+  await page.keyboard.press("Enter");
+  await expect(fil(page)).toContainText("Hier, rien à signaler.", { timeout: 15000 });
+  await expect(arreter(page)).toBeHidden();
+  await page.getByRole("button", { name: "Replier l'agent" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise((ok) => {
+            const d = indexedDB.open("yaide", 1);
+            d.onsuccess = () => {
+              const r = d.result.transaction("cles").objectStore("cles").get("replis");
+              r.onsuccess = () => ok(r.result?.agent);
+            };
+          }),
+      ),
+    )
+    .toBe(true);
+  await page.reload();
+  await page.getByRole("tab", { name: /^shell \d+$/ }).first().waitFor();
+  await page.getByRole("treeitem", { name: nomLigne("src") }).click();
+  await page.getByRole("treeitem", { name: nomLigne("args.rs") }).click();
+  await expect(page.getByRole("textbox", { name: "Éditeur args.rs" })).toBeFocused();
+
+  const colonne = page.locator("aside.cadre-agent");
+  const boutonAgent = rail(page, "Agent");
+  const largeur = async (sel) => Math.round((await page.locator(sel).boundingBox()).width);
+  const taperTaille = async () => {
+    await page.locator(".terminal:visible .xterm-helper-textarea").focus();
+    await page.keyboard.type("stty size");
+    await page.keyboard.press("Enter");
+  };
+
+  // 1. Agent replié : un rail droit avec « Agent », trois onglets à gauche.
+  await expect(colonne).toBeHidden();
+  await expect(boutonAgent).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Panneaux" }).getByRole("tab")).toHaveCount(3);
+  const t0 = await tailleStable(page);
+
+  // 2. Clic sur « Agent » : 360 px, conversation d'hier, focus dans le champ, le shell rétrécit (AC-059-9).
+  await boutonAgent.click();
+  await expect(colonne).toBeVisible();
+  expect(await largeur("aside.cadre-agent")).toBe(360);
+  await expect(boutonAgent).toHaveAttribute("data-deplie", "");
+  await expect(fil(page)).toContainText("Hier, rien à signaler.");
+  await expect(champMessage(page)).toBeFocused();
+  const t1 = await tailleStable(page);
+  expect(t1).not.toBe(t0);
+  expect(Number(t1.split(" ")[1])).toBeLessThan(Number(t0.split(" ")[1]));
+  await taperTaille();
+  await expect(page.locator(".terminal:visible .xterm-rows")).toContainText(t1);
+
+  // 3. Glissé de la poignée jusqu'au bout : 720 px, l'éditeur garde au moins 320 px (AC-059-5).
+  await page.getByRole("button", { name: /^bash echo hier, réussi$/ }).click();
+  const poignee = await page.getByRole("separator", { name: "Largeur de l'agent" }).boundingBox();
+  const x = poignee.x + poignee.width / 2;
+  const y = poignee.y + poignee.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 400, y, { steps: 5 });
+  await page.mouse.move(x - 1200, y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(() => largeur("aside.cadre-agent")).toBe(720);
+  expect(await largeur("main.cadre-principal")).toBeGreaterThanOrEqual(320);
+
+  // 4. Un tour est lancé, puis « Replier l'agent » : la colonne disparaît, le tour continue.
+  await champMessage(page).fill("Lance toute la suite de tests.");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: /^bash sleep 4; echo suite-ok, en cours$/ })).toBeVisible({ timeout: 15000 });
+  await page.getByRole("button", { name: "Replier l'agent" }).click();
+  await expect(colonne).toBeHidden();
+  await expect(page.getByRole("separator", { name: "Largeur de l'agent" })).toBeHidden();
+  await expect(boutonAgent).toBeFocused();
+  await expect(boutonAgent).not.toHaveAttribute("data-deplie", "");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  const t2 = await tailleStable(page);
+  expect(t2).not.toBe(t1);
+  expect(Number(t2.split(" ")[1])).toBeGreaterThan(Number(t1.split(" ")[1]));
+  await taperTaille();
+  await expect(page.locator(".terminal:visible .xterm-rows")).toContainText(t2);
+
+  // 5. A : la colonne revient à 720 px, le tour est fini, le champ est vide et a le focus.
+  await boutonAgent.focus();
+  await page.keyboard.press("a");
+  await expect(colonne).toBeVisible();
+  expect(await largeur("aside.cadre-agent")).toBe(720);
+  await expect(fil(page)).toContainText("La suite est passée.", { timeout: 15000 });
+  await expect(page.getByRole("button", { name: /^bash sleep 4; echo suite-ok, réussi$/ })).toBeVisible();
+  await expect(champMessage(page)).toBeFocused();
+  await expect(champMessage(page)).toHaveValue("");
+
+  // 6. 800 × 480 : le panneau se replie, l'agent à 380 px, l'éditeur à 320 px, rien ne se superpose (AC-059-6, AC-059-7, AC-028-9).
+  await page.setViewportSize({ width: 800, height: 480 });
+  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Déplier le panneau" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Fichiers" })).toHaveAttribute("aria-selected", "true");
+  await expect.poll(() => largeur("aside.cadre-agent")).toBe(380);
+  const boite = async (sel) => page.locator(sel).first().boundingBox();
+  const rail1 = await boite(".cadre-rail");
+  const principal = await boite("main.cadre-principal");
+  const agent = await boite("aside.cadre-agent");
+  const railDroit = await boite(".cadre-rail-droit");
+  expect(Math.round(principal.width)).toBe(320);
+  expect(rail1.x + rail1.width).toBeLessThanOrEqual(principal.x + 0.5);
+  expect(principal.x + principal.width).toBeLessThanOrEqual(agent.x + 0.5);
+  expect(agent.x + agent.width).toBeLessThanOrEqual(railDroit.x + 0.5);
+  expect(railDroit.x + railDroit.width).toBeLessThanOrEqual(800);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  // 7. « Déplier le panneau » : le panneau revient à 280 px, l'agent se replie, le focus entre dans le panneau.
+  await page.getByRole("button", { name: "Déplier le panneau" }).first().click();
+  await expect(page.locator("aside.cadre-panneau")).toBeVisible();
+  expect(await largeur("aside.cadre-panneau")).toBe(280);
+  await expect(colonne).toBeHidden();
+  expect(await page.evaluate(() => !!document.activeElement.closest("aside.cadre-panneau"))).toBe(true);
+  await page.reload();
+  await page.getByRole("tab", { name: /^shell \d+$/ }).first().waitFor();
+  await expect(page.locator("aside.cadre-panneau")).toBeVisible();
+  await expect(colonne).toBeHidden();
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await boutonAgent.click();
+  await expect(colonne).toBeVisible();
+  await expect.poll(() => largeur("aside.cadre-agent")).toBe(720);
+  await expect(page.locator("aside.cadre-panneau")).toBeVisible();
 });

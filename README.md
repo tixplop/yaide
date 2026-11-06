@@ -59,7 +59,7 @@ Yaide écoute sur toutes les adresses de la machine. Le mot de passe est la seul
 
 ## Agent
 
-La vue Agent est le quatrième onglet du rail (touche A quand le focus est sur le rail). L'agent lit et modifie les fichiers du projet et lance des commandes pour mener à bien ce que vous lui demandez.
+L'agent s'affiche dans une colonne à droite de l'éditeur, à côté de votre code. Le bouton « Agent » du rail droit (ou la touche A quand le focus est sur ce rail) l'ouvre ; « Replier l'agent », en haut de la colonne, la referme, et un tour en cours continue. Glissez la poignée « Largeur de l'agent » pour l'élargir, jusqu'à 720 px. Si la fenêtre est trop étroite pour le panneau de gauche et l'agent, ouvrir l'un replie l'autre. L'agent lit et modifie les fichiers du projet et lance des commandes pour mener à bien ce que vous lui demandez.
 
 - **Réglages.** Ctrl+P puis `>` ouvre les commandes : « Providers LLM » (adresse et clé d'API de OpenAI, Anthropic, Google, OpenRouter, LiteLLM, Ollama) et « Profils de modèle » (provider, modèle, effort, température, sortie max., fenêtre de contexte). Une conversation utilise un profil ; le profil par défaut sert aux nouvelles conversations.
 - **Dossier `.yaide/`.** Il est créé dans le projet. `config.json` garde les adresses et les profils, `secrets` les clés d'API chiffrées, `conversations/` une conversation par fichier. Pensez à l'ajouter à `.gitignore` si vous ne voulez pas le versionner.

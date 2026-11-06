@@ -84,7 +84,7 @@ test("REQ032_AC1_AC3_AC11_glisser_le_panneau_au_dessus_du_terminal_garde_le_focu
   await page.mouse.up();
   expect((await boite(page, ".cadre-panneau")).w).toBeCloseTo(avant + 60, 0);
   const principal = await boite(page, ".cadre-principal");
-  expect(principal.x + principal.w).toBeCloseTo(1000, 0);
+  expect(principal.x + principal.w).toBeCloseTo((await boite(page, ".cadre-rail-droit")).x, 0);
   await expect(page.locator(".terminal:visible .xterm-helper-textarea")).toBeFocused();
   const tailleApres = await tailleStable(page);
   expect(tailleApres).not.toBe(tailleAvant);
