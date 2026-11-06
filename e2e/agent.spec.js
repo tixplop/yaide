@@ -180,8 +180,7 @@ test("REQ056_parcours_19_regler_l_agent_et_corriger_un_fichier", async ({ page }
   expect(faux.recues).toHaveLength(4);
 });
 
-test("REQ055_parcours_20_reprendre_refus_arreter_erreur", async ({ page, browserName }) => {
-  test.skip(browserName === "firefox", "Le parcours ne dépend pas du moteur : Chromium suffit.");
+test("REQ055_parcours_20_reprendre_refus_arreter_erreur", async ({ page }) => {
   faux = await lancerFauxProvider([
     reponse({ texte: "Le test attend une avance de 1.", tokens: 1200 }),
     reponse({ outils: [{ id: "t1", nom: "bash", entree: { command: "sleep 30" } }], tokens: 1500 }),
@@ -258,8 +257,7 @@ test("REQ055_parcours_20_reprendre_refus_arreter_erreur", async ({ page, browser
   await expect(champMessage(page)).toBeFocused();
 });
 
-test("REQ053_parcours_21_gerer_ses_profils", async ({ page, browserName }) => {
-  test.skip(browserName === "firefox", "Les dialogues sont les mêmes sur les deux moteurs : Chromium suffit.");
+test("REQ053_parcours_21_gerer_ses_profils", async ({ page }) => {
   yaide = await lancerYaide({ dossier: depotAgent() });
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await api(page, "PUT", "/api/agent/providers/openrouter", { cle: "sk-or-test", adresse: "https://openrouter.ai/api/v1" });

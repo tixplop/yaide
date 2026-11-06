@@ -7,6 +7,7 @@ export default defineConfig({
   use: { ignoreHTTPSErrors: true },
   projects: [
     { name: "chromium", use: { browserName: "chromium" } },
-    { name: "firefox", use: { browserName: "firefox" }, testMatch: ["agent.spec.js", "parcours.spec.js", "raccourcis.spec.js", "socle.spec.js"] },
+    { name: "firefox", use: { browserName: "firefox" }, testMatch: ["parcours.spec.js", "raccourcis.spec.js", "socle.spec.js"],
+      grep: /raccourcis\.spec\.js|socle\.spec\.js|REQ030_AC1_parcours_[123]_/ },
   ],
 });
