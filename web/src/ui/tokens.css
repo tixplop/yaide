@@ -1,6 +1,7 @@
 /* Source : design-system/tokens.css et design-system.md. Valeurs des thèmes identiques à la source. */
 :root, [data-theme="dark"] {
   color-scheme: dark;
+  --apercu-page: #ffffff;
   --bg-000: #181818;
   --bg-100: #1b1b1c;
   --bg-200: #1f1f1f;
@@ -41,6 +42,7 @@
 }
 [data-theme="light"] {
   color-scheme: light;
+  --apercu-page: #ffffff;
   --bg-000: #f0f0f0;
   --bg-100: #f8f8f8;
   --bg-200: #ffffff;

@@ -316,3 +316,12 @@ test("REQ044_le_code_en_ligne_n_est_pas_colore", () => {
   expect(d.querySelector("code").textContent).toBe("fn main() {}");
   expect(d.querySelectorAll("code span").length).toBe(0);
 });
+
+test("REQ058_AC8_apercu_html_est_un_iframe_et_markdown_un_div", () => {
+  const h = zoneCode({ contenu: "<h1>T</h1>", langage: "html", apercu: true });
+  expect(h.querySelector("iframe.zone-code-cadre").title).toBe("Aperçu");
+  expect(h.querySelector(".zone-code-apercu")).toBeNull();
+  const m = zoneCode({ contenu: "# T", langage: "markdown", apercu: true });
+  expect(m.querySelector(".zone-code-apercu").tagName).toBe("DIV");
+  expect(m.querySelector("iframe")).toBeNull();
+});

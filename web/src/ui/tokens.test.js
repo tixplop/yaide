@@ -382,3 +382,10 @@ test("REQ056_contrastes_des_icones_d_etat_du_message_de_dialogue_et_du_contour_d
     expect(ratio(theme, "--line-strong", "--bg-300"), `contour des réglages (${theme})`).toBe([3, 3.4][k]);
   });
 });
+
+test("REQ058_AC8_noir_du_navigateur_sur_apercu_page_atteint_4_5", () => {
+  for (const theme of ["dark", "light"]) {
+    expect(jeton(theme, "--apercu-page")).toMatchObject({ r: 255, g: 255, b: 255 });
+    expect(contraste({ r: 0, g: 0, b: 0, a: 1 }, jeton(theme, "--apercu-page")), theme).toBeGreaterThanOrEqual(4.5);
+  }
+});

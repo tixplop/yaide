@@ -18,7 +18,7 @@ export function iconeDe(nom) {
   const ext = point > 0 ? nom.slice(point + 1).toLowerCase() : "";
   if (["js", "jsx", "ts", "tsx"].includes(ext)) return { icone: "file-code", couleur: "accent-fg" };
   if (ext === "css") return { icone: "file-code", couleur: "git-modified" };
-  if (ext === "html") return { icone: "file-code", couleur: "syn-keyword" };
+  if (ext === "html" || ext === "htm") return { icone: "file-code", couleur: "syn-keyword" };
   if (CODE.includes(ext)) return { icone: "file-code", couleur: "ink-muted" };
   if (ext === "md" || ext === "markdown") return { icone: "md", couleur: "ink-muted" };
   if (ext === "json") return { icone: "file", couleur: "syn-number" };

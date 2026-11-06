@@ -391,3 +391,95 @@ test("REQ044_AC6_changer_de_theme_change_la_couleur_du_bloc_sans_refaire_l_aperc
   expect(clair).toBe(await valeur(page, "color", "--syn-keyword"));
   await expect(page.locator(".zone-code-apercu pre span[data-marque]")).toHaveCount(1);
 });
+
+// T-077 : aperçu HTML dans un cadre isolé.
+async function ouvrirHtml(page, contenu, theme = "dark") {
+  await page.goto(pathToFileURL(resolve(dossier, "index.html")).href);
+  const requetes = [];
+  const dialogues = [];
+  // Une requête refusée par la règle CSP est annulée dans le navigateur avant tout envoi : elle ne compte pas. Les polices de Yaide, hors du cadre, non plus.
+  const toutes = [];
+  const bloquees = [];
+  page.on("request", (r) => toutes.push(r.url()));
+  page.on("requestfailed", (r) => { if (r.failure()?.errorText === "csp") bloquees.push(r.url()); });
+  requetes.restantes = () => toutes.filter((u) => !u.includes("/polices/") && !bloquees.includes(u));
+  page.on("dialog", (d) => { dialogues.push(d.message()); d.dismiss(); });
+  await page.evaluate(([t, c]) => {
+    document.documentElement.dataset.theme = t;
+    document.getElementById("h").append(window.zoneCode({ contenu: c, langage: "html", nom: "index.html", apercu: true }));
+  }, [theme, contenu]);
+  await expect(page.locator("iframe.zone-code-cadre")).toBeVisible();
+  return { requetes, dialogues, cadre: page.frameLocator("iframe.zone-code-cadre") };
+}
+
+test("REQ058_AC2_style_de_la_page_applique", async ({ page }) => {
+  const { cadre } = await ouvrirHtml(page, "<style>h1 { color: rgb(255, 0, 0) }</style><h1>Titre</h1>");
+  await expect(cadre.locator("h1")).toHaveText("Titre");
+  expect(await cadre.locator("h1").evaluate((e) => getComputedStyle(e).color)).toBe("rgb(255, 0, 0)");
+});
+
+test("REQ058_AC3_rien_ne_s_execute", async ({ page }) => {
+  const page_html = `<script>window.parent.pwn=1;document.title="pwn";alert(1)</script>
+<img src="x" onerror="window.parent.pwn=1;document.title='pwn';alert(1)">
+<body onload="window.parent.pwn=1;document.title='pwn';alert(1)">
+<a href="javascript:window.parent.pwn=1;document.title='pwn';alert(1)">lien</a><p>fin</p>`;
+  const { cadre, dialogues } = await ouvrirHtml(page, page_html);
+  await expect(cadre.locator("p")).toHaveText("fin");
+  await cadre.locator("a").click();
+  expect(await page.evaluate(() => [window.pwn, document.title])).toEqual([undefined, ""]);
+  expect(dialogues).toEqual([]);
+});
+
+test("REQ058_AC4_aucune_requete_image_data_affichee", async ({ page }) => {
+  const png = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+  const { cadre, requetes } = await ouvrirHtml(page, `<img src="logo.png"><img src="https://exemple.org/x.png"><link rel="stylesheet" href="style.css"><iframe src="/"></iframe><img id="d" src="${png}">`);
+  await expect.poll(() => cadre.locator("#d").evaluate((e) => e.naturalWidth)).toBeGreaterThan(0);
+  await page.waitForTimeout(300);
+  expect(requetes.restantes()).toEqual([]);
+});
+
+test("REQ058_AC5_liens_et_formulaire_ne_font_rien", async ({ page }) => {
+  const liens = `<h1>Page</h1><a id="a1" href="https://exemple.org">1</a><a id="a2" href="autre.html">2</a><a id="a3" href="#bas">3</a><a id="a4" href="autre.html" target="_blank">4</a><a id="a5" href="https://exemple.org" target="_top">5</a><form action="/envoi"><button id="b">Envoyer</button></form><p id="bas">bas</p>`;
+  const { cadre, requetes } = await ouvrirHtml(page, liens);
+  let popup = false;
+  page.on("popup", () => { popup = true; });
+  for (const id of ["#a1", "#a2", "#a3", "#a4", "#a5", "#b"]) await cadre.locator(id).click();
+  await page.waitForTimeout(300);
+  expect(await page.locator("iframe.zone-code-cadre").evaluate((e) => e.contentWindow.location.href)).toBe("about:srcdoc");
+  await expect(cadre.locator("h1")).toHaveText("Page");
+  expect(popup).toBe(false);
+  expect(requetes.restantes()).toEqual([]);
+});
+
+for (const theme of ["dark", "light"]) {
+  test(`REQ058_AC8_fond_blanc_texte_noir_moitie_moitie_${theme}`, async ({ page }) => {
+    const { cadre } = await ouvrirHtml(page, "<p>Bonjour", theme);
+    await expect(cadre.locator("p")).toHaveText("Bonjour");
+    const f = page.locator("iframe.zone-code-cadre");
+    expect(await f.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(255, 255, 255)");
+    expect(await cadre.locator("p").evaluate((e) => getComputedStyle(e).color)).toBe("rgb(0, 0, 0)");
+    const ed = await page.locator(".zone-code-editeur").boundingBox();
+    const cb = await f.boundingBox();
+    expect(Math.abs(ed.width - cb.width)).toBeLessThanOrEqual(2);
+    await page.evaluate((t) => { document.documentElement.dataset.theme = t === "dark" ? "light" : "dark"; }, theme);
+    expect(await f.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(255, 255, 255)");
+    expect(await cadre.locator("p").evaluate((e) => getComputedStyle(e).color)).toBe("rgb(0, 0, 0)");
+  });
+}
+
+test("REQ058_AC9_defilement_garde_et_focus_dans_l_editeur", async ({ page }) => {
+  const longue = Array.from({ length: 150 }, (_, i) => `<p>ligne ${i}</p>`).join("\n");
+  const { cadre } = await ouvrirHtml(page, longue);
+  await expect(cadre.locator("p").first()).toBeVisible();
+  const f = page.locator("iframe.zone-code-cadre");
+  await f.evaluate((e) => e.contentWindow.scrollTo(0, 1e6));
+  const avant = await f.evaluate((e) => e.contentWindow.scrollY);
+  expect(avant).toBeGreaterThan(100);
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("<p>ZZ</p>");
+  await expect(cadre.locator("p", { hasText: "ZZ" })).toHaveCount(1);
+  const apres = await f.evaluate((e) => e.contentWindow.scrollY);
+  expect(Math.abs(apres - avant)).toBeLessThanOrEqual(1);
+  expect(await page.evaluate(() => document.activeElement.classList.contains("cm-content"))).toBe(true);
+});

@@ -453,6 +453,15 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
   font-family: var(--font-sans);
   color: var(--ink);
 }
+.zone-code-cadre {
+  flex: 0 0 50%;
+  box-sizing: border-box;
+  min-width: 0;
+  border: 0;
+  border-left: var(--trait) solid var(--line);
+  margin: 0;
+  background: var(--apercu-page);
+}
 .zone-code-apercu h1 { font: var(--texte-titre) var(--font-sans); font-weight: var(--graisse-forte); }
 .zone-code-apercu h2 { font: var(--texte-sous-titre) var(--font-sans); font-weight: var(--graisse-forte); }
 .zone-code-apercu h3, .zone-code-apercu h4, .zone-code-apercu h5, .zone-code-apercu h6 { font: var(--texte-lecture) var(--font-sans); font-weight: var(--graisse-forte); }

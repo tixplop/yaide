@@ -4,6 +4,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { syntaxHighlighting } from "@codemirror/language";
 import { supportLangage } from "./langages.js";
 import { apercu as creerApercu } from "./apercu.js";
+import { apercuHtml } from "./apercu-html.js";
 import { couleurs } from "./couleurs-code.js";
 import { themeCourant } from "./theme.js";
 
@@ -122,7 +123,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   racine.contenu = () => vue.state.doc.toString();
   racine.definirApercu = (actif) => {
     if (actif && !ap) {
-      ap = creerApercu();
+      ap = langage === "html" ? apercuHtml() : creerApercu();
       ap.maj(racine.contenu());
       racine.append(ap);
     } else if (!actif && ap) {

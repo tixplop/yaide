@@ -496,6 +496,7 @@ test("C006_iconeDe_suit_la_table_du_design_system", () => {
   for (const n of ["a.js", "a.JSX", "a.ts", "a.tsx"]) expect(t(n)).toEqual({ icone: "file-code", couleur: "accent-fg" });
   expect(t("a.css")).toEqual({ icone: "file-code", couleur: "git-modified" });
   expect(t("a.html")).toEqual({ icone: "file-code", couleur: "syn-keyword" });
+  expect(t("a.HTM")).toEqual({ icone: "file-code", couleur: "syn-keyword" });
   for (const n of ["a.rs", "a.py", "a.go", "a.c", "a.h", "a.cpp", "a.sh"]) expect(t(n)).toEqual({ icone: "file-code", couleur: "ink-muted" });
   expect(t("README.md")).toEqual({ icone: "md", couleur: "ink-muted" });
   expect(t("a.markdown")).toEqual({ icone: "md", couleur: "ink-muted" });
