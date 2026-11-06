@@ -17,7 +17,7 @@ const INTERVALLE_DISQUE = 1500;
 const SANS_SUITE = "sans suite";
 const DIFF = "\0diff"; // identifiant de l'onglet de diff, qui n'est pas un fichier ouvert
 const TEXTE_SUPPRIME = "Fichier supprimé du disque. Ctrl+S le recrée.";
-const estMarkdown = (chemin) => /\.(md|markdown)$/i.test(chemin);
+const avecApercu = (chemin) => /\.(md|markdown|html|htm)$/i.test(chemin);
 
 /**
  * Éditeur de V-002. `dire({ texte, variante, fermable })` affiche un bandeau ; `ouvrirRapide()` ouvre V-006.
@@ -130,7 +130,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     }
     const noms = libelles(liste.map((x) => x.chemin));
     let actionsDroite = [];
-    if (o !== diff && estMarkdown(o.chemin)) {
+    if (o !== diff && avecApercu(o.chemin)) {
       const ap = bouton({ icone: "eye", variante: "discret", nomAccessible: "Aperçu", presse: o.apercu });
       ap.addEventListener("click", () => {
         o.apercu = !o.apercu;

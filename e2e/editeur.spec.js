@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import { lancerRelais } from "./relais.js";
 import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
 
 let yaide;
@@ -138,6 +139,42 @@ test("REQ012_AC1_et_AC3_et_AC4_apercu_markdown_propre_a_chaque_onglet", async ({
   await expect(bouton).toHaveCount(0);
   await onglet(page, /^README\.md/).click();
   await expect(bouton).toHaveAttribute("aria-pressed", "true");
+});
+
+test("REQ058_AC1_parcours_P022", async ({ page }) => {
+  await ouvrir(page, (d) => {
+    fs.mkdirSync(path.join(d, "site"));
+    fs.writeFileSync(path.join(d, "site", "index.html"), "");
+    fs.writeFileSync(path.join(d, "site", "page.htm"), "");
+    fs.writeFileSync(path.join(d, "site", "style.css"), "h1 {}\n");
+  });
+  const relais = await lancerRelais(yaide.port);
+  try {
+    await page.goto(relais.origine + "/");
+    await expect(arbre(page)).toBeVisible();
+    await ligne(page, "site").click();
+    const bouton = page.getByRole("button", { name: "Aperçu", exact: true });
+    const titre = page.locator('iframe[title="Aperçu"]:visible').contentFrame().getByRole("heading", { name: "Titre" });
+    await ligne(page, "index.html").click();
+    await bouton.click();
+    await taper(page, "index.html", "<h1>Titre</h1>");
+    await expect(titre).toBeVisible();
+    await ligne(page, "page.htm").click();
+    await bouton.click();
+    await taper(page, "page.htm", "<h1>Titre</h1>");
+    await expect(titre).toBeVisible();
+    await ligne(page, "style.css").click();
+    await expect(bouton).toHaveCount(0);
+    await onglet(page, /^page\.htm/).click();
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    await expect(titre).toBeVisible();
+    relais.couper();
+    await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue" })).toBeVisible({ timeout: 5000 });
+    await taper(page, "page.htm", "<p>Hors ligne</p>");
+    await expect(page.locator('iframe[title="Aperçu"]:visible').contentFrame().getByText("Hors ligne")).toBeVisible();
+  } finally {
+    relais.fermer();
+  }
 });
 
 test("REQ012_AC2_le_html_du_markdown_ne_s_execute_pas", async ({ page }) => {

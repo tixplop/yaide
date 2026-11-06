@@ -93,6 +93,29 @@ test("REQ039_AC5_AC8_le_nom_de_l_onglet_prend_la_couleur_et_le_mot_de_son_statut
   expect(onglet("main.rs").getAttribute("aria-label")).toBe("main.rs");
 });
 
+const boutonApercu = () => document.querySelector('button[aria-label="Aperçu"]');
+
+test("REQ058_AC6_bouton_apercu_sur_html_et_htm_pas_sur_css_ni_rs", () => {
+  const { e } = monter();
+  for (const chemin of ["index.html", "page.htm", "NOTES.HTML", "style.css", "src/main.rs"]) {
+    e.ouvrir({ chemin, contenu: "x", version: "1" });
+    expect(boutonApercu() !== null, chemin).toBe(!/\.(css|rs)$/.test(chemin));
+  }
+});
+
+test("REQ058_AC7_aria_pressed_propre_a_chaque_onglet_sur_html", () => {
+  const { e } = monter();
+  e.ouvrir({ chemin: "a.html", contenu: "x", version: "1" });
+  e.ouvrir({ chemin: "b.html", contenu: "y", version: "1" });
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
+  boutonApercu().click();
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+  e.ouvrir({ chemin: "a.html", contenu: "x", version: "1" });
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
+  e.ouvrir({ chemin: "b.html", contenu: "y", version: "1" });
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+});
+
 test("REQ039_AC7_le_chemin_de_l_onglet_actif_est_donne_pour_l_arbre", () => {
   const surCourant = vi.fn();
   const e = vueEditeur({ dire: vi.fn(), surCourant });
