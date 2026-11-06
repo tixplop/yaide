@@ -90,6 +90,7 @@
   --diff-ajout: color-mix(in srgb, var(--git-added) 14%, transparent);
   --diff-retrait: color-mix(in srgb, var(--git-deleted) 14%, transparent);
   --ligne-active: color-mix(in srgb, var(--ink) 4%, transparent);
+  --code-fond: color-mix(in srgb, var(--ink) 6%, transparent);
   --voile: rgb(0 0 0 / .4);
   --apercu-fond: var(--hover);
   --apercu-entete: var(--bg-400);
@@ -120,6 +121,7 @@
   --texte-petit: 12px/16px;
   --texte-base: 13px/18px;
   --texte-lecture: 14px/20px;
+  --texte-hybride: 14px/21px;
   --texte-sous-titre: 16px/22px;
   --texte-titre: 20px/28px;
   --texte-code: 13.5px/21px;

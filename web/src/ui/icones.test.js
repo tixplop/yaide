@@ -124,3 +124,13 @@ test("REQ059_AC1_panel_right_close_au_trait_lucide_et_sans_doublon", () => {
   expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("panel-right-close");
   expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
 });
+
+test("REQ062_icone_type_au_trait_lucide_et_sans_doublon", () => {
+  expect(NOMS).toContain("type");
+  const s = icone("type", 16);
+  expect(s.getAttribute("stroke-width")).toBe("1.6");
+  expect(s.getAttribute("aria-hidden")).toBe("true");
+  expect(s.innerHTML).toContain('d="M12 4v16"');
+  expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("type");
+  expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
+});

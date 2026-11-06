@@ -404,3 +404,44 @@ test("REQ059_AC1_contrastes_de_la_commande_du_rail_droit_sur_le_fond_du_rail", (
     expect(ratio(theme, "--accent-fg", "--bg-000", null), `--accent-fg (${theme})`).toBeGreaterThanOrEqual(3);
   }
 });
+
+// AC-062-13 : table « Mode hybride » de design-system.md. Couches posées de bas en haut sur --bg-200 ;
+// « ligne active » : --ligne-active posé en plus.
+test("REQ062_AC13_code_fond_translucide_dans_les_deux_themes", () => {
+  for (const theme of THEMES) expect(T[theme]["--code-fond"], theme).toBe("color-mix(in srgb, var(--ink) 6%, transparent)");
+  expect(jeton("dark", "--code-fond")).toMatchObject({ r: 204, a: 0.06 });
+});
+
+test("REQ062_AC13_paires_du_mode_hybride_atteignent_leur_seuil_avec_et_sans_ligne_active", () => {
+  THEMES.forEach((theme) => {
+    const fondDe = (couches, active) => {
+      let f = jeton(theme, "--bg-200");
+      for (const c of couches) f = poser(jeton(theme, c), f);
+      return active ? poser(jeton(theme, "--ligne-active"), f) : f;
+    };
+    const paires = [
+      // [texte, couches, seuil, aussi sur ligne active]
+      ["--ink", [], 4.5, true],
+      ["--ink", ["--code-fond"], 4.5, true],
+      ["--ink", ["--msg-info"], 4.5, true],
+      ["--ink", ["--msg-info", "--code-fond"], 4.5, false],
+      ["--ink", ["--code-fond", "--selection"], 4.5, false],
+      ["--ink-muted", [], 4.5, true],
+      ["--ink-muted", ["--code-fond"], 4.5, true],
+      ["--ink-muted", ["--msg-info"], 4.5, true],
+      ["--info", [], 4.5, true],
+      ["--info", ["--msg-info"], 4.5, true],
+      ["--info", ["--code-fond"], 4.5, false],
+      ["--line-strong", [], 3, true],
+      ["--info", [], 3, true],
+      ["--info", ["--msg-info"], 3, true],
+      ...["keyword", "control", "string", "function", "number", "type"].map((n) => [`--syn-${n}`, ["--code-fond"], 4.5, true]),
+    ];
+    for (const [texte, couches, seuil, active] of paires) {
+      for (const sur of active ? [false, true] : [false]) {
+        const r = contraste(jeton(theme, texte), fondDe(couches, sur));
+        expect(r, `${texte} sur ${couches.join("+") || "--bg-200"}${sur ? " + ligne active" : ""} (${theme})`).toBeGreaterThanOrEqual(seuil);
+      }
+    }
+  });
+});

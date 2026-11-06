@@ -16,7 +16,7 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-Icônes Lucide (ISC) utilisées ici : panel-left-close, panel-left-open, panel-right-close, panel-bottom-close, panel-bottom-open, bot, message-square-plus, history, send-horizontal, circle-stop, circle-dashed, circle-check, circle-x.
+Icônes Lucide (ISC) utilisées ici : panel-left-close, panel-left-open, panel-right-close, panel-bottom-close, panel-bottom-open, bot, message-square-plus, history, send-horizontal, circle-stop, circle-dashed, circle-check, circle-x, type.
 
 ---
 
@@ -87,6 +87,7 @@ const CHEMINS = {
   "circle-dashed": "<path d=\"M10.1 2.182a10 10 0 0 1 3.8 0\"/><path d=\"M13.9 21.818a10 10 0 0 1-3.8 0\"/><path d=\"M17.609 3.721a10 10 0 0 1 2.69 2.7\"/><path d=\"M2.182 13.9a10 10 0 0 1 0-3.8\"/><path d=\"M20.279 17.609a10 10 0 0 1-2.7 2.69\"/><path d=\"M21.818 10.1a10 10 0 0 1 0 3.8\"/><path d=\"M3.721 6.391a10 10 0 0 1 2.7-2.69\"/><path d=\"M6.391 20.279a10 10 0 0 1-2.69-2.7\"/>",
   "circle-check": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m9 12 2 2 4-4\"/>",
   "circle-x": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m15 9-6 6\"/><path d=\"m9 9 6 6\"/>",
+  "type": "<path d=\"M12 4v16\"/><path d=\"M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2\"/><path d=\"M9 20h6\"/>",
 };
 
 export const NOMS = Object.keys(CHEMINS);

@@ -8,9 +8,17 @@ import { html } from "@codemirror/lang-html";
 import { css } from "@codemirror/lang-css";
 import { json } from "@codemirror/lang-json";
 import { yaml } from "@codemirror/lang-yaml";
-import { markdown } from "@codemirror/lang-markdown";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
+
+// Langage d'un bloc clôturé (```rust) : sa coloration, ou null (markdown lui-même ou nom inconnu).
+function langageDeBloc(info) {
+  const id = langagePourMot(info);
+  if (!id || id === "markdown") return null;
+  const s = LANGAGES[id].support();
+  return s.language ?? s;
+}
 
 // identifiant -> { extensions, support() }
 const LANGAGES = {
@@ -24,7 +32,7 @@ const LANGAGES = {
   json: { extensions: ["json"], support: () => json() },
   yaml: { extensions: ["yaml", "yml"], support: () => yaml() },
   toml: { extensions: ["toml"], support: () => StreamLanguage.define(toml) },
-  markdown: { extensions: ["md", "markdown"], support: () => markdown() },
+  markdown: { extensions: ["md", "markdown"], support: () => markdown({ base: markdownLanguage, codeLanguages: langageDeBloc }) },
   shell: { extensions: ["sh", "bash", "zsh"], support: () => StreamLanguage.define(shell) },
 };
 

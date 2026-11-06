@@ -543,3 +543,21 @@ body { margin: 0; }
 .profils-liste { max-height: calc(6 * (var(--size-row) + var(--space-1))); overflow-y: auto; }
 .profils-actions { display: flex; gap: var(--space-1); }
 
+
+/* Mode hybride (REQ-062) : décorations de hybride.js. Fonds translucides ; ligne active posée en plus. */
+.cm-hybride .cm-content { font: var(--texte-hybride) var(--font-sans); }
+.cm-hy-marque { color: var(--ink-muted); font-weight: 400; font-style: normal; text-decoration: none; }
+.cm-line.cm-hy-titre1 { font: var(--texte-titre) var(--font-sans); font-weight: var(--graisse-forte); color: var(--ink); }
+.cm-line.cm-hy-titre2 { font: var(--texte-sous-titre) var(--font-sans); font-weight: var(--graisse-forte); color: var(--ink); }
+.cm-line.cm-hy-titre3, .cm-line.cm-hy-titre4, .cm-line.cm-hy-titre5, .cm-line.cm-hy-titre6 { font: var(--texte-hybride) var(--font-sans); font-weight: var(--graisse-forte); color: var(--ink); }
+.cm-hy-gras { font-weight: var(--graisse-forte); }
+.cm-hy-italique { font-style: italic; }
+.cm-hy-barre { text-decoration: line-through; }
+.cm-hy-code { padding: 0 var(--space-1); border-radius: var(--radius-xs); font: var(--texte-code-ligne) var(--font-mono); background-color: var(--code-fond); }
+.cm-hy-lien { color: var(--info); text-decoration: underline; cursor: text; }
+.cm-line.cm-hy-citation { padding-left: var(--space-4); background-color: var(--msg-info); box-shadow: inset var(--filet-note) 0 0 var(--info); }
+.cm-line.cm-hy-bloc-code { font: var(--texte-code) var(--font-mono); background-color: var(--code-fond); }
+.cm-line.cm-hy-mono { font: var(--texte-code) var(--font-mono); color: var(--ink); }
+.cm-line.cm-hy-citation.cm-activeLine, .cm-line.cm-hy-bloc-code.cm-activeLine { background-image: linear-gradient(var(--ligne-active), var(--ligne-active)); }
+.cm-hy-puce { color: var(--ink-muted); }
+.cm-hy-trait { display: inline-block; width: 100%; height: 0; vertical-align: middle; border-top: var(--trait) solid var(--line-strong); }
