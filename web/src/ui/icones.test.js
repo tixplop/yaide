@@ -100,3 +100,17 @@ test("REQ046_AC16_icones_de_repli_du_sprite_de_la_maquette", () => {
   const html = Object.keys(dessins).map((n) => icone(n).innerHTML);
   expect(new Set(html).size).toBe(4);
 });
+
+test("REQ056_les_huit_icones_de_l_agent_existent_au_trait_lucide", () => {
+  for (const n of ["bot", "message-square-plus", "history", "send-horizontal", "circle-stop", "circle-dashed", "circle-check", "circle-x"]) {
+    expect(NOMS, n).toContain(n);
+    const s = icone(n, 14);
+    expect(s.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(s.getAttribute("stroke-width")).toBe("1.6");
+    expect(s.getAttribute("aria-hidden")).toBe("true");
+    expect(s.getAttribute("width")).toBe("14");
+    expect(s.innerHTML.length, n).toBeGreaterThan(20);
+  }
+  // Deux commandes différentes n'ont jamais la même icône (AC-031-2).
+  expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
+});

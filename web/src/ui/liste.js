@@ -194,6 +194,12 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
       d.textContent = l.dossier;
       e.append(d);
     }
+    if (l.fin) {
+      const f = document.createElement("span");
+      f.className = "liste-fin ya-fin";
+      f.textContent = l.fin;
+      e.append(f);
+    }
     if (l.statut) {
       const m = document.createElement("span");
       m.className = "liste-statut";

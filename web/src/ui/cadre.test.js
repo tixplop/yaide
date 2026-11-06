@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, test, vi } from "vitest";
 import { cadre } from "./cadre.js";
 import { bouton } from "./bouton.js";
+import { onglets } from "./onglets.js";
 import { infoBulle } from "./info-bulle.js";
 
 const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
@@ -313,4 +314,28 @@ test("REQ048_AC9_definirReplis_ferme_la_bulle_d_une_ancre_du_panneau", async () 
   c.definirReplis({ panneau: true });
   expect(ouvertes()).toHaveLength(0);
   vi.useRealTimers();
+});
+
+test("REQ028_AC14_quatre_onglets_tiennent_a_480", () => {
+  const onglet = (id, nomAccessible, icone) => ({ id, nomAccessible, icone });
+  const rail = onglets({
+    presentation: "rail",
+    actif: "fichiers",
+    onglets: [onglet("fichiers", "Fichiers", "files"), onglet("recherche", "Recherche", "search"), onglet("git", "Git", "branch"), onglet("agent", "Agent", "bot")],
+  });
+  const commandes = ["Nouveau shell", "Réduire le shell", "Shells réduits", "Fermer le shell"].map((libelle, i) => bouton({ nomAccessible: libelle, icone: ["terminal", "minimize-2", "layers", "square-x"][i] }));
+  const c = cadre({ rail: { onglets: rail, commandes } });
+  document.body.append(c);
+  const nav = c.querySelector('nav[aria-label="Panneaux"]');
+  expect([...nav.querySelectorAll('[role="tab"]')].map((t) => t.getAttribute("aria-label"))).toEqual(["Fichiers", "Recherche", "Git", "Agent"]);
+  expect(nav.querySelector('[data-icone="bot"]')).not.toBeNull();
+  expect(c.querySelectorAll('[aria-label="Shells"] button').length).toBe(4);
+  // 8 boutons de --size-activity : 384 px, pour 480 - 35 - 22 = 423 px disponibles, sans défilement.
+  const px = (nom) => parseFloat(tokens.match(new RegExp(`${nom}:\\s*(\\d+)px`))[1]);
+  const boutons = nav.querySelectorAll('[role="tab"]').length + c.querySelectorAll('[aria-label="Shells"] button').length;
+  expect(boutons * px("--size-activity")).toBe(384);
+  expect(boutons * px("--size-activity")).toBeLessThanOrEqual(px("--hauteur-min") - px("--size-titlebar") - px("--size-status"));
+  expect(regle(".ya-activity .onglet")).toContain("height: var(--size-activity)");
+  expect(regle(".onglet-cellule")).toContain("flex: none");
+  for (const s of [".cadre-rail", ".cadre-rail-onglets", ".cadre-rail-commandes"]) expect(regle(s)).not.toMatch(/overflow/);
 });

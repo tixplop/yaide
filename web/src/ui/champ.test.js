@@ -79,3 +79,44 @@ test("REQ033_AC14_indication_devient_le_placeholder_en_ink_muted", () => {
   expect(champ({ libelle: "Nom" }).querySelector("input").placeholder).toBe("");
   expect(regle(".ya-input::placeholder")).toContain("color: var(--ink-muted)");
 });
+
+test("REQ052_AC9_secret_password_autocomplete_off_vide", () => {
+  const c = champ({ libelle: "Clé d'API", type: "secret", valeur: "sk-prerempli" });
+  const input = c.querySelector("input");
+  expect(input.type).toBe("password");
+  expect(input.getAttribute("autocomplete")).toBe("off");
+  expect(input.value).toBe("");
+  expect(input.spellcheck).toBe(false);
+  expect(c.querySelector("label").htmlFor).toBe(input.id);
+});
+
+test("REQ053_AC6_case_native_libelle_et_valeur", () => {
+  const c = champ({ libelle: "Recherche web", type: "case", valeur: true, aide: "Utilise DuckDuckGo" });
+  const input = c.querySelector("input");
+  expect(input.type).toBe("checkbox");
+  expect(input.checked).toBe(true);
+  expect(champ({ libelle: "x", type: "case" }).querySelector("input").checked).toBe(false);
+  const label = c.querySelector("label");
+  expect(label.htmlFor).toBe(input.id);
+  expect(label.textContent).toBe("Recherche web");
+  // Libellé à droite de la case, aide dessous.
+  const enfants = [...c.children];
+  expect(enfants.indexOf(input)).toBeLessThan(enfants.indexOf(label));
+  expect(enfants.at(-1).textContent).toBe("Utilise DuckDuckGo");
+  expect(input.getAttribute("aria-describedby")).toBe(enfants.at(-1).id);
+  expect(regle(".ya-case")).toContain("accent-color: var(--accent)");
+  expect(regle(".ya-case input")).toContain("width: 14px");
+  expect(regle(".ya-case input:focus-visible")).toContain("outline: 2px solid var(--accent-fg)");
+  expect(regle(".ya-case input:focus-visible")).toContain("outline-offset: 1px");
+});
+
+test("REQ053_clavier_decimal_et_numerique_sans_type_number", () => {
+  const dec = champ({ libelle: "Température", clavier: "decimal" }).querySelector("input");
+  expect(dec.getAttribute("inputmode")).toBe("decimal");
+  expect(dec.type).toBe("text");
+  const num = champ({ libelle: "Tokens", clavier: "numerique" }).querySelector("input");
+  expect(num.getAttribute("inputmode")).toBe("numeric");
+  expect(num.type).toBe("text");
+  expect(champ({ libelle: "Nom" }).querySelector("input").hasAttribute("inputmode")).toBe(false);
+  expect(() => champ({ libelle: "x", clavier: "autre" })).toThrow(/clavier/);
+});

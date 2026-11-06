@@ -969,3 +969,27 @@ test("REQ050_AC15_AC18_css_cible_de_depot_image_et_partie_vide", () => {
   expect(arbre).toContain("flex: 1 0 auto");
   expect(arbre).toContain("padding-bottom: var(--size-row)");
 });
+
+test("REQ052_AC1_fin_calee_et_non_coupee", () => {
+  const l = liste({ lignes: [{ id: "a", libelle: "OpenAI", dossier: "https://api.openai.com/v1 · gpt", fin: "Clé enregistrée" }, { id: "b", libelle: "Local", fin: "Aucune clé" }], selection: "a" });
+  const [a, b] = items(l);
+  const fin = a.querySelector(".liste-fin");
+  expect(fin.textContent).toBe("Clé enregistrée");
+  expect(a.lastElementChild).toBe(fin);
+  expect(b.querySelector(".liste-fin").textContent).toBe("Aucune clé");
+  expect(a.querySelector(".liste-parent").textContent).toBe("https://api.openai.com/v1 · gpt");
+  // Le nom accessible reste le libellé : la fin est lue après lui.
+  expect(a.textContent).toBe("OpenAIhttps://api.openai.com/v1 · gptClé enregistrée");
+  expect(items(liste({ lignes: lignes3 }))[0].querySelector(".liste-fin")).toBeNull();
+  const r = regle(".ya-fin");
+  expect(r).toContain("flex: none");
+  expect(r).toContain("margin-left: auto");
+  expect(r).toContain("color: var(--ink-muted)");
+  expect(r).toContain("font-size: 11.5px");
+  expect(r).toContain("white-space: nowrap");
+  expect(r).not.toContain("overflow");
+  expect(regle(".ya-reglages .ya-row")).toContain("border: 1px solid var(--line-strong)");
+  expect(regle(".ya-reglages .ya-row")).toContain("border-radius: var(--radius-sm)");
+  expect(regle(".ya-reglages .ya-row .liste-libelle")).toContain("min-width: 84px");
+  expect(regle(".ya-reglages .ya-row .liste-parent")).toContain("text-overflow: ellipsis");
+});

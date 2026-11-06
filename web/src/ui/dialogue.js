@@ -1,4 +1,4 @@
-const POSITIONS = ["centre", "palette"];
+const POSITIONS = ["centre", "palette", "reglages"];
 let compteur = 0;
 
 export function dialogue({ titre, contenu = [], actions = [], focusInitial, position = "centre", surAnnuler }) {
@@ -7,8 +7,8 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
   if (!surAnnuler) throw new Error("dialogue : surAnnuler requis");
   if (!POSITIONS.includes(position)) throw new Error(`dialogue : position inconnue « ${position} »`);
   const el = document.createElement("dialog");
-  el.className = { centre: "dialogue", palette: "dialogue ya-palette" }[position];
-  if (position !== "centre") el.setAttribute("aria-label", titre);
+  el.className = { centre: "dialogue", palette: "dialogue ya-palette", reglages: "dialogue ya-reglages" }[position];
+  if (position === "palette") el.setAttribute("aria-label", titre);
   else {
     const h = document.createElement("h2");
     h.className = "dialogue-titre ya-dialog-title";

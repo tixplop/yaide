@@ -60,10 +60,12 @@ function surEchap(e) {
 
 const surPerteDeFocus = () => ouvert?.fermer();
 
-export function menu({ nom, groupes, position, surFermeture }) {
+// `ancre` : bouton d'en-tête qui ouvre le menu ; sans `position`, le menu s'ouvre 4 px sous lui, sur son bord gauche.
+export function menu({ nom, groupes, position, ancre, surFermeture }) {
   if (!nom) throw new Error("menu : nom requis");
   if (typeof surFermeture !== "function") throw new Error("menu : surFermeture requis");
-  if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) throw new Error("menu : position requise");
+  if (ancre !== undefined && typeof ancre.getBoundingClientRect !== "function") throw new Error("menu : ancre doit être un élément");
+  if (!ancre && (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y))) throw new Error("menu : position requise");
   const pleins = groupes.filter((g) => g.length > 0);
   for (const c of pleins.flat()) {
     if (!c.libelle) throw new Error("menu : libelle requis");
@@ -130,6 +132,7 @@ export function menu({ nom, groupes, position, surFermeture }) {
       window.removeEventListener("blur", surPerteDeFocus);
       window.removeEventListener("resize", surPerteDeFocus);
     }
+    ancre?.setAttribute("aria-expanded", "false");
     racine.hidePopover?.();
     racine.remove();
     if (origine?.isConnected) origine.focus?.();
@@ -158,7 +161,16 @@ export function menu({ nom, groupes, position, surFermeture }) {
 
   document.body.append(racine);
   racine.showPopover?.();
-  const p = placer(position, { largeur: racine.offsetWidth, hauteur: racine.offsetHeight }, { largeur: window.innerWidth, hauteur: window.innerHeight });
+  const taille = { largeur: racine.offsetWidth, hauteur: racine.offsetHeight };
+  const fenetre = { largeur: window.innerWidth, hauteur: window.innerHeight };
+  let depart = position;
+  if (ancre) {
+    ancre.setAttribute("aria-expanded", "true");
+    const r = ancre.getBoundingClientRect();
+    // Décalé vers la gauche s'il ne tient pas, jamais retourné de l'autre côté du bouton.
+    depart = { x: Math.min(r.left, fenetre.largeur - taille.largeur), y: r.bottom + 4 };
+  }
+  const p = placer(depart, taille, fenetre);
   racine.style.left = `${p.left}px`;
   racine.style.top = `${p.top}px`;
 

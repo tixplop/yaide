@@ -385,3 +385,53 @@ test("REQ040_AC18_menu_plus_haut_que_la_fenetre_defile_et_placer_le_borne", () =
   // Bouton du bas du rail : le menu, plus haut que la place dessous, est retourné puis borné à la fenêtre.
   expect(placer({ x: 52, y: 450 }, { largeur: 200, hauteur: 470 }, { largeur: 800, hauteur: 480 })).toEqual({ left: 52, top: 0 });
 });
+
+test("REQ056_AC12_menu_sous_un_bouton_d_en_tete_et_aria_expanded", () => {
+  const b = document.createElement("button");
+  b.textContent = "Conversations";
+  b.getBoundingClientRect = () => ({ left: 120, right: 144, top: 40, bottom: 64, width: 24, height: 24 });
+  document.body.append(b);
+  b.focus();
+  const surFermeture = vi.fn();
+  const m = menu({ nom: "Conversations", ancre: b, surFermeture, groupes: [[{ libelle: "Corriger le test", touche: "14:32" }, { libelle: "Autre", touche: "hier" }]] });
+  ouverts.push(m);
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  // 4 px sous le bouton, aligné sur son bord gauche.
+  expect(m.racine.style.left).toBe("120px");
+  expect(m.racine.style.top).toBe("68px");
+  // `touche` porte un texte qui n'est pas une touche, avec le même aspect.
+  const t = m.racine.querySelector(".menu-touche");
+  expect(t.textContent).toBe("14:32");
+  expect(t.getAttribute("aria-hidden")).toBe("true");
+  expect(m.racine.querySelector('[role="menuitem"]').textContent).toBe("Corriger le test14:32");
+  // Un clic sur le bouton ferme le menu sans le rouvrir.
+  const clic = vi.fn();
+  b.addEventListener("click", clic);
+  evt(b, "pointerdown");
+  expect(surFermeture).toHaveBeenCalledTimes(1);
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  evt(b, "click");
+  expect(clic).not.toHaveBeenCalled();
+  expect(document.querySelector(".ya-menu")).toBeNull();
+  expect(document.activeElement).toBe(b);
+});
+
+test("REQ056_AC12_menu_d_en_tete_decale_vers_la_gauche_s_il_ne_tient_pas", () => {
+  const b = document.createElement("button");
+  b.getBoundingClientRect = () => ({ left: 780, right: 800, top: 40, bottom: 64, width: 20, height: 24 });
+  document.body.append(b);
+  const largeur = window.innerWidth;
+  window.innerWidth = 800;
+  const espion = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(200);
+  try {
+    const m = menu({ nom: "Conversations", ancre: b, surFermeture: () => {}, groupes: [[{ libelle: "Une conversation" }]] });
+    ouverts.push(m);
+    expect(m.racine.style.left).toBe("600px");
+    expect(m.racine.style.top).toBe("68px");
+    m.fermer();
+  } finally {
+    espion.mockRestore();
+    window.innerWidth = largeur;
+  }
+  expect(() => menu({ nom: "x", ancre: {}, surFermeture: () => {}, groupes: [[{ libelle: "a" }]] })).toThrow(/ancre/);
+});

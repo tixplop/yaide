@@ -142,3 +142,40 @@ test("C007_palette_sous_la_barre_de_titre_sans_titre_visible_voile_transparent",
   expect(regle(".ya-palette .liste-trouve")).toContain("color: var(--accent-fg)");
   expect(regle(".ya-palette .liste-trouve")).toContain("font-weight: var(--graisse-forte)");
 });
+
+test("REQ054_reglages_contenu_defile_actions_visibles", () => {
+  const { d } = monter({ position: "reglages", titre: "Providers LLM" });
+  d.ouvrir();
+  const el = d.element;
+  expect(el.className).toContain("ya-reglages");
+  const h = el.querySelector("h2");
+  expect(h.textContent).toBe("Providers LLM");
+  expect(el.getAttribute("aria-labelledby")).toBe(h.id);
+  // Titre, contenu, actions : trois enfants directs, dans cet ordre.
+  expect([...el.children].map((e) => e.className.split(" ")[0])).toEqual(["dialogue-titre", "dialogue-contenu", "dialogue-actions"]);
+  const r = regle(".ya-reglages");
+  expect(r).toContain("width: var(--largeur-palette)");
+  expect(r).toContain("max-height: calc(100vh - 2 * var(--space-4))");
+  expect(r).toContain("display: flex");
+  expect(r).toContain("flex-direction: column");
+  expect(r).toContain("margin: auto");
+  expect(regle(".ya-reglages .dialogue-contenu")).toContain("overflow-y: auto");
+  expect(regle(".ya-reglages .dialogue-contenu")).toContain("gap: 12px");
+  expect(regle(".ya-reglages .dialogue-actions")).toContain("flex: none");
+  expect(regle(".ya-reglages::backdrop")).toContain("background: var(--voile)");
+  expect(() => monter({ position: "autre" })).toThrow(/position/);
+});
+
+test("REQ053_AC9_echap_ne_ferme_que_la_confirmation", () => {
+  const reglages = monter({ position: "reglages", titre: "Providers LLM" });
+  reglages.d.ouvrir();
+  const confirmation = monter({ titre: "Supprimer le provider" });
+  confirmation.d.ouvrir();
+  // Le navigateur envoie `cancel` au seul dialogue modal du dessus.
+  confirmation.d.element.dispatchEvent(new Event("cancel", { cancelable: true }));
+  expect(confirmation.surAnnuler).toHaveBeenCalledTimes(1);
+  expect(reglages.surAnnuler).not.toHaveBeenCalled();
+  confirmation.d.fermer();
+  expect(reglages.d.element.isConnected).toBe(true);
+  expect(reglages.d.element.hasAttribute("open")).toBe(true);
+});

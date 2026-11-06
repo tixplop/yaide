@@ -370,3 +370,15 @@ test("REQ042_AC4_REQ043_AC3_contrastes_des_traits_de_l_apercu", () => {
     for (const r of [ls, filet, surNote]) expect(r).toBeGreaterThanOrEqual(3);
   });
 });
+
+// design-proposal.md, REQ-056 : icônes d'état d'un appel d'outil, message dans un dialogue, contour de la liste des réglages.
+test("REQ056_contrastes_des_icones_d_etat_du_message_de_dialogue_et_du_contour_des_reglages", () => {
+  THEMES.forEach((theme, k) => {
+    expect(ratio(theme, "--git-added", "--bg-100"), `réussi (${theme})`).toBe([7.5, 5.7][k]);
+    expect(ratio(theme, "--danger", "--bg-100"), `échec (${theme})`).toBe([6.3, 6.2][k]);
+    expect(ratio(theme, "--ink-muted", "--bg-100"), `en cours (${theme})`).toBe([6.5, 6.2][k]);
+    expect(ratio(theme, "--ink-muted", "--hover"), `en cours au survol (${theme})`).toBeGreaterThanOrEqual(5);
+    egalA(ratio(theme, "--ink", "--msg-succes", "--bg-300"), [6.8, 13.4][k], `texte sur le message de réussite (${theme})`);
+    expect(ratio(theme, "--line-strong", "--bg-300"), `contour des réglages (${theme})`).toBe([3, 3.4][k]);
+  });
+});

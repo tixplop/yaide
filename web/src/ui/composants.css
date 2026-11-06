@@ -351,6 +351,30 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 /* Un dossier parent long se coupe avant le nom, qui garde sa place avec la lettre de statut. */
 .git-corps .ya-row .liste-libelle { flex: 0 1 auto; }
 .git-corps .ya-row .liste-parent { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* C-002 : case à cocher native (`case`), libellé à droite, aide dessous. */
+.ya-case { display: grid; grid-template-columns: 14px 1fr; align-items: center; column-gap: var(--space-2); row-gap: var(--space-1); accent-color: var(--accent); }
+.ya-case input { width: 14px; height: 14px; margin: 0; }
+.ya-case input:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 1px; }
+.ya-case input:disabled { opacity: .45; }
+.ya-case .champ-aide, .ya-case .champ-erreur { grid-column: 2; }
+
+/* C-006 : `fin`, texte court calé à droite, jamais coupé. Ligne de réglage dans C-007 `reglages`. */
+.ya-fin { flex: none; margin-left: auto; padding-left: var(--space-2); font-size: 11.5px; color: var(--ink-muted); white-space: nowrap; }
+.ya-reglages .ya-row { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); margin: 2px 0; background: transparent; }
+.ya-reglages .ya-row .liste-libelle { min-width: 84px; font-size: 12.5px; }
+.ya-reglages .ya-row .liste-parent { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* C-007 `reglages` : le contenu défile seul entre le titre et les actions. */
+.ya-reglages { display: flex; flex-direction: column; margin: auto; max-height: calc(100vh - 2 * var(--space-4)); width: var(--largeur-palette); }
+.ya-reglages:not([open]) { display: none; }
+.ya-reglages::backdrop { background: var(--voile); }
+.ya-reglages .dialogue-titre { flex: none; }
+.ya-reglages .dialogue-contenu { flex: 1 1 auto; min-height: 0; overflow-y: auto; gap: 12px; }
+.ya-reglages .dialogue-actions { flex: none; }
+
+/* C-013 : bouton d'en-tête dont le menu est ouvert. */
+.ya-icon-btn[aria-expanded="true"] { background: var(--bg-400); color: var(--ink); }
+
 .zone-code {
   display: flex;
   height: 100%;
