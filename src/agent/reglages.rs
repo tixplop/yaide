@@ -65,7 +65,7 @@ pub struct Reglages {
     verrou: Mutex<()>,
 }
 
-fn provider(id: &str) -> Option<Provider> {
+pub fn provider(id: &str) -> Option<Provider> {
     TOUS.into_iter().find(|p| p.id() == id)
 }
 

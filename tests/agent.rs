@@ -1,3 +1,4 @@
+#![allow(non_snake_case)]
 use serde_json::{json, Value};
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -382,4 +383,281 @@ fn req029_ac4_reglages_sans_requete_au_faux_provider() {
         faux.accept().is_err(),
         "le serveur a contacté le faux provider"
     );
+}
+
+type Recues = std::sync::Arc<std::sync::Mutex<Vec<Value>>>;
+
+/// Faux provider sur un fil à lui : rend les réponses du scénario dans l'ordre,
+/// chacune après son délai (ms). Chaque requête reçue est notée `{ chemin, corps }`.
+fn faux_provider(scenario: Vec<(u16, Value, u64)>) -> (String, Recues) {
+    use axum::body::Bytes;
+    use axum::extract::State;
+    use axum::http::{StatusCode, Uri};
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex};
+    #[derive(Clone)]
+    struct Etat(Arc<Mutex<VecDeque<(u16, Value, u64)>>>, Recues);
+    async fn rep(State(e): State<Etat>, uri: Uri, corps: Bytes) -> (StatusCode, String) {
+        e.1.lock().unwrap().push(json!({
+            "chemin": uri.path(),
+            "corps": serde_json::from_slice::<Value>(&corps).unwrap_or(Value::Null),
+        }));
+        let suivante = e.0.lock().unwrap().pop_front();
+        match suivante {
+            Some((code, v, delai)) => {
+                tokio::time::sleep(Duration::from_millis(delai)).await;
+                (StatusCode::from_u16(code).unwrap(), v.to_string())
+            }
+            None => (StatusCode::INTERNAL_SERVER_ERROR, "plus de réponse".into()),
+        }
+    }
+    let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    ecoute.set_nonblocking(true).unwrap();
+    let adresse = format!("http://{}", ecoute.local_addr().unwrap());
+    let recues: Recues = Default::default();
+    let etat = Etat(Arc::new(Mutex::new(scenario.into())), recues.clone());
+    std::thread::spawn(move || {
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async move {
+                let app = axum::Router::new().fallback(rep).with_state(etat);
+                let ecoute = tokio::net::TcpListener::from_std(ecoute).unwrap();
+                axum::serve(ecoute, app).await.unwrap();
+            });
+    });
+    (adresse, recues)
+}
+
+fn rep_texte(t: &str) -> (u16, Value, u64) {
+    (
+        200,
+        json!({"choices": [{"message": {"content": t}}],
+               "usage": {"prompt_tokens": 7, "completion_tokens": 1}}),
+        0,
+    )
+}
+
+fn rep_lire_openai(delai: u64) -> (u16, Value, u64) {
+    (
+        200,
+        json!({"choices": [{"message": {"content": null, "tool_calls": [{
+            "id": "c1", "type": "function",
+            "function": {"name": "read", "arguments": "{\"path\":\"README.md\"}"}}]}}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 1}}),
+        delai,
+    )
+}
+
+/// Enregistre le faux provider pour `provider` et un profil ; rend l'id du profil.
+fn configurer(s: &Serveur, provider: &str, adresse: &str) -> String {
+    let r = s.appel(
+        "PUT",
+        &format!("/api/agent/providers/{provider}"),
+        &json!({ "adresse": adresse, "cle": "sk-x" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let p = json!({ "nom": provider, "provider": provider, "modele": "m" });
+    let r = s.appel("PUT", "/api/agent/profils", &p);
+    assert_eq!(r.code, 200, "{}", r.corps);
+    r.json()["profils"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["provider"] == provider)
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+fn message(s: &Serveur, profil: &str, texte: &str) -> String {
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "profil": profil, "texte": texte }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    r.json()["conversation"].as_str().unwrap().to_string()
+}
+
+fn attendre_fin(s: &Serveur, id: &str) -> Value {
+    for _ in 0..200 {
+        let r = s.appel(
+            "GET",
+            &format!("/api/agent/conversations/{id}"),
+            &Value::Null,
+        );
+        assert_eq!(r.code, 200, "{}", r.corps);
+        let v = r.json();
+        if v["enCours"] == false {
+            return v;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("le tour ne finit pas");
+}
+
+#[test]
+fn REQ055_AC4_REQ051_AC2_un_tour_par_les_routes_avec_relecture_depuis() {
+    let (adresse, recues) = faux_provider(vec![
+        rep_lire_openai(0),
+        rep_texte("fini"),
+        (
+            200,
+            json!({"content": [{"type": "tool_use", "id": "t1", "name": "read",
+                                "input": {"path": "README.md"}}],
+                   "usage": {"input_tokens": 3, "output_tokens": 1}}),
+            0,
+        ),
+        (
+            200,
+            json!({"content": [{"type": "text", "text": "fini aussi"}],
+                   "usage": {"input_tokens": 4, "output_tokens": 1}}),
+            0,
+        ),
+    ]);
+    let s = lancer("tour");
+    std::fs::write(s.projet.join("README.md"), "bonjour-readme").unwrap();
+    let openai = configurer(&s, "openai", &adresse);
+    let anthropic = configurer(&s, "anthropic", &adresse);
+
+    let id = message(&s, &openai, "lis le README\nsuite");
+    let v = attendre_fin(&s, &id);
+    assert_eq!(v["titre"], "lis le README");
+    assert_eq!(v["total"], 4);
+    assert_eq!(v["entrees"][2]["etat"], "reussi");
+    assert!(v["entrees"][2]["resultat"]
+        .as_str()
+        .unwrap()
+        .contains("bonjour-readme"));
+    assert_eq!(v["entrees"][3]["texte"], "fini");
+    assert_eq!(v["tokens"], 8);
+    // le fichier est dans le projet
+    assert!(s
+        .yaide()
+        .join("conversations")
+        .join(format!("{id}.json"))
+        .exists());
+    // lecture à partir de n
+    let r = s.appel(
+        "GET",
+        &format!("/api/agent/conversations/{id}?depuis=3"),
+        &Value::Null,
+    );
+    let v = r.json();
+    assert_eq!(v["total"], 4);
+    assert_eq!(v["entrees"].as_array().unwrap().len(), 1);
+    assert_eq!(v["entrees"][0]["texte"], "fini");
+
+    // format Anthropic
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "conversation": id, "profil": anthropic, "texte": "lis aussi" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert_eq!(r.json()["conversation"], id.as_str());
+    let v = attendre_fin(&s, &id);
+    assert_eq!(v["profil"], anthropic.as_str());
+    assert_eq!(v["entrees"][6]["etat"], "reussi");
+    assert_eq!(v["entrees"][7]["texte"], "fini aussi");
+    let r = recues.lock().unwrap();
+    assert_eq!(r.len(), 4);
+    assert_eq!(r[0]["chemin"], "/chat/completions");
+    assert_eq!(r[2]["chemin"], "/v1/messages");
+    assert!(r[3]["corps"].to_string().contains("bonjour-readme"));
+    let historique = r[2]["corps"].to_string();
+    assert!(historique.contains("lis le README") && historique.contains("fini"));
+    assert!(historique.contains("bonjour-readme") && historique.contains("lis aussi"));
+    drop(r);
+
+    // conversation inconnue
+    let r = s.appel("GET", "/api/agent/conversations/nexiste-pas", &Value::Null);
+    assert_eq!(r.code, 404);
+    let r = s.appel(
+        "POST",
+        "/api/agent/conversations/nexiste-pas/arreter",
+        &Value::Null,
+    );
+    assert_eq!(r.code, 404);
+}
+
+#[test]
+fn REQ055_AC8_le_tour_continue_sans_client() {
+    let (adresse, recues) = faux_provider(vec![rep_lire_openai(600), rep_texte("terminé")]);
+    let s = lancer("sansclient");
+    std::fs::write(s.projet.join("README.md"), "x").unwrap();
+    let profil = configurer(&s, "openai", &adresse);
+    let id = message(&s, &profil, "go");
+    // plus aucune requête du client pendant que le tour avance
+    let fichier = s.yaide().join("conversations").join(format!("{id}.json"));
+    let mut fini = false;
+    for _ in 0..300 {
+        if recues.lock().unwrap().len() == 2 {
+            let disque: Option<Value> = std::fs::read(&fichier)
+                .ok()
+                .and_then(|o| serde_json::from_slice(&o).ok());
+            if disque.is_some_and(|d| d["enCours"] == false) {
+                fini = true;
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(fini, "le tour ne s'est pas terminé sans client");
+    let r = s.appel(
+        "GET",
+        &format!("/api/agent/conversations/{id}"),
+        &Value::Null,
+    );
+    let v = r.json();
+    assert_eq!(v["enCours"], false, "{v}");
+    assert_eq!(v["total"], 4);
+    assert_eq!(v["entrees"][3]["texte"], "terminé");
+}
+
+#[test]
+fn REQ056_AC6_liste_la_plus_recente_en_premier() {
+    let (adresse, _) = faux_provider(vec![rep_texte("a"), rep_texte("b")]);
+    let s = lancer("liste");
+    let profil = configurer(&s, "openai", &adresse);
+    let r = s.appel("GET", "/api/agent/conversations", &Value::Null);
+    assert_eq!(r.json(), json!([]));
+    let premiere = message(&s, &profil, "première");
+    attendre_fin(&s, &premiere);
+    std::thread::sleep(Duration::from_millis(20));
+    let seconde = message(&s, &profil, "seconde");
+    attendre_fin(&s, &seconde);
+    let v = s
+        .appel("GET", "/api/agent/conversations", &Value::Null)
+        .json();
+    let l = v.as_array().unwrap();
+    assert_eq!(l.len(), 2);
+    assert_eq!(l[0]["id"], seconde.as_str());
+    assert_eq!(l[0]["titre"], "seconde");
+    assert_eq!(l[1]["id"], premiere.as_str());
+    assert!(l[0]["maj"].as_u64().unwrap() >= l[1]["maj"].as_u64().unwrap());
+}
+
+#[test]
+fn REQ029_AC4_aucune_requete_au_faux_provider_avant_un_message() {
+    let (adresse, recues) = faux_provider(vec![rep_texte("ok")]);
+    let s = lancer("av29");
+    let profil = configurer(&s, "openai", &adresse);
+    s.reglages();
+    s.appel("GET", "/api/agent/conversations", &Value::Null);
+    // refus : sans clé, aucune requête non plus
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "profil": "inconnu", "texte": "x" }),
+    );
+    assert_eq!(r.code, 409);
+    assert_eq!(r.json()["refus"], "sans-profil");
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(recues.lock().unwrap().is_empty());
+    assert!(!s.yaide().join("conversations").exists());
+    let id = message(&s, &profil, "salut");
+    attendre_fin(&s, &id);
+    assert_eq!(recues.lock().unwrap().len(), 1);
 }

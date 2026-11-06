@@ -1,3 +1,4 @@
+pub mod conversation;
 pub mod outils;
 pub mod provider;
 pub mod reglages;

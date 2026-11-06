@@ -1,3 +1,5 @@
+use crate::agent::conversation::{ErreurEnvoi, Gestionnaire};
+use crate::agent::outils::Limites;
 use crate::agent::reglages::{Erreur, Reglages};
 use crate::{auth, config, fichiers, git, recherche, shells};
 use axum::body::Bytes;
@@ -23,7 +25,8 @@ struct Etat {
     projet_dir: PathBuf,
     instance: String,
     shells: Arc<shells::Registre>,
-    reglages: Reglages,
+    reglages: Arc<Reglages>,
+    agent: Arc<Gestionnaire>,
 }
 
 type Partage = Arc<Etat>;
@@ -844,6 +847,56 @@ async fn agent_supprimer_profil(
     reponse_reglages(&etat, etat.reglages.supprimer_profil(&id))
 }
 
+/// `{ conversation?, profil, texte }` : lance un tour, ou refuse (409) sans rien écrire.
+async fn agent_message(State(etat): State<Partage>, corps: Bytes) -> Response {
+    let Some(v) = corps_json(&corps) else {
+        return corps_invalide();
+    };
+    let (Some(profil), Some(message)) = (v["profil"].as_str(), v["texte"].as_str()) else {
+        return corps_invalide();
+    };
+    if message.trim().is_empty() {
+        return texte(StatusCode::BAD_REQUEST, "Message vide.");
+    }
+    let conversation = v["conversation"].as_str();
+    match etat.agent.envoyer(conversation, profil, message) {
+        Ok(id) => json_rep(StatusCode::OK, serde_json::json!({ "conversation": id })),
+        Err(ErreurEnvoi::Refus(r)) => json_rep(
+            StatusCode::CONFLICT,
+            serde_json::json!({ "refus": r.motif, "provider": r.provider }),
+        ),
+        Err(ErreurEnvoi::Inconnue) => StatusCode::NOT_FOUND.into_response(),
+        Err(ErreurEnvoi::Systeme(m)) => json_rep(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "erreur": m }),
+        ),
+    }
+}
+
+async fn agent_conversations(State(etat): State<Partage>) -> Response {
+    json_rep(StatusCode::OK, etat.agent.liste())
+}
+
+async fn agent_conversation(
+    State(etat): State<Partage>,
+    CheminUrl(id): CheminUrl<String>,
+    Query(q): Requete,
+) -> Response {
+    let depuis = param(&q, "depuis").parse().unwrap_or(0);
+    match etat.agent.lire(&id, depuis) {
+        Some(v) => json_rep(StatusCode::OK, v),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn agent_arreter(State(etat): State<Partage>, CheminUrl(id): CheminUrl<String>) -> Response {
+    if etat.agent.arreter(&id) {
+        json_rep(StatusCode::OK, serde_json::json!({}))
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    }
+}
+
 pub async fn servir(
     listener: TcpListener,
     cert: &Path,
@@ -857,6 +910,12 @@ pub async fn servir(
     let tls = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, cle)
         .await
         .map_err(|e| format!("certificat illisible : {e}"))?;
+    let reglages = Arc::new(Reglages::new(projet.join(".yaide"), config.to_path_buf()));
+    let agent = Arc::new(Gestionnaire::new(
+        projet.to_path_buf(),
+        reglages.clone(),
+        Limites::default(),
+    ));
     let etat: Partage = Arc::new(Etat {
         config: config.to_path_buf(),
         projet: projet.display().to_string(),
@@ -864,7 +923,8 @@ pub async fn servir(
         projet_dir: projet.to_path_buf(),
         instance: identifiant_instance(),
         shells: Default::default(),
-        reglages: Reglages::new(projet.join(".yaide"), config.to_path_buf()),
+        reglages,
+        agent,
     });
     let registre = etat.shells.clone();
     let app = Router::new()
@@ -908,6 +968,10 @@ pub async fn servir(
         .route("/api/agent/providers/{id}/cle", delete(agent_supprimer_cle))
         .route("/api/agent/profils", put(agent_profil))
         .route("/api/agent/profils/{id}", delete(agent_supprimer_profil))
+        .route("/api/agent/messages", post(agent_message))
+        .route("/api/agent/conversations", get(agent_conversations))
+        .route("/api/agent/conversations/{id}", get(agent_conversation))
+        .route("/api/agent/conversations/{id}/arreter", post(agent_arreter))
         .route("/api/git/etat", get(git_etat))
         .route("/api/git/diff", get(git_diff))
         .route("/api/git/indexer", post(git_indexer))

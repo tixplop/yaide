@@ -1,0 +1,1054 @@
+//! Conversations de l'agent : journal, boucle, arrêt (DEC-035, DEC-036).
+//! Le fichier `.yaide/conversations/<id>.json` est la seule source de l'historique.
+
+use super::outils::{self, Contexte, Limites};
+use super::provider::{self, Appel, Effort, ErreurProvider, Message, Reglage};
+use super::reglages::{self, Profil, Reglages};
+use crate::config;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::task::AbortHandle;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum Entree {
+    Utilisateur {
+        texte: String,
+    },
+    Agent {
+        texte: String,
+    },
+    Outil {
+        id: String,
+        nom: String,
+        arguments: Value,
+        argument: String,
+        etat: String,
+        resultat: String,
+    },
+    Fin {
+        texte: String,
+    },
+    Message {
+        variante: String,
+        texte: String,
+        #[serde(default)]
+        detail: String,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Conversation {
+    pub id: String,
+    pub titre: String,
+    pub profil: String,
+    pub cree: u64,
+    pub maj: u64,
+    pub en_cours: bool,
+    pub instructions: String,
+    pub tokens: u64,
+    pub entrees: Vec<Entree>,
+    /// Appels demandés par le provider et pas encore commencés ; jamais écrits.
+    #[serde(skip)]
+    restants: Vec<Appel>,
+}
+
+/// Envoi refusé avant toute écriture et toute requête.
+#[derive(Debug, PartialEq)]
+pub struct Refus {
+    pub motif: &'static str,
+    pub provider: Option<&'static str>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ErreurEnvoi {
+    Refus(Refus),
+    /// Conversation inconnue.
+    Inconnue,
+    Systeme(String),
+}
+
+struct Tour {
+    conv: Arc<Mutex<Conversation>>,
+    abort: AbortHandle,
+}
+
+pub struct Gestionnaire {
+    dossier: PathBuf,
+    projet: PathBuf,
+    reglages: Arc<Reglages>,
+    client: reqwest::Client,
+    limites: Limites,
+    registre: Mutex<HashMap<String, Tour>>,
+}
+
+fn maintenant() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+fn verrou<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn id_valide(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+fn nouvel_id() -> Result<String, String> {
+    use ring::rand::{SecureRandom, SystemRandom};
+    let mut o = [0u8; 8];
+    SystemRandom::new()
+        .fill(&mut o)
+        .map_err(|_| "tirage aléatoire impossible".to_string())?;
+    Ok(o.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// La première ligne du message, 50 caractères au plus.
+pub fn titre(texte: &str) -> String {
+    let ligne = texte
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
+    if ligne.chars().count() > 50 {
+        let mut t: String = ligne.chars().take(50).collect();
+        t.push('…');
+        t
+    } else {
+        ligne.to_string()
+    }
+}
+
+/// Les messages du provider, déduits du journal : `fin` et `message` ne partent pas.
+fn messages(entrees: &[Entree]) -> Vec<Message> {
+    let mut sortie = Vec::new();
+    let mut i = 0;
+    while i < entrees.len() {
+        match &entrees[i] {
+            Entree::Utilisateur { texte } => {
+                sortie.push(Message::Utilisateur(texte.clone()));
+                i += 1;
+            }
+            Entree::Agent { .. } | Entree::Outil { .. } => {
+                let texte = match &entrees[i] {
+                    Entree::Agent { texte } => {
+                        i += 1;
+                        texte.clone()
+                    }
+                    _ => String::new(),
+                };
+                let mut appels = Vec::new();
+                let mut resultats = Vec::new();
+                while let Some(Entree::Outil {
+                    id,
+                    nom,
+                    arguments,
+                    etat,
+                    resultat,
+                    ..
+                }) = entrees.get(i)
+                {
+                    appels.push(Appel {
+                        id: id.clone(),
+                        nom: nom.clone(),
+                        arguments: arguments.clone(),
+                    });
+                    resultats.push(Message::Resultat {
+                        id: id.clone(),
+                        contenu: resultat.clone(),
+                        echec: etat != "reussi",
+                    });
+                    i += 1;
+                }
+                sortie.push(Message::Agent { texte, appels });
+                sortie.extend(resultats);
+            }
+            Entree::Fin { .. } | Entree::Message { .. } => i += 1,
+        }
+    }
+    sortie
+}
+
+/// Remet le journal en ordre après un arrêt : chaque appel a un résultat, puis `fin` ou l'alerte.
+fn ranger(c: &mut Conversation, yaide_arrete: bool) {
+    for e in &mut c.entrees {
+        if let Entree::Outil { etat, resultat, .. } = e {
+            if etat == "enCours" {
+                *etat = "echec".into();
+                *resultat = "Stopped by the user.".into();
+            }
+        }
+    }
+    for a in std::mem::take(&mut c.restants) {
+        c.entrees.push(Entree::Outil {
+            argument: outils::argument_principal(&a.nom, &a.arguments),
+            id: a.id,
+            nom: a.nom,
+            arguments: a.arguments,
+            etat: "echec".into(),
+            resultat: "Not run: stopped by the user.".into(),
+        });
+    }
+    c.entrees.push(if yaide_arrete {
+        Entree::Message {
+            variante: "alerte".into(),
+            texte: "Interrompu : Yaide a été arrêté.".into(),
+            detail: String::new(),
+        }
+    } else {
+        Entree::Fin {
+            texte: "Arrêté.".into(),
+        }
+    });
+    c.en_cours = false;
+}
+
+fn message_erreur(texte: String, detail: String) -> Entree {
+    Entree::Message {
+        variante: "erreur".into(),
+        texte,
+        detail,
+    }
+}
+
+impl Gestionnaire {
+    /// Un fournisseur TLS rustls doit déjà être installé.
+    pub fn new(projet: PathBuf, reglages: Arc<Reglages>, limites: Limites) -> Self {
+        Gestionnaire {
+            dossier: projet.join(".yaide").join("conversations"),
+            projet,
+            reglages,
+            client: provider::client(),
+            limites,
+            registre: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn fichier(&self, id: &str) -> PathBuf {
+        self.dossier.join(format!("{id}.json"))
+    }
+
+    fn sauver(&self, c: &Conversation) -> Result<(), String> {
+        let octets = serde_json::to_vec_pretty(c).map_err(|e| e.to_string())?;
+        config::ecrire_atomique(&self.fichier(&c.id), &octets)
+    }
+
+    fn sauver_ou_dire(&self, c: &Conversation) {
+        if let Err(e) = self.sauver(c) {
+            eprintln!("conversation {} : {e}", c.id);
+        }
+    }
+
+    fn charger(&self, id: &str) -> Option<Conversation> {
+        if !id_valide(id) {
+            return None;
+        }
+        serde_json::from_slice(&std::fs::read(self.fichier(id)).ok()?).ok()
+    }
+
+    /// Change le journal pendant un tour et l'écrit. Faux si le tour a été arrêté entre-temps.
+    fn modifier(&self, conv: &Mutex<Conversation>, f: impl FnOnce(&mut Conversation)) -> bool {
+        let mut c = verrou(conv);
+        if !c.en_cours {
+            return false;
+        }
+        f(&mut c);
+        c.maj = maintenant();
+        self.sauver_ou_dire(&c);
+        true
+    }
+
+    fn profil(&self, id: &str) -> Option<Profil> {
+        let vue = self.reglages.vue();
+        let profils = vue.get("profils")?.as_array()?.clone();
+        profils
+            .into_iter()
+            .filter_map(|p| serde_json::from_value::<Profil>(p).ok())
+            .find(|p| p.id == id)
+    }
+
+    fn instructions(&self) -> String {
+        let mut t = format!(
+            "You are a coding agent working in the project located at {}. \
+Use your tools (read, write, edit, bash, glob, websearch, webfetch) to inspect and change the project. \
+Always give file paths relative to the project root.",
+            self.projet.display()
+        );
+        if let Ok(octets) = std::fs::read(self.projet.join("AGENTS.md")) {
+            if let Ok(agents) = String::from_utf8(octets) {
+                t.push_str("\n\nProject instructions (AGENTS.md):\n");
+                t.push_str(&agents);
+            }
+        }
+        t
+    }
+
+    /// Accepte un message : écrit le journal puis lance le tour. Un refus n'écrit rien.
+    pub fn envoyer(
+        self: &Arc<Self>,
+        conversation: Option<&str>,
+        profil: &str,
+        texte: &str,
+    ) -> Result<String, ErreurEnvoi> {
+        let refus = |motif, provider| Err(ErreurEnvoi::Refus(Refus { motif, provider }));
+        let Some(p) = self.profil(profil) else {
+            return refus("sans-profil", None);
+        };
+        let prov = reglages::provider(&p.provider)
+            .ok_or_else(|| ErreurEnvoi::Systeme("provider du profil inconnu".into()))?;
+        let nom = Some(prov.nom());
+        if prov.cle_obligatoire() && self.reglages.cle(prov.id()).is_none() {
+            return refus("sans-cle", nom);
+        }
+        let mut registre = verrou(&self.registre);
+        let existant = match conversation {
+            Some(id) => Some(match registre.get(id) {
+                Some(t) => (t.conv.clone(), true),
+                None => {
+                    let mut c = self.charger(id).ok_or(ErreurEnvoi::Inconnue)?;
+                    if c.en_cours {
+                        ranger(&mut c, true);
+                        self.sauver(&c).map_err(ErreurEnvoi::Systeme)?;
+                    }
+                    (Arc::new(Mutex::new(c)), false)
+                }
+            }),
+            None => None,
+        };
+        if let Some((c, _)) = &existant {
+            if let Some(f) = p.fenetre {
+                if verrou(c).tokens >= f {
+                    return refus("contexte-plein", nom);
+                }
+            }
+        }
+        if matches!(existant, Some((_, true))) {
+            return refus("en-cours", nom);
+        }
+        let conv = match existant {
+            Some((c, _)) => {
+                {
+                    let mut g = verrou(&c);
+                    g.profil = p.id.clone();
+                    g.en_cours = true;
+                    g.maj = maintenant();
+                    g.entrees.push(Entree::Utilisateur {
+                        texte: texte.to_string(),
+                    });
+                    self.sauver(&g).map_err(ErreurEnvoi::Systeme)?;
+                }
+                c
+            }
+            None => {
+                let maj = maintenant();
+                let c = Conversation {
+                    id: nouvel_id().map_err(ErreurEnvoi::Systeme)?,
+                    titre: titre(texte),
+                    profil: p.id.clone(),
+                    cree: maj,
+                    maj,
+                    en_cours: true,
+                    instructions: self.instructions(),
+                    tokens: 0,
+                    entrees: vec![Entree::Utilisateur {
+                        texte: texte.to_string(),
+                    }],
+                    restants: Vec::new(),
+                };
+                self.sauver(&c).map_err(ErreurEnvoi::Systeme)?;
+                Arc::new(Mutex::new(c))
+            }
+        };
+        let id = verrou(&conv).id.clone();
+        let tache = tokio::spawn(self.clone().tour(conv.clone()));
+        registre.insert(
+            id.clone(),
+            Tour {
+                conv,
+                abort: tache.abort_handle(),
+            },
+        );
+        Ok(id)
+    }
+
+    async fn tour(self: Arc<Self>, conv: Arc<Mutex<Conversation>>) {
+        self.boucle(&conv).await;
+        let id = {
+            let mut c = verrou(&conv);
+            if c.en_cours {
+                c.en_cours = false;
+                c.maj = maintenant();
+                self.sauver_ou_dire(&c);
+            }
+            c.id.clone()
+        };
+        verrou(&self.registre).remove(&id);
+    }
+
+    async fn boucle(&self, conv: &Mutex<Conversation>) {
+        let ctx = Contexte {
+            projet: self.projet.clone(),
+            client: self.client.clone(),
+            limites: self.limites.clone(),
+        };
+        loop {
+            let (id_profil, instructions, historique) = {
+                let c = verrou(conv);
+                (
+                    c.profil.clone(),
+                    c.instructions.clone(),
+                    messages(&c.entrees),
+                )
+            };
+            let Some((p, prov)) = self
+                .profil(&id_profil)
+                .and_then(|p| reglages::provider(&p.provider).map(|v| (p, v)))
+            else {
+                self.modifier(conv, |c| {
+                    c.entrees
+                        .push(message_erreur("Profil introuvable.".into(), String::new()))
+                });
+                return;
+            };
+            let reglage = Reglage {
+                modele: p.modele.clone(),
+                effort: p.effort.as_deref().and_then(|e| match e {
+                    "faible" => Some(Effort::Faible),
+                    "moyen" => Some(Effort::Moyen),
+                    "eleve" => Some(Effort::Eleve),
+                    _ => None,
+                }),
+                sortie_max: p.sortie_max.map(|n| n.min(u32::MAX as u64) as u32),
+                temperature: p.temperature.map(|t| t as f32),
+            };
+            let adresse = self
+                .reglages
+                .adresse(prov.id())
+                .unwrap_or_else(|| prov.adresse_par_defaut().to_string());
+            let cle = self.reglages.cle(prov.id());
+            let res = provider::envoyer(
+                &self.client,
+                prov,
+                &adresse,
+                cle.as_deref(),
+                &reglage,
+                &instructions,
+                &historique,
+                &outils::definitions(),
+            )
+            .await;
+            let rep = match res {
+                Ok(r) => r,
+                Err(e) => {
+                    let entree = match e {
+                        ErreurProvider::Refus { code, corps } => message_erreur(
+                            format!("{} a refusé la requête ({code}).", prov.nom()),
+                            corps,
+                        ),
+                        ErreurProvider::Injoignable(cause) => message_erreur(
+                            format!("{} est injoignable : {cause}.", prov.nom()),
+                            String::new(),
+                        ),
+                    };
+                    self.modifier(conv, |c| c.entrees.push(entree));
+                    return;
+                }
+            };
+            let appels = rep.appels.clone();
+            let continuer = self.modifier(conv, |c| {
+                c.tokens = rep.tokens;
+                if !rep.texte.is_empty() || !rep.appels.is_empty() {
+                    c.entrees.push(Entree::Agent { texte: rep.texte });
+                }
+                c.restants = rep.appels;
+            });
+            if !continuer || appels.is_empty() {
+                return;
+            }
+            for appel in appels {
+                let argument = outils::argument_principal(&appel.nom, &appel.arguments);
+                let commence = self.modifier(conv, |c| {
+                    if !c.restants.is_empty() {
+                        c.restants.remove(0);
+                    }
+                    c.entrees.push(Entree::Outil {
+                        id: appel.id.clone(),
+                        nom: appel.nom.clone(),
+                        arguments: appel.arguments.clone(),
+                        argument,
+                        etat: "enCours".into(),
+                        resultat: String::new(),
+                    });
+                });
+                if !commence {
+                    return;
+                }
+                let r = outils::executer(&appel.nom, &appel.arguments, &ctx).await;
+                let fini = self.modifier(conv, |c| {
+                    let entree = c.entrees.iter_mut().rev().find(
+                        |e| matches!(e, Entree::Outil { id, etat, .. } if *id == appel.id && etat == "enCours"),
+                    );
+                    if let Some(Entree::Outil {
+                        etat, resultat, ..
+                    }) = entree
+                    {
+                        *etat = if r.echec { "echec" } else { "reussi" }.into();
+                        *resultat = r.contenu;
+                    }
+                });
+                if !fini {
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Arrête le tour en cours. Faux si la conversation n'existe pas.
+    pub fn arreter(&self, id: &str) -> bool {
+        let tour = verrou(&self.registre).remove(id);
+        match tour {
+            Some(t) => {
+                t.abort.abort();
+                let mut c = verrou(&t.conv);
+                if c.en_cours {
+                    ranger(&mut c, false);
+                    c.maj = maintenant();
+                    self.sauver_ou_dire(&c);
+                }
+                true
+            }
+            None => self.lire(id, 0).is_some(),
+        }
+    }
+
+    /// La conversation à partir de l'entrée `depuis`. Une conversation marquée en cours
+    /// et absente du registre vient d'un Yaide arrêté : elle est remise en ordre.
+    pub fn lire(&self, id: &str, depuis: usize) -> Option<Value> {
+        if !id_valide(id) {
+            return None;
+        }
+        let registre = verrou(&self.registre);
+        let c = match registre.get(id) {
+            Some(t) => verrou(&t.conv).clone(),
+            None => {
+                let mut c = self.charger(id)?;
+                if c.en_cours {
+                    ranger(&mut c, true);
+                    self.sauver_ou_dire(&c);
+                }
+                c
+            }
+        };
+        drop(registre);
+        let total = c.entrees.len();
+        Some(json!({
+            "titre": c.titre, "profil": c.profil, "enCours": c.en_cours,
+            "tokens": c.tokens, "total": total,
+            "entrees": c.entrees[depuis.min(total)..],
+        }))
+    }
+
+    /// `[{ id, titre, maj }]`, le plus récent en premier.
+    pub fn liste(&self) -> Value {
+        let mut toutes: Vec<Conversation> = std::fs::read_dir(&self.dossier)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| serde_json::from_slice(&std::fs::read(e.path()).ok()?).ok())
+            .collect();
+        toutes.sort_by_key(|a| std::cmp::Reverse(a.maj));
+        toutes
+            .iter()
+            .map(|c| json!({ "id": c.id, "titre": c.titre, "maj": c.maj }))
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(non_snake_case)]
+    use super::*;
+    use axum::{body::Bytes, extract::State, http::StatusCode, Router};
+    use std::collections::VecDeque;
+    use std::path::Path;
+    use std::time::Duration;
+
+    type Script = Arc<Mutex<VecDeque<(u16, Value, u64)>>>;
+    type Recues = Arc<Mutex<Vec<Value>>>;
+
+    #[derive(Clone)]
+    struct Faux {
+        script: Script,
+        recues: Recues,
+    }
+
+    async fn repondre(State(f): State<Faux>, corps: Bytes) -> (StatusCode, String) {
+        f.recues
+            .lock()
+            .unwrap()
+            .push(serde_json::from_slice(&corps).unwrap_or(Value::Null));
+        let suivante = f.script.lock().unwrap().pop_front();
+        match suivante {
+            Some((code, v, delai)) => {
+                tokio::time::sleep(Duration::from_millis(delai)).await;
+                (StatusCode::from_u16(code).unwrap(), v.to_string())
+            }
+            None => (StatusCode::INTERNAL_SERVER_ERROR, "plus de réponse".into()),
+        }
+    }
+
+    struct Banc {
+        dir: PathBuf,
+        g: Arc<Gestionnaire>,
+        reglages: Arc<Reglages>,
+        script: Script,
+        recues: Recues,
+        profil: String,
+    }
+
+    fn texte(t: &str, tokens: u64) -> (u16, Value, u64) {
+        (
+            200,
+            json!({"choices": [{"message": {"content": t}}],
+                   "usage": {"prompt_tokens": tokens, "completion_tokens": 0}}),
+            0,
+        )
+    }
+
+    fn appels(liste: &[(&str, &str, Value)]) -> (u16, Value, u64) {
+        let tc: Vec<Value> = liste
+            .iter()
+            .map(|(id, nom, a)| {
+                json!({"id": id, "type": "function",
+                       "function": {"name": nom, "arguments": a.to_string()}})
+            })
+            .collect();
+        (
+            200,
+            json!({"choices": [{"message": {"content": null, "tool_calls": tc}}],
+                   "usage": {"prompt_tokens": 5, "completion_tokens": 1}}),
+            0,
+        )
+    }
+
+    fn gestionnaire(dir: &Path, reglages: &Arc<Reglages>) -> Arc<Gestionnaire> {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        Arc::new(Gestionnaire::new(
+            dir.to_path_buf(),
+            reglages.clone(),
+            Limites::default(),
+        ))
+    }
+
+    async fn banc(nom: &str, cle: bool, fenetre: Option<u64>) -> Banc {
+        let dir = std::env::temp_dir().join(format!("conv-{nom}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dir = dir.canonicalize().unwrap();
+        let script: Script = Default::default();
+        let recues: Recues = Default::default();
+        let app = Router::new().fallback(repondre).with_state(Faux {
+            script: script.clone(),
+            recues: recues.clone(),
+        });
+        let ecoute = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let adresse = format!("http://{}", ecoute.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(ecoute, app).await.unwrap() });
+        let reglages = Arc::new(Reglages::new(dir.join(".yaide"), dir.join("cfg")));
+        let mut corps = json!({"adresse": adresse});
+        if cle {
+            corps["cle"] = json!("sk-test");
+        }
+        reglages.enregistrer_provider("openai", &corps).unwrap();
+        let mut p = json!({"nom": "p", "provider": "openai", "modele": "m"});
+        if let Some(f) = fenetre {
+            p["fenetre"] = json!(f);
+        }
+        reglages.enregistrer_profil(&p).unwrap();
+        let profil = reglages.vue()["profils"][0]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let g = gestionnaire(&dir, &reglages);
+        Banc {
+            dir,
+            g,
+            reglages,
+            script,
+            recues,
+            profil,
+        }
+    }
+
+    impl Banc {
+        fn scenario(&self, reps: Vec<(u16, Value, u64)>) {
+            self.script.lock().unwrap().extend(reps);
+        }
+        fn envoyer(&self, conv: Option<&str>, t: &str) -> Result<String, ErreurEnvoi> {
+            self.g.envoyer(conv, &self.profil, t)
+        }
+        async fn attendre(&self, id: &str, ok: impl Fn(&Value) -> bool) -> Value {
+            for _ in 0..250 {
+                let v = self.g.lire(id, 0).unwrap();
+                if ok(&v) {
+                    return v;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            panic!("condition jamais atteinte : {:?}", self.g.lire(id, 0));
+        }
+        async fn fini(&self, id: &str) -> Value {
+            self.attendre(id, |v| v["enCours"] == false).await
+        }
+        fn nb_requetes(&self) -> usize {
+            self.recues.lock().unwrap().len()
+        }
+        fn requete(&self, i: usize) -> String {
+            self.recues.lock().unwrap()[i].to_string()
+        }
+        fn fichier(&self, id: &str) -> PathBuf {
+            self.dir
+                .join(".yaide")
+                .join("conversations")
+                .join(format!("{id}.json"))
+        }
+    }
+
+    #[tokio::test]
+    async fn REQ055_AC1_read_puis_fini() {
+        let b = banc("ac1", true, None).await;
+        std::fs::write(b.dir.join("README.md"), "contenu-du-readme").unwrap();
+        b.scenario(vec![
+            appels(&[("c1", "read", json!({"path": "README.md"}))]),
+            texte("fini", 10),
+        ]);
+        let id = b.envoyer(None, "lis le README").unwrap();
+        let v = b.fini(&id).await;
+        let e = v["entrees"].as_array().unwrap();
+        assert_eq!(e.len(), 4, "{e:?}");
+        assert_eq!(
+            e[0],
+            json!({"type": "utilisateur", "texte": "lis le README"})
+        );
+        assert_eq!(e[1]["type"], "agent");
+        assert_eq!(e[2]["type"], "outil");
+        assert_eq!(e[2]["nom"], "read");
+        assert_eq!(e[2]["argument"], "README.md");
+        assert_eq!(e[2]["etat"], "reussi");
+        assert!(e[2]["resultat"]
+            .as_str()
+            .unwrap()
+            .contains("contenu-du-readme"));
+        assert_eq!(e[3], json!({"type": "agent", "texte": "fini"}));
+        assert_eq!(v["tokens"], 10);
+        assert_eq!(v["titre"], "lis le README");
+        assert!(b.requete(1).contains("contenu-du-readme"));
+        assert_eq!(b.nb_requetes(), 2);
+        let disque: Value =
+            serde_json::from_slice(&std::fs::read(b.fichier(&id)).unwrap()).unwrap();
+        assert_eq!(disque["enCours"], false);
+        assert_eq!(disque["entrees"].as_array().unwrap().len(), 4);
+    }
+
+    #[tokio::test]
+    async fn REQ055_AC2_agents_md_dans_les_instructions_ou_absent() {
+        let b = banc("ac2", true, None).await;
+        std::fs::write(b.dir.join("AGENTS.md"), "regle-maison-42").unwrap();
+        b.scenario(vec![texte("ok", 1)]);
+        let id = b.envoyer(None, "salut").unwrap();
+        b.fini(&id).await;
+        assert!(b.requete(0).contains("regle-maison-42"));
+        let disque: Value =
+            serde_json::from_slice(&std::fs::read(b.fichier(&id)).unwrap()).unwrap();
+        assert!(disque["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("regle-maison-42"));
+
+        let c = banc("ac2b", true, None).await;
+        c.scenario(vec![texte("ok", 1)]);
+        let id = c.envoyer(None, "salut").unwrap();
+        let v = c.fini(&id).await;
+        assert_eq!(v["entrees"][1]["texte"], "ok");
+        assert!(!c.requete(0).contains("AGENTS.md"));
+    }
+
+    #[tokio::test]
+    async fn REQ055_AC3_second_message_porte_tout_l_historique() {
+        let b = banc("ac3", true, None).await;
+        std::fs::write(b.dir.join("README.md"), "contenu-du-readme").unwrap();
+        b.scenario(vec![
+            appels(&[("c1", "read", json!({"path": "README.md"}))]),
+            texte("fini", 1),
+            texte("deuxieme", 1),
+        ]);
+        let id = b.envoyer(None, "premier").unwrap();
+        b.fini(&id).await;
+        b.envoyer(Some(&id), "second").unwrap();
+        let v = b.fini(&id).await;
+        assert_eq!(v["entrees"].as_array().unwrap().len(), 6);
+        let r = b.requete(2);
+        for t in ["premier", "contenu-du-readme", "fini", "second"] {
+            assert!(r.contains(t), "{t} manque dans {r}");
+        }
+    }
+
+    #[tokio::test]
+    async fn REQ055_AC3_reprise_apres_relecture_du_fichier() {
+        let b = banc("ac3r", true, None).await;
+        b.scenario(vec![texte("reponse-un", 1), texte("reponse-deux", 1)]);
+        let id = b.envoyer(None, "question-un").unwrap();
+        b.fini(&id).await;
+        let neuf = gestionnaire(&b.dir, &b.reglages);
+        neuf.envoyer(Some(&id), &b.profil, "question-deux").unwrap();
+        for _ in 0..250 {
+            if neuf.lire(&id, 0).unwrap()["enCours"] == false {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let r = b.requete(1);
+        assert!(
+            r.contains("question-un") && r.contains("reponse-un") && r.contains("question-deux")
+        );
+        assert_eq!(neuf.lire(&id, 0).unwrap()["total"], 4);
+    }
+
+    #[tokio::test]
+    async fn REQ055_AC5_erreur_du_provider_finit_le_tour_et_on_renvoie() {
+        let b = banc("ac5", true, None).await;
+        b.scenario(vec![
+            (429, json!({"error": "trop vite"}), 0),
+            texte("ca marche", 1),
+        ]);
+        let id = b.envoyer(None, "un").unwrap();
+        let v = b.fini(&id).await;
+        let m = &v["entrees"][1];
+        assert_eq!(m["type"], "message");
+        assert_eq!(m["variante"], "erreur");
+        assert_eq!(m["texte"], "OpenAI a refusé la requête (429).");
+        assert!(m["detail"].as_str().unwrap().contains("trop vite"));
+        b.envoyer(Some(&id), "deux").unwrap();
+        let v = b.fini(&id).await;
+        assert_eq!(v["entrees"][3]["texte"], "ca marche");
+        assert!(!b.requete(1).contains("trop vite"));
+
+        // adresse injoignable
+        let port = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        b.reglages
+            .enregistrer_provider(
+                "openai",
+                &json!({"adresse": format!("http://127.0.0.1:{port}")}),
+            )
+            .unwrap();
+        b.envoyer(Some(&id), "trois").unwrap();
+        let v = b.fini(&id).await;
+        let t = v["entrees"][5]["texte"].as_str().unwrap().to_string();
+        assert!(
+            t.starts_with("OpenAI est injoignable : ") && t.ends_with('.'),
+            "{t}"
+        );
+    }
+
+    #[tokio::test]
+    async fn REQ055_AC6_sans_cle_refus_sans_requete_ni_fichier() {
+        let b = banc("ac6", false, None).await;
+        let r = b.envoyer(None, "salut").unwrap_err();
+        assert_eq!(
+            r,
+            ErreurEnvoi::Refus(Refus {
+                motif: "sans-cle",
+                provider: Some("OpenAI")
+            })
+        );
+        assert_eq!(b.nb_requetes(), 0);
+        assert!(!b.dir.join(".yaide").join("conversations").exists());
+        assert_eq!(b.g.liste(), json!([]));
+        let r = b.g.envoyer(None, "inconnu", "salut").unwrap_err();
+        assert_eq!(
+            r,
+            ErreurEnvoi::Refus(Refus {
+                motif: "sans-profil",
+                provider: None
+            })
+        );
+    }
+
+    fn resultats_dans(requete: &str) -> usize {
+        let v: Value = serde_json::from_str(requete).unwrap();
+        v["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| m["role"] == "tool")
+            .count()
+    }
+
+    #[tokio::test]
+    async fn REQ055_AC7_arreter_pendant_la_requete_et_pendant_bash() {
+        let b = banc("ac7", true, None).await;
+        // pendant la requête
+        let mut lente = texte("trop tard", 1);
+        lente.2 = 30_000;
+        b.scenario(vec![lente]);
+        let id = b.envoyer(None, "un").unwrap();
+        b.attendre(&id, |_| b.nb_requetes() == 1).await;
+        assert!(b.g.arreter(&id));
+        let v = b.g.lire(&id, 0).unwrap();
+        assert_eq!(v["enCours"], false);
+        assert_eq!(v["entrees"][1], json!({"type": "fin", "texte": "Arrêté."}));
+
+        // pendant bash, avec un second appel jamais commencé
+        b.scenario(vec![
+            appels(&[
+                ("b1", "bash", json!({"command": "sleep 30"})),
+                ("b2", "read", json!({"path": "absent.txt"})),
+            ]),
+            texte("repris", 1),
+        ]);
+        b.envoyer(Some(&id), "deux").unwrap();
+        b.attendre(&id, |v| {
+            v["entrees"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["type"] == "outil" && e["etat"] == "enCours")
+        })
+        .await;
+        assert!(b.g.arreter(&id));
+        let v = b.g.lire(&id, 0).unwrap();
+        assert_eq!(v["enCours"], false);
+        let e = v["entrees"].as_array().unwrap();
+        let n = e.len();
+        assert_eq!(e[n - 3]["id"], "b1");
+        assert_eq!(e[n - 3]["etat"], "echec");
+        assert_eq!(e[n - 3]["resultat"], "Stopped by the user.");
+        assert_eq!(e[n - 2]["id"], "b2");
+        assert_eq!(e[n - 2]["etat"], "echec");
+        assert_eq!(e[n - 2]["resultat"], "Not run: stopped by the user.");
+        assert_eq!(e[n - 1], json!({"type": "fin", "texte": "Arrêté."}));
+        let disque: Value =
+            serde_json::from_slice(&std::fs::read(b.fichier(&id)).unwrap()).unwrap();
+        assert_eq!(disque["enCours"], false);
+        assert_eq!(disque["entrees"].as_array().unwrap().len(), n);
+
+        // le message suivant passe, avec un résultat par appel
+        b.envoyer(Some(&id), "trois").unwrap();
+        let v = b.fini(&id).await;
+        assert_eq!(v["entrees"][n + 1]["texte"], "repris");
+        assert_eq!(resultats_dans(&b.requete(b.nb_requetes() - 1)), 2);
+    }
+
+    #[tokio::test]
+    async fn REQ055_AC9_en_cours_sans_tour_devient_interrompu() {
+        let b = banc("ac9", true, None).await;
+        let c = Conversation {
+            id: "abc".into(),
+            titre: "t".into(),
+            profil: b.profil.clone(),
+            cree: 1,
+            maj: 1,
+            en_cours: true,
+            instructions: String::new(),
+            tokens: 0,
+            entrees: vec![
+                Entree::Utilisateur { texte: "u".into() },
+                Entree::Agent {
+                    texte: String::new(),
+                },
+                Entree::Outil {
+                    id: "x".into(),
+                    nom: "bash".into(),
+                    arguments: json!({"command": "sleep 9"}),
+                    argument: "sleep 9".into(),
+                    etat: "enCours".into(),
+                    resultat: String::new(),
+                },
+            ],
+            restants: vec![],
+        };
+        b.g.sauver(&c).unwrap();
+        let v = b.g.lire("abc", 0).unwrap();
+        assert_eq!(v["enCours"], false);
+        let e = v["entrees"].as_array().unwrap();
+        assert_eq!(e.len(), 4);
+        assert_eq!(e[2]["etat"], "echec");
+        assert_eq!(
+            e[3],
+            json!({"type": "message", "variante": "alerte",
+                   "texte": "Interrompu : Yaide a été arrêté.", "detail": ""})
+        );
+        let disque: Value =
+            serde_json::from_slice(&std::fs::read(b.fichier("abc")).unwrap()).unwrap();
+        assert_eq!(disque["enCours"], false);
+        assert_eq!(disque["entrees"].as_array().unwrap().len(), 4);
+        assert_eq!(b.g.lire("abc", 4).unwrap()["entrees"], json!([]));
+        assert!(b.g.lire("../x", 0).is_none());
+    }
+
+    #[tokio::test]
+    async fn REQ055_AC10_contexte_plein() {
+        let b = banc("ac10", true, Some(100)).await;
+        b.scenario(vec![texte("a", 100), texte("b", 1)]);
+        let id = b.envoyer(None, "un").unwrap();
+        b.fini(&id).await;
+        let avant = std::fs::read(b.fichier(&id)).unwrap();
+        let r = b.envoyer(Some(&id), "deux").unwrap_err();
+        assert_eq!(
+            r,
+            ErreurEnvoi::Refus(Refus {
+                motif: "contexte-plein",
+                provider: Some("OpenAI")
+            })
+        );
+        assert_eq!(b.nb_requetes(), 1);
+        assert_eq!(std::fs::read(b.fichier(&id)).unwrap(), avant);
+        assert_eq!(b.g.lire(&id, 0).unwrap()["total"], 2);
+    }
+
+    #[tokio::test]
+    async fn refus_en_cours_pendant_un_tour() {
+        let b = banc("encours", true, None).await;
+        let mut lente = texte("a", 1);
+        lente.2 = 30_000;
+        b.scenario(vec![lente]);
+        let id = b.envoyer(None, "un").unwrap();
+        let r = b.envoyer(Some(&id), "deux").unwrap_err();
+        assert_eq!(
+            r,
+            ErreurEnvoi::Refus(Refus {
+                motif: "en-cours",
+                provider: Some("OpenAI")
+            })
+        );
+        assert_eq!(b.g.lire(&id, 0).unwrap()["total"], 1);
+        assert_eq!(
+            b.g.envoyer(Some("inconnue"), &b.profil, "x").unwrap_err(),
+            ErreurEnvoi::Inconnue
+        );
+        b.g.arreter(&id);
+    }
+
+    #[test]
+    fn titre_premiere_ligne_coupee_a_50() {
+        assert_eq!(titre("bonjour\nsuite"), "bonjour");
+        assert_eq!(titre("\n  salut  \nx"), "salut");
+        let cinquante = "é".repeat(50);
+        assert_eq!(titre(&cinquante), cinquante);
+        assert_eq!(titre(&format!("{cinquante}x")), format!("{cinquante}…"));
+    }
+}
