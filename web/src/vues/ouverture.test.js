@@ -189,3 +189,52 @@ test("REQ008_AC7_ouverture_transmet_le_geste_de_la_lecture", async () => {
   expect(surOuvrir).toHaveBeenCalledWith({ chemin: "src/main.rs", contenu: "x", version: "v1", geste: 7 });
   v.detruire();
 });
+
+test("REQ054_AC1_chevron_liste_les_commandes_sans_fichier", async () => {
+  simuler(json({ chemins: ["src/main.rs"] }));
+  const { entree, v } = await ouvrir();
+  taper(entree, ">");
+  const lignes = [...document.querySelectorAll("dialog [role=option]")];
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle"]);
+  expect(document.querySelector("dialog").textContent).not.toContain("main.rs");
+  v.detruire();
+});
+
+test("REQ054_AC2_AC6_entree_ouvre_le_dialogue", async () => {
+  simuler(json({ chemins: ["src/main.rs"] }));
+  const surCommande = vi.fn();
+  const { entree, declencheur, v } = await ouvrir({ surCommande });
+  taper(entree, ">prof");
+  touche(entree, "Enter");
+  expect(surCommande).toHaveBeenCalledWith("profils", declencheur);
+  expect(document.querySelector("dialog")).toBeNull();
+  v.ouvrir();
+  const e2 = document.querySelector("dialog input");
+  taper(e2, ">PROV");
+  // Clic sur la ligne : même effet que Entrée.
+  document.querySelector("dialog [role=option]").click();
+  expect(surCommande).toHaveBeenLastCalledWith("providers", expect.anything());
+  expect(document.querySelector("dialog")).toBeNull();
+  v.detruire();
+});
+
+test("REQ054_AC5_gras_aucune_commande_et_fleches", async () => {
+  simuler(json({ chemins: ["src/main.rs"] }));
+  const surCommande = vi.fn();
+  const { entree, v } = await ouvrir({ surCommande });
+  taper(entree, ">pro");
+  const lignes = [...document.querySelectorAll("dialog [role=option]")];
+  expect(lignes).toHaveLength(2);
+  expect(lignes[0].querySelector("b.liste-trouve").textContent).toBe("Pro");
+  expect(lignes[0].querySelector(".liste-icone, .liste-parent")).toBeNull();
+  expect(entree.getAttribute("aria-activedescendant")).toBe(lignes[0].id);
+  touche(entree, "ArrowDown");
+  expect(entree.getAttribute("aria-activedescendant")).toBe(lignes[1].id);
+  touche(entree, "Enter");
+  expect(surCommande).toHaveBeenCalledWith("profils", expect.anything());
+  v.ouvrir();
+  taper(document.querySelector("dialog input"), ">xyz");
+  expect(document.querySelector("dialog").textContent).toContain("Aucune commande trouvée.");
+  expect(document.querySelector("dialog [role=option]")).toBeNull();
+  v.detruire();
+});

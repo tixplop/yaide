@@ -162,3 +162,30 @@ export async function listerChemins() {
   if (r.ok) return r.json();
   return erreurServeur(r);
 }
+
+/** `{ providers: [{ id, nom, adresse, cle, cleObligatoire }], profils, erreur }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function reglagesAgent() {
+  const r = await appeler("/api/agent/reglages");
+  if (!r) return { coupure: true };
+  if (r.ok) return r.json();
+  return erreurServeur(r);
+}
+
+/** Rend `{}`, `{ champ: "adresse" }` (400), `{ cause, message }` ou `{ coupure: true }`. La clé vide n'est pas envoyée. */
+export async function enregistrerProvider(id, { adresse, cle }) {
+  const corps = cle ? { adresse, cle } : { adresse };
+  const r = await appeler(`/api/agent/providers/${q(id)}`, { method: "PUT", body: JSON.stringify(corps) });
+  if (!r) return { coupure: true };
+  if (r.ok) return {};
+  if (r.status === 400) {
+    try {
+      const { champ } = await r.json();
+      if (champ === "adresse") return { champ };
+    } catch {
+      // Corps illisible : traité comme une erreur du serveur.
+    }
+  }
+  return erreurServeur(r);
+}
+
+export const supprimerCle = (id) => action(`/api/agent/providers/${q(id)}/cle`, { method: "DELETE" });

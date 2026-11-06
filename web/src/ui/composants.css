@@ -38,6 +38,11 @@
 .ya-input[aria-invalid="true"], .ya-input[aria-invalid="true"]:focus-visible { border-color: var(--danger); }
 .champ-aide { font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
 .champ-erreur { font: var(--texte-petit) var(--font-sans); color: var(--danger); }
+/* C-002 : un bouton à droite de la saisie (Réglages en dialogue). */
+.champ-ligne { display: flex; gap: var(--space-1); }
+.champ-ligne > .ya-input { flex: 1 1 auto; min-width: 0; }
+.champ-ligne > .ya-btn { flex: none; }
+.reglages-nom { margin: 0; font: 600 var(--texte-base) var(--font-sans); color: var(--ink); }
 
 /* C-003 : message */
 .message {

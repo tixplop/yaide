@@ -7,6 +7,10 @@ import { message } from "../ui/message.js";
 
 const MAX = 50;
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
+const COMMANDES = [
+  { id: "providers", nom: "Providers LLM" },
+  { id: "profils", nom: "Profils de modèle" },
+];
 const nomDe = (chemin) => chemin.split("/").pop();
 
 const minuscules = (texte) => Array.from(texte, (c) => Array.from(c.toLowerCase())[0] ?? c);
@@ -41,13 +45,15 @@ export function filtrer(chemins, texte) {
 /**
  * V-006. Ctrl+P (sauf dans un shell) ou `ouvrir()` affiche le dialogue.
  * Rappels : `surOuvrir({ chemin, contenu, version, geste })`, `geste = surLecture(true)`, `surLecture(false)`.
+ * Un texte qui commence par `>` liste les commandes : `surCommande(id, avant)`, `avant` étant l'élément qui avait le focus avant l'ouverture.
  */
-export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {} }) {
+export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}, surCommande = () => {} }) {
   let detruit = false;
   let dlg = null;
 
   function ouvrir() {
     if (detruit || dlg) return;
+    const avant = document.activeElement;
     const saisie = champ({ libelle: "Chemin du fichier", libelleMasque: true });
     const entree = saisie.querySelector("input");
     const zone = document.createElement("div");
@@ -62,6 +68,7 @@ export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}
     function afficher() {
       if (!dlg) return;
       entree.removeAttribute("aria-activedescendant");
+      if (entree.value.startsWith(">")) return afficherCommandes();
       if (etat.type === "chargement") return zone.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
       if (etat.type === "erreur") return zone.replaceChildren(message({ texte: `Impossible de lire les fichiers : ${etat.raison}.`, variante: "erreur" }));
       if (entree.value === "") return zone.replaceChildren(indication({ texte: "Tapez une partie du chemin." }));
@@ -74,6 +81,25 @@ export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}
         surActiver: ouvrirFichier,
       });
       l.setAttribute("aria-label", "Fichiers proposés");
+      l.classList.add("ouverture-liste");
+      zone.replaceChildren(l);
+    }
+
+    function afficherCommandes() {
+      const reste = entree.value.slice(1).trimStart();
+      const noms = COMMANDES.map((c) => c.nom);
+      const trouves = reste === "" ? noms.map((chemin) => ({ chemin })) : filtrer(noms, reste);
+      if (trouves.length === 0) return zone.replaceChildren(indication({ texte: "Aucune commande trouvée." }));
+      const l = liste({
+        lignes: trouves.map((t) => ({ id: COMMANDES.find((c) => c.nom === t.chemin).id, libelle: t.chemin, trouve: t.debut === undefined ? undefined : [t.debut, t.fin] })),
+        pilotage: "champ",
+        champ: entree,
+        surActiver: (id) => {
+          fermer(false);
+          surCommande(id, avant);
+        },
+      });
+      l.setAttribute("aria-label", "Commandes proposées");
       l.classList.add("ouverture-liste");
       zone.replaceChildren(l);
     }

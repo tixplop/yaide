@@ -1153,3 +1153,35 @@ test("REQ048_AC10_etats_vides_et_hors_depot_gardent_le_bouton", async () => {
   await vi.waitFor(() => expect(aside(vue).textContent).toContain("Ce dossier n'est pas un dépôt git."));
   expect(repliDuPanneau(vue).getAttribute("aria-label")).toBe("Replier le panneau");
 });
+
+test("REQ054_AC4_echap_rend_le_focus_d_avant_ctrl_p", async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute("open");
+  };
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (url === "/api/chemins") return { ok: true, status: 200, json: async () => ({ chemins: [] }) };
+    if (url === "/api/git/etat") return { ok: true, status: 200, json: async () => ({ branche: "main", detachee: false, branches: ["main"], changements: [] }) };
+    if (url.startsWith("/api/fichiers?")) return { ok: true, status: 200, json: async () => ({ entrees: [] }) };
+    if (url === "/api/session") return { status: 204 };
+    if (url === "/api/agent/reglages") return { ok: true, status: 200, json: async () => ({ providers: [{ id: "openai", nom: "OpenAI", adresse: "https://a.test", cle: false, cleObligatoire: true }], profils: [] }) };
+    return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
+  }));
+  const { vue } = monter();
+  const avant = vue.querySelector("header [aria-label=Déconnexion]");
+  avant.focus();
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "p", ctrlKey: true, bubbles: true, cancelable: true }));
+  const entree = document.querySelector("dialog input");
+  entree.value = ">prov";
+  entree.dispatchEvent(new Event("input", { bubbles: true }));
+  entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 0));
+  const dlg = document.querySelector("dialog");
+  expect(dlg.getAttribute("aria-labelledby")).toBeTruthy();
+  expect(dlg.textContent).toContain("Providers LLM");
+  dlg.dispatchEvent(new Event("cancel", { cancelable: true }));
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(document.activeElement).toBe(avant);
+});
