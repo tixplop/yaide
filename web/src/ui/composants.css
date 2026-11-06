@@ -380,6 +380,20 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 /* C-013 : bouton d'en-tête dont le menu est ouvert. */
 .ya-icon-btn[aria-expanded="true"] { background: var(--bg-400); color: var(--ink); }
 
+/* V-007 */
+.agent-corps { display: flex; flex-direction: column; box-sizing: border-box; height: 100%; min-height: 0; }
+.agent-corps[hidden] { display: none; }
+.agent-entete { display: flex; align-items: center; gap: var(--trait); height: calc(var(--size-control) + var(--trait)); box-sizing: border-box; padding: 0 var(--space-1) 0 var(--space-3); border-bottom: var(--trait) solid var(--line); flex: none; }
+.agent-titre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: var(--space-2); font: var(--texte-petit) var(--font-sans); color: var(--ink); }
+.agent-titre.vide { color: var(--ink-muted); }
+.agent-fil { flex: 1 1 0; min-height: 0; }
+.agent-saisie { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3) var(--space-3); border-top: var(--trait) solid var(--line); flex: none; }
+.agent-barre { display: flex; align-items: center; gap: var(--space-1); }
+.agent-barre .champ { flex: 1 1 0; min-width: 0; }
+.agent-compteur { font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); white-space: nowrap; padding: 0 var(--space-1); }
+.agent-compteur[hidden] { display: none; }
+.agent-barre .bouton-enveloppe[hidden] { display: none; }
+
 /* C-015 */
 .ya-chat { display: flex; flex-direction: column; gap: var(--space-3); box-sizing: border-box; height: 100%; overflow: auto; padding: var(--space-2) var(--space-3); background: var(--bg-100); color: var(--ink); font: 13px/20px var(--font-sans); }
 .ya-chat:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
@@ -501,3 +515,4 @@ body { margin: 0; }
 .champs-grille > .champs-large { grid-column: 1 / -1; }
 .profils-liste { max-height: calc(6 * (var(--size-row) + var(--space-1))); overflow-y: auto; }
 .profils-actions { display: flex; gap: var(--space-1); }
+

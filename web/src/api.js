@@ -209,3 +209,31 @@ async function reglagesApres(chemin, options) {
 /** `profil` : `{ id?, nom, provider, modele, effort?, temperature?, sortieMax?, fenetre?, defaut }`. */
 export const enregistrerProfil = (profil) => reglagesApres("/api/agent/profils", { method: "PUT", body: JSON.stringify(profil) });
 export const supprimerProfil = (id) => reglagesApres(`/api/agent/profils/${q(id)}`, { method: "DELETE" });
+
+/** Rend `{ conversation }`, `{ refus, provider }` (409), `{ cause, message }` ou `{ coupure: true }`. */
+export async function envoyerMessage({ conversation, profil, texte }) {
+  const corps = conversation ? { conversation, profil, texte } : { profil, texte };
+  const r = await appeler("/api/agent/messages", { method: "POST", body: JSON.stringify(corps) });
+  if (!r) return { coupure: true };
+  if (r.ok) return r.json();
+  if (r.status === 409) {
+    try {
+      const { refus, provider } = await r.json();
+      return { refus, provider };
+    } catch {
+      // Corps illisible : traité comme une erreur du serveur.
+    }
+  }
+  return erreurServeur(r);
+}
+
+/** Rend `{ titre, profil, enCours, tokens, total, entrees }`, `{ introuvable: true }` (404), `{ cause, message }` ou `{ coupure: true }`. */
+export async function lireConversation(id, depuis = 0) {
+  const r = await appeler(`/api/agent/conversations/${q(id)}?depuis=${depuis}`);
+  if (!r) return { coupure: true };
+  if (r.ok) return r.json();
+  if (r.status === 404) return { introuvable: true };
+  return erreurServeur(r);
+}
+
+export const arreterConversation = (id) => action(`/api/agent/conversations/${q(id)}/arreter`, { method: "POST" });

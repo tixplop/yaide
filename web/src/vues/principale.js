@@ -7,6 +7,7 @@ import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { surveiller } from "../connexion.js";
 import { changerTheme, themeCourant } from "../ui/theme.js";
+import { vueAgent } from "./agent.js";
 import { vueEditeur } from "./editeur.js";
 import { vueFichiers } from "./fichiers.js";
 import { vueGit } from "./git.js";
@@ -21,6 +22,7 @@ const PANNEAUX = [
   { id: "fichiers", icone: "files", raccourci: "F", nomAccessible: "Fichiers", touche: "f", titre: "Fichiers" },
   { id: "recherche", icone: "search", raccourci: "R", nomAccessible: "Recherche", touche: "r", titre: "Recherche" },
   { id: "git", icone: "branch", raccourci: "G", nomAccessible: "Git", touche: "g", titre: "Git" },
+  { id: "agent", icone: "bot", raccourci: "A", nomAccessible: "Agent", touche: "a", titre: "Agent" },
 ];
 
 function nomDuDossier(chemin) {
@@ -128,7 +130,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     surCommande: (id, avant) => {
       const ouvrirPanneau = { providers: ouvrirProviders, profils: ouvrirProfils }[id];
       if (!ouvrirPanneau) return;
-      panneauConfig = ouvrirPanneau({ surFermeture: () => { panneauConfig = null; avant?.focus?.(); } });
+      panneauConfig = ouvrirPanneau({ surFermeture: () => { panneauConfig = null; agent.relireReglages(); avant?.focus?.(); } });
     },
   });
   fichiers = vueFichiers({
@@ -161,6 +163,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     fermerDiff: editeur.fermerDiff,
     surDisque: editeur.relireDisque,
   });
+  const agent = vueAgent({});
   const restauration = editeur.restaurer();
 
   let nombre = 0; // changements git, affichés sur l'icône Git du rail
@@ -177,7 +180,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   racine = cadre({
     barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [boutonPanneau.enveloppe, shells.repli.enveloppe, theme.enveloppe, sortir.enveloppe] },
     rail: { onglets: rail, commandes: shells.commandes },
-    panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps] },
+    panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps, agent.corps] },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, fil: editeur.fil, code: editeur.code, shells },
     barreEtat: barre,
     surChangement: (zone, taille) => {
@@ -237,6 +240,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     fichiers.corps.hidden = fichiers.entete.hidden = !visible;
     recherche.montrer(id === "recherche");
     git.montrer(id === "git");
+    agent.montrer(id === "agent");
   }
   afficherPanneau("fichiers");
 
@@ -250,6 +254,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     }
     corps.focus();
     if (onglet.getAttribute("aria-label") === "Recherche") recherche.focuser();
+    if (onglet.getAttribute("aria-label") === "Agent") agent.focuser();
   });
   // Focus sur le rail : F, R et G affichent le panneau et y mettent le focus.
   // Les deux boutons de commande du rail comptent aussi : la garde est posée sur toute la colonne.
@@ -265,6 +270,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     }
     corps.focus();
     if (p.id === "recherche") recherche.focuser();
+    if (p.id === "agent") agent.focuser();
   });
 
   // Ctrl+Maj+F, partout (même dans un shell) : le focus passe sur le bouton actif du rail.
@@ -318,6 +324,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     fichiers.detruire();
     git.detruire();
     recherche.detruire();
+    agent.detruire();
     ouverture.detruire();
     panneauConfig?.fermer();
   };

@@ -75,11 +75,11 @@ test("REQ028_AC4_rail_accessible", () => {
   const rail = vue.querySelector("[role=tablist]");
   expect(rail.getAttribute("aria-orientation")).toBe("vertical");
   const tabs = [...rail.querySelectorAll("[role=tab]")];
-  expect(tabs.map((t) => t.textContent)).toEqual(["", "", ""]);
+  expect(tabs.map((t) => t.textContent)).toEqual(["", "", "", ""]);
   expect(tabs.every((t) => t.querySelector("svg"))).toBe(true);
-  expect(tabs.map((t) => t.getAttribute("aria-keyshortcuts"))).toEqual(["F", "R", "G"]);
-  expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual(["Fichiers", "Recherche", "Git"]);
-  expect(tabs.map((t) => t.getAttribute("aria-selected"))).toEqual(["true", "false", "false"]);
+  expect(tabs.map((t) => t.getAttribute("aria-keyshortcuts"))).toEqual(["F", "R", "G", "A"]);
+  expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual(["Fichiers", "Recherche", "Git", "Agent"]);
+  expect(tabs.map((t) => t.getAttribute("aria-selected"))).toEqual(["true", "false", "false", "false"]);
 });
 
 test("REQ028_AC5_touche_sur_le_rail_change_de_panneau_et_prend_le_focus", () => {
@@ -470,9 +470,9 @@ test("REQ040_AC10_un_shell_reduit_qui_se_termine_laisse_le_focus_sur_l_onglet", 
 
 test("REQ028_AC12_F_R_G_marchent_aussi_depuis_les_boutons_du_rail", () => {
   const { vue } = monter();
-  const titres = { f: "Fichiers", r: "Recherche", g: "Git" };
+  const titres = { f: "Fichiers", r: "Recherche", g: "Git", a: "Agent" };
   for (const b of vue.querySelectorAll(".cadre-rail-commandes button")) {
-    for (const touche of ["g", "r", "f"]) {
+    for (const touche of ["a", "g", "r", "f"]) {
       vue.querySelector("[role=tab]").focus();
       b.dispatchEvent(new KeyboardEvent("keydown", { key: touche, bubbles: true }));
       expect(vue.querySelector("aside h2").textContent, `${touche} depuis ${b.getAttribute("aria-label")}`).toBe(titres[touche]);
@@ -1050,7 +1050,7 @@ test("REQ046_AC3_REQ028_AC15_Ctrl_Maj_F_ne_deplie_pas_Entree_apres_Bas_et_F_G_de
   vue.querySelector("[role=tab][aria-selected=true]").click();
   expect(aside(vue).hidden).toBe(false);
   expect(aside(vue).querySelector("h2").textContent).toBe("Recherche");
-  for (const [touche, titre] of [["g", "Git"], ["f", "Fichiers"]]) {
+  for (const [touche, titre] of [["a", "Agent"], ["g", "Git"], ["f", "Fichiers"]]) {
     barreTitre(vue, "Replier le panneau").click();
     tabs[0].focus();
     tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: touche, bubbles: true }));
@@ -1184,4 +1184,29 @@ test("REQ054_AC4_echap_rend_le_focus_d_avant_ctrl_p", async () => {
   dlg.dispatchEvent(new Event("cancel", { cancelable: true }));
   expect(document.querySelector("dialog")).toBeNull();
   expect(document.activeElement).toBe(avant);
+});
+
+test("REQ028_AC1_AC5_AC11_AC17_onglet_agent_touche_a_et_info_bulle", () => {
+  const { vue } = monter();
+  const tab = vue.querySelector("[role=tab][aria-label=Agent]");
+  expect(tab.getAttribute("aria-keyshortcuts")).toBe("A");
+  expect(tab.querySelector("svg[data-icone=bot]")).not.toBeNull();
+  expect([...vue.querySelectorAll("[role=tab]")].pop()).toBe(tab);
+  // L'info-bulle du rail.
+  vi.useFakeTimers();
+  tab.dispatchEvent(new MouseEvent("pointerenter"));
+  vi.advanceTimersByTime(500);
+  vi.useRealTimers();
+  expect([...document.querySelectorAll("[role=tooltip]")].map((b) => b.textContent)).toContain("Agent (A)");
+  // La touche A depuis le rail affiche la vue, qui met le focus dans le champ.
+  vue.querySelector("[role=tab]").focus();
+  vue.querySelector("[role=tab]").dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+  expect(vue.querySelector("aside h2").textContent).toBe("Agent");
+  expect(vue.querySelector(".agent-corps").hidden).toBe(false);
+  expect(document.activeElement).toBe(vue.querySelector(".agent-corps textarea"));
+  // Un clic sur l'onglet Agent met aussi le focus dans le champ.
+  vue.querySelector("[role=tab][aria-label=Git]").click();
+  expect(vue.querySelector(".agent-corps").hidden).toBe(true);
+  tab.click();
+  expect(document.activeElement).toBe(vue.querySelector(".agent-corps textarea"));
 });
