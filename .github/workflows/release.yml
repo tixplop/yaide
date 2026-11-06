@@ -39,6 +39,18 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # factory:release tague sans toucher au code : la version des manifestes
+      # est prise du tag ici, avant de construire.
+      - name: Version du tag
+        run: |
+          version="${TAG#v}"
+          echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            || { echo "Tag $TAG : attendu vX.Y.Z"; exit 1; }
+          sed -i "0,/^version = \".*\"/s//version = \"$version\"/" Cargo.toml
+          sed -i "/^name = \"yaide\"\$/{n;s/^version = \".*\"/version = \"$version\"/}" Cargo.lock
+          npm version "$version" --no-git-tag-version --allow-same-version
+          git diff --stat
+
       - name: Interface web
         run: |
           npm ci
