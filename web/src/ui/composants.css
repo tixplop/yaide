@@ -375,6 +375,44 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 /* C-013 : bouton d'en-tête dont le menu est ouvert. */
 .ya-icon-btn[aria-expanded="true"] { background: var(--bg-400); color: var(--ink); }
 
+/* C-015 */
+.ya-chat { display: flex; flex-direction: column; gap: var(--space-3); box-sizing: border-box; height: 100%; overflow: auto; padding: var(--space-2) var(--space-3); background: var(--bg-100); color: var(--ink); font: 13px/20px var(--font-sans); }
+.ya-chat:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
+.ya-chat > .ya-steps + .ya-steps { margin-top: -10px; }
+.ya-chat-vide { flex: 1; display: flex; align-items: center; justify-content: center; }
+.ya-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ya-chat-user { background: var(--bg-300); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 6px var(--space-2); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
+.ya-chat-agent { overflow-wrap: anywhere; }
+.ya-chat-agent > :first-child, .ya-chat-agent > .ya-sr + * { margin-top: 0; }
+.ya-chat-agent p { margin: 0 0 var(--space-2); }
+.ya-chat-agent p:last-child { margin-bottom: 0; }
+.ya-chat-agent h1 { font: 600 15px/20px var(--font-sans); margin: 0 0 var(--space-2); }
+.ya-chat-agent h2 { font: 600 14px/20px var(--font-sans); margin: 0 0 var(--space-2); }
+.ya-chat-agent h3, .ya-chat-agent h4, .ya-chat-agent h5, .ya-chat-agent h6 { font: 600 13px/20px var(--font-sans); margin: 0 0 var(--space-2); }
+.ya-chat-agent code { font: 12px/18px var(--font-mono); background: var(--apercu-fond); border-radius: var(--radius-xs); padding: 0 var(--space-1); }
+.ya-chat-agent pre { margin: 0 0 var(--space-2); background: var(--apercu-fond); border-radius: var(--radius-sm); padding: 6px var(--space-2); font: 12px/18px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ya-chat-agent pre code { padding: 0; background: none; font: inherit; }
+.ya-chat-agent a { color: var(--info); text-decoration: underline; }
+.ya-chat-agent ul, .ya-chat-agent ol { margin: 0 0 var(--space-2); padding-left: 18px; }
+.ya-steps { display: flex; flex-direction: column; gap: 2px; }
+.ya-step { font: 12px var(--font-mono); height: var(--size-row); width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 var(--space-1); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.ya-step:hover { background: var(--hover); }
+.ya-step:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
+.ya-step svg { flex: none; }
+.ya-step-etat.encours { color: var(--ink-muted); }
+.ya-step-etat.ok { color: var(--git-added); }
+.ya-step-etat.ko { color: var(--danger); }
+.ya-step-nom { font-weight: 600; flex: none; color: var(--ink); }
+.ya-step-arg { color: var(--ink-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ya-step-chev { color: var(--ink-muted); transition: transform 120ms; }
+.ya-step[aria-expanded="true"] .ya-step-chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .ya-step-chev { transition: none; } }
+.ya-step-res { margin: 0 0 0 20px; background: var(--apercu-fond); border-radius: var(--radius-sm); padding: 6px var(--space-2); font: 12px/18px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; color: var(--ink); }
+.ya-step-res[hidden] { display: none; }
+.ya-step-cmd { color: var(--ink-muted); }
+.ya-fin { font: 12px/16px var(--font-sans); color: var(--ink-muted); }
+
+
 .zone-code {
   display: flex;
   height: 100%;
@@ -454,4 +492,3 @@ body { margin: 0; }
 .recherche-corps .liste-groupe .liste-compteur { margin-left: auto; }
 
 .ouverture-liste { max-height: calc(12 * var(--hauteur-ligne)); overflow-y: auto; }
-

@@ -82,10 +82,13 @@ test("REQ038_AC5_le_champ_suit_le_theme_de_la_page", () => {
 test("REQ036_AC13_seul_le_chevron_de_l_arbre_a_une_transition_coupee_par_reduced_motion", () => {
   const sans = css.replace(/\/\*[^]*?\*\//g, "");
   const lignes = sans.split("\n").filter((l) => /transition/.test(l));
-  expect(lignes).toHaveLength(4);
+  // Le chevron de l'arbre et celui d'un appel d'outil (C-015) : 2 lignes chacun.
+  expect(lignes).toHaveLength(6);
   expect(lignes[0]).toMatch(/^\.liste-chevron svg \{[^}]*transition: transform \.12s;/);
   expect(lignes[1]).toMatch(/^@media \(prefers-reduced-motion: reduce\) \{ \.liste-chevron svg \{ transition: none; \} \}/);
   a('[aria-expanded="true"] > .liste-chevron svg', "transform: rotate(90deg)");
+  expect(lignes[4]).toMatch(/^\.ya-step-chev \{[^}]*transition: transform 120ms;/);
+  expect(lignes[5]).toMatch(/^@media \(prefers-reduced-motion: reduce\) \{ \.ya-step-chev \{ transition: none; \} \}/);
 });
 
 test("REQ036_AC13_chaque_transition_de_xterm_css_est_annulee", () => {
