@@ -562,7 +562,7 @@ test("REQ034_AC17_a_800_x_480_le_menu_reste_entier_sur_la_derniere_ligne_visible
     return b;
   };
   const lignes = arbre(page).getByRole("treeitem");
-  const zone = await page.locator(".cadre-panneau-corps").boundingBox();
+  const zone = await page.locator("aside.cadre-panneau .cadre-panneau-corps").boundingBox();
   const visibles = [];
   for (let i = 0; i < (await lignes.count()); i++) {
     const b = await lignes.nth(i).boundingBox();
@@ -585,7 +585,7 @@ test("REQ034_la_partie_vide_remplit_la_hauteur_du_panneau", async ({ page }) => 
   await ouvrir(page);
   const r = await page.evaluate(() => {
     const f = document.querySelector(".fichiers-arbre").getBoundingClientRect();
-    const p = document.querySelector(".cadre-panneau-corps").getBoundingClientRect();
+    const p = document.querySelector("aside.cadre-panneau .cadre-panneau-corps").getBoundingClientRect();
     return { bas: f.bottom, basCorps: p.bottom };
   });
   expect(r.bas).toBeGreaterThanOrEqual(r.basCorps - 1);
@@ -682,7 +682,7 @@ test("REQ009_AC9_AC10_en_tete_du_projet_a_240_px_26_px_une_ligne_et_ordre_de_tab
   // AC-009-10 : Maj+Tab depuis « Nouveau fichier » arrive sur le bouton de repli de l'en-tête du panneau.
   await page.getByRole("button", { name: "Nouveau fichier" }).focus();
   await page.keyboard.press("Shift+Tab");
-  await expect(page.locator("aside").getByRole("button", { name: "Replier le panneau", exact: true })).toBeFocused();
+  await expect(page.locator("aside.cadre-panneau").getByRole("button", { name: "Replier le panneau", exact: true })).toBeFocused();
 });
 
 test("REQ039_AC1_indexer_depuis_le_menu_fait_passer_la_lettre_de_U_a_A", async ({ page }) => {
@@ -718,10 +718,10 @@ test("REQ009_AC9_l_en_tete_du_projet_ne_defile_pas_avec_l_arbre", async ({ page 
   await ouvrirYaide(page, yaide.origine);
   const entete = page.locator(".fichiers-entete");
   const avant = await entete.boundingBox();
-  await page.locator(".cadre-panneau-corps").evaluate((e) => {
+  await page.locator("aside.cadre-panneau .cadre-panneau-corps").evaluate((e) => {
     e.scrollTop = e.scrollHeight;
   });
-  expect(await page.locator(".cadre-panneau-corps").evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
+  expect(await page.locator("aside.cadre-panneau .cadre-panneau-corps").evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
   expect(await entete.boundingBox()).toEqual(avant);
   await expect(page.getByRole("button", { name: "Supprimer" })).toBeInViewport();
 });
@@ -758,7 +758,7 @@ test("REQ050_AC4_partie_vide_reste_atteignable_a_800x480", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
   await parChemin(page, "lot").click();
   await expect(parChemin(page, "lot/f49.txt")).toBeAttached();
-  const defile = page.locator(".cadre-panneau-corps");
+  const defile = page.locator("aside.cadre-panneau .cadre-panneau-corps");
   await defile.evaluate((e) => (e.scrollTop = e.scrollHeight));
   const derniere = arbre(page).getByRole("treeitem").last();
   await expect(derniere).toBeInViewport();

@@ -89,7 +89,9 @@ test("REQ032_AC1_glisse_la_poignee_du_panneau_au_dessus_du_terminal_sans_perdre_
   const apres = await boite(page, ".cadre-panneau");
   expect(apres.w).toBeCloseTo(avant.w + 100, 0);
   const principal = await boite(page, ".cadre-principal");
-  expect(principal.x + principal.w).toBeCloseTo(1000, 0);
+  const railDroit = await boite(page, ".cadre-rail-droit");
+  expect(principal.x + principal.w).toBeCloseTo(railDroit.x, 0);
+  expect(railDroit.x + railDroit.w).toBeCloseTo(1000, 0);
   expect(await page.evaluate(() => document.activeElement.className)).toBe("xterm-helper-textarea");
   await expect.poll(() => page.evaluate(() => document.querySelector(".terminal").term.cols)).toBeLessThan(colsAvant);
   const cols = await page.evaluate(() => document.querySelector(".terminal").term.cols);

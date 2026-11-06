@@ -430,7 +430,7 @@ test("REQ028_AC12_F_depuis_les_boutons_du_rail_affiche_les_fichiers", async ({ p
     for (const touche of ["g", "r", "f"]) {
       await page.getByRole("button", { name: nom }).focus();
       await page.keyboard.press(touche);
-      await expect(page.locator("aside h2")).toHaveText(titres[touche]);
+      await expect(page.locator("aside.cadre-panneau h2")).toHaveText(titres[touche]);
       await expect.poll(() => page.evaluate(() => document.querySelector(".cadre-panneau").contains(document.activeElement))).toBe(true);
     }
   }

@@ -306,14 +306,14 @@ test("REQ046_parcours_14_replier_pour_lire_le_code", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Fermer le shell", exact: true })).toBeDisabled();
   await page.reload();
   await page.getByRole("button", { name: "Déplier le panneau", exact: true }).waitFor();
-  await expect(page.locator("aside")).toBeHidden();
+  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
   await expect(page.locator(".cadre-shells")).toBeHidden();
   await expect(page.getByRole("tab", { name: "main.rs", exact: true })).toBeVisible();
   await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
   await page.getByRole("tab", { name: "Git", exact: true }).click();
-  await expect(page.locator("aside h2")).toHaveText("Git");
-  await expect(page.locator("aside")).toBeVisible();
-  expect(await page.evaluate(() => Boolean(document.activeElement.closest("aside")))).toBe(true);
+  await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Git");
+  await expect(page.locator("aside.cadre-panneau")).toBeVisible();
+  expect(await page.evaluate(() => Boolean(document.activeElement.closest("aside.cadre-panneau")))).toBe(true);
   await page.getByRole("button", { name: "Déplier les shells", exact: true }).click();
   await expect(page.getByRole("tab", { name: "shell 1" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tab", { name: "shell 2" })).toBeVisible();
@@ -364,7 +364,7 @@ test("REQ048_parcours_16_replier_depuis_l_en_tete", async ({ page }) => {
   yaide = await lancerYaide({ shell: "/bin/sh" });
   await page.setViewportSize({ width: 1100, height: 700 });
   await ouvrirYaide(page, yaide.origine);
-  const aside = page.locator("aside");
+  const aside = page.locator("aside.cadre-panneau");
   const replierEntete = aside.getByRole("button", { name: "Replier le panneau", exact: true });
   const deplier = page.locator("header").getByRole("button", { name: "Déplier le panneau", exact: true });
   const tooltip = page.getByRole("tooltip");
@@ -431,7 +431,7 @@ test("REQ048_parcours_16_replier_depuis_l_en_tete", async ({ page }) => {
   await page.getByRole("tab", { name: "Git", exact: true }).click();
   await expect(aside).toBeVisible();
   await expect(aside.locator("h2")).toHaveText("Git");
-  expect(await page.evaluate(() => Boolean(document.activeElement.closest("aside")))).toBe(true);
+  expect(await page.evaluate(() => Boolean(document.activeElement.closest("aside.cadre-panneau")))).toBe(true);
   const bGit = await replierEntete.boundingBox();
   expect(Math.round(bGit.x)).toBe(Math.round(b.x));
   expect(Math.round(bGit.y)).toBe(Math.round(b.y));

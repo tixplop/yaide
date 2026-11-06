@@ -109,14 +109,14 @@ test("REQ045_AC5_le_defilement_de_l_arbre_et_la_frappe_dans_le_terminal_ne_sont_
   await ouvrir(page, dossier);
   await ligne(page, "gros").click();
   await expect(ligne(page, "f199.txt")).toBeAttached();
-  const defile = await page.locator(".cadre-panneau-corps").evaluate((e) => {
+  const defile = await page.locator("aside.cadre-panneau .cadre-panneau-corps").evaluate((e) => {
     e.scrollTop = 1500;
     return e.scrollTop;
   });
   expect(defile).toBeGreaterThan(0);
   await taper(page, "touch gros/zz.txt");
   await expect(ligne(page, "zz.txt")).toBeAttached(A_PEINE);
-  expect(await page.locator(".cadre-panneau-corps").evaluate((e) => e.scrollTop)).toBe(defile);
+  expect(await page.locator("aside.cadre-panneau .cadre-panneau-corps").evaluate((e) => e.scrollTop)).toBe(defile);
   // Frappe qui continue d'arriver dans le terminal pendant les relectures.
   await page.locator(".terminal:visible .xterm-helper-textarea").focus();
   await page.keyboard.type("echo abc");
