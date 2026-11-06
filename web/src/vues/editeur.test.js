@@ -420,3 +420,76 @@ test("REQ061_AC9_liste_gardee_relue_apres_la_serie", async () => {
   vi.doUnmock("../onglets-fichiers.js");
   vi.resetModules();
 });
+
+const boutonHybride = () => document.querySelector('button[aria-label="Mode hybride"]');
+
+test("REQ062_AC1_AC14_bouton_hybride_avant_apercu_sur_markdown_seulement", () => {
+  const { e } = monter();
+  for (const chemin of ["README.md", "notes.markdown", "NOTES.MD", "index.html", "src/main.rs"]) {
+    e.ouvrir({ chemin, contenu: "x", version: "1" });
+    expect(boutonHybride() !== null, chemin).toBe(/\.(md|markdown)$/i.test(chemin));
+    expect(boutonApercu() !== null, chemin).toBe(/\.(md|markdown|html)$/i.test(chemin));
+  }
+  e.ouvrir({ chemin: "README.md", contenu: "x", version: "1" });
+  expect(boutonHybride().compareDocumentPosition(boutonApercu()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  e.ouvrirDiff({ chemin: "README.md", texte: "+a" });
+  expect(boutonHybride()).toBeNull();
+  expect(boutonApercu()).toBeNull();
+});
+
+test("REQ062_AC12_aria_pressed_propre_a_chaque_onglet_focus_conserve", () => {
+  const { e } = monter();
+  e.ouvrir({ chemin: "a.md", contenu: "# x", version: "1" });
+  e.ouvrir({ chemin: "b.md", contenu: "# y", version: "1" });
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
+  boutonHybride().focus();
+  boutonHybride().click();
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
+  expect(document.activeElement).toBe(boutonHybride());
+  expect(e.code.querySelector(".zone-code:not([hidden])").vue.dom.classList.contains("cm-hybride")).toBe(true);
+  e.ouvrir({ chemin: "a.md", contenu: "# x", version: "1" });
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
+  e.ouvrir({ chemin: "b.md", contenu: "# y", version: "1" });
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
+  boutonHybride().click();
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
+});
+
+test("REQ062_AC10_liste_gardee_relue_avec_le_mode_hybride", async () => {
+  vi.resetModules();
+  const garder = vi.fn();
+  const gardee = [{ chemin: "README.md", hybride: true }, { chemin: "notes.md" }];
+  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder, retrouver: async () => ({ liste: gardee, actif: "README.md" }) }));
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => "# t" })));
+  const { vueEditeur: neuf } = await import("./editeur.js");
+  const e = neuf({ dire: vi.fn() });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  vi.useFakeTimers();
+  await e.restaurer();
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
+  e.ouvrir({ chemin: "notes.md", contenu: "# t", version: "1" });
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
+  boutonHybride().click();
+  await vi.advanceTimersByTimeAsync(250);
+  vi.useRealTimers();
+  expect(garder).toHaveBeenLastCalledWith(expect.arrayContaining([expect.objectContaining({ chemin: "README.md", hybride: true }), expect.objectContaining({ chemin: "notes.md", hybride: true })]), "notes.md");
+  vi.doUnmock("../onglets-fichiers.js");
+  vi.resetModules();
+});
+
+test("REQ062_AC10_le_mode_reste_apres_un_changement_sur_le_disque", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    if (init?.method === "POST") return { ok: true, status: 200, json: async () => ({ "README.md": "2" }) };
+    return { ok: true, status: 200, headers: new Headers({ "x-version": "2" }), text: async () => "# nouveau" };
+  }));
+  const { e } = monter();
+  await e.restaurer();
+  e.ouvrir({ chemin: "README.md", contenu: "# ancien", version: "1" });
+  boutonHybride().click();
+  await e.relireDisque();
+  const vue = e.code.querySelector(".zone-code").vue;
+  await vi.waitFor(() => expect(vue.state.doc.toString()).toBe("# nouveau"));
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
+  expect(vue.dom.classList.contains("cm-hybride")).toBe(true);
+});

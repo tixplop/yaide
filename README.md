@@ -112,6 +112,8 @@ Quand le focus est dans un shell, toutes les touches que le navigateur laisse pa
 
 ## Aperçu markdown
 
+Sur un fichier markdown, le bouton « Mode hybride » met le texte en forme dans l'éditeur même : les marques reviennent sur la ligne du curseur, et le fichier n'est pas modifié.
+
 Dans l'aperçu d'un fichier markdown, un bloc de code est coloré comme dans l'éditeur, avec les mêmes couleurs, si le mot après les trois accents graves est un nom de langage ou une extension : `rust` ou `rs`, `javascript` ou `js`, `typescript` ou `ts`, `python` ou `py`, `go`, `c`, `c++` ou `cpp`, `html`, `css`, `json`, `yaml` ou `yml`, `toml`, `markdown` ou `md`, `shell`, `bash` ou `sh`. Sans mot, ou avec un mot inconnu, le bloc reste en texte simple. Le code en ligne n'est pas coloré.
 
 Le bouton « Aperçu » existe aussi pour les fichiers HTML (`.html` et `.htm`) : la page s'affiche avec ses propres styles, sans exécuter ses scripts ni charger ses images, feuilles de style ou polices.

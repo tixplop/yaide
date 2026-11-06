@@ -30,7 +30,7 @@ export function apresFermeture(ids, ferme) {
   return reste[Math.min(i, reste.length - 1)] ?? null;
 }
 
-/** Garde la liste `[{ chemin, apercu, texte? }]` et l'onglet actif dans le navigateur. */
+/** Garde la liste `[{ chemin, apercu, hybride, texte? }]` et l'onglet actif dans le navigateur. */
 export const garder = (liste, actif) => ecrire(CLE, { liste, actif });
 
 /** Liste gardée : `{ liste, actif }`, vide s'il n'y a rien. */

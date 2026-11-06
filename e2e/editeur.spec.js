@@ -624,3 +624,89 @@ test("REQ061_parcours_P024_fermer_des_onglets_d_un_coup", async ({ page, browser
   expect(fs.readFileSync(path.join(dossier, "src", "main.rs"), "utf8")).toContain("X");
   expect(await page.getByRole("tab", { name: /shell/i }).count()).toBe(nbShells);
 });
+
+test("REQ062_parcours_P025_P026", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  await page.clock.install();
+  const readme = [
+    "# projet", "", "Un outil en ligne de commande pour saluer, avec une longue phrase qui passe à la ligne dans l'éditeur quand il est mis en forme, sous un seul numéro.",
+    "Voir la [documentation](https://exemple.org/doc) avant de commencer.", "", "```rust", "fn main() {}", "```", "", "## Lancer", "", "`projet` salue.", "",
+    "## Options", "", "> Les options sont facultatives.", "", "", "- `--fort` : salue en ~~majuscules~~ capitales.", "- `--bas` : salue bas.", "", "---", "",
+    "| a | b |", "|---|---|", "| 1 | 2 |", "", "![Capture](docs/capture.png)", "",
+  ].join("\n");
+  const dossier = await ouvrir(page, (d) => fs.writeFileSync(path.join(d, "README.md"), readme));
+  const relais = await lancerRelais(yaide.port);
+  try {
+    await page.goto(relais.origine + "/");
+    await expect(arbre(page)).toBeVisible();
+    const requetes = [];
+    page.on("request", (r) => requetes.push(r.url()));
+    const lignes = page.locator(".cm-content:visible .cm-line");
+    const hybride = page.getByRole("button", { name: "Mode hybride", exact: true });
+    const apercu = page.getByRole("button", { name: "Aperçu", exact: true });
+
+    // P-025
+    await ligne(page, "README.md").click();
+    await expect(hybride).toHaveAttribute("aria-pressed", "false");
+    await hybride.click();
+    await expect(hybride).toHaveAttribute("aria-pressed", "true");
+    await expect(hybride).toBeFocused();
+    // Un seul contrôle du contour (AC-012-5) : le bouton pressé a un fond ou un contour que l'autre n'a pas.
+    expect(await hybride.evaluate((b) => getComputedStyle(b).borderTopWidth + getComputedStyle(b).boxShadow)).not.toBe(await apercu.evaluate((b) => getComputedStyle(b).borderTopWidth + getComputedStyle(b).boxShadow));
+    await expect(lignes.nth(0)).toHaveText("# projet");
+    await lignes.nth(18).click({ position: { x: 600, y: 5 } });
+    await expect(lignes.nth(18)).toHaveText("- `--fort` : salue en ~~majuscules~~ capitales.");
+    await expect(lignes.nth(0)).toHaveText("projet");
+    await expect(page.locator("footer")).toContainText("Ln 19, Col 48");
+    const avant = requetes.length;
+    await lignes.nth(3).locator(".cm-hy-lien").click();
+    await expect(lignes.nth(3)).toHaveText("Voir la [documentation](https://exemple.org/doc) avant de commencer.");
+    expect(requetes.length).toBe(avant);
+    await apercu.click();
+    await lignes.nth(18).click({ position: { x: 20, y: 5 } });
+    await page.keyboard.press("End");
+    await page.keyboard.type(" et vite");
+    const zoneApercu = page.getByRole("region", { name: "Aperçu" });
+    await expect(zoneApercu).toContainText("capitales. et vite");
+    await expect(lignes.nth(18)).toContainText("capitales. et vite");
+    await ligne(page, "src").click();
+    await ligne(page, "main.rs").click();
+    await expect(hybride).toHaveCount(0);
+    await expect(apercu).toHaveCount(0);
+    await gardeContientHybride(page);
+    await page.reload();
+    await onglet(page, /^README\.md/).click();
+    await expect(hybride).toHaveAttribute("aria-pressed", "true");
+    await expect(apercu).toHaveAttribute("aria-pressed", "true");
+    await expect(lignes.nth(0)).toHaveClass(/cm-hy-titre1/);
+    await expect(lignes.nth(9)).toHaveText("Lancer");
+
+    // P-026
+    await page.getByRole("button", { name: "Nouveau fichier" }).click();
+    await page.getByLabel("Chemin").fill("notes.md");
+    await page.keyboard.press("Enter");
+    await expect(editeur(page, "notes.md")).toBeFocused();
+    await expect(hybride).toHaveAttribute("aria-pressed", "false");
+    await hybride.click();
+    await expect(hybride).toHaveAttribute("aria-pressed", "true");
+    relais.couper();
+    await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." })).toBeVisible({ timeout: 300 }));
+    await editeur(page, "notes.md").click();
+    await page.keyboard.type("## À faire");
+    await page.keyboard.press("Enter");
+    await expect(lignes.nth(0)).toHaveText("À faire");
+    await page.keyboard.type("- **relire le README");
+    await page.keyboard.press("Enter");
+    await expect(lignes.nth(1)).toHaveText("• **relire le README");
+    await expect(lignes.nth(1).locator(".cm-hy-gras")).toHaveCount(0);
+    await page.keyboard.press("Control+s");
+    await expect(page.getByRole("alert").filter({ hasText: "notes.md sera sauvegardé au retour." })).toBeVisible();
+    relais.retablir();
+    await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue" })).toHaveCount(0, { timeout: 300 }));
+    await expect.poll(() => fs.existsSync(path.join(dossier, "notes.md"))).toBe(true);
+    await expect.poll(() => fs.readFileSync(path.join(dossier, "notes.md"), "utf8")).toBe("## À faire\n- **relire le README\n- "); // « - » : la puce continuée par l'éditeur, texte source inchangé
+  } finally {
+    relais.fermer();
+  }
+});
+const gardeContientHybride = (page) => expect.poll(async () => (await gardes(page)).find((g) => g.chemin === "README.md")?.hybride).toBe(true);

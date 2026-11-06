@@ -64,7 +64,7 @@ test("REQ016_AC1_le_texte_tape_est_garde_en_moins_d_une_seconde", async () => {
   taper(e, "bc");
   await vi.advanceTimersByTimeAsync(900);
   const derniere = mem.ecrit.at(-1);
-  expect(derniere.liste).toEqual([{ chemin: "main.rs", apercu: false, texte: "abc", base: "a", version: "v1", attente: false }]);
+  expect(derniere.liste).toEqual([{ chemin: "main.rs", apercu: false, hybride: false, texte: "abc", base: "a", version: "v1", attente: false }]);
 });
 
 test("REQ005_AC8_REQ016_AC2_le_texte_tape_juste_avant_la_deconnexion_est_garde", async () => {
@@ -263,7 +263,7 @@ test("DEC019_le_ctrl_s_en_attente_est_garde_puis_execute_apres_un_rechargement",
   ctrlS();
   await vi.advanceTimersByTimeAsync(300);
   const garde = mem.ecrit.at(-1).liste[0];
-  expect(garde).toEqual({ chemin: "main.rs", apercu: false, texte: "ab", base: "a", version: "v1", attente: true });
+  expect(garde).toEqual({ chemin: "main.rs", apercu: false, hybride: false, texte: "ab", base: "a", version: "v1", attente: true });
 
   mem.gardes = { liste: [garde], actif: "main.rs" };
   const put = vi.fn(async () => reponse("", "v2"));

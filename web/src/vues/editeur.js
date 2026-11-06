@@ -18,6 +18,7 @@ const INTERVALLE_DISQUE = 1500;
 const SANS_SUITE = "sans suite";
 const DIFF = "\0diff"; // identifiant de l'onglet de diff, qui n'est pas un fichier ouvert
 const TEXTE_SUPPRIME = "Fichier supprimé du disque. Ctrl+S le recrée.";
+const avecHybride = (chemin) => /\.(md|markdown)$/i.test(chemin);
 const avecApercu = (chemin) => /\.(md|markdown|html|htm)$/i.test(chemin);
 
 /**
@@ -37,7 +38,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   code.className = "editeur-code";
   const questionOnglet = document.createElement("div");
 
-  const liste = []; // { chemin, zone, disque (texte de base), version (de base), apercu, modifie, question, supprime, avis }
+  const liste = []; // { chemin, zone, disque (texte de base), version (de base), apercu, hybride, modifie, question, supprime, avis }
   let actif = null;
   let diff = null; // { chemin, el } : l'onglet de diff, au plus un, jamais gardé
   let avantDiff = null; // onglet actif quand le diff s'est ouvert
@@ -65,7 +66,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
 
   function ecrireGarde() {
     garder(
-      liste.map((o) => ({ chemin: o.chemin, apercu: o.apercu, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) })),
+      liste.map((o) => ({ chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) })),
       actif === DIFF ? (liste[0]?.chemin ?? null) : actif,
     );
   }
@@ -131,6 +132,16 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     }
     const noms = libelles(liste.map((x) => x.chemin));
     let actionsDroite = [];
+    if (o !== diff && avecHybride(o.chemin)) {
+      const hy = bouton({ icone: "type", variante: "discret", nomAccessible: "Mode hybride", presse: o.hybride });
+      hy.addEventListener("click", () => {
+        o.hybride = !o.hybride;
+        o.zone.definirHybride(o.hybride);
+        hy.setAttribute("aria-pressed", String(o.hybride));
+        garderListe();
+      });
+      actionsDroite.push(hy.enveloppe);
+    }
     if (o !== diff && avecApercu(o.chemin)) {
       const ap = bouton({ icone: "eye", variante: "discret", nomAccessible: "Aperçu", presse: o.apercu });
       ap.addEventListener("click", () => {
@@ -139,7 +150,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
         ap.setAttribute("aria-pressed", String(o.apercu));
         garderListe();
       });
-      actionsDroite = [ap.enveloppe];
+      actionsDroite.push(ap.enveloppe);
     }
     const ongl = onglets({
       onglets: [...(diff ? [{ id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true }] : []), ...liste.map((x, i) => ({
@@ -186,13 +197,14 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
 
   // ---- Ouvrir, renommer, supprimer ----
 
-  function creer({ chemin, contenu, version, texte, apercu = false }) {
-    const o = { chemin, disque: contenu, version, apercu, modifie: false };
+  function creer({ chemin, contenu, version, texte, apercu = false, hybride = false }) {
+    const o = { chemin, disque: contenu, version, apercu, hybride, modifie: false };
     o.zone = zoneCode({
       contenu: texte ?? contenu,
       langage: langagePourFichier(nomDe(chemin)) ?? undefined,
       nom: nomDe(chemin),
       apercu,
+      hybride,
       surPosition() {
         if (trouver(actif) === o) publier(o);
       },
@@ -635,12 +647,13 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       const r = lus[i];
       const decision = decider(g, r);
       const apercu = Boolean(g.apercu);
+      const hybride = Boolean(g.hybride);
       let o;
       if (decision === "creer") {
         // Un brouillon garde sa version de base : si le disque a changé pendant l'absence, la question est posée.
         const brouillon = typeof g.texte === "string" && typeof g.base === "string" && typeof g.version === "string";
-        o = creer({ chemin: g.chemin, contenu: brouillon ? g.base : r.contenu, version: brouillon ? g.version : r.version, texte: g.texte, apercu });
-      } else if (decision === "recreer") o = creer({ chemin: g.chemin, contenu: "", texte: g.texte, apercu });
+        o = creer({ chemin: g.chemin, contenu: brouillon ? g.base : r.contenu, version: brouillon ? g.version : r.version, texte: g.texte, apercu, hybride });
+      } else if (decision === "recreer") o = creer({ chemin: g.chemin, contenu: "", texte: g.texte, apercu, hybride });
       if (o) aVerifier.push([o, r]);
       if (o && g.attente) attente.add(o);
     });
