@@ -11,6 +11,7 @@ import { vueEditeur } from "./editeur.js";
 import { vueFichiers } from "./fichiers.js";
 import { vueGit } from "./git.js";
 import { vueOuverture } from "./ouverture.js";
+import { ouvrirProfils } from "./profils.js";
 import { ouvrirProviders } from "./providers.js";
 import { vueRecherche } from "./recherche.js";
 import { statutsDe } from "../statuts.js";
@@ -118,15 +119,16 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       majEtat();
     },
   });
-  // V-008 ; à sa fermeture, le focus revient à l'élément d'avant Ctrl+P.
+  // V-008 et V-009 ; à sa fermeture, le focus revient à l'élément d'avant Ctrl+P.
   let panneauConfig = null;
   const ouverture = vueOuverture({
     dire,
     surOuvrir: editeur.ouvrir,
     surLecture: editeur.lecture,
     surCommande: (id, avant) => {
-      if (id !== "providers") return;
-      panneauConfig = ouvrirProviders({ surFermeture: () => { panneauConfig = null; avant?.focus?.(); } });
+      const ouvrirPanneau = { providers: ouvrirProviders, profils: ouvrirProfils }[id];
+      if (!ouvrirPanneau) return;
+      panneauConfig = ouvrirPanneau({ surFermeture: () => { panneauConfig = null; avant?.focus?.(); } });
     },
   });
   fichiers = vueFichiers({

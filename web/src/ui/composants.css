@@ -497,3 +497,7 @@ body { margin: 0; }
 .recherche-corps .liste-groupe .liste-compteur { margin-left: auto; }
 
 .ouverture-liste { max-height: calc(12 * var(--hauteur-ligne)); overflow-y: auto; }
+.champs-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-4); align-items: start; }
+.champs-grille > .champs-large { grid-column: 1 / -1; }
+.profils-liste { max-height: calc(6 * (var(--size-row) + var(--space-1))); overflow-y: auto; }
+.profils-actions { display: flex; gap: var(--space-1); }

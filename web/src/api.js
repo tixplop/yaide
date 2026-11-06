@@ -189,3 +189,23 @@ export async function enregistrerProvider(id, { adresse, cle }) {
 }
 
 export const supprimerCle = (id) => action(`/api/agent/providers/${q(id)}/cle`, { method: "DELETE" });
+
+/** Rend les réglages (`{ providers, profils, erreur }`), `{ cause, message }` ou `{ coupure: true }`. Un refus 400 par champ donne `cause: "invalide"`. */
+async function reglagesApres(chemin, options) {
+  const r = await appeler(chemin, options);
+  if (!r) return { coupure: true };
+  if (r.ok) return r.json();
+  if (r.status === 400) {
+    try {
+      const { erreurs } = await r.json();
+      if (Array.isArray(erreurs)) return { cause: "invalide", message: `valeur refusée (${erreurs.map((e) => e.champ).join(", ")})` };
+    } catch {
+      // Corps illisible : traité comme une erreur du serveur.
+    }
+  }
+  return erreurServeur(r);
+}
+
+/** `profil` : `{ id?, nom, provider, modele, effort?, temperature?, sortieMax?, fenetre?, defaut }`. */
+export const enregistrerProfil = (profil) => reglagesApres("/api/agent/profils", { method: "PUT", body: JSON.stringify(profil) });
+export const supprimerProfil = (id) => reglagesApres(`/api/agent/profils/${q(id)}`, { method: "DELETE" });
