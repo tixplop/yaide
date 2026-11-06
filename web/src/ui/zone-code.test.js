@@ -325,3 +325,79 @@ test("REQ058_AC8_apercu_html_est_un_iframe_et_markdown_un_div", () => {
   expect(m.querySelector(".zone-code-apercu").tagName).toBe("DIV");
   expect(m.querySelector("iframe")).toBeNull();
 });
+
+const MD = "# Titre\n\nun **gras** et [lien](https://x.org)\n\n## Suite\n\n- puce";
+const estHybride = (z) => z.vue.dom.classList.contains("cm-hybride");
+
+test("REQ062_AC8_definirHybride_pose_puis_retire_sans_toucher_au_texte", () => {
+  const surChangement = vi.fn();
+  const z = zoneCode({ contenu: MD, langage: "markdown", nom: "a.md", surChangement });
+  document.body.append(z);
+  expect(estHybride(z)).toBe(false);
+  expect(z.vue.contentDOM.classList.contains("cm-lineWrapping")).toBe(false);
+  z.definirHybride(true);
+  expect(estHybride(z)).toBe(true);
+  expect(z.vue.contentDOM.classList.contains("cm-lineWrapping")).toBe(true);
+  z.definirHybride(false);
+  expect(estHybride(z)).toBe(false);
+  expect(z.vue.contentDOM.classList.contains("cm-lineWrapping")).toBe(false);
+  expect(z.contenu()).toBe(MD);
+  expect(surChangement).not.toHaveBeenCalled();
+  z.detruire();
+  z.remove();
+});
+
+test("REQ062_AC8_option_hybride_et_historique_conserve_apres_bascule", async () => {
+  const { undo } = await import("@codemirror/commands");
+  const z = zoneCode({ contenu: "a", langage: "markdown", hybride: true });
+  document.body.append(z);
+  expect(estHybride(z)).toBe(true);
+  z.vue.dispatch({ changes: { from: 1, insert: "b" }, selection: { anchor: 2 }, userEvent: "input.type" });
+  z.definirHybride(false);
+  expect(z.contenu()).toBe("ab");
+  expect(z.vue.state.selection.main.head).toBe(2);
+  expect(undo(z.vue)).toBe(true);
+  expect(z.contenu()).toBe("a");
+  z.detruire();
+  z.remove();
+});
+
+test("REQ062_AC11_hybride_et_apercu_a_jour_a_la_frappe", () => {
+  const z = zoneCode({ contenu: "# Un", langage: "markdown", hybride: true, apercu: true });
+  document.body.append(z);
+  z.vue.dispatch({ changes: { from: 4, insert: "\n\n## Deux" } });
+  expect(z.querySelector(".zone-code-apercu h2").textContent).toBe("Deux");
+  expect(z.vue.dom.querySelector(".cm-hy-titre2")).not.toBeNull();
+  z.definirApercu(false);
+  expect(estHybride(z)).toBe(true);
+  z.detruire();
+  z.remove();
+});
+
+test("REQ062_AC1_ignore_hors_markdown_et_en_diff", () => {
+  const r = zoneCode({ contenu: "fn main() {}", langage: "rust", hybride: true });
+  r.definirHybride(true);
+  expect(estHybride(r)).toBe(false);
+  const d = zoneCode({ contenu: "+# a", mode: "diff", langage: "markdown", hybride: true });
+  d.definirHybride(true);
+  expect(estHybride(d)).toBe(false);
+  expect(d.vue.contentDOM.classList.contains("cm-lineWrapping")).toBe(false);
+  r.detruire();
+  d.detruire();
+});
+
+test("REQ062_AC18_numero_de_titre_a_la_hauteur_du_titre", () => {
+  const z = zoneCode({ contenu: "# T\n\ntexte\n\n## S\n\nfin", langage: "markdown", hybride: true });
+  document.body.append(z);
+  ensureSyntaxTree(z.vue.state, z.vue.state.doc.length, 5000);
+  z.vue.dispatch({});
+  const classe = (n) => [...z.vue.dom.querySelectorAll(".cm-lineNumbers .cm-gutterElement")].find((e) => e.textContent === String(n)).className;
+  expect(classe(1)).toContain("cm-hy-numero-titre1");
+  expect(classe(5)).toContain("cm-hy-numero-titre2");
+  expect(classe(3)).not.toContain("cm-hy-numero-titre");
+  expect(classe(7)).not.toContain("cm-hy-numero-titre");
+  z.definirHybride(false);
+  expect(z.vue.dom.querySelector(".cm-hy-numero-titre1")).toBeNull();
+  z.detruire();
+  z.remove();
+});

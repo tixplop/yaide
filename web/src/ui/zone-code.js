@@ -1,11 +1,12 @@
-import { EditorState, Compartment, StateField, RangeSetBuilder } from "@codemirror/state";
-import { EditorView, Decoration, keymap, lineNumbers, drawSelection, highlightActiveLineGutter } from "@codemirror/view";
+import { EditorState, Compartment, StateField, RangeSetBuilder, RangeSet } from "@codemirror/state";
+import { EditorView, Decoration, GutterMarker, keymap, lineNumbers, gutterLineClass, drawSelection, highlightActiveLineGutter } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { syntaxHighlighting } from "@codemirror/language";
+import { syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { supportLangage } from "./langages.js";
 import { apercu as creerApercu } from "./apercu.js";
 import { apercuHtml } from "./apercu-html.js";
 import { couleurs } from "./couleurs-code.js";
+import { hybride as extensionHybride } from "./hybride.js";
 import { themeCourant } from "./theme.js";
 
 const MODES = ["edition", "diff"];
@@ -75,7 +76,35 @@ function decorerDiff(doc) {
   return b.finish();
 }
 
-export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, ligne, nom = "", surChangement, surPosition } = {}) {
+// Numéro d'une ligne de titre : même hauteur de ligne que le titre (classes dans composants.css).
+class NumeroTitre extends GutterMarker {
+  constructor(niveau) {
+    super();
+    this.elementClass = `cm-hy-numero-titre${niveau}`;
+  }
+}
+const numerosTitre = [1, 2].map((n) => new NumeroTitre(n));
+const TITRES_NIVEAU = { ATXHeading1: 1, ATXHeading2: 2, SetextHeading1: 1, SetextHeading2: 2 };
+function marqueursTitres(etat) {
+  const doc = etat.doc;
+  const vus = new Map();
+  syntaxTree(etat).iterate({
+    enter: (n) => {
+      const niveau = TITRES_NIVEAU[n.name];
+      if (!niveau) return;
+      const derniere = n.name.startsWith("Setext") ? doc.lineAt(n.to).number - 1 : doc.lineAt(n.from).number;
+      for (let i = doc.lineAt(n.from).number; i <= derniere; i++) vus.set(doc.line(i).from, numerosTitre[niveau - 1]);
+    },
+  });
+  return RangeSet.of([...vus].sort((a, b) => a[0] - b[0]).map(([pos, m]) => m.range(pos)));
+}
+const numerosDesTitres = StateField.define({
+  create: marqueursTitres,
+  update: (m, tr) => (tr.docChanged || syntaxTree(tr.state) !== syntaxTree(tr.startState) ? marqueursTitres(tr.state) : m),
+  provide: (f) => gutterLineClass.from(f),
+});
+
+export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, ligne, nom = "", surChangement, surPosition } = {}) {
   if (!MODES.includes(mode)) throw new Error(`zoneCode : mode inconnu « ${mode} »`);
   const diff = mode === "diff";
   const racine = document.createElement("div");
@@ -85,6 +114,9 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   racine.append(hote);
 
   const compartiment = new Compartment();
+  const compartimentHybride = new Compartment();
+  const hybridePossible = langage === "markdown" && !diff;
+  const extensionsHybride = () => [extensionHybride(), numerosDesTitres, EditorView.lineWrapping];
   const extensions = [
     compartiment.of(themeCourant() === "dark" ? themeSombre : themeClair),
     lineNumbers(),
@@ -101,6 +133,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     );
     if (langage) extensions.push(supportLangage(langage));
   }
+  extensions.push(compartimentHybride.of(hybridePossible && hybride ? extensionsHybride() : []));
   extensions.push(
     EditorView.updateListener.of((u) => {
       if (u.docChanged) {
@@ -131,6 +164,17 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
       ap = null;
     }
     racine.classList.toggle("zone-code-avec-apercu", actif);
+  };
+  // Bascule du mode hybride : la première ligne visible reste en haut, rien d'autre ne bouge (pas de surChangement).
+  let hybrideActif = hybridePossible && hybride;
+  racine.definirHybride = (actif) => {
+    actif = hybridePossible && !!actif;
+    if (actif === hybrideActif) return;
+    hybrideActif = actif;
+    const haut = vue.lineBlockAtHeight(vue.scrollDOM.scrollTop);
+    vue.dispatch({
+      effects: [compartimentHybride.reconfigure(actif ? extensionsHybride() : []), EditorView.scrollIntoView(haut.from, { y: "start" })],
+    });
   };
   // Le curseur reste sur la même ligne (bornée au nouveau texte), à la même colonne si elle existe encore.
   racine.remplacer = (texte) => {

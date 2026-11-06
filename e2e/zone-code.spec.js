@@ -483,3 +483,127 @@ test("REQ058_AC9_defilement_garde_et_focus_dans_l_editeur", async ({ page }) => 
   expect(Math.abs(apres - avant)).toBeLessThanOrEqual(1);
   expect(await page.evaluate(() => document.activeElement.classList.contains("cm-content"))).toBe(true);
 });
+
+test("REQ062_AC15_AC16_AC4_AC17_AC20_aspect_lien_et_fonds_du_mode_hybride", async ({ page }) => {
+  const requetes = [];
+  page.on("request", (r) => requetes.push(r.url()));
+  let fenetre = false;
+  page.on("popup", () => (fenetre = true));
+  const contenu = [
+    "# Titre", "", "## Sous", "", "texte **gras** fin `x`", "", "> note", "", "[lien](https://example.org/x) ici", "",
+    "| a | b |", "|---|---|", "| 1 | 2 |", "", "```js", "const a = 1;", "```",
+  ].join("\n");
+  await ouvrir(page, { contenu, langage: "markdown", nom: "README.md", hybride: true });
+  const ligne = (i) => page.locator(".cm-line").nth(i - 1);
+  const police = (loc) => loc.evaluate((e) => { const s = getComputedStyle(e); return [s.fontFamily, s.fontSize, s.fontWeight, s.color]; });
+  const alpha = (c) => {
+    const n = c.match(/[\d.]+/g);
+    if (c.startsWith("rgba")) return Number(n[3]);
+    return c.includes("/") ? Number(c.split("/")[1].replace(")", "")) : 1;
+  };
+  const sans = await valeur(page, "fontFamily", "--font-sans");
+  const mono = await valeur(page, "fontFamily", "--font-mono");
+  const ink = await valeur(page, "color", "--ink");
+  const muet = await valeur(page, "color", "--ink-muted");
+
+  // AC-062-15 : curseur ligne 1, mise en forme hors de sa ligne.
+  await expect(ligne(5)).toHaveText("texte gras fin x");
+  expect(await police(ligne(5))).toEqual([sans, "14px", "400", ink]);
+  expect(await police(ligne(3))).toEqual([sans, "16px", "600", ink]);
+  expect(await police(ligne(5).locator(".cm-hy-code"))).toEqual([mono, "13px", "400", ink]);
+  expect(await police(ligne(11))).toEqual([mono, "13.5px", "400", ink]);
+  expect((await police(ligne(16)))[0]).toBe(mono);
+  expect((await police(ligne(16)))[1]).toBe("13.5px");
+
+  // AC-062-16 : curseur sur la ligne 5, ses marques reviennent en gris, le texte garde sa forme.
+  await ligne(5).click({ position: { x: 5, y: 5 } });
+  await expect(ligne(5)).toHaveText("texte **gras** fin `x`");
+  expect(await police(ligne(5).locator(".cm-hy-marque").first())).toEqual([sans, "14px", "400", muet]);
+  expect((await police(ligne(5).locator(".cm-hy-gras")))[2]).toBe("600");
+  expect(await police(ligne(1))).toEqual([sans, "20px", "600", ink]);
+  await expect(ligne(1)).toHaveText("Titre");
+
+  // AC-062-4, AC-062-17 : lien au pointeur du texte, sans href ni title ; le clic ne part nulle part.
+  const lien = page.locator(".cm-hy-lien");
+  await expect(lien).toHaveText("lien");
+  expect(await lien.evaluate((e) => [getComputedStyle(e).cursor, getComputedStyle(e).textDecorationLine, getComputedStyle(e).color])).toEqual(["text", "underline", await valeur(page, "color", "--info")]);
+  expect(await page.locator(".cm-content a, .cm-content [href], .cm-content [title]").count()).toBe(0);
+  const avant = requetes.length;
+  await lien.click();
+  await expect(ligne(9)).toHaveText("[lien](https://example.org/x) ici");
+  expect(requetes.length).toBe(avant);
+  expect(fenetre).toBe(false);
+  expect(page.url().startsWith("file:")).toBe(true);
+  // Clôtures du bloc de code toujours visibles, en gris, le curseur étant ailleurs.
+  await expect(ligne(15)).toHaveText("```js");
+  expect((await police(ligne(15).locator(".cm-hy-marque").first()))[3]).toBe(muet);
+
+  // AC-062-20 : trois fonds translucides, et la sélection reste visible sous le texte du bloc.
+  const fond = (loc) => loc.evaluate((e) => getComputedStyle(e).backgroundColor);
+  const fondBloc = await fond(ligne(16));
+  const fondCitation = await fond(ligne(7));
+  const fondCode = await fond(page.locator(".cm-hy-code"));
+  expect(fondBloc).toBe(await valeur(page, "backgroundColor", "--code-fond"));
+  expect(fondCode).toBe(fondBloc);
+  expect(fondCitation).toBe(await valeur(page, "backgroundColor", "--msg-info"));
+  for (const f of [fondBloc, fondCitation, fondCode]) expect(alpha(f)).toBeLessThan(1);
+  await ligne(16).click();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Shift+End");
+  const sel = await page.locator(".cm-selectionBackground").first().boundingBox();
+  const bloc = await ligne(16).boundingBox();
+  expect(sel.width).toBeGreaterThan(20);
+  expect(sel.y).toBeGreaterThanOrEqual(bloc.y - 1);
+  expect(sel.y + sel.height).toBeLessThanOrEqual(bloc.y + bloc.height + 1);
+  expect(await page.locator(".cm-selectionBackground").first().evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(await valeur(page, "backgroundColor", "--selection"));
+});
+
+test("REQ062_AC18_ligne_longue_repliee_sous_un_seul_numero", async ({ page }) => {
+  const longue = Array.from({ length: 60 }, (_, i) => `mot${i}`).join(" ");
+  const contenu = `# T\n\n${longue}\n\nfin`;
+  const mesures = () =>
+    page.evaluate(() => {
+      const s = document.querySelector(".cm-scroller");
+      const nums = [...document.querySelectorAll(".cm-lineNumbers .cm-gutterElement")].filter((e) => /^\d+$/.test(e.textContent) && e.style.visibility !== "hidden");
+      return { debordement: s.scrollWidth - s.clientWidth, numeros: nums.length, hauteur: document.querySelectorAll(".cm-line")[2].getBoundingClientRect().height };
+    });
+  await ouvrir(page, { contenu, langage: "markdown", hybride: true });
+  const hy = await mesures();
+  expect(hy.debordement).toBe(0);
+  expect(hy.numeros).toBe(5);
+  expect(hy.hauteur).toBeGreaterThan(42);
+  await ouvrir(page, { contenu, langage: "markdown" });
+  const eteint = await mesures();
+  expect(eteint.hauteur).toBe(21);
+  expect(eteint.debordement).toBeGreaterThan(0);
+});
+
+test("REQ062_AC19_bascule_garde_la_ligne_du_haut", async ({ page }) => {
+  const mot = Array.from({ length: 50 }, (_, i) => `mot${i}`).join(" ");
+  const contenu = Array.from({ length: 100 }, (_, i) => (i < 39 ? `${mot} ${i + 1}` : `ligne ${i + 1}`)).join("\n\n");
+  await ouvrir(page, { contenu, langage: "markdown", nom: "README.md" });
+  const placer = () =>
+    page.evaluate(() => {
+      const v = document.querySelector(".zone-code").vue;
+      v.scrollDOM.scrollTop = v.lineBlockAt(v.state.doc.line(79).from).top;
+    });
+  const decalage = () =>
+    page.evaluate(() => {
+      const s = document.querySelector(".cm-scroller").getBoundingClientRect().top;
+      const l = [...document.querySelectorAll(".cm-line")].find((e) => e.textContent.startsWith("ligne 40"));
+      return l ? Math.round(l.getBoundingClientRect().top - s) : null;
+    });
+  const bascule = (actif) => page.evaluate((a) => document.querySelector(".zone-code").definirHybride(a), actif);
+  await placer(); // « ligne 40 » est la ligne 79 du fichier (une ligne vide entre chaque)
+  const enHaut = async () => {
+    const d = await decalage();
+    return d !== null && d >= 0 && d < 25;
+  };
+  await expect.poll(enHaut).toBe(true);
+  const doc = await page.evaluate(() => document.querySelector(".zone-code").contenu());
+  await bascule(true);
+  await expect.poll(enHaut).toBe(true);
+  await bascule(false);
+  await expect.poll(enHaut).toBe(true);
+  expect(await page.evaluate(() => document.querySelector(".zone-code").contenu())).toBe(doc);
+});

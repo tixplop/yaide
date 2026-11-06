@@ -561,3 +561,5 @@ body { margin: 0; }
 .cm-line.cm-hy-citation.cm-activeLine, .cm-line.cm-hy-bloc-code.cm-activeLine { background-image: linear-gradient(var(--ligne-active), var(--ligne-active)); }
 .cm-hy-puce { color: var(--ink-muted); }
 .cm-hy-trait { display: inline-block; width: 100%; height: 0; vertical-align: middle; border-top: var(--trait) solid var(--line-strong); }
+.cm-gutterElement.cm-hy-numero-titre1 { font: var(--texte-titre) var(--font-mono); font-size: inherit; }
+.cm-gutterElement.cm-hy-numero-titre2 { font: var(--texte-sous-titre) var(--font-mono); font-size: inherit; }
