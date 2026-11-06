@@ -22,7 +22,6 @@ const PANNEAUX = [
   { id: "fichiers", icone: "files", raccourci: "F", nomAccessible: "Fichiers", touche: "f", titre: "Fichiers" },
   { id: "recherche", icone: "search", raccourci: "R", nomAccessible: "Recherche", touche: "r", titre: "Recherche" },
   { id: "git", icone: "branch", raccourci: "G", nomAccessible: "Git", touche: "g", titre: "Git" },
-  { id: "agent", icone: "bot", raccourci: "A", nomAccessible: "Agent", touche: "a", titre: "Agent" },
 ];
 
 function nomDuDossier(chemin) {
@@ -47,8 +46,16 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
 
   // Le panneau replié laisse la place à l'éditeur ; la vue et les tailles restent en mémoire.
+  const boutonAgent = bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", deplie: false });
+  const repliAgent = bouton({ icone: "panel-right-close", nomAccessible: "Replier l'agent", positionInfoBulle: "gauche" });
+  boutonAgent.addEventListener("click", entrerDansAgent);
+  repliAgent.addEventListener("click", () => {
+    replierAgent(true);
+    boutonAgent.poserFocus();
+  });
   const boutonPanneau = bouton({ icone: "panel-left-close", nomAccessible: "Replier le panneau" });
   let panneauReplie = false;
+  let agentReplie = true;
   boutonPanneau.addEventListener("click", () => {
     replierPanneau(!panneauReplie);
     if (panneauReplie) boutonPanneau.poserFocus();
@@ -61,11 +68,31 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
   function replierPanneau(oui) {
     panneauReplie = oui;
+    // Place pour une seule colonne : déplier le panneau replie l'agent.
+    if (!oui && agentReplie === false && etroit()) replierAgent(true);
     racine.definirReplis({ panneau: oui });
     boutonPanneau.definirCommande(oui ? { nomAccessible: "Déplier le panneau", icone: "panel-left-open" } : { nomAccessible: "Replier le panneau", icone: "panel-left-close" });
     recalculer();
-    ecrire("replis", { panneau: oui });
+    ecrire("replis", { panneau: panneauReplie, agent: agentReplie });
   }
+  function replierAgent(oui) {
+    agentReplie = oui;
+    // Place pour une seule colonne : déplier l'agent replie le panneau.
+    if (!oui && !panneauReplie && etroit()) replierPanneau(true);
+    racine.definirReplis({ agent: oui });
+    boutonAgent.definirDeplie(!oui);
+    recalculer();
+    ecrire("replis", { panneau: panneauReplie, agent: agentReplie });
+  }
+  // « Agent » et A : déplie l'agent s'il est replié, et met le focus dans « Message à l'agent ».
+  function entrerDansAgent() {
+    if (agentReplie) {
+      replierAgent(false);
+      agent.deplier();
+    }
+    agent.focuser();
+  }
+  const etroit = () => window.innerWidth < limites({ L: window.innerWidth, H: window.innerHeight }).seuil;
   // Dépliage : l'arborescence est relue (silencieusement), puis le focus entre dans le panneau.
   function entrerDansPanneau() {
     if (!fichiers.corps.hidden) fichiers.relire().catch(() => {});
@@ -180,7 +207,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   racine = cadre({
     barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [boutonPanneau.enveloppe, shells.repli.enveloppe, theme.enveloppe, sortir.enveloppe] },
     rail: { onglets: rail, commandes: shells.commandes },
-    panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps, agent.corps] },
+    panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps] },
+    agent: { titre: "Agent", repli: repliAgent.enveloppe, corps: agent.corps },
+    railDroit: { commande: boutonAgent.enveloppe },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, fil: editeur.fil, code: editeur.code, shells },
     barreEtat: barre,
     surChangement: (zone, taille) => {
@@ -198,12 +227,23 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   function recalculer() {
     if (detruite) return;
     const hauteurs = [bandeaux, editeur.question].reduce((s, e) => s + e.offsetHeight, 0);
-    const lim = limites({ L: window.innerWidth, H: window.innerHeight, bandeaux: hauteurs });
+    const lim = limites({
+      L: window.innerWidth,
+      H: window.innerHeight,
+      bandeaux: hauteurs,
+      panneau: { replie: panneauReplie, choisie: choisies.panneau },
+      agent: { replie: agentReplie, choisie: choisies.agent },
+    });
+    // Une fenêtre qui passe sous le seuil, les deux colonnes dépliées : le panneau se replie.
+    if (!panneauReplie && !agentReplie && window.innerWidth < lim.seuil) return replierPanneau(true);
     const bornees = {};
-    for (const zone of ["panneau", "shells"]) {
+    for (const zone of ["panneau", "agent", "shells"]) {
       racine.poignees[zone].definir(lim[zone]);
       if (choisies[zone] !== undefined) bornees[zone] = borner(choisies[zone], lim[zone]);
     }
+    // Chaque colonne dépliée prend sa largeur affichée, même sans taille choisie.
+    if (!panneauReplie) bornees.panneau = lim.Pa;
+    if (!agentReplie) bornees.agent = lim.Aa;
     racine.definirTailles(bornees);
     racine.mesurer();
   }
@@ -214,7 +254,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   // La vue n'est dans la page qu'après sa création : on mesure juste après le montage.
   queueMicrotask(recalculer);
   lire("tailles").then((gardees) => {
-    for (const zone of ["panneau", "shells"]) {
+    for (const zone of ["panneau", "agent", "shells"]) {
       const t = gardees?.[zone];
       if (choisies[zone] === undefined && Number.isFinite(t)) choisies[zone] = t;
     }
@@ -222,8 +262,13 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
   // Repli gardé : le panneau reste replié, et le focus va sur « Ouvrir un fichier » s'il n'y a aucun onglet.
   Promise.all([lire("replis"), restauration]).then(([gardes]) => {
-    if (detruite || !gardes?.panneau) return;
-    replierPanneau(true);
+    if (detruite) return;
+    if (gardes?.agent === false) {
+      replierAgent(false);
+      agent.deplier();
+    }
+    if (gardes?.panneau && !panneauReplie) replierPanneau(true);
+    if (!panneauReplie) return;
     if (document.activeElement && document.activeElement !== document.body) return;
     racine.querySelector(".editeur-code button")?.focus();
   });
@@ -240,7 +285,6 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     fichiers.corps.hidden = fichiers.entete.hidden = !visible;
     recherche.montrer(id === "recherche");
     git.montrer(id === "git");
-    agent.montrer(id === "agent");
   }
   afficherPanneau("fichiers");
 
@@ -254,12 +298,12 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     }
     corps.focus();
     if (onglet.getAttribute("aria-label") === "Recherche") recherche.focuser();
-    if (onglet.getAttribute("aria-label") === "Agent") agent.focuser();
   });
   // Focus sur le rail : F, R et G affichent le panneau et y mettent le focus.
   // Les deux boutons de commande du rail comptent aussi : la garde est posée sur toute la colonne.
   racine.querySelector(".cadre-rail").addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.target.closest("[role=tab], .cadre-rail-commandes button")) return;
+    if (e.key.toLowerCase() === "a") return entrerDansAgent();
     const p = PANNEAUX.find((x) => x.touche === e.key.toLowerCase());
     if (!p) return;
     rail.choisir(p.id);
@@ -270,7 +314,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     }
     corps.focus();
     if (p.id === "recherche") recherche.focuser();
-    if (p.id === "agent") agent.focuser();
+  });
+  racine.querySelector(".cadre-rail-droit").addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.target.closest("button") || e.key.toLowerCase() !== "a") return;
+    entrerDansAgent();
   });
 
   // Ctrl+Maj+F, partout (même dans un shell) : le focus passe sur le bouton actif du rail.

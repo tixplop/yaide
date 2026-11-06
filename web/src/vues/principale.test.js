@@ -75,11 +75,11 @@ test("REQ028_AC4_rail_accessible", () => {
   const rail = vue.querySelector("[role=tablist]");
   expect(rail.getAttribute("aria-orientation")).toBe("vertical");
   const tabs = [...rail.querySelectorAll("[role=tab]")];
-  expect(tabs.map((t) => t.textContent)).toEqual(["", "", "", ""]);
+  expect(tabs.map((t) => t.textContent)).toEqual(["", "", ""]);
   expect(tabs.every((t) => t.querySelector("svg"))).toBe(true);
-  expect(tabs.map((t) => t.getAttribute("aria-keyshortcuts"))).toEqual(["F", "R", "G", "A"]);
-  expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual(["Fichiers", "Recherche", "Git", "Agent"]);
-  expect(tabs.map((t) => t.getAttribute("aria-selected"))).toEqual(["true", "false", "false", "false"]);
+  expect(tabs.map((t) => t.getAttribute("aria-keyshortcuts"))).toEqual(["F", "R", "G"]);
+  expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual(["Fichiers", "Recherche", "Git"]);
+  expect(tabs.map((t) => t.getAttribute("aria-selected"))).toEqual(["true", "false", "false"]);
 });
 
 test("REQ028_AC5_touche_sur_le_rail_change_de_panneau_et_prend_le_focus", () => {
@@ -470,9 +470,9 @@ test("REQ040_AC10_un_shell_reduit_qui_se_termine_laisse_le_focus_sur_l_onglet", 
 
 test("REQ028_AC12_F_R_G_marchent_aussi_depuis_les_boutons_du_rail", () => {
   const { vue } = monter();
-  const titres = { f: "Fichiers", r: "Recherche", g: "Git", a: "Agent" };
+  const titres = { f: "Fichiers", r: "Recherche", g: "Git" };
   for (const b of vue.querySelectorAll(".cadre-rail-commandes button")) {
-    for (const touche of ["a", "g", "r", "f"]) {
+    for (const touche of ["g", "r", "f"]) {
       vue.querySelector("[role=tab]").focus();
       b.dispatchEvent(new KeyboardEvent("keydown", { key: touche, bubbles: true }));
       expect(vue.querySelector("aside h2").textContent, `${touche} depuis ${b.getAttribute("aria-label")}`).toBe(titres[touche]);
@@ -947,11 +947,11 @@ test("REQ046_AC1_AC2_AC12_replier_et_deplier_le_panneau_ecrit_replis_garde_la_vu
   expect(icone(b)).toBe("panel-left-open");
   expect(b.getAttribute("aria-label")).toBe("Déplier le panneau");
   expect(document.activeElement).toBe(b);
-  expect(ecrire).toHaveBeenLastCalledWith("replis", { panneau: true });
+  expect(ecrire).toHaveBeenLastCalledWith("replis", { panneau: true, agent: true });
   const avant = appels.filter((u) => u.startsWith("/api/fichiers")).length;
   b.click();
   expect(aside(vue).hidden).toBe(false);
-  expect(ecrire).toHaveBeenLastCalledWith("replis", { panneau: false });
+  expect(ecrire).toHaveBeenLastCalledWith("replis", { panneau: false, agent: true });
   expect(document.activeElement).toBe(vue.querySelector(".cadre-panneau-corps"));
   await attendre();
   expect(appels.filter((u) => u.startsWith("/api/fichiers")).length).toBeGreaterThan(avant);
@@ -1050,7 +1050,7 @@ test("REQ046_AC3_REQ028_AC15_Ctrl_Maj_F_ne_deplie_pas_Entree_apres_Bas_et_F_G_de
   vue.querySelector("[role=tab][aria-selected=true]").click();
   expect(aside(vue).hidden).toBe(false);
   expect(aside(vue).querySelector("h2").textContent).toBe("Recherche");
-  for (const [touche, titre] of [["a", "Agent"], ["g", "Git"], ["f", "Fichiers"]]) {
+  for (const [touche, titre] of [["g", "Git"], ["f", "Fichiers"]]) {
     barreTitre(vue, "Replier le panneau").click();
     tabs[0].focus();
     tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: touche, bubbles: true }));
@@ -1112,7 +1112,7 @@ test("REQ048_AC2_AC6_replier_depuis_l_en_tete", async () => {
   const b = barreTitre(vue, "Déplier le panneau");
   expect(document.activeElement).toBe(b);
   expect(b.classList.contains("ya-focus-garde")).toBe(true);
-  expect(ecrire).toHaveBeenLastCalledWith("replis", { panneau: true });
+  expect(ecrire).toHaveBeenLastCalledWith("replis", { panneau: true, agent: true });
 });
 
 test("REQ048_AC3_le_rail_deplie_depuis_chaque_onglet", async () => {
@@ -1186,27 +1186,220 @@ test("REQ054_AC4_echap_rend_le_focus_d_avant_ctrl_p", async () => {
   expect(document.activeElement).toBe(avant);
 });
 
-test("REQ028_AC1_AC5_AC11_AC17_onglet_agent_touche_a_et_info_bulle", () => {
+const agentCol = (vue) => vue.querySelector("aside.cadre-agent");
+const boutonAgentDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label=Agent]");
+const champAgent = (vue) => vue.querySelector(".agent-corps textarea");
+const clavier = (el, key) => el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+const largeur = (n) => vi.stubGlobal("innerWidth", n);
+
+test("REQ028_AC17_REQ059_AC1_AC10_rail_droit_avec_le_bouton_Agent", async () => {
   const { vue } = monter();
-  const tab = vue.querySelector("[role=tab][aria-label=Agent]");
-  expect(tab.getAttribute("aria-keyshortcuts")).toBe("A");
-  expect(tab.querySelector("svg[data-icone=bot]")).not.toBeNull();
-  expect([...vue.querySelectorAll("[role=tab]")].pop()).toBe(tab);
-  // L'info-bulle du rail.
+  const rd = vue.querySelector(".cadre-rail-droit");
+  const b = boutonAgentDe(vue);
+  expect([...rd.querySelectorAll("button")]).toEqual([b]);
+  expect(b.getAttribute("aria-keyshortcuts")).toBe("A");
+  expect(b.querySelector("svg[data-icone=bot]")).not.toBeNull();
+  expect(b.textContent).toBe("");
+  expect(b.hasAttribute("aria-pressed") || b.hasAttribute("aria-expanded")).toBe(false);
+  expect(b.hasAttribute("data-deplie")).toBe(false);
+  expect(vue.querySelector("[role=tablist] [aria-label=Agent]")).toBeNull();
+  b.parentElement.dispatchEvent(new Event("pointerenter"));
+  await vi.waitFor(() => expect(document.querySelector("[role=tooltip]").textContent).toBe("Agent (A)"));
+  expect(vue.querySelector("main").nextElementSibling.nextElementSibling).toBe(agentCol(vue));
+});
+
+test("REQ059_AC8_agent_replie_au_premier_lancement", () => {
+  const { vue } = monter();
+  expect(agentCol(vue).hidden).toBe(true);
+  expect(vue.querySelector(".poignee-agent").hidden).toBe(true);
+});
+
+test("REQ028_AC5_REQ059_AC2_A_depuis_les_onglets_deplie_l_agent", () => {
+  const { vue } = monter();
+  const tab = vue.querySelector("[role=tab]");
+  tab.focus();
+  clavier(tab, "a");
+  expect(agentCol(vue).hidden).toBe(false);
+  expect(boutonAgentDe(vue).hasAttribute("data-deplie")).toBe(true);
+  expect(document.activeElement).toBe(champAgent(vue));
+  // Déplié : seulement le focus, sans replier.
+  tab.focus();
+  clavier(tab, "a");
+  expect(agentCol(vue).hidden).toBe(false);
+  expect(document.activeElement).toBe(champAgent(vue));
+  expect(vue.querySelector("aside h2").textContent).toBe("Fichiers");
+});
+
+test("REQ028_AC12_REQ059_AC2_A_depuis_les_boutons_des_shells_et_depuis_Agent", () => {
+  const { vue } = monter();
+  for (const b of vue.querySelectorAll(".cadre-rail-commandes button")) {
+    vue.querySelector("[role=tab]").focus();
+    clavier(b, "a");
+    expect(agentCol(vue).hidden, b.getAttribute("aria-label")).toBe(false);
+    expect(document.activeElement).toBe(champAgent(vue));
+    vue.querySelector("[aria-label=\"Replier l'agent\"]").click();
+    expect(agentCol(vue).hidden).toBe(true);
+  }
+  boutonAgentDe(vue).focus();
+  clavier(boutonAgentDe(vue), "a");
+  expect(agentCol(vue).hidden).toBe(false);
+  expect(document.activeElement).toBe(champAgent(vue));
+});
+
+test("REQ059_AC2_clic_sur_Agent_deplie_puis_ne_replie_pas", () => {
+  const { vue } = monter();
+  boutonAgentDe(vue).click();
+  expect(agentCol(vue).hidden).toBe(false);
+  expect(document.activeElement).toBe(champAgent(vue));
+  vue.querySelector("main").focus();
+  boutonAgentDe(vue).click();
+  expect(agentCol(vue).hidden).toBe(false);
+  expect(document.activeElement).toBe(champAgent(vue));
+});
+
+test("REQ059_AC3_REQ056_AC14_Replier_l_agent_donne_le_focus_a_Agent_et_garde_le_texte", () => {
+  const { vue } = monter();
+  boutonAgentDe(vue).click();
+  champAgent(vue).value = "bonjour";
+  const repli = vue.querySelector("[aria-label=\"Replier l'agent\"]");
+  expect(agentCol(vue).querySelector("button")).toBe(repli);
+  const noms = [...agentCol(vue).querySelectorAll("button, textarea, select")].map((e) => e.getAttribute("aria-label") ?? e.tagName.toLowerCase());
+  expect(noms.slice(0, 3)).toEqual(["Replier l'agent", "Nouvelle conversation", "Conversations"]);
+  expect(noms.indexOf("textarea")).toBeGreaterThan(2);
+  repli.click();
+  expect(agentCol(vue).hidden).toBe(true);
+  expect(vue.querySelector(".poignee-agent").hidden).toBe(true);
+  expect(boutonAgentDe(vue).hasAttribute("data-deplie")).toBe(false);
+  expect(document.activeElement).toBe(boutonAgentDe(vue));
+  expect(boutonAgentDe(vue).classList.contains("ya-focus-garde")).toBe(true);
+  expect(champAgent(vue).value).toBe("bonjour");
+  boutonAgentDe(vue).click();
+  expect(champAgent(vue).value).toBe("bonjour");
+});
+
+test("REQ059_AC4_un_tour_continue_agent_replie", async () => {
   vi.useFakeTimers();
-  tab.dispatchEvent(new MouseEvent("pointerenter"));
-  vi.advanceTimersByTime(500);
-  vi.useRealTimers();
-  expect([...document.querySelectorAll("[role=tooltip]")].map((b) => b.textContent)).toContain("Agent (A)");
-  // La touche A depuis le rail affiche la vue, qui met le focus dans le champ.
-  vue.querySelector("[role=tab]").focus();
-  vue.querySelector("[role=tab]").dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
-  expect(vue.querySelector("aside h2").textContent).toBe("Agent");
-  expect(vue.querySelector(".agent-corps").hidden).toBe(false);
-  expect(document.activeElement).toBe(vue.querySelector(".agent-corps textarea"));
-  // Un clic sur l'onglet Agent met aussi le focus dans le champ.
-  vue.querySelector("[role=tab][aria-label=Git]").click();
-  expect(vue.querySelector(".agent-corps").hidden).toBe(true);
-  tab.click();
-  expect(document.activeElement).toBe(vue.querySelector(".agent-corps textarea"));
+  let lectures = 0;
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (url === "/api/agent/reglages") return { ok: true, status: 200, json: async () => ({ providers: [], profils: [{ id: "p", nom: "m", provider: "openai", modele: "x", defaut: true }] }) };
+    if (String(url).startsWith("/api/agent/conversations/c1")) {
+      lectures++;
+      const fini = lectures > 2;
+      return { ok: true, status: 200, json: async () => ({ entrees: fini ? [{ type: "agent", markdown: "Étape arrivée replié." }] : [], enCours: !fini, total: fini ? 1 : 0, tokens: 0 }) };
+    }
+    return { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "erreur 500" }) };
+  }));
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "agent" ? { conversation: "c1" } : undefined));
+  try {
+    const { vue } = monter();
+    boutonAgentDe(vue).click();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(lectures).toBeGreaterThan(0);
+    vue.querySelector("[aria-label=\"Replier l'agent\"]").click();
+    const avant = lectures;
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(lectures).toBeGreaterThan(avant);
+    boutonAgentDe(vue).click();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(agentCol(vue).querySelector("[role=log]").textContent).toContain("Étape arrivée replié.");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("REQ059_AC5_AC7_sans_taille_gardee_l_agent_est_borne_pour_laisser_320_px_a_l_editeur", () => {
+  largeur(1000);
+  const { vue } = monter();
+  boutonAgentDe(vue).click();
+  const p = Number.parseInt(vue.style.getPropertyValue("--taille-panneau"), 10);
+  const a = Number.parseInt(vue.style.getPropertyValue("--taille-agent"), 10);
+  expect(a).toBeLessThan(360);
+  expect(a).toBeGreaterThanOrEqual(240);
+  // 1000 - 2 rails de 48 (token) - poignées : l'éditeur garde au moins 320 px.
+  expect(1000 - 2 * Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue("--size-activity"), 10) - p - a).toBeGreaterThanOrEqual(320);
+});
+
+test("REQ028_AC8_ordre_de_Tab_de_la_page_avec_l_agent_a_droite", () => {
+  const { vue } = monter();
+  const tabbables = () => [...vue.querySelectorAll("button, textarea, input, [tabindex='0'], [role=separator]")].filter((e) => !e.closest("[hidden]") && e.tabIndex >= 0);
+  const pos = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const poignee = vue.querySelector(".poignee-agent");
+  const bouton = boutonAgentDe(vue);
+  const terminaux = vue.querySelector(".cadre-shells");
+  // Replié : aucun arrêt dans la colonne, le bouton « Agent » est le dernier.
+  expect(tabbables().some((e) => agentCol(vue).contains(e) || e === poignee)).toBe(false);
+  expect(tabbables().pop()).toBe(bouton);
+  boutonAgentDe(vue).click();
+  const liste = tabbables();
+  const iPoignee = liste.indexOf(poignee);
+  const iVue = liste.indexOf(champAgent(vue));
+  expect(iPoignee).toBeGreaterThan(-1);
+  expect(pos(terminaux, poignee)).toBe(true);
+  expect(iVue).toBeGreaterThan(iPoignee);
+  expect(liste.indexOf(bouton)).toBeGreaterThan(iVue);
+  expect(liste.indexOf(vue.querySelector("[aria-label=\"Replier l'agent\"]"))).toBe(iPoignee + 1);
+});
+
+test("REQ059_AC6_sous_904_deplier_l_agent_replie_le_panneau_et_inversement", () => {
+  largeur(800);
+  const { vue } = monter();
+  expect(aside(vue).hidden).toBe(false);
+  boutonAgentDe(vue).click();
+  expect(agentCol(vue).hidden).toBe(false);
+  expect(aside(vue).hidden).toBe(true);
+  expect(document.activeElement).toBe(champAgent(vue));
+  barreTitre(vue, "Déplier le panneau").click();
+  expect(aside(vue).hidden).toBe(false);
+  expect(agentCol(vue).hidden).toBe(true);
+});
+
+test("REQ059_AC6_AC18_A_sous_904_garde_l_onglet_actif_et_le_titre_de_barre", () => {
+  largeur(800);
+  const { vue } = monter();
+  const tab = vue.querySelector("[role=tab]");
+  tab.focus();
+  clavier(tab, "a");
+  expect(aside(vue).hidden).toBe(true);
+  expect(barreTitre(vue, "Déplier le panneau")).not.toBeNull();
+  expect(tab.getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement).toBe(champAgent(vue));
+});
+
+test("REQ059_AC7_fenetre_qui_retrecit_avec_les_deux_deplies_replie_le_panneau", () => {
+  largeur(1280);
+  const { vue } = monter();
+  boutonAgentDe(vue).click();
+  expect(aside(vue).hidden).toBe(false);
+  expect(agentCol(vue).hidden).toBe(false);
+  largeur(800);
+  window.dispatchEvent(new Event("resize"));
+  expect(aside(vue).hidden).toBe(true);
+  expect(agentCol(vue).hidden).toBe(false);
+  expect(ecrire).toHaveBeenLastCalledWith("replis", { panneau: true, agent: false });
+  // Agrandir la fenêtre ne déplie rien.
+  largeur(1280);
+  window.dispatchEvent(new Event("resize"));
+  expect(aside(vue).hidden).toBe(true);
+});
+
+test("REQ059_AC8_replis_et_tailles_relus_apres_rechargement", async () => {
+  largeur(1280);
+  vi.mocked(lire).mockImplementation(async (cle) => ({ replis: { panneau: false, agent: false }, tailles: { agent: 500 } })[cle]);
+  const { vue } = monter();
+  await new Promise((r) => setTimeout(r, 10));
+  expect(agentCol(vue).hidden).toBe(false);
+  expect(vue.querySelector(".poignee-agent").getAttribute("aria-valuenow")).toBe("500");
+  // Un redimensionnement garde la taille et le repli de l'agent avec les autres.
+  boutonAgentDe(vue).click();
+  vue.querySelector("[aria-label=\"Replier l'agent\"]").click();
+  expect(ecrire).toHaveBeenLastCalledWith("replis", { panneau: false, agent: true });
+});
+
+test("REQ059_AC9_replier_et_deplier_l_agent_mesure_a_nouveau", () => {
+  const { vue } = monter();
+  const mesurer = vi.spyOn(vue, "mesurer");
+  boutonAgentDe(vue).click();
+  expect(mesurer).toHaveBeenCalledTimes(1);
+  vue.querySelector("[aria-label=\"Replier l'agent\"]").click();
+  expect(mesurer).toHaveBeenCalledTimes(2);
 });

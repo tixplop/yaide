@@ -51,12 +51,11 @@ function texteReglagesIllisibles(erreur) {
 
 /**
  * V-007. `api` : `reglagesAgent`, `envoyerMessage`, `lireConversation`, `arreterConversation`, `listeConversations`.
- * Rend `{ corps, montrer(oui), focuser(), relireReglages(), detruire() }`.
+ * Rend `{ corps, deplier(), focuser(), relireReglages(), detruire() }`.
  */
 export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } = {}) {
   const corps = document.createElement("div");
   corps.className = "agent-corps";
-  corps.hidden = true;
 
   let reglages = null; // { providers, profils, erreur }
   let profilId = null;
@@ -371,12 +370,10 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     corps,
     focuser,
     relireReglages,
-    montrer(oui) {
-      corps.hidden = !oui;
-      if (oui) {
-        majListe();
-        relireReglages().then(restaurer);
-      }
+    // Au dépliage : liste et réglages relus, conversation gardée restaurée la première fois.
+    deplier() {
+      majListe();
+      relireReglages().then(restaurer);
     },
     detruire() {
       detruite = true;

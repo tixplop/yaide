@@ -36,7 +36,7 @@ async function monter({ profils = [SONNET, RAPIDE], lectures = [], envoi = { con
   const vue = vueAgent({ api, ouvrirProfils });
   vues.push(vue);
   document.body.append(vue.corps);
-  vue.montrer(true);
+  vue.deplier();
   vue.focuser();
   await vi.advanceTimersByTimeAsync(0);
   return { vue, api, ouvrirProfils };
