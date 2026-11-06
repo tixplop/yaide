@@ -8,7 +8,7 @@ const PRESENTATIONS = { fichiers: "ya-tabs", shells: "ya-term-tabs", rail: "ya-a
 // Mot dit par le nom accessible pour chaque statut git d'un onglet.
 const STATUTS = { M: "modifié", A: "ajouté", U: "nouveau" };
 
-export function onglets({ presentation, orientation = "horizontale", onglets: liste, actif, actionsDroite = [], surChoix, surFermer }) {
+export function onglets({ presentation, orientation = "horizontale", onglets: liste, actif, actionsDroite = [], surChoix, surFermer, surMenu }) {
   if (!ORIENTATIONS.includes(orientation)) throw new Error(`onglets : orientation inconnue « ${orientation} »`);
   // `orientation` est l'ancienne option : verticale = rail.
   presentation ??= orientation === "verticale" ? "rail" : "fichiers";
@@ -29,6 +29,11 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
   racine.setAttribute("aria-orientation", vertical ? "vertical" : "horizontal");
 
   const elements = new Map();
+  // `surMenu` ne vaut que pour les onglets de fichiers.
+  const avecMenu = presentation === "fichiers" && typeof surMenu === "function";
+  // Le navigateur envoie aussi `contextmenu` après la touche Menu ou Maj+F10 : une seule ouverture.
+  let cleRecente = false;
+  let minuteur;
   // Le nombre n'entre pas dans le nom accessible : il est masqué aux lecteurs d'écran.
   function definirCompteur(id, valeur) {
     const t = elements.get(id);
@@ -76,6 +81,15 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
     t.addEventListener("click", () => choisir(o.id, true));
     t.addEventListener("keydown", (e) => touche(e, o));
     cellule.append(t);
+    if (avecMenu) {
+      t.setAttribute("aria-haspopup", "menu");
+      // La cellule couvre l'onglet, sa croix et son point.
+      cellule.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        if (cleRecente && e.button !== 2) return;
+        surMenu(o.id, { x: e.clientX, y: e.clientY });
+      });
+    }
     if (o.fermable) {
       const x = bouton({ icone: "x", variante: "discret", taille: "onglet", nomAccessible: `Fermer ${nom}` });
       x.classList.add("onglet-fermer");
@@ -113,7 +127,14 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
     else if (e.key === suiv) cible = ids[(i + 1) % ids.length];
     else if (e.key === "Home") cible = ids[0];
     else if (e.key === "End") cible = ids[ids.length - 1];
-    else if (e.key === "Delete") {
+    else if (avecMenu && (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey))) {
+      e.preventDefault();
+      cleRecente = true;
+      clearTimeout(minuteur);
+      minuteur = setTimeout(() => (cleRecente = false), 500);
+      surMenu(o.id, null);
+      return;
+    } else if (e.key === "Delete") {
       if (o.fermable) surFermer?.(o.id, "touche");
       return;
     } else return;
@@ -129,6 +150,7 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
     elements.get(id)?.querySelector(".ya-badge")?.remove();
     if (valeur > 0) definirCompteur(id, valeur);
   };
+  if (avecMenu) racine.addEventListener("pointerdown", () => (cleRecente = false));
   const premier = liste[0]?.id;
   choisir(elements.has(actif) ? actif : premier);
   return racine;

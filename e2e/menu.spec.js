@@ -10,7 +10,8 @@ test.beforeAll(async () => {
   mkdirSync(dossier, { recursive: true });
   writeFileSync(
     resolve(dossier, "entree.js"),
-    `import { liste } from ${JSON.stringify(resolve("web/src/ui/liste.js"))};
+    `import { onglets } from ${JSON.stringify(resolve("web/src/ui/onglets.js"))};
+import { liste } from ${JSON.stringify(resolve("web/src/ui/liste.js"))};
 import { menu } from ${JSON.stringify(resolve("web/src/ui/menu.js"))};
 window.ouvertures = [];
 window.choix = [];
@@ -27,7 +28,13 @@ const l = liste({
     });
   },
 });
-document.getElementById("h").append(l);`,
+document.getElementById("h").append(l);
+window.ouvertOnglets = [];
+document.getElementById("t").append(onglets({
+  actif: "x",
+  onglets: [{ id: "x", libelle: "x.rs", fermable: true }, { id: "y", libelle: "y.rs", fermable: true }],
+  surMenu: (id) => window.ouvertOnglets.push(id),
+}));`,
   );
   await build({ entryPoints: [resolve(dossier, "entree.js")], bundle: true, outfile: resolve(dossier, "page.js") });
   copyFileSync("web/src/ui/tokens.css", resolve(dossier, "tokens.css"));
@@ -35,7 +42,7 @@ document.getElementById("h").append(l);`,
   writeFileSync(
     resolve(dossier, "index.html"),
     `<!doctype html><html><head><link rel="stylesheet" href="tokens.css"><link rel="stylesheet" href="composants.css"><style>body{margin:0}#h{width:300px;height:200px}</style></head>
-<body><div id="h"></div><button id="ailleurs">ailleurs</button><script src="page.js"></script></body></html>`,
+<body><div id="h"></div><div id="t"></div><button id="ailleurs">ailleurs</button><script src="page.js"></script></body></html>`,
   );
 });
 
@@ -121,4 +128,16 @@ test("C013_menu_entier_dans_la_fenetre_a_800_sur_480", async ({ page }) => {
   expect(m.y).toBeGreaterThanOrEqual(0);
   expect(m.x + m.width).toBeLessThanOrEqual(800);
   expect(m.y + m.height).toBeLessThanOrEqual(480);
+});
+
+test("REQ061_AC10_Menu_et_Maj_F10_sur_un_onglet_ouvrent_une_seule_fois", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "Chromium seul");
+  const onglet = page.getByRole("tab", { name: "y.rs" });
+  for (const touche of ["Shift+F10", "ContextMenu"]) {
+    await onglet.focus();
+    await page.keyboard.press(touche);
+    // Laisse au navigateur le temps d'envoyer un éventuel `contextmenu` en plus.
+    await page.waitForTimeout(700);
+  }
+  expect(await page.evaluate(() => window.ouvertOnglets)).toEqual(["y", "y"]);
 });

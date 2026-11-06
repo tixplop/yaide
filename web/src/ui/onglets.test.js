@@ -323,3 +323,66 @@ test("REQ041_AC1_shells_fermables_une_croix_par_onglet_a_opacite_1", () => {
   expect(regle(".ya-term-tabs .onglet")).toContain("padding: 0 var(--space-1) 0 var(--space-2)");
   expect(regle(".ya-term-tabs .onglet-cellule:has(> .onglet:focus-visible)")).toContain("outline: var(--trait-fort) solid var(--accent-fg)");
 });
+
+const fichiers = (extra = {}) =>
+  onglets({
+    actif: "a",
+    actionsDroite: [Object.assign(document.createElement("button"), { textContent: "Aperçu" })],
+    onglets: [
+      { id: "a", libelle: "a.rs", fermable: true },
+      { id: "b", libelle: "b.rs", fermable: true, modifie: true },
+    ],
+    ...extra,
+  });
+const clicDroit = (el) => {
+  const e = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 12, clientY: 34 });
+  el.dispatchEvent(e);
+  return e;
+};
+
+test("REQ061_AC11_aria_haspopup_avec_surMenu_seulement_et_pas_sur_shells", () => {
+  const avec = fichiers({ surMenu: () => {} });
+  expect([...avec.querySelectorAll('[role="tab"]')].every((t) => t.getAttribute("aria-haspopup") === "menu")).toBe(true);
+  expect(tab(fichiers(), 0).hasAttribute("aria-haspopup")).toBe(false);
+  const sh = onglets({ presentation: "shells", surMenu: () => {}, actif: "a", onglets: [{ id: "a", libelle: "sh" }] });
+  expect(tab(sh, 0).hasAttribute("aria-haspopup")).toBe(false);
+  expect(clicDroit(tab(sh, 0)).defaultPrevented).toBe(false);
+});
+
+test("REQ061_AC13_clic_droit_sur_onglet_croix_et_point_appelle_surMenu", () => {
+  const surMenu = vi.fn();
+  const r = fichiers({ surMenu });
+  // Le point est un pseudo-élément de l'onglet : l'événement vise l'onglet.
+  for (const cible of [tab(r, 1), r.querySelectorAll(".onglet-fermer")[1]]) {
+    expect(clicDroit(cible).defaultPrevented).toBe(true);
+    expect(surMenu).toHaveBeenLastCalledWith("b", { x: 12, y: 34 });
+  }
+  expect(surMenu).toHaveBeenCalledTimes(2);
+});
+
+test("REQ061_AC10_Menu_et_Maj_F10_appellent_surMenu_sans_position_une_seule_fois", () => {
+  const surMenu = vi.fn();
+  const r = fichiers({ surMenu });
+  for (const [key, shiftKey] of [["ContextMenu", false], ["F10", true]]) {
+    surMenu.mockClear();
+    const e = new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true });
+    tab(r, 0).dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(surMenu).toHaveBeenCalledExactlyOnceWith("a", null);
+    // contextmenu envoyé par le navigateur après la touche : ignoré
+    tab(r, 0).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 0 }));
+    expect(surMenu).toHaveBeenCalledTimes(1);
+  }
+  const e = new KeyboardEvent("keydown", { key: "F10", bubbles: true, cancelable: true });
+  tab(r, 0).dispatchEvent(e);
+  expect(e.defaultPrevented).toBe(false);
+});
+
+test("REQ061_AC13_partie_vide_et_actionsDroite_laissent_le_menu_du_navigateur", () => {
+  const surMenu = vi.fn();
+  const r = fichiers({ surMenu });
+  document.body.append(r);
+  expect(clicDroit(r).defaultPrevented).toBe(false);
+  expect(clicDroit(r.querySelector(".onglets-droite button")).defaultPrevented).toBe(false);
+  expect(surMenu).not.toHaveBeenCalled();
+});
