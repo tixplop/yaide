@@ -304,3 +304,35 @@ test("REQ046_AC17_focus_garde_s_applique_aussi_dans_la_barre_de_titre", () => {
   for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) if (m[1].split(",").map((x) => x.trim()).includes(".ya-icon-btn.ya-focus-garde")) r = m[2];
   expect(r).toContain("outline: 2px solid var(--accent-fg)");
 });
+
+test("REQ059_AC1_commande_du_rail_droit_deplie_sans_aria_pressed_ni_expanded", () => {
+  const b = bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", deplie: false });
+  expect(b.hasAttribute("data-deplie")).toBe(false);
+  b.definirDeplie(true);
+  expect(b.hasAttribute("data-deplie")).toBe(true);
+  b.definirDeplie(false);
+  expect(b.hasAttribute("data-deplie")).toBe(false);
+  expect(b.hasAttribute("aria-pressed")).toBe(false);
+  expect(b.hasAttribute("aria-expanded")).toBe(false);
+  expect(b.getAttribute("aria-keyshortcuts")).toBe("A");
+  expect(b.getAttribute("aria-label")).toBe("Agent");
+});
+
+test("REQ059_AC1_filet_de_2_px_accent_sur_le_bord_droit_de_la_commande_deplie", () => {
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  expect(css).toMatch(/\.cadre-rail-droit \.ya-icon-btn\[data-deplie\]\s*\{[^}]*color: var\(--ink\)[^}]*inset calc\(-1 \* var\(--trait-fort\)\) 0 0 var\(--accent-fg\)/);
+});
+
+test("REQ059_AC1_info_bulle_a_gauche_pour_le_rail_droit", () => {
+  vi.useFakeTimers();
+  const b = bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche" });
+  document.body.append(b.enveloppe);
+  b.enveloppe.getBoundingClientRect = () => ({ left: window.innerWidth - 48, right: window.innerWidth, top: 100, bottom: 148, width: 48, height: 48 });
+  b.enveloppe.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  const t = document.querySelector("[role=tooltip]");
+  expect(t.textContent).toBe("Agent (A)");
+  expect(parseFloat(t.style.left)).toBe(window.innerWidth - 48);
+  b.enveloppe.dispatchEvent(new Event("pointerleave"));
+  vi.useRealTimers();
+});

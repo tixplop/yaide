@@ -389,3 +389,18 @@ test("REQ058_AC8_noir_du_navigateur_sur_apercu_page_atteint_4_5", () => {
     expect(contraste({ r: 0, g: 0, b: 0, a: 1 }, jeton(theme, "--apercu-page")), theme).toBeGreaterThanOrEqual(4.5);
   }
 });
+
+test("REQ059_AC5_tokens_de_largeur_de_l_agent", () => {
+  const css = readFileSync("web/src/ui/tokens.css", "utf8");
+  expect(css).toMatch(/--largeur-agent:\s*360px;/);
+  expect(css).toMatch(/--largeur-agent-min:\s*240px;/);
+  expect(css).toMatch(/--largeur-agent-max:\s*720px;/);
+});
+
+test("REQ059_AC1_contrastes_de_la_commande_du_rail_droit_sur_le_fond_du_rail", () => {
+  for (const theme of THEMES) {
+    expect(ratio(theme, "--ink-faint", "--bg-000", null), `--ink-faint (${theme})`).toBeGreaterThanOrEqual(3);
+    expect(ratio(theme, "--ink", "--bg-000", null), `--ink (${theme})`).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(theme, "--accent-fg", "--bg-000", null), `--accent-fg (${theme})`).toBeGreaterThanOrEqual(3);
+  }
+});

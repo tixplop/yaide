@@ -114,3 +114,13 @@ test("REQ056_les_huit_icones_de_l_agent_existent_au_trait_lucide", () => {
   // Deux commandes différentes n'ont jamais la même icône (AC-031-2).
   expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
 });
+
+test("REQ059_AC1_panel_right_close_au_trait_lucide_et_sans_doublon", () => {
+  expect(NOMS).toContain("panel-right-close");
+  const s = icone("panel-right-close", 16);
+  expect(s.getAttribute("stroke-width")).toBe("1.6");
+  expect(s.innerHTML).toContain('d="M15 3v18"');
+  expect(s.innerHTML).toContain('d="m8 9 3 3-3 3"');
+  expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("panel-right-close");
+  expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
+});

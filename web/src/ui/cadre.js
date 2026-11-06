@@ -28,10 +28,11 @@ export function symbole(taille) {
 /**
  * C-010. `barreTitre` : { projet, chemin, surOuvrir, actions } ; `rail` : { onglets, commandes } ;
  * `panneau` : { titre, repli (bouton de repli, après le titre), entete (élément fixe sous le titre), corps } ;
- * `barreEtat` : { branche, position, langage } (textes, ou rien) ; `tailles` : { panneau, shells } en pixels ; `replis` : { panneau, shells } (faux par défaut) ;
+ * `barreEtat` : { branche, position, langage } (textes, ou rien) ; `agent` : { titre, repli, corps } (colonne à droite) ; `railDroit` : { commande } ;
+ * `tailles` : { panneau, agent, shells } en pixels ; `replis` : { panneau, agent, shells } (faux par défaut, vrai pour l'agent) ;
  * `surChangement(zone, taille)` et `surFin(zone, taille)` viennent des poignées.
  */
-export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}, barreEtat = {}, tailles = {}, replis = {}, surChangement, surFin } = {}) {
+export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, railDroit = {}, principal = {}, barreEtat = {}, tailles = {}, replis = {}, surChangement, surFin } = {}) {
   const racine = zone("div", "cadre");
 
   const haut = zone("header", "cadre-barre ya-titlebar");
@@ -65,24 +66,42 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}
   if (panneau.entete) aside.append(panneau.entete);
   aside.append(zone("div", "cadre-panneau-corps", panneau.corps));
 
+  const colonneAgent = zone("aside", "cadre-agent");
+  colonneAgent.setAttribute("aria-label", "Agent");
+  if (agent.titre) {
+    const h = zone("h2", "cadre-panneau-titre ya-panel-title");
+    h.textContent = agent.titre;
+    colonneAgent.append(zone("div", "ya-panel-head", [h, agent.repli]));
+  }
+  colonneAgent.append(zone("div", "cadre-panneau-corps", agent.corps));
+  const rd = zone("div", "cadre-rail-droit", railDroit.commande);
+
   const main = zone("main", "cadre-principal");
   const lim = limites({ L: window.innerWidth, H: window.innerHeight });
   const choisies = {};
-  const mesures = { panneau: () => aside.offsetWidth, shells: () => racine.querySelector(".cadre-shells").offsetHeight };
+  const mesures = { panneau: () => aside.offsetWidth, agent: () => colonneAgent.offsetWidth, shells: () => racine.querySelector(".cadre-shells").offsetHeight };
   let shellsVisibles = true;
   let panneauReplie = false;
+  let agentReplie = true;
   let shellsReplies = false;
-  const creer = (cle, orientation, nomAccessible) =>
+  const creer = (cle, orientation, nomAccessible, cote) =>
     poignee({
       orientation,
+      cote,
       nomAccessible,
       min: lim[cle].min,
       max: lim[cle].max,
       surChangement: (t) => surChangement?.(cle, t),
       surFin: (t) => surFin?.(cle, t),
     });
-  const poignees = { panneau: creer("panneau", "vertical", "Largeur du panneau"), shells: creer("shells", "horizontal", "Hauteur des shells") };
+  const poignees = {
+    panneau: creer("panneau", "vertical", "Largeur du panneau", "gauche"),
+    agent: creer("agent", "vertical", "Largeur de l'agent", "droite"),
+    shells: creer("shells", "horizontal", "Hauteur des shells"),
+  };
 
+  poignees.panneau.classList.add("poignee-panneau");
+  poignees.agent.classList.add("poignee-agent");
   main.append(
     zone("div", "cadre-bandeaux", principal.bandeaux),
     zone("div", "cadre-onglets", principal.ongletsFichiers),
@@ -109,11 +128,11 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}
   };
   racine.definirEtat(barreEtat);
 
-  racine.append(haut, colonne, aside, poignees.panneau, main, etat);
+  racine.append(haut, colonne, aside, poignees.panneau, main, poignees.agent, colonneAgent, rd, etat);
 
   // Pose la taille affichée ; sans taille choisie, les tokens `--largeur-panneau` et `--part-shells` s'appliquent.
-  racine.definirTailles = ({ panneau: p, shells: s } = {}) => {
-    for (const [cle, valeur, variable] of [["panneau", p, "--taille-panneau"], ["shells", s, "--taille-shells"]]) {
+  racine.definirTailles = ({ panneau: p, agent: a, shells: s } = {}) => {
+    for (const [cle, valeur, variable] of [["panneau", p, "--taille-panneau"], ["agent", a, "--taille-agent"], ["shells", s, "--taille-shells"]]) {
       if (valeur === undefined) continue;
       choisies[cle] = true;
       racine.style.setProperty(variable, px(valeur));
@@ -131,20 +150,25 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, principal = {}
     if (panneauReplie) fermerInfoBulleDans(aside);
     poignees.panneau.hidden = panneauReplie;
     racine.classList.toggle("cadre-panneau-replie", panneauReplie);
+    colonneAgent.hidden = agentReplie;
+    if (agentReplie) fermerInfoBulleDans(colonneAgent);
+    poignees.agent.hidden = agentReplie;
+    racine.classList.toggle("cadre-agent-replie", agentReplie);
   };
   racine.definirShellsVisibles = (oui) => {
     shellsVisibles = Boolean(oui);
     appliquer();
   };
   // Seules les clés présentes changent.
-  racine.definirReplis = ({ panneau: p, shells: s } = {}) => {
+  racine.definirReplis = ({ panneau: p, agent: a, shells: s } = {}) => {
     if (p !== undefined) panneauReplie = Boolean(p);
+    if (a !== undefined) agentReplie = Boolean(a);
     if (s !== undefined) shellsReplies = Boolean(s);
     appliquer();
   };
   // À appeler une fois le cadre dans la page : sans taille choisie, pose la taille mesurée sur les poignées.
   racine.mesurer = () => {
-    for (const cle of ["panneau", "shells"]) if (!choisies[cle] && !poignees[cle].hidden) poignees[cle].definir({ valeur: mesures[cle]() });
+    for (const cle of ["panneau", "agent", "shells"]) if (!choisies[cle] && !poignees[cle].hidden) poignees[cle].definir({ valeur: mesures[cle]() });
   };
   racine.definirTailles(tailles);
   racine.definirReplis(replis);

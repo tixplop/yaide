@@ -39,7 +39,7 @@ test("REQ028_AC4_zones_semantiques_header_nav_aside_main", () => {
 test("REQ028_AC8_ordre_dom_barre_rail_panneau_principal_puis_onglets_code_shells", () => {
   const c = monter();
   const noms = [...c.children].map((e) => e.tagName.toLowerCase());
-  expect(noms).toEqual(["header", "div", "aside", "div", "main", "footer"]);
+  expect(noms).toEqual(["header", "div", "aside", "div", "main", "div", "aside", "div", "footer"]);
   expect(c.children[3].getAttribute("aria-label")).toBe("Largeur du panneau");
   const textes = [...c.querySelector("main").children].map((e) => e.textContent);
   expect(textes).toEqual(["bandeau", "of", "q", "fil", "code", "", "shells"]);
@@ -234,7 +234,7 @@ test("REQ046_AC17_replis_a_la_creation_et_par_definirReplis", () => {
 });
 
 test("REQ046_AC17_css_du_cadre_replie_et_elements_caches", () => {
-  expect(regle(".cadre.cadre-panneau-replie")).toContain("grid-template-columns: var(--size-activity) minmax(0, 1fr)");
+  expect(regle(".cadre.cadre-panneau-replie")).toContain("grid-template-columns: var(--size-activity) 0 0 minmax(0, 1fr)");
   expect(regle(".cadre-panneau[hidden]")).toContain("display: none");
   expect(regle(".poignee-vertical[hidden]")).toContain("display: none");
 });
@@ -338,4 +338,91 @@ test("REQ028_AC14_quatre_onglets_tiennent_a_480", () => {
   expect(regle(".ya-activity .onglet")).toContain("height: var(--size-activity)");
   expect(regle(".onglet-cellule")).toContain("flex: none");
   for (const s of [".cadre-rail", ".cadre-rail-onglets", ".cadre-rail-commandes"]) expect(regle(s)).not.toMatch(/overflow/);
+});
+
+function monterAgent(options = {}) {
+  const c = cadre({
+    barreTitre: { projet: "p" },
+    rail: { onglets: p("rail") },
+    panneau: { titre: "Fichiers", corps: p("corps") },
+    agent: { titre: "Agent", repli: bouton({ icone: "panel-right-close", nomAccessible: "Replier l'agent" }), corps: p("conv") },
+    railDroit: { commande: bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", deplie: false }) },
+    principal: { code: p("code") },
+    ...options,
+  });
+  document.body.append(c);
+  return c;
+}
+
+test("REQ059_AC1_agent_aside_etiquete_apres_main_et_rail_droit_sans_role", () => {
+  const c = monterAgent({ replis: { agent: false } });
+  const a = c.querySelector("aside.cadre-agent");
+  expect(a.getAttribute("aria-label")).toBe("Agent");
+  expect(a.querySelector(".ya-panel-head h2").textContent).toBe("Agent");
+  expect(a.querySelector(".ya-panel-head button").getAttribute("aria-label")).toBe("Replier l'agent");
+  const rd = c.querySelector(".cadre-rail-droit");
+  expect(rd.tagName).toBe("DIV");
+  expect(rd.hasAttribute("role")).toBe(false);
+  expect(rd.querySelector("button").getAttribute("aria-label")).toBe("Agent");
+  expect(regle(".cadre-rail-droit::after")).toContain("background: var(--line)");
+});
+
+test("REQ059_AC1_ordre_du_dom_main_poignee_colonne_rail_droit", () => {
+  const c = monterAgent({ replis: { agent: false } });
+  const i = [...c.children];
+  const main = i.indexOf(c.querySelector("main"));
+  expect(i[main + 1].getAttribute("aria-label")).toBe("Largeur de l'agent");
+  expect(i[main + 2]).toBe(c.querySelector("aside.cadre-agent"));
+  expect(i[main + 3]).toBe(c.querySelector(".cadre-rail-droit"));
+});
+
+test("REQ059_AC3_agent_replie_par_defaut_hidden_et_aucun_arret_de_tab", () => {
+  const c = monterAgent();
+  const a = c.querySelector("aside.cadre-agent");
+  expect(a.hidden).toBe(true);
+  expect(c.poignees.agent.hidden).toBe(true);
+  expect(c.classList.contains("cadre-agent-replie")).toBe(true);
+  expect(regle(".cadre-agent[hidden]")).toContain("display: none");
+  expect(regle(".cadre.cadre-agent-replie")).toContain("minmax(0, 1fr) 0 0 var(--size-activity)");
+  // Le contenu reste dans la page (sa vue est gardée), mais hors de la tabulation par `hidden`.
+  expect(a.querySelector("button")).not.toBeNull();
+  expect(a.closest("[hidden]")).toBe(a);
+  c.definirReplis({ agent: false });
+  expect(a.hidden).toBe(false);
+  expect(c.poignees.agent.hidden).toBe(false);
+  c.definirReplis({ agent: true });
+  expect(a.hidden).toBe(true);
+});
+
+test("REQ059_AC3_replier_l_agent_ne_change_pas_le_panneau_et_garde_la_taille_choisie", () => {
+  const c = monterAgent({ tailles: { agent: 400 }, replis: { agent: false } });
+  expect(c.poignees.agent.getAttribute("aria-valuenow")).toBe("400");
+  expect(c.style.getPropertyValue("--taille-agent")).toBe("400px");
+  c.definirReplis({ agent: true });
+  expect(c.querySelector("aside").hidden).toBe(false);
+  expect(c.style.getPropertyValue("--taille-agent")).toBe("400px");
+  expect(c.poignees.agent.getAttribute("aria-valuenow")).toBe("400");
+});
+
+test("REQ059_AC11_poignee_de_l_agent_cote_droite_et_transmission", () => {
+  const surChangement = vi.fn();
+  const c = monterAgent({ tailles: { agent: 300 }, replis: { agent: false }, surChangement });
+  const h = c.poignees.agent;
+  expect(h.getAttribute("aria-label")).toBe("Largeur de l'agent");
+  h.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+  expect(surChangement).toHaveBeenCalledWith("agent", 316);
+});
+
+test("REQ059_AC1_info_bulle_gauche_de_la_commande_du_rail_droit", () => {
+  const c = monterAgent();
+  const b = c.querySelector(".cadre-rail-droit button");
+  expect(b.getAttribute("aria-keyshortcuts")).toBe("A");
+  expect(b.hasAttribute("aria-pressed")).toBe(false);
+  expect(b.hasAttribute("aria-expanded")).toBe(false);
+});
+
+test("REQ059_AC5_fonds_filets_et_grille_a_sept_colonnes", () => {
+  expect(regle(".cadre-agent")).toContain("background: var(--bg-100)");
+  expect(regle(".cadre-rail-droit")).toContain("background: var(--bg-000)");
+  expect(regle(".cadre")).toContain("var(--epaisseur-poignee) var(--taille-agent, var(--largeur-agent)) var(--size-activity);");
 });

@@ -1,4 +1,4 @@
-const POSITIONS = ["dessous", "dessus", "droite"];
+const POSITIONS = ["dessous", "dessus", "droite", "gauche"];
 const DELAI = 400;
 
 let ouverte = null;
@@ -22,9 +22,10 @@ export function placer(a, b, position, fenetre) {
   let left;
   let top;
   const centreX = a.left + a.width / 2 - b.largeur / 2;
-  if (position === "droite") {
-    left = a.right;
-    if (left + b.largeur > fenetre.largeur) left = a.left - b.largeur;
+  if (position === "droite" || position === "gauche") {
+    left = position === "droite" ? a.right : a.left - b.largeur;
+    if (position === "droite" && left + b.largeur > fenetre.largeur) left = a.left - b.largeur;
+    if (position === "gauche" && left < 0) left = a.right;
     top = a.top + a.height / 2 - b.hauteur / 2;
   } else {
     left = centreX;

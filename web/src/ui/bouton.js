@@ -21,6 +21,7 @@ export function bouton({
   taille = "normale",
   ouvreMenu = false,
   compteur,
+  deplie,
 }) {
   if (!libelle && !icone) throw new Error("bouton : libelle requis");
   if (!VARIANTES.includes(variante)) throw new Error(`bouton : variante inconnue « ${variante} »`);
@@ -46,6 +47,9 @@ export function bouton({
     b.setAttribute("aria-haspopup", "menu");
     b.setAttribute("aria-expanded", "false");
   }
+  // Commande du rail droit : `data-deplie` porte le filet ; ni aria-pressed ni aria-expanded.
+  b.definirDeplie = (oui) => b.toggleAttribute("data-deplie", Boolean(oui));
+  if (deplie !== undefined) b.definirDeplie(deplie);
   b.definirOuvert = (oui) => b.setAttribute("aria-expanded", String(Boolean(oui)));
   let badge = null;
   b.definirCompteur = (n) => {

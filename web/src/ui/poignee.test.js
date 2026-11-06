@@ -22,7 +22,8 @@ const touche = (p, key, init = {}) => {
 };
 
 test("REQ032_AC9_limites_a_800_par_480_sans_bandeau", () => {
-  expect(limites({ L: 800, H: 480, bandeaux: 0 })).toEqual({ panneau: { min: 240, max: 360 }, shells: { min: 120, max: 299 } });
+  const l = limites({ L: 800, H: 480, bandeaux: 0 });
+  expect({ panneau: l.panneau, shells: l.shells }).toEqual({ panneau: { min: 240, max: 360 }, shells: { min: 120, max: 299 } });
 });
 
 test("REQ032_AC9_limites_grande_fenetre_et_bandeaux", () => {
@@ -206,4 +207,77 @@ test("REQ032_AC1_valeur_inconnue_sans_mesure_le_glisse_et_les_fleches_sont_ignor
   expect(p.setPointerCapture).not.toHaveBeenCalled();
   expect(surChangement).not.toHaveBeenCalled();
   expect(surFin).not.toHaveBeenCalled();
+});
+
+const touches = (p, key) => touche(p, key);
+
+test("REQ059_AC11_limites_a_800_agent_replie_panneau_240_360_et_panneau_replie_agent_240_380", () => {
+  const a = limites({ L: 800, H: 480, panneau: { replie: false, choisie: 280 }, agent: { replie: true } });
+  expect(a.panneau).toEqual({ min: 240, max: 360 });
+  expect([a.Pa, a.Aa]).toEqual([280, 0]);
+  const b = limites({ L: 800, H: 480, panneau: { replie: true }, agent: { replie: false, choisie: 360 } });
+  expect(b.agent).toEqual({ min: 240, max: 380 });
+  expect([b.Pa, b.Aa]).toEqual([0, 360]);
+});
+
+test("REQ059_AC5_limites_a_1600_panneau_a_280_agent_240_720", () => {
+  const l = limites({ L: 1600, H: 1000, panneau: { replie: false, choisie: 280 }, agent: { replie: false, choisie: 500 } });
+  expect(l.agent).toEqual({ min: 240, max: 720 });
+  expect(l.panneau).toEqual({ min: 240, max: 360 });
+  expect([l.Pa, l.Aa]).toEqual([280, 500]);
+});
+
+test("REQ059_AC5_l_agent_cede_d_abord_puis_le_panneau", () => {
+  // L = 1000 : P = 1000 - 96 - 320 - 8 = 576.
+  const l = limites({ L: 1000, H: 800, panneau: { replie: false, choisie: 360 }, agent: { replie: false, choisie: 720 } });
+  expect([l.Pa, l.Aa]).toEqual([336, 240]);
+  expect(l.panneau.max).toBe(336);
+  expect(l.agent.max).toBe(576 - 336);
+  const m = limites({ L: 1000, H: 800, panneau: { replie: false, choisie: 260 }, agent: { replie: false, choisie: 720 } });
+  expect([m.Pa, m.Aa]).toEqual([260, 316]);
+});
+
+test("REQ059_AC6_seuil_de_904_px", () => {
+  expect(limites({ L: 1200, H: 600 }).seuil).toBe(904);
+});
+
+test("REQ059_AC8_taille_gardee_hors_limites_ramenee_dedans", () => {
+  const l = limites({ L: 1600, H: 1000, panneau: { replie: false, choisie: 480 }, agent: { replie: false, choisie: 900 } });
+  expect([l.Pa, l.Aa]).toEqual([360, 720]);
+  const p = limites({ L: 1600, H: 1000, panneau: { replie: false, choisie: 100 }, agent: { replie: false, choisie: 100 } });
+  expect([p.Pa, p.Aa]).toEqual([240, 240]);
+});
+
+test("REQ059_AC11_poignee_cote_droite_au_clavier_gauche_agrandit_droite_reduit", () => {
+  const { p, surChangement, surFin } = monter({ cote: "droite", nomAccessible: "Largeur de l'agent", valeur: 360, min: 240, max: 720 });
+  expect(p.getAttribute("aria-label")).toBe("Largeur de l'agent");
+  expect(p.getAttribute("aria-orientation")).toBe("vertical");
+  expect(p.getAttribute("role")).toBe("separator");
+  expect(["aria-valuenow", "aria-valuemin", "aria-valuemax"].map((a) => p.getAttribute(a))).toEqual(["360", "240", "720"]);
+  touches(p, "ArrowLeft");
+  expect(surChangement).toHaveBeenLastCalledWith(376);
+  expect(surFin).toHaveBeenLastCalledWith(376);
+  p.definir({ valeur: 376 });
+  touches(p, "ArrowRight");
+  expect(surChangement).toHaveBeenLastCalledWith(360);
+});
+
+test("REQ059_AC11_poignee_cote_droite_rien_aux_limites", () => {
+  const { p, surChangement } = monter({ cote: "droite", valeur: 720, min: 240, max: 720 });
+  touches(p, "ArrowLeft");
+  p.definir({ valeur: 240 });
+  touches(p, "ArrowRight");
+  expect(surChangement).not.toHaveBeenCalled();
+});
+
+test("REQ059_AC11_poignee_cote_droite_glisse_vers_la_gauche_agrandit", () => {
+  const { p, surChangement } = monter({ cote: "droite", valeur: 360, min: 240, max: 720 });
+  p.dispatchEvent(pointeur("pointerdown", 500, 10));
+  p.dispatchEvent(pointeur("pointermove", 450, 10));
+  expect(surChangement).toHaveBeenLastCalledWith(410);
+  p.dispatchEvent(pointeur("pointerup", 450, 10));
+});
+
+test("REQ059_AC11_poignee_cote_invalide", () => {
+  expect(() => poignee({ orientation: "vertical", cote: "haut", nomAccessible: "x" })).toThrow("cote");
 });

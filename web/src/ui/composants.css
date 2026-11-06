@@ -291,7 +291,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre {
   display: grid;
   grid-template-rows: var(--size-titlebar) minmax(0, 1fr) var(--size-status);
-  grid-template-columns: var(--size-activity) var(--taille-panneau, var(--largeur-panneau)) var(--epaisseur-poignee) minmax(0, 1fr);
+  grid-template-columns: var(--size-activity) var(--taille-panneau, var(--largeur-panneau)) var(--epaisseur-poignee) minmax(0, 1fr) var(--epaisseur-poignee) var(--taille-agent, var(--largeur-agent)) var(--size-activity);
   min-width: var(--largeur-min);
   min-height: var(--hauteur-min);
   height: 100vh;
@@ -299,8 +299,18 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
   color: var(--ink);
   font: var(--texte-base) var(--font-sans);
 }
-.cadre.cadre-panneau-replie { grid-template-columns: var(--size-activity) minmax(0, 1fr); }
-.cadre-panneau[hidden], .poignee-vertical[hidden] { display: none; }
+.cadre > .cadre-rail { grid-area: 2 / 1; }
+.cadre > .cadre-panneau { grid-area: 2 / 2; }
+.cadre > .poignee-panneau { grid-area: 2 / 3; }
+.cadre > .cadre-principal { grid-area: 2 / 4; }
+.cadre > .poignee-agent { grid-area: 2 / 5; }
+.cadre > .cadre-agent { grid-area: 2 / 6; }
+.cadre > .cadre-rail-droit { grid-area: 2 / 7; }
+.cadre > .cadre-etat { grid-area: 3 / 1 / 4 / -1; }
+.cadre.cadre-panneau-replie { grid-template-columns: var(--size-activity) 0 0 minmax(0, 1fr) var(--epaisseur-poignee) var(--taille-agent, var(--largeur-agent)) var(--size-activity); }
+.cadre.cadre-agent-replie { grid-template-columns: var(--size-activity) var(--taille-panneau, var(--largeur-panneau)) var(--epaisseur-poignee) minmax(0, 1fr) 0 0 var(--size-activity); }
+.cadre.cadre-panneau-replie.cadre-agent-replie { grid-template-columns: var(--size-activity) 0 0 minmax(0, 1fr) 0 0 var(--size-activity); }
+.cadre-panneau[hidden], .cadre-agent[hidden], .poignee-vertical[hidden] { display: none; }
 .ya-titlebar { grid-column: 1 / -1; box-sizing: border-box; display: grid; grid-template-columns: 1fr minmax(240px, 560px) 1fr; align-items: center; gap: var(--space-3); padding: 0 var(--space-2); background: var(--bg-000); border-bottom: var(--trait) solid var(--line); font-size: 13px; color: var(--ink-muted); }
 .ya-titlebar-symbole { display: flex; align-items: center; padding-left: var(--space-1); }
 .ya-titlebar-actions { display: flex; justify-content: flex-end; gap: 2px; }
@@ -321,7 +331,15 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre-rail-commandes .ya-icon-btn.ya-focus-garde { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
 .cadre-rail-commandes .ya-badge { position: absolute; right: 6px; bottom: 6px; height: 14px; min-width: 14px; font-size: 9.5px; line-height: 14px; }
 .cadre-rail-commandes .ya-icon-btn svg { width: var(--taille-icone-rail); height: var(--taille-icone-rail); }
-.cadre-panneau { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg-100); }
+.cadre-rail-droit { position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--bg-000); }
+.cadre-rail-droit::after { content: ""; position: absolute; top: 0; left: 0; bottom: 0; width: var(--trait); background: var(--line); pointer-events: none; }
+.cadre-rail-droit .bouton-enveloppe { display: flex; }
+.cadre-rail-droit .ya-icon-btn { position: relative; width: var(--size-activity); height: var(--size-activity); border-radius: 0; color: var(--ink-faint); }
+.cadre-rail-droit .ya-icon-btn:hover { color: var(--ink); background: transparent; }
+.cadre-rail-droit .ya-icon-btn[data-deplie] { color: var(--ink); box-shadow: inset calc(-1 * var(--trait-fort)) 0 0 var(--accent-fg); }
+.cadre-rail-droit .ya-icon-btn.ya-focus-garde { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait-fort)); }
+.cadre-rail-droit .ya-icon-btn svg { width: var(--taille-icone-rail); height: var(--taille-icone-rail); }
+.cadre-panneau, .cadre-agent { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg-100); }
 .ya-panel-head { flex: none; box-sizing: border-box; height: var(--size-tab); display: flex; align-items: center; padding: 0 var(--space-1) 0 var(--space-3); }
 .ya-panel-title { margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 16px; font-weight: var(--graisse-forte); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); }
 .cadre-panneau-corps { flex: 1 1 0; min-height: 0; overflow: auto; }

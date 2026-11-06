@@ -281,3 +281,10 @@ test("REQ048_AC9_focus_sur_une_ancre_ya_focus_garde_n_ouvre_rien", () => {
   a.dispatchEvent(new Event("focus"));
   expect(visible()).toHaveLength(1);
 });
+
+test("REQ059_AC1_placer_gauche_et_retournement", () => {
+  const rail = { left: 752, top: 100, right: 800, bottom: 148, width: 48, height: 48 };
+  expect(placer(rail, bulle, "gauche", fen)).toEqual({ left: 652, top: 114 });
+  const bord = { left: 0, top: 100, right: 48, bottom: 148, width: 48, height: 48 };
+  expect(placer(bord, bulle, "gauche", fen).left).toBe(48);
+});
