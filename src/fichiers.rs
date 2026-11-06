@@ -45,7 +45,7 @@ pub struct Entree {
 
 /// Chemin réel de `rel` dans le projet ; refuse tout ce qui en sort
 /// (`..`, chemin absolu, lien symbolique vers l'extérieur).
-fn resoudre(racine: &Path, rel: &str) -> Result<PathBuf, Erreur> {
+pub(crate) fn resoudre(racine: &Path, rel: &str) -> Result<PathBuf, Erreur> {
     if rel.contains('\0') {
         return Err(Erreur::Invalide("Chemin invalide."));
     }

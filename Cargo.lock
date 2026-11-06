@@ -1994,6 +1994,7 @@ dependencies = [
  "argon2",
  "axum",
  "axum-server",
+ "globset",
  "ignore",
  "libc",
  "portable-pty",
@@ -2005,6 +2006,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tungstenite",
+ "url",
 ]
 
 [[package]]
