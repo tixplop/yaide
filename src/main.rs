@@ -1,3 +1,5 @@
+#[allow(dead_code)]
+mod agent;
 mod auth;
 mod cli;
 mod config;
