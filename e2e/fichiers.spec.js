@@ -796,12 +796,17 @@ test("REQ050_AC12_depot_sur_editeur_et_shell_n_insere_rien", async ({ page }) =>
 });
 
 test("REQ050_AC13_relecture_pendant_un_vrai_glisse", async ({ page }) => {
+  await page.clock.install();
   const dossier = await ouvrir(page);
   await saisir(page, ligne(page, "a.txt"));
   await survoler(page, ligne(page, "Zeta"));
   fs.writeFileSync(path.join(dossier, "cree-pendant.txt"), "x");
   // Plus de deux relectures passent pendant que le bouton reste pressé : rien ne bouge.
-  await page.waitForTimeout(3500);
+  for (let i = 0; i < 2; i++) {
+    const relecture = page.waitForResponse((r) => r.url().includes("/api/git/etat"));
+    await page.clock.fastForward(3000);
+    await relecture;
+  }
   await expect(parChemin(page, "cree-pendant.txt")).toHaveCount(0);
   await expect(ligne(page, "Zeta")).toHaveAttribute("data-depot", "");
   await lacher(page);

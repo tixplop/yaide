@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
+import { lancerYaide, ouvrirYaide, nomLigne, avancer } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -11,6 +11,9 @@ test.beforeEach(async () => {
   yaide = await lancerYaide({ shell: "/bin/sh" });
   dossier = yaide.dossier;
   relais = await lancerRelais(yaide.port);
+});
+test.beforeEach(async ({ page }) => {
+  await page.clock.install();
 });
 test.afterEach(async () => {
   relais.fermer();
@@ -52,11 +55,11 @@ const gardeContient = (page, texte) => expect.poll(() => lireGarde(page)).toCont
 
 async function couper(page) {
   relais.couper();
-  await expect(bandeau(page)).toBeVisible({ timeout: 5000 });
+  await avancer(page, () => expect(bandeau(page)).toBeVisible({ timeout: 300 }));
 }
 async function retablir(page) {
   relais.retablir();
-  await expect(bandeau(page)).toHaveCount(0, { timeout: 10000 });
+  await avancer(page, () => expect(bandeau(page)).toHaveCount(0, { timeout: 300 }));
 }
 
 test("REQ015_AC2_AC6_pendant_la_coupure_on_tape_et_le_bandeau_ne_prend_pas_le_focus", async ({ page }) => {
@@ -73,9 +76,7 @@ test("REQ015_AC4_sans_ctrl_s_le_retour_n_ecrit_rien_et_le_point_reste", async ({
   await couper(page);
   await taper(page, "// coupure\n");
   await gardeContient(page, "// coupure");
-  const sonde = page.waitForResponse((r) => r.url().includes("/api/session"), { timeout: 10000 });
   await retablir(page);
-  await sonde;
   expect(fs.readFileSync(main(), "utf8")).toBe(ORIGINE);
   await expect(onglet(page, "main.rs, non sauvegardé")).toBeVisible();
 });
@@ -150,7 +151,7 @@ test("REQ015_AC8_pendant_la_coupure_deplier_un_dossier_est_refuse", async ({ pag
   await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." })).toBeVisible();
   await expect(ligne(page, "main.rs")).toHaveCount(0);
   await retablir(page);
-  await expect(page.getByText("Connexion perdue. Réessayez au retour.")).toHaveCount(0, { timeout: 10000 });
+  await avancer(page, () => expect(page.getByText("Connexion perdue. Réessayez au retour.")).toHaveCount(0, { timeout: 300 }));
 });
 
 const REFUS = "Connexion perdue. Réessayez au retour.";

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, gardeContient, tailleStable, saisir, survoler, lacher } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, gardeContient, tailleStable, saisir, survoler, lacher, avancer } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -79,6 +79,7 @@ test("REQ030_AC1_parcours_1_corriger_un_fichier_et_faire_un_commit", async ({ pa
 });
 
 test("REQ030_AC1_parcours_2_shell_retrouve_et_coupure", async ({ page, context }) => {
+  await page.clock.install();
   yaide = await lancerYaide({ shell: "/bin/sh" });
   relais = await lancerRelais(yaide.port);
   await ouvrirYaide(page, relais.origine);
@@ -110,14 +111,14 @@ test("REQ030_AC1_parcours_2_shell_retrouve_et_coupure", async ({ page, context }
   await retour.keyboard.type("// coupure\n");
   const bandeau = retour.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." });
   relais.couper();
-  await expect(bandeau).toBeVisible({ timeout: 5000 });
+  await avancer(page, () => expect(bandeau).toBeVisible({ timeout: 300 }));
   await expect(retour.locator(".terminal:visible .terminal-attente")).toHaveText("(en attente de la connexion)");
   await expect(editeur).toBeFocused();
   await retour.keyboard.type("// pendant\n");
   await expect(editeur).toContainText("// pendant");
   await expect(retour.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
   relais.retablir();
-  await expect(bandeau).toHaveCount(0, { timeout: 10000 });
+  await avancer(page, () => expect(bandeau).toHaveCount(0, { timeout: 300 }));
   await expect(retour.locator(".terminal:visible .terminal-attente")).toBeHidden();
   await expect(retour.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
   await retour.keyboard.press("Control+s");

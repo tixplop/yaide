@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { lancerYaide, ouvrirYaide, nomLigne, tailleStable } from "./aides.js";
+import { lancerYaide, ouvrirYaide, nomLigne, tailleStable, avancer } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -170,6 +170,7 @@ test("REQ032_AC10_AC5_les_fleches_ajoutent_16_px_et_la_taille_revient_apres_rech
 });
 
 test("REQ032_AC12_le_bandeau_de_coupure_reduit_la_place_sans_effacer_la_taille_choisie", async ({ page }) => {
+  await page.clock.install();
   await ouvrir(page, { width: 800, height: 480 });
   const sep = separateur(page, "Hauteur des shells");
   await sep.focus();
@@ -177,13 +178,13 @@ test("REQ032_AC12_le_bandeau_de_coupure_reduit_la_place_sans_effacer_la_taille_c
   expect((await valeurs(page, "Hauteur des shells"))[0]).toBe("299");
   relais.couper();
   const bandeau = page.getByRole("alert").filter({ hasText: "Connexion perdue" });
-  await expect(bandeau.first()).toBeVisible({ timeout: 5000 });
+  await avancer(page, () => expect(bandeau.first()).toBeVisible({ timeout: 300 }));
   await expect.poll(async () => Number((await valeurs(page, "Hauteur des shells"))[2])).toBeLessThan(299);
   const reduite = await valeurs(page, "Hauteur des shells");
   await expect.poll(async () => (await valeurs(page, "Hauteur des shells"))[0]).toBe(reduite[2]);
   await expect.poll(async () => Math.round((await boite(page, ".cadre-shells")).h)).toBe(Number(reduite[2]));
   relais.retablir();
-  await expect(bandeau).toHaveCount(0, { timeout: 10000 });
+  await avancer(page, () => expect(bandeau).toHaveCount(0, { timeout: 300 }));
   await expect.poll(async () => (await valeurs(page, "Hauteur des shells"))[0]).toBe("299");
 });
 

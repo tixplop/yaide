@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { lancerRelais } from "./relais.js";
-import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, avancer } from "./aides.js";
 
 let yaide;
 test.afterEach(async () => {
@@ -142,6 +142,7 @@ test("REQ012_AC1_et_AC3_et_AC4_apercu_markdown_propre_a_chaque_onglet", async ({
 });
 
 test("REQ058_AC1_parcours_P022", async ({ page }) => {
+  await page.clock.install();
   await ouvrir(page, (d) => {
     fs.mkdirSync(path.join(d, "site"));
     fs.writeFileSync(path.join(d, "site", "index.html"), "");
@@ -169,7 +170,7 @@ test("REQ058_AC1_parcours_P022", async ({ page }) => {
     await expect(bouton).toHaveAttribute("aria-pressed", "true");
     await expect(titre).toBeVisible();
     relais.couper();
-    await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue" })).toBeVisible({ timeout: 5000 });
+    await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue" })).toBeVisible({ timeout: 300 }));
     await taper(page, "page.htm", "<p>Hors ligne</p>");
     await expect(page.locator('iframe[title="Aperçu"]:visible').contentFrame().getByText("Hors ligne")).toBeVisible();
   } finally {
@@ -498,26 +499,34 @@ test("REQ018_un_fichier_disparu_n_est_pas_rouvert", async ({ page }) => {
 
 test("V002_chargement_pendant_la_lecture_et_pendant_la_restauration_jamais_aucun_fichier_ouvert", async ({ page }) => {
   await ouvrir(page);
-  let lenteur = 0;
+  // La route retient la réponse tant que le test n'a pas vu « Chargement… ».
+  let liberer = () => {};
+  let retenue = Promise.resolve();
+  const retenir = () => (retenue = new Promise((r) => (liberer = r)));
   await page.route("**/api/fichier?*", async (route) => {
-    if (lenteur) await new Promise((r) => setTimeout(r, lenteur));
+    await retenue;
     await route.continue();
   });
-  lenteur = 1500;
+  retenir();
   await ligne(page, "a.txt").click();
   await expect(page.getByText("Chargement…").last()).toBeVisible();
   await expect(page.getByText("Aucun fichier ouvert.")).toHaveCount(0);
+  liberer();
   await expect(onglet(page, "a.txt")).toBeVisible();
   await expect(page.getByText("Chargement…")).toHaveCount(0);
   // Un onglet est déjà actif : le chargement d'un second fichier s'affiche quand même.
+  retenir();
   await ligne(page, "README.md").click();
   await expect(page.getByText("Chargement…").last()).toBeVisible();
+  liberer();
   await expect(onglet(page, "README.md")).toBeVisible();
   await expect(page.getByText("Chargement…")).toHaveCount(0);
   await expect.poll(async () => (await gardes(page)).length).toBe(2);
+  retenir();
   await page.reload();
   await expect(page.getByText("Chargement…").last()).toBeVisible();
   await expect(page.getByText("Aucun fichier ouvert.")).toHaveCount(0);
+  liberer();
   await expect(onglet(page, "a.txt")).toBeVisible();
 });
 

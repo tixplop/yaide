@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
-import { lancerYaide, ouvrirYaide, tailleStable } from "./aides.js";
+import { lancerYaide, ouvrirYaide, tailleStable, avancer, temoin, attendre } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -158,9 +159,12 @@ test("REQ018_AC2_les_shells_ouverts_reviennent_avec_leurs_onglets", async ({ pag
 
 test("REQ020_AC1_le_shell_continue_apres_le_depart_du_navigateur", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
-  await taper(page, "sleep 3 && echo fini_$((6*7))");
+  const depart = temoin();
+  const fini = temoin();
+  await taper(page, attendre(depart, `echo fini_$((6*7)); touch ${fini}`));
   await page.goto("about:blank");
-  await page.waitForTimeout(3500);
+  fs.writeFileSync(depart, "");
+  await expect.poll(() => fs.existsSync(fini)).toBe(true);
   await page.goto(yaide.origine + "/");
   await expect(page.getByRole("tab", { name: "shell 1" })).toBeVisible();
   await expect(ecran(page)).toContainText("fini_42");
@@ -194,14 +198,15 @@ test("REQ020_AC2_REQ015_AC1_coupure_puis_reprise_sans_recharger_ni_doublon", asy
 });
 
 test("REQ015_AC8_pendant_la_coupure_un_nouveau_shell_est_refuse_avec_un_message", async ({ page }) => {
+  await page.clock.install();
   await ouvrirYaide(page, relais.origine);
   relais.couper();
-  await expect(page.getByText("Connexion perdue. Modifications gardées.")).toBeVisible({ timeout: 5000 });
+  await avancer(page, () => expect(page.getByText("Connexion perdue. Modifications gardées.")).toBeVisible({ timeout: 300 }));
   await page.getByRole("button", { name: "Nouveau shell" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." })).toBeVisible();
   await expect(onglets(page)).toHaveCount(1);
   relais.retablir();
-  await expect(page.getByText("Connexion perdue. Réessayez au retour.")).toHaveCount(0, { timeout: 10000 });
+  await avancer(page, () => expect(page.getByText("Connexion perdue. Réessayez au retour.")).toHaveCount(0, { timeout: 300 }));
 });
 
 test("REQ021_AC1_arreter_yaide_arrete_les_shells_et_leurs_processus", async ({ page }) => {
@@ -367,18 +372,19 @@ test("REQ035_AC5_un_shell_ferme_disparait_dans_l_autre_fenetre", async ({ page, 
 });
 
 test("REQ035_AC7_AC12_coupure_avant_et_pendant_le_dialogue", async ({ page }) => {
+  await page.clock.install();
   await ouvrirYaide(page, relais.origine);
   await page.getByRole("button", { name: "Nouveau shell" }).click();
   await expect(onglets(page)).toHaveCount(2);
   // Pendant la coupure, pas de dialogue et le focus reste sur le bouton.
   relais.couper();
-  await expect(page.getByText("Connexion perdue. Modifications gardées.")).toBeVisible({ timeout: 5000 });
+  await avancer(page, () => expect(page.getByText("Connexion perdue. Modifications gardées.")).toBeVisible({ timeout: 300 }));
   await fermer(page).click();
   await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(fermer(page)).toBeFocused();
   relais.retablir();
-  await expect(page.getByText("Connexion perdue. Modifications gardées.")).toHaveCount(0, { timeout: 10000 });
+  await avancer(page, () => expect(page.getByText("Connexion perdue. Modifications gardées.")).toHaveCount(0, { timeout: 300 }));
   // Coupure après l'ouverture du dialogue : il reste ouvert et le dit.
   await fermer(page).click();
   const dlg = dialogue(page, "Fermer shell 2 ?");
@@ -533,11 +539,12 @@ test("REQ041_AC6_suppr_sur_l_onglet_meme_dialogue_echap_rend_le_focus_a_l_onglet
 });
 
 test("REQ041_AC7_coupure_croix_puis_suppr_sans_dialogue", async ({ page }) => {
+  await page.clock.install();
   await ouvrirYaide(page, relais.origine);
   await page.getByRole("button", { name: "Nouveau shell" }).click();
   await expect(onglets(page)).toHaveCount(2);
   relais.couper();
-  await expect(page.getByText("Connexion perdue. Modifications gardées.")).toBeVisible({ timeout: 5000 });
+  await avancer(page, () => expect(page.getByText("Connexion perdue. Modifications gardées.")).toBeVisible({ timeout: 300 }));
   const alerte = page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." });
   await croix(page, 2).click();
   await expect(alerte.first()).toBeVisible();

@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { lancerYaide, ouvrirYaide, tailleStable } from "./aides.js";
+import fs from "node:fs";
+import { lancerYaide, ouvrirYaide, tailleStable, avancer, temoin, attendre } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -145,13 +146,16 @@ test("REQ040_AC22_la_taille_d_avant_la_reduction_est_gardee_et_un_rechargement_n
   await expect(page.locator(".terminal:visible .terminal-attente")).toBeHidden();
   const avant = await tailleStable(page);
   expect(avant).not.toBe("24 80");
-  await taper(page, "sleep 3; stty size");
+  const depart = temoin();
+  const fini = temoin();
+  await taper(page, attendre(depart, `stty size; touch ${fini}`));
   await bouton(page, "Réduire le shell").click();
   await attendreReduits(page, 1);
   await page.reload();
   await expect(bouton(page, "Shells réduits")).toBeEnabled();
   await expect(poignee(page)).toHaveCount(0);
-  await page.waitForTimeout(3500);
+  fs.writeFileSync(depart, "");
+  await expect.poll(() => fs.existsSync(fini)).toBe(true);
   await ouvrirMenu(page);
   await menu(page).getByRole("menuitem", { name: "shell 1" }).click();
   await expect(onglets(page)).toHaveText(["shell 1"]);
@@ -186,12 +190,14 @@ test("REQ040_AC10_AC19_un_shell_reduit_qui_se_termine_quitte_le_menu_sans_deplac
     await taper(page, commande);
     await bouton(page, "Réduire le shell").click();
   };
-  await nouveau(2, "sleep 2; exit");
+  const t2 = temoin();
+  await nouveau(2, attendre(t2, "exit"));
   await nouveau(3, "sleep 60");
   await expect(compteur(page)).toHaveText("2");
   await ouvrirMenu(page);
   await expect(menu(page).getByRole("menuitem", { name: "shell 2" })).toBeFocused();
   // shell 2 se termine : la suivante prend le focus.
+  fs.writeFileSync(t2, "");
   await expect(menu(page).getByRole("menuitem")).toHaveText(["shell 3"], { timeout: 10000 });
   await expect(menu(page).getByRole("menuitem", { name: "shell 3" })).toBeFocused();
   // Fermé depuis une autre fenêtre, dernier réduit : le menu se ferme, le focus va sur « Nouveau shell ».
@@ -200,20 +206,26 @@ test("REQ040_AC10_AC19_un_shell_reduit_qui_se_termine_quitte_le_menu_sans_deplac
   await expect(bouton(page, "Shells réduits")).toBeDisabled();
   await expect(bouton(page, "Nouveau shell")).toBeFocused();
   // Focus sur « Shells réduits », menu fermé : le dernier réduit se termine, le focus va sur « Nouveau shell ».
-  await nouveau(4, "sleep 2; exit");
+  const t4 = temoin();
+  await nouveau(4, attendre(t4, "exit"));
   await bouton(page, "Shells réduits").focus();
+  fs.writeFileSync(t4, "");
   await expect(bouton(page, "Nouveau shell")).toBeFocused({ timeout: 10000 });
   await expect(bouton(page, "Shells réduits")).toBeDisabled();
   // Menu fermé, focus dans un terminal : un shell réduit qui se termine ne déplace pas le focus.
-  await nouveau(5, "sleep 2; exit");
+  const t5 = temoin();
+  await nouveau(5, attendre(t5, "exit"));
   await page.getByRole("tab", { name: "shell 1" }).click();
   await expect.poll(() => focusDansTerminal(page)).toBe(true);
+  fs.writeFileSync(t5, "");
   await expect(bouton(page, "Shells réduits")).toBeDisabled({ timeout: 10000 });
   await expect(onglets(page)).toHaveText(["shell 1"]);
   expect(await focusDansTerminal(page)).toBe(true);
   // Focus sur l'onglet : il y reste.
-  await nouveau(6, "sleep 2; exit");
+  const t6 = temoin();
+  await nouveau(6, attendre(t6, "exit"));
   await page.getByRole("tab", { name: "shell 1" }).focus();
+  fs.writeFileSync(t6, "");
   await expect(bouton(page, "Shells réduits")).toBeDisabled({ timeout: 10000 });
   await expect(page.getByRole("tab", { name: "shell 1" })).toBeFocused();
 });
@@ -285,12 +297,13 @@ test("REQ040_AC11_apres_un_redemarrage_les_reduits_comptent_dans_le_message_et_l
 });
 
 test("REQ040_AC12_pendant_une_coupure_reduire_et_afficher_marchent_et_la_connexion_revient", async ({ page }) => {
+  await page.clock.install();
   await ouvrirYaide(page, relais.origine);
   await bouton(page, "Nouveau shell").click();
   await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
   const bandeau = page.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." });
   relais.couper();
-  await expect(bandeau).toBeVisible({ timeout: 5000 });
+  await avancer(page, () => expect(bandeau).toBeVisible({ timeout: 300 }));
   await bouton(page, "Réduire le shell").click();
   await expect(onglets(page)).toHaveText(["shell 1"]);
   await ouvrirMenu(page);
@@ -299,11 +312,11 @@ test("REQ040_AC12_pendant_une_coupure_reduire_et_afficher_marchent_et_la_connexi
   await bouton(page, "Réduire le shell").click();
   await expect(page.getByText("Réessayez au retour")).toHaveCount(0);
   relais.retablir();
-  await expect(bandeau).toHaveCount(0, { timeout: 10000 });
+  await avancer(page, () => expect(bandeau).toHaveCount(0, { timeout: 300 }));
   await ouvrirMenu(page);
   await menu(page).getByRole("menuitem", { name: "shell 2" }).click();
   await taper(page, "echo reprise_$((6*7))");
-  await expect(ecran(page)).toContainText("reprise_42", { timeout: 10000 });
+  await avancer(page, () => expect(ecran(page)).toContainText("reprise_42", { timeout: 300 }));
 });
 
 test("REQ040_AC14_AC18_vingt_shells_reduits_le_menu_reste_entier_et_defile", async ({ page }) => {

@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { lancerYaide, ouvrirYaide, tailleStable } from "./aides.js";
+import fs from "node:fs";
+import { lancerYaide, ouvrirYaide, tailleStable, temoin, attendre } from "./aides.js";
 
 let yaide;
 test.beforeEach(async () => {
@@ -68,7 +69,9 @@ test("REQ046_AC5_AC6_AC7_zone_repliee_les_shells_vivent_et_la_taille_est_juste_a
   await ouvrirYaide(page, yaide.origine);
   await bouton(page, "Nouveau shell").click();
   await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
-  await taper(page, "sleep 2 && echo fini");
+  const depart = temoin();
+  const fini = temoin();
+  await taper(page, attendre(depart, `echo fini; touch ${fini}`));
   const hauteur = (await boite(page, ".cadre-code")).h;
   await bouton(page, "Replier les shells").click();
   await expect(page.locator(".cadre-shells")).toBeHidden();
@@ -83,7 +86,8 @@ test("REQ046_AC5_AC6_AC7_zone_repliee_les_shells_vivent_et_la_taille_est_juste_a
   await expect(bouton(page, "Fermer le shell")).toBeDisabled();
   await expect(bouton(page, "Nouveau shell")).toBeEnabled();
   await page.setViewportSize({ width: 1100, height: 640 });
-  await page.waitForTimeout(2300);
+  fs.writeFileSync(depart, "");
+  await expect.poll(() => fs.existsSync(fini)).toBe(true);
   await bouton(page, "Déplier les shells").click();
   await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
   await expect(page.locator(".terminal:visible .xterm-helper-textarea")).toBeFocused();

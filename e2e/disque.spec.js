@@ -1,13 +1,14 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { lancerYaide, ouvrirYaide, nomLigne, gardeContient } from "./aides.js";
+import { lancerYaide, ouvrirYaide, nomLigne, gardeContient, avancer } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
 let relais;
 let dossier;
-test.beforeEach(async () => {
+test.beforeEach(async ({ page }) => {
+  await page.clock.install();
   yaide = await lancerYaide({ shell: "/bin/sh" });
   dossier = yaide.dossier;
   relais = await lancerRelais(yaide.port);
@@ -42,17 +43,17 @@ async function taper(page, texte) {
 }
 async function couper(page) {
   relais.couper();
-  await expect(bandeau(page)).toBeVisible({ timeout: 5000 });
+  await avancer(page, () => expect(bandeau(page)).toBeVisible({ timeout: 300 }));
 }
 async function retablir(page) {
   relais.retablir();
-  await expect(bandeau(page)).toHaveCount(0, { timeout: 10000 });
+  await avancer(page, () => expect(bandeau(page)).toHaveCount(0, { timeout: 300 }));
 }
 
 test("REQ017_AC1_fichier_sans_modification_change_sur_le_disque_affiche_le_nouveau_contenu", async ({ page }) => {
   await ouvrirMain(page);
   fs.writeFileSync(main(), DISQUE);
-  await expect(editeur(page)).toContainText("// du disque", { timeout: 8000 });
+  await avancer(page, () => expect(editeur(page)).toContainText("// du disque", { timeout: 300 }));
   await expect(question(page)).toHaveCount(0);
   await expect(onglet(page, "main.rs")).toBeVisible();
 });
@@ -61,7 +62,7 @@ test("REQ017_AC1_le_curseur_reste_sur_la_meme_ligne_au_rechargement", async ({ p
   await ouvrirMain(page);
   await page.keyboard.press("Control+End"); // dernière ligne vide, ligne 4
   fs.writeFileSync(main(), "1\n2\n3\n4\n5\n");
-  await expect(editeur(page)).toContainText("5", { timeout: 8000 });
+  await avancer(page, () => expect(editeur(page)).toContainText("5", { timeout: 300 }));
   await page.keyboard.type("Z");
   await expect(page.locator(".cm-line").nth(3)).toHaveText("Z4");
 });
@@ -73,7 +74,7 @@ test("REQ017_AC10_le_focus_reste_dans_le_terminal_quand_la_question_apparait", a
   await page.locator(".terminal:visible .xterm-helper-textarea").focus();
   expect(await focusDansTerminal()).toBe(true);
   fs.writeFileSync(main(), DISQUE);
-  await expect(question(page)).toBeVisible({ timeout: 8000 });
+  await avancer(page, () => expect(question(page)).toBeVisible({ timeout: 300 }));
   expect(await focusDansTerminal()).toBe(true);
   await expect(onglet(page, "main.rs, non sauvegardé, question en attente")).toContainText("!");
 });
@@ -83,8 +84,11 @@ test("REQ017_AC1_un_changement_de_date_seule_ne_change_rien", async ({ page }) =
   await taper(page, "// moi\n");
   const futur = new Date(Date.now() + 60000);
   fs.utimesSync(main(), futur, futur);
-  await page.waitForResponse((r) => r.url().includes("/api/fichiers/versions"));
-  await page.waitForResponse((r) => r.url().includes("/api/fichiers/versions"));
+  for (let i = 0; i < 2; i++) {
+    const reponse = page.waitForResponse((r) => r.url().includes("/api/fichiers/versions"));
+    await page.clock.fastForward(1500);
+    await reponse;
+  }
   await expect(question(page)).toHaveCount(0);
   await expect(editeur(page)).toContainText("// moi");
 });
@@ -93,7 +97,7 @@ test("REQ017_AC2_AC10_AC11_fichier_modifie_change_sur_le_disque_pose_la_question
   await ouvrirMain(page);
   await taper(page, "// moi\n");
   fs.writeFileSync(main(), DISQUE);
-  await expect(question(page)).toBeVisible({ timeout: 8000 });
+  await avancer(page, () => expect(question(page)).toBeVisible({ timeout: 300 }));
   await expect(garderMa(page)).toBeVisible();
   await expect(prendre(page)).toBeVisible();
   await expect(editeur(page)).toBeFocused();
@@ -105,7 +109,7 @@ test("REQ017_AC3_garder_sa_version_garde_le_texte_et_ctrl_s_ecrase_sans_redemand
   await ouvrirMain(page);
   await taper(page, "// moi\n");
   fs.writeFileSync(main(), DISQUE);
-  await garderMa(page).click({ timeout: 8000 });
+  await avancer(page, () => garderMa(page).click({ timeout: 300 }));
   await expect(question(page)).toHaveCount(0);
   await expect(editeur(page)).toContainText("// moi");
   await expect(onglet(page, "main.rs, non sauvegardé")).toBeVisible();
@@ -120,7 +124,7 @@ test("REQ017_AC4_prendre_celle_du_disque_affiche_le_disque_sans_point", async ({
   await ouvrirMain(page);
   await taper(page, "// moi\n");
   fs.writeFileSync(main(), DISQUE);
-  await prendre(page).click({ timeout: 8000 });
+  await avancer(page, () => prendre(page).click({ timeout: 300 }));
   await expect(question(page)).toHaveCount(0);
   await expect(editeur(page)).toContainText("// du disque");
   await expect(editeur(page)).not.toContainText("// moi");
@@ -135,7 +139,7 @@ test("REQ017_AC5_changement_pendant_la_coupure_la_question_est_posee_au_retour",
   await gardeContient(page, "// moi");
   fs.writeFileSync(main(), DISQUE);
   await retablir(page);
-  await expect(question(page)).toBeVisible({ timeout: 8000 });
+  await avancer(page, () => expect(question(page)).toBeVisible({ timeout: 300 }));
   expect(fs.readFileSync(main(), "utf8")).toBe(DISQUE);
 });
 
@@ -147,7 +151,7 @@ test("REQ017_AC6_ctrl_s_en_attente_et_fichier_change_la_question_est_posee_sans_
   await expect(page.getByRole("alert").filter({ hasText: "main.rs sera sauvegardé au retour." })).toBeVisible();
   fs.writeFileSync(main(), DISQUE);
   await retablir(page);
-  await expect(question(page)).toBeVisible({ timeout: 8000 });
+  await avancer(page, () => expect(question(page)).toBeVisible({ timeout: 300 }));
   expect(fs.readFileSync(main(), "utf8")).toBe(DISQUE);
   await expect(page.getByRole("alert").filter({ hasText: "sera sauvegardé au retour." })).toHaveCount(0);
 });
@@ -159,7 +163,7 @@ test("REQ017_AC5_brouillon_restaure_garde_sa_version_de_base", async ({ page }) 
   await page.goto("about:blank");
   fs.writeFileSync(main(), DISQUE);
   await page.goto(relais.origine + "/");
-  await expect(question(page)).toBeVisible({ timeout: 10000 });
+  await avancer(page, () => expect(question(page)).toBeVisible({ timeout: 300 }));
   await expect(editeur(page)).toContainText("// moi");
   expect(fs.readFileSync(main(), "utf8")).toBe(DISQUE);
 });
@@ -171,7 +175,7 @@ test("REQ017_AC7_deux_onglets_du_navigateur_sans_modification_l_autre_affiche_le
   await taper(page, "// ecrit\n");
   await page.keyboard.press("Control+s");
   await expect.poll(() => fs.readFileSync(main(), "utf8")).toContain("// ecrit");
-  await expect(editeur(page2)).toContainText("// ecrit", { timeout: 8000 });
+  await avancer(page2, () => expect(editeur(page2)).toContainText("// ecrit", { timeout: 300 }));
   await expect(question(page2)).toHaveCount(0);
   await expect(question(page)).toHaveCount(0);
 });
@@ -184,7 +188,7 @@ test("REQ017_AC8_deux_onglets_du_navigateur_modifies_l_autre_demande_quelle_vers
   await taper(page, "// ecrit\n");
   await page.keyboard.press("Control+s");
   await expect.poll(() => fs.readFileSync(main(), "utf8")).toContain("// ecrit");
-  await expect(question(page2)).toBeVisible({ timeout: 8000 });
+  await avancer(page2, () => expect(question(page2)).toBeVisible({ timeout: 300 }));
   await expect(editeur(page2)).toContainText("// autre");
   await expect(question(page)).toHaveCount(0);
 });
@@ -194,7 +198,7 @@ test("REQ017_AC9_AC13_fichier_supprime_hors_de_yaide_garde_l_onglet_et_ctrl_s_le
   await taper(page, "// reste\n");
   fs.rmSync(main());
   const msg = page.getByRole("alert").filter({ hasText: "Fichier supprimé du disque. Ctrl+S le recrée." });
-  await expect(msg).toBeVisible({ timeout: 8000 });
+  await avancer(page, () => expect(msg).toBeVisible({ timeout: 300 }));
   await expect(editeur(page)).toContainText("// reste");
   await editeur(page).click();
   await page.keyboard.press("Control+s");
@@ -208,7 +212,7 @@ test("REQ017_AC12_question_en_attente_ctrl_s_et_fermeture_n_ecrivent_ni_ne_ferme
   await ouvrirMain(page);
   await taper(page, "// moi\n");
   fs.writeFileSync(main(), DISQUE);
-  await expect(question(page)).toBeVisible({ timeout: 8000 });
+  await avancer(page, () => expect(question(page)).toBeVisible({ timeout: 300 }));
   await editeur(page).click();
   await page.keyboard.press("Control+s");
   await expect(garderMa(page)).toBeFocused();

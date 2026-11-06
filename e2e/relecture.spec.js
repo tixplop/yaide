@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, avancer } from "./aides.js";
 
 let yaide;
 test.afterEach(async () => {
@@ -103,6 +103,7 @@ test("REQ045_AC4_git_init_dans_un_dossier_sans_depot_remplace_le_message_par_la_
 });
 
 test("REQ045_AC5_le_defilement_de_l_arbre_et_la_frappe_dans_le_terminal_ne_sont_pas_derangees", async ({ page }) => {
+  await page.clock.install();
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "gros"));
   for (let i = 0; i < 200; i++) fs.writeFileSync(path.join(dossier, "gros", `f${String(i).padStart(3, "0")}.txt`), "");
@@ -115,13 +116,13 @@ test("REQ045_AC5_le_defilement_de_l_arbre_et_la_frappe_dans_le_terminal_ne_sont_
   });
   expect(defile).toBeGreaterThan(0);
   await taper(page, "touch gros/zz.txt");
-  await expect(ligne(page, "zz.txt")).toBeAttached(A_PEINE);
+  await avancer(page, () => expect(ligne(page, "zz.txt")).toBeAttached({ timeout: 300 }), { pas: 3000 });
   expect(await page.locator("aside.cadre-panneau .cadre-panneau-corps").evaluate((e) => e.scrollTop)).toBe(defile);
   // Frappe qui continue d'arriver dans le terminal pendant les relectures.
   await page.locator(".terminal:visible .xterm-helper-textarea").focus();
   await page.keyboard.type("echo abc");
   fs.writeFileSync(path.join(dossier, "pendant.txt"), "");
-  await expect(ligne(page, "pendant.txt")).toBeAttached(A_PEINE); // une relecture a eu lieu pendant la frappe
+  await avancer(page, () => expect(ligne(page, "pendant.txt")).toBeAttached({ timeout: 300 }), { pas: 3000 }); // une relecture a eu lieu pendant la frappe
   await page.keyboard.type("def");
   await page.keyboard.press("Enter");
   await expect(ecran(page)).toContainText("abcdef");
@@ -131,7 +132,7 @@ test("REQ045_AC5_le_defilement_de_l_arbre_et_la_frappe_dans_le_terminal_ne_sont_
   await page.locator(".cm-content").click();
   await page.keyboard.type("Z");
   fs.writeFileSync(path.join(dossier, "autre.txt"), "");
-  await expect(ligne(page, "autre.txt")).toBeAttached(A_PEINE);
+  await avancer(page, () => expect(ligne(page, "autre.txt")).toBeAttached({ timeout: 300 }), { pas: 3000 });
   await expect(page.locator(".cm-content")).toBeFocused();
   await page.keyboard.type("Y");
   await expect(page.locator(".cm-content")).toContainText("ZY");

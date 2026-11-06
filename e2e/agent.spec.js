@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { lancerYaide, ouvrirYaide, depotExemple, nomLigne, tailleStable } from "./aides.js";
+import { lancerYaide, ouvrirYaide, depotExemple, nomLigne, tailleStable, temoin, attendre } from "./aides.js";
 import { lancerFauxProvider, reponse, erreur } from "./faux-provider.js";
 
 let yaide;
@@ -320,10 +320,13 @@ test("REQ053_parcours_21_gerer_ses_profils", async ({ page }) => {
 test("REQ059_parcours_23_garder_l_agent_a_cote_de_son_code", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
   // Parcours P-023 : la colonne de l'agent à droite, sa largeur, le repli du panneau, le rechargement.
+  const depart = temoin();
+  const commande = attendre(depart, "echo suite-ok");
+  const nomBouton = (etat) => new RegExp(`^bash ${commande.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}, ${etat}$`);
   faux = await lancerFauxProvider([
     reponse({ outils: [{ id: "h1", nom: "bash", entree: { command: "echo hier" } }], tokens: 1000 }),
     reponse({ texte: "Hier, rien à signaler.", tokens: 1200 }),
-    reponse({ outils: [{ id: "a1", nom: "bash", entree: { command: "sleep 4; echo suite-ok" } }], tokens: 1500 }),
+    reponse({ outils: [{ id: "a1", nom: "bash", entree: { command: commande } }], tokens: 1500 }),
     reponse({ texte: "La suite est passée.", tokens: 1800 }),
   ]);
   yaide = await lancerYaide({ dossier: depotAgent() });
@@ -406,7 +409,7 @@ test("REQ059_parcours_23_garder_l_agent_a_cote_de_son_code", async ({ page, brow
   // 4. Un tour est lancé, puis « Replier l'agent » : la colonne disparaît, le tour continue.
   await champMessage(page).fill("Lance toute la suite de tests.");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("button", { name: /^bash sleep 4; echo suite-ok, en cours$/ })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole("button", { name: nomBouton("en cours") })).toBeVisible({ timeout: 15000 });
   await page.getByRole("button", { name: "Replier l'agent" }).click();
   await expect(colonne).toBeHidden();
   await expect(page.getByRole("separator", { name: "Largeur de l'agent" })).toBeHidden();
@@ -424,8 +427,9 @@ test("REQ059_parcours_23_garder_l_agent_a_cote_de_son_code", async ({ page, brow
   await page.keyboard.press("a");
   await expect(colonne).toBeVisible();
   expect(await largeur("aside.cadre-agent")).toBe(720);
+  fs.writeFileSync(depart, "");
   await expect(fil(page)).toContainText("La suite est passée.", { timeout: 15000 });
-  await expect(page.getByRole("button", { name: /^bash sleep 4; echo suite-ok, réussi$/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: nomBouton("réussi") })).toBeVisible();
   await expect(champMessage(page)).toBeFocused();
   await expect(champMessage(page)).toHaveValue("");
 

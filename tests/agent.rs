@@ -168,7 +168,7 @@ fn demarrer(racine: &Path, projet: &str) -> Serveur {
         racine: racine.to_path_buf(),
     };
     let origine = format!("https://127.0.0.1:{port}");
-    for _ in 0..100 {
+    for _ in 0..1000 {
         if requete(port, "GET", "/api/info", "", &origine, b"").code == 200 {
             let r = requete(port, "POST", "/api/connexion", "", &origine, b"mdp");
             let ligne = r
@@ -179,7 +179,7 @@ fn demarrer(racine: &Path, projet: &str) -> Serveur {
             s.cookie = ligne[11..].trim().split(';').next().unwrap().to_string();
             return s;
         }
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(10));
     }
     panic!("le serveur ne répond pas");
 }

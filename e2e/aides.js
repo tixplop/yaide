@@ -4,6 +4,7 @@ import net from "node:net";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 function portLibre() {
   return new Promise((res) => {
@@ -150,3 +151,15 @@ export async function survoler(page, cible, { bas = false } = {}) {
   await page.mouse.move(b.x + b.width / 2, bas ? b.y + b.height - 4 : b.y + b.height / 2, { steps: 8 });
 }
 export const lacher = (page) => page.mouse.up();
+
+/** Fait avancer l'horloge de la page (installée avant l'ouverture) jusqu'à ce que `attente` réussisse. */
+export async function avancer(page, attente, { pas = 1500, timeout = 10000 } = {}) {
+  await expect(async () => {
+    await page.clock.fastForward(pas);
+    await attente();
+  }).toPass({ timeout });
+}
+
+/** Témoin : un chemin sous TMPDIR, hors du projet. `attendre(t, suite)` donne une commande qui attend qu'il existe ; le test le crée au moment voulu. */
+export const temoin = () => path.join(process.env.TMPDIR || os.tmpdir(), `temoin-${randomUUID()}`);
+export const attendre = (t, suite) => `while [ ! -e "${t}" ]; do sleep 0.05; done; ${suite}`;
