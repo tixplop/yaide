@@ -237,3 +237,10 @@ export async function lireConversation(id, depuis = 0) {
 }
 
 export const arreterConversation = (id) => action(`/api/agent/conversations/${q(id)}/arreter`, { method: "POST" });
+
+/** `[{ id, titre, maj }]`, la plus récente en premier ; null si le serveur ne répond pas. */
+export async function listeConversations() {
+  const r = await appeler("/api/agent/conversations");
+  if (!r || !r.ok) return null;
+  return r.json();
+}

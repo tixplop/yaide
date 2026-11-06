@@ -1,12 +1,19 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { ecrire, lire } from "../stockage.js";
 import { formaterTokens, vueAgent } from "./agent.js";
+
+vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
 const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
 for (const [, nom, val] of tokens.matchAll(/(--[\w-]+):\s*([^;]+);/g)) document.documentElement.style.setProperty(nom, val.trim());
 
 let vues = [];
-beforeEach(() => vi.useFakeTimers());
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.mocked(lire).mockReset().mockResolvedValue(undefined);
+  vi.mocked(ecrire).mockClear();
+});
 afterEach(() => {
   for (const v of vues) v.detruire();
   vues = [];
@@ -18,9 +25,10 @@ const SONNET = { id: "p1", nom: "sonnet", provider: "anthropic", modele: "claude
 const RAPIDE = { id: "p2", nom: "rapide", provider: "openai", modele: "mini", defaut: false };
 
 /** `lectures` : réponses successives de `lireConversation`. */
-async function monter({ profils = [SONNET, RAPIDE], lectures = [], envoi = { conversation: "c1" }, ouvrirProfils = vi.fn() } = {}) {
+async function monter({ profils = [SONNET, RAPIDE], lectures = [], envoi = { conversation: "c1" }, ouvrirProfils = vi.fn(), erreur = null, conversations = [] } = {}) {
   const api = {
-    reglagesAgent: vi.fn(async () => ({ providers: [], profils })),
+    reglagesAgent: vi.fn(async () => ({ providers: [], profils, erreur })),
+    listeConversations: vi.fn(async () => conversations),
     envoyerMessage: vi.fn(async () => envoi),
     lireConversation: vi.fn(async () => lectures.shift() ?? { entrees: [], enCours: false, total: 0, tokens: 0 }),
     arreterConversation: vi.fn(async () => ({})),
@@ -248,4 +256,281 @@ test("REQ056_AC10_focus_d_arreter_va_dans_le_champ_a_la_fin", async () => {
   await tick(500);
   expect(document.activeElement).toBe(champ(vue));
   expect(arreter(vue).closest(".bouton-enveloppe").hidden).toBe(true);
+});
+
+const alertes = (el) => [...el.querySelectorAll("[role=alert]")];
+const refus = (vue) => alertes(vue.corps).find((a) => !fil(vue).contains(a));
+
+test("REQ055_AC6_AC13_sans_cle_refus_au_dessus_du_champ_texte_garde", async () => {
+  const { vue, api } = await monter({ envoi: { refus: "sans-cle", provider: "OpenAI" } });
+  taper(vue, "Lance toute la suite de tests.");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  const a = refus(vue);
+  expect(a.textContent).toContain("Aucune clé pour OpenAI. Ajoutez-la avec Ctrl+P, puis > Providers LLM.");
+  expect(a.nextElementSibling).toBe(champ(vue).closest(".champ") ?? champ(vue).parentElement);
+  expect(champ(vue).value).toBe("Lance toute la suite de tests.");
+  expect(fil(vue).textContent).not.toContain("Lance toute");
+  expect(fil(vue).textContent).toContain("Écrivez un message pour commencer.");
+  expect(api.lireConversation).not.toHaveBeenCalled();
+  expect(ecrire).not.toHaveBeenCalled();
+  // La croix le ferme.
+  a.querySelector("[aria-label=Fermer]").click();
+  expect(refus(vue)).toBeUndefined();
+  expect(document.activeElement).toBe(champ(vue));
+  // Un refus, puis un envoi accepté : le message disparaît.
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(refus(vue)).toBeTruthy();
+  api.envoyerMessage.mockResolvedValueOnce({ conversation: "c1" });
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(refus(vue)).toBeUndefined();
+  expect(fil(vue).textContent).toContain("Lance toute");
+});
+
+test("REQ055_AC10_AC13_contexte_plein", async () => {
+  const { vue, api } = await monter({ envoi: { refus: "contexte-plein" } });
+  taper(vue, "suite");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(refus(vue).textContent).toContain("Contexte plein. Ouvrez une nouvelle conversation.");
+  expect(champ(vue).value).toBe("suite");
+  expect(fil(vue).textContent).not.toContain("suite");
+  // Le changement de conversation le retire.
+  vue.corps.querySelector("[aria-label='Nouvelle conversation']").click();
+  expect(refus(vue)).toBeUndefined();
+  // Coupure : texte dédié.
+  api.envoyerMessage.mockResolvedValueOnce({ coupure: true });
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(refus(vue).textContent).toContain("Connexion perdue. Réessayez au retour.");
+  expect(champ(vue).value).toBe("suite");
+});
+
+test("REQ055_AC7_AC14_arreter_puis_continuer", async () => {
+  const outil = (etat) => ({ type: "outil", id: "o1", nom: "bash", argument: "sleep 60", etat, resultat: "" });
+  const { vue, api } = await monter({
+    lectures: [
+      { entrees: [{ type: "utilisateur", texte: "go" }, outil("enCours")], enCours: true, total: 2, tokens: 0 },
+      { entrees: [outil("echec"), { type: "fin", texte: "Arrêté." }], enCours: false, total: 2, tokens: 0 },
+    ],
+  });
+  taper(vue, "go");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  await tick(501);
+  expect(fil(vue).querySelector(".ya-step").getAttribute("aria-label")).toBe("bash sleep 60, en cours");
+  arreter(vue).click();
+  await tick(1);
+  expect(api.arreterConversation).toHaveBeenCalledWith("c1");
+  // La relecture suit tout de suite, sans attendre l'intervalle ; la vue n'écrit pas « Arrêté. » elle-même.
+  expect(api.lireConversation).toHaveBeenCalledTimes(2);
+  expect(fil(vue).querySelector(".ya-step").getAttribute("aria-label")).toBe("bash sleep 60, échec");
+  expect(fil(vue).textContent).toContain("Arrêté.");
+  expect(arreter(vue).closest(".bouton-enveloppe").hidden).toBe(true);
+  taper(vue, "reprends");
+  expect(envoyer(vue).disabled).toBe(false);
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(api.envoyerMessage).toHaveBeenLastCalledWith({ conversation: "c1", profil: "p1", texte: "reprends" });
+});
+
+test("REQ055_AC5_AC12_erreur_du_provider_dans_le_fil_puis_renvoi", async () => {
+  const { vue, api } = await monter({
+    lectures: [
+      {
+        entrees: [{ type: "utilisateur", texte: "un" }, { type: "message", variante: "erreur", texte: "Anthropic a refusé la requête (429).", detail: "rate limited" }],
+        enCours: false,
+        total: 1,
+        tokens: 0,
+      },
+    ],
+  });
+  taper(vue, "un");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  await tick(501);
+  const a = alertes(fil(vue))[0];
+  expect(a.textContent).toContain("Anthropic a refusé la requête (429).");
+  expect(a.textContent).toContain("rate limited");
+  expect(envoyer(vue).disabled).toBe(true);
+  taper(vue, "deux");
+  expect(envoyer(vue).disabled).toBe(false);
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(api.envoyerMessage).toHaveBeenLastCalledWith({ conversation: "c1", profil: "p1", texte: "deux" });
+});
+
+test("REQ055_AC9_AC14_interrompu_affiche", async () => {
+  vi.mocked(lire).mockResolvedValue({ conversation: "c7" });
+  const { vue } = await monter({
+    lectures: [
+      {
+        titre: "Mon test",
+        profil: "p1",
+        entrees: [
+          { type: "utilisateur", texte: "go" },
+          { type: "outil", id: "o1", nom: "bash", argument: "ls", etat: "echec", resultat: "" },
+          { type: "message", variante: "alerte", texte: "Interrompu : Yaide a été arrêté." },
+        ],
+        enCours: false,
+        total: 3,
+        tokens: 0,
+      },
+    ],
+  });
+  expect(fil(vue).querySelectorAll(".ya-step").length).toBe(1);
+  const a = alertes(fil(vue))[0];
+  expect(a.textContent).toContain("Interrompu : Yaide a été arrêté.");
+  expect(arreter(vue).closest(".bouton-enveloppe").hidden).toBe(true);
+});
+
+const CONVS = () => {
+  const n = new Date(2026, 10, 6, 15, 0).getTime();
+  return [
+    { id: "a", titre: "Lance toute la suite de tests.", maj: new Date(2026, 10, 6, 14, 32).getTime() },
+    { id: "b", titre: "Le test parse_args échoue. Trouve pourquoi et corr…", maj: n - 26 * 3600_000 },
+    { id: "c", titre: "Explique le module de connexion.", maj: new Date(2026, 10, 4, 9, 0).getTime() },
+  ];
+};
+
+test("REQ056_AC6_AC12_menu_conversations_ordre_dates_et_focus", async () => {
+  vi.setSystemTime(new Date(2026, 10, 6, 15, 0));
+  const vide = await monter();
+  expect(vide.vue.corps.querySelector("[aria-label=Conversations]").disabled).toBe(true);
+  vide.vue.detruire();
+  const { vue, api } = await monter({
+    conversations: CONVS(),
+    lectures: [{ titre: "Le test parse_args", profil: "p2", entrees: [{ type: "utilisateur", texte: "ancien" }, { type: "agent", markdown: "Réponse." }], enCours: false, total: 2, tokens: 3000 }],
+  });
+  const bouton = vue.corps.querySelector("[aria-label=Conversations]");
+  expect(bouton.disabled).toBe(false);
+  bouton.click();
+  await tick(0);
+  const m = document.querySelector("[role=menu]");
+  expect(m.getAttribute("aria-label")).toBe("Conversations");
+  const lignes = [...m.querySelectorAll("[role=menuitem]")];
+  expect(lignes.map((l) => l.querySelector(".menu-libelle").textContent)).toEqual(CONVS().map((c) => c.titre));
+  expect(lignes.map((l) => l.querySelector(".menu-touche").textContent)).toEqual(["14:32", "hier", "4 nov."]);
+  expect(document.activeElement).toBe(lignes[0]);
+  touche(lignes[0], "ArrowDown");
+  expect(document.activeElement).toBe(lignes[1]);
+  touche(lignes[1], "Enter");
+  await tick(0);
+  expect(document.querySelector("[role=menu]")).toBeNull();
+  expect(api.lireConversation).toHaveBeenCalledWith("b", 0);
+  expect(fil(vue).textContent).toContain("ancien");
+  expect(fil(vue).textContent).toContain("Réponse.");
+  expect(vue.corps.querySelector(".agent-titre").textContent).toBe("Le test parse_args");
+  expect(vue.corps.querySelector("select").value).toBe("rapide");
+  expect(document.activeElement).toBe(champ(vue));
+  expect(ecrire).toHaveBeenCalledWith("agent", { conversation: "b" });
+  // La suite du fil continue cette conversation.
+  taper(vue, "suite");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(api.envoyerMessage).toHaveBeenLastCalledWith({ conversation: "b", profil: "p2", texte: "suite" });
+});
+
+test("REQ056_AC12_titre_coupe_et_nouvelle_conversation", async () => {
+  const long = `${"a".repeat(50)}…`;
+  const { vue, api } = await monter({
+    lectures: [{ titre: long, entrees: [{ type: "utilisateur", texte: "premier" }], enCours: true, total: 1, tokens: 0 }],
+  });
+  taper(vue, "premier");
+  touche(champ(vue), "Enter");
+  await tick(500);
+  expect(vue.corps.querySelector(".agent-titre").textContent).toBe(long);
+  expect(fil(vue).textContent).toContain("premier");
+  // Le tour continue sur le serveur : la vue ne le relit plus et repart d'un fil vide.
+  vue.corps.querySelector("[aria-label='Nouvelle conversation']").click();
+  const appels = api.lireConversation.mock.calls.length;
+  await tick(2000);
+  expect(api.lireConversation).toHaveBeenCalledTimes(appels);
+  expect(fil(vue).textContent).not.toContain("premier");
+  expect(fil(vue).textContent).toContain("Écrivez un message pour commencer.");
+  expect(vue.corps.querySelector(".agent-titre").textContent).toBe("Nouvelle conversation");
+  expect(envoyer(vue).disabled).toBe(true);
+  expect(ecrire).toHaveBeenLastCalledWith("agent", { conversation: null });
+  taper(vue, "autre");
+  expect(envoyer(vue).disabled).toBe(false);
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(api.envoyerMessage).toHaveBeenLastCalledWith({ conversation: null, profil: "p1", texte: "autre" });
+});
+
+test("REQ056_AC7_rechargement_rouvre_la_derniere", async () => {
+  vi.mocked(lire).mockResolvedValue({ conversation: "c9" });
+  const { vue, api } = await monter({
+    lectures: [
+      { titre: "Reprise", profil: "p1", entrees: [{ type: "utilisateur", texte: "avant" }, { type: "agent", markdown: "En route." }], enCours: true, total: 2, tokens: 5 },
+      { entrees: [{ type: "agent", markdown: "En route." }, { type: "agent", markdown: "Fini." }], enCours: false, total: 3, tokens: 9 },
+    ],
+  });
+  expect(lire).toHaveBeenCalledWith("agent");
+  expect(api.lireConversation).toHaveBeenCalledWith("c9", 0);
+  expect(fil(vue).textContent).toContain("avant");
+  expect(vue.corps.querySelector(".agent-titre").textContent).toBe("Reprise");
+  // Le tour continue : la relecture reprend, depuis la dernière entrée.
+  expect(arreter(vue).closest(".bouton-enveloppe").hidden).toBe(false);
+  await tick(500);
+  expect(api.lireConversation).toHaveBeenLastCalledWith("c9", 1);
+  expect(fil(vue).textContent).toContain("Fini.");
+  expect(arreter(vue).closest(".bouton-enveloppe").hidden).toBe(true);
+  // Un envoi mémorise la conversation.
+  const autre = await monter();
+  taper(autre.vue, "x");
+  touche(champ(autre.vue), "Enter");
+  await tick(0);
+  expect(ecrire).toHaveBeenCalledWith("agent", { conversation: "c1" });
+});
+
+test("REQ056_AC7_conversation_disparue_oubliee", async () => {
+  vi.mocked(lire).mockResolvedValue({ conversation: "perdue" });
+  const { vue } = await monter({ lectures: [{ introuvable: true }] });
+  expect(ecrire).toHaveBeenCalledWith("agent", { conversation: null });
+  expect(fil(vue).textContent).toContain("Écrivez un message pour commencer.");
+});
+
+test("REQ051_AC4_reglages_illisibles_nomment_le_fichier", async () => {
+  const { vue } = await monter({ profils: [], erreur: "/home/x/projet/.yaide/config.json est illisible : expected value at line 1" });
+  const a = refus(vue);
+  expect(a.textContent).toContain(".yaide/config.json est illisible. Corrigez-le ou enregistrez de nouveaux réglages.");
+  expect(a.textContent).not.toContain("/home/x");
+  expect(a.compareDocumentPosition(champ(vue)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test("REQ056_AC14_ordre_de_tab", async () => {
+  const nom = (e) => e.getAttribute("aria-label") ?? e.labels?.[0]?.textContent ?? e.textContent;
+  const tabulables = (vue) => [...vue.corps.querySelectorAll("button, textarea, select, a[href], [tabindex='0']")].map(nom);
+  // Avec une conversation : ses appels d'outils et ses liens suivent le fil.
+  const a = await monter({
+    conversations: CONVS(),
+    lectures: [{ entrees: [{ type: "utilisateur", texte: "x" }, { type: "outil", id: "o", nom: "bash", argument: "ls", etat: "reussi", resultat: "" }, { type: "agent", markdown: "[lien](https://exemple.fr)" }], enCours: true, total: 2, tokens: 0 }],
+  });
+  taper(a.vue, "x");
+  touche(champ(a.vue), "Enter");
+  await tick(0);
+  await tick(501);
+  expect(tabulables(a.vue)).toEqual(["Nouvelle conversation", "Conversations", "Conversation", "bash ls, réussi", "lien", "Message à l'agent", "Profil", "Arrêter", "Envoyer"]);
+  a.vue.detruire();
+  // Avec un refus : la croix précède le champ.
+  const b = await monter({ envoi: { refus: "contexte-plein" } });
+  taper(b.vue, "x");
+  touche(champ(b.vue), "Enter");
+  await tick(0);
+  expect(tabulables(b.vue)).toEqual(["Nouvelle conversation", "Conversations", "Conversation", "Fermer", "Message à l'agent", "Profil", "Arrêter", "Envoyer"]);
+});
+
+test("profil_supprime_prend_le_defaut", async () => {
+  vi.mocked(lire).mockResolvedValue({ conversation: "c3" });
+  const { vue } = await monter({
+    lectures: [{ titre: "T", profil: "supprime", entrees: [{ type: "agent", markdown: "Bonjour." }], enCours: false, total: 1, tokens: 0 }],
+  });
+  expect(vue.corps.querySelector("select").value).toBe("sonnet");
+  taper(vue, "suite");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(vue.corps.querySelector("select").value).toBe("sonnet");
 });

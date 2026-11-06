@@ -3,6 +3,9 @@ import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { conversation } from "../ui/conversation.js";
 import { indication } from "../ui/indication.js";
+import { menu } from "../ui/menu.js";
+import { message } from "../ui/message.js";
+import { ecrire, lire } from "../stockage.js";
 import { ouvrirProfils as ouvrirProfilsReel } from "./profils.js";
 
 const INTERVALLE = 500;
@@ -16,8 +19,35 @@ export function formaterTokens(n) {
   return `${String(Math.floor(n / 100_000) / 10).replace(".", ",")} M`;
 }
 
+/** Heure d'une conversation (aujourd'hui), « hier » ou la date courte (« 4 nov. »). */
+export function quand(ms, maintenant = new Date()) {
+  const d = new Date(ms);
+  const jour = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const ecart = Math.round((jour(maintenant) - jour(d)) / 86_400_000);
+  if (ecart === 0) return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  if (ecart === 1) return "hier";
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+
+function texteRefus(r) {
+  if (r.coupure) return "Connexion perdue. Réessayez au retour.";
+  if (r.refus === "sans-cle") return `Aucune clé pour ${r.provider}. Ajoutez-la avec Ctrl+P, puis > Providers LLM.`;
+  if (r.refus === "contexte-plein") return "Contexte plein. Ouvrez une nouvelle conversation.";
+  if (r.refus === "sans-profil") return TEXTE_AUCUN_PROFIL;
+  if (r.refus === "en-cours") return "L'agent travaille encore. Attendez la fin du tour ou arrêtez-le.";
+  return r.message || "Message refusé.";
+}
+
+/** « <chemin> est illisible : … » du serveur, en phrase qui nomme le fichier (depuis `.yaide/` s'il y est). */
+function texteReglagesIllisibles(erreur) {
+  const m = /^(.*?) est illisible/.exec(erreur);
+  if (!m) return erreur;
+  const i = m[1].indexOf(".yaide/");
+  return `${i >= 0 ? m[1].slice(i) : m[1]} est illisible. Corrigez-le ou enregistrez de nouveaux réglages.`;
+}
+
 /**
- * V-007. `api` : `reglagesAgent`, `envoyerMessage`, `lireConversation`, `arreterConversation`.
+ * V-007. `api` : `reglagesAgent`, `envoyerMessage`, `lireConversation`, `arreterConversation`, `listeConversations`.
  * Rend `{ corps, montrer(oui), focuser(), relireReglages(), detruire() }`.
  */
 export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } = {}) {
@@ -33,6 +63,10 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
   let entrees = [];
   let enCours = false;
   let envoi = false; // un envoi attend la réponse du serveur
+  let chargements = 0; // change à chaque ouverture de conversation demandée
+  let refus = null; // C-003 de refus d'envoi
+  let alerteReglages = null; // C-003 des réglages illisibles
+  let restauree = false;
   let generation = 0; // change avec la conversation : une relecture en retard est ignorée
   let minuteur = null;
   let detruite = false;
@@ -52,8 +86,18 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
 
   // Fil.
   const vide = document.createElement("div");
-  const fil = conversation({ vide });
-  fil.classList.add("agent-fil");
+  let fil = nouveauFil();
+  function nouveauFil() {
+    const f = conversation({ vide });
+    f.classList.add("agent-fil");
+    return f;
+  }
+  // Le fil se rend entrée par entrée : une autre conversation demande un fil neuf, en bas.
+  function remplacerFil() {
+    const neuf = nouveauFil();
+    fil.replaceWith(neuf);
+    fil = neuf;
+  }
 
   // Saisie.
   const saisie = document.createElement("div");
@@ -122,6 +166,26 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     vide.append(indication({ texte: TEXTE_AUCUN_PROFIL, action: creer }));
   }
 
+  function effacerRefus() {
+    refus?.remove();
+    refus = null;
+  }
+  function montrerRefus(texte) {
+    effacerRefus();
+    refus = message({ texte, variante: "erreur", fermable: true });
+    refus.addEventListener("click", (e) => {
+      if (e.target.closest("button")) focuser();
+    });
+    champMessage.before(refus);
+  }
+  function majAlerteReglages(erreur) {
+    alerteReglages?.remove();
+    alerteReglages = null;
+    if (!erreur) return;
+    alerteReglages = message({ texte: texteReglagesIllisibles(String(erreur)), variante: "erreur" });
+    saisie.prepend(alerteReglages);
+  }
+
   function majBoutons() {
     envoyer.disabled = enCours || envoi || !profilCourant() || !texteSaisi.value.trim();
     arreter.enveloppe.hidden = !enCours;
@@ -140,6 +204,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     const r = await api.reglagesAgent();
     if (detruite || !Array.isArray(r?.profils)) return;
     reglages = r;
+    majAlerteReglages(r.erreur);
     dessinerProfils();
     majVide();
     majCompteur();
@@ -183,11 +248,18 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     const r = await api.envoyerMessage({ conversation: convId, profil: profilId, texte });
     envoi = false;
     if (detruite) return;
-    if (!r?.conversation) return majBoutons();
+    if (!r?.conversation) {
+      majBoutons();
+      montrerRefus(texteRefus(r ?? {}));
+      return;
+    }
+    effacerRefus();
     if (convId !== r.conversation) {
       convId = r.conversation;
       generation++;
+      ecrire("agent", { conversation: convId });
     }
+    liste.disabled = false;
     entrees = [...entrees, { type: "utilisateur", texte }];
     texteSaisi.value = "";
     enCours = true;
@@ -204,13 +276,81 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     envoyerMessage();
   });
   envoyer.addEventListener("click", envoyerMessage);
-  arreter.addEventListener("click", () => {
-    if (convId) api.arreterConversation(convId);
+  arreter.addEventListener("click", async () => {
+    if (!convId) return;
+    const gen = generation;
+    await api.arreterConversation(convId);
+    if (detruite || gen !== generation) return;
+    // Relecture tout de suite : « Arrêté. » vient du serveur, la vue continue jusqu'à la fin du tour.
+    clearTimeout(minuteur);
+    relire(gen);
+  });
+
+  /** Ouvre une conversation enregistrée, en bas du fil, avec son profil. Vrai si elle est affichée. */
+  async function charger(id) {
+    const jeton = ++chargements;
+    const r = await api.lireConversation(id, 0);
+    if (detruite || jeton !== chargements) return false;
+    if (!Array.isArray(r?.entrees)) {
+      if (r?.introuvable) ecrire("agent", { conversation: null });
+      return false;
+    }
+    generation++;
+    clearTimeout(minuteur);
+    convId = id;
+    titre = r.titre ?? null;
+    tokens = r.tokens ?? 0;
+    entrees = r.entrees;
+    enCours = Boolean(r.enCours);
+    profilId = r.profil ?? null;
+    effacerRefus();
+    dessinerProfils();
+    remplacerFil();
+    afficher();
+    ecrire("agent", { conversation: id });
+    if (enCours) planifier(generation);
+    return true;
+  }
+
+  async function restaurer() {
+    if (restauree) return;
+    restauree = true;
+    const gardee = await lire("agent");
+    if (detruite || convId || !gardee?.conversation) return;
+    await charger(gardee.conversation);
+  }
+
+  async function majListe() {
+    const l = await api.listeConversations();
+    if (!detruite && Array.isArray(l)) liste.disabled = !l.length;
+  }
+
+  liste.addEventListener("click", async () => {
+    const l = await api.listeConversations();
+    if (detruite || !Array.isArray(l)) return;
+    liste.disabled = !l.length;
+    if (!l.length) return;
+    menu({
+      nom: "Conversations",
+      ancre: liste,
+      groupes: [
+        l.map((c) => ({
+          libelle: c.titre || "Nouvelle conversation",
+          touche: quand(c.maj),
+          surChoix: () => charger(c.id).then((ok) => ok && focuser()),
+        })),
+      ],
+      surFermeture: () => {},
+    });
   });
   nouvelle.addEventListener("click", () => {
     generation++;
+    chargements++;
     clearTimeout(minuteur);
     convId = null;
+    effacerRefus();
+    remplacerFil();
+    ecrire("agent", { conversation: null });
     titre = null;
     tokens = 0;
     entrees = [];
@@ -230,7 +370,10 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     relireReglages,
     montrer(oui) {
       corps.hidden = !oui;
-      if (oui) relireReglages();
+      if (oui) {
+        majListe();
+        relireReglages().then(restaurer);
+      }
     },
     detruire() {
       detruite = true;
