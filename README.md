@@ -12,6 +12,8 @@ curl -fsSL https://raw.githubusercontent.com/tixplop/yaide/master/install.sh | s
 
 La même commande installe la dernière release, ou met à jour une installation existante ; elle ne fait rien si la version est déjà la bonne. Le binaire est placé dans `~/.local/bin/yaide`, après vérification de son empreinte SHA-256. Pour une version précise, ajoutez-la : `… | sh -s -- v0.3.0`. Pour un autre dossier, définissez `YAIDE_BIN_DIR`. Une instance déjà lancée garde l'ancienne version jusqu'à son redémarrage.
 
+Pour une installation existante, `yaide update` fait la même chose : il installe la dernière release et remplace le binaire lancé, dans son propre dossier. Il faut `curl` ou `wget`, `tar` et `sha256sum`. Il ne prend aucun argument.
+
 ## Compiler
 
 Il faut Rust, Node.js, npm et gcc.
@@ -53,7 +55,7 @@ Seul un haché est écrit, dans `$XDG_CONFIG_HOME/yaide/` (sinon `~/.config/yaid
 yaide <dossier> [--port <n>]
 ```
 
-Le dossier est obligatoire. Le port par défaut est 8443. Ouvrez ensuite `https://localhost:8443` sur cette machine, ou `https://<adresse de la machine>:8443` depuis une autre. N'ouvrez pas `https://0.0.0.0:8443` : les navigateurs peuvent refuser cette adresse. Plusieurs instances peuvent tourner en même temps, chacune sur son port et son dossier.
+Le dossier est obligatoire. Le port par défaut est 8443. Ouvrez ensuite `https://localhost:8443` sur cette machine, ou `https://<adresse de la machine>:8443` depuis une autre. N'ouvrez pas `https://0.0.0.0:8443` : les navigateurs peuvent refuser cette adresse. Pour servir un dossier nommé `update`, écrivez `yaide ./update`. Plusieurs instances peuvent tourner en même temps, chacune sur son port et son dossier.
 
 Aucun shell n'est lancé au démarrage : « Nouveau shell » en ouvre un, et porte le nombre de shells ouverts.
 

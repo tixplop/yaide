@@ -6,12 +6,21 @@ pub const PORT_PAR_DEFAUT: u16 = 8443;
 #[derive(Debug, PartialEq)]
 pub enum Commande {
     Passwd,
+    Update,
     Servir { dossier: PathBuf, port: u16 },
 }
 
 pub fn analyser(args: &[String]) -> Result<Commande, String> {
     if args.first().map(String::as_str) == Some("passwd") {
         return Ok(Commande::Passwd);
+    }
+    if args.first().map(String::as_str) == Some("update") {
+        if let Some(extra) = args.get(1) {
+            return Err(format!(
+                "argument inattendu : {extra} ; usage : yaide update"
+            ));
+        }
+        return Ok(Commande::Update);
     }
     let mut port = PORT_PAR_DEFAUT;
     let mut dossier = None;
@@ -30,7 +39,8 @@ pub fn analyser(args: &[String]) -> Result<Commande, String> {
             return Err(format!("argument inattendu : {}", args[i]));
         }
     }
-    let dossier = dossier.ok_or("usage : yaide <dossier> [--port <n>]  ou  yaide passwd")?;
+    let dossier = dossier
+        .ok_or("usage : yaide <dossier> [--port <n>]  ou  yaide passwd  ou  yaide update")?;
     Ok(Commande::Servir { dossier, port })
 }
 
@@ -112,6 +122,18 @@ mod tests {
                 port: 9000
             }
         );
+    }
+
+    #[test]
+    fn req060_ac4_update_sans_argument() {
+        assert_eq!(analyser(&v(&["update"])).unwrap(), Commande::Update);
+        let e = analyser(&v(&["update", "x"])).unwrap_err();
+        assert!(e.contains("usage : yaide update"));
+        assert!(analyser(&v(&["update", "--port", "1"])).is_err());
+        assert!(matches!(
+            analyser(&v(&["./update"])).unwrap(),
+            Commande::Servir { .. }
+        ));
     }
 
     #[test]
