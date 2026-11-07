@@ -23,6 +23,13 @@ export function libelles(chemins) {
   });
 }
 
+/** Plus petit numéro (à partir de 1) qui n'est pas dans `numeros`. */
+export function plusPetitNumeroLibre(numeros) {
+  let n = 1;
+  while (numeros.includes(n)) n++;
+  return n;
+}
+
 /** Onglet actif après la fermeture de `ferme` : celui de droite, sinon celui de gauche. */
 export function apresFermeture(ids, ferme) {
   const i = ids.indexOf(ferme);

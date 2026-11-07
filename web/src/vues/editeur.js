@@ -1,7 +1,7 @@
-import { ecrireFichier, lireFichier, versionsFichiers } from "../api.js";
+import { ecrireFichier, fermerShell, lireFichier, listeShells, versionsFichiers } from "../api.js";
 import { decider, texteAttente } from "../brouillons.js";
 import { decisionDisque } from "../disque.js";
-import { apresFermeture, estSous, garder, libelles, nomDe, retrouver, suivreRenommage } from "../onglets-fichiers.js";
+import { apresFermeture, estSous, garder, libelles, nomDe, plusPetitNumeroLibre, retrouver, suivreRenommage } from "../onglets-fichiers.js";
 import { bouton } from "../ui/bouton.js";
 import { dialogue } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
@@ -11,11 +11,13 @@ import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { zoneCode } from "../ui/zone-code.js";
+import { vueClaude } from "./claude.js";
 
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const DELAI_DETECTION = 4000;
 const INTERVALLE_DISQUE = 1500;
 const SANS_SUITE = "sans suite";
+const CLAUDE = "\0claude:"; // préfixe de la clé d'un onglet Claude
 const DIFF = "\0diff"; // identifiant de l'onglet de diff, qui n'est pas un fichier ouvert
 const TEXTE_SUPPRIME = "Fichier supprimé du disque. Ctrl+S le recrée.";
 const avecHybride = (chemin) => /\.(md|markdown)$/i.test(chemin);
@@ -27,9 +29,11 @@ const avecApercu = (chemin) => /\.(md|markdown|html|htm)$/i.test(chemin);
  * `surActif({ position, langage })` : l'onglet actif et sa position pour la barre d'état (`null` sans onglet ; sur un diff, la position seule).
  * `surSauvegarde()` : une sauvegarde a réussi (l'état git a pu changer).
  * `surCourant(chemin | null)` : le fichier de l'onglet actif (`null` sans onglet ou sur un diff).
- * Rend `{ definirStatuts(statuts), barre, fil, code, lecture(oui), definirEtat(etat), ouvrir(…), renomme(…), supprime(…), restaurer(), detruire() }`.
+ * `chemin` : le chemin du projet, dit par l'info-bulle des onglets Claude.
+ * Un onglet Claude (REQ-068) est dans la même liste que les fichiers : `{ claude: true, id, numero, instance }`, sa clé `chemin` ne désigne aucun fichier.
+ * Rend `{ definirStatuts(statuts), barre, fil, code, lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
-export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {} }) {
+export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {} }) {
   const barre = document.createElement("div");
   const fil = document.createElement("div");
   fil.className = "ya-crumbs";
@@ -55,6 +59,13 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
 
   const trouver = (chemin) => liste.find((o) => o.chemin === chemin);
 
+  /** `Map` onglet -> `{ libelle, detail }` : « Claude <n> », ou le nom du fichier (avec son dossier si un autre porte le même nom). */
+  function nomsOnglets() {
+    const fichiers = liste.filter((x) => !x.claude);
+    const noms = libelles(fichiers.map((x) => x.chemin));
+    return new Map(liste.map((x) => [x, x.claude ? { libelle: `Claude ${x.numero}` } : noms[fichiers.indexOf(x)]]));
+  }
+
   function garderListe() {
     if (!pret) return;
     if (minuteur) return; // un minuteur en cours n'est pas réarmé : une frappe continue est écrite en moins d'une seconde
@@ -66,7 +77,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
 
   function ecrireGarde() {
     garder(
-      liste.map((o) => ({ chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) })),
+      liste.map((o) => (o.claude ? { claude: true, id: o.id, numero: o.numero, instance: o.instance } : { chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) })),
       actif === DIFF ? (liste[0]?.chemin ?? null) : actif,
     );
   }
@@ -84,6 +95,12 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       fil.replaceChildren();
       surCourant(null);
       return surActif(null);
+    }
+    if (o.claude) {
+      fil.hidden = true;
+      fil.replaceChildren();
+      surCourant(null);
+      return surActif({});
     }
     const segments = o.chemin.split("/");
     fil.replaceChildren(
@@ -130,9 +147,9 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       code.replaceChildren(indication({ texte: "Aucun fichier ouvert.", action: b }));
       return publier(null);
     }
-    const noms = libelles(liste.map((x) => x.chemin));
+    const noms = nomsOnglets();
     let actionsDroite = [];
-    if (o !== diff && avecHybride(o.chemin)) {
+    if (o !== diff && !o.claude && avecHybride(o.chemin)) {
       const hy = bouton({ icone: "type", variante: "discret", nomAccessible: "Mode hybride", presse: o.hybride });
       hy.addEventListener("click", () => {
         o.hybride = !o.hybride;
@@ -142,7 +159,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       });
       actionsDroite.push(hy.enveloppe);
     }
-    if (o !== diff && avecApercu(o.chemin)) {
+    if (o !== diff && !o.claude && avecApercu(o.chemin)) {
       const ap = bouton({ icone: "eye", variante: "discret", nomAccessible: "Aperçu", presse: o.apercu });
       ap.addEventListener("click", () => {
         o.apercu = !o.apercu;
@@ -153,10 +170,10 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       actionsDroite.push(ap.enveloppe);
     }
     const ongl = onglets({
-      onglets: [...(diff ? [{ id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true }] : []), ...liste.map((x, i) => ({
+      onglets: [...(diff ? [{ id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true }] : []), ...liste.map((x) => x.claude ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "asterisk", titre: `Claude Code dans ${cheminProjet}`, fermable: true } : ({
         id: x.chemin,
-        libelle: noms[i].libelle,
-        detail: noms[i].detail,
+        libelle: noms.get(x).libelle,
+        detail: noms.get(x).detail,
         titre: x.chemin,
         modifie: x.modifie,
         statut: statutOnglet(x.chemin),
@@ -180,6 +197,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       if (z.parentNode !== code) code.append(z);
       z.hidden = x !== o;
     }
+    if (o.claude) o.vue.ajuster();
     for (const enfant of [...code.children]) if (!zones.some(([, z]) => z === enfant)) enfant.remove();
     if (lectures > 0) code.prepend(indication({ texte: "Chargement…", variante: "chargement" }));
     publier(o);
@@ -253,18 +271,61 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     for (const o of liste.filter((x) => estSous(x.chemin, chemin))) retirer(o.chemin);
   }
 
-  function retirer(chemin) {
+  /** `arreter` : la session Claude de l'onglet s'arrête sur le serveur (sauf si elle a fini ou n'existe plus). */
+  function retirer(chemin, arreter = true) {
     const ids = liste.map((o) => o.chemin);
     const i = liste.findIndex((o) => o.chemin === chemin);
     if (i < 0) return;
     const suivant = apresFermeture(ids, chemin);
     if (attente.delete(liste[i])) direAttente();
-    liste[i].zone.detruire();
-    liste[i].zone.remove();
-    liste.splice(i, 1);
+    const [ferme] = liste.splice(i, 1);
+    // La vue se détruit avant l'arrêt de la session : sa fermeture ne rappelle pas `surFin`.
+    ferme.zone.detruire();
+    ferme.zone.remove();
+    if (ferme.claude && arreter) fermerShell(ferme.id);
     if (actif === chemin) actif = suivant ?? (diff ? DIFF : null);
     afficher();
     garderListe();
+  }
+
+  // ---- Onglets Claude (REQ-068) ----
+
+  function creerClaude({ id, numero, instance }) {
+    const o = { claude: true, id, numero, instance, chemin: CLAUDE + id, modifie: false };
+    o.vue = vueClaude({ id, nom: `Claude ${numero}`, surFin: (fin) => finClaude(o, fin) });
+    // Le corps de la vue joue le rôle de la zone de code : masqué, détruit, retiré comme elle.
+    o.zone = o.vue.corps;
+    o.zone.detruire = o.vue.detruire;
+    o.zone.vue = { focus: o.vue.focus };
+    liste.push(o);
+    return o;
+  }
+
+  function finClaude(o, fin) {
+    if (detruit || !liste.includes(o)) return;
+    if (fin.disparue) return retirer(o.chemin, false);
+    if (fin.code !== 0) return; // la vue garde son affichage et son message
+    const avaitLeFocus = o.zone.contains(document.activeElement);
+    retirer(o.chemin, false);
+    if (!avaitLeFocus) return;
+    if (actif === null) code.querySelector("button")?.focus();
+    else (actif === DIFF ? diff.el : trouver(actif).zone).vue?.focus();
+  }
+
+  /** Ouvre « Claude <n> » (plus petit numéro libre) à droite des onglets, actif, le focus dans son terminal. */
+  function ouvrirClaude({ id }) {
+    dernierGeste++;
+    const o = creerClaude({ id, numero: plusPetitNumeroLibre(liste.filter((x) => x.claude).map((x) => x.numero)) });
+    actif = o.chemin;
+    afficher();
+    o.vue.focus();
+    garderListe();
+    // L'instance du serveur dit, au rechargement, si la session peut encore exister.
+    listeShells().then((l) => {
+      if (detruit || !l?.instance || !liste.includes(o)) return;
+      o.instance = l.instance;
+      garderListe();
+    });
   }
 
   // ---- Onglet de diff (V-005) ----
@@ -417,11 +478,12 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   }
 
   async function verifierDisque() {
-    if (coupe || !pret || detruit || sondageEnCours || liste.length === 0) return;
+    const fichiers = () => liste.filter((o) => !o.claude);
+    if (coupe || !pret || detruit || sondageEnCours || fichiers().length === 0) return;
     sondageEnCours = true;
     try {
-      const instantane = new Map(liste.map((o) => [o, o.rev]));
-      const versions = await versionsFichiers(liste.map((o) => o.chemin));
+      const instantane = new Map(fichiers().map((o) => [o, o.rev]));
+      const versions = await versionsFichiers(fichiers().map((o) => o.chemin));
       if (!versions || detruit) return;
       const inchange = (o) => liste.includes(o) && o.rev === instantane.get(o) && !o.ecriture;
       for (const o of instantane.keys()) {
@@ -500,6 +562,10 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     }
     const o = trouver(chemin);
     if (!o) return Promise.resolve("fermé");
+    if (o.claude && coupe) {
+      refuserArret();
+      return Promise.resolve("annulé");
+    }
     if (o.question) {
       montrerQuestion(o);
       return Promise.resolve("annulé");
@@ -566,16 +632,22 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
   const ordre = () => [...(diff ? [DIFF] : []), ...liste.map((o) => o.chemin)];
   const existe = (id) => (id === DIFF ? Boolean(diff) : Boolean(trouver(id)));
 
+  // Sans connexion, la session ne peut pas s'arrêter : l'onglet Claude reste (design.md, coupure).
+  const refuserArret = () => dire({ texte: TEXTE_COUPURE, variante: "alerte", fermable: true });
+
   /** Ferme `ids` : d'abord les onglets sans modification, sans question ; puis chaque onglet modifié, un dialogue à la fois. */
   async function fermerSerie(ids, vise) {
+    let refus = false;
     for (const id of ids) {
       if (id === DIFF) fermerDiff();
+      else if (trouver(id)?.claude && coupe) refus = true;
       else if (trouver(id) && !trouver(id).modifie && !trouver(id).question) retirer(id);
     }
+    if (refus) refuserArret();
     let arret = null;
     for (const id of ids) {
       const o = id === DIFF ? null : trouver(id);
-      if (!o || o.question) continue;
+      if (!o || o.question || o.claude) continue;
       actif = id;
       afficher();
       if ((await fermerOnglet(id, true)) !== "fermé") {
@@ -600,8 +672,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     afficher();
     const onglet = barre.querySelector("[role=tab][aria-selected=true]");
     onglet?.focus();
-    const noms = libelles(liste.map((x) => x.chemin));
-    const libelle = id === DIFF ? `${nomDe(diff.chemin)} (diff)` : noms[liste.findIndex((x) => x.chemin === id)].libelle;
+    const libelle = id === DIFF ? `${nomDe(diff.chemin)} (diff)` : nomsOnglets().get(trouver(id)).libelle;
     const tous = ordre();
     const commandes = [];
     if (tous.length >= 2) commandes.push({ libelle: "Fermer les autres onglets", surChoix: () => fermerSerie(tous.filter((x) => x !== id), id) });
@@ -616,7 +687,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     e.preventDefault();
     if (document.querySelector("[role=dialog], dialog[open]")) return;
     const o = trouver(actif);
-    if (!o) return;
+    if (!o || o.claude) return;
     if (o.question) return montrerQuestion(o);
     if (coupe) mettreEnAttente(o);
     else sauvegarderEtDire(o);
@@ -638,11 +709,18 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
 
   async function restaurer() {
     const gardes = await retrouver();
-    const lus = await Promise.all(gardes.liste.map(lireGarde));
+    const instance = gardes.liste.some((g) => g.claude) ? (await listeShells())?.instance : undefined;
+    const lus = await Promise.all(gardes.liste.map((g) => (g.claude ? null : lireGarde(g))));
     if (detruit) return;
     lectures--;
     const aVerifier = [];
     gardes.liste.forEach((g, i) => {
+      if (g.claude) {
+        // Yaide relancé : ses sessions n'existent plus. Sans réponse du serveur, la vue se rebranche ou découvre la disparition.
+        if (g.instance && instance && g.instance !== instance) return;
+        if (!trouver(CLAUDE + g.id)) creerClaude(g);
+        return;
+      }
       if (trouver(g.chemin)) return;
       const r = lus[i];
       const decision = decider(g, r);
@@ -665,7 +743,11 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
     garderListe();
     if (!coupe) executerAttente();
     planifierDisque();
-    if (actif && document.activeElement === document.body) trouver(actif)?.zone.vue.focus();
+    if (actif && document.activeElement === document.body) {
+      // Un onglet Claude reçoit le focus, pas son terminal : Entrée l'y met (AC-068-17).
+      if (trouver(actif)?.claude) barre.querySelector("[role=tab][aria-selected=true]")?.focus();
+      else trouver(actif)?.zone.vue.focus();
+    }
   }
 
   afficher();
@@ -695,6 +777,7 @@ export function vueEditeur({ dire, ouvrirRapide = () => {}, surAttente = () => {
       if (liste.map((o) => statutOnglet(o.chemin)).join() !== avant) afficher();
     },
     ouvrir,
+    ouvrirClaude,
     ouvrirDiff,
     fermerDiff,
     /** Chemin du fichier dont le diff est ouvert, ou null. */

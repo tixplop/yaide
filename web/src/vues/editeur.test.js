@@ -1,8 +1,27 @@
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { vueEditeur } from "./editeur.js";
+import { lire } from "../stockage.js";
 import { nomLangage } from "../ui/langages.js";
 
+// Faux vueClaude : un corps avec un champ de saisie, et le journal des appels dans l'ordre.
+const faux = vi.hoisted(() => ({ vues: [], journal: [] }));
+vi.mock("./claude.js", () => ({
+  vueClaude: (opts) => {
+    const corps = document.createElement("div");
+    const saisie = document.createElement("textarea");
+    corps.append(saisie);
+    const v = {
+      ...opts,
+      corps,
+      focus: vi.fn(() => saisie.focus()),
+      ajuster: vi.fn(),
+      detruire: vi.fn(() => faux.journal.push(`detruire ${opts.id}`)),
+    };
+    faux.vues.push(v);
+    return v;
+  },
+}));
 vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
 // jsdom n'a pas de mise en page : CodeMirror mesure avec ces deux méthodes.
@@ -492,4 +511,247 @@ test("REQ062_AC10_le_mode_reste_apres_un_changement_sur_le_disque", async () => 
   await vi.waitFor(() => expect(vue.state.doc.toString()).toBe("# nouveau"));
   expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
   expect(vue.dom.classList.contains("cm-hybride")).toBe(true);
+});
+
+// ---- Onglets Claude (REQ-068) ----
+
+function monterClaude(options = {}, restaurer = false) {
+  faux.vues.length = 0;
+  faux.journal.length = 0;
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    if (init?.method === "DELETE") {
+      faux.journal.push(`fermer ${decodeURIComponent(url).split("/").pop()}`);
+      return { ok: true, status: 204 };
+    }
+    if (String(url).includes("/api/shells")) return { ok: true, status: 200, json: async () => ({ instance: "i1", shells: [] }) };
+    return { ok: true, status: 200, headers: new Headers({ "x-version": "1" }), json: async () => ({ version: "2" }), text: async () => "abc" };
+  }));
+  const surActif = vi.fn();
+  const surCourant = vi.fn();
+  const dire = vi.fn();
+  const e = vueEditeur({ dire, surActif, surCourant, chemin: "~/code/projet", ...options });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  if (!restaurer) e.lecture(false); // pas de restauration : la lecture initiale est finie
+  return { e, surActif, surCourant, dire };
+}
+const croix = (nom) => document.querySelector(`button[aria-label="Fermer ${nom}"]`);
+const touche = (cible, key) => cible.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+const fermes = () => faux.journal.filter((j) => j.startsWith("fermer"));
+
+test("REQ068_AC2_AC13_ouvre_claude_1_puis_claude_2_actif_focus", async () => {
+  const { e } = monterClaude();
+  e.ouvrir({ chemin: "src/main.rs", contenu: "x", version: "1" });
+  e.ouvrirClaude({ id: "s1" });
+  expect(nomsOnglets()).toEqual(["main.rs", "Claude 1"]);
+  expect(actifNom()).toBe("Claude 1");
+  const t = onglet("Claude 1");
+  expect(t.title).toBe("Claude Code dans ~/code/projet");
+  expect(t.getAttribute("aria-label")).toBe("Claude 1");
+  expect(t.querySelector("svg[data-icone=asterisk]")).not.toBeNull();
+  expect(t.dataset.modifie).toBeUndefined();
+  expect(croix("Claude 1")).not.toBeNull();
+  expect(faux.vues[0].nom).toBe("Claude 1");
+  expect(faux.vues[0].id).toBe("s1");
+  expect(document.activeElement).toBe(faux.vues[0].corps.querySelector("textarea"));
+  expect(faux.vues[0].corps.hidden).toBe(false);
+  e.ouvrirClaude({ id: "s2" });
+  expect(nomsOnglets()).toEqual(["main.rs", "Claude 1", "Claude 2"]);
+  expect(actifNom()).toBe("Claude 2");
+  expect(faux.vues[0].corps.hidden).toBe(true);
+  expect(document.activeElement).toBe(faux.vues[1].corps.querySelector("textarea"));
+  // Changer d'onglet garde le terminal tel quel : même vue, pas détruite.
+  onglet("Claude 1").click();
+  expect(faux.vues[0].corps.hidden).toBe(false);
+  expect(faux.vues[0].detruire).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(faux.vues[0].corps.querySelector("textarea"));
+});
+
+test("REQ068_AC13_plus_petit_numero_libre", () => {
+  const { e } = monterClaude();
+  e.ouvrirClaude({ id: "a" });
+  e.ouvrirClaude({ id: "b" });
+  e.ouvrirClaude({ id: "c" });
+  croix("Claude 2").click();
+  e.ouvrirClaude({ id: "d" });
+  expect(nomsOnglets()).toEqual(["Claude 1", "Claude 3", "Claude 2"]);
+  croix("Claude 1").click();
+  e.ouvrirClaude({ id: "e" });
+  expect(nomsOnglets()).toEqual(["Claude 3", "Claude 2", "Claude 1"]);
+});
+
+test("REQ068_AC14_sans_fil_d_ariane_ni_boutons_ni_position", async () => {
+  const { e, surActif, surCourant } = monterClaude();
+  e.ouvrir({ chemin: "README.md", contenu: "# a", version: "1" });
+  expect(boutonHybride()).not.toBeNull();
+  expect(e.fil.hidden).toBe(false);
+  e.ouvrirClaude({ id: "s1" });
+  expect(e.fil.hidden).toBe(true);
+  expect(boutonHybride()).toBeNull();
+  expect(boutonApercu()).toBeNull();
+  expect(dernier(surActif)).toEqual({});
+  expect(dernier(surCourant)).toBeNull();
+  expect(e.code.querySelector(".zone-code").hidden).toBe(true);
+  // Le terminal prend la place de l'éditeur, dans la zone de code.
+  expect(faux.vues[0].corps.parentNode).toBe(e.code);
+  onglet("README.md").click();
+  await Promise.resolve();
+  expect(e.fil.hidden).toBe(false);
+  expect(dernier(surActif).langage).toBe("Markdown");
+});
+
+test("REQ068_AC8_croix_suppr_et_menu_ferment_et_arretent", () => {
+  const { e } = monterClaude();
+  e.ouvrirClaude({ id: "a" });
+  e.ouvrirClaude({ id: "b" });
+  e.ouvrirClaude({ id: "c" });
+  croix("Claude 1").click();
+  // La vue se détruit avant l'arrêt de la session : aucune fermeture n'arrive à surFin.
+  expect(faux.journal).toEqual(["detruire a", "fermer a"]);
+  touche(onglet("Claude 2"), "Delete");
+  expect(faux.journal.slice(2)).toEqual(["detruire b", "fermer b"]);
+  expect(nomsOnglets()).toEqual(["Claude 3"]);
+  clicDroit(onglet("Claude 3"));
+  expect(menuOuvert().getAttribute("aria-label")).toBe("Actions sur Claude 3");
+  choisirCommande("Fermer tous les onglets");
+  expect(faux.journal.slice(4)).toEqual(["detruire c", "fermer c"]);
+  expect(onglets().length).toBe(0);
+  expect(e.code.textContent).toContain("Aucun fichier ouvert.");
+});
+
+test("REQ068_AC19_fermer_tous_claude_d_abord_puis_sauvegarder", async () => {
+  const { e } = monterClaude();
+  e.ouvrir({ chemin: "main.rs", contenu: "abc", version: "1" });
+  modifier(e, "main.rs");
+  e.ouvrirClaude({ id: "a" });
+  e.ouvrirClaude({ id: "b" });
+  clicDroit(onglet("Claude 1"));
+  expect(menuOuvert().getAttribute("aria-label")).toBe("Actions sur Claude 1");
+  choisirCommande("Fermer tous les onglets");
+  // Les sessions s'arrêtent sans question, avant le dialogue du fichier modifié.
+  expect(fermes()).toEqual(["fermer a", "fermer b"]);
+  await vi.waitFor(() => expect(dialogueOuvert()?.textContent).toContain("Sauvegarder main.rs ?"));
+  expect(nomsOnglets()).toEqual(["main.rs"]);
+});
+
+test("REQ068_AC16_fin_code_0_focus_selon_l_onglet_suivant", () => {
+  const { e, dire } = monterClaude();
+  e.ouvrir({ chemin: "main.rs", contenu: "abc", version: "1" });
+  e.ouvrirClaude({ id: "a" });
+  e.ouvrirClaude({ id: "b" });
+  // Focus dans le terminal de Claude 2 (actif), qui finit : Claude 1 devient actif, son terminal prend le focus.
+  faux.vues[1].surFin({ code: 0 });
+  expect(nomsOnglets()).toEqual(["main.rs", "Claude 1"]);
+  expect(document.activeElement).toBe(faux.vues[0].corps.querySelector("textarea"));
+  // Puis Claude 1 finit : l'éditeur de main.rs reçoit le focus.
+  faux.vues[0].surFin({ code: 0 });
+  expect(nomsOnglets()).toEqual(["main.rs"]);
+  expect(document.activeElement.getAttribute("aria-label")).toBe("Éditeur main.rs");
+  // Aucun fichier ensuite : « Ouvrir un fichier ».
+  e.ouvrirClaude({ id: "c" });
+  croix("main.rs").click();
+  faux.vues.at(-1).focus();
+  faux.vues.at(-1).surFin({ code: 0 });
+  expect(onglets().length).toBe(0);
+  expect(document.activeElement.textContent).toBe("Ouvrir un fichier");
+  // Le focus ailleurs : il ne bouge pas.
+  e.ouvrir({ chemin: "a.txt", contenu: "x", version: "1" });
+  e.ouvrirClaude({ id: "d" });
+  const ailleurs = document.createElement("button");
+  document.body.append(ailleurs);
+  ailleurs.focus();
+  faux.vues.at(-1).surFin({ code: 0 });
+  expect(document.activeElement).toBe(ailleurs);
+  expect(nomsOnglets()).toEqual(["a.txt"]);
+  expect(fermes()).toEqual([]);
+  expect(dire).not.toHaveBeenCalled();
+});
+
+test("REQ068_AC15_code_non_nul_l_onglet_reste_ouvert", () => {
+  const { e } = monterClaude();
+  e.ouvrirClaude({ id: "a" });
+  faux.vues[0].surFin({ code: 1 });
+  expect(nomsOnglets()).toEqual(["Claude 1"]);
+  croix("Claude 1").click();
+  expect(fermes()).toEqual(["fermer a"]);
+});
+
+test("REQ068_AC9_session_disparue_onglet_retire_sans_message", () => {
+  const { e, dire } = monterClaude();
+  e.ouvrir({ chemin: "main.rs", contenu: "abc", version: "1" });
+  e.ouvrirClaude({ id: "a" });
+  faux.vues[0].surFin({ disparue: true });
+  expect(nomsOnglets()).toEqual(["main.rs"]);
+  expect(dire).not.toHaveBeenCalled();
+  expect(fermes()).toEqual([]);
+});
+
+function gardes(liste, actif) {
+  lire.mockResolvedValueOnce({ liste, actif });
+}
+const fichierGarde = (chemin) => ({ chemin, apercu: false, hybride: false });
+const claudeGarde = (id, numero, instance = "i1") => ({ claude: true, id, numero, instance });
+
+test("REQ068_AC17_rechargement_focus_sur_l_onglet", async () => {
+  gardes([fichierGarde("main.rs"), claudeGarde("a", 1)], "\0claude:a");
+  const { e } = monterClaude({}, true);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["main.rs", "Claude 1"]);
+  expect(actifNom()).toBe("Claude 1");
+  expect(document.activeElement).toBe(onglet("Claude 1"));
+  expect(faux.vues[0].focus).not.toHaveBeenCalled();
+  // Entrée sur l'onglet (un clic pour un bouton) met le focus dans le terminal.
+  onglet("Claude 1").click();
+  expect(document.activeElement).toBe(faux.vues[0].corps.querySelector("textarea"));
+});
+
+test("REQ068_AC9_instance_changee_onglet_retire", async () => {
+  gardes([fichierGarde("main.rs"), claudeGarde("a", 1, "ancienne")], "\0claude:a");
+  const { e } = monterClaude({}, true);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["main.rs"]);
+  expect(faux.vues.length).toBe(0);
+  expect(actifNom()).toBe("main.rs");
+});
+
+test("REQ018_fichiers_et_claude_restaures_dans_l_ordre", async () => {
+  gardes([fichierGarde("a.txt"), claudeGarde("x", 2), fichierGarde("b.txt"), claudeGarde("y", 1)], "b.txt");
+  const { e } = monterClaude({}, true);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["a.txt", "Claude 2", "b.txt", "Claude 1"]);
+  expect(actifNom()).toBe("b.txt");
+  expect(faux.vues.map((v) => [v.id, v.nom])).toEqual([["x", "Claude 2"], ["y", "Claude 1"]]);
+  // Un prochain onglet prend le numéro libre ; la liste gardée garde id, numéro et instance.
+  const { ecrire } = await import("../stockage.js");
+  ecrire.mockClear();
+  e.ouvrirClaude({ id: "z" });
+  await vi.waitFor(() => expect(ecrire).toHaveBeenCalled());
+  expect(nomsOnglets().at(-1)).toBe("Claude 3");
+  const [, valeur] = ecrire.mock.calls.at(-1);
+  expect(valeur.liste).toEqual([
+    expect.objectContaining({ chemin: "a.txt" }),
+    { claude: true, id: "x", numero: 2, instance: "i1" },
+    expect.objectContaining({ chemin: "b.txt" }),
+    { claude: true, id: "y", numero: 1, instance: "i1" },
+    { claude: true, id: "z", numero: 3, instance: "i1" },
+  ]);
+  expect(valeur.actif).toBe("\0claude:z");
+});
+
+test("REQ068_AC8_coupure_la_croix_laisse_l_onglet_et_ne_ferme_aucune_session", async () => {
+  const { e, dire } = monterClaude();
+  e.ouvrir({ chemin: "main.rs", contenu: "abc", version: "1" });
+  e.ouvrirClaude({ id: "a" });
+  e.definirEtat("coupe");
+  croix("Claude 1").click();
+  touche(onglet("Claude 1"), "Delete");
+  expect(nomsOnglets()).toEqual(["main.rs", "Claude 1"]);
+  expect(dire).toHaveBeenCalledWith(expect.objectContaining({ texte: "Connexion perdue. Réessayez au retour." }));
+  clicDroit(onglet("Claude 1"));
+  choisirCommande("Fermer tous les onglets");
+  await vi.waitFor(() => expect(nomsOnglets()).toEqual(["Claude 1"]));
+  expect(faux.journal.filter((j) => j.startsWith("fermer") || j.startsWith("detruire"))).toEqual([]);
+  e.definirEtat("connecte");
+  croix("Claude 1").click();
+  expect(faux.journal).toEqual(["detruire a", "fermer a"]);
 });
