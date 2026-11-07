@@ -755,3 +755,33 @@ test("REQ068_AC8_coupure_la_croix_laisse_l_onglet_et_ne_ferme_aucune_session", a
   croix("Claude 1").click();
   expect(faux.journal).toEqual(["detruire a", "fermer a"]);
 });
+
+test("REQ070_AC6_onglets_claude_gardes_caches_puis_rendus", async () => {
+  vi.resetModules();
+  const garder = vi.fn();
+  const gardee = [
+    { claude: true, id: "t0", numero: 1, instance: "i1" },
+    { claude: true, id: "t1", numero: 2, instance: "i1" },
+    { chemin: "a.txt" },
+    { claude: true, id: "s1", numero: 3, instance: "i1" },
+    { claude: true, id: "s2", numero: 4, instance: "i1" },
+    { chemin: "b.txt" },
+  ];
+  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder, retrouver: async () => ({ liste: gardee, actif: "a.txt" }) }));
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => "x" })));
+  const { vueEditeur: neuf } = await import("./editeur.js");
+  const e = neuf({ dire: vi.fn(), claude: false });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  vi.useFakeTimers();
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["a.txt", "b.txt"]);
+  expect(fetch.mock.calls.some(([u]) => String(u).includes("/api/shells"))).toBe(false);
+  e.ouvrir({ chemin: "c.txt", contenu: "y", version: "1" });
+  await vi.advanceTimersByTimeAsync(250);
+  vi.useRealTimers();
+  const dernier = garder.mock.calls.at(-1)[0];
+  expect(dernier.map((g) => g.chemin ?? `claude:${g.id}`)).toEqual(["claude:t0", "claude:t1", "a.txt", "claude:s1", "claude:s2", "b.txt", "c.txt"]);
+  vi.doUnmock("../onglets-fichiers.js");
+  vi.resetModules();
+});

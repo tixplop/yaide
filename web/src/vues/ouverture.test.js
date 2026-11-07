@@ -238,3 +238,12 @@ test("REQ054_AC5_gras_aucune_commande_et_fleches", async () => {
   expect(document.querySelector("dialog [role=option]")).toBeNull();
   v.detruire();
 });
+
+test("REQ070_AC5_ouverture_sans_commandes", async () => {
+  simuler(json({ chemins: ["src/main.rs"] }));
+  const { entree } = await ouvrir({ commandes: [] });
+  taper(entree, ">");
+  expect(document.querySelector("dialog").textContent).toContain("Aucune commande trouvée.");
+  taper(entree, "main");
+  expect(document.querySelector("dialog [role=listbox]").textContent).toContain("src/main.rs");
+});

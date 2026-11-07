@@ -1811,3 +1811,146 @@ test("REQ069_AC4_shells_repli_impose_a_la_restauration", async () => {
   expect(appels).not.toContain("POST /api/shells");
   expect(zone(vue).hidden).toBe(true);
 });
+
+// ---- T-114 : fonctions désactivées (REQ-070) ----
+
+/** Serveur simulé qui note chaque requête (méthode et chemin). */
+function simulerTout({ claude = true } = {}) {
+  FauxWebSocket.tous = [];
+  vi.stubGlobal("WebSocket", FauxWebSocket);
+  const appels = [];
+  const rep = (corps, status = 200) => ({ ok: status < 400, status, json: async () => corps, text: async () => "" });
+  vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+    const chemin = String(url).split("?")[0];
+    appels.push(`${opts.method ?? "GET"} ${chemin}`);
+    if (chemin === "/api/claude") return rep({ disponible: claude });
+    if (chemin === "/api/shells") return rep({ instance: "i1", shells: [1] });
+    if (chemin === "/api/fichiers") return rep({ entrees: [{ nom: "a.txt", dossier: false }] });
+    if (chemin === "/api/session") return rep({}, 204);
+    if (chemin === "/api/git/etat") return rep({ branche: "main", detachee: false, branches: ["main"], changements: [{ chemin: "a.txt", lettre: "M", indexe: false }] });
+    if (chemin === "/api/agent/agents") return rep({ agents: [], erreurs: [] });
+    if (chemin === "/api/agent/reglages") return rep({ providers: [], profils: [] });
+    return rep({}, 409);
+  }));
+  vi.mocked(lire).mockImplementation(async () => undefined);
+  return appels;
+}
+const nomsRail = (vue) => [...vue.querySelectorAll("[role=tab]")].filter((t) => t.closest(".cadre-rail")).map((t) => t.getAttribute("aria-label"));
+const sans = (appels, debut) => appels.filter((a) => a.includes(debut));
+
+test("REQ070_AC1_git_desactive_sans_onglet_ni_statut_ni_requete_git", () =>
+  avecHorloge(async () => {
+    const appels = simulerTout();
+    const { vue } = monter({ reglages: { fonctions: { git: false } } });
+    await vi.advanceTimersByTimeAsync(7000);
+    expect(nomsRail(vue)).toEqual(["Fichiers", "Recherche"]);
+    expect(sans(appels, "/api/git")).toEqual([]);
+    expect(sans(appels, "/api/fichiers").length).toBeGreaterThan(1); // l'arbre est toujours relu
+    expect(vue.querySelector("header").textContent).toBe("projet");
+    expect(vue.querySelector(".ya-status-branche").hidden).toBe(true);
+    expect(vue.querySelector(".cadre-rail-onglets .ya-badge")).toBeNull();
+    const tab = vue.querySelector("[role=tab]");
+    tab.focus();
+    clavier(tab, "g");
+    expect(vue.querySelector("aside h2").textContent).toBe("Fichiers");
+  }));
+
+test("REQ070_AC2_recherche_desactivee_sans_onglet_ni_touche", async () => {
+  simulerTout();
+  const { vue } = monter({ reglages: { fonctions: { recherche: false } } });
+  expect(nomsRail(vue)).toEqual(["Fichiers", "Git"]);
+  const tab = vue.querySelector("[role=tab]");
+  tab.focus();
+  clavier(tab, "r");
+  expect(vue.querySelector("aside h2").textContent).toBe("Fichiers");
+  expect(vue.querySelector("[role=tab][aria-selected=true]").getAttribute("aria-label")).toBe("Fichiers");
+  expect(vue.querySelector(".recherche")).toBeNull();
+});
+
+test("REQ070_AC3_shells_desactives_sans_commandes_ni_requete", async () => {
+  const appels = simulerTout();
+  const { vue } = monter({ reglages: { fonctions: { shells: false } } });
+  await attendre();
+  await attendre();
+  expect(sans(appels, "/api/shells")).toEqual([]);
+  expect(vue.querySelector(".cadre-rail-commandes")).toBeNull();
+  expect(vue.querySelector(".cadre-shells")).toBeNull();
+  expect(vue.querySelector("header [aria-label='Replier les shells']")).toBeNull();
+  expect(vue.textContent).not.toContain("Aucun shell");
+});
+
+test("REQ070_AC5_agents_desactives_sans_colonne_ni_touche_a", async () => {
+  const appels = simulerTout();
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "replis" ? { agent: false } : undefined));
+  const { vue } = monter({ reglages: { fonctions: { agents: false }, replis: { agent: false } } });
+  await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
+  expect([...vue.querySelectorAll(".cadre-rail-droit button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Claude"]);
+  expect(agentCol(vue)).toBeNull();
+  expect(sans(appels, "/api/agent")).toEqual([]);
+  for (const b of [vue.querySelector("[role=tab]"), boutonClaudeDe(vue)]) {
+    b.focus();
+    clavier(b, "a");
+    expect(document.activeElement).toBe(b);
+  }
+  expect(agentCol(vue)).toBeNull();
+  expect(vue.querySelector("[aria-label='Replier l\\'agent']")).toBeNull();
+  // Le repli gardé de l'agent n'est pas écrasé par un autre repli.
+  vue.querySelector("header [aria-label='Replier le panneau']").click();
+  expect(ecrire).toHaveBeenLastCalledWith("replis", expect.objectContaining({ panneau: true, agent: false }));
+});
+
+test("REQ070_AC6_claude_desactive_sans_detection", async () => {
+  const appels = simulerTout();
+  const { vue } = monter({ reglages: { fonctions: { claude: false } } });
+  await attendre();
+  await attendre();
+  expect(sans(appels, "/api/claude")).toEqual([]);
+  expect(boutonClaudeDe(vue)).toBeNull();
+  expect([...vue.querySelectorAll(".cadre-rail-droit button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents"]);
+});
+
+test("REQ070_AC7_rail_droit_absent_sans_commande_meme_sans_claude", async () => {
+  simulerTout({ claude: false });
+  const { vue } = monter({ reglages: { fonctions: { agents: false } } });
+  await attendre();
+  await attendre();
+  expect(vue.querySelector(".cadre-rail-droit")).toBeNull();
+});
+
+test("REQ070_AC8_tout_desactive_fichiers_seul", () =>
+  avecHorloge(async () => {
+    const appels = simulerTout();
+    const { vue } = monter({ reglages: { fonctions: { recherche: false, git: false, shells: false, agents: false, claude: false } } });
+    await vi.advanceTimersByTimeAsync(7000);
+    expect(nomsRail(vue)).toEqual(["Fichiers"]);
+    expect(vue.querySelector(".cadre-rail-droit")).toBeNull();
+    expect(vue.querySelector(".cadre-shells")).toBeNull();
+    expect(agentCol(vue)).toBeNull();
+    expect(appels.filter((a) => !a.includes("/api/fichiers") && !a.includes("/api/session"))).toEqual([]);
+    // Le panneau affiche Fichiers.
+    expect(vue.querySelector("aside h2").textContent).toBe("Fichiers");
+  }));
+
+test("REQ070_AC11_ordre_de_tab_sans_les_fonctions_absentes", async () => {
+  simulerTout();
+  const { vue } = monter({ reglages: { fonctions: { recherche: false, git: false, shells: false, agents: false } } });
+  await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
+  const arrets = [...vue.querySelectorAll("button, [role=tab], [tabindex]")].filter((e) => e.tabIndex >= 0 && !e.closest("[hidden]"));
+  const noms = arrets.map((e) => e.getAttribute("aria-label")).filter(Boolean);
+  expect(noms.slice(0, 4)).toEqual(["Ouverture rapide", "Replier le panneau", "Thème clair", "Déconnexion"]);
+  expect(noms).not.toContain("Recherche");
+  expect(noms).not.toContain("Git");
+  expect(noms).not.toContain("Agent");
+  expect(noms.some((n) => n.includes("shell"))).toBe(false);
+  expect(noms.at(-1)).toBe("Claude");
+});
+
+test("REQ070_vue_gardee_absente_retombe_sur_fichiers", async () => {
+  simulerTout();
+  // La vue affichée n'est pas enregistrée : le panneau démarre toujours sur Fichiers, seule vue restante.
+  const { vue } = monter({ reglages: { fonctions: { git: false, recherche: false } } });
+  await attendre();
+  expect(vue.querySelector("[role=tab][aria-selected=true]").getAttribute("aria-label")).toBe("Fichiers");
+  expect(vue.querySelector("aside h2").textContent).toBe("Fichiers");
+  expect(vue.querySelector(".fichiers").hidden).toBe(false);
+});

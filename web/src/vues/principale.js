@@ -34,6 +34,9 @@ const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 /** V-002. `surDeconnexion` est appelé une fois la session fermée, `surExpiree` si elle expire. */
 export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnexion, reglages = {} }) {
   const imposes = reglages.replis ?? {};
+  // Une fonction désactivée n'est pas créée : ni vue, ni minuteur, ni requête.
+  const avec = { recherche: true, git: true, shells: true, agents: true, claude: true, ...reglages.fonctions };
+  const panneaux = PANNEAUX.filter((p) => avec[p.id] !== false);
   document.title = `${nomDuDossier(chemin)} — yaide`;
 
   const sortir = bouton({ icone: "log-out", nomAccessible: "Déconnexion" });
@@ -48,6 +51,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
 
   // Le panneau replié laisse la place à l'éditeur ; la vue et les tailles restent en mémoire.
+  let agentConserve; // repli de l'agent gardé, que l'on n'écrase pas quand les agents sont désactivés
+  const gardeReplis = () => ({ panneau: panneauReplie, agent: avec.agents ? agentReplie : agentConserve });
   const boutonAgent = bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", actif: false });
   const boutonAgents = bouton({ icone: "users", nomAccessible: "Agents", positionInfoBulle: "gauche", actif: false });
   const repliAgent = bouton({ icone: "panel-right-close", nomAccessible: "Replier l'agent", positionInfoBulle: "gauche" });
@@ -86,19 +91,21 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     racine.definirReplis({ panneau: oui });
     boutonPanneau.definirCommande(oui ? { nomAccessible: "Déplier le panneau", icone: "panel-left-open" } : { nomAccessible: "Replier le panneau", icone: "panel-left-close" });
     recalculer();
-    ecrire("replis", { panneau: panneauReplie, agent: agentReplie });
+    ecrire("replis", gardeReplis());
   }
   function replierAgent(oui) {
+    if (!avec.agents) return;
     agentReplie = oui;
     // Place pour une seule colonne : déplier l'agent replie le panneau.
     if (!oui && !panneauReplie && etroit()) replierPanneau(true);
     racine.definirReplis({ agent: oui });
     majCommandes();
     recalculer();
-    ecrire("replis", { panneau: panneauReplie, agent: agentReplie });
+    ecrire("replis", gardeReplis());
   }
   // « Agent » et A : déplie l'agent s'il est replié, et met le focus dans « Message à l'agent ».
   function entrerDansAgent() {
+    if (!avec.agents) return;
     const absent = agentReplie || vueColonne !== "agent";
     if (agentReplie) replierAgent(false);
     montrerVue("agent");
@@ -107,15 +114,18 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   }
   // « Agents » : déplie la colonne si besoin, affiche V-010 et relit la liste.
   function entrerDansAgents() {
+    if (!avec.agents) return;
     if (agentReplie) replierAgent(false);
     montrerVue("agents");
     agents.afficher();
   }
   const majCommandes = () => {
+    if (!avec.agents) return;
     boutonAgent.definirActif(!agentReplie && vueColonne === "agent");
     boutonAgents.definirActif(!agentReplie && vueColonne === "agents");
   };
   function montrerVue(v) {
+    if (!avec.agents) return;
     vueColonne = v;
     agent.corps.hidden = v !== "agent";
     agents.corps.hidden = v !== "agents";
@@ -187,15 +197,17 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   let fichiers = null; // créé après l'éditeur, dont les premiers rappels arrivent avant
   let git = null; // créé après l'arbre, dont la première lecture le demande
   // La zone des shells sort de la page sans shell visible ; la poignée reprend sa taille à son retour.
-  const shells = vueShells({
-    dire,
-    replieImpose: imposes.shells,
-    surZone: (oui, replie) => {
-      racine?.definirShellsVisibles(oui);
-      racine?.definirReplis({ shells: replie });
-      recalculer();
-    },
-  });
+  const shells = avec.shells
+    ? vueShells({
+        dire,
+        replieImpose: imposes.shells,
+        surZone: (oui, replie) => {
+          racine?.definirShellsVisibles(oui);
+          racine?.definirReplis({ shells: replie });
+          recalculer();
+        },
+      })
+    : { commandes: [], repli: { enveloppe: null }, definirEtat() {}, detruire() {} };
   const editeur = vueEditeur({
     chemin,
     dire,
@@ -203,6 +215,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     surAttente: (t) => { attenteTexte = t; montrerCoupure(); },
     surCourant: (chemin) => fichiers?.definirCourant(chemin),
     surSauvegarde: () => git?.rafraichir(),
+    claude: avec.claude,
     surActif: (a) => {
       barre.position = a?.position;
       barre.langage = a?.langage;
@@ -213,12 +226,13 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   let panneauConfig = null;
   const ouverture = vueOuverture({
     dire,
+    commandes: avec.agents ? undefined : [],
     surOuvrir: editeur.ouvrir,
     surLecture: editeur.lecture,
     surCommande: (id, avant) => {
       const ouvrirPanneau = { providers: ouvrirProviders, profils: ouvrirProfils }[id];
       if (!ouvrirPanneau) return;
-      panneauConfig = ouvrirPanneau({ surFermeture: () => { panneauConfig = null; agent.relireReglages(); avant?.focus?.(); } });
+      panneauConfig = ouvrirPanneau({ surFermeture: () => { panneauConfig = null; agent?.relireReglages(); avant?.focus?.(); } });
     },
   });
   fichiers = vueFichiers({
@@ -232,8 +246,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       git.focuserMessage();
     }, surOuvrir: editeur.ouvrir, surRenomme: editeur.renomme, surSupprime: editeur.supprime, surLecture: editeur.lecture,
   });
-  const recherche = vueRecherche({ dire, surOuvrir: editeur.ouvrir, surLecture: editeur.lecture });
-  git = vueGit({
+  const recherche = avec.recherche ? vueRecherche({ dire, surOuvrir: editeur.ouvrir, surLecture: editeur.lecture }) : null;
+  git = avec.git ? vueGit({
     dire,
     surBranche: (b) => {
       barre.branche = b ? (b.detachee ? "détachée" : b.branche) : undefined;
@@ -250,17 +264,17 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     diffOuvert: editeur.diffOuvert,
     fermerDiff: editeur.fermerDiff,
     surDisque: editeur.relireDisque,
-  });
-  const agent = vueAgent({});
-  const agents = vueAgents({ surFichier, surDemarrer });
-  agents.corps.hidden = true;
+  }) : { corps: null, estDepot: () => false, rafraichir() {}, relire() {}, montrer() {}, focuserMessage() {}, detruire() {} };
+  const agent = avec.agents ? vueAgent({}) : null;
+  const agents = avec.agents ? vueAgents({ surFichier, surDemarrer }) : null;
+  if (agents) agents.corps.hidden = true;
   const restauration = editeur.restaurer();
 
   let nombre = 0; // changements git, affichés sur l'icône Git du rail
   const majRail = () => rail.definirCompteur("git", nombre);
   const rail = onglets({
     orientation: "verticale",
-    onglets: PANNEAUX.map(({ id, icone, nomAccessible, raccourci }) => ({ id, icone, nomAccessible, raccourci })),
+    onglets: panneaux.map(({ id, icone, nomAccessible, raccourci }) => ({ id, icone, nomAccessible, raccourci })),
     actif: "fichiers",
     surChoix: afficherPanneau,
   });
@@ -268,11 +282,12 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const choisies = {};
   let detruite = false;
   racine = cadre({
-    barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [boutonPanneau.enveloppe, shells.repli.enveloppe, theme.enveloppe, sortir.enveloppe] },
+    barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [boutonPanneau.enveloppe, shells.repli.enveloppe, theme.enveloppe, sortir.enveloppe].filter(Boolean) },
     rail: { onglets: rail, commandes: shells.commandes },
-    panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps] },
-    agent: { titre: "Agent", repli: repliAgent.enveloppe, corps: [agent.corps, agents.corps] },
-    railDroit: { commandes: [boutonAgent.enveloppe, boutonAgents.enveloppe] },
+    panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche?.corps, git.corps].filter(Boolean) },
+    agent: { titre: "Agent", repli: repliAgent.enveloppe, corps: avec.agents ? [agent.corps, agents.corps] : [] },
+    railDroit: { commandes: avec.agents ? [boutonAgent.enveloppe, boutonAgents.enveloppe] : [] },
+    fonctions: avec,
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, fil: editeur.fil, code: editeur.code, shells },
     barreEtat: barre,
     surChangement: (zone, taille) => {
@@ -283,9 +298,11 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
 
   // « Claude » n'existe que si `claude` est dans le PATH du serveur, vérifié à chaque chargement.
-  claudeDisponible().then((oui) => {
-    if (oui && !detruite) racine.querySelector(".cadre-rail-droit").append(boutonClaude.enveloppe);
-  });
+  if (avec.claude) {
+    claudeDisponible().then((oui) => {
+      if (oui && !detruite) racine.ajouterCommandeDroite(boutonClaude.enveloppe);
+    });
+  }
 
   // Sans shell à l'arrivée : la zone reste hors page le temps de lire la liste.
   racine.dataset.vueColonne = vueColonne;
@@ -307,6 +324,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (!panneauReplie && !agentReplie && window.innerWidth < lim.seuil) return replierPanneau(true);
     const bornees = {};
     for (const zone of ["panneau", "agent", "shells"]) {
+      if (!racine.poignees[zone]) continue;
       racine.poignees[zone].definir(lim[zone]);
       if (choisies[zone] !== undefined) bornees[zone] = borner(choisies[zone], lim[zone]);
     }
@@ -335,8 +353,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   }
   Promise.all([lire("replis"), restauration]).then(([precedents]) => {
     if (detruite) return;
+    agentConserve = precedents?.agent;
     const gardes = { ...precedents, ...imposes };
-    if (gardes?.agent === false) {
+    if (avec.agents && gardes?.agent === false) {
       replierAgent(false);
       if (vueColonne === "agent") agent.deplier();
     }
@@ -350,13 +369,13 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   corps.tabIndex = -1;
 
   function afficherPanneau(id) {
-    const p = PANNEAUX.find((x) => x.id === id);
+    const p = panneaux.find((x) => x.id === id);
     titre.textContent = p.titre;
     corps.setAttribute("aria-label", p.titre);
     const visible = id === "fichiers";
     if (visible && fichiers.corps.hidden && !panneauReplie) fichiers.rafraichir();
     fichiers.corps.hidden = fichiers.entete.hidden = !visible;
-    recherche.montrer(id === "recherche");
+    recherche?.montrer(id === "recherche");
     git.montrer(id === "git");
   }
   afficherPanneau("fichiers");
@@ -370,14 +389,14 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       entrerDansPanneau();
     }
     corps.focus();
-    if (onglet.getAttribute("aria-label") === "Recherche") recherche.focuser();
+    if (onglet.getAttribute("aria-label") === "Recherche") recherche?.focuser();
   });
   // Focus sur le rail : F, R et G affichent le panneau et y mettent le focus.
   // Les deux boutons de commande du rail comptent aussi : la garde est posée sur toute la colonne.
   racine.querySelector(".cadre-rail").addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.target.closest("[role=tab], .cadre-rail-commandes button")) return;
     if (e.key.toLowerCase() === "a") return entrerDansAgent();
-    const p = PANNEAUX.find((x) => x.touche === e.key.toLowerCase());
+    const p = panneaux.find((x) => x.touche === e.key.toLowerCase());
     if (!p) return;
     rail.choisir(p.id);
     afficherPanneau(p.id);
@@ -386,10 +405,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       entrerDansPanneau();
     }
     corps.focus();
-    if (p.id === "recherche") recherche.focuser();
+    if (p.id === "recherche") recherche?.focuser();
   });
-  racine.querySelector(".cadre-rail-droit").addEventListener("keydown", (e) => {
-    if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.target.closest("button") || e.key.toLowerCase() !== "a") return;
+  racine.addEventListener("keydown", (e) => {
+    if (!avec.agents || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.target.closest(".cadre-rail-droit button") || e.key.toLowerCase() !== "a") return;
     // Sans cela, la lettre serait tapée dans le champ qui reçoit le focus.
     e.preventDefault();
     entrerDansAgent();
@@ -445,9 +464,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     editeur.detruire();
     fichiers.detruire();
     git.detruire();
-    recherche.detruire();
-    agent.detruire();
-    agents.detruire();
+    recherche?.detruire();
+    agent?.detruire();
+    agents?.detruire();
     ouverture.detruire();
     panneauConfig?.fermer();
   };

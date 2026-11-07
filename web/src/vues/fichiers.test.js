@@ -670,3 +670,12 @@ test("REQ050_relecture_croisee_jetee", async () => {
   expect(choisies(vue)).toEqual(["src/a.txt", "src/b.txt"]);
   expect(document.activeElement.dataset.chemin).toBe("src/a.txt");
 });
+
+test("REQ070_AC1_menu_arbre_sans_git", async () => {
+  const { vue } = await monter({ "": [f("a.txt")] }, { estDepot: () => false });
+  ligne(vue, "a.txt").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+  const libelles = [...document.querySelectorAll("[role=menu] [role=menuitem]")].map((e) => e.textContent);
+  expect(libelles.length).toBeGreaterThan(0);
+  expect(libelles.some((l) => l.startsWith("Indexer") || l.startsWith("Commit"))).toBe(false);
+  expect(libelles.some((l) => l.startsWith("Renommer"))).toBe(true);
+});

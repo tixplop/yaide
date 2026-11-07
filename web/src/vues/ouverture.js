@@ -45,9 +45,10 @@ export function filtrer(chemins, texte) {
 /**
  * V-006. Ctrl+P (sauf dans un shell) ou `ouvrir()` affiche le dialogue.
  * Rappels : `surOuvrir({ chemin, contenu, version, geste })`, `geste = surLecture(true)`, `surLecture(false)`.
+ * `commandes` : les commandes proposées (vide si les agents sont désactivés).
  * Un texte qui commence par `>` liste les commandes : `surCommande(id, avant)`, `avant` étant l'élément qui avait le focus avant l'ouverture.
  */
-export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}, surCommande = () => {} }) {
+export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}, surCommande = () => {}, commandes = COMMANDES }) {
   let detruit = false;
   let dlg = null;
 
@@ -87,11 +88,11 @@ export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}
 
     function afficherCommandes() {
       const reste = entree.value.slice(1).trimStart();
-      const noms = COMMANDES.map((c) => c.nom);
+      const noms = commandes.map((c) => c.nom);
       const trouves = reste === "" ? noms.map((chemin) => ({ chemin })) : filtrer(noms, reste);
       if (trouves.length === 0) return zone.replaceChildren(indication({ texte: "Aucune commande trouvée." }));
       const l = liste({
-        lignes: trouves.map((t) => ({ id: COMMANDES.find((c) => c.nom === t.chemin).id, libelle: t.chemin, trouve: t.debut === undefined ? undefined : [t.debut, t.fin] })),
+        lignes: trouves.map((t) => ({ id: commandes.find((c) => c.nom === t.chemin).id, libelle: t.chemin, trouve: t.debut === undefined ? undefined : [t.debut, t.fin] })),
         pilotage: "champ",
         champ: entree,
         surActiver: (id) => {

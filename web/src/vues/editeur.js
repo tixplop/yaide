@@ -29,11 +29,12 @@ const avecApercu = (chemin) => /\.(md|markdown|html|htm)$/i.test(chemin);
  * `surActif({ position, langage })` : l'onglet actif et sa position pour la barre d'état (`null` sans onglet ; sur un diff, la position seule).
  * `surSauvegarde()` : une sauvegarde a réussi (l'état git a pu changer).
  * `surCourant(chemin | null)` : le fichier de l'onglet actif (`null` sans onglet ou sur un diff).
+ * `claude` : faux, les onglets Claude gardés ne sont ni affichés ni branchés, mais restent dans la liste enregistrée, à leur place.
  * `chemin` : le chemin du projet, dit par l'info-bulle des onglets Claude.
  * Un onglet Claude (REQ-068) est dans la même liste que les fichiers : `{ claude: true, id, numero, instance }`, sa clé `chemin` ne désigne aucun fichier.
  * Rend `{ definirStatuts(statuts), barre, fil, code, lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
-export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {} }) {
+export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {}, claude = true }) {
   const barre = document.createElement("div");
   const fil = document.createElement("div");
   fil.className = "ya-crumbs";
@@ -55,6 +56,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   let sondageEnCours = false;
   let coupe = false;
   let statuts = new Map(); // chemin -> { lettre, mot } : statuts git (REQ-039)
+  const cachees = []; // onglets Claude gardés mais non créés (Claude désactivé) : { garde, apres }, `apres` étant le chemin du fichier qui les précédait
   const attente = new Set(); // onglets dont Ctrl+S attend le retour de la connexion
 
   const trouver = (chemin) => liste.find((o) => o.chemin === chemin);
@@ -76,8 +78,16 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   }
 
   function ecrireGarde() {
+    const gardes = liste.map((o) => (o.claude ? { claude: true, id: o.id, numero: o.numero, instance: o.instance } : { chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) }));
+    const deja = new Map(); // apres -> nombre d'onglets cachés déjà réinsérés à cet endroit
+    for (const { garde, apres } of cachees) {
+      const i = apres === null ? -1 : gardes.findIndex((g) => g.chemin === apres);
+      const n = deja.get(apres) ?? 0;
+      deja.set(apres, n + 1);
+      gardes.splice((apres !== null && i < 0 ? gardes.length : i + 1) + n, 0, garde);
+    }
     garder(
-      liste.map((o) => (o.claude ? { claude: true, id: o.id, numero: o.numero, instance: o.instance } : { chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) })),
+      gardes,
       actif === DIFF ? (liste[0]?.chemin ?? null) : actif,
     );
   }
@@ -709,12 +719,18 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   async function restaurer() {
     const gardes = await retrouver();
-    const instance = gardes.liste.some((g) => g.claude) ? (await listeShells())?.instance : undefined;
+    const instance = claude && gardes.liste.some((g) => g.claude) ? (await listeShells())?.instance : undefined;
     const lus = await Promise.all(gardes.liste.map((g) => (g.claude ? null : lireGarde(g))));
     if (detruit) return;
     lectures--;
     const aVerifier = [];
+    let precedent = null;
     gardes.liste.forEach((g, i) => {
+      if (g.claude && !claude) {
+        cachees.push({ garde: g, apres: precedent });
+        return;
+      }
+      if (!g.claude) precedent = g.chemin;
       if (g.claude) {
         // Yaide relancé : ses sessions n'existent plus. Sans réponse du serveur, la vue se rebranche ou découvre la disparition.
         if (g.instance && instance && g.instance !== instance) return;
