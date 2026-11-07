@@ -413,7 +413,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .agent-barre .bouton-enveloppe[hidden] { display: none; }
 
 /* C-015 */
-.ya-chat { display: flex; flex-direction: column; gap: var(--space-3); box-sizing: border-box; height: 100%; overflow: auto; padding: var(--space-2) var(--space-3); background: var(--bg-100); color: var(--ink); font: 13px/20px var(--font-sans); }
+.ya-chat { display: flex; flex-direction: column; gap: var(--space-3); position: relative; box-sizing: border-box; height: 100%; overflow: auto; padding: var(--space-2) var(--space-3); background: var(--bg-100); color: var(--ink); font: 13px/20px var(--font-sans); }
 .ya-chat:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
 .ya-chat > .ya-steps + .ya-steps { margin-top: -10px; }
 .ya-chat-vide { flex: 1; display: flex; align-items: center; justify-content: center; }

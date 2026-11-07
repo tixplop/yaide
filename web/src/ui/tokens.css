@@ -153,3 +153,6 @@
   --hauteur-min: 480px;
   --hauteur-detail: 160px;
 }
+
+/* C-010 : à partir de --largeur-min × --hauteur-min la page ne défile jamais (une requête de média ne lit pas var()). */
+@media (min-width: 800px) and (min-height: 480px) { html { overflow: clip; } }

@@ -467,3 +467,55 @@ test("REQ059_parcours_23_garder_l_agent_a_cote_de_son_code", async ({ page, brow
   await expect.poll(() => largeur("aside.cadre-agent")).toBe(720);
   await expect(page.locator("aside.cadre-panneau")).toBeVisible();
 });
+
+test("REQ028_AC20_AC21_la_page_ne_defile_jamais", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  faux = await lancerFauxProvider(Array.from({ length: 30 }, (_, i) => reponse({ texte: `Réponse numéro ${i + 1}.`, tokens: 100 + i })));
+  yaide = await lancerYaide({ dossier: depotAgent() });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await ouvrirYaide(page, yaide.origine);
+  await reglerAnthropic(page);
+  await page.reload();
+  await page.getByRole("tab", { name: /^shell \d+$/ }).first().waitFor();
+  await rail(page, "Agent").click();
+  await expect(profil(page)).toHaveValue(/sonnet/);
+  for (let i = 1; i <= 30; i++) {
+    await champMessage(page).fill(`Message ${i}`);
+    await page.keyboard.press("Enter");
+    await expect(fil(page)).toContainText(`Réponse numéro ${i}.`, { timeout: 15000 });
+    await expect(arreter(page)).toBeHidden();
+  }
+
+  const verifier = async (quand) => {
+    await page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)))); // la mise en page est terminée
+    const m = await page.evaluate(() => {
+      const d = document.documentElement;
+      return { sh: d.scrollHeight, ih: innerHeight, sw: d.scrollWidth, iw: innerWidth, x: scrollX, y: scrollY };
+    });
+    expect(m.sh, `${quand} : hauteur`).toBeLessThanOrEqual(m.ih);
+    expect(m.sw, `${quand} : largeur`).toBeLessThanOrEqual(m.iw);
+    expect(m.x, `${quand} : scrollX`).toBe(0);
+    expect(m.y, `${quand} : scrollY`).toBe(0);
+  };
+  const toutes = async (taille) => {
+    await verifier(`${taille} : conversation`);
+    await page.getByRole("treeitem", { name: nomLigne("src") }).click({ button: "right" });
+    await expect(page.getByRole("menu", { name: "Actions sur src/" })).toBeVisible();
+    await verifier(`${taille} : menu contextuel`);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Nouveau shell" }).hover();
+    await expect(page.getByRole("tooltip", { name: "Nouveau shell" })).toBeVisible();
+    await verifier(`${taille} : info-bulle`);
+    await page.mouse.move(0, 0);
+    await ouvrirCommande(page, ">prof", [/Profils de modèle/]);
+    await expect(page.getByRole("dialog", { name: "Profils de modèle" })).toBeVisible();
+    await verifier(`${taille} : dialogue`);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  };
+  await toutes("1280x720");
+  await page.setViewportSize({ width: 800, height: 480 });
+  const deplier = page.getByRole("button", { name: "Déplier le panneau" }); // le cadre replie le panneau quand la fenêtre rétrécit
+  await deplier.click();
+  await toutes("800x480");
+});
