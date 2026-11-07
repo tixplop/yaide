@@ -15,14 +15,14 @@ export function erreur(statut, type, message) {
 
 /**
  * Faux provider au format Anthropic, sur un port libre. `etapes` : les réponses, servies dans l'ordre
- * (la dernière est répétée). Rend `{ adresse, recues, arreter }` ; `recues` garde `{ chemin, entetes, corps }`.
+ * (la dernière est répétée) ; une étape peut porter `retenir` (une promesse) : la réponse attend qu'elle soit tenue. Rend `{ adresse, recues, arreter }` ; `recues` garde `{ chemin, entetes, corps }`.
  */
 export async function lancerFauxProvider(etapes = []) {
   const recues = [];
   const serveur = http.createServer((req, res) => {
     let brut = "";
     req.on("data", (d) => (brut += d));
-    req.on("end", () => {
+    req.on("end", async () => {
       let corps = null;
       try {
         corps = JSON.parse(brut);
@@ -35,6 +35,8 @@ export async function lancerFauxProvider(etapes = []) {
         res.writeHead(500).end("pas de scénario");
         return;
       }
+      if (etape.retenir) await etape.retenir;
+      if (res.destroyed) return;
       res.writeHead(etape.statut, { "content-type": "application/json" }).end(JSON.stringify(etape.corps));
     });
   });

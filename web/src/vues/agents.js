@@ -67,7 +67,7 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
     compte.className = "ya-agents-compte";
     compte.textContent = agents.length ? plusieurs(agents.length, "agent") : "";
     total.append(compte);
-    const nouveau = bouton({ icone: "user-plus", nomAccessible: "Nouvel agent", infoBulle: "Nouvel agent", positionInfoBulle: "gauche", taille: "ligne" });
+    const nouveau = bouton({ icone: "user-plus", nomAccessible: "Nouvel agent", infoBulle: "Nouvel agent", positionInfoBulle: "gauche" });
     nouveau.addEventListener("click", () => ouvrirFiche(null));
     barre.append(total, nouveau.enveloppe);
     refs.nouveau = nouveau;
@@ -107,7 +107,7 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
 
     liste.append(...alertes);
     for (const a of agents) {
-      const modifier = bouton({ icone: "sliders-horizontal", nomAccessible: `Modifier ${a.nom}`, infoBulle: "Modifier", positionInfoBulle: "gauche", taille: "ligne" });
+      const modifier = bouton({ icone: "sliders-horizontal", nomAccessible: `Modifier ${a.nom}`, infoBulle: "Modifier", positionInfoBulle: "gauche" });
       modifier.addEventListener("click", () => ouvrirFiche(a));
       const ligne = champ({ libelle: a.nom, type: "case", presentation: "ligne", valeur: coches.has(a.dossier), avant: rond(a.avatar, a.nom, a.couleur), action: modifier.enveloppe });
       const caseEl = ligne.querySelector("input");
@@ -164,7 +164,7 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
   }
 
   function dessinerBarre() {
-    const retour = bouton({ icone: "arrow-left", nomAccessible: "Retour aux agents", infoBulle: "Retour aux agents", positionInfoBulle: "gauche", taille: "ligne" });
+    const retour = bouton({ icone: "arrow-left", nomAccessible: "Retour aux agents", infoBulle: "Retour aux agents", positionInfoBulle: "gauche" });
     retour.addEventListener("click", retourListe);
     retour.enveloppe.classList.add("ya-agents-retour");
     const qui = document.createElement("div");

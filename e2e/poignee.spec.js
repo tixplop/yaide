@@ -57,6 +57,23 @@ async function ouvrir(page, taille = { width: 1000, height: 700 }, avecTailles =
   await page.goto(pathToFileURL(resolve(dossier, "index.html")).href);
   await page.evaluate((a) => window.monter(a), avecTailles);
 }
+// Attend que le terminal ait fini de s'ajuster (police chargée) : colonnes et lignes égales à celles que sa zone permet.
+const stable = (page) =>
+  expect
+    .poll(() =>
+      page.evaluate(() => {
+        const t = document.querySelector(".terminal");
+        const zone = t.querySelector(".terminal-zone");
+        const c = t.term._core._renderService.dimensions.css.cell;
+        const d = zone.querySelector(".xterm-viewport");
+        const barre = d ? d.offsetWidth - d.clientWidth : 0;
+        const cols = Math.max(2, Math.floor((zone.clientWidth - barre) / c.width));
+        const rows = Math.max(1, Math.floor(zone.clientHeight / c.height));
+        const dernier = window.tailles.at(-1);
+        return !!c.width && t.term.cols === cols && t.term.rows === rows && !!dernier && dernier[0] === cols && dernier[1] === rows;
+      }),
+    )
+    .toBe(true);
 const boite = async (page, sel) => page.locator(sel).evaluate((e) => {
   const r = e.getBoundingClientRect();
   return { x: r.x, y: r.y, w: r.width, h: r.height };
@@ -72,6 +89,7 @@ test("REQ032_AC9_limites_affichees_a_800_par_480", async ({ page }) => {
 
 test("REQ032_AC1_glisse_la_poignee_du_panneau_au_dessus_du_terminal_sans_perdre_le_focus", async ({ page }) => {
   await ouvrir(page);
+  await stable(page);
   await page.locator(".xterm-helper-textarea").focus();
   const p = await boite(page, '[aria-label="Largeur du panneau"]');
   const avant = await boite(page, ".cadre-panneau");
@@ -93,15 +111,27 @@ test("REQ032_AC1_glisse_la_poignee_du_panneau_au_dessus_du_terminal_sans_perdre_
   expect(principal.x + principal.w).toBeCloseTo(railDroit.x, 0);
   expect(railDroit.x + railDroit.w).toBeCloseTo(1000, 0);
   expect(await page.evaluate(() => document.activeElement.className)).toBe("xterm-helper-textarea");
-  await expect.poll(() => page.evaluate(() => document.querySelector(".terminal").term.cols)).toBeLessThan(colsAvant);
-  const cols = await page.evaluate(() => document.querySelector(".terminal").term.cols);
-  expect(await page.evaluate(() => window.tailles.at(-1)[0])).toBe(cols);
+  // Un seul instant : colonnes du terminal, colonnes attendues pour la largeur finale, dernière taille notifiée.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const t = document.querySelector(".terminal");
+        const zone = t.querySelector(".terminal-zone");
+        const defilement = zone.querySelector(".xterm-viewport");
+        const barre = defilement ? defilement.offsetWidth - defilement.clientWidth : 0;
+        const attendu = Math.max(2, Math.floor((zone.clientWidth - barre) / t.term._core._renderService.dimensions.css.cell.width));
+        return [t.term.cols === attendu, t.term.cols === window.tailles.at(-1)[0]];
+      }),
+    )
+    .toEqual([true, true]);
+  expect(await page.evaluate(() => document.querySelector(".terminal").term.cols)).toBeLessThan(colsAvant);
   expect(await valeurs(page, "Largeur du panneau")).toEqual(["340", "240", "360"]);
   expect(await page.evaluate(() => window.fins)).toEqual([["panneau", 340]]);
 });
 
 test("REQ032_AC2_AC3_glisse_la_poignee_des_shells_le_terminal_change_de_lignes", async ({ page }) => {
   await ouvrir(page);
+  await stable(page);
   const lignes = () => page.evaluate(() => document.querySelector(".terminal").term.rows);
   const avant = await lignes();
   const p = await boite(page, '[aria-label="Hauteur des shells"]');
@@ -111,9 +141,17 @@ test("REQ032_AC2_AC3_glisse_la_poignee_des_shells_le_terminal_change_de_lignes",
   await page.mouse.move(p.x + 300, p.y + p.h / 2 - 120, { steps: 5 });
   await page.mouse.up();
   expect((await boite(page, ".cadre-shells")).h).toBeCloseTo(hAvant + 120, 0);
-  await expect.poll(lignes).toBeGreaterThan(avant);
-  const dernier = await page.evaluate(() => window.tailles.at(-1));
-  expect(dernier[1]).toBe(await lignes());
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const t = document.querySelector(".terminal");
+        const zone = t.querySelector(".terminal-zone");
+        const attendu = Math.max(1, Math.floor(zone.clientHeight / t.term._core._renderService.dimensions.css.cell.height));
+        return [t.term.rows === attendu, t.term.rows === window.tailles.at(-1)[1]];
+      }),
+    )
+    .toEqual([true, true]);
+  expect(await lignes()).toBeGreaterThan(avant);
   expect(await valeurs(page, "Hauteur des shells")).toEqual(["320", "120", "519"]);
 });
 

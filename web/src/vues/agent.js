@@ -86,8 +86,8 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
   entete.className = "agent-entete";
   const zoneTitre = document.createElement("div");
   zoneTitre.className = "agent-titre";
-  const nouvelle = bouton({ icone: "message-square-plus", nomAccessible: "Nouvelle conversation", taille: "ligne" });
-  const liste = bouton({ icone: "history", nomAccessible: "Conversations", taille: "ligne", ouvreMenu: true, desactive: true });
+  const nouvelle = bouton({ icone: "message-square-plus", nomAccessible: "Nouvelle conversation" });
+  const liste = bouton({ icone: "history", nomAccessible: "Conversations", ouvreMenu: true, desactive: true });
   entete.append(zoneTitre, nouvelle.enveloppe, liste.enveloppe);
   const ligneAgents = document.createElement("div");
   ligneAgents.className = "ya-agents";

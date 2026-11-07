@@ -151,9 +151,10 @@ test("REQ028_AC4_le_rail_est_une_liste_d_onglets_verticale", async ({ page }) =>
   await expect(rail.getByRole("tab")).toHaveText(["", "", ""]);
   expect(await rail.getByRole("tab").evaluateAll((l) => l.map((t) => t.getAttribute("aria-keyshortcuts")))).toEqual(["F", "R", "G"]);
   for (const nom of ["Fichiers", "Recherche", "Git"]) await expect(rail.getByRole("tab", { name: nom })).toHaveAttribute("aria-selected", /true|false/);
-  // « Agent » est en haut du rail droit, hors de cette liste.
+  // « Agent » et « Agents » sont en haut du rail droit, hors de cette liste.
   await expect(rail.getByRole("tab", { name: "Agent" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Agent", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Agents", exact: true })).toBeVisible();
 });
 
 test("REQ028_AC5_touches_F_R_G_sur_le_rail_seulement", async ({ page }) => {
@@ -214,7 +215,7 @@ test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", 
     expect(b.barre.y + b.barre.height).toBeLessThanOrEqual(b.rail.y);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }).toPass({ timeout: 10000 });
-  // AC-028-14 : trois onglets et quatre boutons de 48 px, entiers, sans défilement du rail ; « Agent » entier en haut du rail droit.
+  // AC-028-14 : trois onglets et quatre boutons de 48 px, entiers, sans défilement du rail ; « Agent » et « Agents » entiers en haut du rail droit.
   const rail = await page.locator(".cadre-rail").boundingBox();
   const elements = page.locator(".cadre-rail [role=tab], .cadre-rail-commandes button");
   await expect(elements).toHaveCount(7);
@@ -227,12 +228,14 @@ test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", 
     expect(m.y + m.height).toBeLessThanOrEqual(rail.y + rail.height);
     expect(m.y + m.height).toBeLessThanOrEqual(480);
   }
-  const agent = await page.getByRole("button", { name: "Agent", exact: true }).boundingBox();
-  expect([agent.width, agent.height]).toEqual([48, 48]);
-  expect(agent.x).toBeGreaterThanOrEqual(0);
-  expect(agent.x + agent.width).toBeLessThanOrEqual(800);
-  expect(agent.y).toBeGreaterThanOrEqual(0);
-  expect(agent.y + agent.height).toBeLessThanOrEqual(480);
+  for (const nom of ["Agent", "Agents"]) {
+    const agent = await page.getByRole("button", { name: nom, exact: true }).boundingBox();
+    expect([agent.width, agent.height]).toEqual([48, 48]);
+    expect(agent.x).toBeGreaterThanOrEqual(0);
+    expect(agent.x + agent.width).toBeLessThanOrEqual(800);
+    expect(agent.y).toBeGreaterThanOrEqual(0);
+    expect(agent.y + agent.height).toBeLessThanOrEqual(480);
+  }
   await page.setViewportSize({ width: 600, height: 400 });
   await expect(async () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(true);

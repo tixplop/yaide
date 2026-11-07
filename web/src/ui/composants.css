@@ -36,6 +36,7 @@
 .ya-input:focus-visible { outline: 1px solid var(--accent-fg); outline-offset: 0; border-color: var(--accent-fg); }
 .ya-input:disabled { opacity: .45; }
 .ya-input[aria-invalid="true"], .ya-input[aria-invalid="true"]:focus-visible { border-color: var(--danger); }
+.champ-libelle { color: var(--ink-muted); }
 .champ-aide { font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
 .champ-erreur { font: var(--texte-petit) var(--font-sans); color: var(--danger); }
 /* C-002 : un bouton à droite de la saisie (Réglages en dialogue). */
@@ -412,7 +413,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .agent-saisie { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3) var(--space-3); border-top: var(--trait) solid var(--line); flex: none; }
 .agent-barre { display: flex; align-items: center; gap: var(--space-1); }
 .agent-barre .champ { flex: 1 1 0; min-width: 0; }
-.agent-compteur { font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); white-space: nowrap; padding: 0 var(--space-1); }
+.agent-compteur { font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); white-space: nowrap; margin-left: auto; padding: 0 var(--space-1); }
 .agent-compteur[hidden] { display: none; }
 .agent-barre .bouton-enveloppe[hidden] { display: none; }
 
@@ -488,7 +489,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-agents-barre { flex: none; box-sizing: border-box; height: 27px; display: flex; align-items: center; gap: 1px; padding: 0 var(--space-1) 0 var(--space-3); border-bottom: var(--trait) solid var(--line); font-size: 12.5px; color: var(--ink); }
 .ya-agents-barre > :first-child { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ya-agents-barre .ya-agents-compte { color: var(--ink-muted); }
-.ya-agents-barre .ya-agents-retour { margin-left: calc(-1 * var(--space-2)); }
+.ya-agents-barre .ya-agents-retour { margin-left: calc(-1 * var(--space-2)); margin-right: calc(-1 * var(--space-1)); }
 .ya-agents-pied { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3) var(--space-3); border-top: var(--trait) solid var(--line); }
 .ya-agents-pied .ya-agents-aide { flex: 1 1 140px; font: 12px/16px var(--font-sans); color: var(--ink-muted); }
 .ya-agents-pied .ya-btn-primary { margin-left: auto; }

@@ -520,3 +520,205 @@ test("REQ028_AC20_AC21_la_page_ne_defile_jamais", async ({ page, browserName }) 
   await deplier.click();
   await toutes("800x480");
 });
+
+test("REQ067_parcours_28_29_deux_agents_relisent_puis_arret", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  // Parcours P-028 et P-029 : deux agents créés, une relecture à deux, un agent illisible, une couleur changée, un arrêt.
+  let ouvrir5; // jamais tenue : la 5e requête reste en attente jusqu'à l'arrêt
+  faux = await lancerFauxProvider([
+    reponse({ outils: [{ id: "r1", nom: "read", entree: { path: "src/args.rs" } }], tokens: 2000 }),
+    reponse({ texte: "Relu : la branche `--sortie` avance de 2.", tokens: 3000 }),
+    reponse({ outils: [{ id: "b1", nom: "bash", entree: { command: "echo cargo-test-ok" } }], tokens: 6000 }),
+    reponse({ texte: "Les tests passent.", tokens: 9000 }),
+    { ...reponse({ texte: "inutile" }), retenir: new Promise((ok) => (ouvrir5 = ok)) },
+  ]);
+  const dossier = depotAgent();
+  yaide = await lancerYaide({ dossier });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await ouvrirYaide(page, yaide.origine);
+  await api(page, "PUT", "/api/agent/providers/anthropic", { adresse: faux.adresse, cle: "sk-test" });
+  await api(page, "PUT", "/api/agent/profils", { nom: "sonnet", provider: "anthropic", modele: "claude-sonnet-4-5", fenetre: 200000, defaut: true });
+  await api(page, "PUT", "/api/agent/profils", { nom: "rapide", provider: "anthropic", modele: "claude-haiku-4-5", fenetre: 1048576 });
+  await page.reload();
+  await page.getByRole("tab", { name: /^shell \d+$/ }).first().waitFor();
+
+  const agents = path.join(dossier, ".yaide", "agents");
+  const colonne = page.locator("aside.cadre-agent");
+  const boutonAgents = page.getByRole("button", { name: "Agents", exact: true });
+  const boutonAgent = page.getByRole("button", { name: "Agent", exact: true });
+  const fiche = colonne.getByRole("button", { name: "Enregistrer", exact: true });
+  const couleur = (nom) => colonne.getByRole("radio", { name: nom }).check({ force: true });
+
+  // P-028 1 : « Agents » ouvre la colonne sur « Aucun agent. ».
+  await boutonAgents.click();
+  await expect(colonne.getByRole("heading", { name: "Agents" })).toBeVisible();
+  await expect(boutonAgents).toHaveAttribute("data-actif", "");
+  await expect(boutonAgent).not.toHaveAttribute("data-actif", "");
+  await expect(colonne.getByText("Aucun agent.")).toBeVisible();
+  await expect(page.locator(":focus")).toHaveText("Nouvel agent");
+  // 2 : la fiche d'un nouvel agent.
+  await page.keyboard.press("Enter");
+  await expect(colonne.getByLabel("Nom", { exact: true })).toBeFocused();
+  await expect(colonne.getByText("Enregistrez l'agent pour créer ses fichiers.")).toBeVisible();
+  await expect(colonne.getByRole("button", { name: "PERSONA.md" })).toBeDisabled();
+  // 3 : Relecteur, hibou, vert, sonnet.
+  await colonne.getByLabel("Nom", { exact: true }).fill("Relecteur");
+  await colonne.getByLabel("Avatar").fill("🦉");
+  await couleur("Vert");
+  await colonne.getByLabel("Profil").selectOption("sonnet");
+  await fiche.click();
+  await expect(colonne.getByText("Agent « Relecteur » créé.")).toBeVisible();
+  await expect(fiche).toBeFocused();
+  // AC-064-3 : le dossier de l'agent et ses trois fichiers sont sur le disque.
+  for (const f of ["agent.json", "AGENTS.md", "PERSONA.md"]) expect(fs.existsSync(path.join(agents, "relecteur", f)), f).toBe(true);
+  expect(JSON.parse(fs.readFileSync(path.join(agents, "relecteur", "agent.json"), "utf8"))).toMatchObject({ nom: "Relecteur", avatar: "🦉", couleur: "vert" });
+
+  // 4 : PERSONA.md s'ouvre dans l'éditeur, le focus dedans ; on tape le rôle et Ctrl+S (AC-066-1).
+  await colonne.getByRole("button", { name: "PERSONA.md" }).click();
+  const editeur = page.getByRole("textbox", { name: /^Éditeur PERSONA\.md/ });
+  await expect(editeur).toBeFocused();
+  await expect(colonne.getByLabel("Nom", { exact: true })).toHaveValue("Relecteur");
+  await page.keyboard.type("Tu relis le code avec rigueur. persona-relecteur-71");
+  await page.keyboard.press("Control+s");
+  await expect.poll(() => fs.readFileSync(path.join(agents, "relecteur", "PERSONA.md"), "utf8")).toContain("persona-relecteur-71");
+
+  // 5 : un nom déjà pris et un avatar trop long ; rien n'est écrit.
+  await colonne.getByRole("button", { name: "Retour aux agents" }).click();
+  await colonne.getByRole("button", { name: "Nouvel agent" }).click();
+  await colonne.getByLabel("Nom", { exact: true }).fill("relecteur");
+  await colonne.getByLabel("Avatar").fill("QA!");
+  await couleur("Orange");
+  await colonne.getByLabel("Profil").selectOption("rapide");
+  await colonne.getByLabel("Avatar").press("Enter");
+  await expect(colonne.getByText("Ce nom est déjà pris. Choisissez-en un autre.")).toBeVisible();
+  await expect(colonne.getByText("Avatar : deux caractères au plus.")).toBeVisible();
+  await expect(colonne.getByLabel("Nom", { exact: true })).toBeFocused();
+  expect(fs.readdirSync(agents)).toEqual(["relecteur"]);
+  // 6 : Testeur, sans avatar.
+  await colonne.getByLabel("Nom", { exact: true }).fill("Testeur");
+  await colonne.getByLabel("Avatar").fill("");
+  await fiche.click();
+  await expect(colonne.getByText("Agent « Testeur » créé.")).toBeVisible();
+  await colonne.getByRole("button", { name: "Retour aux agents" }).click();
+  await expect(colonne.getByText("2 agents", { exact: true })).toBeVisible();
+  await expect(colonne.getByRole("button", { name: "Modifier Testeur" })).toBeFocused();
+  await expect(colonne.getByRole("checkbox")).toHaveCount(2);
+  await colonne.getByRole("checkbox", { name: "Relecteur" }).check();
+  await colonne.getByRole("checkbox", { name: "Testeur" }).check();
+  await expect(colonne.getByText("2 agents cochés.")).toBeVisible();
+  // 7 : « Démarrer une conversation » ouvre V-007 sur les deux agents.
+  await colonne.getByRole("button", { name: "Démarrer une conversation" }).click();
+  await expect(colonne.getByRole("heading", { name: "Agent", exact: true })).toBeVisible();
+  await expect(boutonAgent).toHaveAttribute("data-actif", "");
+  await expect(boutonAgents).not.toHaveAttribute("data-actif", "");
+  const equipe = colonne.getByRole("list", { name: "Agents de la conversation" }).getByRole("listitem");
+  await expect(equipe).toHaveText([/Relecteur$/, /Testeur$/]);
+  await expect(profil(page)).toHaveCount(0);
+  await expect(colonne.getByLabel("Contexte : 0 tokens sur 200 k")).toBeVisible();
+  await expect(champMessage(page)).toBeFocused();
+  // 8 : la relecture. Relecteur (sonnet) lit args.rs, Testeur (rapide) lance les tests.
+  await champMessage(page).fill("Relis src/args.rs, puis lance les tests.");
+  await page.keyboard.press("Enter");
+  await expect(fil(page).getByRole("group", { name: "Testeur" })).toContainText("Les tests passent.", { timeout: 15000 });
+  await expect(arreter(page)).toBeHidden();
+  await expect(fil(page).getByRole("group")).toHaveCount(2);
+  await expect(fil(page).getByRole("group", { name: "Relecteur" })).toContainText("Relu : la branche");
+  await expect(fil(page).getByRole("group", { name: "Relecteur" }).getByRole("button", { name: /^read src\/args\.rs/ })).toBeVisible();
+  await expect(fil(page).getByRole("group", { name: "Testeur" }).getByRole("button", { name: /^bash echo cargo-test-ok/ })).toBeVisible();
+  await expect(fil(page).getByRole("group", { name: "Relecteur" }).locator(".ya-tour-corps")).toHaveAttribute("style", /--agent-vert/);
+  await expect(fil(page).getByRole("group", { name: "Testeur" }).locator(".ya-tour-corps")).toHaveAttribute("style", /--agent-orange/);
+  await expect(colonne.getByLabel("Contexte : 9 k tokens sur 1 M")).toBeVisible();
+  // Les modèles distinguent les agents ; le persona n'est que dans les requêtes de Relecteur (AC-066-3).
+  expect(faux.recues.map((r) => r.corps.model)).toEqual(["claude-sonnet-4-5", "claude-sonnet-4-5", "claude-haiku-4-5", "claude-haiku-4-5"]);
+  expect(JSON.stringify(faux.recues[0].corps)).toContain("persona-relecteur-71");
+  expect(JSON.stringify(faux.recues[0].corps)).toContain("regle-maison-42");
+  expect(JSON.stringify(faux.recues[2].corps)).not.toContain("persona-relecteur-71");
+
+  // P-029 : « revue » est cassé à la main.
+  fs.mkdirSync(path.join(agents, "revue"));
+  fs.writeFileSync(path.join(agents, "revue", "agent.json"), '{ "nom": "Revue" "couleur": "gris" }');
+  await boutonAgents.click();
+  await expect(colonne.getByText(".yaide/agents/revue/agent.json est illisible. Corrigez-le, puis rouvrez Agents.")).toBeVisible();
+  await expect(colonne.getByRole("checkbox")).toHaveCount(2);
+  await expect(colonne.getByRole("checkbox", { name: "Relecteur" })).toBeFocused();
+  await expect(colonne.getByRole("checkbox", { name: "Relecteur" })).not.toBeChecked();
+  await expect(colonne.getByRole("checkbox", { name: "Testeur" })).not.toBeChecked();
+  await expect(colonne.getByRole("button", { name: "Démarrer une conversation" })).toBeDisabled();
+  await expect(colonne.getByText("Cochez un ou plusieurs agents.")).toBeVisible();
+  // 2 : la couleur de Relecteur passe au rose.
+  await colonne.getByRole("button", { name: "Modifier Relecteur" }).click();
+  await expect(colonne.getByLabel("Nom", { exact: true })).toBeFocused();
+  await couleur("Rose");
+  await fiche.click();
+  await expect(colonne.getByText("Agent « Relecteur » enregistré.")).toBeVisible();
+  expect(JSON.parse(fs.readFileSync(path.join(agents, "relecteur", "agent.json"), "utf8")).couleur).toBe("rose");
+  // 3 : la conversation de P-028 revient, Relecteur y est toujours vert (AC-067-11).
+  await boutonAgent.click();
+  await expect(equipe).toHaveText([/Relecteur$/, /Testeur$/]);
+  await expect(equipe.first().locator(".ya-avatar")).toHaveAttribute("style", /--agent-vert/);
+  await expect(fil(page).getByRole("group", { name: "Relecteur" }).locator(".ya-tour-corps")).toHaveAttribute("style", /--agent-vert/);
+  // 4 : « Arrêter » pendant Relecteur ; Testeur ne répond pas (AC-067-7).
+  await champMessage(page).fill("Ajoute un test pour --sortie sans valeur.");
+  await page.keyboard.press("Enter");
+  await expect(fil(page).getByText("Relecteur travaille…")).toBeVisible();
+  await arreter(page).click();
+  await expect(fil(page).getByRole("group", { name: "Relecteur" }).last()).toContainText("Arrêté.");
+  await expect(arreter(page)).toBeHidden();
+  await expect(champMessage(page)).toBeFocused();
+  expect(faux.recues).toHaveLength(5);
+  await expect(fil(page).getByRole("group", { name: "Testeur" })).toHaveCount(1);
+  ouvrir5();
+
+  // AC-064-18 : trente agents, dont un nom de 60 caractères.
+  const long = "Relecteur-au-nom-vraiment-trop-long-pour-la-colonne-".padEnd(60, "x");
+  expect(long).toHaveLength(60);
+  for (let i = 1; i <= 29; i++) {
+    const d = path.join(agents, `agent-${String(i).padStart(2, "0")}`);
+    fs.mkdirSync(d);
+    fs.writeFileSync(path.join(d, "agent.json"), JSON.stringify({ nom: `Agent ${String(i).padStart(2, "0")}`, avatar: "", couleur: "gris" }));
+  }
+  fs.mkdirSync(path.join(agents, "agent-long"));
+  fs.writeFileSync(path.join(agents, "agent-long", "agent.json"), JSON.stringify({ nom: long, avatar: "", couleur: "gris" }));
+  await page.setViewportSize({ width: 1600, height: 900 }); // assez large pour que la colonne atteigne 720 px
+  await boutonAgents.click();
+  await expect(colonne.getByRole("checkbox")).toHaveCount(32);
+  const poignee = page.getByRole("separator", { name: "Largeur de l'agent" });
+  const glisser = async (dx) => {
+    const b = await poignee.boundingBox();
+    const x = b.x + b.width / 2;
+    const y = b.y + b.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx / 2, y, { steps: 5 });
+    await page.mouse.move(x + dx, y, { steps: 5 });
+    await page.mouse.up();
+  };
+  const largeur = () => colonne.evaluate((e) => e.offsetWidth);
+  for (const [dx, attendu] of [[1200, 240], [-1200, 720]]) {
+    await glisser(dx);
+    await expect.poll(largeur).toBe(attendu);
+    const m = await colonne.evaluate((e) => {
+      const liste = e.querySelector(".agents-liste");
+      const nom = [...e.querySelectorAll(".ya-check-row .nom")].find((n) => n.title.startsWith("Relecteur-au-nom"));
+      return {
+        defileLargeur: [e, e.querySelector(".agents-corps"), liste].some((n) => n.scrollWidth > n.clientWidth),
+        listeDefile: liste.scrollHeight > liste.clientHeight,
+        colonneDefile: e.scrollHeight > e.clientHeight,
+        page: document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight,
+        nomCoupe: nom.scrollWidth > nom.clientWidth,
+        titre: nom.title,
+      };
+    });
+    expect(m.defileLargeur, `${attendu} px : défilement en largeur`).toBe(false);
+    expect(m.listeDefile, `${attendu} px : la liste défile`).toBe(true);
+    expect(m.colonneDefile, `${attendu} px : la colonne ne défile pas`).toBe(false);
+    expect(m.page, `${attendu} px : la page`).toBe(false);
+    expect(m.titre).toBe(long);
+    if (attendu === 240) expect(m.nomCoupe, "nom coupé à 240 px").toBe(true);
+    const demarrer = await colonne.getByRole("button", { name: "Démarrer une conversation" }).boundingBox();
+    const boite = await colonne.boundingBox();
+    expect(demarrer.y).toBeGreaterThanOrEqual(boite.y);
+    expect(demarrer.y + demarrer.height).toBeLessThanOrEqual(boite.y + boite.height);
+    expect(demarrer.x + demarrer.width).toBeLessThanOrEqual(boite.x + boite.width);
+  }
+});
