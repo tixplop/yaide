@@ -658,6 +658,10 @@ test("REQ062_parcours_P025_P026", async ({ page, browserName }) => {
     await expect(lignes.nth(18)).toHaveText("- `--fort` : salue en ~~majuscules~~ capitales.");
     await expect(lignes.nth(0)).toHaveText("projet");
     await expect(page.locator("footer")).toContainText("Ln 19, Col 48");
+    // Tableau rendu et clôtures vides (REQ-063), curseur ailleurs.
+    await expect(lignes.nth(5)).toHaveText("");
+    await expect(lignes.nth(7)).toHaveText("");
+    await expect(page.locator(".cm-hy-tableau:visible table th")).toHaveText(["a", "b"]);
     const avant = requetes.length;
     await lignes.nth(3).locator(".cm-hy-lien").click();
     await expect(lignes.nth(3)).toHaveText("Voir la [documentation](https://exemple.org/doc) avant de commencer.");
@@ -705,6 +709,91 @@ test("REQ062_parcours_P025_P026", async ({ page, browserName }) => {
     await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue" })).toHaveCount(0, { timeout: 300 }));
     await expect.poll(() => fs.existsSync(path.join(dossier, "notes.md"))).toBe(true);
     await expect.poll(() => fs.readFileSync(path.join(dossier, "notes.md"), "utf8")).toBe("## À faire\n- **relire le README\n- "); // « - » : la puce continuée par l'éditeur, texte source inchangé
+  } finally {
+    relais.fermer();
+  }
+});
+test("REQ063_parcours_P027", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  await page.clock.install();
+  const lignesSource = [
+    "# projet", "", "Un outil en ligne de commande pour saluer.", "", "## Lancer", "", "Exemple :",
+    "```rust", "fn main() {", "    println!(\"salut\");", "}", "```", "", "## Options", "",
+    "> Les options sont facultatives.", "", "- `--nom` : le nom.", "- `--fort` : en capitales.", "", "---", "",
+    "| Option   | Défaut | Effet                        |",
+    "| -------- | ------ | ---------------------------- |",
+    "| `--nom`  | aucun  | Salue ce nom.                |",
+    "| `--fort` | non    | Salue en **capitales**.      |",
+    "| `--aide` | -      | Affiche l'[aide](https://exemple.org/aide). |",
+    "", "![Capture](docs/capture.png)",
+  ];
+  const source = lignesSource.join("\n") + "\n";
+  const attendu = source.replace("| non    |", "| oui    |");
+  const dossier = await ouvrir(page, (d) => fs.writeFileSync(path.join(d, "README.md"), source));
+  const relais = await lancerRelais(yaide.port);
+  try {
+    await page.goto(relais.origine + "/");
+    await expect(arbre(page)).toBeVisible();
+    const requetes = [];
+    page.on("request", (r) => /\/polices\//.test(r.url()) || requetes.push(r.url()));
+    page.on("popup", () => requetes.push("popup"));
+    const lignes = page.locator(".cm-content:visible .cm-line");
+    const tableau = page.locator(".cm-hy-tableau:visible");
+    const pied = page.locator("footer");
+    await ligne(page, "README.md").click();
+    await page.getByRole("button", { name: "Mode hybride", exact: true }).click();
+    // Étape 1 : clôtures vides, tableau rendu à la place des lignes 23 à 27.
+    await expect(lignes.nth(0)).toHaveText("# projet");
+    await expect(lignes.nth(7)).toHaveText("");
+    await expect(lignes.nth(11)).toHaveText("");
+    await expect(tableau.locator("tr")).toHaveCount(4);
+    await expect(tableau.locator("th")).toHaveText(["Option", "Défaut", "Effet"]);
+    await expect(tableau.locator("strong")).toHaveText("capitales");
+    await expect(pied).toContainText("Ln 1, Col 1");
+    // Étape 2 : clic sur « non ».
+    requetes.length = 0;
+    await tableau.getByRole("cell", { name: "non", exact: true }).click();
+    await expect(tableau).toHaveCount(0);
+    await expect(lignes.nth(25)).toHaveText(lignesSource[25]);
+    await expect(pied).toContainText("Ln 26, Col 14");
+    await expect(lignes.nth(0)).toHaveText("projet");
+    expect(requetes.filter((u) => u === "popup" || u.includes("exemple.org"))).toEqual([]);
+    // Étape 3 : coupure, Suppr trois fois, « oui », Bas deux fois.
+    relais.couper();
+    await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." })).toBeVisible({ timeout: 300 }));
+    for (let i = 0; i < 3; i++) await page.keyboard.press("Delete");
+    await page.keyboard.type("oui");
+    await expect(lignes.nth(25)).toHaveText("| `--fort` | oui    | Salue en **capitales**.      |");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await expect(pied).toContainText("Ln 28");
+    await expect(tableau.getByRole("cell", { name: "oui", exact: true })).toBeVisible();
+    // Étape 4 : clôtures au clic sur « main », puis de nouveau vides.
+    await lignes.nth(8).getByText("main", { exact: true }).click();
+    await expect(lignes.nth(7)).toHaveText("```rust");
+    await expect(lignes.nth(11)).toHaveText("```");
+    await expect(tableau).toBeVisible();
+    await lignes.nth(0).click();
+    await expect(lignes.nth(7)).toHaveText("");
+    await expect(lignes.nth(11)).toHaveText("");
+    // Étape 5 : clic sur « aide » dans le tableau.
+    await tableau.locator("a", { hasText: /^aide$/ }).click();
+    await expect(tableau).toHaveCount(0);
+    await expect(lignes.nth(26)).toContainText("[aide](https://exemple.org/aide)");
+    await expect(pied).toContainText("Ln 27, Col 23");
+    expect(requetes.filter((u) => u === "popup" || u.includes("exemple.org"))).toEqual([]);
+    // Étape 6 : aperçu ensemble, mêmes cellules rendues, puis Ctrl+S au retour.
+    await lignes.nth(0).click();
+    await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+    const zoneApercu = page.getByRole("region", { name: "Aperçu" });
+    await expect(zoneApercu.getByRole("cell", { name: "oui", exact: true })).toBeVisible();
+    await expect(tableau.getByRole("cell", { name: "oui", exact: true })).toBeVisible();
+    const grasEditeur = await tableau.locator("th").first().evaluate((e) => getComputedStyle(e).fontWeight);
+    expect(await zoneApercu.locator("th").first().evaluate((e) => getComputedStyle(e).fontWeight)).toBe(grasEditeur);
+    relais.retablir();
+    await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue" })).toHaveCount(0, { timeout: 300 }));
+    await page.keyboard.press("Control+s");
+    await expect.poll(() => fs.readFileSync(path.join(dossier, "README.md"), "utf8")).toBe(attendu);
   } finally {
     relais.fermer();
   }
