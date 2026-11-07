@@ -43,6 +43,7 @@ test("REQ069_AC2_AC4_AC7_replis_imposes_au_rechargement", async ({ page }) => {
   await entete.getByRole("button", { name: "Ouverture rapide" }).click();
   const champ = page.getByRole("textbox", { name: "Chemin du fichier" });
   await champ.fill(".yaide/interface.json");
+  await expect(page.getByRole("listbox", { name: "Fichiers proposés" })).toBeVisible(); // la liste des chemins est chargée
   await champ.press("Enter");
   await page.locator(".cm-content:visible").click();
   await page.keyboard.press("Control+a");
