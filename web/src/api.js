@@ -244,3 +244,33 @@ export async function listeConversations() {
   if (!r || !r.ok) return null;
   return r.json();
 }
+
+/** `{ agents: [{ dossier, nom, avatar, couleur, profil? }], erreurs: [chemin…] }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function listerAgents() {
+  const r = await appeler("/api/agent/agents");
+  if (!r) return { coupure: true };
+  if (r.ok) return r.json();
+  return erreurServeur(r);
+}
+
+/**
+ * `saisie` : `{ dossier?, nom, avatar, couleur, profil? }` (sans `dossier` : création).
+ * Rend l'agent enregistré, `{ cause: "invalide", message, champs }` (400), `{ cause, message }` ou `{ coupure: true }`.
+ */
+export async function enregistrerAgent(saisie) {
+  const r = await appeler("/api/agent/agents", { method: "PUT", body: JSON.stringify(saisie) });
+  if (!r) return { coupure: true };
+  if (r.ok) return r.json();
+  if (r.status === 400) {
+    try {
+      const { erreurs } = await r.json();
+      if (Array.isArray(erreurs)) {
+        const champs = erreurs.map((e) => e.champ);
+        return { cause: "invalide", message: `valeur refusée (${champs.join(", ")})`, champs };
+      }
+    } catch {
+      // Corps illisible : traité comme une erreur du serveur.
+    }
+  }
+  return erreurServeur(r);
+}

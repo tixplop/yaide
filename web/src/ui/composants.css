@@ -491,6 +491,19 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-agents { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin: 0; padding: 2px var(--space-3) 6px; list-style: none; border-bottom: var(--trait) solid var(--line); font-size: 12.5px; color: var(--ink); }
 .ya-agents > li { display: inline-flex; align-items: center; gap: 6px; }
 
+/* V-010 : vue Agents (barre et pied : C-010, `ya-agents-*`). */
+.agents-corps { display: flex; flex-direction: column; box-sizing: border-box; height: 100%; min-height: 0; overflow-x: hidden; }
+.agents-nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agents-liste { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--space-1) 0; }
+.agents-liste > .message { margin: var(--space-1) var(--space-3) var(--space-2); }
+.agents-corps > .message { margin: var(--space-2) var(--space-3); }
+.agents-vide { flex: 1; align-items: center; justify-content: center; text-align: center; }
+.agents-fiche { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
+.agents-fiche .champ { max-width: var(--largeur-agent); }
+.agents-ligne-avatar { display: flex; align-items: center; gap: var(--space-2); }
+.agents-ligne-avatar .ya-input { width: 64px; }
+.agents-fichiers { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
 .zone-code {
   display: flex;
   height: 100%;
