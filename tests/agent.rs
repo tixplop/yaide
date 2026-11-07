@@ -661,3 +661,69 @@ fn REQ029_AC4_aucune_requete_au_faux_provider_avant_un_message() {
     attendre_fin(&s, &id);
     assert_eq!(recues.lock().unwrap().len(), 1);
 }
+
+#[test]
+fn REQ064_AC8_lister_ne_cree_pas_yaide_et_deux_projets() {
+    let racine = preparer("ag8");
+    let a = demarrer(&racine, "a");
+    let b = demarrer(&racine, "b");
+    let r = a.appel("GET", "/api/agent/agents", &Value::Null);
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert_eq!(r.json(), json!({ "agents": [], "erreurs": [] }));
+    assert!(!a.yaide().exists());
+    let r = a.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "nom": "Relecteur", "avatar": "", "couleur": "vert" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert_eq!(r.json()["dossier"], "relecteur");
+    let r = a.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "nom": "relecteur", "couleur": "vert" }),
+    );
+    assert_eq!(r.code, 400);
+    assert_eq!(r.json(), json!({ "erreurs": [{ "champ": "nom" }] }));
+    let l = a.appel("GET", "/api/agent/agents", &Value::Null).json();
+    assert_eq!(l["agents"].as_array().unwrap().len(), 1);
+    let l = b.appel("GET", "/api/agent/agents", &Value::Null).json();
+    assert_eq!(l["agents"], json!([]));
+    assert!(!b.yaide().exists());
+}
+
+#[test]
+fn REQ065_AC1_agent_survit_au_redemarrage() {
+    let s = lancer("ag1");
+    let r = s.appel("PUT", "/api/agent/profils", &profil("rapide"));
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let id = s.reglages()["profils"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "nom": "Relecteur", "couleur": "vert" }),
+    );
+    let r = s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "dossier": "relecteur", "nom": "Testeur", "avatar": "QA",
+                 "couleur": "orange", "profil": id }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let s = redemarrer(s);
+    let l = s.appel("GET", "/api/agent/agents", &Value::Null).json();
+    assert_eq!(
+        l["agents"],
+        json!([{ "dossier": "relecteur", "nom": "Testeur", "avatar": "QA",
+                 "couleur": "orange", "profil": id }])
+    );
+    let r = s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "dossier": "absent", "nom": "X", "couleur": "vert" }),
+    );
+    assert_eq!(r.code, 404);
+}

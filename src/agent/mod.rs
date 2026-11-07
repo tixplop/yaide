@@ -1,3 +1,4 @@
+pub mod agents;
 pub mod conversation;
 pub mod outils;
 pub mod provider;

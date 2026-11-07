@@ -237,6 +237,13 @@ impl Reglages {
         json!({ "providers": providers, "profils": fichier.profils, "erreur": e1.or(e2) })
     }
 
+    /// Identifiants des profils existants (fichier illisible : aucun).
+    pub fn ids_profils(&self) -> Vec<String> {
+        let _g = self.verrouiller();
+        let f = self.charger().unwrap_or_default();
+        f.profils.into_iter().map(|p| p.id).collect()
+    }
+
     pub fn adresse(&self, id: &str) -> Option<String> {
         let _g = self.verrouiller();
         let p = provider(id)?;

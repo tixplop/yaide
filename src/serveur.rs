@@ -1,3 +1,4 @@
+use crate::agent::agents::Agents;
 use crate::agent::conversation::{ErreurEnvoi, Gestionnaire};
 use crate::agent::outils::Limites;
 use crate::agent::reglages::{Erreur, Reglages};
@@ -27,6 +28,7 @@ struct Etat {
     shells: Arc<shells::Registre>,
     reglages: Arc<Reglages>,
     agent: Arc<Gestionnaire>,
+    agents: Agents,
 }
 
 type Partage = Arc<Etat>;
@@ -847,6 +849,37 @@ async fn agent_supprimer_profil(
     reponse_reglages(&etat, etat.reglages.supprimer_profil(&id))
 }
 
+async fn agents_liste(State(etat): State<Partage>) -> Response {
+    json_rep(
+        StatusCode::OK,
+        serde_json::to_value(etat.agents.lister()).unwrap_or_default(),
+    )
+}
+
+async fn agents_enregistrer(State(etat): State<Partage>, corps: Bytes) -> Response {
+    let Some(v) = corps_json(&corps) else {
+        return corps_invalide();
+    };
+    match etat.agents.enregistrer(&v) {
+        Ok(a) => json_rep(StatusCode::OK, serde_json::to_value(a).unwrap_or_default()),
+        Err(Erreur::Inconnu) => StatusCode::NOT_FOUND.into_response(),
+        Err(Erreur::Champs(c)) => {
+            let erreurs: Vec<_> = c
+                .iter()
+                .map(|c| serde_json::json!({ "champ": c }))
+                .collect();
+            json_rep(
+                StatusCode::BAD_REQUEST,
+                serde_json::json!({ "erreurs": erreurs }),
+            )
+        }
+        Err(Erreur::Systeme(m)) => json_rep(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "erreur": m }),
+        ),
+    }
+}
+
 /// `{ conversation?, profil, texte }` : lance un tour, ou refuse (409) sans rien écrire.
 async fn agent_message(State(etat): State<Partage>, corps: Bytes) -> Response {
     let Some(v) = corps_json(&corps) else {
@@ -923,6 +956,7 @@ pub async fn servir(
         projet_dir: projet.to_path_buf(),
         instance: identifiant_instance(),
         shells: Default::default(),
+        agents: Agents::new(projet.join(".yaide"), reglages.clone()),
         reglages,
         agent,
     });
@@ -968,6 +1002,10 @@ pub async fn servir(
         .route("/api/agent/providers/{id}/cle", delete(agent_supprimer_cle))
         .route("/api/agent/profils", put(agent_profil))
         .route("/api/agent/profils/{id}", delete(agent_supprimer_profil))
+        .route(
+            "/api/agent/agents",
+            get(agents_liste).put(agents_enregistrer),
+        )
         .route("/api/agent/messages", post(agent_message))
         .route("/api/agent/conversations", get(agent_conversations))
         .route("/api/agent/conversations/{id}", get(agent_conversation))
