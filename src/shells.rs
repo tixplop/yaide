@@ -11,7 +11,7 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::collections::{BTreeMap, VecDeque};
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
@@ -32,6 +32,9 @@ pub struct Shell {
     entree: mpsc::Sender<Vec<u8>>,
     terminal: Mutex<Box<dyn MasterPty + Send>>,
     fini: AtomicBool,
+    claude: bool,
+    /// Code de sortie de l'enfant, -1 tant qu'il n'est pas connu.
+    code: AtomicI64,
     registre: Arc<Registre>,
     id: u32,
 }
@@ -92,6 +95,16 @@ fn signaler_tout(pgid: i32, signal: i32) {
     }
 }
 
+/// Premier fichier exécutable `claude` dans les dossiers du `PATH`, cherché à chaque appel.
+pub fn trouver_claude() -> Option<std::path::PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    std::env::split_paths(&std::env::var_os("PATH")?)
+        .map(|d| d.join("claude"))
+        .find(|c| {
+            std::fs::metadata(c).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        })
+}
+
 impl Shell {
     /// Affichage récent et abonnement au direct, sans trou ni doublon.
     pub fn abonner(&self) -> (Vec<u8>, broadcast::Receiver<Evenement>) {
@@ -122,11 +135,23 @@ impl Shell {
         self.fini.load(Ordering::SeqCst)
     }
 
+    pub fn est_claude(&self) -> bool {
+        self.claude
+    }
+
+    /// Code de sortie de l'enfant, s'il est connu.
+    pub fn code_sortie(&self) -> Option<i64> {
+        Some(self.code.load(Ordering::SeqCst)).filter(|&c| c >= 0)
+    }
+
     fn terminer(&self) {
         if self.fini.swap(true, Ordering::SeqCst) {
             return;
         }
-        self.registre.liste.lock().unwrap().shells.remove(&self.id);
+        // Une session Claude finie reste connue jusqu'à sa fermeture : on peut relire son affichage.
+        if !self.claude {
+            self.registre.liste.lock().unwrap().shells.remove(&self.id);
+        }
         signaler_tout(self.pgid, libc::SIGHUP);
         let _ = self.diffusion.send(Evenement::Fin);
     }
@@ -152,8 +177,14 @@ impl Registre {
         let _ = tokio::time::timeout(Duration::from_secs(2), attente).await;
     }
 
+    /// Identifiants des shells, sans les sessions Claude.
     pub fn ids(&self) -> Vec<u32> {
-        self.liste.lock().unwrap().shells.keys().copied().collect()
+        let l = self.liste.lock().unwrap();
+        l.shells
+            .iter()
+            .filter(|(_, s)| !s.claude)
+            .map(|(&i, _)| i)
+            .collect()
     }
 
     pub fn ouvrir(self: &Arc<Self>, projet: &Path) -> Result<u32, String> {
@@ -161,6 +192,28 @@ impl Registre {
             .ok()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "/bin/sh".to_string());
+        self.lancer(projet, &programme, &[], false)
+    }
+
+    /// Session Claude : `claude --dangerously-skip-permissions` dans le dossier du projet.
+    pub fn ouvrir_claude(self: &Arc<Self>, projet: &Path) -> Result<u32, String> {
+        let chemin = trouver_claude().ok_or("la commande claude est introuvable dans le PATH")?;
+        let programme = chemin.to_string_lossy().into_owned();
+        self.lancer(
+            projet,
+            &programme,
+            &["--dangerously-skip-permissions"],
+            true,
+        )
+    }
+
+    fn lancer(
+        self: &Arc<Self>,
+        projet: &Path,
+        programme: &str,
+        args: &[&str],
+        claude: bool,
+    ) -> Result<u32, String> {
         let paire = native_pty_system()
             .openpty(PtySize {
                 rows: 24,
@@ -169,7 +222,8 @@ impl Registre {
                 pixel_height: 0,
             })
             .map_err(|e| e.to_string())?;
-        let mut cmd = CommandBuilder::new(&programme);
+        let mut cmd = CommandBuilder::new(programme);
+        cmd.args(args);
         cmd.cwd(projet);
         cmd.env("TERM", "xterm-256color");
         let mut enfant = paire
@@ -195,6 +249,8 @@ impl Registre {
             entree,
             terminal: Mutex::new(paire.master),
             fini: AtomicBool::new(false),
+            claude,
+            code: AtomicI64::new(-1),
             registre: self.clone(),
             id,
         });
@@ -233,7 +289,10 @@ impl Registre {
         });
         let s = shell;
         std::thread::spawn(move || {
-            let _ = enfant.wait();
+            if let Ok(statut) = enfant.wait() {
+                s.code
+                    .store(i64::from(statut.exit_code()), Ordering::SeqCst);
+            }
             // Laisse le lecteur finir de vider la sortie avant de clore.
             std::thread::sleep(Duration::from_millis(300));
             s.terminer();
@@ -248,6 +307,7 @@ impl Registre {
             return false;
         };
         shell.terminer();
+        self.liste.lock().unwrap().shells.remove(&id);
         let pgid = shell.pgid;
         std::thread::spawn(move || {
             signaler_tout(pgid, libc::SIGTERM);

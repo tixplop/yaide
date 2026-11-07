@@ -232,6 +232,33 @@ async fn ouvrir_shell(State(etat): State<Partage>) -> Response {
     }
 }
 
+async fn claude_disponible() -> Response {
+    let corps = format!("{{\"disponible\":{}}}", shells::trouver_claude().is_some());
+    ([(header::CONTENT_TYPE, "application/json")], corps).into_response()
+}
+
+async fn ouvrir_claude(State(etat): State<Partage>) -> Response {
+    let registre = etat.shells.clone();
+    let projet = etat.projet_dir.clone();
+    let r = tokio::task::spawn_blocking(move || registre.ouvrir_claude(&projet))
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()));
+    match r {
+        Ok(id) => (
+            StatusCode::CREATED,
+            [(header::CONTENT_TYPE, "application/json")],
+            format!("{{\"id\":{id}}}"),
+        )
+            .into_response(),
+        Err(raison) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            raison,
+        )
+            .into_response(),
+    }
+}
+
 async fn fermer_shell(State(etat): State<Partage>, CheminUrl(id): CheminUrl<u32>) -> StatusCode {
     if etat.shells.fermer(id) {
         StatusCode::NO_CONTENT
@@ -309,9 +336,21 @@ async fn client_shell(mut socket: WebSocket, shell: Arc<shells::Shell>) {
             }
         }
     }
+    let arret = shell.serveur_arrete();
+    let mut raison = String::new();
+    if shell.est_claude() && !arret {
+        // Le code de l'enfant peut arriver un instant après la fin de l'affichage.
+        for _ in 0..100 {
+            if let Some(c) = shell.code_sortie() {
+                raison = format!("code={c}");
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
     let close = Message::Close(Some(CloseFrame {
-        code: if shell.serveur_arrete() { 1001 } else { 1000 },
-        reason: "".into(),
+        code: if arret { 1001 } else { 1000 },
+        reason: raison.into(),
     }));
     let _ = tokio::time::timeout(delai, socket.send(close)).await;
 }
@@ -996,6 +1035,7 @@ pub async fn servir(
         .route("/api/deconnexion", post(deconnexion))
         .route("/api/session", get(session))
         .route("/api/shells", get(liste_shells).post(ouvrir_shell))
+        .route("/api/claude", get(claude_disponible).post(ouvrir_claude))
         .route("/api/shells/{id}", delete(fermer_shell))
         .route("/api/shells/{id}/ws", get(ws_shell))
         .route("/api/fichiers", get(liste_fichiers))
