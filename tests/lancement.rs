@@ -187,10 +187,74 @@ fn req002_ac3_sans_mot_de_passe_refus() {
 }
 
 #[test]
-fn req002_ac4_port_occupe_refus() {
+fn req002_ac4_port_occupe_prend_le_suivant() {
+    use std::io::{BufRead, BufReader};
     let (d, cfg) = prete("d5");
     let occupe = std::net::TcpListener::bind("0.0.0.0:0").unwrap();
     let p = occupe.local_addr().unwrap().port();
+    let mut child = Command::new(EXE)
+        .arg(&d)
+        .args(["--port", &p.to_string()])
+        .env("XDG_CONFIG_HOME", &cfg)
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut lignes = Vec::new();
+    for l in BufReader::new(child.stdout.take().unwrap()).lines() {
+        let l = l.unwrap();
+        let fin = l.contains("https://localhost:");
+        lignes.push(l);
+        if fin {
+            break;
+        }
+    }
+    let s = Serveur { child, port: p };
+    let texte = lignes.join("\n");
+    let q: u16 = lignes
+        .last()
+        .and_then(|l| l.rsplit(':').next())
+        .and_then(|n| n.trim().parse().ok())
+        .unwrap_or_else(|| panic!("{texte}"));
+    assert!(q > p && q <= p + 10, "{texte}");
+    assert_eq!(
+        lignes[0],
+        format!("Le port {p} est occupé : Yaide utilise le port {q}.")
+    );
+    assert!(
+        texte.contains(&format!("Yaide écoute sur le port {q},")),
+        "{texte}"
+    );
+    let mut ok = false;
+    for _ in 0..100 {
+        if curl(&[&format!("https://localhost:{q}/")]).is_some() {
+            ok = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    drop(s);
+    assert!(ok, "localhost:{q} ne répond pas");
+}
+
+#[test]
+fn req002_ac7_onze_ports_occupes_refus() {
+    let (d, cfg) = prete("d7");
+    let mut tenus = Vec::new();
+    let mut debut = 40000u16;
+    let p = 'cherche: loop {
+        tenus.clear();
+        for i in 0..11 {
+            match std::net::TcpListener::bind(("0.0.0.0", debut + i)) {
+                Ok(l) => tenus.push(l),
+                Err(_) => {
+                    debut += 13;
+                    assert!(debut < 60000, "pas de plage libre");
+                    continue 'cherche;
+                }
+            }
+        }
+        break debut;
+    };
     let out = Command::new(EXE)
         .arg(&d)
         .args(["--port", &p.to_string()])
@@ -199,7 +263,11 @@ fn req002_ac4_port_occupe_refus() {
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
     let e = String::from_utf8_lossy(&out.stderr);
-    assert!(e.contains(&p.to_string()) && e.contains("--port"), "{e}");
+    assert!(
+        e.contains(&p.to_string()) && e.contains(&(p + 10).to_string()) && e.contains("--port"),
+        "{e}"
+    );
+    drop(tenus);
 }
 
 #[test]

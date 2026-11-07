@@ -798,14 +798,30 @@ fn css(corps: &'static [u8]) -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], corps)
 }
 
-/// Réserve le port sur toutes les adresses de la machine.
+/// Réserve le port sur toutes les adresses de la machine ; s'il est occupé, essaie les 10 suivants.
 pub fn ecouter(port: u16) -> Result<TcpListener, String> {
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let l = TcpListener::bind(addr).map_err(|e| {
-        format!("le port {port} n'est pas disponible ({e}) ; choisissez-en un autre avec --port")
-    })?;
-    l.set_nonblocking(true).map_err(|e| e.to_string())?;
-    Ok(l)
+    let dernier = if port == 0 {
+        0
+    } else {
+        port.saturating_add(10)
+    };
+    for p in port..=dernier {
+        match TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], p))) {
+            Ok(l) => {
+                l.set_nonblocking(true).map_err(|e| e.to_string())?;
+                return Ok(l);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {}
+            Err(e) => {
+                return Err(format!(
+                    "le port {p} n'est pas disponible ({e}) ; choisissez-en un autre avec --port"
+                ))
+            }
+        }
+    }
+    Err(format!(
+        "les ports {port} à {dernier} sont occupés ; choisissez-en un autre avec --port"
+    ))
 }
 
 fn json_rep(code: StatusCode, v: serde_json::Value) -> Response {

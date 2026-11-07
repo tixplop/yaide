@@ -67,14 +67,21 @@ fn main() {
             let projet = dossier.canonicalize().unwrap_or(dossier.clone());
             let (cert, cle) = tls::assurer_certificat(&config).unwrap_or_else(|e| echec(1, &e));
             let listener = serveur::ecouter(port).unwrap_or_else(|e| echec(1, &e));
+            let pris = listener
+                .local_addr()
+                .unwrap_or_else(|e| echec(1, &e.to_string()))
+                .port();
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(2)
                 .enable_all()
                 .build()
                 .unwrap_or_else(|e| echec(1, &e.to_string()));
-            println!("Yaide écoute sur le port {port}, sur toutes les adresses de la machine.");
-            println!("Sur cette machine : https://localhost:{port}");
-            println!("Depuis une autre machine : https://<adresse de la machine>:{port}");
+            if pris != port && port != 0 {
+                println!("Le port {port} est occupé : Yaide utilise le port {pris}.");
+            }
+            println!("Yaide écoute sur le port {pris}, sur toutes les adresses de la machine.");
+            println!("Sur cette machine : https://localhost:{pris}");
+            println!("Depuis une autre machine : https://<adresse de la machine>:{pris}");
             if let Err(e) = rt.block_on(serveur::servir(listener, &cert, &cle, &config, &projet)) {
                 echec(1, &e);
             }

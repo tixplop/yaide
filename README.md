@@ -59,7 +59,7 @@ Le dossier est obligatoire. Le port par défaut est 8443. Ouvrez ensuite `https:
 
 Aucun shell n'est lancé au démarrage : « Nouveau shell » en ouvre un, et porte le nombre de shells ouverts.
 
-Messages d'erreur courants : sans mot de passe défini, lancez `yaide passwd` ; si le port est occupé, choisissez-en un autre avec `--port` ; le dossier doit exister.
+Messages d'erreur courants : sans mot de passe défini, lancez `yaide passwd` ; si le port est occupé, Yaide prend le suivant libre parmi les 10 suivants et l'affiche ; si tous le sont, choisissez-en un autre avec `--port` ; le dossier doit exister.
 
 ## Avertissement du certificat
 
