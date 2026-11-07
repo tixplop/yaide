@@ -367,6 +367,7 @@ test("REQ019_REQ046_REQ047_parcours_15_arriver_sans_shell", async ({ page }) => 
 
 test("REQ048_parcours_16_replier_depuis_l_en_tete", async ({ page }) => {
   yaide = await lancerYaide({ shell: "/bin/sh" });
+  await page.clock.install();
   await page.setViewportSize({ width: 1100, height: 700 });
   await ouvrirYaide(page, yaide.origine);
   const aside = page.locator("aside.cadre-panneau");
@@ -398,6 +399,7 @@ test("REQ048_parcours_16_replier_depuis_l_en_tete", async ({ page }) => {
   expect(largeur).toBeGreaterThan(240);
   // 1. Survol : info-bulle à droite du bouton.
   await replierEntete.hover();
+  await page.clock.fastForward(400);
   await expect(tooltip).toHaveText("Replier le panneau");
   const b = await replierEntete.boundingBox();
   expect((await tooltip.boundingBox()).x).toBeGreaterThanOrEqual(b.x + b.width - 1);
@@ -420,6 +422,7 @@ test("REQ048_parcours_16_replier_depuis_l_en_tete", async ({ page }) => {
   await page.keyboard.press("Shift+Tab");
   await expect(replierEntete).toBeFocused();
   expect(await contour(replierEntete)).toBe(true);
+  await page.clock.fastForward(400);
   await expect(tooltip).toHaveText("Replier le panneau");
   // 5. Entrée : comme à l'étape 2.
   await page.keyboard.press("Enter");

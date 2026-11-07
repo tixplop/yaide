@@ -261,12 +261,14 @@ test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_san
 });
 
 test("REQ035_AC11_info_bulles_a_droite_et_bouton_desactive_sans_arret_de_Tab", async ({ page }) => {
+  await page.clock.install();
   await ouvrirYaide(page, yaide.origine);
   await page.mouse.move(0, 0); // le clic d'ouverture laisse la souris sur « Nouveau shell »
   const fermer = page.getByRole("button", { name: "Fermer le shell" });
   for (const nom of ["Nouveau shell", "Réduire le shell", "Fermer le shell"]) {
     const bouton = page.getByRole("button", { name: nom });
     await bouton.hover();
+    await page.clock.fastForward(400);
     const info = page.getByRole("tooltip", { name: nom });
     await expect(info).toBeVisible();
     await expect(info).toHaveText(nom);
@@ -285,6 +287,7 @@ test("REQ035_AC11_info_bulles_a_droite_et_bouton_desactive_sans_arret_de_Tab", a
   await page.mouse.move(0, 0);
   await expect(bulle).toBeHidden();
   await page.locator(".bouton-enveloppe:has([aria-label='Fermer le shell'])").hover();
+  await page.clock.fastForward(400);
   await expect(bulle).toBeVisible();
   await page.getByRole("button", { name: "Nouveau shell" }).focus();
   await page.keyboard.press("Tab");

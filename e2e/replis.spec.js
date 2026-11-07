@@ -174,6 +174,7 @@ test("REQ046_AC3_REQ028_AC15_Entree_apres_Bas_deplie_et_Ctrl_Maj_F_ne_deplie_pas
 });
 
 test("REQ046_AC14_AC17_a_800_par_480_quatre_boutons_sans_chevauchement_et_info_bulle", async ({ page }) => {
+  await page.clock.install();
   await page.setViewportSize({ width: 800, height: 480 });
   await ouvrirYaide(page, yaide.origine);
   const noms = ["Ouverture rapide", "Replier le panneau", "Replier les shells", "Thème clair", "Déconnexion"];
@@ -186,6 +187,7 @@ test("REQ046_AC14_AC17_a_800_par_480_quatre_boutons_sans_chevauchement_et_info_b
   expect(boites.at(-1).x + boites.at(-1).width).toBeLessThanOrEqual(800);
   const b = bouton(page, "Replier le panneau");
   await b.hover();
+  await page.clock.fastForward(400);
   const bulle = page.getByRole("tooltip");
   await expect(bulle).toHaveText("Replier le panneau");
   const t = await bulle.boundingBox();
@@ -195,6 +197,7 @@ test("REQ046_AC14_AC17_a_800_par_480_quatre_boutons_sans_chevauchement_et_info_b
   await expect(page.getByRole("tooltip")).toHaveCount(0);
   await page.mouse.move(400, 300);
   await bouton(page, "Déplier le panneau").hover();
+  await page.clock.fastForward(400);
   await expect(page.getByRole("tooltip")).toHaveText("Déplier le panneau");
 });
 
@@ -233,6 +236,7 @@ test("REQ032_AC15_zone_repliee_fenetre_reduite_puis_depliee_la_hauteur_est_borne
 // ---- T-060 : replier le panneau depuis son en-tête ----
 
 test("REQ048_AC5_AC8_AC9_en_tete_a_240_et_280_px", async ({ page }) => {
+  await page.clock.install();
   await page.setViewportSize({ width: 1100, height: 700 });
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
@@ -276,6 +280,7 @@ test("REQ048_AC5_AC8_AC9_en_tete_a_240_et_280_px", async ({ page }) => {
           await page.keyboard.press("Shift");
           await repli.focus();
         }
+        await page.clock.fastForward(400);
         const bulle = page.getByRole("tooltip");
         await expect(bulle, `${vue} ${largeur} ${mode}`).toHaveText("Replier le panneau");
         const t = await bulle.boundingBox();
