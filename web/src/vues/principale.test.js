@@ -1613,3 +1613,134 @@ test("rechargement_rouvre_la_conversation", async () => {
   expect(vue.dataset.vueColonne).toBe("agent");
   await attendre();
 });
+
+// ---- T-106 : « Claude » dans le rail droit ----
+
+function simulerClaude({ disponible = true, ouverture = { status: 201, corps: { id: 7 } }, coupure = false } = {}) {
+  FauxWebSocket.tous = [];
+  vi.stubGlobal("WebSocket", FauxWebSocket);
+  const appels = [];
+  const rep = (corps, status = 200) => ({ ok: status < 400, status, json: async () => corps, text: async () => (typeof corps === "string" ? corps : "") });
+  vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+    const chemin = String(url).split("?")[0];
+    appels.push(`${opts.method ?? "GET"} ${chemin}`);
+    if (chemin === "/api/claude" && opts.method === "POST") return coupure ? null : rep(ouverture.corps, ouverture.status);
+    if (chemin === "/api/claude") return rep({ disponible });
+    if (chemin === "/api/shells") return rep({ instance: "i1", shells: [] });
+    if (chemin === "/api/fichiers") return rep({ entrees: [{ nom: "main.rs", dossier: false, ignore: false }] });
+    if (chemin === "/api/fichier") return { ok: true, status: 200, text: async () => "fn main() {}", headers: { get: () => "1" } };
+    if (chemin === "/api/git/etat") return rep({ cause: "pas-depot", message: "pas un dépôt" }, 409);
+    if (chemin === "/api/agent/agents") return rep({ agents: [], erreurs: [] });
+    if (chemin === "/api/agent/reglages") return rep({ providers: [], profils: [] });
+    return rep({}, 409);
+  }));
+  vi.mocked(lire).mockImplementation(async () => undefined);
+  return appels;
+}
+const boutonClaudeDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label=Claude]");
+const ongletsClaude = (vue) => [...vue.querySelectorAll("[role=tab]")].filter((t) => t.getAttribute("aria-label")?.startsWith("Claude "));
+
+test("REQ068_AC1_bouton_selon_la_detection", async () => {
+  simulerClaude({ disponible: true });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
+  const rd = vue.querySelector(".cadre-rail-droit");
+  expect([...rd.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents", "Claude"]);
+  expect(icone(boutonClaudeDe(vue))).toBe("asterisk");
+  simulerClaude({ disponible: false });
+  const sans = monter().vue;
+  await attendre();
+  await attendre();
+  expect([...sans.querySelectorAll(".cadre-rail-droit button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents"]);
+});
+
+test("REQ068_AC2_clic_ouvre_un_onglet", async () => {
+  const appels = simulerClaude();
+  const { vue } = monter({ chemin: "~/code/projet" });
+  await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
+  boutonClaudeDe(vue).click();
+  await vi.waitFor(() => expect(ongletsClaude(vue).length).toBe(1));
+  expect(appels).toContain("POST /api/claude");
+  expect(ongletsClaude(vue)[0].getAttribute("aria-selected")).toBe("true");
+  expect(ongletsClaude(vue)[0].title).toBe("Claude Code dans ~/code/projet");
+  boutonClaudeDe(vue).click();
+  await vi.waitFor(() => expect(ongletsClaude(vue).length).toBe(2));
+});
+
+test("REQ068_AC18_coupure_et_503_aucun_onglet", async () => {
+  simulerClaude({ coupure: true });
+  const a = monter().vue;
+  await vi.waitFor(() => expect(boutonClaudeDe(a)).not.toBeNull());
+  boutonClaudeDe(a).click();
+  await vi.waitFor(() => expect(a.textContent).toContain("Connexion perdue. Réessayez au retour."));
+  expect(ongletsClaude(a).length).toBe(0);
+  simulerClaude({ ouverture: { status: 503, corps: "pas de pty\n" } });
+  const b = monter().vue;
+  await vi.waitFor(() => expect(boutonClaudeDe(b)).not.toBeNull());
+  boutonClaudeDe(b).click();
+  await vi.waitFor(() => expect(b.textContent).toContain("Impossible d'ouvrir une session Claude : pas de pty."));
+  expect(ongletsClaude(b).length).toBe(0);
+});
+
+test("REQ028_AC22_touches_sur_agents_et_claude", async () => {
+  simulerClaude();
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
+  for (const b of [boutonAgentsDe(vue), boutonClaudeDe(vue)]) {
+    b.focus();
+    for (const k of ["f", "r", "g"]) clavier(b, k);
+    expect(vue.querySelector("[role=tab][aria-label=Fichiers]").getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(b);
+    expect(vue.querySelector("[role=tab][aria-label=Recherche]").getAttribute("aria-selected")).toBe("false");
+  }
+  boutonClaudeDe(vue).focus();
+  clavier(boutonClaudeDe(vue), "a");
+  await vi.waitFor(() => expect(document.activeElement).toBe(champAgent(vue)));
+});
+
+test("REQ028_AC8_ordre_de_tab_avec_claude", async () => {
+  simulerClaude();
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
+  // Ordre du rail droit : « Claude » après « Agents ».
+  expect([...vue.querySelectorAll(".cadre-rail-droit button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents", "Claude"]);
+  // Un fichier ouvert, puis une session Claude.
+  await vi.waitFor(() => expect(ligne(vue, "main.rs")).toBeDefined());
+  ligne(vue, "main.rs").click();
+  await vi.waitFor(() => expect(vue.querySelector(".cm-content")).not.toBeNull());
+  const cm = vue.querySelector(".cm-content");
+  boutonClaudeDe(vue).click();
+  await vi.waitFor(() => expect(ongletsClaude(vue).length).toBe(1));
+  // L'éditeur du fichier est masqué : hors de l'ordre de Tab.
+  expect(cm.closest("[hidden]")).not.toBeNull();
+  // Après les onglets de fichiers, le prochain arrêt est le terminal « Claude 1 ».
+  const terminal = vue.querySelector('.terminal-zone[aria-label="Claude 1"]');
+  expect(terminal).not.toBeNull();
+  expect(terminal.closest("[hidden]")).toBeNull();
+  const liste = vue.querySelector("[role=tablist][aria-label='Fichiers ouverts']") ?? ongletsClaude(vue)[0].closest("[role=tablist]");
+  const arrets = [...vue.querySelectorAll("button, [role=tab], [tabindex], textarea, [contenteditable=true]")].filter((e) => e.tabIndex >= 0 && !e.closest("[hidden]"));
+  const dernierOnglet = arrets.filter((e) => liste.contains(e)).pop();
+  const suivant = arrets[arrets.indexOf(dernierOnglet) + 1];
+  expect(terminal.contains(suivant)).toBe(true);
+});
+
+test("REQ068_AC5_raccourcis_ignores_dans_le_terminal_claude", async () => {
+  simulerClaude();
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
+  boutonClaudeDe(vue).click();
+  await vi.waitFor(() => expect(ongletsClaude(vue).length).toBe(1));
+  const zone = vue.querySelector(".terminal-zone");
+  const touche = (init) => {
+    const e = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+    zone.dispatchEvent(e);
+    return e;
+  };
+  expect(touche({ key: "p", ctrlKey: true }).defaultPrevented).toBe(false);
+  expect(touche({ key: "s", ctrlKey: true }).defaultPrevented).toBe(false);
+  expect(document.querySelector("dialog[open], [role=dialog]")).toBeNull();
+  // Ctrl+Maj+F sort le focus vers le bouton actif du rail.
+  zone.focus();
+  touche({ key: "F", ctrlKey: true, shiftKey: true });
+  expect(document.activeElement).toBe(vue.querySelector("[role=tab][aria-selected=true]"));
+});

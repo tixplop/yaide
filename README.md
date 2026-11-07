@@ -84,6 +84,15 @@ L'agent s'affiche dans une colonne à droite de l'éditeur, à côté de votre c
 - **Conversation à plusieurs agents.** Cochez un ou plusieurs agents, puis « Démarrer une conversation » : à chaque message, les agents répondent chacun à son tour, dans l'ordre de la liste, chacun avec son profil et dans un groupe à sa couleur. « Arrêter » interrompt l'agent en cours, et les suivants ne répondent pas.
 - **Supprimer un agent.** Supprimez son dossier `.yaide/agents/<nom>/` (depuis l'arborescence, par exemple). Un `agent.json` illisible est signalé au-dessus de la liste, sans empêcher les autres agents.
 
+## Session Claude
+
+Si la commande `claude` (Claude Code) est dans le `PATH` du serveur au moment où vous chargez la page, un bouton « Claude » apparaît dans le rail droit, sous « Agents ».
+
+- Chaque clic sur « Claude » ouvre une nouvelle session dans un onglet de l'éditeur (« Claude 1 », « Claude 2 »…), dans le dossier du projet.
+- Yaide lance `claude --dangerously-skip-permissions` : Claude agit sans demander de confirmation. N'utilisez cette fonction que sur un projet où vous acceptez cela.
+- La session s'arrête quand vous fermez son onglet, et toutes les sessions s'arrêtent avec Yaide.
+- Dans un onglet Claude, les raccourcis de Yaide (Ctrl+P, Ctrl+S) vont à Claude Code. Ctrl+Maj+F ramène le focus sur le rail.
+
 ## Raccourcis
 
 | Raccourci | Où | Effet |

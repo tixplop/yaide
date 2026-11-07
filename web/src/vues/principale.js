@@ -1,4 +1,4 @@
-import { creerChemin, deconnexion, lireFichier } from "../api.js";
+import { claudeDisponible, creerChemin, deconnexion, lireFichier, ouvrirClaude } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { cadre } from "../ui/cadre.js";
 import { borner, limites } from "../ui/poignee.js";
@@ -50,6 +50,14 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const boutonAgent = bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", actif: false });
   const boutonAgents = bouton({ icone: "users", nomAccessible: "Agents", positionInfoBulle: "gauche", actif: false });
   const repliAgent = bouton({ icone: "panel-right-close", nomAccessible: "Replier l'agent", positionInfoBulle: "gauche" });
+  const boutonClaude = bouton({ icone: "asterisk", nomAccessible: "Claude", infoBulle: "Nouvelle session Claude", positionInfoBulle: "gauche" });
+  boutonClaude.addEventListener("click", async () => {
+    const r = await ouvrirClaude();
+    if (detruite) return;
+    if (r.coupure) return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
+    if (r.erreur !== undefined) return dire({ texte: `Impossible d'ouvrir une session Claude : ${String(r.erreur).replace(/\.$/, "")}.`, variante: "alerte", fermable: true });
+    editeur.ouvrirClaude({ id: r.id });
+  });
   boutonAgent.addEventListener("click", entrerDansAgent);
   boutonAgents.addEventListener("click", entrerDansAgents);
   repliAgent.addEventListener("click", () => {
@@ -187,6 +195,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     },
   });
   const editeur = vueEditeur({
+    chemin,
     dire,
     ouvrirRapide: () => ouverture.ouvrir(),
     surAttente: (t) => { attenteTexte = t; montrerCoupure(); },
@@ -269,6 +278,11 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       racine.definirTailles({ [zone]: taille });
     },
     surFin: () => ecrire("tailles", { ...choisies }),
+  });
+
+  // « Claude » n'existe que si `claude` est dans le PATH du serveur, vérifié à chaque chargement.
+  claudeDisponible().then((oui) => {
+    if (oui && !detruite) racine.querySelector(".cadre-rail-droit").append(boutonClaude.enveloppe);
   });
 
   // Sans shell à l'arrivée : la zone reste hors page le temps de lire la liste.
