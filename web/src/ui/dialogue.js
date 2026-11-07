@@ -1,7 +1,7 @@
 const POSITIONS = ["centre", "palette", "reglages"];
 let compteur = 0;
 
-export function dialogue({ titre, contenu = [], actions = [], focusInitial, position = "centre", surAnnuler }) {
+export function dialogue({ titre, contenu = [], actions = [], focusInitial, position = "centre", aide, surAnnuler }) {
   if (!titre) throw new Error("dialogue : titre requis");
   if (!focusInitial) throw new Error("dialogue : focusInitial requis");
   if (!surAnnuler) throw new Error("dialogue : surAnnuler requis");
@@ -16,6 +16,10 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
     h.textContent = titre;
     el.setAttribute("aria-labelledby", h.id);
     el.append(h);
+  }
+  if (aide) {
+    el.setAttribute("aria-describedby", aide.id || (aide.id = `dialogue-${compteur}-aide`));
+    el.append(aide);
   }
   const corps = document.createElement("div");
   corps.className = "dialogue-contenu";
@@ -50,4 +54,27 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
       for (const b of actions) b.disabled = oui;
     },
   };
+}
+
+// Groupe de champs d'un C-007 sans liste : <fieldset> et <legend>, aide reliée par aria-describedby.
+export function groupe({ legende, champs, aide, enLigne = false }) {
+  const f = document.createElement("fieldset");
+  f.className = enLigne ? "ya-groupe ya-groupe-ligne" : "ya-groupe";
+  const l = document.createElement("legend");
+  l.textContent = legende;
+  f.append(l, ...champs);
+  if (aide) {
+    const a = document.createElement("p");
+    a.className = "ya-groupe-aide";
+    a.id = `groupe-${++compteur}-aide`;
+    a.textContent = aide;
+    f.setAttribute("aria-describedby", a.id);
+    f.append(a);
+  }
+  return f;
+}
+
+// Règle C-007 : un message apparu dans le contenu qui défile est amené dans la vue, sans déplacer le focus.
+export function amenerDansLaVue(element) {
+  element.scrollIntoView?.({ block: "nearest" });
 }

@@ -188,3 +188,19 @@ test("REQ052_coupure_au_chargement_dit_connexion_perdue", async () => {
   await attendre();
   expect(document.querySelector("dialog [role=alert].message").textContent).toBe("Connexion perdue. Réessayez au retour.");
 });
+
+test("REQ071_message_de_V_008_amene_dans_la_vue_sans_bouger_le_focus", async () => {
+  const vu = [];
+  Element.prototype.scrollIntoView = function (o) {
+    vu.push([this.className, o]);
+  };
+  const { lignes, champs } = await ouvrir();
+  lignes()[1].click();
+  taper(champs().cle, "sk-ant");
+  champs().enregistrer.focus();
+  champs().enregistrer.click();
+  await attendre();
+  expect(vu.some(([c, o]) => c.includes("message") && o.block === "nearest")).toBe(true);
+  expect(document.activeElement).toBe(champs().enregistrer);
+  delete Element.prototype.scrollIntoView;
+});

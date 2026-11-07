@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, expect, test, vi } from "vitest";
 import { bouton } from "./bouton.js";
-import { dialogue } from "./dialogue.js";
+import { amenerDansLaVue, dialogue, groupe } from "./dialogue.js";
 
 const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
 const regle = (sel) => {
@@ -178,4 +178,37 @@ test("REQ053_AC9_echap_ne_ferme_que_la_confirmation", () => {
   confirmation.d.fermer();
   expect(reglages.d.element.isConnected).toBe(true);
   expect(reglages.d.element.hasAttribute("open")).toBe(true);
+});
+
+test("REQ071_groupe_fieldset_legende_et_aide_reliee", () => {
+  const a = bouton({ libelle: "A" });
+  const g = groupe({ legende: "Fonctions", champs: [a], aide: "Aide du groupe", enLigne: true });
+  expect(g.tagName).toBe("FIELDSET");
+  expect(g.querySelector("legend").textContent).toBe("Fonctions");
+  expect(g.contains(a)).toBe(true);
+  const aide = g.querySelector(`#${g.getAttribute("aria-describedby")}`);
+  expect(aide.textContent).toBe("Aide du groupe");
+  expect(g.classList.contains("ya-groupe-ligne")).toBe(true);
+  expect(groupe({ legende: "X", champs: [] }).hasAttribute("aria-describedby")).toBe(false);
+});
+
+test("REQ071_aide_du_dialogue_reliee_par_aria_describedby", () => {
+  const aide = document.createElement("p");
+  aide.textContent = "Aide";
+  const { d } = monter({ aide });
+  expect(d.element.getAttribute("aria-describedby")).toBe(aide.id);
+  expect(d.element.contains(aide)).toBe(true);
+  expect(monter().d.element.hasAttribute("aria-describedby")).toBe(false);
+});
+
+test("REQ071_message_amene_dans_la_vue_sans_bouger_le_focus", () => {
+  const { d, annuler } = monter();
+  d.ouvrir();
+  const m = document.createElement("div");
+  const faux = vi.fn();
+  m.scrollIntoView = faux;
+  d.element.append(m);
+  amenerDansLaVue(m);
+  expect(faux).toHaveBeenCalledWith({ block: "nearest" });
+  expect(document.activeElement).toBe(annuler);
 });

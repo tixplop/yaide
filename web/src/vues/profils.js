@@ -1,7 +1,7 @@
 import * as apiReelle from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
-import { dialogue } from "../ui/dialogue.js";
+import { amenerDansLaVue, dialogue } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
 import { liste } from "../ui/liste.js";
 import { message } from "../ui/message.js";
@@ -179,7 +179,11 @@ export function ouvrirProfils({ api = apiReelle, surFermeture = () => {}, retour
     grille.className = "champs-grille";
     grille.append(cNom, cProvider, cModele, cEffort, cTemp, cSortie, cFenetre, aide, cDefaut);
     zoneForm.replaceChildren(grille);
-    if (resultat) zoneForm.append(message({ texte: resultat.texte, variante: resultat.variante }));
+    if (resultat) {
+      const m = message({ texte: resultat.texte, variante: resultat.variante });
+      zoneForm.append(m);
+      amenerDansLaVue(m);
+    }
     supprimerB.disabled = premier;
   }
 

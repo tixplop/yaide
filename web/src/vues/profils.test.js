@@ -312,3 +312,19 @@ test("REQ054_AC6_sans_profil_focus_dans_nom", async () => {
   expect(b.retour).toHaveBeenCalledWith(true);
   expect(b.surFermeture).toHaveBeenCalledTimes(1);
 });
+
+test("REQ071_message_de_V_009_amene_dans_la_vue_sans_bouger_le_focus", async () => {
+  const vu = [];
+  Element.prototype.scrollIntoView = function (o) {
+    vu.push([this.className, o]);
+  };
+  const { champ, bouton } = await ouvrir([SONNET]);
+  taper(champ("Modèle"), "autre");
+  const enr = bouton("Enregistrer");
+  enr.focus();
+  enr.click();
+  await attendre();
+  expect(vu.some(([c, o]) => c.includes("message") && o.block === "nearest")).toBe(true);
+  expect(document.activeElement).toBe(enr);
+  delete Element.prototype.scrollIntoView;
+});

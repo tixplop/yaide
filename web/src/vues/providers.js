@@ -1,7 +1,7 @@
 import * as apiReelle from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
-import { dialogue } from "../ui/dialogue.js";
+import { amenerDansLaVue, dialogue } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
 import { liste } from "../ui/liste.js";
 import { message } from "../ui/message.js";
@@ -108,7 +108,11 @@ export function ouvrirProviders({ api = apiReelle, surFermeture = () => {} } = {
     }
     supprimerB.addEventListener("click", supprimer);
     zoneForm.replaceChildren(nom, a, k);
-    if (resultat) zoneForm.append(message({ texte: resultat.texte, variante: resultat.variante }));
+    if (resultat) {
+      const m = message({ texte: resultat.texte, variante: resultat.variante });
+      zoneForm.append(m);
+      amenerDansLaVue(m);
+    }
   }
 
   function choisir(id) {

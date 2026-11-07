@@ -458,3 +458,9 @@ test("REQ065_AC6_on_accent_sur_les_six_couleurs_deux_themes", () => {
     }
   }
 });
+
+test("REQ071_contrastes_du_texte_sur_les_messages_alerte_et_succes_poses_sur_bg_300", () => {
+  for (const theme of THEMES) {
+    for (const msg of ["--msg-alerte", "--msg-succes"]) expect(ratio(theme, "--ink", msg, "--bg-300"), `${msg} (${theme})`).toBeGreaterThanOrEqual(4.5);
+  }
+});

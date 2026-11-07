@@ -118,3 +118,18 @@ test("REQ070_les_8_px_de_claude_seulement_quand_il_suit_une_autre_commande", () 
   expect(claude2.matches(".cadre-rail-droit .bouton-enveloppe:nth-child(n+3)")).toBe(true);
   expect(agents.matches(".cadre-rail-droit .bouton-enveloppe:nth-child(n+3)")).toBe(false);
 });
+
+test("REQ071_regles_du_groupe_de_reglages", () => {
+  const sans = css.replace(/\/\*[^]*?\*\//g, "");
+  const r = (sel) => sans.match(new RegExp(`${sel.replace(/[.]/g, "\\.")}\\s*\\{([^}]*)\\}`))[1].replace(/\s+/g, " ");
+  expect(r(".ya-reglages fieldset")).toContain("border: 0");
+  expect(r(".ya-reglages fieldset")).toContain("margin: 0");
+  expect(r(".ya-reglages fieldset")).toContain("gap: var(--space-2)");
+  expect(r(".ya-reglages legend")).toContain("600 13px/20px");
+  expect(r(".ya-reglages legend")).toContain("color: var(--ink)");
+  expect(r(".ya-reglages legend")).toContain("margin-bottom: var(--space-2)");
+  expect(r(".ya-reglages .ya-groupe-ligne")).toContain("column-gap: var(--space-6)");
+  expect(r(".ya-reglages .ya-groupe-ligne")).toContain("flex-wrap: wrap");
+  expect(r(".ya-reglages .ya-groupe-aide")).toContain("font: var(--texte-petit)");
+  expect(r(".ya-reglages .ya-groupe-aide")).toContain("color: var(--ink-muted)");
+});

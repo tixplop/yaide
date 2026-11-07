@@ -402,6 +402,11 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-reglages .dialogue-titre { flex: none; }
 .ya-reglages .dialogue-contenu { flex: 1 1 auto; min-height: 0; overflow-y: auto; gap: 12px; }
 .ya-reglages .dialogue-actions { flex: none; }
+.ya-reglages fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.ya-reglages legend { padding: 0; margin-bottom: var(--space-2); font: 600 13px/20px var(--font-sans); color: var(--ink); }
+.ya-reglages .ya-groupe-ligne { flex-direction: row; flex-wrap: wrap; column-gap: var(--space-6); }
+.ya-reglages .ya-groupe-ligne legend { flex: 0 0 100%; }
+.ya-reglages .ya-groupe-aide { margin: 0; flex: 0 0 100%; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
 
 /* C-013 : bouton d'en-tête dont le menu est ouvert. */
 .ya-icon-btn[aria-expanded="true"] { background: var(--bg-400); color: var(--ink); }
