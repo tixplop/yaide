@@ -83,6 +83,11 @@ fn dossier(nom: &str) -> PathBuf {
 
 /// Lance Yaide dans un dossier neuf avec le `PATH` donné.
 fn lancer(nom: &str, path: &str) -> Serveur {
+    lancer_avec_env(nom, path, &[])
+}
+
+/// Comme `lancer`, avec des variables d'environnement en plus pour Yaide.
+fn lancer_avec_env(nom: &str, path: &str, env: &[(&str, &str)]) -> Serveur {
     let d = dossier(nom);
     let cfg = d.join("cfg");
     let mut c = Command::new(EXE)
@@ -106,6 +111,7 @@ fn lancer(nom: &str, path: &str) -> Serveur {
         .env("HOME", &d)
         .stdout(Stdio::null());
     cmd.env("SHELL", "/bin/sh").env("PATH", path);
+    cmd.envs(env.iter().copied());
     let child = cmd.spawn().unwrap();
     let mut s = Serveur {
         child,
@@ -311,7 +317,7 @@ fn faux_claude(nom: &str) -> (String, PathBuf) {
     let bin = dossier(&format!("bin-{nom}"));
     let temoin = bin.join("temoin");
     let script = format!(
-        "#!/bin/sh\n{{ echo \"pid=$$\"; echo \"args=$*\"; echo \"pwd=$(pwd)\"; }} > '{}'\nexec /bin/sh\n",
+        "#!/bin/sh\nif [ -n \"$CLAUDECODE\" ] || [ -n \"$CLAUDE_CODE_ENTRYPOINT\" ]; then\n  echo 'Error: Claude Code cannot be launched inside another Claude Code session.'\n  exit 1\nfi\n{{ echo \"pid=$$\"; echo \"args=$*\"; env; echo \"pwd=$(pwd)\"; }} > '{}'\nexec /bin/sh\n",
         temoin.display()
     );
     let f = bin.join("claude");
@@ -343,8 +349,57 @@ fn req068_ac3_commande_arguments_et_dossier_du_projet() {
     let s = lancer("args", &path);
     let _id = ouvrir(&s);
     let t = lire_temoin(&temoin);
-    assert!(t.contains("args=--dangerously-skip-permissions\n"), "{t}");
+    assert!(t.contains("args=\n"), "{t}");
     assert!(t.contains(&format!("pwd={}\n", s.projet.display())), "{t}");
+}
+
+#[test]
+fn req068_ac20_session_lancee_depuis_claude_code() {
+    let (path, temoin) = faux_claude("imbrique");
+    let s = lancer_avec_env(
+        "imbrique",
+        &path,
+        &[
+            ("CLAUDECODE", "1"),
+            ("CLAUDE_CODE_ENTRYPOINT", "cli"),
+            ("CLAUDE_CODE_SESSION_ID", "x"),
+            ("CLAUDE_CODE_USE_BEDROCK", "1"),
+        ],
+    );
+    let mut w = ws(&s, ouvrir(&s));
+    taper(&mut w, "echo A$((20+22))B\n");
+    let sortie = lire_jusque(&mut w, "A42B\r\n", 10);
+    assert!(!sortie.contains("cannot be launched"), "{sortie}");
+    let t = lire_temoin(&temoin);
+    for v in [
+        "CLAUDECODE",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_SESSION_ATTENDED",
+        "CLAUDE_CODE_MESSAGING_SOCKET",
+        "CLAUDE_CODE_MESSAGING_TOKEN",
+        "CLAUDE_CODE_EXECPATH",
+        "CLAUDE_PID",
+        "AI_AGENT",
+    ] {
+        assert!(
+            !t.lines().any(|l| l.starts_with(&format!("{v}="))),
+            "{v} : {t}"
+        );
+    }
+    assert!(t.contains("\nCLAUDE_CODE_USE_BEDROCK=1\n"), "{t}");
+    // Un shell du même Yaide garde les variables.
+    let (code, corps) = http(s.port, "POST", "/api/shells", &s.cookie, "");
+    assert_eq!(code, 201, "{corps}");
+    let id: u32 = corps
+        .trim_start_matches("{\"id\":")
+        .trim_end_matches('}')
+        .parse()
+        .unwrap();
+    let mut sh = ws(&s, id);
+    taper(&mut sh, "echo V${CLAUDECODE}W\n");
+    lire_jusque(&mut sh, "V1W\r\n", 10);
 }
 
 #[test]

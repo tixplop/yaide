@@ -89,7 +89,7 @@ L'agent s'affiche dans une colonne à droite de l'éditeur, à côté de votre c
 Si la commande `claude` (Claude Code) est dans le `PATH` du serveur au moment où vous chargez la page, un bouton « Claude » apparaît dans le rail droit, sous « Agents ».
 
 - Chaque clic sur « Claude » ouvre une nouvelle session dans un onglet de l'éditeur (« Claude 1 », « Claude 2 »…), dans le dossier du projet.
-- Yaide lance `claude --dangerously-skip-permissions` : Claude agit sans demander de confirmation. N'utilisez cette fonction que sur un projet où vous acceptez cela.
+- Yaide lance `claude` sans argument : Claude Code suit le mode de permissions de vos réglages (par exemple l'auto-mode). Une session marche aussi quand Yaide est lancé depuis Claude Code.
 - La session s'arrête quand vous fermez son onglet, et toutes les sessions s'arrêtent avec Yaide.
 - Dans un onglet Claude, les raccourcis de Yaide (Ctrl+P, Ctrl+S) vont à Claude Code. Ctrl+Maj+F ramène le focus sur le rail.
 

@@ -95,6 +95,20 @@ fn signaler_tout(pgid: i32, signal: i32) {
     }
 }
 
+/// Variables d'une session Claude Code parente, retirées de l'environnement de `claude`.
+const VARIABLES_CLAUDE_CODE: &[&str] = &[
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_EXECPATH",
+    "CLAUDE_PID",
+    "AI_AGENT",
+];
+
 /// Premier fichier exécutable `claude` dans les dossiers du `PATH`, cherché à chaque appel.
 pub fn trouver_claude() -> Option<std::path::PathBuf> {
     use std::os::unix::fs::PermissionsExt;
@@ -192,19 +206,15 @@ impl Registre {
             .ok()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "/bin/sh".to_string());
-        self.lancer(projet, &programme, &[], false)
+        self.lancer(projet, &programme, &[], false, &[])
     }
 
-    /// Session Claude : `claude --dangerously-skip-permissions` dans le dossier du projet.
+    /// Session Claude : `claude` sans argument dans le dossier du projet, sans les variables
+    /// d'une session Claude Code parente (sinon Claude Code refuse de démarrer).
     pub fn ouvrir_claude(self: &Arc<Self>, projet: &Path) -> Result<u32, String> {
         let chemin = trouver_claude().ok_or("la commande claude est introuvable dans le PATH")?;
         let programme = chemin.to_string_lossy().into_owned();
-        self.lancer(
-            projet,
-            &programme,
-            &["--dangerously-skip-permissions"],
-            true,
-        )
+        self.lancer(projet, &programme, &[], true, VARIABLES_CLAUDE_CODE)
     }
 
     fn lancer(
@@ -213,6 +223,7 @@ impl Registre {
         programme: &str,
         args: &[&str],
         claude: bool,
+        retirer: &[&str],
     ) -> Result<u32, String> {
         let paire = native_pty_system()
             .openpty(PtySize {
@@ -226,6 +237,9 @@ impl Registre {
         cmd.args(args);
         cmd.cwd(projet);
         cmd.env("TERM", "xterm-256color");
+        for v in retirer {
+            cmd.env_remove(v);
+        }
         let mut enfant = paire
             .slave
             .spawn_command(cmd)
