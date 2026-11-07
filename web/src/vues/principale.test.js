@@ -1186,6 +1186,76 @@ test("REQ054_AC4_echap_rend_le_focus_d_avant_ctrl_p", async () => {
   expect(document.activeElement).toBe(avant);
 });
 
+function paletteCommandes(texte) {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute("open");
+  };
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "p", ctrlKey: true, bubbles: true, cancelable: true }));
+  const entree = document.querySelector("dialog input");
+  entree.value = texte;
+  entree.dispatchEvent(new Event("input", { bubbles: true }));
+  return entree;
+}
+const nomsCommandes = () => [...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent);
+
+test("REQ070_AC5_AC19_REQ071_AC8_ouvert_avec_agents_et_shells_desactives", async () => {
+  const appels = [];
+  vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+    const u = String(url);
+    appels.push(`${opts.method ?? "GET"} ${u}`);
+    if (u === "/api/chemins") return jsonOk({ chemins: [] });
+    if (u === "/api/git/etat") return jsonOk({ branche: "main", detachee: false, branches: ["main"], changements: [] });
+    if (u.startsWith("/api/fichiers?")) return jsonOk({ entrees: [] });
+    if (u === "/api/session") return { status: 204 };
+    if (u.startsWith("/api/fichier?chemin=")) return { ok: true, status: 200, text: async () => '{"fonctions":{"agents":false,"shells":false}}', headers: { get: () => "v1" } };
+    return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
+  }));
+  const { vue } = monter({ reglages: { fonctions: { agents: false, shells: false } } });
+  const avant = vue.querySelector("header [aria-label=Déconnexion]");
+  avant.focus();
+  const entree = paletteCommandes(">");
+  expect(nomsCommandes()).toEqual(["Préférences d'interface"]);
+  entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  const dlg = document.querySelector("dialog");
+  expect(dlg.querySelector("h2").textContent).toBe("Préférences d'interface");
+  expect([...dlg.querySelectorAll("input[type=checkbox]")].filter((c) => !c.checked).map((c) => c.labels[0].textContent)).toEqual(["Shells", "Agents"]);
+  expect(appels.filter((a) => a.includes("/api/agent"))).toEqual([]);
+  dlg.dispatchEvent(new Event("cancel", { cancelable: true }));
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(document.activeElement).toBe(avant);
+  expect(appels.filter((a) => a.startsWith("PUT"))).toEqual([]);
+});
+
+test("REQ054_AC1_AC7_trois_commandes_avec_les_agents_et_focus_rendu", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const u = String(url);
+    if (u === "/api/chemins") return jsonOk({ chemins: [] });
+    if (u === "/api/git/etat") return jsonOk({ branche: "main", detachee: false, branches: ["main"], changements: [] });
+    if (u.startsWith("/api/fichiers?")) return jsonOk({ entrees: [] });
+    if (u === "/api/session") return { status: 204 };
+    if (u === "/api/agent/reglages") return jsonOk({ providers: [], profils: [] });
+    return { ok: false, status: 404, json: async () => ({ cause: "introuvable", message: "absent" }) };
+  }));
+  const { vue } = monter();
+  const avant = vue.querySelector("header [aria-label=Déconnexion]");
+  avant.focus();
+  const entree = paletteCommandes(">");
+  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Préférences d'interface"]);
+  entree.value = ">préf";
+  entree.dispatchEvent(new Event("input", { bubbles: true }));
+  entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  document.querySelector("dialog").dispatchEvent(new Event("cancel", { cancelable: true }));
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(document.activeElement).toBe(avant);
+});
+
 const agentCol = (vue) => vue.querySelector("aside.cadre-agent");
 const boutonAgentDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label=Agent]");
 const boutonAgentsDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label=Agents]");

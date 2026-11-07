@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { analyser, charger } from "./reglages-interface.js";
+import { analyser, charger, lire, serialiser } from "./reglages-interface.js";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -54,4 +54,31 @@ test("REQ069_AC1_charger_sans_fichier_reglages_vides_sans_ecriture", async () =>
   expect(await charger()).toEqual({ replis: { agent: false }, fonctions: TOUT });
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, text: async () => "", headers: { get: () => "v1" } })));
   expect(await charger()).toEqual({ illisible: true });
+});
+
+test("REQ071_AC3_AC4_serialiser_fichier_minimal_indente", () => {
+  expect(serialiser({ replis: {}, fonctions: TOUT })).toBe("{}\n");
+  expect(serialiser({ replis: { panneau: true }, fonctions: { ...TOUT, shells: false } })).toBe(
+    '{\n  "replis": {\n    "panneau": true\n  },\n  "fonctions": {\n    "shells": false\n  }\n}\n',
+  );
+  expect(serialiser({ replis: { agent: false, shells: true }, fonctions: TOUT })).toBe('{\n  "replis": {\n    "agent": false,\n    "shells": true\n  }\n}\n');
+  expect(serialiser({ replis: {}, fonctions: { ...TOUT, git: false } })).toBe('{\n  "fonctions": {\n    "git": false\n  }\n}\n');
+});
+
+test("REQ071_lire_distingue_absent_illisible_coupure_et_autre_erreur", async () => {
+  const repondre = (reponse) =>
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      if (!reponse) throw new TypeError("coupure");
+      return reponse;
+    }));
+  repondre({ ok: false, status: 404, json: async () => ({ cause: "introuvable", message: "absent" }) });
+  expect(await lire()).toEqual({ replis: {}, fonctions: TOUT });
+  repondre(null);
+  expect(await lire()).toEqual({ coupure: true });
+  repondre({ ok: false, status: 500, json: async () => ({ cause: "erreur", message: "Disque plein." }) });
+  expect(await lire()).toEqual({ raison: "Disque plein" });
+  repondre({ ok: true, status: 200, text: async () => "{", headers: { get: () => "v1" } });
+  expect(await lire()).toEqual({ illisible: true });
+  repondre({ ok: true, status: 200, text: async () => '{"fonctions":{"git":false}}', headers: { get: () => "v1" } });
+  expect(await lire()).toEqual({ replis: {}, fonctions: { ...TOUT, git: false } });
 });

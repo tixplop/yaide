@@ -10,6 +10,7 @@ const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const COMMANDES = [
   { id: "providers", nom: "Providers LLM" },
   { id: "profils", nom: "Profils de modèle" },
+  { id: "preferences", nom: "Préférences d'interface" },
 ];
 const nomDe = (chemin) => chemin.split("/").pop();
 
@@ -45,7 +46,7 @@ export function filtrer(chemins, texte) {
 /**
  * V-006. Ctrl+P (sauf dans un shell) ou `ouvrir()` affiche le dialogue.
  * Rappels : `surOuvrir({ chemin, contenu, version, geste })`, `geste = surLecture(true)`, `surLecture(false)`.
- * `commandes` : les commandes proposées (vide si les agents sont désactivés).
+ * `commandes` : les commandes proposées (seulement « Préférences d'interface » si les agents sont désactivés).
  * Un texte qui commence par `>` liste les commandes : `surCommande(id, avant)`, `avant` étant l'élément qui avait le focus avant l'ouverture.
  */
 export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}, surCommande = () => {}, commandes = COMMANDES }) {

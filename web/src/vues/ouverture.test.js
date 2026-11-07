@@ -195,7 +195,7 @@ test("REQ054_AC1_chevron_liste_les_commandes_sans_fichier", async () => {
   const { entree, v } = await ouvrir();
   taper(entree, ">");
   const lignes = [...document.querySelectorAll("dialog [role=option]")];
-  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle"]);
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle", "Préférences d'interface"]);
   expect(document.querySelector("dialog").textContent).not.toContain("main.rs");
   v.detruire();
 });
@@ -239,11 +239,45 @@ test("REQ054_AC5_gras_aucune_commande_et_fleches", async () => {
   v.detruire();
 });
 
-test("REQ070_AC5_ouverture_sans_commandes", async () => {
+test("REQ054_AC1_AC2_AC7_trois_commandes_et_pref", async () => {
   simuler(json({ chemins: ["src/main.rs"] }));
-  const { entree } = await ouvrir({ commandes: [] });
+  const surCommande = vi.fn();
+  const { entree, declencheur, v } = await ouvrir({ surCommande });
   taper(entree, ">");
+  const toutes = [...document.querySelectorAll("dialog [role=option]")];
+  expect(toutes).toHaveLength(3);
+  expect(toutes.map((l) => l.getAttribute("aria-selected"))).toEqual(["true", "false", "false"]);
+  touche(entree, "ArrowDown");
+  touche(entree, "ArrowDown");
+  expect(entree.getAttribute("aria-activedescendant")).toBe(toutes[2].id);
+  touche(entree, "Enter");
+  expect(surCommande).toHaveBeenLastCalledWith("preferences", declencheur);
+  expect(document.querySelector("dialog")).toBeNull();
+  v.ouvrir();
+  const e2 = document.querySelector("dialog input");
+  taper(e2, ">préf");
+  const lignes = [...document.querySelectorAll("dialog [role=option]")];
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Préférences d'interface"]);
+  expect(lignes[0].querySelector("b.liste-trouve").textContent).toBe("Préf");
+  touche(e2, "Enter");
+  expect(surCommande).toHaveBeenCalledTimes(2);
+  v.detruire();
+});
+
+test("REQ070_AC5_AC19_agents_desactives_seule_preferences", async () => {
+  simuler(json({ chemins: ["src/main.rs"] }));
+  const surCommande = vi.fn();
+  const { entree } = await ouvrir({ surCommande, commandes: [{ id: "preferences", nom: "Préférences d'interface" }] });
+  taper(entree, ">");
+  const lignes = [...document.querySelectorAll("dialog [role=option]")];
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Préférences d'interface"]);
+  expect(lignes[0].getAttribute("aria-selected")).toBe("true");
+  expect(entree.getAttribute("aria-activedescendant")).toBe(lignes[0].id);
+  taper(entree, ">prov");
   expect(document.querySelector("dialog").textContent).toContain("Aucune commande trouvée.");
   taper(entree, "main");
   expect(document.querySelector("dialog [role=listbox]").textContent).toContain("src/main.rs");
+  taper(entree, ">");
+  touche(entree, "Enter");
+  expect(surCommande).toHaveBeenCalledWith("preferences", expect.anything());
 });
