@@ -201,7 +201,7 @@ export function tableauxHybride(etat) {
   return sortie;
 }
 
-class TableauRendu extends WidgetType {
+export class TableauRendu extends WidgetType {
   constructor(source) {
     super();
     this.source = source;
@@ -232,8 +232,12 @@ class TableauRendu extends WidgetType {
         const rangee = [...table.querySelectorAll("tr")].indexOf(cellule.parentElement);
         pos = debut + debutCellule(this.source, rangee, cellule.cellIndex);
       }
+      const haut = el.getBoundingClientRect().top;
       vue.dispatch({ selection: { anchor: pos } });
       vue.focus();
+      // Le haut de la ligne 1 du tableau prend la place du haut du tableau rendu (hors marge) ; ce qui suit remonte.
+      const ecart = vue.lineBlockAt(debut).top + vue.documentTop - haut;
+      if (ecart) vue.scrollDOM.scrollTop += ecart;
     });
     return el;
   }

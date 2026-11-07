@@ -401,3 +401,22 @@ test("REQ062_AC18_numero_de_titre_a_la_hauteur_du_titre", () => {
   z.detruire();
   z.remove();
 });
+
+test("REQ063_AC8_numero_du_tableau_seul_avec_sa_classe_puis_celui_de_la_ligne_suivante", () => {
+  const z = zoneCode({ contenu: "# T\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nfin", langage: "markdown", hybride: true });
+  document.body.append(z);
+  ensureSyntaxTree(z.vue.state, z.vue.state.doc.length, 5000);
+  z.vue.dispatch({});
+  const nums = () => [...z.vue.dom.querySelectorAll(".cm-lineNumbers .cm-gutterElement")].filter((e) => /^\d+$/.test(e.textContent));
+  const texte = nums().map((e) => e.textContent);
+  expect(texte).toContain("3");
+  expect(texte).not.toContain("4");
+  expect(texte).not.toContain("5");
+  expect(texte).toContain("6");
+  expect(nums().find((e) => e.textContent === "3").className).toContain("cm-hy-numero-tableau");
+  expect(nums().find((e) => e.textContent === "6").className).not.toContain("cm-hy-numero-tableau");
+  z.vue.dispatch({ selection: { anchor: z.vue.state.doc.line(3).from } });
+  expect(z.vue.dom.querySelector(".cm-hy-numero-tableau")).toBeNull();
+  z.detruire();
+  z.remove();
+});

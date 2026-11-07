@@ -1,12 +1,12 @@
-import { EditorState, Compartment, StateField, RangeSetBuilder, RangeSet } from "@codemirror/state";
-import { EditorView, Decoration, GutterMarker, keymap, lineNumbers, gutterLineClass, drawSelection, highlightActiveLineGutter } from "@codemirror/view";
+import { EditorState, Compartment, Prec, StateField, RangeSetBuilder, RangeSet } from "@codemirror/state";
+import { EditorView, Decoration, GutterMarker, keymap, lineNumbers, lineNumberWidgetMarker, gutterLineClass, drawSelection, highlightActiveLineGutter } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { supportLangage } from "./langages.js";
 import { apercu as creerApercu } from "./apercu.js";
 import { apercuHtml } from "./apercu-html.js";
 import { couleurs } from "./couleurs-code.js";
-import { hybride as extensionHybride } from "./hybride.js";
+import { hybride as extensionHybride, TableauRendu, tableauxHybride } from "./hybride.js";
 import { themeCourant } from "./theme.js";
 
 const MODES = ["edition", "diff"];
@@ -104,6 +104,50 @@ const numerosDesTitres = StateField.define({
   provide: (f) => gutterLineClass.from(f),
 });
 
+// Tableau rendu : un seul numéro, celui de sa première ligne, décalé vers le bas (composants.css).
+class NumeroTableau extends GutterMarker {
+  constructor(numero) {
+    super();
+    this.numero = numero;
+    this.elementClass = "cm-hy-numero-tableau";
+  }
+  eq(autre) {
+    return autre.numero === this.numero;
+  }
+  toDOM() {
+    return document.createTextNode(String(this.numero));
+  }
+}
+const numerosDesTableaux = lineNumberWidgetMarker.of((vue, widget, bloc) => (widget instanceof TableauRendu ? new NumeroTableau(vue.state.doc.lineAt(bloc.from).number) : null));
+
+// Haut et Bas : CodeMirror ne sait pas entrer dans un tableau rendu (le curseur saute ailleurs).
+// Depuis la dernière rangée affichée de la ligne au-dessus (ou la première de celle en dessous), le curseur va
+// sur la première (ou la dernière) ligne du tableau, à la même colonne si elle existe.
+function entrerDansTableau(bas) {
+  return (vue) => {
+    const sel = vue.state.selection.main;
+    if (!sel.empty) return false;
+    const doc = vue.state.doc;
+    const ligne = doc.lineAt(sel.head);
+    if (vue.moveToLineBoundary(sel, bas).head !== (bas ? ligne.to : ligne.from)) return false;
+    const voisine = bas ? ligne.number + 1 : ligne.number - 1;
+    if (voisine < 1 || voisine > doc.lines) return false;
+    const cible = doc.line(voisine);
+    const tableau = tableauxHybride(vue.state).find((t) => (bas ? t.debut === cible.from : t.fin === cible.to));
+    if (!tableau) return false;
+    const colonne = sel.head - ligne.from;
+    const arrivee = bas ? doc.lineAt(tableau.debut) : doc.lineAt(tableau.fin);
+    vue.dispatch({ selection: { anchor: arrivee.from + Math.min(colonne, arrivee.length) }, scrollIntoView: true, userEvent: "select" });
+    return true;
+  };
+}
+const clavierTableau = Prec.high(
+  keymap.of([
+    { key: "ArrowDown", run: entrerDansTableau(true) },
+    { key: "ArrowUp", run: entrerDansTableau(false) },
+  ]),
+);
+
 export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, ligne, nom = "", surChangement, surPosition } = {}) {
   if (!MODES.includes(mode)) throw new Error(`zoneCode : mode inconnu « ${mode} »`);
   const diff = mode === "diff";
@@ -116,7 +160,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   const compartiment = new Compartment();
   const compartimentHybride = new Compartment();
   const hybridePossible = langage === "markdown" && !diff;
-  const extensionsHybride = () => [extensionHybride(), numerosDesTitres, EditorView.lineWrapping];
+  const extensionsHybride = () => [extensionHybride(), numerosDesTitres, numerosDesTableaux, clavierTableau, EditorView.lineWrapping];
   const extensions = [
     compartiment.of(themeCourant() === "dark" ? themeSombre : themeClair),
     lineNumbers(),
@@ -172,8 +216,13 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     if (actif === hybrideActif) return;
     hybrideActif = actif;
     const haut = vue.lineBlockAtHeight(vue.scrollDOM.scrollTop);
+    // Première ligne visible dans un tableau : c'est le haut du tableau rendu qui va au bord haut, sans la marge de 5 px.
+    const tableau = actif && tableauxHybride(vue.state).find((t) => t.debut <= haut.from && haut.from <= t.fin);
     vue.dispatch({
-      effects: [compartimentHybride.reconfigure(actif ? extensionsHybride() : []), EditorView.scrollIntoView(haut.from, { y: "start" })],
+      effects: [
+        compartimentHybride.reconfigure(actif ? extensionsHybride() : []),
+        EditorView.scrollIntoView(tableau ? tableau.debut : haut.from, { y: "start", yMargin: tableau ? 0 : 5 }),
+      ],
     });
   };
   // Le curseur reste sur la même ligne (bornée au nouveau texte), à la même colonne si elle existe encore.

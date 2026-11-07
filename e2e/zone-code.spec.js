@@ -494,7 +494,8 @@ test("REQ062_AC15_AC16_AC4_AC17_AC20_aspect_lien_et_fonds_du_mode_hybride", asyn
     "| a | b |", "|---|---|", "| 1 | 2 |", "", "```js", "const a = 1;", "```",
   ].join("\n");
   await ouvrir(page, { contenu, langage: "markdown", nom: "README.md", hybride: true });
-  const ligne = (i) => page.locator(".cm-line").nth(i - 1);
+  // Le tableau (lignes 11 à 13) est un seul bloc rendu : les lignes suivantes comptent trois lignes de moins (le bloc n'est pas une `.cm-line`) dans le DOM.
+  const ligne = (i) => page.locator(".cm-line").nth(i - 1 - (i > 13 ? 3 : 0));
   const police = (loc) => loc.evaluate((e) => { const s = getComputedStyle(e); return [s.fontFamily, s.fontSize, s.fontWeight, s.color]; });
   const alpha = (c) => {
     const n = c.match(/[\d.]+/g);
@@ -511,7 +512,7 @@ test("REQ062_AC15_AC16_AC4_AC17_AC20_aspect_lien_et_fonds_du_mode_hybride", asyn
   expect(await police(ligne(5))).toEqual([sans, "14px", "400", ink]);
   expect(await police(ligne(3))).toEqual([sans, "16px", "600", ink]);
   expect(await police(ligne(5).locator(".cm-hy-code"))).toEqual([mono, "13px", "400", ink]);
-  expect(await police(ligne(11))).toEqual([mono, "13.5px", "400", ink]);
+  expect(await police(page.locator(".cm-hy-tableau td").first())).toEqual([sans, "14px", "400", ink]);
   expect((await police(ligne(16)))[0]).toBe(mono);
   expect((await police(ligne(16)))[1]).toBe("13.5px");
 
@@ -534,9 +535,8 @@ test("REQ062_AC15_AC16_AC4_AC17_AC20_aspect_lien_et_fonds_du_mode_hybride", asyn
   expect(requetes.length).toBe(avant);
   expect(fenetre).toBe(false);
   expect(page.url().startsWith("file:")).toBe(true);
-  // Clôtures du bloc de code toujours visibles, en gris, le curseur étant ailleurs.
-  await expect(ligne(15)).toHaveText("```js");
-  expect((await police(ligne(15).locator(".cm-hy-marque").first()))[3]).toBe(muet);
+  // Clôtures du bloc de code effacées (lignes vides) tant que le curseur est ailleurs.
+  await expect(ligne(15)).toHaveText("");
 
   // AC-062-20 : trois fonds translucides, et la sélection reste visible sous le texte du bloc.
   const fond = (loc) => loc.evaluate((e) => getComputedStyle(e).backgroundColor);
@@ -548,6 +548,9 @@ test("REQ062_AC15_AC16_AC4_AC17_AC20_aspect_lien_et_fonds_du_mode_hybride", asyn
   expect(fondCitation).toBe(await valeur(page, "backgroundColor", "--msg-info"));
   for (const f of [fondBloc, fondCitation, fondCode]) expect(alpha(f)).toBeLessThan(1);
   await ligne(16).click();
+  // Le curseur dans le bloc : les clôtures reviennent, en gris.
+  await expect(ligne(15)).toHaveText("```js");
+  expect((await police(ligne(15).locator(".cm-hy-marque").first()))[3]).toBe(muet);
   await page.keyboard.press("Home");
   await page.keyboard.press("Shift+End");
   const sel = await page.locator(".cm-selectionBackground").first().boundingBox();
@@ -606,4 +609,163 @@ test("REQ062_AC19_bascule_garde_la_ligne_du_haut", async ({ page }) => {
   await bascule(false);
   await expect.poll(enHaut).toBe(true);
   expect(await page.evaluate(() => document.querySelector(".zone-code").contenu())).toBe(doc);
+});
+
+// T-090 : clavier, clic et bascule autour du tableau rendu (REQ-063).
+const TABLEAU = ["| option     | effet |", "|------------|:-----:|", "| [--rapide](https://x.org) | oui |", "| --fort   | non |", "| --calme    | oui |"];
+function docTableau() {
+  const l = Array.from({ length: 80 }, (_, i) => `ligne ${i + 1}`);
+  l.splice(22, 6, ...TABLEAU, "");
+  return l.join("\n");
+}
+const brut = (page) => page.evaluate(() => window.pos);
+async function ouvrirTableau(page, hybride) {
+  await page.goto(pathToFileURL(resolve(dossier, "index.html")).href);
+  await page.evaluate(
+    ([c, h]) => {
+      window.pos = null;
+      document.getElementById("h").append(window.zoneCode({ contenu: c, langage: "markdown", nom: "a.md", hybride: h, surPosition: (l, c2) => (window.pos = `Ln ${l}, Col ${c2}`) }));
+    },
+    [docTableau(), hybride],
+  );
+}
+
+test("REQ063_AC5_AC17_AC19_clavier_clic_dans_une_cellule_et_bascule", async ({ page }) => {
+  await ouvrirTableau(page, true);
+  const vue = (f, arg) => page.evaluate(([src, a]) => new Function("v", "a", `return (${src})(v, a)`)(document.querySelector(".zone-code").vue, a), [f.toString(), arg]);
+  await vue((v) => { v.dispatch({ selection: { anchor: v.state.doc.line(22).from } }); v.focus(); });
+  await expect(page.locator(".cm-hy-tableau")).toHaveCount(1);
+  // AC-063-5 : Bas depuis la ligne 22 entre dans la ligne 23 ; Haut depuis la ligne 28 entre dans la ligne 27.
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(() => brut(page)).toMatch(/^Ln 23, /);
+  await expect(page.locator(".cm-hy-tableau")).toHaveCount(0);
+  await vue((v) => { v.dispatch({ selection: { anchor: v.state.doc.line(28).from } }); v.scrollDOM.scrollTop = v.lineBlockAt(v.state.doc.line(23).from).top - 50; });
+  await expect(page.locator(".cm-hy-tableau")).toHaveCount(1);
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(() => brut(page)).toMatch(/^Ln 27, /);
+  await expect(page.locator(".cm-hy-tableau")).toHaveCount(0);
+
+  // AC-063-17 : le haut du tableau ne bouge pas au clic dans une cellule.
+  await vue((v) => { v.dispatch({ selection: { anchor: 0 } }); v.scrollDOM.scrollTop = v.lineBlockAt(v.state.doc.line(23).from).top - 120; });
+  const tableau = page.locator(".cm-hy-tableau");
+  await expect(tableau).toHaveCount(1);
+  const avant = (await tableau.boundingBox()).y;
+  await tableau.getByText("non").click();
+  await expect.poll(() => brut(page)).toBe("Ln 26, Col 14");
+  expect(await page.evaluate(() => document.activeElement.classList.contains("cm-content"))).toBe(true);
+  await expect(page.locator(".cm-activeLine")).toHaveText("| --fort   | non |");
+  const apres = (await page.locator(".cm-line", { hasText: "| option" }).boundingBox()).y;
+  expect(Math.abs(apres - avant)).toBeLessThanOrEqual(1);
+
+  // AC-063-19 : éteint puis allumé avec la ligne 25 en haut, le haut du tableau est au bord haut de l'éditeur.
+  await ouvrirTableau(page, false);
+  await vue((v) => { v.scrollDOM.scrollTop = v.lineBlockAt(v.state.doc.line(25).from).top; });
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const position = await brut(page);
+  await page.evaluate(() => document.querySelector(".zone-code").definirHybride(true));
+  await expect(tableau).toHaveCount(1);
+  await expect
+    .poll(async () => Math.abs((await tableau.boundingBox()).y - (await page.locator(".cm-scroller").boundingBox()).y))
+    .toBeLessThanOrEqual(1);
+  expect(await brut(page)).toBe(position);
+});
+
+test("REQ063_AC8_AC13_AC14_AC15_AC16_AC18_tableau_rendu_comme_l_apercu", async ({ page }) => {
+    await page.goto(pathToFileURL(resolve(dossier, "index.html")).href);
+    const md = docTableau();
+    const rendu = page.locator(".cm-hy-tableau");
+    for (const theme of ["dark", "light"]) {
+    await page.evaluate(([t, c]) => {
+      document.documentElement.dataset.theme = t;
+      document.getElementById("h").replaceChildren(window.zoneCode({ contenu: c, langage: "markdown", nom: "a.md", hybride: true, apercu: true }));
+    }, [theme, md]);
+    await expect(rendu).toHaveCount(1);
+    // AC-063-14 : mêmes styles calculés que l'aperçu, contrastes de 4,5:1 au moins.
+    const PROPS = ["borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor", "borderTopStyle", "backgroundColor", "color", "fontFamily", "fontSize", "fontWeight", "textAlign", "textDecorationLine"];
+    const mesure = (racine) =>
+      page.evaluate(
+        ([r, ps]) => {
+          const q = (sel) => [...document.querySelectorAll(`${r} ${sel}`)];
+          const lire = (e) => Object.fromEntries(ps.map((p) => [p, getComputedStyle(e)[p]]));
+          const rangee = (i) => q("tbody tr")[i].querySelector("td");
+          return { th: lire(q("th")[0]), thD: lire(q("th")[1]), td0: lire(rangee(0)), td1: lire(rangee(1)), td2: lire(rangee(2)), tdD: lire(q("tbody tr")[1].querySelectorAll("td")[1]), a: lire(q("td a")[0]) };
+        },
+        [racine, PROPS],
+      );
+    const ref = await mesure(".zone-code-apercu");
+    const mien = await mesure(".cm-hy-tableau");
+    expect(mien).toEqual(ref);
+    expect(mien.th.fontWeight).toBe("600");
+    expect(mien.th.borderTopWidth).toBe("1px");
+    expect(mien.td1.backgroundColor).toBe(await valeur(page, "backgroundColor", "--apercu-fond"));
+    expect(mien.td0.backgroundColor).toBe(TRANSPARENT);
+    expect(mien.a.color).toBe(await valeur(page, "color", "--info"));
+    expect(mien.a.textDecorationLine).toBe("underline");
+    expect(mien.td0.fontSize).toBe("14px");
+    const ratios = await page.evaluate(() => {
+      const lum = (c) => {
+        const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map((v) => { const x = Number(v) / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const fondDe = (e) => {
+        for (let n = e; n; n = n.parentElement) { const c = getComputedStyle(n).backgroundColor; if (!/rgba\(.*, 0\)$/.test(c) && c !== "transparent") return c; }
+        return "rgb(255, 255, 255)";
+      };
+      return [...document.querySelectorAll(".cm-hy-tableau th, .cm-hy-tableau td, .cm-hy-tableau a")].map((e) => {
+        const [a, b] = [lum(getComputedStyle(e).color), lum(fondDe(e))].sort((x, y) => y - x);
+        return (a + 0.05) / (b + 0.05);
+      });
+    });
+    for (const r of ratios) expect(r).toBeGreaterThanOrEqual(4.5);
+    }
+    // AC-063-8, AC-063-15 : numéros 22, 23 et 28 ; le 23 est centré sur la rangée d'en-tête.
+    const numeros = await page.locator(".cm-lineNumbers .cm-gutterElement").evaluateAll((es) => es.filter((e) => e.style.visibility !== "hidden").map((e) => e.textContent));
+    expect(numeros).toEqual(expect.arrayContaining(["22", "23", "28"]));
+    for (const n of ["24", "25", "26", "27"]) expect(numeros).not.toContain(n);
+    const centre = (b) => b.y + b.height / 2;
+    const n23 = await page.locator(".cm-lineNumbers .cm-gutterElement", { hasText: /^23$/ }).evaluate((e) => {
+      const r = document.createRange();
+      r.selectNodeContents(e);
+      const b = r.getBoundingClientRect();
+      return { y: b.y, height: b.height };
+    });
+    const entete = await rendu.locator("th").first().boundingBox();
+    expect(Math.abs(centre(n23) - centre(entete))).toBeLessThanOrEqual(2);
+    // AC-063-16 : pointeur `text`, aucun fond ne change au survol, ni tabindex ni href.
+    const fond = (loc) => loc.evaluate((e) => getComputedStyle(e).backgroundColor);
+    const cellule = rendu.locator("td").nth(3);
+    const lien = rendu.locator("a");
+    const avant = [await fond(cellule), await fond(lien)];
+    for (const [i, loc] of [cellule, lien].entries()) {
+      await loc.hover();
+      expect(await fond(loc)).toBe(avant[i]);
+      expect(await loc.evaluate((e) => getComputedStyle(e).cursor)).toBe("text");
+    }
+    expect([await fond(cellule), await fond(lien)]).toEqual(avant);
+    expect(await rendu.locator("[tabindex], [href]").count()).toBe(0);
+    // AC-063-13 : 6 colonnes dans 400 px, un chemin de 80 caractères, pas de défilement horizontal.
+    const chemin = "/".repeat(1) + "dossier/".repeat(10);
+    const large = `| a | b | c | d | e | f |\n|---|---|---|---|---|---|\n| ${chemin.slice(0, 80)} | 2 | 3 | 4 | 5 | 6 |\n`;
+    await page.evaluate((c) => {
+      document.getElementById("h").style.width = "400px";
+      document.getElementById("h").replaceChildren(window.zoneCode({ contenu: `x\n\n${c}`, langage: "markdown", hybride: true }));
+    }, large);
+    await expect(rendu).toHaveCount(1);
+    const defil = await page.evaluate(() => { const s = document.querySelector(".cm-scroller"); return s.scrollWidth - s.clientWidth; });
+    expect(defil).toBe(0);
+    expect((await rendu.locator("td").first().boundingBox()).height).toBeGreaterThan(30);
+    // AC-063-18 : clôtures du bloc de code à la hauteur de la ligne 4, vides, puis en --ink-muted.
+    await page.evaluate(() => {
+      document.getElementById("h").style.width = "1000px";
+      document.getElementById("h").replaceChildren(window.zoneCode({ contenu: "a\n\n```rust\nfn x() {}\n```\n\nfin", langage: "markdown", hybride: true }));
+    });
+    const ligne = (i) => page.locator(".cm-line").nth(i - 1);
+    const hauteur = async (i) => (await ligne(i).boundingBox()).height;
+    expect(await hauteur(3)).toBe(await hauteur(4));
+    expect(await hauteur(5)).toBe(await hauteur(4));
+    expect(await ligne(3).evaluate((e) => e.textContent)).toBe("");
+    expect(await ligne(5).evaluate((e) => e.textContent)).toBe("");
+    await ligne(4).click();
+    const muet = await valeur(page, "color", "--ink-muted");
+    for (const i of [3, 5]) expect(await ligne(i).locator(".cm-hy-marque").first().evaluate((e) => getComputedStyle(e).color)).toBe(muet);
 });
