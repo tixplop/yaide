@@ -1,5 +1,6 @@
 import { info, sessionValide } from "./api.js";
 import { vueConnexion } from "./vues/connexion.js";
+import { charger } from "./reglages-interface.js";
 import { vuePrincipale } from "./vues/principale.js";
 
 export function titre() {
@@ -19,8 +20,10 @@ async function demarrer(app) {
     document.title = "yaide";
     montrer(vueConnexion({ chemin: projet.chemin, expiree, surSucces: principale }));
   };
-  const principale = () =>
-    montrer(vuePrincipale({ chemin: projet.chemin, surDeconnexion: () => connexion(false), surExpiree: () => connexion(true) }));
+  const principale = async () => {
+    const reglages = await charger();
+    montrer(vuePrincipale({ chemin: projet.chemin, reglages, surDeconnexion: () => connexion(false), surExpiree: () => connexion(true) }));
+  };
   if (await sessionValide()) principale();
   else connexion(false);
 }

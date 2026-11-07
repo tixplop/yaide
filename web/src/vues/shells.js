@@ -40,11 +40,12 @@ function texteArret(n) {
 /**
  * Zone des shells de V-002. `dire({ texte, variante, fermable })` affiche un message dans les bandeaux.
  * `surZone(oui, replie)` : la zone a au moins un shell visible, ou n'en a aucun ; `replie` : elle est repliée.
+ * `replieImpose` : `true` ou `false` remplace le repli gardé à la restauration.
  * `repli` : le bouton « Replier les shells », que la vue principale place dans la barre de titre.
  * `commandes` : les quatre boutons de C-010, que la vue principale place dans le rail.
  * Méthodes : `definirEtat("connecte" | "coupe")`, `detruire()`.
  */
-export function vueShells({ dire, surZone = () => {} }) {
+export function vueShells({ dire, surZone = () => {}, replieImpose }) {
   const racine = document.createElement("div");
   racine.className = "shells";
   const entete = document.createElement("div");
@@ -375,7 +376,7 @@ export function vueShells({ dire, surZone = () => {} }) {
     }
     instance = liste.instance;
     // Les numéros repartent après un redémarrage : les réduits ne se reprennent que pour la même instance.
-    replie = precedent?.instance === liste.instance && Boolean(precedent.replie);
+    replie = replieImpose ?? (precedent?.instance === liste.instance && Boolean(precedent.replie));
     const gardes = precedent?.instance === liste.instance ? (precedent.reduits ?? []) : [];
     for (const id of liste.shells) ajouter(id, gardes.includes(id));
     afficher();

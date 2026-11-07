@@ -32,7 +32,8 @@ function nomDuDossier(chemin) {
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 
 /** V-002. `surDeconnexion` est appelé une fois la session fermée, `surExpiree` si elle expire. */
-export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnexion }) {
+export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnexion, reglages = {} }) {
+  const imposes = reglages.replis ?? {};
   document.title = `${nomDuDossier(chemin)} — yaide`;
 
   const sortir = bouton({ icone: "log-out", nomAccessible: "Déconnexion" });
@@ -188,6 +189,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   // La zone des shells sort de la page sans shell visible ; la poignée reprend sa taille à son retour.
   const shells = vueShells({
     dire,
+    replieImpose: imposes.shells,
     surZone: (oui, replie) => {
       racine?.definirShellsVisibles(oui);
       racine?.definirReplis({ shells: replie });
@@ -328,8 +330,12 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     recalculer();
   });
   // Repli gardé : le panneau reste replié, et le focus va sur « Ouvrir un fichier » s'il n'y a aucun onglet.
-  Promise.all([lire("replis"), restauration]).then(([gardes]) => {
+  if (reglages.illisible) {
+    dire({ texte: ".yaide/interface.json est illisible. Corrigez-le, puis rechargez la page.", variante: "alerte", fermable: true });
+  }
+  Promise.all([lire("replis"), restauration]).then(([precedents]) => {
     if (detruite) return;
+    const gardes = { ...precedents, ...imposes };
     if (gardes?.agent === false) {
       replierAgent(false);
       if (vueColonne === "agent") agent.deplier();

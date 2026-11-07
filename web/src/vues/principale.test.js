@@ -1744,3 +1744,70 @@ test("REQ068_AC5_raccourcis_ignores_dans_le_terminal_claude", async () => {
   touche({ key: "F", ctrlKey: true, shiftKey: true });
   expect(document.activeElement).toBe(vue.querySelector("[role=tab][aria-selected=true]"));
 });
+
+test("REQ069_AC9_bandeau_illisible_sans_focus", async () => {
+  const { vue } = monter({ reglages: { illisible: true } });
+  await attendre();
+  const m = [...vue.querySelectorAll("[role=alert]")].find((e) => e.textContent.includes(".yaide/interface.json est illisible. Corrigez-le, puis rechargez la page."));
+  expect(m).toBeDefined();
+  expect(m.contains(document.activeElement)).toBe(false);
+  expect(m.querySelector("button")).not.toBeNull();
+  vues.forEach((v) => v.detruire());
+  document.body.replaceChildren();
+  const sans = monter({ reglages: { replis: {}, fonctions: {} } });
+  await attendre();
+  expect(sans.vue.textContent).not.toContain("illisible");
+});
+
+test("REQ069_AC2_AC3_AC5_cles_de_replis_l_emportent_sur_le_navigateur", async () => {
+  largeur(1280);
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "replis" ? { panneau: false, agent: true } : undefined));
+  let { vue } = monter({ reglages: { replis: { panneau: true, agent: false } } });
+  await vi.waitFor(() => expect(aside(vue).hidden).toBe(true));
+  expect(barreTitre(vue, "Déplier le panneau")).not.toBeNull();
+  expect(agentCol(vue).hidden).toBe(false);
+  vues.forEach((v) => v.detruire());
+  document.body.replaceChildren();
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "replis" ? { panneau: true, agent: false } : undefined));
+  ({ vue } = monter({ reglages: { replis: { panneau: false, agent: true } } }));
+  await attendre();
+  await attendre();
+  expect(aside(vue).hidden).toBe(false);
+  expect(agentCol(vue).hidden).toBe(true);
+  vues.forEach((v) => v.detruire());
+  document.body.replaceChildren();
+  // Sans clé, le navigateur décide (AC-069-5).
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "replis" ? { panneau: true } : undefined));
+  ({ vue } = monter({ reglages: { replis: {} } }));
+  await vi.waitFor(() => expect(aside(vue).hidden).toBe(true));
+});
+
+test("REQ069_AC6_deux_colonnes_a_800_l_agent_reste", async () => {
+  largeur(800);
+  const { vue } = monter({ reglages: { replis: { panneau: false, agent: false } } });
+  await vi.waitFor(() => expect(aside(vue).hidden).toBe(true));
+  expect(agentCol(vue).hidden).toBe(false);
+});
+
+test("REQ069_AC4_shells_repli_impose_a_la_restauration", async () => {
+  simulerShells({ ids: [1, 2], precedent: { instance: "i1", nombre: 2, reduits: [] } });
+  let { vue } = monter({ reglages: { replis: { shells: true } } });
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(2));
+  expect(zone(vue).hidden).toBe(true);
+  expect(barreTitre(vue, "Déplier les shells")).not.toBeNull();
+  vues.forEach((v) => v.detruire());
+  document.body.replaceChildren();
+  simulerShells({ ids: [1], precedent: { instance: "i1", nombre: 1, reduits: [], replie: true } });
+  ({ vue } = monter({ reglages: { replis: { shells: false } } }));
+  await vi.waitFor(() => expect(onglets(vue)).toHaveLength(1));
+  expect(zone(vue).hidden).toBe(false);
+  vues.forEach((v) => v.detruire());
+  document.body.replaceChildren();
+  // Sans shell visible, rien n'est lancé.
+  const appels = simulerShells({ ids: [], precedent: undefined });
+  ({ vue } = monter({ reglages: { replis: { shells: true } } }));
+  await attendre();
+  await attendre();
+  expect(appels).not.toContain("POST /api/shells");
+  expect(zone(vue).hidden).toBe(true);
+});
