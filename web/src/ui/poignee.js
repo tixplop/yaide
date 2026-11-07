@@ -7,7 +7,9 @@ const entre = (v, min, max) => Math.max(min, Math.min(max, v));
  * `panneau` et `agent` : { replie, choisie } (taille choisie en pixels, token par défaut ; panneau déplié et agent replié par défaut).
  * Rend aussi les largeurs affichées `Pa` et `Aa` (0 si repliée : l'agent cède d'abord) et le `seuil` sous lequel les deux colonnes ne tiennent pas.
  */
-export function limites({ L, H, bandeaux = 0, panneau = {}, agent = {} }) {
+export function limites({ L, H, bandeaux = 0, panneau = {}, agent = {}, railDroit = true }) {
+  const sansAgent = agent === null; // agents désactivés : pas de colonne, pas de seuil
+  agent ??= {};
   const largeur = Math.max(L, jeton("--largeur-min"));
   const hauteur = Math.max(H, jeton("--hauteur-min"));
   const epaisseur = jeton("--epaisseur-poignee");
@@ -17,14 +19,14 @@ export function limites({ L, H, bandeaux = 0, panneau = {}, agent = {} }) {
   const [minP, maxP] = [jeton("--largeur-panneau-min"), jeton("--largeur-panneau-max")];
   const [minA, maxA] = [jeton("--largeur-agent-min"), jeton("--largeur-agent-max")];
   const panneauReplie = Boolean(panneau.replie);
-  const agentReplie = agent.replie === undefined ? true : Boolean(agent.replie);
-  const P = largeur - 2 * activite - editeur - epaisseur * ((panneauReplie ? 0 : 1) + (agentReplie ? 0 : 1));
+  const agentReplie = sansAgent || agent.replie === undefined ? true : Boolean(agent.replie);
+  const P = largeur - (railDroit ? 2 : 1) * activite - editeur - epaisseur * ((panneauReplie ? 0 : 1) + (agentReplie ? 0 : 1));
   const Pa = panneauReplie ? 0 : entre(panneau.choisie ?? jeton("--largeur-panneau"), minP, Math.min(maxP, agentReplie ? P : P - minA));
   const Aa = agentReplie ? 0 : entre(agent.choisie ?? jeton("--largeur-agent"), minA, Math.min(maxA, P - Pa));
   return {
     Pa,
     Aa,
-    seuil: 2 * activite + 2 * epaisseur + minP + minA + editeur,
+    seuil: sansAgent ? 0 : 2 * activite + 2 * epaisseur + minP + minA + editeur,
     panneau: { min: minP, max: Math.min(maxP, P - Aa) },
     agent: { min: minA, max: Math.min(maxA, P - Pa) },
     shells: {

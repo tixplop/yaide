@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
+import { bouton } from "./bouton.js";
+import { cadre } from "./cadre.js";
 
 const css = readFileSync("web/src/ui/composants.css", "utf8");
 
@@ -100,4 +102,19 @@ test("REQ036_AC13_chaque_transition_de_xterm_css_est_annulee", () => {
   const transitions = [...xterm.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((m) => /transition/.test(m[2])).map((m) => m[1].trim().replace(/\s*>\s*/g, ">"));
   expect(transitions.length).toBeGreaterThan(0);
   for (const sel of transitions) expect(regle(sel), sel).toMatch(/transition: none/);
+});
+
+test("REQ070_les_8_px_de_claude_seulement_quand_il_suit_une_autre_commande", () => {
+  expect(css).toMatch(/\.cadre-rail-droit \.bouton-enveloppe:nth-child\(n\+3\)\s*{[^}]*margin-top: var\(--space-2\)/);
+  const commande = (nom) => bouton({ icone: "bot", nomAccessible: nom }).enveloppe;
+  const seul = cadre({ fonctions: { agents: false }, railDroit: { commandes: [] } });
+  const claude = commande("Claude");
+  seul.ajouterCommandeDroite(claude);
+  expect(claude.matches(".cadre-rail-droit .bouton-enveloppe:nth-child(n+3)")).toBe(false);
+  const agent = commande("Agent");
+  const agents = commande("Agents");
+  const claude2 = commande("Claude");
+  cadre({ railDroit: { commandes: [agent, agents, claude2] } });
+  expect(claude2.matches(".cadre-rail-droit .bouton-enveloppe:nth-child(n+3)")).toBe(true);
+  expect(agents.matches(".cadre-rail-droit .bouton-enveloppe:nth-child(n+3)")).toBe(false);
 });

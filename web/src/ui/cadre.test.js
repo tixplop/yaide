@@ -520,3 +520,62 @@ test("cadre_principal_code_porte_un_terminal", () => {
   expect(regle(".terminal")).toContain("background: var(--bg-000)");
   t.detruire();
 });
+
+function monterFonctions(fonctions, extra = {}) {
+  const c = cadre({
+    rail: { onglets: p("rail"), commandes: [p("cmd")] },
+    panneau: { titre: "Fichiers", corps: p("corps") },
+    agent: { titre: "Agent", corps: p("agent") },
+    railDroit: { commandes: [p("rd")] },
+    principal: { code: p("code"), shells: p("shells") },
+    fonctions,
+    ...extra,
+  });
+  document.body.append(c);
+  return c;
+}
+
+test("REQ070_cadre_sans_shells_ni_zone_ni_poignee_ni_commandes", () => {
+  const c = monterFonctions({ shells: false });
+  expect(c.querySelector(".cadre-rail-commandes")).toBeNull();
+  expect(c.querySelector(".cadre-shells")).toBeNull();
+  expect(c.querySelector('[aria-label="Hauteur des shells"]')).toBeNull();
+  expect(c.poignees.shells).toBeUndefined();
+  expect(() => { c.definirShellsVisibles(true); c.definirReplis({ shells: true }); c.mesurer(); }).not.toThrow();
+  expect(c.querySelector(".cadre-shells")).toBeNull();
+  const avec = monterFonctions({});
+  expect(avec.querySelector(".cadre-rail-commandes")).not.toBeNull();
+  expect(avec.querySelector('[aria-label="Hauteur des shells"]')).not.toBeNull();
+});
+
+test("REQ070_cadre_sans_agents_ni_colonne_ni_poignee", () => {
+  const c = monterFonctions({ agents: false });
+  expect(c.querySelector(".cadre-agent")).toBeNull();
+  expect(c.querySelector('[aria-label="Largeur de l\'agent"]')).toBeNull();
+  expect(c.poignees.agent).toBeUndefined();
+  expect(() => { c.definirTitreAgent("Agents"); c.definirReplis({ agent: false }); }).not.toThrow();
+  expect(c.querySelector(".cadre-agent")).toBeNull();
+  expect(c.classList.contains("cadre-agent-replie")).toBe(true);
+  expect(monterFonctions({}).querySelector(".cadre-agent")).not.toBeNull();
+});
+
+test("REQ070_cadre_sans_rail_droit_si_aucune_commande", () => {
+  const c = monterFonctions({ agents: false }, { railDroit: { commandes: [] } });
+  expect(c.querySelector(".cadre-rail-droit")).toBeNull();
+  expect(c.classList.contains("cadre-sans-rail-droit")).toBe(true);
+  expect(regle(".cadre.cadre-sans-rail-droit.cadre-agent-replie")).toContain("minmax(0, 1fr) 0 0 0;");
+  expect(regle(".cadre.cadre-sans-rail-droit.cadre-panneau-replie.cadre-agent-replie")).toContain("0 0 minmax(0, 1fr) 0 0 0;");
+  expect(monterFonctions({}).querySelector(".cadre-rail-droit")).not.toBeNull();
+});
+
+test("REQ070_ajouter_commande_droite_cree_le_rail", () => {
+  const c = monterFonctions({ agents: false }, { railDroit: { commandes: [] } });
+  const el = p("Claude");
+  c.ajouterCommandeDroite(el);
+  const rd = c.querySelector(".cadre-rail-droit");
+  expect(rd.firstChild).toBe(el);
+  expect(rd.nextElementSibling.tagName).toBe("FOOTER");
+  expect(c.classList.contains("cadre-sans-rail-droit")).toBe(false);
+  c.ajouterCommandeDroite(p("autre"));
+  expect(c.querySelectorAll(".cadre-rail-droit")).toHaveLength(1);
+});

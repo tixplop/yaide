@@ -281,3 +281,15 @@ test("REQ059_AC11_poignee_cote_droite_glisse_vers_la_gauche_agrandit", () => {
 test("REQ059_AC11_poignee_cote_invalide", () => {
   expect(() => poignee({ orientation: "vertical", cote: "haut", nomAccessible: "x" })).toThrow("cote");
 });
+
+test("REQ070_limites_sans_agent_sans_seuil", () => {
+  const l = limites({ L: 800, H: 480, panneau: { replie: false, choisie: 280 }, agent: null, railDroit: false });
+  expect(l.seuil).toBe(0);
+  expect(l.Aa).toBe(0);
+  expect(l.panneau).toEqual({ min: 240, max: 360 });
+  // Hors plafond : sans rail droit, la colonne de l'agent gagne la largeur d'un rail.
+  const a = limites({ L: 800, H: 480, agent: { replie: false } }).agent.max;
+  const b = limites({ L: 800, H: 480, agent: { replie: false }, railDroit: false }).agent.max;
+  expect(b - a).toBe(48);
+  expect(limites({ L: 1200, H: 600 }).seuil).toBe(904);
+});

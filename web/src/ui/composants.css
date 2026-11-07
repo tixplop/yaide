@@ -311,6 +311,11 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre.cadre-panneau-replie { grid-template-columns: var(--size-activity) 0 0 minmax(0, 1fr) var(--epaisseur-poignee) var(--taille-agent, var(--largeur-agent)) var(--size-activity); }
 .cadre.cadre-agent-replie { grid-template-columns: var(--size-activity) var(--taille-panneau, var(--largeur-panneau)) var(--epaisseur-poignee) minmax(0, 1fr) 0 0 var(--size-activity); }
 .cadre.cadre-panneau-replie.cadre-agent-replie { grid-template-columns: var(--size-activity) 0 0 minmax(0, 1fr) 0 0 var(--size-activity); }
+/* Sans rail droit (aucune commande) : la dernière colonne n'existe pas. */
+.cadre.cadre-sans-rail-droit { grid-template-columns: var(--size-activity) var(--taille-panneau, var(--largeur-panneau)) var(--epaisseur-poignee) minmax(0, 1fr) var(--epaisseur-poignee) var(--taille-agent, var(--largeur-agent)) 0; }
+.cadre.cadre-sans-rail-droit.cadre-panneau-replie { grid-template-columns: var(--size-activity) 0 0 minmax(0, 1fr) var(--epaisseur-poignee) var(--taille-agent, var(--largeur-agent)) 0; }
+.cadre.cadre-sans-rail-droit.cadre-agent-replie { grid-template-columns: var(--size-activity) var(--taille-panneau, var(--largeur-panneau)) var(--epaisseur-poignee) minmax(0, 1fr) 0 0 0; }
+.cadre.cadre-sans-rail-droit.cadre-panneau-replie.cadre-agent-replie { grid-template-columns: var(--size-activity) 0 0 minmax(0, 1fr) 0 0 0; }
 .cadre-panneau[hidden], .cadre-agent[hidden], .poignee-vertical[hidden] { display: none; }
 .ya-titlebar { grid-column: 1 / -1; box-sizing: border-box; display: grid; grid-template-columns: 1fr minmax(240px, 560px) 1fr; align-items: center; gap: var(--space-3); padding: 0 var(--space-2); background: var(--bg-000); border-bottom: var(--trait) solid var(--line); font-size: 13px; color: var(--ink-muted); }
 .ya-titlebar-symbole { display: flex; align-items: center; padding-left: var(--space-1); }
@@ -339,7 +344,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre-rail-droit .ya-icon-btn:hover { color: var(--ink); background: transparent; }
 .cadre-rail-droit .ya-icon-btn[data-actif] { color: var(--ink); box-shadow: inset calc(-1 * var(--trait-fort)) 0 0 var(--accent-fg); }
 .cadre-rail-droit .ya-icon-btn.ya-focus-garde { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait-fort)); }
-/* « Claude », troisième commande : 8 px de vide au-dessus, pour la séparer des deux vues de la colonne. */
+/* « Claude » : 8 px de vide au-dessus quand il suit une autre commande ; seul, il est tout en haut. */
 .cadre-rail-droit .bouton-enveloppe:nth-child(n+3) { margin-top: var(--space-2); }
 .cadre-rail-droit .ya-icon-btn svg { width: var(--taille-icone-rail); height: var(--taille-icone-rail); }
 .cadre-panneau, .cadre-agent { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg-100); }
