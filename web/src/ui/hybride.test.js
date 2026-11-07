@@ -3,7 +3,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorView } from "@codemirror/view";
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { decorationsHybride, hybride } from "./hybride.js";
+import { debutCellule, decorationsHybride, hybride, tableauxHybride } from "./hybride.js";
 
 // Le curseur est en fin de document : une dernière ligne « fin » le tient loin des lignes testées.
 function deco(texte, { curseur, plages } = {}) {
@@ -109,16 +109,23 @@ test("REQ062_AC5_puce_et_trait_redeviennent_du_texte_sur_la_ligne_du_curseur", (
 test("REQ062_AC6_bloc_clos_toutes_les_lignes_decorees_et_cloture_visible", () => {
   const r = deco("avant\n```js\nconst a = 1;\nb();\n```\naprès");
   expect(lignes(r, "cm-hy-bloc-code")).toEqual(["```js", "const a = 1;", "b();", "```"]);
-  expect(masques(r)).toEqual([]);
-  expect(visibles(r)).toEqual(["```", "js", "```"]);
+  expect(masques(r)).toEqual(["```js", "```"]); // AC-062-6 modifié par AC-063-9 : curseur ailleurs, clôtures masquées
+  expect(visibles(r)).toEqual([]);
+  const sur = deco("avant\n```js\nconst a = 1;\nb();\n```\naprès", { curseur: 14 });
+  expect(masques(sur)).toEqual([]);
+  expect(visibles(sur)).toEqual(["```js", "```"]);
 });
 
 test("REQ062_AC6_bloc_indente_et_bloc_non_ferme", () => {
   const indente = deco("texte\n\n    code un\n    code deux\n\nsuite");
   expect(lignes(indente, "cm-hy-bloc-code")).toEqual(["    code un", "    code deux"]);
-  const ouvert = deco("```\nsans fin");
+  expect(masques(indente)).toEqual([]);
+  const ouvert = deco("```\nsans fin", { curseur: 0 });
+  expect(visibles(ouvert)).toEqual(["```"]);
+  const ouvertLoin = deco("a\n\n```\nsans fin", { curseur: 0 });
   expect(lignes(ouvert, "cm-hy-bloc-code").length).toBeGreaterThanOrEqual(2);
   expect(masques(ouvert)).toEqual([]);
+  expect(masques(ouvertLoin)).toEqual(["```"]);
 });
 
 test("REQ062_AC7_tableau_image_html_aucune_marque_masquee", () => {
@@ -205,4 +212,164 @@ test("REQ062_AC6_fn_dans_un_bloc_rust_est_un_mot_cle_colore", async () => {
     if (c) mots.push(doc.slice(de, a));
   });
   expect(mots).toContain("fn");
+});
+
+const TABLE = "| Nom | Valeur |\n|---|:---:|\n| `--fort` | **non** |\n| lien | [Yaide](https://exemple.org) |";
+function monter(doc, anchor) {
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  const vue = new EditorView({ doc, selection: { anchor: anchor ?? doc.length }, parent, extensions: [markdown({ base: markdownLanguage }), hybride()] });
+  return { vue, parent, fin: () => (vue.destroy(), parent.remove()) };
+}
+
+test("REQ063_AC1_tableau_de_4_rangees_sans_pipe_ni_tiret", () => {
+  const m = monter(`avant\n\n${TABLE}\n| trois | 3 |\n\nfin`);
+  const tables = m.parent.querySelectorAll(".cm-hy-tableau table");
+  expect(tables.length).toBe(1);
+  expect(tables[0].querySelectorAll("tr").length).toBe(4);
+  expect(m.vue.contentDOM.textContent).not.toMatch(/\||---/);
+  m.fin();
+});
+
+test("REQ063_AC2_gras_code_et_lien_sans_marques_ni_href", () => {
+  const m = monter(`${TABLE}\n\nfin`);
+  const t = m.parent.querySelector(".cm-hy-tableau");
+  expect(t.querySelector("strong").textContent).toBe("non");
+  expect(t.querySelector("code").textContent).toBe("--fort");
+  const a = t.querySelector("a");
+  expect(a.textContent).toBe("Yaide");
+  expect(a.hasAttribute("href")).toBe(false);
+  expect(a.hasAttribute("title")).toBe(false);
+  expect(t.textContent).not.toMatch(/\*\*|`|exemple\.org/);
+  m.fin();
+});
+
+test("REQ063_AC3_image_et_html_restent_du_texte", () => {
+  const m = monter("| a | b |\n|---|---|\n| ![x](https://exemple.org/x.png) | <img src=x onerror=alert(1)> |\n\nfin");
+  const t = m.parent.querySelector(".cm-hy-tableau");
+  expect(t.querySelector("img")).toBeNull();
+  const cellules = t.querySelectorAll("td");
+  expect(cellules[0].textContent).toBe("x");
+  expect(cellules[1].textContent).toBe("<img src=x onerror=alert(1)>");
+  expect(m.parent.querySelector("[href], [title]")).toBeNull();
+  m.fin();
+});
+
+test("REQ063_AC4_debutCellule_cellules_pipe_echappe_et_cellule_vide", () => {
+  const src = "| a | b \\| c |  |\n|---|---|---|\n|  x | y | z |";
+  expect(debutCellule(src, 0, 0)).toBe(2);
+  expect(debutCellule(src, 0, 1)).toBe(6);
+  expect(src.slice(debutCellule(src, 0, 1))).toMatch(/^b \\\|/);
+  expect(src.slice(debutCellule(src, 0, 2), debutCellule(src, 0, 2) + 1)).toBe("|"); // cellule vide : sur le séparateur
+  const l3 = src.indexOf("|  x");
+  expect(debutCellule(src, 1, 0)).toBe(l3 + 3);
+  expect(src[debutCellule(src, 1, 2)]).toBe("z");
+  expect(debutCellule("a | b\n--|--\nc | d", 1, 1)).toBe("a | b\n--|--\nc | ".length);
+  expect(debutCellule(src, 9, 0)).toBe(0);
+});
+
+test("REQ063_AC4_mousedown_sur_une_cellule_place_le_curseur_et_repasse_en_texte", () => {
+  const doc = `avant\n\n${TABLE}\n\nfin`;
+  const m = monter(doc);
+  const cellules = m.parent.querySelectorAll(".cm-hy-tableau td");
+  const e = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+  cellules[1].dispatchEvent(e); // rangée 1, colonne 1 : « **non** »
+  expect(e.defaultPrevented).toBe(true);
+  expect(m.vue.state.selection.main.head).toBe(doc.indexOf("**non**"));
+  expect(m.parent.querySelector(".cm-hy-tableau")).toBeNull();
+  expect(m.vue.contentDOM.textContent).toContain("| `--fort` | **non** |");
+  m.fin();
+});
+
+test("REQ063_AC4_clic_hors_cellule_va_au_debut_du_tableau", () => {
+  const doc = `avant\n\n${TABLE}\n\nfin`;
+  const m = monter(doc);
+  m.parent.querySelector(".cm-hy-tableau").dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  expect(m.vue.state.selection.main.head).toBe(doc.indexOf("| Nom"));
+  m.fin();
+});
+
+test("REQ063_AC2_tableauxHybride_donne_debut_fin_source_hors_des_lignes_touchees", () => {
+  const doc = `avant\n\n${TABLE}\n\nfin\n\n| x |\n|---|\n| y |`;
+  const etat = (anchor, head) => EditorState.create({ doc, selection: { anchor, head }, extensions: [markdown({ base: markdownLanguage })] });
+  const debut = doc.indexOf("| Nom");
+  const liste = tableauxHybride(etat(0));
+  expect(liste.length).toBe(2);
+  expect(liste[0]).toEqual({ debut, fin: debut + TABLE.length, source: TABLE });
+  expect(tableauxHybride(etat(debut + 3)).map((t) => t.source)).toEqual(["| x |\n|---|\n| y |"]);
+  expect(tableauxHybride(etat(0, doc.length))).toEqual([]);
+});
+
+test("REQ063_AC6_selection_ailleurs_rendu_et_ctrl_a_texte", () => {
+  const doc = `avant\n\n${TABLE}\n\nfin`;
+  const m = monter(doc, doc.indexOf("| Nom") + 2);
+  expect(m.parent.querySelector(".cm-hy-tableau")).toBeNull();
+  m.vue.dispatch({ selection: { anchor: 1 } });
+  expect(m.parent.querySelector(".cm-hy-tableau")).not.toBeNull();
+  m.vue.dispatch({ selection: { anchor: 0, head: doc.length } });
+  expect(m.parent.querySelector(".cm-hy-tableau")).toBeNull();
+  m.fin();
+});
+
+test("REQ063_AC7_la_frappe_puis_la_sortie_montrent_le_nouveau_texte", () => {
+  const doc = `avant\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nfin`;
+  const m = monter(doc, doc.indexOf("| 1") + 2);
+  m.vue.dispatch({ changes: { from: doc.indexOf("1"), to: doc.indexOf("1") + 1, insert: "neuf" } });
+  m.vue.dispatch({ selection: { anchor: 1 } });
+  expect([...m.parent.querySelectorAll(".cm-hy-tableau td")].map((c) => c.textContent)).toEqual(["neuf", "2"]);
+  m.fin();
+});
+
+test("REQ063_AC8_le_document_est_inchange", () => {
+  const doc = `avant\n\n${TABLE}\n\n\`\`\`rust\nfn a() {}\n\`\`\`\nfin`;
+  const m = monter(doc);
+  expect(m.vue.state.doc.toString()).toBe(doc);
+  m.fin();
+});
+
+const BLOC = "a\nb\n```rust\nfn a() {}\n```\nfin";
+test("REQ063_AC9_cloture_masquee_la_ligne_garde_sa_decoration_et_son_numero", () => {
+  const m = monter(BLOC);
+  const lignes = [...m.parent.querySelectorAll(".cm-line")];
+  expect(lignes.length).toBe(6);
+  expect(lignes[2].textContent).toBe("");
+  expect(lignes[4].textContent).toBe("");
+  expect(lignes[2].classList.contains("cm-hy-bloc-code")).toBe(true);
+  expect(lignes[4].classList.contains("cm-hy-bloc-code")).toBe(true);
+  expect(lignes[3].textContent).toBe("fn a() {}");
+  m.fin();
+});
+
+test("REQ063_AC10_curseur_sur_une_ligne_du_bloc_ou_sur_la_cloture_les_montre", () => {
+  for (const pos of [BLOC.indexOf("fn") + 1, BLOC.indexOf("```rust") + 1]) {
+    const m = monter(BLOC, pos);
+    const lignes = [...m.parent.querySelectorAll(".cm-line")];
+    expect(lignes[2].textContent).toBe("```rust");
+    expect(lignes[4].textContent).toBe("```");
+    expect(lignes[2].querySelector(".cm-hy-marque")).not.toBeNull();
+    m.fin();
+  }
+});
+
+test("REQ063_AC11_bloc_non_ferme_sa_seule_cloture_et_bloc_indente_inchange", () => {
+  const r = deco("a\n```\nsans fin", { curseur: 0 });
+  expect(masques(r)).toEqual(["```"]);
+  const m = monter("a\n\n    code\n\nfin");
+  expect([...m.parent.querySelectorAll(".cm-line")].map((l) => l.textContent)).toEqual(["a", "", "    code", "", "fin"]);
+  m.fin();
+});
+
+test("REQ063_AC12_table_th_td_sans_tabindex", () => {
+  const m = monter(`${TABLE}\n\nfin`);
+  const t = m.parent.querySelector(".cm-hy-tableau");
+  expect(t.getAttribute("contenteditable")).toBe("false");
+  expect(t.querySelectorAll("table, th, td").length).toBeGreaterThan(3);
+  expect(m.parent.querySelector(".cm-hy-tableau [tabindex]")).toBeNull();
+  m.fin();
+});
+
+test("REQ063_AC3_les_regles_du_tableau_de_l_apercu_servent_au_tableau_rendu", () => {
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  for (const sel of ["table", "th, .zone-code-apercu td", "tbody tr:nth-child(even) td"]) expect(css).toMatch(new RegExp(`\\.zone-code-apercu ${sel.replace(/[()]/g, "\\$&")}[^{]*\\.cm-hy-tableau`));
+  expect(css).toMatch(/\.cm-hy-tableau \{[^}]*cursor: text/);
 });

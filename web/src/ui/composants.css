@@ -483,17 +483,17 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .zone-code-apercu h1 { font: var(--texte-titre) var(--font-sans); font-weight: var(--graisse-forte); }
 .zone-code-apercu h2 { font: var(--texte-sous-titre) var(--font-sans); font-weight: var(--graisse-forte); }
 .zone-code-apercu h3, .zone-code-apercu h4, .zone-code-apercu h5, .zone-code-apercu h6 { font: var(--texte-lecture) var(--font-sans); font-weight: var(--graisse-forte); }
-.zone-code-apercu a { color: var(--info); text-decoration: underline; }
+.zone-code-apercu a, .cm-hy-tableau a { color: var(--info); text-decoration: underline; }
 .zone-code-apercu a:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: var(--trait-fort); }
-.zone-code-apercu table { border-collapse: collapse; max-width: 100%; margin: var(--space-3) 0; overflow-wrap: anywhere; }
-.zone-code-apercu th, .zone-code-apercu td { border: var(--trait) solid var(--line-strong); padding: var(--space-1) var(--space-2); text-align: left; }
-.zone-code-apercu th { background: var(--apercu-entete); font-weight: var(--graisse-forte); }
-.zone-code-apercu tbody tr:nth-child(even) td { background: var(--apercu-fond); }
+.zone-code-apercu table, .cm-hy-tableau table { border-collapse: collapse; max-width: 100%; margin: var(--space-3) 0; overflow-wrap: anywhere; }
+.zone-code-apercu th, .zone-code-apercu td, .cm-hy-tableau th, .cm-hy-tableau td { border: var(--trait) solid var(--line-strong); padding: var(--space-1) var(--space-2); text-align: left; }
+.zone-code-apercu th, .cm-hy-tableau th { background: var(--apercu-entete); font-weight: var(--graisse-forte); }
+.zone-code-apercu tbody tr:nth-child(even) td, .cm-hy-tableau tbody tr:nth-child(even) td { background: var(--apercu-fond); }
 .zone-code-apercu blockquote { margin: var(--space-3) 0; padding: var(--space-2) var(--space-3); border-left: var(--filet-note) solid var(--info); background: var(--msg-info); }
 .zone-code-apercu blockquote > :first-child { margin-top: 0; }
 .zone-code-apercu blockquote > :last-child { margin-bottom: 0; }
 .zone-code-apercu blockquote blockquote { background: none; }
-.zone-code-apercu code { padding: 0 var(--space-1); border-radius: var(--radius-xs); font: var(--texte-code-ligne) var(--font-mono); background: var(--apercu-fond); }
+.zone-code-apercu code, .cm-hy-tableau code { padding: 0 var(--space-1); border-radius: var(--radius-xs); font: var(--texte-code-ligne) var(--font-mono); background: var(--apercu-fond); }
 .zone-code-apercu pre { margin: var(--space-3) 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font: var(--texte-code) var(--font-mono); background: var(--apercu-fond); white-space: pre-wrap; overflow-wrap: anywhere; }
 .zone-code-apercu pre code { padding: 0; border-radius: 0; font: inherit; background: none; }
 
@@ -559,6 +559,8 @@ body { margin: 0; }
 .cm-line.cm-hy-bloc-code { font: var(--texte-code) var(--font-mono); background-color: var(--code-fond); }
 .cm-line.cm-hy-mono { font: var(--texte-code) var(--font-mono); color: var(--ink); }
 .cm-line.cm-hy-citation.cm-activeLine, .cm-line.cm-hy-bloc-code.cm-activeLine { background-image: linear-gradient(var(--ligne-active), var(--ligne-active)); }
+.cm-hy-tableau { margin: var(--space-1) 0; padding-left: calc(var(--space-2) - var(--space-1) / 2); /* bord gauche du texte des lignes (celui de cm-line) */ font: var(--texte-lecture) var(--font-sans); color: var(--ink); cursor: text; }
+.cm-hy-tableau table { margin: 0; }
 .cm-hy-puce { color: var(--ink-muted); }
 .cm-hy-trait { display: inline-block; width: 100%; height: 0; vertical-align: middle; border-top: var(--trait) solid var(--line-strong); }
 .cm-gutterElement.cm-hy-numero-titre1 { font: var(--texte-titre) var(--font-mono); font-size: inherit; }

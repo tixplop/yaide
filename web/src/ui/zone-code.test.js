@@ -176,7 +176,7 @@ test("REQ011_AC1_style_zone_de_code_par_tokens_seulement", () => {
   expect(bloc).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
   expect(bloc).not.toMatch(/\d+px/);
   expect(bloc).toMatch(/\.zone-code:focus-within\s*{[^}]*outline:\s*var\(--trait\) solid var\(--accent-fg\)/);
-  expect(bloc).toMatch(/\.zone-code-apercu a\s*{[^}]*text-decoration:\s*underline/);
+  expect(bloc).toMatch(/\.zone-code-apercu a(?:,[^{]*)?\s*{[^}]*text-decoration:\s*underline/);
 });
 
 test("REQ017_AC1_remplacer_garde_le_curseur_sur_la_meme_ligne_bornee_au_nouveau_texte", () => {

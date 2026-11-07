@@ -1,5 +1,7 @@
 import { Decoration, EditorView, ViewPlugin, WidgetType } from "@codemirror/view";
+import { StateField } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
+import { rendreMarkdown } from "./apercu.js";
 
 // Mode hybride (REQ-062, DEC-041) : le markdown est mis en forme dans l'éditeur, d'après l'arbre de
 // @codemirror/lang-markdown. Les marques sont retirées du DOM, sauf sur les lignes que touche la sélection.
@@ -86,8 +88,20 @@ export function decorationsHybride(etat, plages = [{ from: 0, to: etat.doc.lengt
           else style(n.from, n.to, "cm-hy-marque");
         } else if (nom === "Blockquote") l(n.from, n.to, "cm-hy-citation");
         else if (nom === "QuoteMark") marque(n.from, avecEspace(n));
-        else if (nom === "FencedCode" || nom === "CodeBlock") l(n.from, n.to, "cm-hy-bloc-code");
-        else if ((nom === "CodeMark" && n.node.parent.name === "FencedCode") || nom === "CodeInfo") style(n.from, n.to, "cm-hy-marque");
+        else if (nom === "CodeBlock") l(n.from, n.to, "cm-hy-bloc-code");
+        else if (nom === "FencedCode") {
+          l(n.from, n.to, "cm-hy-bloc-code");
+          // Clôtures : le texte de la ligne (marque et nom du langage) est masqué si aucune ligne du bloc n'est touchée.
+          const masquer = !touche(n.from, n.to);
+          for (const m of n.node.getChildren("CodeMark")) {
+            const fin = doc.lineAt(m.from).to;
+            if (!masquer) style(m.from, fin, "cm-hy-marque");
+            else if (!lignesVues.has(`${m.from}:masque`)) {
+              lignesVues.add(`${m.from}:masque`);
+              if (fin > m.from) sortie.push({ debut: m.from, fin, masque: true });
+            }
+          }
+        }
         else if (nom === "Table" || nom === "HTMLBlock") l(n.from, n.to, "cm-hy-mono");
         else if (STYLES[nom]) {
           const marques = n.node.getChildren(STYLES[nom][0]);
@@ -147,6 +161,104 @@ function construire(vue) {
   return Decoration.set(decorationsHybride(vue.state, vue.visibleRanges).map(enDecoration), true);
 }
 
+// Début du texte d'une cellule dans la source du tableau (rangée 0 = en-tête, la ligne `---` est sautée).
+// Un `\|` n'est pas un séparateur. Hors du tableau : début de la source.
+export function debutCellule(source, rangee, colonne) {
+  const lignes = source.split("\n");
+  const index = rangee <= 0 ? 0 : rangee + 1;
+  if (index >= lignes.length) return 0;
+  let debut = 0;
+  for (let i = 0; i < index; i++) debut += lignes[i].length + 1;
+  const texte = lignes[index];
+  let pos = 0;
+  while (texte[pos] === " " || texte[pos] === "\t") pos++;
+  if (texte[pos] === "|") pos++;
+  for (let k = 0; k < colonne; k++) {
+    while (pos < texte.length && texte[pos] !== "|") pos += texte[pos] === "\\" ? 2 : 1;
+    if (pos >= texte.length) return debut + texte.length;
+    pos++;
+  }
+  while (texte[pos] === " " || texte[pos] === "\t") pos++;
+  return debut + Math.min(pos, texte.length);
+}
+
+// Tableaux rendus : ceux dont aucune ligne n'est touchée par la sélection, de la première à la dernière ligne entière.
+export function tableauxHybride(etat) {
+  const doc = etat.doc;
+  const actives = new Set();
+  for (const r of etat.selection.ranges) for (let n = doc.lineAt(r.from).number; n <= doc.lineAt(r.to).number; n++) actives.add(n);
+  const sortie = [];
+  syntaxTree(etat).iterate({
+    enter: (n) => {
+      if (n.name !== "Table") return;
+      const [a, b] = [doc.lineAt(n.from), doc.lineAt(n.to)];
+      let touche = false;
+      for (let i = a.number; i <= b.number; i++) if (actives.has(i)) touche = true;
+      if (!touche) sortie.push({ debut: a.from, fin: b.to, source: doc.sliceString(a.from, b.to) });
+      return false;
+    },
+  });
+  return sortie;
+}
+
+class TableauRendu extends WidgetType {
+  constructor(source) {
+    super();
+    this.source = source;
+  }
+  eq(autre) {
+    return autre.source === this.source;
+  }
+  toDOM(vue) {
+    const el = document.createElement("div");
+    el.className = "cm-hy-tableau";
+    el.setAttribute("contenteditable", "false");
+    const modele = document.createElement("template");
+    modele.innerHTML = rendreMarkdown(this.source);
+    const table = modele.content.querySelector("table");
+    if (table) {
+      for (const a of table.querySelectorAll("a")) {
+        a.removeAttribute("href");
+        a.removeAttribute("title");
+      }
+      el.append(table);
+    } else el.textContent = this.source;
+    el.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      const debut = vue.posAtDOM(el);
+      const cellule = e.target.closest?.("td, th");
+      let pos = debut;
+      if (cellule && table) {
+        const rangee = [...table.querySelectorAll("tr")].indexOf(cellule.parentElement);
+        pos = debut + debutCellule(this.source, rangee, cellule.cellIndex);
+      }
+      vue.dispatch({ selection: { anchor: pos } });
+      vue.focus();
+    });
+    return el;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
+
+// Un StateField : CodeMirror refuse les décorations de bloc venant d'un ViewPlugin.
+const champTableaux = StateField.define({
+  create: (etat) => construireTableaux(etat),
+  update(valeur, tr) {
+    if (tr.docChanged || tr.selection || syntaxTree(tr.state) !== syntaxTree(tr.startState)) return construireTableaux(tr.state);
+    return valeur;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+function construireTableaux(etat) {
+  return Decoration.set(
+    tableauxHybride(etat).map((t) => Decoration.replace({ block: true, widget: new TableauRendu(t.source) }).range(t.debut, t.fin)),
+    true,
+  );
+}
+
 // Extension CodeMirror du mode hybride. Le document n'est jamais modifié : seules des décorations sont posées.
 export function hybride() {
   const plugin = ViewPlugin.fromClass(
@@ -160,5 +272,5 @@ export function hybride() {
     },
     { decorations: (p) => p.decorations },
   );
-  return [plugin, EditorView.editorAttributes.of({ class: "cm-hybride" })];
+  return [plugin, champTableaux, EditorView.editorAttributes.of({ class: "cm-hybride" })];
 }
