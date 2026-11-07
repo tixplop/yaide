@@ -497,6 +497,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 
 /* V-010 : vue Agents (barre et pied : C-010, `ya-agents-*`). */
 .agents-corps { display: flex; flex-direction: column; box-sizing: border-box; height: 100%; min-height: 0; overflow-x: hidden; }
+.agents-corps[hidden] { display: none; }
 .agents-nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agents-liste { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--space-1) 0; }
 .agents-liste > .message { margin: var(--space-1) var(--space-3) var(--space-2); }

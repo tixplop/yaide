@@ -430,6 +430,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     corps,
     focuser,
     relireReglages,
+    majListe,
     /** Une conversation vide avec ces agents, gardée ici jusqu'au premier message (le serveur la crée alors). */
     demarrerAvec(agents) {
       viderConversation();

@@ -1,4 +1,4 @@
-import { deconnexion } from "../api.js";
+import { creerChemin, deconnexion, lireFichier } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { cadre } from "../ui/cadre.js";
 import { borner, limites } from "../ui/poignee.js";
@@ -8,6 +8,7 @@ import { onglets } from "../ui/onglets.js";
 import { surveiller } from "../connexion.js";
 import { changerTheme, themeCourant } from "../ui/theme.js";
 import { vueAgent } from "./agent.js";
+import { vueAgents } from "./agents.js";
 import { vueEditeur } from "./editeur.js";
 import { vueFichiers } from "./fichiers.js";
 import { vueGit } from "./git.js";
@@ -47,15 +48,18 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
 
   // Le panneau replié laisse la place à l'éditeur ; la vue et les tailles restent en mémoire.
   const boutonAgent = bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", actif: false });
+  const boutonAgents = bouton({ icone: "users", nomAccessible: "Agents", positionInfoBulle: "gauche", actif: false });
   const repliAgent = bouton({ icone: "panel-right-close", nomAccessible: "Replier l'agent", positionInfoBulle: "gauche" });
   boutonAgent.addEventListener("click", entrerDansAgent);
+  boutonAgents.addEventListener("click", entrerDansAgents);
   repliAgent.addEventListener("click", () => {
     replierAgent(true);
-    boutonAgent.poserFocus();
+    (vueColonne === "agent" ? boutonAgent : boutonAgents).poserFocus();
   });
   const boutonPanneau = bouton({ icone: "panel-left-close", nomAccessible: "Replier le panneau" });
   let panneauReplie = false;
   let agentReplie = true;
+  let vueColonne = "agent"; // la vue affichée dans la colonne ; non gardée dans le navigateur
   boutonPanneau.addEventListener("click", () => {
     replierPanneau(!panneauReplie);
     if (panneauReplie) boutonPanneau.poserFocus();
@@ -80,17 +84,63 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     // Place pour une seule colonne : déplier l'agent replie le panneau.
     if (!oui && !panneauReplie && etroit()) replierPanneau(true);
     racine.definirReplis({ agent: oui });
-    boutonAgent.definirActif(!oui);
+    majCommandes();
     recalculer();
     ecrire("replis", { panneau: panneauReplie, agent: agentReplie });
   }
   // « Agent » et A : déplie l'agent s'il est replié, et met le focus dans « Message à l'agent ».
   function entrerDansAgent() {
-    if (agentReplie) {
-      replierAgent(false);
-      agent.deplier();
-    }
+    const absent = agentReplie || vueColonne !== "agent";
+    if (agentReplie) replierAgent(false);
+    montrerVue("agent");
+    if (absent) agent.deplier();
     agent.focuser();
+  }
+  // « Agents » : déplie la colonne si besoin, affiche V-010 et relit la liste.
+  function entrerDansAgents() {
+    if (agentReplie) replierAgent(false);
+    montrerVue("agents");
+    agents.afficher();
+  }
+  const majCommandes = () => {
+    boutonAgent.definirActif(!agentReplie && vueColonne === "agent");
+    boutonAgents.definirActif(!agentReplie && vueColonne === "agents");
+  };
+  function montrerVue(v) {
+    vueColonne = v;
+    agent.corps.hidden = v !== "agent";
+    agents.corps.hidden = v !== "agents";
+    racine.definirTitreAgent(v === "agent" ? "Agent" : "Agents");
+    racine.dataset.vueColonne = v;
+    majCommandes();
+  }
+  // Un fichier d'agent s'ouvre dans l'éditeur, recréé vide s'il manque.
+  async function surFichier(chemin) {
+    const nom = chemin.split("/").pop();
+    const geste = editeur.lecture(true);
+    let r = await lireFichier(chemin);
+    if (detruite) return;
+    if (r.cause === "introuvable") {
+      const cree = await creerChemin(chemin, "fichier");
+      if (detruite) return;
+      r = cree.cause || cree.coupure ? cree : await lireFichier(chemin);
+      if (detruite) return;
+    }
+    if (r.contenu !== undefined) {
+      editeur.ouvrir({ chemin, contenu: r.contenu, version: r.version, geste });
+    } else {
+      const texte = r.coupure ? TEXTE_COUPURE : `Impossible d'ouvrir ${nom} : ${String(r.message ?? "erreur").replace(/\.$/, "")}.`;
+      dire({ texte, variante: "alerte", fermable: true });
+    }
+    editeur.lecture(false);
+  }
+  // « Démarrer une conversation » : V-007 sur une nouvelle conversation avec ces agents.
+  function surDemarrer(equipe) {
+    montrerVue("agent");
+    agent.demarrerAvec(equipe);
+    // Colonne repliée au chargement : ni les réglages ni la liste n'ont été lus.
+    agent.relireReglages();
+    agent.majListe();
   }
   const etroit = () => window.innerWidth < limites({ L: window.innerWidth, H: window.innerHeight }).seuil;
   // Dépliage : l'arborescence est relue (silencieusement), puis le focus entre dans le panneau.
@@ -191,6 +241,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     surDisque: editeur.relireDisque,
   });
   const agent = vueAgent({});
+  const agents = vueAgents({ surFichier, surDemarrer });
+  agents.corps.hidden = true;
   const restauration = editeur.restaurer();
 
   let nombre = 0; // changements git, affichés sur l'icône Git du rail
@@ -208,8 +260,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [boutonPanneau.enveloppe, shells.repli.enveloppe, theme.enveloppe, sortir.enveloppe] },
     rail: { onglets: rail, commandes: shells.commandes },
     panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps] },
-    agent: { titre: "Agent", repli: repliAgent.enveloppe, corps: agent.corps },
-    railDroit: { commandes: [boutonAgent.enveloppe] },
+    agent: { titre: "Agent", repli: repliAgent.enveloppe, corps: [agent.corps, agents.corps] },
+    railDroit: { commandes: [boutonAgent.enveloppe, boutonAgents.enveloppe] },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, fil: editeur.fil, code: editeur.code, shells },
     barreEtat: barre,
     surChangement: (zone, taille) => {
@@ -220,6 +272,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
 
   // Sans shell à l'arrivée : la zone reste hors page le temps de lire la liste.
+  racine.dataset.vueColonne = vueColonne;
   racine.definirShellsVisibles(false);
 
   // Poignées : limites recalculées à chaque changement de la fenêtre, des bandeaux ou de la question d'onglet.
@@ -265,7 +318,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (detruite) return;
     if (gardes?.agent === false) {
       replierAgent(false);
-      agent.deplier();
+      if (vueColonne === "agent") agent.deplier();
     }
     if (gardes?.panneau && !panneauReplie) replierPanneau(true);
     if (!panneauReplie) return;
@@ -374,6 +427,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     git.detruire();
     recherche.detruire();
     agent.detruire();
+    agents.detruire();
     ouverture.detruire();
     panneauConfig?.fermer();
   };
