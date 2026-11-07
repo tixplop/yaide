@@ -408,7 +408,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     o.alerte?.remove();
     o.alerte = null;
     afficher();
-    garderListe();
+    // Écrite tout de suite : un rechargement dans les 200 ms ne doit pas retrouver la garde d'avant la sauvegarde.
+    clearTimeout(minuteur);
+    minuteur = null;
+    if (pret) ecrireGarde();
     return null;
   }
 

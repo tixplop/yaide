@@ -132,12 +132,9 @@ test("REQ016_AC3_apres_une_sauvegarde_recharger_affiche_le_disque_sans_point", a
   await page.keyboard.press("Control+s");
   await expect(onglet(page, "main.rs, non sauvegardé")).toHaveCount(0);
   await expect.poll(() => fs.readFileSync(main(), "utf8")).toContain("// sauvé");
-  await expect.poll(async () => {
-    const g = await lireGarde(page);
-    return g.includes("main.rs") && !g.includes("// sauvé");
-  }).toBe(true);
   await page.reload();
   await expect(onglet(page, "main.rs")).toBeVisible();
+  await expect(page.getByText("a changé sur le disque")).toHaveCount(0);
   await expect(onglet(page, "main.rs, non sauvegardé")).toHaveCount(0);
   await expect(editeur(page)).toContainText("// sauvé");
 });

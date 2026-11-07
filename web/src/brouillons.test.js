@@ -275,3 +275,25 @@ test("DEC019_le_ctrl_s_en_attente_est_garde_puis_execute_apres_un_rechargement",
   expect(put.mock.calls[0][1].body).toBe("ab");
   expect(surAttente).toHaveBeenLastCalledWith("");
 });
+
+test("REQ016_AC4_ctrl_s_juste_apres_une_frappe_garde_l_etat_sauvegarde", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => reponse("ab", "v2")));
+  const { e } = monter();
+  await e.restaurer();
+  e.ouvrir({ chemin: "main.rs", contenu: "a", version: "v1" });
+  taper(e, "b");
+  await vi.advanceTimersByTimeAsync(250);
+  expect(mem.ecrit.at(-1).liste[0].texte).toBe("ab");
+  taper(e, "c");
+  await vi.advanceTimersByTimeAsync(50);
+  ctrlS();
+  await vi.advanceTimersByTimeAsync(10); // moins de 200 ms après la frappe
+  const garde = mem.ecrit.at(-1).liste;
+  expect(garde.find((g) => g.chemin === "main.rs").texte).toBeUndefined();
+  mem.gardes = { liste: garde, actif: "main.rs" };
+  vi.stubGlobal("fetch", vi.fn(async () => reponse("abc", "v2")));
+  const { e: e2 } = monter();
+  await e2.restaurer();
+  expect(e2.question.querySelector("[role=alert]")).toBeNull();
+  expect(e2.barre.querySelector("[role=tab]").getAttribute("aria-label")).toBe("main.rs");
+});
