@@ -145,3 +145,12 @@ test("REQ064_les_quatre_icones_des_agents_existent_au_trait_lucide", () => {
     expect(s.innerHTML.length).toBeGreaterThan(20);
   }
 });
+
+test("asterisk_unique", () => {
+  expect(NOMS).toContain("asterisk");
+  const dessin = icone("asterisk").innerHTML;
+  expect(dessin).toContain("M12 4v16");
+  expect(dessin).toContain("M18.93 8 5.07 16");
+  expect(dessin).toContain("m5.07 8 13.86 8");
+  expect(NOMS.filter((n) => n !== "asterisk").map((n) => icone(n).innerHTML)).not.toContain(dessin);
+});

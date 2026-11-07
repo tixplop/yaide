@@ -35,15 +35,16 @@ const POLICE = '12.5px "JetBrains Mono"';
 
 const CTRL_MAJ_F = (e) => e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "f";
 
-export function terminal({ flux, connecte = true, numero, surTaille } = {}) {
+export function terminal({ flux, connecte = true, nom, arrete, surTaille } = {}) {
   if (!flux) throw new Error("terminal : flux requis");
+  if (!nom) throw new Error("terminal : nom requis");
   const racine = document.createElement("div");
   racine.className = "terminal";
   const attente = indication({ texte: "(en attente de la connexion)" });
   attente.classList.add("terminal-attente");
   const zone = document.createElement("div");
   zone.className = "terminal-zone";
-  zone.setAttribute("aria-label", numero === undefined ? "Shell" : `Shell ${numero}`);
+  zone.setAttribute("aria-label", nom);
   racine.append(attente, zone);
 
   const term = new Terminal({
@@ -115,9 +116,18 @@ export function terminal({ flux, connecte = true, numero, surTaille } = {}) {
   racine.term = term;
   racine.ajuster = ajuster;
   racine.focus = () => term.focus();
+  // Session terminée : l'affichage reste, la saisie et le curseur disparaissent, et une reconnexion ne les rend pas.
+  let fini = false;
   racine.definirConnecte = (oui) => {
     attente.hidden = oui;
-    term.options.disableStdin = !oui;
+    term.options.disableStdin = fini || !oui;
+  };
+  racine.definirArrete = () => {
+    fini = true;
+    attente.hidden = true;
+    term.options.disableStdin = true;
+    zone.classList.add("terminal-arrete");
+    term.write("\x1b[?25l");
   };
   racine.detruire = () => {
     clearTimeout(attend);
@@ -126,5 +136,6 @@ export function terminal({ flux, connecte = true, numero, surTaille } = {}) {
     term.dispose();
   };
   racine.definirConnecte(connecte);
+  if (arrete) racine.definirArrete();
   return racine;
 }

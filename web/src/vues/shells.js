@@ -324,7 +324,7 @@ export function vueShells({ dire, surZone = () => {} }) {
     });
     s.terminal = terminal({
       flux: s.flux,
-      numero: id,
+      nom: `Shell ${id}`,
       connecte: false,
       surTaille: (c, l) => s.ws?.readyState === 1 && s.ws.send(`taille ${c} ${l}`),
     });

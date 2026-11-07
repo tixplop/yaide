@@ -386,3 +386,25 @@ test("REQ061_AC13_partie_vide_et_actionsDroite_laissent_le_menu_du_navigateur", 
   expect(clicDroit(r.querySelector(".onglets-droite button")).defaultPrevented).toBe(false);
   expect(surMenu).not.toHaveBeenCalled();
 });
+
+test("REQ068_AC13_onglet_claude_icone_croix_title_sans_statut", () => {
+  const r = onglets({
+    actif: "claude-1",
+    onglets: [
+      { id: "a", libelle: "a.rs", fermable: true },
+      { id: "claude-1", libelle: "Claude 1", icone: "asterisk", titre: "Claude Code dans ~/code/projet", fermable: true },
+    ],
+  });
+  const t = tab(r, 1);
+  expect(t.querySelector("svg").getAttribute("data-icone")).toBe("asterisk");
+  expect(t.textContent).toBe("Claude 1");
+  expect(t.title).toBe("Claude Code dans ~/code/projet");
+  expect(t.getAttribute("aria-label")).toBe("Claude 1");
+  expect(t.getAttribute("aria-selected")).toBe("true");
+  expect(t.hasAttribute("data-modifie")).toBe(false);
+  expect(t.querySelector(".onglet-question")).toBeNull();
+  expect(t.querySelector(".onglet-nom").className).toBe("onglet-nom");
+  expect(r.querySelectorAll(".onglet-cellule")[1].querySelector('[aria-label="Fermer Claude 1"]')).not.toBeNull();
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  expect(css).toMatch(/\.ya-tabs \.onglet svg\s*\{[^}]*width: 15px/);
+});

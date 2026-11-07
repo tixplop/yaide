@@ -4,6 +4,7 @@ import { cadre } from "./cadre.js";
 import { bouton } from "./bouton.js";
 import { onglets } from "./onglets.js";
 import { infoBulle } from "./info-bulle.js";
+import { terminal } from "./terminal.js";
 
 const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
 for (const [, nom, val] of tokens.matchAll(/(--[\w-]+):\s*([^;]+);/g)) document.documentElement.style.setProperty(nom, val.trim());
@@ -12,6 +13,8 @@ const regle = (sel) => {
   for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) if (m[1].split(",").map((s) => s.trim()).includes(sel)) return m[2].replace(/\s+/g, " ");
   throw new Error(`règle absente : ${sel}`);
 };
+window.matchMedia ??= () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+HTMLCanvasElement.prototype.getContext = () => null;
 const p = (texte) => Object.assign(document.createElement("p"), { textContent: texte });
 
 function monter() {
@@ -486,4 +489,34 @@ test("REQ028_AC14_rail_droit_a_480", () => {
   expect(regle(".cadre-rail-droit .ya-icon-btn")).toContain("height: var(--size-activity)");
   expect(regle(".cadre-rail-droit")).not.toMatch(/overflow/);
   expect(regle(".cadre-rail-droit .ya-icon-btn")).not.toMatch(/overflow/);
+});
+
+test("REQ028_AC14_rail_droit_trois_commandes_a_480", () => {
+  const cmd = (icone, nomAccessible) => bouton({ icone, nomAccessible, positionInfoBulle: "gauche" });
+  const c = cadre({ railDroit: { commandes: [cmd("bot", "Agent").enveloppe, cmd("users", "Agents").enveloppe, cmd("asterisk", "Claude").enveloppe] } });
+  document.body.append(c);
+  const rd = c.querySelector(".cadre-rail-droit");
+  expect([...rd.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents", "Claude"]);
+  const px = (nom) => parseFloat(tokens.match(new RegExp(`${nom}:\\s*(\\d+)px`))[1]);
+  // 3 × 48 + 8 de vide = 152 px, pour 480 - 35 - 22 = 423 px disponibles, sans défilement.
+  expect(3 * px("--size-activity") + px("--space-2")).toBe(152);
+  expect(px("--size-activity") * 3 + px("--space-2")).toBeLessThanOrEqual(px("--hauteur-min") - px("--size-titlebar") - px("--size-status"));
+  expect(regle(".cadre-rail-droit")).not.toMatch(/overflow/);
+  expect(regle(".cadre-rail-droit .bouton-enveloppe:nth-child(n+3)")).toContain("margin-top: var(--space-2)");
+  expect(regle(".cadre-rail-droit .ya-icon-btn")).toContain("height: var(--size-activity)");
+});
+
+test("cadre_principal_code_porte_un_terminal", () => {
+  const flux = Object.assign(new EventTarget(), { send() {} });
+  const t = terminal({ flux, nom: "Claude 1" });
+  const c = cadre({ principal: { ongletsFichiers: p("of"), questionOnglet: p("q"), code: t } });
+  document.body.append(c);
+  const code = c.querySelector(".cadre-code");
+  expect(code.firstElementChild).toBe(t);
+  expect(c.querySelector(".cadre-fil").children).toHaveLength(0);
+  expect(code.querySelector(".terminal-zone").getAttribute("aria-label")).toBe("Claude 1");
+  expect(c.querySelector(".cadre-question").textContent).toBe("q");
+  expect(regle(".cadre-code")).toContain("flex: 1 1 0");
+  expect(regle(".terminal")).toContain("background: var(--bg-000)");
+  t.detruire();
 });

@@ -350,3 +350,34 @@ test("REQ059_AC1_info_bulle_a_gauche_pour_le_rail_droit", () => {
   b.enveloppe.dispatchEvent(new Event("pointerleave"));
   vi.useRealTimers();
 });
+
+test("REQ059_AC19_commande_claude_sans_raccourci_ni_actif_8_px", () => {
+  vi.useFakeTimers();
+  const b = bouton({ icone: "asterisk", nomAccessible: "Claude", infoBulle: "Nouvelle session Claude", positionInfoBulle: "gauche" });
+  expect(b.querySelector('[data-icone="asterisk"]')).not.toBeNull();
+  expect(b.getAttribute("aria-label")).toBe("Claude");
+  expect(b.hasAttribute("aria-keyshortcuts")).toBe(false);
+  expect(b.hasAttribute("data-actif")).toBe(false);
+  expect(b.textContent).toBe("");
+  document.body.append(b.enveloppe);
+  b.enveloppe.getBoundingClientRect = () => ({ left: window.innerWidth - 48, right: window.innerWidth, top: 200, bottom: 248, width: 48, height: 48 });
+  b.enveloppe.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  const t = document.querySelector("[role=tooltip]");
+  expect(t.textContent).toBe("Nouvelle session Claude");
+  expect(parseFloat(t.style.left)).toBe(window.innerWidth - 48);
+  b.enveloppe.dispatchEvent(new Event("pointerleave"));
+  vi.useRealTimers();
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  expect(css).toMatch(/\.cadre-rail-droit \.bouton-enveloppe:nth-child\(n\+3\)\s*\{[^}]*margin-top: var\(--space-2\)/);
+});
+
+test("REQ059_AC13_claude_jamais_de_filet", () => {
+  const b = bouton({ icone: "asterisk", nomAccessible: "Claude" });
+  expect(b.hasAttribute("data-actif")).toBe(false);
+  expect(b.hasAttribute("aria-pressed") || b.hasAttribute("aria-expanded")).toBe(false);
+  expect(b.definirDeplie).toBeUndefined();
+  // Le filet vient de `data-actif` seul, et ce bouton ne le reçoit que si l'appelant le demande.
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  expect(css).toMatch(/\.cadre-rail-droit \.ya-icon-btn\s*\{[^}]*color: var\(--ink-faint\)/);
+});

@@ -23,7 +23,7 @@ class FauxFlux extends EventTarget {
 
 function monter(options = {}) {
   const flux = new FauxFlux();
-  const t = terminal({ flux, numero: 1, ...options });
+  const t = terminal({ flux, nom: "Shell 1", ...options });
   document.body.append(t);
   return { flux, t };
 }
@@ -56,7 +56,7 @@ test("REQ019_AC7_ctrl_maj_f_n_envoie_rien_et_remonte_au_document", () => {
 });
 
 test("REQ019_AC5_zone_nommee_shell_n_et_focus_programmatique", () => {
-  const { t } = monter({ numero: 2 });
+  const { t } = monter({ nom: "Shell 2" });
   expect(t.querySelector(".terminal-zone").getAttribute("aria-label")).toBe("Shell 2");
   t.focus();
   expect(document.activeElement).toBe(t.querySelector("textarea"));
@@ -153,6 +153,7 @@ test("REQ019_AC6_attente_visible_et_saisie_coupee_hors_connexion", () => {
 
 test("REQ019_AC1_flux_requis", () => {
   expect(() => terminal({})).toThrow("flux requis");
+  expect(() => terminal({ flux: new FauxFlux() })).toThrow("nom requis");
 });
 
 test("REQ028_AC7_focus_du_terminal_a_contour_accent", () => {
@@ -195,4 +196,36 @@ test("REQ032_AC3_la_nouvelle_taille_est_transmise_au_shell", () => {
   const { t } = monter({ surTaille });
   t.term.resize(100, 30);
   expect(surTaille).toHaveBeenCalledWith(100, 30);
+});
+
+test("REQ068_AC14_terminal_aria_label_du_nom_et_contour_au_focus", () => {
+  const { t } = monter({ nom: "Claude 1" });
+  expect(t.querySelector(".terminal-zone").getAttribute("aria-label")).toBe("Claude 1");
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  expect(css).toMatch(/\.terminal-zone:focus-within\s*\{[^}]*outline: var\(--trait\) solid var\(--accent-fg\)/);
+});
+
+test("REQ068_AC15_terminal_arrete_n_envoie_plus_rien", async () => {
+  const { flux, t } = monter({ nom: "Claude 1" });
+  flux.recevoir("dernière sortie");
+  t.term.input("a");
+  expect(flux.envoyes).toEqual(["a"]);
+  await new Promise((r) => t.term.write("", r));
+  t.definirArrete({ code: 1 });
+  expect(t.term.options.disableStdin).toBe(true);
+  expect(t.term.options.cursorBlink).toBe(false);
+  expect(t.querySelector(".terminal-zone").classList.contains("terminal-arrete")).toBe(true);
+  t.term.input("b");
+  expect(flux.envoyes).toEqual(["a"]);
+  await new Promise((r) => t.term.write("", r));
+  // L'affichage est gardé.
+  expect(t.term.buffer.active.getLine(0).translateToString(true)).toContain("dernière sortie");
+  // Une reconnexion ne rouvre pas la saisie.
+  t.definirConnecte(true);
+  expect(t.term.options.disableStdin).toBe(true);
+});
+
+test("REQ068_AC15_terminal_arrete_des_la_creation", () => {
+  const { t } = monter({ arrete: { code: 2 } });
+  expect(t.term.options.disableStdin).toBe(true);
 });
