@@ -225,6 +225,13 @@ test("REQ068_AC15_terminal_arrete_n_envoie_plus_rien", async () => {
   expect(t.term.options.disableStdin).toBe(true);
 });
 
+test("REQ068_AC15_terminal_arrete_ne_reaffiche_pas_l_attente", () => {
+  const { t } = monter({ nom: "Claude 1" });
+  t.definirArrete({ code: 1 });
+  t.definirConnecte(false);
+  expect(t.querySelector(".terminal-attente").hidden).toBe(true);
+});
+
 test("REQ068_AC15_terminal_arrete_des_la_creation", () => {
   const { t } = monter({ arrete: { code: 2 } });
   expect(t.term.options.disableStdin).toBe(true);

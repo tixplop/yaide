@@ -7,9 +7,31 @@ import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { terminal } from "../ui/terminal.js";
 
-const PAUSE_REPRISE = 1000;
+export const PAUSE_REPRISE = 1000;
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const codage = new TextEncoder();
+
+/**
+ * Branche `flux` sur la WebSocket du shell `id` ; les messages vont au flux.
+ * `surOuverture()` et `surFermeture(evenement)` sont appelés par la connexion. Rend la WebSocket.
+ */
+export function brancherFlux(id, flux, { surOuverture, surFermeture }) {
+  const ws = new WebSocket(`${location.origin.replace(/^http/, "ws")}/api/shells/${id}/ws`);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = surOuverture;
+  ws.onmessage = (e) => flux.dispatchEvent(new MessageEvent("message", { data: e.data }));
+  ws.onclose = surFermeture;
+  return ws;
+}
+
+/** Flux d'un terminal : `send` écrit sur la WebSocket courante de `s.ws`, si elle est ouverte. */
+export function fluxVers(s) {
+  return Object.assign(new EventTarget(), {
+    send(donnees) {
+      if (s.ws?.readyState === 1) s.ws.send(typeof donnees === "string" ? codage.encode(donnees) : donnees);
+    },
+  });
+}
 
 function texteArret(n) {
   return n > 1 ? `Yaide a été arrêté. ${n} shells ont été fermés.` : "Yaide a été arrêté. 1 shell a été fermé.";
@@ -294,34 +316,28 @@ export function vueShells({ dire, surZone = () => {} }) {
   }
 
   function brancher(s) {
-    const ws = new WebSocket(`${location.origin.replace(/^http/, "ws")}/api/shells/${s.id}/ws`);
-    ws.binaryType = "arraybuffer";
-    s.ws = ws;
-    ws.onopen = () => {
-      s.ouvert = true;
-      // Le serveur renvoie l'affichage récent : on repart d'un terminal vide.
-      s.terminal.term.reset();
-      // Un shell réduit n'a jamais été mesuré : sa taille ne part qu'à son réaffichage.
-      if (!s.reduit) envoyerTaille(s);
-      majConnecte(s);
-    };
-    ws.onmessage = (e) => s.flux.dispatchEvent(new MessageEvent("message", { data: e.data }));
-    ws.onclose = (e) => {
-      s.ouvert = false;
-      majConnecte(s);
-      if (detruit) return;
-      if (e.code === 1000) retirer(s.id);
-      else reprendre(s);
-    };
+    s.ws = brancherFlux(s.id, s.flux, {
+      surOuverture: () => {
+        s.ouvert = true;
+        // Le serveur renvoie l'affichage récent : on repart d'un terminal vide.
+        s.terminal.term.reset();
+        // Un shell réduit n'a jamais été mesuré : sa taille ne part qu'à son réaffichage.
+        if (!s.reduit) envoyerTaille(s);
+        majConnecte(s);
+      },
+      surFermeture: (e) => {
+        s.ouvert = false;
+        majConnecte(s);
+        if (detruit) return;
+        if (e.code === 1000) retirer(s.id);
+        else reprendre(s);
+      },
+    });
   }
 
   function ajouter(id, reduit = false) {
     const s = { id, reduit, ws: null, ouvert: false };
-    s.flux = Object.assign(new EventTarget(), {
-      send(donnees) {
-        if (s.ws?.readyState === 1) s.ws.send(typeof donnees === "string" ? codage.encode(donnees) : donnees);
-      },
-    });
+    s.flux = fluxVers(s);
     s.terminal = terminal({
       flux: s.flux,
       nom: `Shell ${id}`,

@@ -119,7 +119,7 @@ export function terminal({ flux, connecte = true, nom, arrete, surTaille } = {})
   // Session terminée : l'affichage reste, la saisie et le curseur disparaissent, et une reconnexion ne les rend pas.
   let fini = false;
   racine.definirConnecte = (oui) => {
-    attente.hidden = oui;
+    attente.hidden = oui || fini;
     term.options.disableStdin = fini || !oui;
   };
   racine.definirArrete = () => {

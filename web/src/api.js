@@ -49,6 +49,21 @@ export async function ouvrirShell() {
   return { erreur: (await r.text()).trim() || `erreur ${r.status}` };
 }
 
+/** Vrai si la commande `claude` est dans le PATH du serveur ; faux sans réponse. */
+export async function claudeDisponible() {
+  const r = await appeler("/api/claude");
+  if (!r || !r.ok) return false;
+  return (await r.json()).disponible === true;
+}
+
+/** Renvoie `{ id }`, `{ erreur: raison }` (503) ; `{ coupure: true }` sans réponse. */
+export async function ouvrirClaude() {
+  const r = await appeler("/api/claude", { method: "POST" });
+  if (!r) return { coupure: true };
+  if (r.status === 201) return r.json();
+  return { erreur: (await r.text()).trim() || `erreur ${r.status}` };
+}
+
 /** Rend `{}`, `{ introuvable: true }` (404), `{ coupure: true }` ou `{ erreur }` (texte du serveur). */
 export async function fermerShell(id) {
   const r = await appeler(`/api/shells/${id}`, { method: "DELETE" });
