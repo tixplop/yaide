@@ -2,6 +2,8 @@ import { icone } from "./icones.js";
 import { fermerInfoBulleDans, infoBulle } from "./info-bulle.js";
 import { limites, poignee } from "./poignee.js";
 
+let compteurAgent = 0;
+
 function zone(balise, classe, contenu) {
   const e = document.createElement(balise);
   e.className = classe;
@@ -28,7 +30,7 @@ export function symbole(taille) {
 /**
  * C-010. `barreTitre` : { projet, chemin, surOuvrir, actions } ; `rail` : { onglets, commandes } ;
  * `panneau` : { titre, repli (bouton de repli, après le titre), entete (élément fixe sous le titre), corps } ;
- * `barreEtat` : { branche, position, langage } (textes, ou rien) ; `agent` : { titre, repli, corps } (colonne à droite) ; `railDroit` : { commande } ;
+ * `barreEtat` : { branche, position, langage } (textes, ou rien) ; `agent` : { titre, repli, corps } (colonne à droite) ; `railDroit` : { commandes } (liste de boutons, dans l'ordre) ;
  * `tailles` : { panneau, agent, shells } en pixels ; `replis` : { panneau, agent, shells } (faux par défaut, vrai pour l'agent) ;
  * `surChangement(zone, taille)` et `surFin(zone, taille)` viennent des poignées.
  */
@@ -67,14 +69,15 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   aside.append(zone("div", "cadre-panneau-corps", panneau.corps));
 
   const colonneAgent = zone("aside", "cadre-agent");
-  colonneAgent.setAttribute("aria-label", "Agent");
+  const titreAgent = zone("h2", "cadre-panneau-titre ya-panel-title");
   if (agent.titre) {
-    const h = zone("h2", "cadre-panneau-titre ya-panel-title");
-    h.textContent = agent.titre;
-    colonneAgent.append(zone("div", "ya-panel-head", [h, agent.repli]));
-  }
+    titreAgent.id = `cadre-agent-titre-${++compteurAgent}`;
+    titreAgent.textContent = agent.titre;
+    colonneAgent.setAttribute("aria-labelledby", titreAgent.id);
+    colonneAgent.append(zone("div", "ya-panel-head", [titreAgent, agent.repli]));
+  } else colonneAgent.setAttribute("aria-label", "Agent");
   colonneAgent.append(zone("div", "cadre-panneau-corps", agent.corps));
-  const rd = zone("div", "cadre-rail-droit", railDroit.commande);
+  const rd = zone("div", "cadre-rail-droit", railDroit.commandes);
 
   const main = zone("main", "cadre-principal");
   const lim = limites({ L: window.innerWidth, H: window.innerHeight });
@@ -140,6 +143,11 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
     }
   };
   racine.poignees = poignees;
+  // « Agent » ou « Agents » selon la vue : l'<aside> suit son <h2> par aria-labelledby.
+  racine.definirTitreAgent = (titre) => {
+    if (!agent.titre) throw new Error("cadre : definirTitreAgent demande un agent avec titre");
+    titreAgent.textContent = titre;
+  };
   // La zone des shells et sa poignée sortent de la page sans shell visible ou une fois repliées ; les terminaux
   // restent montés et la taille choisie ne change pas. Le panneau replié laisse la place à `main` (classe sur la racine).
   const appliquer = () => {

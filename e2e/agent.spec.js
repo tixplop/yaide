@@ -384,7 +384,7 @@ test("REQ059_parcours_23_garder_l_agent_a_cote_de_son_code", async ({ page, brow
   await boutonAgent.click();
   await expect(colonne).toBeVisible();
   expect(await largeur("aside.cadre-agent")).toBe(360);
-  await expect(boutonAgent).toHaveAttribute("data-deplie", "");
+  await expect(boutonAgent).toHaveAttribute("data-actif", "");
   await expect(fil(page)).toContainText("Hier, rien à signaler.");
   await expect(champMessage(page)).toBeFocused();
   const t1 = await tailleStable(page);
@@ -414,7 +414,7 @@ test("REQ059_parcours_23_garder_l_agent_a_cote_de_son_code", async ({ page, brow
   await expect(colonne).toBeHidden();
   await expect(page.getByRole("separator", { name: "Largeur de l'agent" })).toBeHidden();
   await expect(boutonAgent).toBeFocused();
-  await expect(boutonAgent).not.toHaveAttribute("data-deplie", "");
+  await expect(boutonAgent).not.toHaveAttribute("data-actif", "");
   await expect(page.getByRole("tooltip")).toHaveCount(0);
   const t2 = await tailleStable(page);
   expect(t2).not.toBe(t1);

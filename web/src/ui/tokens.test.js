@@ -445,3 +445,16 @@ test("REQ062_AC13_paires_du_mode_hybride_atteignent_leur_seuil_avec_et_sans_lign
     }
   });
 });
+
+test("REQ065_AC6_on_accent_sur_les_six_couleurs_deux_themes", () => {
+  const valeurs = { "--agent-violet": "#7b4fbf", "--agent-vert": "#2e7d32", "--agent-orange": "#b0501c", "--agent-rose": "#c2185b", "--agent-sarcelle": "#00796b", "--agent-gris": "#5f6368" };
+  const attendu = { "--agent-violet": 5.6, "--agent-vert": 5.1, "--agent-orange": 5.2, "--agent-rose": 5.8, "--agent-sarcelle": 5.3, "--agent-gris": 6 };
+  for (const theme of THEMES) {
+    for (const [nom, v] of Object.entries(valeurs)) {
+      expect(T[theme][nom], `${nom} (${theme})`).toBe(v);
+      const r = contraste(jeton(theme, "--on-accent"), jeton(theme, nom));
+      expect(r, `--on-accent sur ${nom} (${theme})`).toBeGreaterThanOrEqual(4.5);
+      expect(r, `--on-accent sur ${nom} (${theme})`).toBe(attendu[nom]);
+    }
+  }
+});

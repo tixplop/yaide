@@ -46,7 +46,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
 
   // Le panneau replié laisse la place à l'éditeur ; la vue et les tailles restent en mémoire.
-  const boutonAgent = bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", deplie: false });
+  const boutonAgent = bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", actif: false });
   const repliAgent = bouton({ icone: "panel-right-close", nomAccessible: "Replier l'agent", positionInfoBulle: "gauche" });
   boutonAgent.addEventListener("click", entrerDansAgent);
   repliAgent.addEventListener("click", () => {
@@ -80,7 +80,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     // Place pour une seule colonne : déplier l'agent replie le panneau.
     if (!oui && !panneauReplie && etroit()) replierPanneau(true);
     racine.definirReplis({ agent: oui });
-    boutonAgent.definirDeplie(!oui);
+    boutonAgent.definirActif(!oui);
     recalculer();
     ecrire("replis", { panneau: panneauReplie, agent: agentReplie });
   }
@@ -209,7 +209,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     rail: { onglets: rail, commandes: shells.commandes },
     panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche.corps, git.corps] },
     agent: { titre: "Agent", repli: repliAgent.enveloppe, corps: agent.corps },
-    railDroit: { commande: boutonAgent.enveloppe },
+    railDroit: { commandes: [boutonAgent.enveloppe] },
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, fil: editeur.fil, code: editeur.code, shells },
     barreEtat: barre,
     surChangement: (zone, taille) => {

@@ -1,12 +1,20 @@
-const TYPES = ["texte", "motDePasse", "secret", "multiligne", "liste", "case"];
+import { icone } from "./icones.js";
+import { COULEURS } from "./avatar.js";
+
+const TYPES = ["texte", "motDePasse", "secret", "multiligne", "liste", "case", "couleur"];
+const PRESENTATIONS = ["normale", "ligne"];
+const NOMS_COULEURS = { violet: "Violet", vert: "Vert", orange: "Orange", rose: "Rose", sarcelle: "Sarcelle", gris: "Gris" };
 const CLAVIERS = { numerique: "numeric", decimal: "decimal" };
 let compteur = 0;
 
-export function champ({ libelle, type = "texte", valeur = "", options = [], indication, aide, erreur, libelleMasque = false, desactive = false, clavier }) {
+export function champ({ libelle, type = "texte", valeur = "", options = [], indication, aide, erreur, libelleMasque = false, desactive = false, clavier, presentation = "normale", avant, action }) {
   if (!libelle) throw new Error("champ : libelle requis");
   if (!TYPES.includes(type)) throw new Error(`champ : type inconnu « ${type} »`);
   if (clavier !== undefined && !(clavier in CLAVIERS)) throw new Error(`champ : clavier inconnu « ${clavier} »`);
+  if (!PRESENTATIONS.includes(presentation)) throw new Error(`champ : presentation inconnue « ${presentation} »`);
   const n = ++compteur;
+  if (type === "couleur") return champCouleur(libelle, valeur || "violet", n, desactive);
+  if (type === "case" && presentation === "ligne") return caseEnLigne({ libelle, valeur, avant, action, desactive, n });
   const racine = document.createElement("div");
   racine.className = type === "case" ? "champ ya-case" : "champ";
 
@@ -69,5 +77,54 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
     racine.append(e);
   }
   if (decrit.length) saisie.setAttribute("aria-describedby", decrit.join(" "));
+  return racine;
+}
+
+// C-002, `case` en `ligne` : le libellé prend toute la ligne, `avant` (avatar masqué) puis le texte ; `action` reste à droite.
+function caseEnLigne({ libelle, valeur, avant, action, desactive, n }) {
+  const racine = document.createElement("div");
+  racine.className = "ya-check-row";
+  const label = document.createElement("label");
+  const saisie = document.createElement("input");
+  saisie.type = "checkbox";
+  saisie.id = `champ-${n}`;
+  saisie.checked = Boolean(valeur);
+  saisie.disabled = desactive;
+  const nom = document.createElement("span");
+  nom.className = "nom";
+  nom.textContent = libelle;
+  nom.title = libelle;
+  label.append(saisie, ...(avant ? [avant] : []), nom);
+  racine.append(label, ...(action ? [action] : []));
+  return racine;
+}
+
+// C-002, `couleur` : groupe radio natif, un seul arrêt de Tab ; la coche est dans le rond de la couleur choisie.
+function champCouleur(libelle, valeur, n, desactive) {
+  if (!COULEURS.includes(valeur)) throw new Error(`champ : couleur inconnue « ${valeur} »`);
+  const racine = document.createElement("fieldset");
+  racine.className = "champ champ-couleur";
+  const legende = document.createElement("legend");
+  legende.className = "champ-libelle";
+  legende.textContent = libelle;
+  const rangee = document.createElement("div");
+  rangee.className = "ya-swatches";
+  for (const c of COULEURS) {
+    const label = document.createElement("label");
+    label.className = "ya-swatch";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = `champ-${n}-couleur`;
+    radio.value = c;
+    radio.checked = c === valeur;
+    radio.disabled = desactive;
+    radio.setAttribute("aria-label", NOMS_COULEURS[c]);
+    const rond = document.createElement("span");
+    rond.style.setProperty("--c", `var(--agent-${c})`);
+    rond.append(icone("check", 12));
+    label.append(radio, rond);
+    rangee.append(label);
+  }
+  racine.append(legende, rangee);
   return racine;
 }

@@ -120,3 +120,69 @@ test("REQ053_clavier_decimal_et_numerique_sans_type_number", () => {
   expect(champ({ libelle: "Nom" }).querySelector("input").hasAttribute("inputmode")).toBe(false);
   expect(() => champ({ libelle: "x", clavier: "autre" })).toThrow(/clavier/);
 });
+
+test("REQ064_AC11_case_en_ligne_nom_accessible_avatar_masque_action_apres", async () => {
+  const { avatar } = await import("./avatar.js");
+  const { bouton } = await import("./bouton.js");
+  const av = avatar({ nom: "Relecteur", avatar: "🦉", couleur: "vert" });
+  const modifier = bouton({ icone: "sliders-horizontal", nomAccessible: "Modifier Relecteur", taille: "normale" });
+  const c = champ({ libelle: "Relecteur", type: "case", presentation: "ligne", avant: av, action: modifier.enveloppe });
+  document.body.append(c);
+  const input = c.querySelector("input");
+  const label = c.querySelector("label");
+  expect(input.type).toBe("checkbox");
+  expect(label.contains(input)).toBe(true);
+  // Ordre : case, avatar, nom ; l'action est hors du label, après lui.
+  expect([...label.children].map((e) => e.className)).toEqual(["", "ya-avatar emoji", "nom"]);
+  expect(label.querySelector(".nom").textContent).toBe("Relecteur");
+  expect(label.querySelector(".nom").title).toBe("Relecteur");
+  expect(av.getAttribute("aria-hidden")).toBe("true");
+  expect(label.contains(modifier)).toBe(false);
+  expect(c.lastElementChild).toBe(modifier.enveloppe);
+  expect(c.querySelector(".champ-aide, .champ-erreur")).toBeNull();
+  expect(regle(".ya-check-row")).toContain("height: 28px");
+  expect(regle(".ya-check-row")).toContain("padding: 0 var(--space-1) 0 var(--space-3)");
+  expect(regle(".ya-check-row:hover")).toContain("background: var(--hover)");
+  expect(regle(".ya-check-row .nom")).toContain("text-overflow: ellipsis");
+  expect(champ({ libelle: "x", type: "case", presentation: "ligne", valeur: true }).querySelector("input").checked).toBe(true);
+  expect(() => champ({ libelle: "x", type: "case", presentation: "large" })).toThrow(/presentation/);
+  c.remove();
+});
+
+test("REQ067_AC14_clic_sur_le_nom_coche", () => {
+  const c = champ({ libelle: "Relecteur", type: "case", presentation: "ligne" });
+  document.body.append(c);
+  const input = c.querySelector("input");
+  expect(input.checked).toBe(false);
+  c.querySelector(".nom").click();
+  expect(input.checked).toBe(true);
+  c.querySelector(".nom").click();
+  expect(input.checked).toBe(false);
+  c.remove();
+});
+
+test("REQ065_AC7_couleur_six_radios_un_arret_droite_et_coche", () => {
+  const c = champ({ libelle: "Couleur", type: "couleur", valeur: "rose" });
+  expect(c.tagName).toBe("FIELDSET");
+  expect(c.querySelector("legend").textContent).toBe("Couleur");
+  const radios = [...c.querySelectorAll("input[type=radio]")];
+  expect(radios.map((r) => r.getAttribute("aria-label"))).toEqual(["Violet", "Vert", "Orange", "Rose", "Sarcelle", "Gris"]);
+  expect(radios.map((r) => r.value)).toEqual(["violet", "vert", "orange", "rose", "sarcelle", "gris"]);
+  // Même nom : groupe natif, un seul arrêt de Tab (la couleur choisie).
+  expect(new Set(radios.map((r) => r.name)).size).toBe(1);
+  expect(radios.filter((r) => r.checked).map((r) => r.value)).toEqual(["rose"]);
+  expect(radios[3].nextElementSibling.querySelector("svg[data-icone=check]").getAttribute("width")).toBe("12");
+  expect(radios[3].nextElementSibling.style.getPropertyValue("--c")).toBe("var(--agent-rose)");
+  expect(regle(".ya-swatch")).toContain("width: 24px");
+  expect(regle(".ya-swatch span")).toContain("width: 20px");
+  expect(regle(".ya-swatch svg")).toContain("display: none");
+  expect(regle(".ya-swatch input:checked + span svg")).toContain("display: block");
+  expect(regle(".ya-swatch:hover span")).toContain("1px var(--ink)");
+  expect(regle(".ya-swatch:has(input:focus-visible)")).toContain("outline: 2px solid var(--accent-fg)");
+  expect(regle(".ya-swatches")).toContain("gap: var(--space-1)");
+  radios[1].click();
+  expect(radios.filter((r) => r.checked).map((r) => r.value)).toEqual(["vert"]);
+  // Par défaut : violet. Une couleur inconnue est refusée.
+  expect(champ({ libelle: "Couleur", type: "couleur" }).querySelector("input:checked").value).toBe("violet");
+  expect(() => champ({ libelle: "Couleur", type: "couleur", valeur: "bleu" })).toThrow(/couleur/);
+});

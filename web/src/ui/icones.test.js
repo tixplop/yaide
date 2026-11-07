@@ -134,3 +134,14 @@ test("REQ062_icone_type_au_trait_lucide_et_sans_doublon", () => {
   expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("type");
   expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
 });
+
+test("REQ064_les_quatre_icones_des_agents_existent_au_trait_lucide", () => {
+  for (const n of ["users", "user-plus", "sliders-horizontal", "arrow-left"]) {
+    expect(NOMS, n).toContain(n);
+    const s = icone(n, 20);
+    expect(s.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(s.getAttribute("stroke-width")).toBe("1.6");
+    expect(s.getAttribute("aria-hidden")).toBe("true");
+    expect(s.innerHTML.length).toBeGreaterThan(20);
+  }
+});

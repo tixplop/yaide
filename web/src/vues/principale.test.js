@@ -1201,7 +1201,7 @@ test("REQ028_AC17_REQ059_AC1_AC10_rail_droit_avec_le_bouton_Agent", async () => 
   expect(b.querySelector("svg[data-icone=bot]")).not.toBeNull();
   expect(b.textContent).toBe("");
   expect(b.hasAttribute("aria-pressed") || b.hasAttribute("aria-expanded")).toBe(false);
-  expect(b.hasAttribute("data-deplie")).toBe(false);
+  expect(b.hasAttribute("data-actif")).toBe(false);
   expect(vue.querySelector("[role=tablist] [aria-label=Agent]")).toBeNull();
   b.parentElement.dispatchEvent(new Event("pointerenter"));
   await vi.waitFor(() => expect(document.querySelector("[role=tooltip]").textContent).toBe("Agent (A)"));
@@ -1220,7 +1220,7 @@ test("REQ028_AC5_REQ059_AC2_A_depuis_les_onglets_deplie_l_agent", () => {
   tab.focus();
   clavier(tab, "a");
   expect(agentCol(vue).hidden).toBe(false);
-  expect(boutonAgentDe(vue).hasAttribute("data-deplie")).toBe(true);
+  expect(boutonAgentDe(vue).hasAttribute("data-actif")).toBe(true);
   expect(document.activeElement).toBe(champAgent(vue));
   // Déplié : seulement le focus, sans replier.
   tab.focus();
@@ -1269,7 +1269,7 @@ test("REQ059_AC3_REQ056_AC14_Replier_l_agent_donne_le_focus_a_Agent_et_garde_le_
   repli.click();
   expect(agentCol(vue).hidden).toBe(true);
   expect(vue.querySelector(".poignee-agent").hidden).toBe(true);
-  expect(boutonAgentDe(vue).hasAttribute("data-deplie")).toBe(false);
+  expect(boutonAgentDe(vue).hasAttribute("data-actif")).toBe(false);
   expect(document.activeElement).toBe(boutonAgentDe(vue));
   expect(boutonAgentDe(vue).classList.contains("ya-focus-garde")).toBe(true);
   expect(champAgent(vue).value).toBe("bonjour");

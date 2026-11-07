@@ -305,13 +305,13 @@ test("REQ046_AC17_focus_garde_s_applique_aussi_dans_la_barre_de_titre", () => {
   expect(r).toContain("outline: 2px solid var(--accent-fg)");
 });
 
-test("REQ059_AC1_commande_du_rail_droit_deplie_sans_aria_pressed_ni_expanded", () => {
-  const b = bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", deplie: false });
-  expect(b.hasAttribute("data-deplie")).toBe(false);
-  b.definirDeplie(true);
-  expect(b.hasAttribute("data-deplie")).toBe(true);
-  b.definirDeplie(false);
-  expect(b.hasAttribute("data-deplie")).toBe(false);
+test("REQ059_AC1_commande_du_rail_droit_actif_sans_aria_pressed_ni_expanded", () => {
+  const b = bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", actif: false });
+  expect(b.hasAttribute("data-actif")).toBe(false);
+  b.definirActif(true);
+  expect(b.hasAttribute("data-actif")).toBe(true);
+  b.definirActif(false);
+  expect(b.hasAttribute("data-actif")).toBe(false);
   expect(b.hasAttribute("aria-pressed")).toBe(false);
   expect(b.hasAttribute("aria-expanded")).toBe(false);
   expect(b.getAttribute("aria-keyshortcuts")).toBe("A");
@@ -320,7 +320,21 @@ test("REQ059_AC1_commande_du_rail_droit_deplie_sans_aria_pressed_ni_expanded", (
 
 test("REQ059_AC1_filet_de_2_px_accent_sur_le_bord_droit_de_la_commande_deplie", () => {
   const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
-  expect(css).toMatch(/\.cadre-rail-droit \.ya-icon-btn\[data-deplie\]\s*\{[^}]*color: var\(--ink\)[^}]*inset calc\(-1 \* var\(--trait-fort\)\) 0 0 var\(--accent-fg\)/);
+  expect(css).toMatch(/\.cadre-rail-droit \.ya-icon-btn\[data-actif\]\s*\{[^}]*color: var\(--ink\)[^}]*inset calc\(-1 \* var\(--trait-fort\)\) 0 0 var\(--accent-fg\)/);
+});
+
+test("REQ059_AC13_commande_actif_et_filet", () => {
+  const b = bouton({ icone: "users", nomAccessible: "Agents", positionInfoBulle: "gauche" });
+  expect(b.hasAttribute("data-actif")).toBe(false);
+  expect(b.getAttribute("aria-keyshortcuts")).toBeNull();
+  const a = bouton({ icone: "users", nomAccessible: "Agents", actif: true });
+  expect(a.hasAttribute("data-actif")).toBe(true);
+  expect(a.definirDeplie).toBeUndefined();
+  a.definirActif(false);
+  expect(a.hasAttribute("data-actif")).toBe(false);
+  expect(a.hasAttribute("aria-pressed") || a.hasAttribute("aria-expanded")).toBe(false);
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  expect(css).toMatch(/\.cadre-rail-droit \.ya-icon-btn\[data-actif\]\s*\{[^}]*color: var\(--ink\)[^}]*inset calc\(-1 \* var\(--trait-fort\)\) 0 0 var\(--accent-fg\)/);
 });
 
 test("REQ059_AC1_info_bulle_a_gauche_pour_le_rail_droit", () => {

@@ -346,7 +346,7 @@ function monterAgent(options = {}) {
     rail: { onglets: p("rail") },
     panneau: { titre: "Fichiers", corps: p("corps") },
     agent: { titre: "Agent", repli: bouton({ icone: "panel-right-close", nomAccessible: "Replier l'agent" }), corps: p("conv") },
-    railDroit: { commande: bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", deplie: false }) },
+    railDroit: { commandes: [bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", actif: false })] },
     principal: { code: p("code") },
     ...options,
   });
@@ -357,7 +357,7 @@ function monterAgent(options = {}) {
 test("REQ059_AC1_agent_aside_etiquete_apres_main_et_rail_droit_sans_role", () => {
   const c = monterAgent({ replis: { agent: false } });
   const a = c.querySelector("aside.cadre-agent");
-  expect(a.getAttribute("aria-label")).toBe("Agent");
+  expect(a.getAttribute("aria-labelledby")).toBe(a.querySelector("h2").id);
   expect(a.querySelector(".ya-panel-head h2").textContent).toBe("Agent");
   expect(a.querySelector(".ya-panel-head button").getAttribute("aria-label")).toBe("Replier l'agent");
   const rd = c.querySelector(".cadre-rail-droit");
@@ -425,4 +425,65 @@ test("REQ059_AC5_fonds_filets_et_grille_a_sept_colonnes", () => {
   expect(regle(".cadre-agent")).toContain("background: var(--bg-100)");
   expect(regle(".cadre-rail-droit")).toContain("background: var(--bg-000)");
   expect(regle(".cadre")).toContain("var(--epaisseur-poignee) var(--taille-agent, var(--largeur-agent)) var(--size-activity);");
+});
+
+function deuxCommandes() {
+  return [
+    bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", actif: true }),
+    bouton({ icone: "users", nomAccessible: "Agents", positionInfoBulle: "gauche", actif: false }),
+  ];
+}
+
+test("REQ059_AC1_rail_droit_deux_commandes_dans_l_ordre", () => {
+  const [a, b] = deuxCommandes();
+  const c = monterAgent({ railDroit: { commandes: [a.enveloppe, b.enveloppe] }, replis: { agent: false } });
+  const rd = c.querySelector(".cadre-rail-droit");
+  expect([...rd.querySelectorAll("button")].map((x) => x.getAttribute("aria-label"))).toEqual(["Agent", "Agents"]);
+  expect(rd.querySelector("[data-icone=users]")).not.toBeNull();
+  expect(a.hasAttribute("data-actif")).toBe(true);
+  expect(b.hasAttribute("data-actif")).toBe(false);
+  expect(b.hasAttribute("aria-keyshortcuts")).toBe(false);
+  // Colonne repliée : les deux restent affichées.
+  c.definirReplis({ agent: true });
+  expect(rd.hidden).toBe(false);
+  expect(rd.querySelectorAll("button")).toHaveLength(2);
+});
+
+test("REQ059_AC15_titre_de_la_colonne_et_aria_labelledby", () => {
+  const c = monterAgent({ replis: { agent: false } });
+  const a = c.querySelector("aside.cadre-agent");
+  const h = a.querySelector("h2");
+  expect(a.getAttribute("aria-labelledby")).toBe(h.id);
+  expect(a.hasAttribute("aria-label")).toBe(false);
+  c.definirTitreAgent("Agents");
+  expect(h.textContent).toBe("Agents");
+  expect(a.getAttribute("aria-labelledby")).toBe(h.id);
+  // Deux cadres dans la page : chaque colonne suit son propre titre.
+  const d = monterAgent();
+  expect(d.querySelector("aside.cadre-agent h2").id).not.toBe(h.id);
+  // Plusieurs vues dans le corps de la colonne.
+  const e = monterAgent({ agent: { titre: "Agent", corps: [p("vue 1"), p("vue 2")] } });
+  expect([...e.querySelectorAll(".cadre-agent .cadre-panneau-corps > p")].map((x) => x.textContent)).toEqual(["vue 1", "vue 2"]);
+  expect(() => cadre({ agent: { corps: p("x") } }).definirTitreAgent("Agents")).toThrow(/titre/);
+});
+
+test("REQ064_barre_pied_et_ligne_des_agents_dans_composants_css", () => {
+  expect(regle(".ya-agents-barre")).toContain("height: 27px");
+  expect(regle(".ya-agents-barre")).toContain("border-bottom: var(--trait) solid var(--line)");
+  expect(regle(".ya-agents-pied")).toContain("border-top: var(--trait) solid var(--line)");
+  expect(regle(".ya-agents-pied")).toContain("flex-wrap: wrap");
+  expect(regle(".ya-agents")).toContain("flex-wrap: wrap");
+  expect(regle(".ya-agents")).toContain("gap: var(--space-1) var(--space-3)");
+});
+
+test("REQ028_AC14_rail_droit_a_480", () => {
+  const [a, b] = deuxCommandes();
+  const c = monterAgent({ railDroit: { commandes: [a.enveloppe, b.enveloppe] } });
+  const px = (nom) => parseFloat(tokens.match(new RegExp(`${nom}:\\s*(\\d+)px`))[1]);
+  expect(c.querySelectorAll(".cadre-rail-droit button")).toHaveLength(2);
+  expect(2 * px("--size-activity")).toBe(96);
+  expect(2 * px("--size-activity")).toBeLessThanOrEqual(px("--hauteur-min") - px("--size-titlebar") - px("--size-status"));
+  expect(regle(".cadre-rail-droit .ya-icon-btn")).toContain("height: var(--size-activity)");
+  expect(regle(".cadre-rail-droit")).not.toMatch(/overflow/);
+  expect(regle(".cadre-rail-droit .ya-icon-btn")).not.toMatch(/overflow/);
 });

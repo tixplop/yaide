@@ -336,7 +336,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre-rail-droit .bouton-enveloppe { display: flex; }
 .cadre-rail-droit .ya-icon-btn { position: relative; width: var(--size-activity); height: var(--size-activity); border-radius: 0; color: var(--ink-faint); }
 .cadre-rail-droit .ya-icon-btn:hover { color: var(--ink); background: transparent; }
-.cadre-rail-droit .ya-icon-btn[data-deplie] { color: var(--ink); box-shadow: inset calc(-1 * var(--trait-fort)) 0 0 var(--accent-fg); }
+.cadre-rail-droit .ya-icon-btn[data-actif] { color: var(--ink); box-shadow: inset calc(-1 * var(--trait-fort)) 0 0 var(--accent-fg); }
 .cadre-rail-droit .ya-icon-btn.ya-focus-garde { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait-fort)); }
 .cadre-rail-droit .ya-icon-btn svg { width: var(--taille-icone-rail); height: var(--taille-icone-rail); }
 .cadre-panneau, .cadre-agent { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg-100); }
@@ -449,6 +449,43 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-step-cmd { color: var(--ink-muted); }
 .ya-fin { font: 12px/16px var(--font-sans); color: var(--ink-muted); }
 
+
+/* C-016 : avatar d'un agent. */
+.ya-avatar { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; flex: none; background: var(--c, var(--agent-violet)); color: var(--on-accent); font: 600 11px/1 var(--font-sans); }
+.ya-avatar.emoji { font-size: 13px; }
+
+/* C-002 : case en ligne (liste des agents). */
+.ya-check-row { box-sizing: border-box; height: 28px; display: flex; align-items: center; padding: 0 var(--space-1) 0 var(--space-3); color: var(--ink); font: 13px var(--font-sans); }
+.ya-check-row:hover { background: var(--hover); }
+.ya-check-row label { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+.ya-check-row input { width: 14px; height: 14px; margin: 0; flex: none; accent-color: var(--accent); }
+.ya-check-row input:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 1px; }
+.ya-check-row input:disabled { opacity: .45; }
+.ya-check-row .nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* C-002 : choix de la couleur d'un agent. */
+.champ-couleur { border: 0; margin: 0; padding: 0; min-width: 0; }
+.champ-couleur legend { padding: 0; margin-bottom: var(--space-1); }
+.ya-swatches { display: flex; gap: var(--space-1); }
+.ya-swatch { position: relative; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; cursor: pointer; }
+.ya-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.ya-swatch span { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--c); color: var(--on-accent); pointer-events: none; }
+.ya-swatch svg { display: none; width: 12px; height: 12px; stroke-width: 2.4; }
+.ya-swatch input:checked + span svg { display: block; }
+.ya-swatch:hover span { box-shadow: 0 0 0 1px var(--ink); }
+.ya-swatch:has(input:focus-visible) { outline: 2px solid var(--accent-fg); outline-offset: 0; }
+.ya-swatch:has(input:disabled) { opacity: .45; }
+
+/* C-010 : barre et pied de la vue Agents, ligne des agents d'une conversation. */
+.ya-agents-barre { flex: none; box-sizing: border-box; height: 27px; display: flex; align-items: center; gap: 1px; padding: 0 var(--space-1) 0 var(--space-3); border-bottom: var(--trait) solid var(--line); font-size: 12.5px; color: var(--ink); }
+.ya-agents-barre > :first-child { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ya-agents-barre .ya-agents-compte { color: var(--ink-muted); }
+.ya-agents-barre .ya-agents-retour { margin-left: calc(-1 * var(--space-2)); }
+.ya-agents-pied { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3) var(--space-3); border-top: var(--trait) solid var(--line); }
+.ya-agents-pied .ya-agents-aide { flex: 1 1 140px; font: 12px/16px var(--font-sans); color: var(--ink-muted); }
+.ya-agents-pied .ya-btn-primary { margin-left: auto; }
+.ya-agents { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin: 0; padding: 2px var(--space-3) 6px; list-style: none; border-bottom: var(--trait) solid var(--line); font-size: 12.5px; color: var(--ink); }
+.ya-agents > li { display: inline-flex; align-items: center; gap: 6px; }
 
 .zone-code {
   display: flex;
