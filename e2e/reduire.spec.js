@@ -50,7 +50,9 @@ const ouvrirMenu = async (page) => {
 
 test("REQ040_AC1_AC2_AC3_AC4_AC7_AC8_AC13_AC15_AC16_AC17_AC21_deux_reductions_la_zone_disparait_et_revient", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
-  await taper(page, "sleep 2 && echo fini");
+  const go = temoin();
+  const fait = temoin();
+  await taper(page, attendre(go, `echo fini; touch ${fait}`));
   await bouton(page, "Nouveau shell").click();
   await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
   const zone = page.locator(".cadre-shells");
@@ -67,6 +69,7 @@ test("REQ040_AC1_AC2_AC3_AC4_AC7_AC8_AC13_AC15_AC16_AC17_AC21_deux_reductions_la
   await expect(page.getByRole("tablist", { name: "Shells" })).toHaveCount(0);
   await expect(page.getByText("Aucun shell ouvert.")).toHaveCount(0);
   await expect(compteur(page)).toHaveText("2");
+  fs.writeFileSync(go, "");
   const [code, barre] = await Promise.all([page.locator(".cadre-code").boundingBox(), page.locator("footer").boundingBox()]);
   expect(Math.abs(code.y + code.height - barre.y)).toBeLessThan(2);
   await expect(bouton(page, "Réduire le shell")).toBeDisabled();
@@ -103,6 +106,7 @@ test("REQ040_AC1_AC2_AC3_AC4_AC7_AC8_AC13_AC15_AC16_AC17_AC21_deux_reductions_la
   await expect.poll(() => focusDansTerminal(page)).toBe(true);
   expect((await zone.boundingBox()).height).toBeCloseTo(hauteur, 0);
   // Shell 1 revient avant shell 2, actif, et le programme a continué.
+  await expect.poll(() => fs.existsSync(fait)).toBe(true);
   await bouton(page, "Shells réduits").click();
   await menu(page).getByRole("menuitem", { name: "shell 1" }).click();
   await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
@@ -273,10 +277,12 @@ test("REQ040_AC7_la_fin_du_dernier_shell_visible_ne_deplace_pas_le_focus_de_l_ed
   await bouton(page, "Nouveau shell").click();
   await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
   await bouton(page, "Réduire le shell").click();
-  await taper(page, "sleep 2; exit");
+  const fin = temoin();
+  await taper(page, attendre(fin, "exit"));
   await page.getByRole("treeitem", { name: /^README\.md/ }).click();
   const editeur = page.getByRole("textbox", { name: "Éditeur README.md" });
   await expect(editeur).toBeFocused();
+  fs.writeFileSync(fin, "");
   await expect(poignee(page)).toHaveCount(0, { timeout: 10000 });
   await expect(editeur).toBeFocused();
 });

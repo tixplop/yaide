@@ -79,7 +79,9 @@ fn lancer(exe: &PathBuf, cwd: &PathBuf) -> Serveur {
 fn binaire_seul(nom: &str) -> (PathBuf, PathBuf) {
     let d = dossier_vide(nom);
     let exe = d.join("yaide");
-    std::fs::copy(env!("CARGO_BIN_EXE_yaide"), &exe).unwrap();
+    if std::fs::hard_link(env!("CARGO_BIN_EXE_yaide"), &exe).is_err() {
+        std::fs::copy(env!("CARGO_BIN_EXE_yaide"), &exe).unwrap();
+    }
     (exe, d)
 }
 

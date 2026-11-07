@@ -470,7 +470,8 @@ test("REQ059_parcours_23_garder_l_agent_a_cote_de_son_code", async ({ page, brow
 
 test("REQ028_AC20_AC21_la_page_ne_defile_jamais", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
-  faux = await lancerFauxProvider(Array.from({ length: 30 }, (_, i) => reponse({ texte: `Réponse numéro ${i + 1}.`, tokens: 100 + i })));
+  const longue = (i) => Array.from({ length: 40 }, (_, j) => "Réponse " + (i + 1) + ", paragraphe " + (j + 1) + ".").join("\n\n");
+  faux = await lancerFauxProvider(Array.from({ length: 3 }, (_, i) => reponse({ texte: longue(i), tokens: 100 + i })));
   yaide = await lancerYaide({ dossier: depotAgent() });
   await page.setViewportSize({ width: 1280, height: 720 });
   await ouvrirYaide(page, yaide.origine);
@@ -479,10 +480,10 @@ test("REQ028_AC20_AC21_la_page_ne_defile_jamais", async ({ page, browserName }) 
   await page.getByRole("tab", { name: /^shell \d+$/ }).first().waitFor();
   await rail(page, "Agent").click();
   await expect(profil(page)).toHaveValue(/sonnet/);
-  for (let i = 1; i <= 30; i++) {
+  for (let i = 1; i <= 3; i++) {
     await champMessage(page).fill(`Message ${i}`);
     await page.keyboard.press("Enter");
-    await expect(fil(page)).toContainText(`Réponse numéro ${i}.`, { timeout: 15000 });
+    await expect(fil(page)).toContainText(`Réponse ${i}, paragraphe 40.`, { timeout: 15000 });
     await expect(arreter(page)).toBeHidden();
   }
 

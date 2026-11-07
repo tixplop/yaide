@@ -279,8 +279,10 @@ test("REQ019_un_shell_en_arriere_plan_qui_se_termine_ne_prend_pas_le_focus", asy
   await ouvrirYaide(page, yaide.origine);
   await page.getByRole("button", { name: "Nouveau shell" }).click();
   await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
-  await taper(page, "sleep 1; exit");
+  const fin = temoin();
+  await taper(page, attendre(fin, "exit"));
   await page.getByRole("tab", { name: "shell 1" }).click();
+  fs.writeFileSync(fin, "");
   await expect(onglets(page)).toHaveText(["shell 1"], { timeout: 10000 });
   const focus = () => page.evaluate(() => document.activeElement?.classList.contains("xterm-helper-textarea") && !!document.activeElement.closest(".terminal:not([hidden])"));
   expect(await focus()).toBe(true);

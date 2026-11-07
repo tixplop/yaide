@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, gardeContient, tailleStable, saisir, survoler, lacher, avancer } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, gardeContient, tailleStable, saisir, survoler, lacher, avancer, temoin as nouveauTemoin, attendre } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -91,9 +91,11 @@ test("REQ030_AC1_parcours_2_shell_retrouve_et_coupure", async ({ page, context }
   await terminalPret(page);
   // Le témoin n'existe qu'une fois la commande finie : le navigateur est parti avant.
   const temoin = path.join(yaide.dossier, "temoin.txt");
-  await page.keyboard.type("sleep 1 && echo fini_$((20+2)) && touch temoin.txt");
+  const depart = nouveauTemoin();
+  await page.keyboard.type(attendre(depart, "echo fini_$((20+2)) && touch temoin.txt"));
   await page.keyboard.press("Enter");
   await page.close();
+  fs.writeFileSync(depart, "");
   await expect.poll(() => fs.existsSync(temoin), { timeout: 15000 }).toBe(true);
   // Retour dans le même contexte : la session est gardée, aucun mot de passe.
   const retour = await context.newPage();
@@ -351,10 +353,12 @@ test("REQ019_REQ046_REQ047_parcours_15_arriver_sans_shell", async ({ page }) => 
   await expect(bouton("Nouveau shell").locator(".ya-badge")).toHaveText("1");
   await expect(bouton("Replier les shells")).toBeEnabled();
   await expect(page.locator(".terminal:visible .terminal-attente")).toBeHidden();
-  await page.keyboard.type("sleep 2 && exit");
+  const fin = nouveauTemoin();
+  await page.keyboard.type(attendre(fin, "exit"));
   await page.keyboard.press("Enter");
   await bouton("Replier les shells").click();
   await expect(bouton("Déplier les shells")).toBeFocused();
+  fs.writeFileSync(fin, "");
   await expect(bouton("Replier les shells")).toBeDisabled({ timeout: 15000 });
   await expect(bouton("Nouveau shell")).toBeFocused();
   await expect(bouton("Nouveau shell").locator(".ya-badge")).toBeHidden();

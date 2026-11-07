@@ -281,6 +281,17 @@ fn fermee_avant(ws: &mut Ws, secondes: u64) -> bool {
     false
 }
 
+fn temoin(nom: &str) -> String {
+    let n = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir()
+        .join(format!("temoin-{nom}-{}-{n}", std::process::id()))
+        .to_string_lossy()
+        .into_owned()
+}
+
 fn attendre(secondes: u64, mut condition: impl FnMut() -> bool) -> bool {
     let fin = Instant::now() + Duration::from_secs(secondes);
     while Instant::now() < fin {
@@ -377,9 +388,14 @@ fn req020_ac1_ac2_le_shell_survit_a_la_deconnexion() {
     let s = lancer("v1", Some("/bin/sh"));
     let id = ouvrir(&s);
     let mut w = ws(&s, id);
-    taper(&mut w, "sleep 2 && echo fini_$((20+1))\n");
+    let (a, b) = (temoin("a"), temoin("b"));
+    taper(
+        &mut w,
+        &format!("while [ ! -e {a} ]; do sleep 0.05; done; echo fini_$((20+1)); touch {b}\n"),
+    );
     drop(w);
-    std::thread::sleep(Duration::from_secs(3));
+    std::fs::write(&a, "").unwrap();
+    assert!(attendre(10, || std::path::Path::new(&b).exists()));
     assert!(liste(&s).contains(&format!("[{id}]")));
     let mut w = ws(&s, id);
     // L'affichage récent revient à la connexion, avec ce qui a été produit pendant l'absence.
@@ -405,19 +421,28 @@ fn req020_ac3_tampon_limite_a_1_mo_et_le_shell_continue() {
     lire_jusque(&mut w, "sans_client\r\n", 10);
     drop(w);
     let mut w = ws(&s, id);
+    let b = temoin("b");
     taper(
         &mut w,
-        "head -c 2000000 /dev/zero | tr '\\0' 'y'; echo FIN_$((2+2))\n",
+        &format!("head -c 2000000 /dev/zero | tr '\\0' 'y'; echo FIN_$((2+2)); touch {b}\n"),
     );
     // Fermer avec de la sortie non lue enverrait un RST et perdrait la commande.
-    lire_jusque(&mut w, "echo FIN_$((2+2))\r\n", 10);
+    lire_jusque(&mut w, &format!("touch {b}\r\n"), 10);
     drop(w);
-    std::thread::sleep(Duration::from_secs(3));
-    let mut w = ws(&s, id);
-    let premier = loop {
-        if let Some(Some(b)) = recevoir(&mut w) {
-            break b;
+    assert!(attendre(10, || std::path::Path::new(&b).exists()));
+    let fin = Instant::now() + Duration::from_secs(10);
+    let (mut w, premier) = loop {
+        let mut w = ws(&s, id);
+        let premier = loop {
+            if let Some(Some(b)) = recevoir(&mut w) {
+                break b;
+            }
+        };
+        if String::from_utf8_lossy(&premier).contains("FIN_4\r\n") || Instant::now() > fin {
+            break (w, premier);
         }
+        drop(w);
+        std::thread::sleep(Duration::from_millis(100));
     };
     assert_eq!(premier.len(), 1024 * 1024);
     let t = String::from_utf8_lossy(&premier).into_owned();
@@ -457,11 +482,12 @@ fn un_client_en_retard_est_coupe_sans_close_et_le_shell_reste() {
     let id = ouvrir(&s);
     let mut lent = ws(&s, id);
     // `lent` ne lit rien pendant que le shell produit bien plus que les tampons.
+    let b = temoin("b");
     taper(
         &mut lent,
-        "head -c 20000000 /dev/zero | tr '\\0' 'z'; echo FIN_$((4+4))\n",
+        &format!("head -c 20000000 /dev/zero | tr '\\0' 'z'; echo FIN_$((4+4)); touch {b}\n"),
     );
-    std::thread::sleep(Duration::from_secs(5));
+    assert!(attendre(30, || std::path::Path::new(&b).exists()));
     let mut autre = ws(&s, id);
     lire_jusque(&mut autre, "FIN_8\r\n", 10);
     drop(autre);
