@@ -727,3 +727,78 @@ fn REQ065_AC1_agent_survit_au_redemarrage() {
     );
     assert_eq!(r.code, 404);
 }
+
+#[test]
+fn REQ067_AC12_AC13_tour_par_les_routes_sans_client_puis_relecture() {
+    let (adresse, recues) = faux_provider(vec![
+        rep_lire_openai(300),
+        rep_texte("revu"),
+        rep_texte("testé"),
+    ]);
+    let s = lancer("multi");
+    std::fs::write(s.projet.join("README.md"), "x").unwrap();
+    let p1 = configurer(&s, "openai", &adresse);
+    for (nom, couleur) in [("Relecteur", "vert"), ("Testeur", "orange")] {
+        let r = s.appel(
+            "PUT",
+            "/api/agent/agents",
+            &json!({ "nom": nom, "couleur": couleur, "profil": p1 }),
+        );
+        assert_eq!(r.code, 200, "{}", r.corps);
+    }
+    // dossier inconnu : 400, rien d'écrit
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "agents": ["relecteur", "absent"], "texte": "go" }),
+    );
+    assert_eq!(r.code, 400, "{}", r.corps);
+    assert!(!s.yaide().join("conversations").exists());
+
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "agents": ["relecteur", "testeur"], "texte": "go" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let id = r.json()["conversation"].as_str().unwrap().to_string();
+    let chemin = format!("/api/agent/conversations/{id}");
+    let mut actif = Value::Null;
+    for _ in 0..40 {
+        actif = s.appel("GET", &chemin, &Value::Null).json()["actif"].clone();
+        if !actif.is_null() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert_eq!(actif, "relecteur");
+    let v = attendre_fin(&s, &id);
+    let noms: Vec<&Value> = v["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| &a["nom"])
+        .collect();
+    assert_eq!(noms, ["Relecteur", "Testeur"]);
+    assert_eq!(v["agents"][0]["couleur"], "vert");
+    assert!(v["agents"][0].get("instructions").is_none());
+    assert_eq!(v["actif"], Value::Null);
+    let e = v["entrees"].as_array().unwrap();
+    assert_eq!(e.len(), 5, "{e:?}");
+    assert_eq!(e[1]["auteur"], "relecteur");
+    assert_eq!(e[2]["auteur"], "relecteur");
+    assert_eq!(e[3]["auteur"], "relecteur");
+    assert_eq!(e[3]["texte"], "revu");
+    assert_eq!(e[4]["auteur"], "testeur");
+    assert_eq!(e[4]["texte"], "testé");
+    assert_eq!(recues.lock().unwrap().len(), 3);
+    // un second message : les agents sont ceux de la conversation
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "conversation": id, "agents": ["testeur"], "texte": "encore" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let r = s.appel("GET", "/api/agent/conversations", &Value::Null);
+    assert_eq!(r.json().as_array().unwrap().len(), 1);
+}

@@ -880,19 +880,33 @@ async fn agents_enregistrer(State(etat): State<Partage>, corps: Bytes) -> Respon
     }
 }
 
-/// `{ conversation?, profil, texte }` : lance un tour, ou refuse (409) sans rien écrire.
+/// `{ conversation?, profil?, agents?, texte }` : lance un tour, ou refuse (409) sans rien écrire.
+/// `agents` (dossiers) ne compte qu'à la création d'une conversation ; un dossier inconnu : 400.
 async fn agent_message(State(etat): State<Partage>, corps: Bytes) -> Response {
     let Some(v) = corps_json(&corps) else {
         return corps_invalide();
     };
-    let (Some(profil), Some(message)) = (v["profil"].as_str(), v["texte"].as_str()) else {
+    let Some(message) = v["texte"].as_str() else {
         return corps_invalide();
     };
+    let profil = v["profil"].as_str().unwrap_or("");
     if message.trim().is_empty() {
         return texte(StatusCode::BAD_REQUEST, "Message vide.");
     }
     let conversation = v["conversation"].as_str();
-    match etat.agent.envoyer(conversation, profil, message) {
+    let mut agents = Vec::new();
+    if conversation.is_none() {
+        for d in v["agents"].as_array().into_iter().flatten() {
+            match d.as_str().and_then(|d| etat.agents.lire(d)) {
+                Some(a) => agents.push(a),
+                None => return texte(StatusCode::BAD_REQUEST, "Agent inconnu."),
+            }
+        }
+    }
+    match etat
+        .agent
+        .envoyer_avec(conversation, profil, &agents, message)
+    {
         Ok(id) => json_rep(StatusCode::OK, serde_json::json!({ "conversation": id })),
         Err(ErreurEnvoi::Refus(r)) => json_rep(
             StatusCode::CONFLICT,

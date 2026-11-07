@@ -106,6 +106,15 @@ impl Agents {
         Liste { agents, erreurs }
     }
 
+    /// Un agent d'après son dossier ; `None` s'il est inconnu ou illisible.
+    pub fn lire(&self, dossier: &str) -> Option<Agent> {
+        let _g = self.verrouiller();
+        self.lister_sans_verrou()
+            .agents
+            .into_iter()
+            .find(|a| a.dossier == dossier)
+    }
+
     /// Ne crée rien (AC-064-8).
     pub fn lister(&self) -> Liste {
         let _g = self.verrouiller();

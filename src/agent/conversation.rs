@@ -1,6 +1,7 @@
 //! Conversations de l'agent : journal, boucle, arrêt (DEC-035, DEC-036).
 //! Le fichier `.yaide/conversations/<id>.json` est la seule source de l'historique.
 
+use super::agents::Agent;
 use super::outils::{self, Contexte, Limites};
 use super::provider::{self, Appel, Effort, ErreurProvider, Message, Reglage};
 use super::reglages::{self, Profil, Reglages};
@@ -21,6 +22,8 @@ pub enum Entree {
     },
     Agent {
         texte: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        auteur: Option<String>,
     },
     Outil {
         id: String,
@@ -29,9 +32,13 @@ pub enum Entree {
         argument: String,
         etat: String,
         resultat: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        auteur: Option<String>,
     },
     Fin {
         texte: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        auteur: Option<String>,
     },
     Message {
         variante: String,
@@ -53,9 +60,29 @@ pub struct Conversation {
     pub instructions: String,
     pub tokens: u64,
     pub entrees: Vec<Entree>,
+    /// Copie des agents au premier message (DEC-045) ; vide sans agent personnalisé.
+    #[serde(default)]
+    pub agents: Vec<AgentConv>,
+    /// Le dossier de l'agent dont c'est le tour.
+    #[serde(default)]
+    pub actif: Option<String>,
     /// Appels demandés par le provider et pas encore commencés ; jamais écrits.
     #[serde(skip)]
     restants: Vec<Appel>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentConv {
+    pub dossier: String,
+    pub nom: String,
+    pub avatar: String,
+    pub couleur: String,
+    #[serde(default)]
+    pub profil: Option<String>,
+    pub instructions: String,
+    #[serde(default)]
+    pub tokens: u64,
 }
 
 /// Envoi refusé avant toute écriture et toute requête.
@@ -130,19 +157,47 @@ pub fn titre(texte: &str) -> String {
     }
 }
 
-/// Les messages du provider, déduits du journal : `fin` et `message` ne partent pas.
+/// Les messages du provider d'une conversation sans agent personnalisé.
 fn messages(entrees: &[Entree]) -> Vec<Message> {
+    messages_pour(entrees, None, &[])
+}
+
+/// Réunit les messages consécutifs de l'utilisateur seulement avec des agents (`reunir`).
+fn ajouter_utilisateur(sortie: &mut Vec<Message>, texte: String, reunir: bool) {
+    match sortie.last_mut() {
+        Some(Message::Utilisateur(precedent)) if reunir => {
+            precedent.push_str("\n\n");
+            precedent.push_str(&texte);
+        }
+        _ => sortie.push(Message::Utilisateur(texte)),
+    }
+}
+
+/// Les messages du provider pour l'agent `moi` (`None` : sans agent), déduits du journal :
+/// `fin` et `message` ne partent pas. Les réponses des autres agents partent en message de
+/// l'utilisateur précédé de leur nom (`noms` : dossier, nom) ; leurs appels ne partent pas.
+fn messages_pour(entrees: &[Entree], moi: Option<&str>, noms: &[(String, String)]) -> Vec<Message> {
+    let mien = |auteur: &Option<String>| auteur.as_deref() == moi;
     let mut sortie = Vec::new();
     let mut i = 0;
     while i < entrees.len() {
         match &entrees[i] {
             Entree::Utilisateur { texte } => {
-                sortie.push(Message::Utilisateur(texte.clone()));
+                ajouter_utilisateur(&mut sortie, texte.clone(), moi.is_some());
                 i += 1;
             }
+            Entree::Agent { texte, auteur } if !mien(auteur) => {
+                if !texte.is_empty() {
+                    let d = auteur.as_deref().unwrap_or("");
+                    let nom = noms.iter().find(|(x, _)| x == d).map_or(d, |(_, n)| n);
+                    ajouter_utilisateur(&mut sortie, format!("[{nom}] {texte}"), moi.is_some());
+                }
+                i += 1;
+            }
+            Entree::Outil { auteur, .. } if !mien(auteur) => i += 1,
             Entree::Agent { .. } | Entree::Outil { .. } => {
                 let texte = match &entrees[i] {
-                    Entree::Agent { texte } => {
+                    Entree::Agent { texte, .. } => {
                         i += 1;
                         texte.clone()
                     }
@@ -156,9 +211,13 @@ fn messages(entrees: &[Entree]) -> Vec<Message> {
                     arguments,
                     etat,
                     resultat,
+                    auteur,
                     ..
                 }) = entrees.get(i)
                 {
+                    if !mien(auteur) {
+                        break;
+                    }
                     appels.push(Appel {
                         id: id.clone(),
                         nom: nom.clone(),
@@ -182,6 +241,7 @@ fn messages(entrees: &[Entree]) -> Vec<Message> {
 
 /// Remet le journal en ordre après un arrêt : chaque appel a un résultat, puis `fin` ou l'alerte.
 fn ranger(c: &mut Conversation, yaide_arrete: bool) {
+    let auteur = c.actif.take();
     for e in &mut c.entrees {
         if let Entree::Outil { etat, resultat, .. } = e {
             if etat == "enCours" {
@@ -198,6 +258,7 @@ fn ranger(c: &mut Conversation, yaide_arrete: bool) {
             arguments: a.arguments,
             etat: "echec".into(),
             resultat: "Not run: stopped by the user.".into(),
+            auteur: auteur.clone(),
         });
     }
     c.entrees.push(if yaide_arrete {
@@ -209,6 +270,7 @@ fn ranger(c: &mut Conversation, yaide_arrete: bool) {
     } else {
         Entree::Fin {
             texte: "Arrêté.".into(),
+            auteur,
         }
     });
     c.en_cours = false;
@@ -278,13 +340,23 @@ impl Gestionnaire {
             .find(|p| p.id == id)
     }
 
-    fn instructions(&self) -> String {
-        let mut t = format!(
+    fn lignes_fixes(&self) -> String {
+        format!(
             "You are a coding agent working in the project located at {}. \
 Use your tools (read, write, edit, bash, glob, websearch, webfetch) to inspect and change the project. \
 Always give file paths relative to the project root.",
             self.projet.display()
-        );
+        )
+    }
+
+    /// Texte d'un fichier s'il existe, se lit en texte et n'est pas vide.
+    fn lire_texte(chemin: PathBuf) -> Option<String> {
+        let t = String::from_utf8(std::fs::read(chemin).ok()?).ok()?;
+        (!t.trim().is_empty()).then_some(t)
+    }
+
+    fn instructions(&self) -> String {
+        let mut t = self.lignes_fixes();
         if let Ok(octets) = std::fs::read(self.projet.join("AGENTS.md")) {
             if let Ok(agents) = String::from_utf8(octets) {
                 t.push_str("\n\nProject instructions (AGENTS.md):\n");
@@ -294,6 +366,59 @@ Always give file paths relative to the project root.",
         t
     }
 
+    /// Instructions d'un agent, écrites une fois (REQ-066) : lignes fixes, son nom et les
+    /// autres agents, `AGENTS.md` de la racine, son `PERSONA.md`, son `AGENTS.md`.
+    fn instructions_agent(&self, agent: &Agent, autres: &[&str]) -> String {
+        let mut t = self.lignes_fixes();
+        t.push_str(&format!(
+            " Your name is {}. You talk with the user",
+            agent.nom
+        ));
+        if autres.is_empty() {
+            t.push('.');
+        } else {
+            t.push_str(&format!(
+                " and with the agents {}, who answer in turn. Their messages start with their name in brackets.",
+                autres.join(", ")
+            ));
+        }
+        let dossier = self
+            .projet
+            .join(".yaide")
+            .join("agents")
+            .join(&agent.dossier);
+        let parties = [
+            (
+                "Project instructions (AGENTS.md)",
+                self.projet.join("AGENTS.md"),
+            ),
+            ("Your persona (PERSONA.md)", dossier.join("PERSONA.md")),
+            ("Your own notes (AGENTS.md)", dossier.join("AGENTS.md")),
+        ];
+        for (titre, chemin) in parties {
+            if let Some(texte) = Self::lire_texte(chemin) {
+                t.push_str(&format!("\n\n{titre}:\n{texte}"));
+            }
+        }
+        t
+    }
+
+    /// Profil d'un agent : le sien, sinon le profil par défaut.
+    fn profil_agent(&self, id: Option<&str>) -> Option<Profil> {
+        if let Some(p) = id.and_then(|i| self.profil(i)) {
+            return Some(p);
+        }
+        let vue = self.reglages.vue();
+        let profils: Vec<Profil> = vue
+            .get("profils")?
+            .as_array()?
+            .iter()
+            .filter_map(|p| serde_json::from_value(p.clone()).ok())
+            .collect();
+        let defaut = profils.iter().position(|p| p.defaut).unwrap_or(0);
+        profils.into_iter().nth(defaut)
+    }
+
     /// Accepte un message : écrit le journal puis lance le tour. Un refus n'écrit rien.
     pub fn envoyer(
         self: &Arc<Self>,
@@ -301,16 +426,19 @@ Always give file paths relative to the project root.",
         profil: &str,
         texte: &str,
     ) -> Result<String, ErreurEnvoi> {
+        self.envoyer_avec(conversation, profil, &[], texte)
+    }
+
+    /// Comme `envoyer`, avec des agents personnalisés à la création d'une conversation.
+    /// Une conversation qui a des agents garde les siens et ignore `profil` et `agents`.
+    pub fn envoyer_avec(
+        self: &Arc<Self>,
+        conversation: Option<&str>,
+        profil: &str,
+        agents: &[Agent],
+        texte: &str,
+    ) -> Result<String, ErreurEnvoi> {
         let refus = |motif, provider| Err(ErreurEnvoi::Refus(Refus { motif, provider }));
-        let Some(p) = self.profil(profil) else {
-            return refus("sans-profil", None);
-        };
-        let prov = reglages::provider(&p.provider)
-            .ok_or_else(|| ErreurEnvoi::Systeme("provider du profil inconnu".into()))?;
-        let nom = Some(prov.nom());
-        if prov.cle_obligatoire() && self.reglages.cle(prov.id()).is_none() {
-            return refus("sans-cle", nom);
-        }
         let mut registre = verrou(&self.registre);
         let existant = match conversation {
             Some(id) => Some(match registre.get(id) {
@@ -326,21 +454,81 @@ Always give file paths relative to the project root.",
             }),
             None => None,
         };
-        if let Some((c, _)) = &existant {
-            if let Some(f) = p.fenetre {
+        let equipe: Vec<AgentConv> = match &existant {
+            Some((c, _)) => verrou(c).agents.clone(),
+            None => {
+                let noms: Vec<&str> = agents.iter().map(|a| a.nom.as_str()).collect();
+                agents
+                    .iter()
+                    .map(|a| AgentConv {
+                        dossier: a.dossier.clone(),
+                        nom: a.nom.clone(),
+                        avatar: a.avatar.clone(),
+                        couleur: a.couleur.clone(),
+                        profil: a.profil.clone(),
+                        instructions: self.instructions_agent(
+                            a,
+                            &noms
+                                .iter()
+                                .copied()
+                                .filter(|n| *n != a.nom)
+                                .collect::<Vec<_>>(),
+                        ),
+                        tokens: 0,
+                    })
+                    .collect()
+            }
+        };
+        // Profil de la conversation : celui du message, ou celui du premier agent.
+        let (profil_conv, nom_en_cours) = if equipe.is_empty() {
+            let Some(p) = self.profil(profil) else {
+                return refus("sans-profil", None);
+            };
+            let prov = reglages::provider(&p.provider)
+                .ok_or_else(|| ErreurEnvoi::Systeme("provider du profil inconnu".into()))?;
+            let nom = Some(prov.nom());
+            if prov.cle_obligatoire() && self.reglages.cle(prov.id()).is_none() {
+                return refus("sans-cle", nom);
+            }
+            if let (Some((c, _)), Some(f)) = (&existant, p.fenetre) {
                 if verrou(c).tokens >= f {
                     return refus("contexte-plein", nom);
                 }
             }
-        }
+            (p.id, nom)
+        } else {
+            let mut premier = String::new();
+            let mut premier_nom = None;
+            for (i, a) in equipe.iter().enumerate() {
+                let Some(p) = self.profil_agent(a.profil.as_deref()) else {
+                    return refus("sans-profil", None);
+                };
+                let prov = reglages::provider(&p.provider)
+                    .ok_or_else(|| ErreurEnvoi::Systeme("provider du profil inconnu".into()))?;
+                let nom = Some(prov.nom());
+                if prov.cle_obligatoire() && self.reglages.cle(prov.id()).is_none() {
+                    return refus("sans-cle", nom);
+                }
+                if p.fenetre.is_some_and(|f| a.tokens >= f) {
+                    return refus("contexte-plein", nom);
+                }
+                if i == 0 {
+                    premier = p.id;
+                    premier_nom = nom;
+                }
+            }
+            (premier, premier_nom)
+        };
         if matches!(existant, Some((_, true))) {
-            return refus("en-cours", nom);
+            return refus("en-cours", nom_en_cours);
         }
         let conv = match existant {
             Some((c, _)) => {
                 {
                     let mut g = verrou(&c);
-                    g.profil = p.id.clone();
+                    if g.agents.is_empty() {
+                        g.profil = profil_conv;
+                    }
                     g.en_cours = true;
                     g.maj = maintenant();
                     g.entrees.push(Entree::Utilisateur {
@@ -355,15 +543,21 @@ Always give file paths relative to the project root.",
                 let c = Conversation {
                     id: nouvel_id().map_err(ErreurEnvoi::Systeme)?,
                     titre: titre(texte),
-                    profil: p.id.clone(),
+                    profil: profil_conv,
                     cree: maj,
                     maj,
                     en_cours: true,
-                    instructions: self.instructions(),
+                    instructions: if equipe.is_empty() {
+                        self.instructions()
+                    } else {
+                        String::new()
+                    },
                     tokens: 0,
                     entrees: vec![Entree::Utilisateur {
                         texte: texte.to_string(),
                     }],
+                    agents: equipe,
+                    actif: None,
                     restants: Vec::new(),
                 };
                 self.sauver(&c).map_err(ErreurEnvoi::Systeme)?;
@@ -383,11 +577,28 @@ Always give file paths relative to the project root.",
     }
 
     async fn tour(self: Arc<Self>, conv: Arc<Mutex<Conversation>>) {
-        self.boucle(&conv).await;
+        let dossiers: Vec<String> = verrou(&conv)
+            .agents
+            .iter()
+            .map(|a| a.dossier.clone())
+            .collect();
+        if dossiers.is_empty() {
+            self.boucle(&conv, None).await;
+        } else {
+            for d in dossiers {
+                if !self.modifier(&conv, |c| c.actif = Some(d.clone())) {
+                    break;
+                }
+                if !self.boucle(&conv, Some(d)).await {
+                    break;
+                }
+            }
+        }
         let id = {
             let mut c = verrou(&conv);
             if c.en_cours {
                 c.en_cours = false;
+                c.actif = None;
                 c.maj = maintenant();
                 self.sauver_ou_dire(&c);
             }
@@ -396,30 +607,45 @@ Always give file paths relative to the project root.",
         verrou(&self.registre).remove(&id);
     }
 
-    async fn boucle(&self, conv: &Mutex<Conversation>) {
+    /// Faux si le tour entier doit finir (erreur, arrêt).
+    async fn boucle(&self, conv: &Mutex<Conversation>, agent: Option<String>) -> bool {
         let ctx = Contexte {
             projet: self.projet.clone(),
             client: self.client.clone(),
             limites: self.limites.clone(),
         };
         loop {
-            let (id_profil, instructions, historique) = {
+            let (profil_trouve, instructions, historique) = {
                 let c = verrou(conv);
-                (
-                    c.profil.clone(),
-                    c.instructions.clone(),
-                    messages(&c.entrees),
-                )
+                match &agent {
+                    None => (
+                        self.profil(&c.profil),
+                        c.instructions.clone(),
+                        messages(&c.entrees),
+                    ),
+                    Some(d) => {
+                        let noms: Vec<(String, String)> = c
+                            .agents
+                            .iter()
+                            .map(|a| (a.dossier.clone(), a.nom.clone()))
+                            .collect();
+                        let a = c.agents.iter().find(|a| a.dossier == *d);
+                        (
+                            a.and_then(|a| self.profil_agent(a.profil.as_deref())),
+                            a.map(|a| a.instructions.clone()).unwrap_or_default(),
+                            messages_pour(&c.entrees, Some(d), &noms),
+                        )
+                    }
+                }
             };
-            let Some((p, prov)) = self
-                .profil(&id_profil)
-                .and_then(|p| reglages::provider(&p.provider).map(|v| (p, v)))
+            let Some((p, prov)) =
+                profil_trouve.and_then(|p| reglages::provider(&p.provider).map(|v| (p, v)))
             else {
                 self.modifier(conv, |c| {
                     c.entrees
                         .push(message_erreur("Profil introuvable.".into(), String::new()))
                 });
-                return;
+                return false;
             };
             let reglage = Reglage {
                 modele: p.modele.clone(),
@@ -462,19 +688,32 @@ Always give file paths relative to the project root.",
                         ),
                     };
                     self.modifier(conv, |c| c.entrees.push(entree));
-                    return;
+                    return false;
                 }
             };
             let appels = rep.appels.clone();
             let continuer = self.modifier(conv, |c| {
                 c.tokens = rep.tokens;
+                if let Some(a) = c
+                    .agents
+                    .iter_mut()
+                    .find(|a| Some(&a.dossier) == agent.as_ref())
+                {
+                    a.tokens = rep.tokens;
+                }
                 if !rep.texte.is_empty() || !rep.appels.is_empty() {
-                    c.entrees.push(Entree::Agent { texte: rep.texte });
+                    c.entrees.push(Entree::Agent {
+                        texte: rep.texte,
+                        auteur: agent.clone(),
+                    });
                 }
                 c.restants = rep.appels;
             });
-            if !continuer || appels.is_empty() {
-                return;
+            if !continuer {
+                return false;
+            }
+            if appels.is_empty() {
+                return true;
             }
             for appel in appels {
                 let argument = outils::argument_principal(&appel.nom, &appel.arguments);
@@ -489,10 +728,11 @@ Always give file paths relative to the project root.",
                         argument,
                         etat: "enCours".into(),
                         resultat: String::new(),
+                        auteur: agent.clone(),
                     });
                 });
                 if !commence {
-                    return;
+                    return false;
                 }
                 let r = outils::executer(&appel.nom, &appel.arguments, &ctx).await;
                 let fini = self.modifier(conv, |c| {
@@ -508,7 +748,7 @@ Always give file paths relative to the project root.",
                     }
                 });
                 if !fini {
-                    return;
+                    return false;
                 }
             }
         }
@@ -554,7 +794,11 @@ Always give file paths relative to the project root.",
         let total = c.entrees.len();
         Some(json!({
             "titre": c.titre, "profil": c.profil, "enCours": c.en_cours,
-            "tokens": c.tokens, "total": total,
+            "tokens": c.tokens, "total": total, "actif": c.actif,
+            "agents": c.agents.iter().map(|a| json!({
+                "dossier": a.dossier, "nom": a.nom, "avatar": a.avatar,
+                "couleur": a.couleur, "profil": a.profil, "tokens": a.tokens,
+            })).collect::<Vec<_>>(),
             "entrees": c.entrees[depuis.min(total)..],
         }))
     }
@@ -969,6 +1213,7 @@ mod tests {
                 Entree::Utilisateur { texte: "u".into() },
                 Entree::Agent {
                     texte: String::new(),
+                    auteur: None,
                 },
                 Entree::Outil {
                     id: "x".into(),
@@ -977,8 +1222,11 @@ mod tests {
                     argument: "sleep 9".into(),
                     etat: "enCours".into(),
                     resultat: String::new(),
+                    auteur: None,
                 },
             ],
+            agents: vec![],
+            actif: None,
             restants: vec![],
         };
         b.g.sauver(&c).unwrap();
@@ -1041,6 +1289,378 @@ mod tests {
             ErreurEnvoi::Inconnue
         );
         b.g.arreter(&id);
+    }
+
+    // --- plusieurs agents (REQ-066, REQ-067) ---
+
+    impl Banc {
+        /// Un second profil, sur un autre modèle.
+        fn profil2(&self) -> String {
+            self.reglages
+                .enregistrer_profil(&json!({"nom": "p2", "provider": "openai", "modele": "m2"}))
+                .unwrap();
+            self.reglages.vue()["profils"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|p| p["nom"] == "p2")
+                .unwrap()["id"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        }
+        /// Un agent, avec son dossier sur le disque.
+        fn agent(&self, nom: &str, profil: Option<&str>) -> Agent {
+            let dossier = nom.to_lowercase();
+            std::fs::create_dir_all(self.dir.join(".yaide/agents").join(&dossier)).unwrap();
+            Agent {
+                dossier,
+                nom: nom.into(),
+                avatar: String::new(),
+                couleur: "violet".into(),
+                profil: profil.map(String::from),
+            }
+        }
+        fn fichier_agent(&self, a: &Agent, nom: &str, texte: &str) {
+            std::fs::write(
+                self.dir.join(".yaide/agents").join(&a.dossier).join(nom),
+                texte,
+            )
+            .unwrap();
+        }
+        fn envoyer_a(
+            &self,
+            conv: Option<&str>,
+            agents: &[Agent],
+            t: &str,
+        ) -> Result<String, ErreurEnvoi> {
+            self.g.envoyer_avec(conv, "", agents, t)
+        }
+        fn corps(&self, i: usize) -> Value {
+            self.recues.lock().unwrap()[i].clone()
+        }
+    }
+
+    fn roles(corps: &Value) -> Vec<(String, String)> {
+        corps["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| {
+                (
+                    m["role"].as_str().unwrap().to_string(),
+                    m["content"].as_str().unwrap_or("").to_string(),
+                )
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn REQ066_AC3_instructions_nom_racine_persona_agents_dans_l_ordre() {
+        let b = banc("m-ac3", true, None).await;
+        std::fs::write(b.dir.join("AGENTS.md"), "regle-maison-42").unwrap();
+        let rel = b.agent("Relecteur", None);
+        let tes = b.agent("Testeur", None);
+        b.fichier_agent(&rel, "PERSONA.md", "persona-43");
+        b.fichier_agent(&rel, "AGENTS.md", "memoire-44");
+        b.scenario(vec![texte("a", 1), texte("b", 1)]);
+        let id = b.envoyer_a(None, &[rel, tes], "salut").unwrap();
+        b.fini(&id).await;
+        let r = b.requete(0);
+        let pos = |t: &str| r.find(t).unwrap_or_else(|| panic!("{t} absent de {r}"));
+        assert!(pos("Your name is Relecteur") < pos("regle-maison-42"));
+        assert!(pos("regle-maison-42") < pos("persona-43"));
+        assert!(pos("persona-43") < pos("memoire-44"));
+        assert!(r.contains("and with the agents Testeur, who answer in turn."));
+        assert!(!b.requete(1).contains("persona-43"));
+        assert!(b.requete(1).contains("Your name is Testeur"));
+    }
+
+    #[tokio::test]
+    async fn REQ066_AC4_fichiers_absents_sans_erreur() {
+        let b = banc("m-ac4", true, None).await;
+        let rel = Agent {
+            dossier: "sans-dossier".into(),
+            ..b.agent("Relecteur", None)
+        };
+        b.scenario(vec![texte("ok", 1)]);
+        let id = b.envoyer_a(None, &[rel], "salut").unwrap();
+        let v = b.fini(&id).await;
+        assert_eq!(v["entrees"][1]["texte"], "ok");
+        assert!(v["entrees"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["type"] != "message"));
+        assert!(!b.requete(0).contains("PERSONA"));
+        assert!(b.requete(0).contains("You talk with the user."));
+    }
+
+    #[tokio::test]
+    async fn REQ066_AC5_instructions_gardees_apres_modification() {
+        let b = banc("m-ac5", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        b.fichier_agent(&rel, "PERSONA.md", "ancien-persona");
+        b.scenario(vec![texte("a", 1), texte("b", 1), texte("c", 1)]);
+        let id = b.envoyer_a(None, std::slice::from_ref(&rel), "un").unwrap();
+        b.fini(&id).await;
+        b.fichier_agent(&rel, "PERSONA.md", "nouveau-persona");
+        b.envoyer_a(Some(&id), &[], "deux").unwrap();
+        b.attendre(&id, |v| v["total"] == 4 && v["enCours"] == false)
+            .await;
+        assert!(b.requete(1).contains("ancien-persona"));
+        assert!(!b.requete(1).contains("nouveau-persona"));
+        let neuve = b.envoyer_a(None, &[rel], "trois").unwrap();
+        b.fini(&neuve).await;
+        assert!(b.requete(2).contains("nouveau-persona"));
+    }
+
+    #[tokio::test]
+    async fn REQ067_AC3_le_second_voit_la_reponse_du_premier_sans_ses_outils() {
+        let b = banc("m-ac3b", true, None).await;
+        let p2 = b.profil2();
+        std::fs::write(b.dir.join("README.md"), "contenu-du-readme").unwrap();
+        let rel = b.agent("Relecteur", Some(&b.profil.clone()));
+        let tes = b.agent("Testeur", Some(&p2));
+        b.scenario(vec![
+            appels(&[("c1", "read", json!({"path": "README.md"}))]),
+            texte("reponse-rel", 10),
+            texte("reponse-tes", 20),
+        ]);
+        let id = b.envoyer_a(None, &[rel, tes], "go").unwrap();
+        let v = b.fini(&id).await;
+        assert_eq!(b.nb_requetes(), 3);
+        assert_eq!(b.corps(0)["model"], "m");
+        assert_eq!(b.corps(1)["model"], "m");
+        assert_eq!(b.corps(2)["model"], "m2");
+        let m = roles(&b.corps(2));
+        assert_eq!(
+            &m[1..],
+            [(
+                "user".to_string(),
+                "go\n\n[Relecteur] reponse-rel".to_string()
+            )]
+        );
+        assert!(!b.requete(2).contains("contenu-du-readme"));
+        // le premier voit ses propres outils
+        assert!(b.requete(1).contains("contenu-du-readme"));
+        // auteurs, jetons, tour fini
+        let e = v["entrees"].as_array().unwrap();
+        assert_eq!(e.len(), 5);
+        assert_eq!(e[2]["auteur"], "relecteur");
+        assert_eq!(e[4]["auteur"], "testeur");
+        assert_eq!(v["actif"], Value::Null);
+        assert_eq!(v["tokens"], 20);
+        assert_eq!(v["agents"][0]["tokens"], 10);
+        assert_eq!(v["agents"][1]["tokens"], 20);
+        assert!(v["agents"][0].get("instructions").is_none());
+    }
+
+    #[tokio::test]
+    async fn REQ067_AC4_second_message_historique_et_reprise_apres_relecture() {
+        let b = banc("m-ac4b", true, None).await;
+        std::fs::write(b.dir.join("README.md"), "contenu-du-readme").unwrap();
+        let rel = b.agent("Relecteur", None);
+        let tes = b.agent("Testeur", None);
+        b.scenario(vec![
+            appels(&[("c1", "read", json!({"path": "README.md"}))]),
+            texte("rep-rel", 1),
+            texte("rep-tes", 1),
+            texte("rel2", 1),
+            texte("tes2", 1),
+        ]);
+        let id = b.envoyer_a(None, &[rel, tes], "go").unwrap();
+        b.fini(&id).await;
+        // Yaide redémarre : un nouveau gestionnaire relit le fichier
+        let neuf = gestionnaire(&b.dir, &b.reglages);
+        neuf.envoyer_avec(Some(&id), "", &[], "deux").unwrap();
+        for _ in 0..250 {
+            if neuf.lire(&id, 0).unwrap()["enCours"] == false {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let v = neuf.lire(&id, 0).unwrap();
+        assert_eq!(v["total"], 8, "{v}");
+        assert_eq!(b.nb_requetes(), 5);
+        let r = b.requete(3);
+        assert!(r.contains("contenu-du-readme") && r.contains("tool_calls"));
+        assert!(r.contains("rep-rel") && r.contains("deux"));
+        assert!(r.contains("[Testeur] rep-tes"));
+        let m = roles(&b.corps(4));
+        let dernier = &m.last().unwrap().1;
+        assert!(m[1].1.contains("[Relecteur] rep-rel"), "{m:?}");
+        assert!(
+            m.contains(&("assistant".to_string(), "rep-tes".to_string())),
+            "{m:?}"
+        );
+        assert!(dernier.contains("[Relecteur] rel2"), "{m:?}");
+        assert!(!b.requete(4).contains("contenu-du-readme"));
+    }
+
+    #[tokio::test]
+    async fn REQ067_AC5_un_seul_agent() {
+        let b = banc("m-ac5b", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        b.scenario(vec![texte("seul", 3)]);
+        let id = b.envoyer_a(None, &[rel], "go").unwrap();
+        let v = b.fini(&id).await;
+        assert_eq!(b.nb_requetes(), 1);
+        assert_eq!(v["entrees"][1]["texte"], "seul");
+        assert_eq!(v["entrees"][1]["auteur"], "relecteur");
+        assert!(b.requete(0).contains("Your name is Relecteur"));
+        assert!(!b.requete(0).contains("and with the agents"));
+    }
+
+    #[tokio::test]
+    async fn REQ067_AC7_arreter_pendant_le_premier_le_second_ne_repond_pas() {
+        let b = banc("m-ac7", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        let tes = b.agent("Testeur", None);
+        let mut lente = texte("trop tard", 1);
+        lente.2 = 30_000;
+        b.scenario(vec![lente]);
+        let id = b.envoyer_a(None, &[rel, tes], "go").unwrap();
+        b.attendre(&id, |v| b.nb_requetes() == 1 && v["actif"] == "relecteur")
+            .await;
+        assert!(b.g.arreter(&id));
+        let v = b.g.lire(&id, 0).unwrap();
+        assert_eq!(v["enCours"], false);
+        assert_eq!(v["actif"], Value::Null);
+        assert_eq!(
+            v["entrees"][1],
+            json!({"type": "fin", "texte": "Arrêté.", "auteur": "relecteur"})
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(b.nb_requetes(), 1);
+        // le message suivant fait répondre les deux
+        b.scenario(vec![texte("a", 1), texte("b", 1)]);
+        b.envoyer_a(Some(&id), &[], "deux").unwrap();
+        let v = b
+            .attendre(&id, |v| v["total"] == 5 && v["enCours"] == false)
+            .await;
+        assert_eq!(v["entrees"][3]["auteur"], "relecteur");
+        assert_eq!(v["entrees"][4]["auteur"], "testeur");
+    }
+
+    #[tokio::test]
+    async fn REQ067_AC8_erreur_du_premier_finit_le_tour() {
+        let b = banc("m-ac8", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        let tes = b.agent("Testeur", None);
+        b.scenario(vec![(429, json!({"error": "trop"}), 0), texte("jamais", 1)]);
+        let id = b.envoyer_a(None, &[rel, tes], "go").unwrap();
+        let v = b.fini(&id).await;
+        let e = v["entrees"].as_array().unwrap();
+        assert_eq!(e.len(), 2, "{e:?}");
+        assert_eq!(e[1]["type"], "message");
+        assert_eq!(e[1]["variante"], "erreur");
+        assert_eq!(e[1]["texte"], "OpenAI a refusé la requête (429).");
+        assert_eq!(v["actif"], Value::Null);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(b.nb_requetes(), 1);
+        // on peut renvoyer un message
+        b.envoyer_a(Some(&id), &[], "encore").unwrap();
+        b.fini(&id).await;
+    }
+
+    #[tokio::test]
+    async fn REQ067_AC9_sans_cle_pour_le_second_aucune_requete() {
+        let b = banc("m-ac9", true, None).await;
+        b.reglages
+            .enregistrer_profil(&json!({"nom": "an", "provider": "anthropic", "modele": "c"}))
+            .unwrap();
+        let an = b.reglages.vue()["profils"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["nom"] == "an")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let rel = b.agent("Relecteur", None);
+        let tes = b.agent("Testeur", Some(&an));
+        let r = b.envoyer_a(None, &[rel, tes], "go").unwrap_err();
+        assert_eq!(
+            r,
+            ErreurEnvoi::Refus(Refus {
+                motif: "sans-cle",
+                provider: Some("Anthropic")
+            })
+        );
+        assert_eq!(b.nb_requetes(), 0);
+        assert!(!b.dir.join(".yaide").join("conversations").exists());
+    }
+
+    #[tokio::test]
+    async fn REQ067_AC11_copie_prise_au_premier_message() {
+        let b = banc("m-ac11", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        b.scenario(vec![texte("a", 1), texte("b", 1), texte("c", 1)]);
+        let id = b.envoyer_a(None, std::slice::from_ref(&rel), "un").unwrap();
+        b.fini(&id).await;
+        let modifie = Agent {
+            couleur: "rose".into(),
+            nom: "Autre".into(),
+            ..rel
+        };
+        b.envoyer_a(Some(&id), std::slice::from_ref(&modifie), "deux")
+            .unwrap();
+        let v = b
+            .attendre(&id, |v| v["total"] == 4 && v["enCours"] == false)
+            .await;
+        assert_eq!(v["agents"][0]["couleur"], "violet");
+        assert_eq!(v["agents"][0]["nom"], "Relecteur");
+        assert_eq!(v["agents"].as_array().unwrap().len(), 1);
+        let neuve = b.envoyer_a(None, &[modifie], "trois").unwrap();
+        let v = b.fini(&neuve).await;
+        assert_eq!(v["agents"][0]["couleur"], "rose");
+    }
+
+    #[tokio::test]
+    async fn REQ067_profil_supprime_prend_le_defaut() {
+        let b = banc("m-supp", true, None).await;
+        let p2 = b.profil2();
+        let rel = b.agent("Relecteur", Some(&p2));
+        b.reglages.supprimer_profil(&p2).unwrap();
+        b.scenario(vec![texte("ok", 1)]);
+        let id = b.envoyer_a(None, &[rel], "go").unwrap();
+        b.fini(&id).await;
+        assert_eq!(b.corps(0)["model"], "m");
+        // aucun profil : refus
+        b.reglages.supprimer_profil(&b.profil).unwrap();
+        let rel = b.agent("Testeur", None);
+        let r = b.envoyer_a(None, &[rel], "go").unwrap_err();
+        assert_eq!(
+            r,
+            ErreurEnvoi::Refus(Refus {
+                motif: "sans-profil",
+                provider: None
+            })
+        );
+    }
+
+    #[test]
+    fn messages_pour_reunit_les_messages_utilisateur() {
+        let u = |t: &str| Entree::Utilisateur { texte: t.into() };
+        let a = |t: &str, d: &str| Entree::Agent {
+            texte: t.into(),
+            auteur: Some(d.into()),
+        };
+        let entrees = vec![u("un"), u("deux"), a("rep", "a"), a("", "a"), u("trois")];
+        let noms = vec![("a".to_string(), "Alice".to_string())];
+        let m = messages_pour(&entrees, Some("b"), &noms);
+        assert_eq!(m.len(), 1);
+        assert!(
+            matches!(&m[0], Message::Utilisateur(t) if t == "un\n\ndeux\n\n[Alice] rep\n\ntrois")
+        );
+        // sans agent : rien n'est réuni
+        let sans = messages(&[u("a"), u("b")]);
+        assert_eq!(sans.len(), 2);
+        // pour Alice : ses réponses restent les siennes
+        let m = messages_pour(&entrees, Some("a"), &noms);
+        assert_eq!(m.len(), 4);
     }
 
     #[test]
