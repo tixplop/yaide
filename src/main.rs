@@ -1,3 +1,4 @@
+use std::io::Write;
 #[allow(dead_code)]
 mod agent;
 mod auth;
@@ -76,12 +77,23 @@ fn main() {
                 .enable_all()
                 .build()
                 .unwrap_or_else(|e| echec(1, &e.to_string()));
+            // Une sortie standard fermée ne doit pas arrêter le serveur.
+            let mut sortie = std::io::stdout();
             if pris != port && port != 0 {
-                println!("Le port {port} est occupé : Yaide utilise le port {pris}.");
+                let _ = writeln!(
+                    sortie,
+                    "Le port {port} est occupé : Yaide utilise le port {pris}."
+                );
             }
-            println!("Yaide écoute sur le port {pris}, sur toutes les adresses de la machine.");
-            println!("Sur cette machine : https://localhost:{pris}");
-            println!("Depuis une autre machine : https://<adresse de la machine>:{pris}");
+            let _ = writeln!(
+                sortie,
+                "Yaide écoute sur le port {pris}, sur toutes les adresses de la machine."
+            );
+            let _ = writeln!(sortie, "Sur cette machine : https://localhost:{pris}");
+            let _ = writeln!(
+                sortie,
+                "Depuis une autre machine : https://<adresse de la machine>:{pris}"
+            );
             if let Err(e) = rt.block_on(serveur::servir(listener, &cert, &cle, &config, &projet)) {
                 echec(1, &e);
             }
