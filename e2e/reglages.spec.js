@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { lancerRelais } from "./relais.js";
 import { depotExemple, lancerYaide, gardeContient, nomLigne, ouvrirYaide, avancer } from "./aides.js";
 
 let yaide;
@@ -189,6 +190,9 @@ test("REQ070_parcours_32_alleger_avec_faute_de_frappe", async ({ page }) => {
   await expect(page.getByRole("tab", { name: /^(Recherche|Git)$/ })).toHaveCount(0);
   await page.keyboard.press("Control+p");
   await page.keyboard.type(">");
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await expect(page.getByRole("option", { name: "Préférences d'interface" })).toBeVisible();
+  await page.keyboard.type("prov");
   await expect(page.getByText("Aucune commande trouvée.")).toBeVisible();
   await page.keyboard.press("Escape");
 
@@ -275,4 +279,123 @@ test("REQ070_parcours_33_claude_seul_a_800_par_480", async ({ page }) => {
   await expect(page.locator("aside.cadre-agent")).toHaveAccessibleName("Agent");
   await expect(page.locator("aside.cadre-panneau")).toBeHidden();
   await expect(page.getByRole("tab", { name: "Claude 1", exact: true })).toBeVisible();
+});
+
+const dialoguePrefs = (page) => page.getByRole("dialog", { name: "Préférences d'interface" });
+const SAVED = "Préférences enregistrées. Rechargez la page pour les appliquer.";
+
+test("REQ071_parcours_34_regler_sans_json", async ({ page }) => {
+  const dossier = depotExemple();
+  fs.mkdirSync(path.join(dossier, ".yaide"));
+  const fichier = path.join(dossier, ".yaide", "interface.json");
+  fs.writeFileSync(fichier, '{ "fonctions": { "agents": false, "shells": false } }\n');
+  yaide = await lancerYaide({ dossier });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(yaide.origine + "/");
+  await page.getByLabel("Mot de passe").fill("mdp");
+  await page.keyboard.press("Enter");
+  await page.getByRole("treeitem", { name: nomLigne("src") }).click();
+  await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
+  await expect(page.getByRole("textbox", { name: "Éditeur main.rs" })).toBeFocused();
+  await expect(page.locator(".cadre-rail-droit")).toHaveCount(0);
+
+  // 1-2. Ctrl+P, `>` : une seule commande ; Entrée ouvre le dialogue.
+  await page.keyboard.press("Control+p");
+  await page.keyboard.type(">");
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  const dlg = dialoguePrefs(page);
+  await expect(dlg).toBeVisible();
+  await expect(dlg.getByLabel("Panneau de gauche")).toBeFocused();
+  for (const nom of ["Panneau de gauche", "Zone des shells", "Colonne de l'agent"]) await expect(dlg.getByLabel(nom)).toHaveValue("Comme la dernière fois");
+  for (const [nom, coche] of [["Recherche", true], ["Git", true], ["Shells", false], ["Agents", false], ["Claude", true]]) {
+    await expect(dlg.getByRole("checkbox", { name: nom, exact: true })).toBeChecked({ checked: coche });
+  }
+
+  // 3. Replié, puis Shells et Agents cochées au clavier.
+  await dlg.getByLabel("Panneau de gauche").selectOption("Replié");
+  await dlg.getByRole("checkbox", { name: "Shells", exact: true }).focus();
+  await page.keyboard.press("Space");
+  await dlg.getByRole("checkbox", { name: "Agents", exact: true }).focus();
+  await page.keyboard.press("Space");
+  await expect(dlg.getByRole("checkbox", { name: "Shells", exact: true })).toBeChecked();
+  await expect(dlg.getByRole("checkbox", { name: "Agents", exact: true })).toBeChecked();
+
+  // 4. Enregistrer : le fichier, le message, le focus ; l'interface ne change pas.
+  await dlg.getByRole("button", { name: "Enregistrer", exact: true }).click();
+  await expect(dlg.getByRole("status")).toHaveText(SAVED);
+  await expect(dlg.getByRole("button", { name: "Enregistrer", exact: true })).toBeFocused();
+  expect(fs.readFileSync(fichier, "utf8")).toBe('{\n  "replis": {\n    "panneau": true\n  }\n}\n');
+  await expect(page.locator("aside.cadre-panneau")).toBeVisible();
+  await expect(page.locator(".cadre-rail-droit")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Nouveau shell" })).toHaveCount(0);
+
+  // 5. Échap rend le focus à l'éditeur ; au rechargement, l'interface suit le fichier.
+  await page.keyboard.press("Escape");
+  await expect(dlg).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Éditeur main.rs" })).toBeFocused();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Nouveau shell" })).toBeVisible();
+  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
+  await expect(page.locator(".cadre-rail-droit").getByRole("button", { name: "Agent", exact: true })).toBeVisible();
+  await expect(page.locator(".cadre-rail-droit").getByRole("button", { name: "Agents", exact: true })).toBeVisible();
+});
+
+test("REQ071_parcours_35_illisible_puis_coupure_a_800_par_480", async ({ page }) => {
+  await page.clock.install();
+  const dossier = depotExemple();
+  fs.mkdirSync(path.join(dossier, ".yaide"));
+  const fichier = path.join(dossier, ".yaide", "interface.json");
+  const illisible = '{ "fonctions": { "gti": false } }\n';
+  fs.writeFileSync(fichier, illisible);
+  yaide = await lancerYaide({ dossier });
+  const relais = await lancerRelais(yaide.port);
+  try {
+    await page.setViewportSize({ width: 800, height: 480 });
+    await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
+    const bandeauCoupure = page.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." });
+
+    // 1-2. Ctrl+P, `>préf`, Entrée : alerte du fichier illisible, valeurs par défaut.
+    await page.keyboard.press("Control+p");
+    await page.keyboard.type(">préf");
+    await expect(page.getByRole("option")).toHaveCount(1);
+    await page.keyboard.press("Enter");
+    const dlg = dialoguePrefs(page);
+    await expect(dlg.getByRole("alert")).toHaveText(".yaide/interface.json est illisible. « Enregistrer » le remplacera par ces réglages.");
+    await expect(dlg.getByLabel("Panneau de gauche")).toBeFocused();
+    await expect(dlg.getByRole("checkbox", { checked: true })).toHaveCount(5);
+
+    // 3. Git décochée, coupure, Enregistrer : message visible sans défiler, fichier inchangé.
+    await dlg.getByRole("checkbox", { name: "Git", exact: true }).uncheck();
+    relais.couper();
+    await avancer(page, () => expect(bandeauCoupure).toBeVisible({ timeout: 300 }));
+    await dlg.getByRole("button", { name: "Enregistrer", exact: true }).click();
+    const refus = dlg.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." });
+    await expect(refus).toBeVisible();
+    await expect(refus).toBeInViewport({ ratio: 1 });
+    await expect(dlg.getByRole("alert").filter({ hasText: "est illisible" })).toBeVisible();
+    await expect(dlg.getByRole("checkbox", { name: "Git", exact: true })).not.toBeChecked();
+    expect(fs.readFileSync(fichier, "utf8")).toBe(illisible);
+    // Le dialogue entier tient dans la fenêtre (AC-071-12).
+    const boite = await dlg.boundingBox();
+    expect(boite.x).toBeGreaterThanOrEqual(0);
+    expect(boite.y).toBeGreaterThanOrEqual(0);
+    expect(boite.x + boite.width).toBeLessThanOrEqual(800);
+    expect(boite.y + boite.height).toBeLessThanOrEqual(480);
+
+    // 4. Retour : Enregistrer, fichier, rechargement.
+    relais.retablir();
+    await avancer(page, () => expect(bandeauCoupure).toHaveCount(0, { timeout: 300 }));
+    await dlg.getByRole("button", { name: "Enregistrer", exact: true }).click();
+    await expect(dlg.getByRole("status")).toHaveText(SAVED);
+    await expect(dlg.getByRole("alert")).toHaveCount(0);
+    expect(fs.readFileSync(fichier, "utf8")).toBe('{\n  "fonctions": {\n    "git": false\n  }\n}\n');
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Nouveau shell" })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "illisible" })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "Git", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "Fichiers", exact: true })).toBeVisible();
+  } finally {
+    relais.fermer();
+  }
 });
