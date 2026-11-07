@@ -503,7 +503,9 @@ test("V002_chargement_pendant_la_lecture_et_pendant_la_restauration_jamais_aucun
   let liberer = () => {};
   let retenue = Promise.resolve();
   const retenir = () => (retenue = new Promise((r) => (liberer = r)));
+  // Les réglages d'interface sont lus avant la vue : seule la lecture des fichiers ouverts est retenue.
   await page.route("**/api/fichier?*", async (route) => {
+    if (route.request().url().includes("interface.json")) return route.continue();
     await retenue;
     await route.continue();
   });
