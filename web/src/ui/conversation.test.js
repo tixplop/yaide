@@ -187,3 +187,117 @@ test("REQ056_AC11_vide_affiche_indication_puis_disparait", () => {
   c.mettreAJour([{ type: "utilisateur", texte: "a" }], false);
   expect(c.textContent).not.toContain("Aucun message");
 });
+
+const rel = { nom: "Relecteur", avatar: "R", couleur: "vert" };
+const aut = { nom: "Auteur", avatar: "", couleur: "rose" };
+const groupes = (c) => [...c.querySelectorAll("[role=group]")];
+
+test("REQ067_AC16_groupe_par_tour_role_group_nom_et_filet", () => {
+  const c = conversation({
+    entrees: [
+      { type: "agent", markdown: "a", auteur: rel },
+      outil({ id: "o1", auteur: rel }),
+      { type: "fin", texte: "Arrêté.", auteur: rel },
+      { type: "agent", markdown: "b", auteur: aut },
+    ],
+  });
+  const g = groupes(c);
+  expect(g.length).toBe(2);
+  expect(g[0].getAttribute("aria-label")).toBe("Relecteur");
+  expect(g[0].querySelector(".ya-tour-tete").textContent).toBe("RRelecteur");
+  expect(g[0].querySelector(".ya-tour-tete .ya-avatar")).not.toBeNull();
+  const corps = g[0].querySelector(".ya-tour-corps");
+  expect(corps.style.getPropertyValue("--c")).toBe("var(--agent-vert)");
+  expect(corps.children.length).toBe(3);
+  expect(corps.querySelector("button.ya-step")).not.toBeNull();
+  expect(g[1].getAttribute("aria-label")).toBe("Auteur");
+  expect(g[1].querySelector(".ya-tour-corps").style.getPropertyValue("--c")).toBe("var(--agent-rose)");
+});
+
+test("REQ067_AC6_nom_de_l_agent_dans_le_nom_accessible_de_la_reponse", () => {
+  const c = conversation({ entrees: [{ type: "agent", markdown: "Bonjour", auteur: rel }] });
+  const a = c.querySelector(".ya-chat-agent");
+  expect(a.textContent.startsWith("Relecteur : ")).toBe(true);
+  expect(a.textContent).not.toContain("Agent : ");
+  expect(a.firstElementChild.className).toBe("ya-sr");
+});
+
+test("REQ067_AC16_nouveau_groupe_apres_un_message_de_l_utilisateur", () => {
+  const c = conversation({
+    entrees: [
+      { type: "agent", markdown: "a", auteur: rel },
+      { type: "utilisateur", texte: "encore" },
+      { type: "agent", markdown: "b", auteur: rel },
+    ],
+  });
+  expect(groupes(c).length).toBe(2);
+  expect(c.children[1].className).toBe("ya-chat-user");
+});
+
+test("REQ067_AC17_travaille_dans_le_groupe_de_l_agent_puis_du_suivant", () => {
+  const u = { type: "utilisateur", texte: "a" };
+  const c = conversation({ entrees: [u], enAttente: rel });
+  let g = groupes(c);
+  expect(g.length).toBe(1);
+  const att = g[0].querySelector(".indication");
+  expect(att.textContent).toBe("Relecteur travaille…");
+  expect(att.getAttribute("role")).toBe("status");
+  expect(att.hidden).toBe(true);
+  vi.advanceTimersByTime(200);
+  expect(att.hidden).toBe(false);
+  expect(g[0].querySelector(".ya-tour-corps").lastElementChild).toBe(att);
+
+  const e1 = { type: "agent", markdown: "x", auteur: rel };
+  c.mettreAJour([u, e1], rel);
+  g = groupes(c);
+  expect(g.length).toBe(1);
+  expect(g[0].querySelector(".ya-tour-corps").children.length).toBe(2);
+  expect(g[0].querySelector(".indication")).toBe(att);
+
+  c.mettreAJour([u, e1], aut);
+  g = groupes(c);
+  expect(g.length).toBe(2);
+  expect(g[0].querySelector(".indication")).toBeNull();
+  expect(g[1].querySelector(".indication").textContent).toBe("Auteur travaille…");
+
+  c.mettreAJour([u, e1, { type: "agent", markdown: "y", auteur: aut }], false);
+  g = groupes(c);
+  expect(g.length).toBe(2);
+  expect(c.querySelector(".indication")).toBeNull();
+
+  c.mettreAJour([u, e1, { type: "agent", markdown: "y", auteur: aut }], rel);
+  expect(groupes(c).length).toBe(3);
+  c.mettreAJour([u, e1, { type: "agent", markdown: "y", auteur: aut }], false);
+  expect(groupes(c).length).toBe(2);
+});
+
+test("REQ067_message_d_erreur_hors_du_filet", () => {
+  const c = conversation({
+    entrees: [
+      { type: "agent", markdown: "a", auteur: rel },
+      { type: "message", texte: "Le provider a échoué.", variante: "alerte" },
+    ],
+  });
+  const m = c.querySelector("[role=alert]");
+  expect(m.closest(".ya-tour")).toBeNull();
+  expect(m.parentElement).toBe(c);
+  expect(groupes(c)[0].nextElementSibling.contains(m) || groupes(c)[0].nextElementSibling === m).toBe(true);
+});
+
+test("REQ067_mise_a_jour_garde_focus_et_groupe", () => {
+  const c = conversation({ entrees: [{ type: "utilisateur", texte: "a" }, outil({ etat: "enCours", resultat: "", auteur: rel })] });
+  document.body.append(c);
+  const b = bouton(c);
+  b.focus();
+  const g0 = groupes(c)[0];
+  c.mettreAJour(
+    [{ type: "utilisateur", texte: "a" }, outil({ etat: "reussi", resultat: "ok", auteur: rel }), { type: "agent", markdown: "fini", auteur: rel }],
+    false,
+  );
+  expect(bouton(c)).toBe(b);
+  expect(document.activeElement).toBe(b);
+  expect(b.getAttribute("aria-label")).toBe("bash cargo test, réussi");
+  expect(groupes(c)).toEqual([g0]);
+  expect(g0.querySelector(".ya-tour-corps").children.length).toBe(2);
+  expect(g0.textContent).toContain("Relecteur : fini");
+});

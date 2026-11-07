@@ -1,6 +1,7 @@
 import { icone } from "./icones.js";
 import { indication } from "./indication.js";
 import { message } from "./message.js";
+import { avatar } from "./avatar.js";
 import { rendreMarkdown } from "./apercu.js";
 
 const ETATS = {
@@ -105,7 +106,26 @@ function sr(texte) {
 
 function majAgent(n, e) {
   n.innerHTML = rendreMarkdown(e.markdown);
-  n.prepend(sr("Agent : "));
+  n.prepend(sr(`${e.auteur?.nom ?? "Agent"} : `));
+}
+
+const memeAuteur = (a, b) => !!a && !!b && a.nom === b.nom && a.avatar === b.avatar && a.couleur === b.couleur;
+
+function creerGroupe(auteur) {
+  const el = document.createElement("div");
+  el.className = "ya-tour";
+  el.setAttribute("role", "group");
+  el.setAttribute("aria-label", auteur.nom);
+  const tete = document.createElement("div");
+  tete.className = "ya-tour-tete";
+  const nom = document.createElement("span");
+  nom.textContent = auteur.nom;
+  tete.append(avatar(auteur), nom);
+  const corps = document.createElement("div");
+  corps.className = "ya-tour-corps";
+  corps.style.setProperty("--c", `var(--agent-${auteur.couleur})`);
+  el.append(tete, corps);
+  return { auteur, el, corps };
 }
 
 export function conversation({ entrees = [], enAttente = false, vide, surDeplier } = {}) {
@@ -117,6 +137,8 @@ export function conversation({ entrees = [], enAttente = false, vide, surDeplier
 
   let rendus = []; // { entree, noeud }
   let attente = null;
+  let cleAttente = "";
+  let groupeAttente = null; // groupe ouvert pour la seule attente
   let blocVide = null;
 
   const auBas = () => el.scrollHeight - el.scrollTop - el.clientHeight <= MARGE_BAS;
@@ -135,18 +157,45 @@ export function conversation({ entrees = [], enAttente = false, vide, surDeplier
       }
       rendus[i].entree = e;
     }
-    for (let i = rendus.length; i < liste.length; i++) {
-      const noeud = rendreEntree(liste[i], surDeplier);
-      if (attente) attente.before(noeud);
-      else el.append(noeud);
-      rendus.push({ entree: liste[i], noeud });
+    attente?.remove();
+    if (groupeAttente) {
+      groupeAttente.el.remove();
+      groupeAttente = null;
     }
+    for (let i = rendus.length; i < liste.length; i++) {
+      const e = liste[i];
+      const noeud = rendreEntree(e, surDeplier);
+      let groupe = null;
+      if (e.auteur && e.type !== "utilisateur" && e.type !== "message") {
+        groupe = rendus.at(-1)?.groupe;
+        if (!memeAuteur(groupe?.auteur, e.auteur)) {
+          groupe = creerGroupe(e.auteur);
+          el.append(groupe.el);
+        }
+        groupe.corps.append(noeud);
+      } else {
+        el.append(noeud);
+      }
+      rendus.push({ entree: e, noeud, groupe });
+    }
+    const auteurAttente = enAttenteNouveau && typeof enAttenteNouveau === "object" ? enAttenteNouveau : null;
+    const cle = enAttenteNouveau ? JSON.stringify(auteurAttente) : "";
+    if (attente && cle !== cleAttente) attente = null;
     if (enAttenteNouveau && !attente) {
-      attente = indication({ texte: "L'agent travaille…", variante: "chargement" });
-      el.append(attente);
-    } else if (!enAttenteNouveau && attente) {
-      attente.remove();
+      attente = indication({ texte: auteurAttente ? `${auteurAttente.nom} travaille…` : "L'agent travaille…", variante: "chargement" });
+    } else if (!enAttenteNouveau) {
       attente = null;
+    }
+    cleAttente = cle;
+    if (attente && auteurAttente) {
+      let groupe = rendus.at(-1)?.groupe;
+      if (!memeAuteur(groupe?.auteur, auteurAttente)) {
+        groupe = groupeAttente = creerGroupe(auteurAttente);
+        el.append(groupe.el);
+      }
+      groupe.corps.append(attente);
+    } else if (attente) {
+      el.append(attente);
     }
     if (liste.length && blocVide) {
       blocVide.remove();

@@ -416,6 +416,10 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-chat { display: flex; flex-direction: column; gap: var(--space-3); position: relative; box-sizing: border-box; height: 100%; overflow: auto; padding: var(--space-2) var(--space-3); background: var(--bg-100); color: var(--ink); font: 13px/20px var(--font-sans); }
 .ya-chat:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
 .ya-chat > .ya-steps + .ya-steps { margin-top: -10px; }
+.ya-tour { display: flex; flex-direction: column; gap: 6px; }
+.ya-tour-tete { display: flex; align-items: center; gap: 8px; font: 600 12.5px/20px var(--font-sans); color: var(--ink); }
+.ya-tour-corps { display: flex; flex-direction: column; gap: var(--space-3); border-left: 2px solid var(--c); padding-left: 10px; }
+.ya-tour-corps > .ya-steps + .ya-steps { margin-top: -10px; }
 .ya-chat-vide { flex: 1; display: flex; align-items: center; justify-content: center; }
 .ya-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .ya-chat-user { background: var(--bg-300); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 6px var(--space-2); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
