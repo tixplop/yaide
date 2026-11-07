@@ -210,9 +210,9 @@ async function reglagesApres(chemin, options) {
 export const enregistrerProfil = (profil) => reglagesApres("/api/agent/profils", { method: "PUT", body: JSON.stringify(profil) });
 export const supprimerProfil = (id) => reglagesApres(`/api/agent/profils/${q(id)}`, { method: "DELETE" });
 
-/** Rend `{ conversation }`, `{ refus, provider }` (409), `{ cause, message }` ou `{ coupure: true }`. */
-export async function envoyerMessage({ conversation, profil, texte }) {
-  const corps = conversation ? { conversation, profil, texte } : { profil, texte };
+/** `agents` : dossiers des agents, au premier message d'une conversation avec agents. Rend `{ conversation }`, `{ refus, provider }` (409), `{ cause, message }` ou `{ coupure: true }`. */
+export async function envoyerMessage({ conversation, profil, agents, texte }) {
+  const corps = conversation ? { conversation, profil, texte } : agents ? { agents, texte } : { profil, texte };
   const r = await appeler("/api/agent/messages", { method: "POST", body: JSON.stringify(corps) });
   if (!r) return { coupure: true };
   if (r.ok) return r.json();

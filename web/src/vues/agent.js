@@ -1,4 +1,5 @@
 import * as apiReelle from "../api.js";
+import { avatar } from "../ui/avatar.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { conversation } from "../ui/conversation.js";
@@ -51,7 +52,7 @@ function texteReglagesIllisibles(erreur) {
 
 /**
  * V-007. `api` : `reglagesAgent`, `envoyerMessage`, `lireConversation`, `arreterConversation`, `listeConversations`.
- * Rend `{ corps, deplier(), focuser(), relireReglages(), detruire() }`.
+ * Rend `{ corps, deplier(), focuser(), relireReglages(), demarrerAvec(agents), detruire() }`.
  */
 export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } = {}) {
   const corps = document.createElement("div");
@@ -72,6 +73,9 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
   let generation = 0; // change avec la conversation : une relecture en retard est ignorée
   let minuteur = null;
   let detruite = false;
+  let equipe = null; // agents de la conversation (copie du serveur), ou null sans agent personnalisé
+  let actif = null; // dossier de l'agent dont c'est le tour
+  let dernierDossier = null; // dernier agent qui a répondu
 
   const profils = () => reglages?.profils ?? [];
   const defaut = () => profils().find((p) => p.defaut) ?? profils()[0];
@@ -85,6 +89,36 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
   const nouvelle = bouton({ icone: "message-square-plus", nomAccessible: "Nouvelle conversation", taille: "ligne" });
   const liste = bouton({ icone: "history", nomAccessible: "Conversations", taille: "ligne", ouvreMenu: true, desactive: true });
   entete.append(zoneTitre, nouvelle.enveloppe, liste.enveloppe);
+  const ligneAgents = document.createElement("div");
+  ligneAgents.className = "ya-agents";
+  ligneAgents.setAttribute("role", "list");
+  ligneAgents.setAttribute("aria-label", "Agents de la conversation");
+  ligneAgents.hidden = true;
+
+  const auteurDe = (dossier) => {
+    const a = equipe?.find((x) => x.dossier === dossier);
+    return a ? { nom: a.nom, avatar: a.avatar, couleur: a.couleur } : { nom: String(dossier), couleur: "violet" };
+  };
+  /** Chaque entrée d'un agent reçoit son auteur ; le dernier agent à répondre est retenu. */
+  function pourLeFilAgents(e) {
+    if (typeof e.auteur !== "string") return pourLeFil(e);
+    if (e.type === "agent") dernierDossier = e.auteur;
+    return pourLeFil({ ...e, auteur: auteurDe(e.auteur) });
+  }
+  function fixerEquipe(agents) {
+    equipe = Array.isArray(agents) && agents.length ? agents.map((a) => ({ ...a })) : null;
+    ligneAgents.hidden = !equipe;
+    ligneAgents.replaceChildren(
+      ...(equipe ?? []).map((a) => {
+        const item = document.createElement("span");
+        item.className = "a";
+        item.setAttribute("role", "listitem");
+        item.append(avatar(a), a.nom);
+        return item;
+      }),
+    );
+    dessinerProfils();
+  }
 
   // Fil.
   const vide = document.createElement("div");
@@ -116,11 +150,16 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
   const envoyer = bouton({ icone: "send-horizontal", nomAccessible: "Envoyer", infoBulle: "Envoyer (Entrée)", desactive: true });
   barre.append(compteur, arreter.enveloppe, envoyer.enveloppe);
   saisie.append(champMessage, barre);
-  corps.append(entete, fil, saisie);
+  corps.append(entete, ligneAgents, fil, saisie);
 
   const focuser = () => texteSaisi.focus();
 
   function dessinerProfils() {
+    if (equipe) {
+      champProfil?.remove();
+      champProfil = null;
+      return;
+    }
     if (!profils().some((p) => p.id === profilId)) profilId = defaut()?.id ?? null;
     const noms = profils().map((p) => p.nom);
     const nouveau = champ({
@@ -140,8 +179,15 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     champProfil = nouveau;
   }
 
+  /** Fenêtre du profil : celui de la conversation, ou avec des agents celui du dernier qui a répondu (sinon du premier). */
+  function fenetreCourante() {
+    if (!equipe) return profilCourant()?.fenetre;
+    const a = equipe.find((x) => x.dossier === dernierDossier) ?? equipe[0];
+    return (profils().find((p) => p.id === a.profil) ?? defaut())?.fenetre;
+  }
+
   function majCompteur() {
-    const fenetre = profilCourant()?.fenetre;
+    const fenetre = fenetreCourante();
     compteur.hidden = !fenetre;
     if (!fenetre) return;
     const dit = `${formaterTokens(tokens)} / ${formaterTokens(fenetre)}`;
@@ -189,7 +235,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
   }
 
   function majBoutons() {
-    envoyer.disabled = enCours || envoi || !profilCourant() || !texteSaisi.value.trim();
+    envoyer.disabled = enCours || envoi || !(equipe ? profils().length : profilCourant()) || !texteSaisi.value.trim();
     arreter.enveloppe.hidden = !enCours;
   }
 
@@ -197,7 +243,8 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     zoneTitre.textContent = titre || "Nouvelle conversation";
     zoneTitre.classList.toggle("vide", !titre);
     const dernier = entrees[entrees.length - 1];
-    fil.mettreAJour(entrees, enCours && !(dernier?.type === "outil" && dernier.etat === "enCours"));
+    const attend = enCours && !(dernier?.type === "outil" && dernier.etat === "enCours");
+    fil.mettreAJour(entrees, equipe ? attend && actif != null && auteurDe(actif) : attend);
     majCompteur();
     majBoutons();
   }
@@ -227,7 +274,9 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
       else planifier(gen);
       return;
     }
-    entrees = [...entrees.slice(0, depuis), ...r.entrees.map(pourLeFil)];
+    if (Array.isArray(r.agents) && r.agents.length && !equipe) fixerEquipe(r.agents);
+    actif = r.actif ?? null;
+    entrees = [...entrees.slice(0, depuis), ...r.entrees.map(pourLeFilAgents)];
     titre = r.titre ?? titre;
     tokens = r.tokens ?? tokens;
     enCours = Boolean(r.enCours);
@@ -247,7 +296,11 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     if (envoyer.disabled || !texte.trim()) return;
     envoi = true;
     majBoutons();
-    const r = await api.envoyerMessage({ conversation: convId, profil: profilId, texte });
+    const r = await api.envoyerMessage(
+      equipe && !convId
+        ? { agents: equipe.map((a) => a.dossier), texte }
+        : { conversation: convId, ...(equipe ? {} : { profil: profilId }), texte },
+    );
     envoi = false;
     if (detruite) return;
     if (!r?.conversation) {
@@ -265,6 +318,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     entrees = [...entrees, { type: "utilisateur", texte }];
     texteSaisi.value = "";
     enCours = true;
+    if (equipe) actif = equipe[0].dossier;
     afficher();
     focuser();
     clearTimeout(minuteur);
@@ -302,7 +356,10 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     convId = id;
     titre = r.titre ?? null;
     tokens = r.tokens ?? 0;
-    entrees = r.entrees.map(pourLeFil);
+    dernierDossier = null;
+    fixerEquipe(r.agents);
+    actif = r.actif ?? null;
+    entrees = r.entrees.map(pourLeFilAgents);
     enCours = Boolean(r.enCours);
     profilId = r.profil ?? null;
     effacerRefus();
@@ -345,7 +402,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
       surFermeture: () => {},
     });
   });
-  nouvelle.addEventListener("click", () => {
+  function viderConversation() {
     generation++;
     chargements++;
     clearTimeout(minuteur);
@@ -357,11 +414,14 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     tokens = 0;
     entrees = [];
     enCours = false;
+    actif = null;
+    dernierDossier = null;
     profilId = defaut()?.id ?? null;
-    dessinerProfils();
+    fixerEquipe(null);
     afficher();
     focuser();
-  });
+  }
+  nouvelle.addEventListener("click", viderConversation);
 
   majVide();
   afficher();
@@ -370,6 +430,13 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     corps,
     focuser,
     relireReglages,
+    /** Une conversation vide avec ces agents, gardée ici jusqu'au premier message (le serveur la crée alors). */
+    demarrerAvec(agents) {
+      viderConversation();
+      fixerEquipe(agents);
+      afficher();
+      focuser();
+    },
     // Au dépliage : liste et réglages relus, conversation gardée restaurée la première fois.
     deplier() {
       majListe();

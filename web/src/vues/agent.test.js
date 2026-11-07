@@ -543,3 +543,174 @@ test("profil_supprime_prend_le_defaut", async () => {
   await tick(0);
   expect(vue.corps.querySelector("select").value).toBe("sonnet");
 });
+
+// --- Conversation avec des agents (REQ-067) ---
+const RELECTEUR = { dossier: "relecteur", nom: "Relecteur", avatar: "🦉", couleur: "vert", profil: "p1" };
+const TESTEUR = { dossier: "testeur", nom: "Testeur", avatar: "", couleur: "orange", profil: "p2" };
+const AGENTS = () => [RELECTEUR, TESTEUR];
+const ligne = (vue) => vue.corps.querySelector("[aria-label='Agents de la conversation']");
+const profilListe = (vue) => vue.corps.querySelector("select");
+const FENETRE = { ...RAPIDE, fenetre: 1048576 };
+
+test("REQ067_AC1_AC15_demarrer_ligne_des_agents_sans_profil_focus", async () => {
+  const { vue } = await monter();
+  expect(ligne(vue).hidden).toBe(true);
+  expect(profilListe(vue)).not.toBeNull();
+  vue.demarrerAvec(AGENTS());
+  expect(ligne(vue).hidden).toBe(false);
+  expect(ligne(vue).getAttribute("role")).toBe("list");
+  expect([...ligne(vue).querySelectorAll("[role=listitem]")].map((i) => i.textContent)).toEqual(["🦉Relecteur", "TTesteur"]);
+  expect(profilListe(vue)).toBeNull();
+  expect(vue.corps.querySelector(".agent-titre").textContent).toBe("Nouvelle conversation");
+  expect(fil(vue).textContent).toContain("Écrivez un message pour commencer.");
+  expect(document.activeElement).toBe(champ(vue));
+  // Hors de l'en-tête : la ligne suit le titre.
+  expect(vue.corps.querySelector(".agent-entete").nextElementSibling).toBe(ligne(vue));
+});
+
+test("REQ067_premier_envoi_porte_les_agents_puis_la_conversation", async () => {
+  const { vue, api } = await monter({ lectures: [{ entrees: [], enCours: true, total: 1, tokens: 0 }] });
+  vue.demarrerAvec(AGENTS());
+  taper(vue, "Relisez");
+  expect(envoyer(vue).disabled).toBe(false);
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(api.envoyerMessage).toHaveBeenLastCalledWith({ agents: ["relecteur", "testeur"], texte: "Relisez" });
+});
+
+test("REQ067_second_envoi_porte_la_conversation_sans_profil", async () => {
+  const { vue, api } = await monter();
+  vue.demarrerAvec(AGENTS());
+  taper(vue, "un");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  await tick(500);
+  taper(vue, "deux");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(api.envoyerMessage).toHaveBeenLastCalledWith({ conversation: "c1", texte: "deux" });
+});
+
+test("REQ067_AC6_AC17_auteurs_et_travaille_selon_actif", async () => {
+  const { vue, api } = await monter({
+    lectures: [
+      { agents: AGENTS(), actif: "relecteur", entrees: [], enCours: true, total: 1, tokens: 0 },
+      {
+        agents: AGENTS(),
+        actif: "testeur",
+        entrees: [
+          { type: "utilisateur", texte: "Relisez" },
+          { type: "agent", texte: "Tout va bien.", auteur: "relecteur" },
+        ],
+        enCours: true,
+        total: 3,
+        tokens: 0,
+      },
+    ],
+  });
+  vue.demarrerAvec(AGENTS());
+  taper(vue, "Relisez");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  // Avant la première lecture : le premier agent travaille, dans son groupe.
+  let groupes = [...fil(vue).querySelectorAll("[role=group]")];
+  expect(groupes.map((g) => g.getAttribute("aria-label"))).toEqual(["Relecteur"]);
+  expect(groupes[0].querySelector("[role=status]").textContent).toBe("Relecteur travaille…");
+  await tick(500);
+  await tick(500);
+  groupes = [...fil(vue).querySelectorAll("[role=group]")];
+  expect(groupes.map((g) => g.getAttribute("aria-label"))).toEqual(["Relecteur", "Testeur"]);
+  expect(groupes[0].querySelector("[role=status]")).toBeNull();
+  expect(groupes[0].textContent).toContain("Relecteur : Tout va bien.");
+  expect(groupes[0].querySelector(".ya-tour-corps").style.getPropertyValue("--c")).toBe("var(--agent-vert)");
+  expect(groupes[1].querySelector("[role=status]").textContent).toBe("Testeur travaille…");
+  expect(fil(vue).textContent).not.toContain("L'agent travaille");
+  expect(api.lireConversation).toHaveBeenCalled();
+});
+
+test("REQ067_AC10_nouvelle_conversation_sans_agent_avec_profil", async () => {
+  const { vue } = await monter();
+  vue.demarrerAvec(AGENTS());
+  expect(profilListe(vue)).toBeNull();
+  vue.corps.querySelector("[aria-label='Nouvelle conversation']").click();
+  expect(ligne(vue).hidden).toBe(true);
+  expect(profilListe(vue)).not.toBeNull();
+  expect(profilListe(vue).value).toBe("sonnet");
+});
+
+test("REQ067_AC11_AC12_reouverture_avec_la_copie_des_agents", async () => {
+  vi.mocked(lire).mockResolvedValue({ conversation: "c9" });
+  const copie = [{ ...RELECTEUR, couleur: "rose" }, TESTEUR];
+  const { vue } = await monter({
+    lectures: [
+      {
+        titre: "Relisez",
+        agents: copie,
+        actif: "testeur",
+        entrees: [
+          { type: "utilisateur", texte: "Relisez" },
+          { type: "agent", texte: "Bien.", auteur: "relecteur" },
+          { type: "outil", id: "o", nom: "bash", argument: "ls", etat: "reussi", resultat: "", auteur: "testeur" },
+        ],
+        enCours: true,
+        total: 3,
+        tokens: 0,
+      },
+    ],
+  });
+  expect(ligne(vue).hidden).toBe(false);
+  expect(profilListe(vue)).toBeNull();
+  expect(ligne(vue).querySelector(".ya-avatar").style.getPropertyValue("--c")).toBe("var(--agent-rose)");
+  const groupes = [...fil(vue).querySelectorAll("[role=group]")];
+  expect(groupes.map((g) => g.getAttribute("aria-label"))).toEqual(["Relecteur", "Testeur"]);
+  expect(groupes[0].querySelector(".ya-tour-corps").style.getPropertyValue("--c")).toBe("var(--agent-rose)");
+  expect(groupes[1].querySelector("[role=status]").textContent).toBe("Testeur travaille…");
+  expect(groupes[1].querySelector("[aria-label='bash ls, réussi']")).not.toBeNull();
+});
+
+test("REQ067_AC18_compteur_du_dernier_agent", async () => {
+  const { vue } = await monter({
+    profils: [SONNET, FENETRE],
+    lectures: [
+      { agents: AGENTS(), actif: "testeur", entrees: [{ type: "agent", texte: "Bien.", auteur: "relecteur" }], enCours: true, total: 1, tokens: 12000 },
+      { agents: AGENTS(), actif: null, entrees: [{ type: "agent", texte: "Bien.", auteur: "relecteur" }, { type: "agent", texte: "Ok.", auteur: "testeur" }], enCours: false, total: 2, tokens: 5000 },
+    ],
+  });
+  vue.demarrerAvec(AGENTS());
+  expect(compteur(vue).textContent).toBe("0 / 200 k");
+  taper(vue, "x");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  await tick(500);
+  expect(compteur(vue).textContent).toBe("12 k / 200 k");
+  await tick(500);
+  expect(compteur(vue).textContent).toBe("5 k / 1 M");
+});
+
+test("REQ067_AC18_pas_de_compteur_sans_fenetre", async () => {
+  const { vue } = await monter({ profils: [{ ...SONNET, fenetre: undefined }, RAPIDE] });
+  vue.demarrerAvec(AGENTS());
+  expect(compteur(vue).hidden).toBe(true);
+  // Profil supprimé : le profil par défaut.
+  vue.demarrerAvec([{ ...RELECTEUR, profil: "disparu" }]);
+  expect(compteur(vue).hidden).toBe(true);
+});
+
+test("REQ067_AC9_refus_sans_cle_au_nom_du_provider", async () => {
+  const { vue } = await monter({ envoi: { refus: "sans-cle", provider: "Anthropic" } });
+  vue.demarrerAvec(AGENTS());
+  taper(vue, "x");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(vue.corps.querySelector("[role=alert]").textContent).toContain("Aucune clé pour Anthropic. Ajoutez-la avec Ctrl+P, puis > Providers LLM.");
+  expect(champ(vue).value).toBe("x");
+  expect(fil(vue).textContent).not.toContain("x");
+});
+
+test("REQ067_AC15_ordre_de_tab_sans_profil", async () => {
+  const { vue } = await monter({ envoi: { refus: "contexte-plein" } });
+  vue.demarrerAvec(AGENTS());
+  const nom = (e) => e.getAttribute("aria-label") ?? e.labels?.[0]?.textContent ?? e.textContent;
+  const tabulables = [...vue.corps.querySelectorAll("button, textarea, select, a[href], [tabindex='0']")].map(nom);
+  expect(tabulables).toEqual(["Nouvelle conversation", "Conversations", "Conversation", "Message à l'agent", "Arrêter", "Envoyer"]);
+});
