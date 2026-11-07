@@ -585,6 +585,7 @@ body { margin: 0; }
 .editeur-code { height: 100%; min-height: 0; }
 .claude { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .claude > .terminal { flex: 1 1 0; height: auto; }
+.claude[hidden] { display: none; }
 .fichiers { box-sizing: border-box; min-height: 100%; display: flex; flex-direction: column; }
 .fichiers[hidden] { display: none; }
 .fichiers-entete[hidden] { display: none; }
