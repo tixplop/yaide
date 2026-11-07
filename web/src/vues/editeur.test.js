@@ -785,3 +785,19 @@ test("REQ070_AC6_onglets_claude_gardes_caches_puis_rendus", async () => {
   vi.doUnmock("../onglets-fichiers.js");
   vi.resetModules();
 });
+
+test("REQ018_brouillon_garde_identique_au_disque_n_est_ni_modifie_ni_en_conflit", async () => {
+  vi.resetModules();
+  const gardee = [{ chemin: "a.txt", texte: "sur le disque", base: "ancien", version: "1" }];
+  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder: vi.fn(), retrouver: async () => ({ liste: gardee, actif: "a.txt" }) }));
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, headers: new Headers({ "x-version": "2" }), text: async () => "sur le disque" })));
+  const { vueEditeur: neuf } = await import("./editeur.js");
+  const e = neuf({ dire: vi.fn() });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  await e.restaurer();
+  expect(onglet("a.txt").getAttribute("aria-label")).toBe("a.txt");
+  expect(document.body.textContent).not.toContain("Quelle version garder ?");
+  vi.doUnmock("../onglets-fichiers.js");
+  vi.resetModules();
+});

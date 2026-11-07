@@ -745,7 +745,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       let o;
       if (decision === "creer") {
         // Un brouillon garde sa version de base : si le disque a changé pendant l'absence, la question est posée.
-        const brouillon = typeof g.texte === "string" && typeof g.base === "string" && typeof g.version === "string";
+        const brouillon = typeof g.texte === "string" && typeof g.base === "string" && typeof g.version === "string" && g.texte !== r.contenu;
         o = creer({ chemin: g.chemin, contenu: brouillon ? g.base : r.contenu, version: brouillon ? g.version : r.version, texte: g.texte, apercu, hybride });
       } else if (decision === "recreer") o = creer({ chemin: g.chemin, contenu: "", texte: g.texte, apercu, hybride });
       if (o) aVerifier.push([o, r]);

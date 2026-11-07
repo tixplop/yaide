@@ -93,6 +93,24 @@ Si la commande `claude` (Claude Code) est dans le `PATH` du serveur au moment o�
 - La session s'arrête quand vous fermez son onglet, et toutes les sessions s'arrêtent avec Yaide.
 - Dans un onglet Claude, les raccourcis de Yaide (Ctrl+P, Ctrl+S) vont à Claude Code. Ctrl+Maj+F ramène le focus sur le rail.
 
+## Réglages de l'interface
+
+Le fichier `.yaide/interface.json` du projet règle l'interface. Yaide le lit, mais ne le crée ni ne l'écrit jamais : écrivez-le vous-même, dans l'éditeur de Yaide ou ailleurs. Il a deux parties, toutes deux facultatives, comme chacune de leurs clés.
+
+- `replis` : l'état à l'ouverture. `true` veut dire replié, `false` déplié. Clés : `panneau` (le panneau de gauche), `shells` (la zone des shells), `agent` (la colonne de droite). Une clé présente l'emporte sur l'état gardé dans le navigateur ; une clé absente ne change rien.
+- `fonctions` : les fonctions de l'interface. `false` désactive, `true` ou une clé absente laisse active. Clés : `recherche`, `git`, `shells`, `agents`, `claude`. L'arborescence, l'éditeur, l'ouverture rapide et le thème sont toujours là.
+
+```json
+{
+  "replis": { "panneau": true, "shells": false, "agent": false },
+  "fonctions": { "git": false, "agents": false }
+}
+```
+
+- **Rechargement.** Le fichier est lu à chaque ouverture ou rechargement de la page, sans relancer Yaide.
+- **Fichier illisible.** Un fichier qui n'est pas du JSON de cette forme (clé inconnue, valeur qui n'est pas `true` ou `false`) est ignoré en entier, et un message vous le dit au-dessus des onglets.
+- **Fonction désactivée.** Elle n'est qu'absente de l'interface : boutons, panneaux, touches et menus disparaissent, mais rien ne s'arrête et le serveur ne change pas. Les shells ouverts continuent de tourner et reviennent quand la fonction est réactivée ; les conversations, les agents et les réglages de `.yaide/` restent.
+
 ## Raccourcis
 
 | Raccourci | Où | Effet |
