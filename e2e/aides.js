@@ -29,10 +29,11 @@ export function depotExemple(nom = "projet") {
   return dossier;
 }
 
+let dossiersSansClaude;
 /** `PATH` donné à Yaide : celui de la machine sans dossier qui contient un `claude`, et `claude` (dossier d'un faux `claude`) en tête s'il est donné. */
 function pathSansClaude(claude) {
-  const dossiers = (process.env.PATH ?? "").split(path.delimiter).filter((d) => d && !fs.existsSync(path.join(d, "claude")));
-  return (claude ? [claude, ...dossiers] : dossiers).join(path.delimiter);
+  dossiersSansClaude ??= (process.env.PATH ?? "").split(path.delimiter).filter((d) => d && !fs.existsSync(path.join(d, "claude")));
+  return (claude ? [claude, ...dossiersSansClaude] : dossiersSansClaude).join(path.delimiter);
 }
 
 /** Lance Yaide sur un port libre (ou `port`). `claude` : dossier d'un faux `claude`, sinon aucun `claude` dans le `PATH`. Rend `{ origine, port, dossier, arreter, relancer }`. */
@@ -158,12 +159,20 @@ export async function survoler(page, cible, { bas = false } = {}) {
 }
 export const lacher = (page) => page.mouse.up();
 
-/** Fait avancer l'horloge de la page (installée avant l'ouverture) jusqu'à ce que `attente` réussisse. */
-export async function avancer(page, attente, { pas = 1500, timeout = 10000 } = {}) {
+/** Fait avancer l'horloge de la page (installée avant l'ouverture) jusqu'à ce que `attente` réussisse. `limite` (ms de temps de la page) : l'attente doit avoir réussi quand ce temps est écoulé. */
+export async function avancer(page, attente, { pas = 1500, timeout = 10000, limite } = {}) {
+  const debut = limite === undefined ? 0 : await page.evaluate(() => Date.now());
+  let echec;
   await expect(async () => {
     await page.clock.fastForward(pas);
-    await attente();
+    try {
+      await attente();
+    } catch (e) {
+      if (limite === undefined || (await page.evaluate(() => Date.now())) - debut < limite) throw e;
+      echec = e;
+    }
   }).toPass({ timeout });
+  if (echec) throw echec;
 }
 
 /** Témoin : un chemin sous TMPDIR, hors du projet. `attendre(t, suite)` donne une commande qui attend qu'il existe ; le test le crée au moment voulu. */

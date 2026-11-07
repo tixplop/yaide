@@ -32,74 +32,80 @@ const taper = async (page, commande) => {
   await page.keyboard.type(commande);
   await page.keyboard.press("Enter");
 };
-const A_PEINE = { timeout: 5000 };
 
 test("REQ045_AC1_un_fichier_cree_ou_supprime_dans_un_shell_apparait_ou_disparait_dossier_deplie_compris", async ({ page }) => {
+  await page.clock.install();
   await ouvrir(page);
   await ligne(page, "src").click();
   await expect(ligne(page, "main.rs")).toBeVisible();
+  const dossier = yaide.dossier;
   await taper(page, "touch nouveau.txt src/lib.rs");
-  await expect(async () => {
+  await expect.poll(() => fs.existsSync(path.join(dossier, "src", "lib.rs"))).toBe(true);
+  await avancer(page, async () => {
     await expect(ligne(page, "nouveau.txt")).toBeVisible({ timeout: 500 });
     await expect(ligne(page, "lib.rs")).toBeVisible({ timeout: 500 });
-  }).toPass(A_PEINE);
+  }, { pas: 1000, limite: 5000 });
   await taper(page, "rm nouveau.txt src/lib.rs");
-  await expect(async () => {
+  await expect.poll(() => fs.existsSync(path.join(dossier, "src", "lib.rs"))).toBe(false);
+  await avancer(page, async () => {
     await expect(ligne(page, "nouveau.txt")).toHaveCount(0, { timeout: 500 });
     await expect(ligne(page, "lib.rs")).toHaveCount(0, { timeout: 500 });
-  }).toPass(A_PEINE);
+  }, { pas: 1000, limite: 5000 });
 });
 
 test("REQ045_AC2_un_fichier_ouvert_modifie_hors_de_Yaide_porte_M_son_onglet_prend_la_couleur_de_M_et_le_compteur_change", async ({ page }) => {
+  await page.clock.install();
   const dossier = await ouvrir(page);
   await ligne(page, "src").click();
   await ligne(page, "main.rs").click();
   const onglet = page.getByRole("tab", { name: /^main\.rs/ });
   await expect(onglet).toBeVisible();
   fs.appendFileSync(path.join(dossier, "src", "main.rs"), "// plus\n");
-  await expect(async () => {
+  await avancer(page, async () => {
     await expect(ligne(page, "main.rs").locator(".liste-statut")).toHaveText("M", { timeout: 500 });
     await expect(page.locator(".onglet-statut-M")).toBeVisible({ timeout: 500 });
     await expect(rail(page, "Git").locator(".ya-badge")).toHaveText("1", { timeout: 500 });
-  }).toPass(A_PEINE);
+  }, { pas: 1000, limite: 5000 });
   // Panneau Git affiché : le compteur suit aussi.
   await rail(page, "Git").click();
   fs.writeFileSync(path.join(dossier, "README.md"), "# Autre\n");
-  await expect(async () => {
+  await avancer(page, async () => {
     await expect(rail(page, "Git").locator(".ya-badge")).toHaveText("2", { timeout: 500 });
-  }).toPass(A_PEINE);
+  }, { pas: 1000, limite: 5000 });
 });
 
 test("REQ045_AC3_git_switch_puis_git_add_suivent_sans_changer_de_panneau", async ({ page }) => {
+  await page.clock.install();
   const dossier = await ouvrir(page);
   fs.writeFileSync(path.join(dossier, "neuf.txt"), "x\n");
   await rail(page, "Git").click();
   const changements = page.getByRole("listbox", { name: "Changements" });
   await expect(changements.getByRole("option", { name: nomLigne("neuf.txt") })).toBeVisible();
   g(dossier, "switch", "-c", "essai");
-  await expect(async () => {
+  await avancer(page, async () => {
     await expect(barre(page)).toContainText("essai", { timeout: 500 });
     await expect(page.getByRole("combobox", { name: "Branche" })).toHaveValue("essai", { timeout: 500 });
-  }).toPass(A_PEINE);
+  }, { pas: 1000, limite: 5000 });
   g(dossier, "add", "neuf.txt");
-  await expect(async () => {
+  await avancer(page, async () => {
     await expect(page.locator(".liste-groupe", { hasText: "Modifications indexées" })).toBeVisible({ timeout: 500 });
-  }).toPass(A_PEINE);
+  }, { pas: 1000, limite: 5000 });
   await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
 });
 
 test("REQ045_AC4_git_init_dans_un_dossier_sans_depot_remplace_le_message_par_la_branche", async ({ page }) => {
   const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR ?? ".test-data", "sansgit-"));
   fs.writeFileSync(path.join(dossier, "a.txt"), "a\n");
+  await page.clock.install();
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
   await ouvrirYaide(page, yaide.origine);
   await rail(page, "Git").click();
   await expect(page.getByText("Ce dossier n'est pas un dépôt git.")).toBeVisible();
   g(dossier, "init", "-q", "-b", "principale");
-  await expect(async () => {
+  await avancer(page, async () => {
     await expect(page.getByText("Ce dossier n'est pas un dépôt git.")).toHaveCount(0, { timeout: 500 });
     await expect(page.getByRole("combobox", { name: "Branche" })).toBeVisible({ timeout: 500 });
-  }).toPass(A_PEINE);
+  }, { pas: 1000, limite: 5000 });
 });
 
 test("REQ045_AC5_le_defilement_de_l_arbre_et_la_frappe_dans_le_terminal_ne_sont_pas_derangees", async ({ page }) => {
