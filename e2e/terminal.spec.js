@@ -37,7 +37,7 @@ async function ouvrir(page) {
     window.envoyes = [];
     const flux = Object.assign(new EventTarget(), { send: (d) => window.envoyes.push(d) });
     window.flux = flux;
-    document.getElementById("h").append(window.terminal({ flux, numero: 1 }));
+    document.getElementById("h").append(window.terminal({ flux, nom: "Shell 1" }));
   });
 }
 

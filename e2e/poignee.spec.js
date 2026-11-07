@@ -16,7 +16,7 @@ import { borner, limites } from ${JSON.stringify(resolve("web/src/ui/poignee.js"
 window.monter = (avecTailles = true) => {
   window.tailles = [];
   window.fins = [];
-  const t = terminal({ flux: Object.assign(new EventTarget(), { send() {} }), numero: 1, surTaille: (c, l) => window.tailles.push([c, l]) });
+  const t = terminal({ flux: Object.assign(new EventTarget(), { send() {} }), nom: "Shell 1", surTaille: (c, l) => window.tailles.push([c, l]) });
   const code = document.createElement("div");
   code.textContent = "code";
   const choisies = avecTailles ? { panneau: 240, shells: 200 } : {};
