@@ -369,13 +369,12 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre-principal { background: var(--bg-200); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .cadre-bandeaux, .cadre-onglets, .cadre-question, .cadre-fil { flex: 0 0 auto; }
 .cadre-code { flex: 1 1 0; min-height: 0; container-type: size; }
-/* Session opencode (C-010) : conversation qui défile seule, puis demandes et saisie sous un filet. Hauteur trop petite : l'éditeur défile. */
-.cadre-code:has(> .session) { overflow-y: auto; }
-.session { box-sizing: border-box; display: flex; flex-direction: column; min-height: 100%; background: var(--bg-200); }
+/* Session opencode (C-010) : conversation qui défile seule, puis demandes et saisie sous un filet ; hauteur trop petite : les demandes défilent, la saisie reste entière. */
+.session { box-sizing: border-box; display: flex; flex-direction: column; height: 100%; background: var(--bg-200); }
 .session[hidden] { display: none; }
 .session-conversation { flex: 1 1 0; min-height: 0; overflow-y: auto; }
-.session-bas { flex: none; border-top: var(--trait) solid var(--line); padding: var(--space-2) 0 var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
-.session-attentes { max-height: 50cqh; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); }
+.session-bas { flex: 0 1 auto; min-height: 0; border-top: var(--trait) solid var(--line); padding: var(--space-2) 0 var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.session-attentes { flex: 0 1 auto; min-height: 0; max-height: 50cqh; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); }
 .session-saisie { display: flex; flex-direction: column; gap: var(--space-2); }
 .session-saisie .agent-barre { justify-content: flex-end; }
 .session-saisie .agent-barre .ya-barre { flex: 0 1 auto; }

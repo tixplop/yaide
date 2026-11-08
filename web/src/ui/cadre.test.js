@@ -644,23 +644,22 @@ test("REQ072_AC21_session_largeur_max_centree", () => {
   const session = regle(".session");
   expect(session).toContain("display: flex");
   expect(session).toContain("flex-direction: column");
-  expect(session).toContain("min-height: 100%");
+  expect(session).toContain("height: 100%");
   expect(session).toContain("background: var(--bg-200)");
-  // La conversation défile seule et descend jusqu'à 0 ; le reste ne rétrécit pas.
+  // La conversation défile seule et descend jusqu'à 0 ; le reste ne grandit pas et rétrécit avant la saisie (les demandes défilent).
   expect(regle(".session-conversation")).toMatch(/flex: 1 1 0;.*min-height: 0;.*overflow-y: auto/);
   const bas = regle(".session-bas");
-  expect(bas).toContain("flex: none");
+  expect(bas).toMatch(/flex: 0 1 auto;\s*min-height: 0/);
   expect(bas).toContain("border-top: var(--trait) solid var(--line)");
   // Demandes : la moitié de la hauteur de l'éditeur au plus, puis défilement.
-  expect(regle(".session-attentes")).toMatch(/max-height: 50cqh;.*overflow-y: auto/);
+  expect(regle(".session-attentes")).toMatch(/flex: 0 1 auto;\s*min-height: 0;\s*max-height: 50cqh;.*overflow-y: auto/);
   expect(regle(".cadre-code")).toContain("container-type: size");
   // Contenu : 720 px au plus, centré, marges de --space-3.
   const contenu = regle(".session-contenu");
   expect(contenu).toContain("max-width: calc(var(--largeur-session) + 2 * var(--space-3))");
   expect(contenu).toContain("margin-inline: auto");
   expect(contenu).toContain("padding-inline: var(--space-3)");
-  // Hauteur trop petite : l'éditeur défile, pas la page.
-  expect(regle(".cadre-code:has(> .session)")).toContain("overflow-y: auto");
+  // Hauteur trop petite : la session garde la hauteur de l'éditeur, la page ne défile pas.
   // Une session posée dans le cadre remplace l'éditeur, sans toucher à la page.
   const s = document.createElement("div");
   s.className = "session";

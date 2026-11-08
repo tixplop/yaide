@@ -57,16 +57,23 @@ const donneesSession = (s) => ({
 
 // Modèles de P-038 (REQ-074), plus un modèle inactif.
 const MODELES = [
-  { id: "claude-sonnet-4-5", providerID: "anthropic", name: "Claude Sonnet 4.5", enabled: true, variants: [{ id: "low" }, { id: "high" }, { id: "max" }] },
-  { id: "gpt-5", providerID: "openai", name: "GPT-5", enabled: true, variants: [{ id: "low" }, { id: "medium" }, { id: "high" }] },
-  { id: "claude-sonnet-4-5", providerID: "openrouter", name: "Claude Sonnet 4.5", enabled: true, variants: [] },
-  { id: "cache", providerID: "anthropic", name: "Caché", enabled: false, variants: [] },
+  { id: "claude-sonnet-4-5", providerID: "anthropic", name: "Claude Sonnet 4.5", enabled: true, variants: [{ id: "low" }, { id: "high" }, { id: "max" }], limit: { context: 200000, output: 64000 } },
+  { id: "gpt-5", providerID: "openai", name: "GPT-5", enabled: true, variants: [{ id: "low" }, { id: "medium" }, { id: "high" }], limit: { context: 400000, output: 128000 } },
+  { id: "claude-sonnet-4-5", providerID: "openrouter", name: "Claude Sonnet 4.5", enabled: true, variants: [], limit: { context: 0, output: 0 } },
+  { id: "cache", providerID: "anthropic", name: "Caché", enabled: false, variants: [], limit: { context: 0, output: 0 } },
 ];
 
 /** Le relevé du scénario, ses identifiants réécrits : ceux de la session racine sont donnés, les autres sont neufs. */
 function lireScenario(nom, racine, directory) {
-  const brut = fs.readFileSync(path.join(CAPTURES, `${nom}.json`), "utf8");
-  const doc = JSON.parse(brut);
+  // `contexte` et `depasse` : le relevé `texte`, avec les tokens d'AC-076-1 (15 000 en tout) ou 210 000 (AC-076-8) sur la réponse et sur la fin du pas.
+  const relevé = fs.readFileSync(path.join(CAPTURES, `${/^(contexte|depasse)$/.test(nom) ? "texte" : nom}.json`), "utf8");
+  const doc = JSON.parse(relevé);
+  if (nom === "contexte" || nom === "depasse") {
+    const tokens = nom === "contexte" ? { input: 10000, output: 1500, reasoning: 500, cache: { read: 3000, write: 0 } } : { input: 200000, output: 5000, reasoning: 0, cache: { read: 5000, write: 0 } };
+    for (const liste of Object.values(doc.messages)) for (const m of liste.data) if (m.type === "assistant") m.tokens = tokens;
+    for (const ev of doc.evenements) if (ev.type === "session.step.ended") ev.data.tokens = tokens;
+  }
+  const brut = JSON.stringify(doc);
   const ids = new Map([[doc.racine, racine]]);
   const capture = doc.session.data.location.directory;
   const texte = brut.split(JSON.stringify(capture).slice(1, -1)).join(JSON.stringify(directory).slice(1, -1));
@@ -214,7 +221,7 @@ function gerer(req, res, chemin, url) {
     } else if (req.method === "GET" && chemin === "/api/model") {
       json(res, 200, { data: MODELES });
     } else if (req.method === "GET" && chemin === "/api/model/default") {
-      json(res, 200, { data: { id: "claude-sonnet-4-5", providerID: "anthropic" } });
+      json(res, 200, { data: { id: "claude-sonnet-4-5", providerID: "anthropic", limit: { context: 200000, output: 64000 } } });
     } else if (req.method === "POST" && chemin === "/api/session") {
       const id = `ses_n${Date.now().toString(36)}${Object.keys(sessions).length}`;
       sessions[id] = { id, title: "", directory: corps.location?.directory ?? process.cwd(), messages: [], permissions: [], forms: [] };

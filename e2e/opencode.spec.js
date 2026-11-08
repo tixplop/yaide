@@ -59,6 +59,59 @@ async function envoyer(page, texte) {
   await page.keyboard.press("Enter");
 }
 
+/**
+ * Règle l'éditeur à `cible` px de large (la fenêtre jusqu'à 800 px, le reste à la poignée de l'agent), puis mesure la
+ * barre de la zone de saisie. À appeler panneau replié et agent déplié.
+ */
+async function mesurerBarre(page, cible) {
+  const principal = page.locator("main.cadre-principal");
+  for (let i = 0; i < 4; i++) {
+    const w = (await principal.boundingBox()).width;
+    if (Math.abs(w - cible) < 1) break;
+    const v = page.viewportSize();
+    const largeur = Math.max(800, Math.round(v.width + cible - w));
+    if (largeur !== v.width) {
+      await page.setViewportSize({ width: largeur, height: v.height });
+      continue;
+    }
+    const p = await page.getByRole("separator", { name: "Largeur de l'agent" }).boundingBox();
+    const x = p.x + p.width / 2;
+    const y = p.y + p.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - (w - cible), y, { steps: 4 });
+    await page.mouse.up();
+  }
+  expect(Math.abs((await principal.boundingBox()).width - cible), `éditeur à ${cible}, fenêtre ${page.viewportSize().width}`).toBeLessThan(1);
+  return page.evaluate(() => {
+    const barre = [...document.querySelectorAll(".session-saisie")].find((e) => e.offsetParent).lastElementChild;
+    const rect = (e) => {
+      const r = e.getBoundingClientRect();
+      return { x: r.x, y: r.y, droite: r.right, bas: r.bottom, largeur: r.width, hauteur: r.height };
+    };
+    const bouton = (nom) => [...barre.querySelectorAll("button")].find((x) => x.getAttribute("aria-label") === nom);
+    const entier = (e) => e.getBoundingClientRect().width > 0 && e.scrollWidth <= e.clientWidth;
+    const compteur = barre.querySelector(".agent-compteur");
+    const [m, e] = [...barre.querySelectorAll("select")].map((x) => x.getBoundingClientRect());
+    const envoyer = bouton("Envoyer");
+    const arreter = bouton("Arrêter");
+    const visible = compteur && !compteur.hidden;
+    return {
+      deborde: barre.scrollWidth > barre.clientWidth,
+      envoyer: entier(envoyer),
+      arreter: entier(arreter),
+      compteurEntier: visible ? entier(compteur) : null,
+      modele: m.width,
+      effort: e.width,
+      barre: rect(barre),
+      rEnvoyer: rect(envoyer),
+      rArreter: rect(arreter),
+      rEffort: rect(barre.querySelectorAll("select")[1]),
+      rCompteur: visible ? rect(compteur) : null,
+    };
+  });
+}
+
 test("REQ072_parcours_36_tache_et_sous_agent", async ({ page }) => {
   await page.clock.install();
   const dossier = depotExemple();
@@ -340,37 +393,7 @@ test("REQ074_parcours_38_choix_recharge_et_largeurs", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Arrêter" })).toBeVisible();
   await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
   await page.getByRole("button", { name: "Agent", exact: true }).click();
-  const principal = page.locator("main.cadre-principal");
-  const mesurer = async (cible) => {
-    // La fenêtre se règle jusqu'à 800 px (en dessous, la mise en page change) ; le reste se prend à la poignée de l'agent.
-    for (let i = 0; i < 4; i++) {
-      const w = (await principal.boundingBox()).width;
-      if (Math.abs(w - cible) < 1) break;
-      const v = page.viewportSize();
-      const largeur = Math.max(800, Math.round(v.width + cible - w));
-      if (largeur !== v.width) {
-        await page.setViewportSize({ width: largeur, height: v.height });
-        continue;
-      }
-      const p = await page.getByRole("separator", { name: "Largeur de l'agent" }).boundingBox();
-      const x = p.x + p.width / 2;
-      const y = p.y + p.height / 2;
-      await page.mouse.move(x, y);
-      await page.mouse.down();
-      await page.mouse.move(x - (w - cible), y, { steps: 4 });
-      await page.mouse.up();
-    }
-    expect(Math.abs((await principal.boundingBox()).width - cible), `éditeur à ${cible}, fenêtre ${page.viewportSize().width}`).toBeLessThan(1);
-    return page.evaluate(() => {
-      const barre = document.querySelector(".session-saisie").lastElementChild;
-      const entier = (nom) => {
-        const b = [...barre.querySelectorAll("button")].find((x) => x.getAttribute("aria-label") === nom);
-        return b.getBoundingClientRect().width > 0 && b.scrollWidth <= b.clientWidth;
-      };
-      const [m, e] = [...barre.querySelectorAll("select")].map((x) => x.getBoundingClientRect().width);
-      return { deborde: barre.scrollWidth > barre.clientWidth, envoyer: entier("Envoyer"), arreter: entier("Arrêter"), modele: m, effort: e };
-    });
-  };
+  const mesurer = (cible) => mesurerBarre(page, cible);
   const mesures = {};
   for (const cible of [720, 460, 320]) {
     const m = (mesures[cible] = await mesurer(cible));
@@ -378,7 +401,127 @@ test("REQ074_parcours_38_choix_recharge_et_largeurs", async ({ page }) => {
     expect(m.envoyer, `Envoyer à ${cible}`).toBe(true);
     expect(m.arreter, `Arrêter à ${cible}`).toBe(true);
   }
-  expect(Math.abs(mesures[460].effort - 104)).toBeLessThan(1);
-  expect(Math.abs(mesures[720].effort - 104)).toBeLessThan(1);
+  expect(Math.abs(mesures[460].effort - 104)).toBeLessThanOrEqual(0.151); // écart de 0,15 px signalé au design
+  expect(Math.abs(mesures[720].effort - 104)).toBeLessThanOrEqual(0.151);
   expect(mesures[460].modele).toBeLessThan(mesures[720].modele - 1);
+});
+
+test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page }) => {
+  const dossier = depotExemple();
+  const opencode = fauxOpencode("texte");
+  yaide = await lancerYaide({ dossier, opencode, claude: fauxClaude() });
+  relais = await lancerRelais(yaide.port);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await ouvrirYaide(page, relais.origine);
+  const modele = page.getByLabel("Modèle", { exact: true }).and(page.locator(":visible"));
+  const effort = page.getByLabel("Effort", { exact: true }).and(page.locator(":visible"));
+  const compteur = page.locator(".session-saisie:visible .agent-compteur");
+  const barre = page.locator(".session-saisie:visible > :last-child");
+  const sessions = () => {
+    try {
+      return Object.values(JSON.parse(fs.readFileSync(path.join(opencode, "etat.json"), "utf8")).sessions);
+    } catch {
+      return []; // fichier en cours d'écriture
+    }
+  };
+  const fichier = path.join(dossier, ".yaide", "opencode.json");
+
+  // Sans fichier : la session part du modèle par défaut, le compteur est à zéro.
+  await boutonOpencode(page).click();
+  await expect(onglet(page, "opencode 1")).toHaveAttribute("aria-selected", "true");
+  await expect(compteur).toHaveText("0 / 200 k · 0 %");
+  expect(sessions()[0].model).toBeUndefined();
+
+  // AC-075-1 : « high » est gardé dans le projet.
+  await effort.selectOption("high");
+  await expect.poll(() => fs.existsSync(fichier) && JSON.parse(fs.readFileSync(fichier, "utf8"))).toEqual({ id: "claude-sonnet-4-5", providerID: "anthropic", variant: "high" });
+
+  // AC-075-3, -4, -11 : après un vrai rechargement, une nouvelle session reprend le choix, les listes le disent, focus dans le champ.
+  await gardeContient(page, '"opencode":true');
+  await page.reload();
+  await expect(onglet(page, "opencode 1")).toHaveAttribute("aria-selected", "true");
+  await boutonOpencode(page).click();
+  await expect(onglet(page, "opencode 2")).toHaveAttribute("aria-selected", "true");
+  await expect(modele.locator("option:checked")).toHaveText("Claude Sonnet 4.5 · anthropic");
+  await expect(effort.locator("option:checked")).toHaveText("high");
+  await expect(champ(page)).toBeFocused();
+  expect(sessions().at(-1).model).toEqual({ id: "claude-sonnet-4-5", providerID: "anthropic", variant: "high" });
+
+  // AC-076-1, -3 : « 15 k / 200 k · 8 % » en direct, le focus ne bouge pas.
+  await envoyer(page, "[scenario:contexte] Dis bonjour.");
+  await expect(compteur).toHaveText("15 k / 200 k · 8 %");
+  await expect(champ(page)).toBeFocused();
+  const couleur8 = await compteur.evaluate((e) => getComputedStyle(e).color);
+
+  // AC-076-6 : GPT-5, la fenêtre change, pas les tokens.
+  await modele.selectOption({ label: "GPT-5 · openai" });
+  await expect(compteur).toHaveText("15 k / 400 k · 4 %");
+
+  // AC-076-4 : le vrai rechargement relit la même valeur.
+  await gardeContient(page, '"opencode":true');
+  await page.reload();
+  await expect(onglet(page, "opencode 2")).toHaveAttribute("aria-selected", "true");
+  await expect(compteur).toHaveText("15 k / 400 k · 4 %");
+
+  // AC-076-7 : fenêtre inconnue (openrouter) → pas de compteur, barre à 26 px.
+  await modele.selectOption({ label: "Claude Sonnet 4.5 · openrouter" });
+  await expect(compteur).toBeHidden();
+  expect((await barre.boundingBox()).height).toBeCloseTo(26, 0);
+
+  // Retour sur un modèle à fenêtre (200 k), puis un tour qui dépasse la fenêtre : « 210 k / 200 k · 105 % », même couleur qu'à 8 %.
+  await modele.selectOption({ label: "Claude Sonnet 4.5 · anthropic" });
+  await envoyer(page, "[scenario:depasse] Dis bonjour.");
+  await expect(compteur).toHaveText("210 k / 200 k · 105 %");
+  expect(await compteur.evaluate((e) => getComputedStyle(e).color)).toBe(couleur8);
+  await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  const avant = {};
+  for (const cible of [559, 560]) avant[cible] = await mesurerBarre(page, cible);
+
+  // Un tour reste ouvert (question en attente) : « Arrêter » est là.
+  await envoyer(page, "[scenario:question] Prépare la release.");
+  await expect(page.getByRole("button", { name: "Arrêter" })).toBeVisible();
+  const pendant = {};
+  for (const cible of [720, 560, 559, 320, 460]) pendant[cible] = await mesurerBarre(page, cible);
+
+  const sous = (m) => m.rCompteur.y >= m.rEnvoyer.bas - 0.5;
+  for (const [cible, m] of Object.entries(pendant)) {
+    // AC-076-11 : rien ne déborde, tout est entier.
+    expect(m.deborde, `barre à ${cible}`).toBe(false);
+    expect([m.envoyer, m.arreter, m.compteurEntier], `Envoyer, Arrêter, compteur à ${cible}`).toEqual([true, true, true]);
+    if (cible === "460") expect(m.modele, "Modèle à 460").toBeLessThan(280);
+    if (cible >= 460) expect(Math.abs(m.effort - 104), `Effort à ${cible}`).toBeLessThanOrEqual(0.151);
+    if (cible >= 560) {
+      // AC-076-12 : sur la ligne d'« Envoyer », entre « Effort » et « Arrêter », barre à 26 px.
+      expect(sous(m), `compteur sur la ligne à ${cible}`).toBe(false);
+      expect(m.rCompteur.y < m.rEnvoyer.bas && m.rCompteur.bas > m.rEnvoyer.y).toBe(true);
+      expect(m.rCompteur.x).toBeGreaterThanOrEqual(m.rEffort.droite - 0.5);
+      expect(m.rCompteur.droite).toBeLessThanOrEqual(m.rArreter.x + 0.5);
+      expect(m.barre.hauteur).toBeCloseTo(26, 0);
+    } else {
+      // AC-076-13 : au moins 4 px sous « Envoyer », bord droit de la barre à 1 px près.
+      expect(m.rCompteur.y - m.rEnvoyer.bas, `compteur sous Envoyer à ${cible}`).toBeGreaterThanOrEqual(3.99);
+      expect(Math.abs(m.rCompteur.droite - m.barre.droite), `bord droit à ${cible}`).toBeLessThanOrEqual(1);
+    }
+  }
+  // AC-076-14 : le tour ne change pas la ligne du compteur.
+  for (const cible of [559, 560]) expect(sous(pendant[cible]), `ligne avant et pendant le tour à ${cible}`).toBe(sous(avant[cible]));
+
+  // AC-076-15 : fenêtre inconnue (openrouter) à 460 px, tour ouvert → pas de compteur, barre à 26 px.
+  await modele.selectOption({ label: "Claude Sonnet 4.5 · openrouter" });
+  await expect(compteur).toBeHidden();
+  expect((await mesurerBarre(page, 460)).barre.hauteur).toBeCloseTo(26, 0);
+  await modele.selectOption({ label: "Claude Sonnet 4.5 · anthropic" });
+  await expect(compteur).toBeVisible();
+
+  // La page ne défile pas à 800 × 480, et le compteur reste entier au-dessus du bas de l'éditeur, une question en attente, panneau à 240 px.
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Déplier le panneau" }).click();
+  await page.setViewportSize({ width: 800, height: 480 });
+  const d = () => page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: innerWidth, sh: document.documentElement.scrollHeight, ih: innerHeight }));
+  await expect.poll(async () => { const m = await d(); return m.sw <= m.iw && m.sh <= m.ih; }, { message: JSON.stringify(await d()) }).toBe(true);
+  await expect(demandes(page)).toContainText("opencode pose une question");
+  await expect(compteur).toBeVisible();
+  const bas = await compteur.evaluate((e) => ({ compteur: e.getBoundingClientRect().bottom, code: document.querySelector(".cadre-code").getBoundingClientRect().bottom }));
+  expect(bas.compteur, `bas du compteur ${bas.compteur}, bas de l'éditeur ${bas.code}`).toBeLessThanOrEqual(bas.code + 0.5);
 });
