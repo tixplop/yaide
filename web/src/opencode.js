@@ -17,6 +17,9 @@ const abonnes = new Map();
 /** id de demande → { type: "autorisation" | "question", sessionId, … }, dans l'ordre d'arrivée. */
 const demandes = new Map();
 
+/** Catalogue des modèles, un seul pour la page : `etat` vaut chargement, pret ou illisible. */
+const catalogue = { etat: "chargement", modeles: [], defaut: null, lancees: 0 };
+
 let source = null;
 let ouvert = false;
 let relance = null;
@@ -220,6 +223,15 @@ function traiter(ev) {
     case "session.created":
       noterSession({ id: d.sessionID, parentID: d.parentID, agent: d.agent, title: d.title, location: d.location });
       break;
+    case "session.model.selected": {
+      const i = info(d.sessionID);
+      i.model = d.model ?? null;
+      i.modelSeq = (i.modelSeq ?? 0) + 1;
+      break;
+    }
+    case "model.updated":
+      lireCatalogue();
+      return;
     case "session.renamed":
       info(d.sessionID).titre = d.title;
       break;
@@ -402,6 +414,7 @@ async function synchroniser(id) {
 async function synchroniserSession(s) {
   const id = s.id;
   const seq = s.execSeq;
+  const modelSeq = info(id).modelSeq ?? 0;
   const [rs, rm, rd] = await Promise.all([api.session(id), lireHistorique(id), descendantes(id)]);
   if (rs.disparue || rm.disparue) {
     s.disparue = true;
@@ -416,6 +429,7 @@ async function synchroniserSession(s) {
   s.coupure = false;
   s.disparue = false;
   noterSession(rs.donnees.data);
+  if ((info(id).modelSeq ?? 0) === modelSeq) info(id).model = rs.donnees.data?.model ?? null;
   appliquerHistorique(s, rm.donnees);
   const { enCours } = itemsDeLHistorique(rm.donnees);
   if (s.execSeq === seq) s.enCours = enCours;
@@ -443,6 +457,27 @@ async function synchroniserSession(s) {
   notifier(id);
 }
 
+// --- Catalogue des modèles -----------------------------------------------------------------------
+
+function notifierTous() {
+  for (const id of [...abonnes.keys()]) notifier(id);
+}
+
+/** Relit les modèles et le modèle par défaut ; seule la relecture la plus récente compte. */
+async function lireCatalogue() {
+  const numero = ++catalogue.lancees;
+  const [rm, rd] = await Promise.all([api.modelesOpencode(), api.modeleParDefaut()]);
+  if (numero !== catalogue.lancees) return;
+  if (rm.donnees && rd.donnees) {
+    catalogue.modeles = (rm.donnees.data ?? []).filter((m) => m.enabled);
+    catalogue.defaut = rd.donnees.data ?? null;
+    catalogue.etat = "pret";
+  } else {
+    catalogue.etat = "illisible";
+  }
+  notifierTous();
+}
+
 // --- Flux d'événements ---------------------------------------------------------------------------
 
 function lancer(id) {
@@ -458,6 +493,7 @@ function ouvrirSource() {
   source = es;
   es.onopen = () => {
     ouvert = true;
+    lireCatalogue();
     for (const id of abonnes.keys()) lancer(id);
   };
   es.onmessage = (e) => {
@@ -472,6 +508,8 @@ function ouvrirSource() {
     es.close();
     source = null;
     ouvert = false;
+    catalogue.etat = "illisible";
+    notifierTous();
     clearTimeout(relance);
     relance = setTimeout(ouvrirSource, ATTENTE_RELANCE_MS);
   };
@@ -601,8 +639,60 @@ export async function ignorerQuestion(sessionId, id) {
   return r;
 }
 
+const cleModele = (providerID, id) => `${providerID}\t${id}`;
+const variante = (v) => (v && v !== "default" ? v : null);
+
+/**
+ * Modèles et efforts de la session pour les listes : `{ etat, modeles, efforts, courant }`. `courant` est le choix
+ * en cours d'envoi, sinon la valeur de la session, sinon le modèle par défaut (`null` si aucun).
+ */
+export function choixModele(sessionId) {
+  const i = infos.get(sessionId) ?? {};
+  const valeur = i.choix ?? i.model;
+  const base = valeur ?? catalogue.defaut;
+  const courant = base ? { cle: cleModele(base.providerID, base.id), id: base.id, providerID: base.providerID, variante: valeur ? variante(valeur.variant) : null } : null;
+  const modeles = catalogue.modeles.map((m) => ({ cle: cleModele(m.providerID, m.id), id: m.id, providerID: m.providerID, texte: `${m.name} · ${m.providerID}`, variantes: (m.variants ?? []).map((v) => v.id) }));
+  let affiche = courant && modeles.find((m) => m.cle === courant.cle);
+  if (courant && !affiche) {
+    affiche = { cle: courant.cle, id: courant.id, providerID: courant.providerID, texte: `${courant.id} · ${courant.providerID}`, variantes: [] };
+    modeles.unshift(affiche);
+  }
+  const efforts = [...(affiche?.variantes ?? [])];
+  if (courant?.variante && !efforts.includes(courant.variante)) efforts.unshift(courant.variante);
+  let etat = catalogue.etat === "chargement" ? "chargement" : catalogue.etat === "illisible" ? "illisible" : "pret";
+  if (etat === "pret" && !courant && modeles.length === 0) etat = "aucun";
+  return { etat, modeles, efforts, courant };
+}
+
+/**
+ * Choisit le modèle `cle` (de `choixModele`) et la `variante` (null pour « Par défaut ») pour la session.
+ * Rend le résultat d'`appelOpencode`. Le dernier choix l'emporte ; refusé, l'ancienne valeur revient.
+ */
+export async function choisirModele(sessionId, cle, variante) {
+  const m = choixModele(sessionId).modeles.find((x) => x.cle === cle);
+  if (!m) return { erreur: "modèle inconnu" };
+  const i = info(sessionId);
+  const choix = { id: m.id, providerID: m.providerID, variant: variante || undefined };
+  const numero = (i.choixSeq = (i.choixSeq ?? 0) + 1);
+  i.choix = choix;
+  notifier(sessionId);
+  const r = await api.choisirModele(sessionId, choix);
+  if (numero === i.choixSeq) {
+    if ("donnees" in r) {
+      i.model = choix;
+      i.modelSeq = (i.modelSeq ?? 0) + 1;
+    }
+    delete i.choix;
+    notifier(sessionId);
+  }
+  return r;
+}
+
 /** Remet le module à zéro (tests). */
 export function reinitialiser() {
+  catalogue.etat = "chargement";
+  catalogue.modeles = [];
+  catalogue.defaut = null;
   fermerSource();
   sessions.clear();
   infos.clear();

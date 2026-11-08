@@ -548,3 +548,280 @@ describe("appels de api.js", () => {
     }
   });
 });
+
+// --- REQ-074 : modèles et effort -----------------------------------------------------------------
+
+const MODELES = [
+  { id: "claude-sonnet-4-5", providerID: "anthropic", name: "Claude Sonnet 4.5", enabled: true, variants: [{ id: "low" }, { id: "high" }, { id: "max" }] },
+  { id: "claude-sonnet-4-5", providerID: "openrouter", name: "Claude Sonnet 4.5", enabled: true, variants: [] },
+  { id: "cache", providerID: "anthropic", name: "Caché", enabled: false, variants: [] },
+  { id: "gpt-5", providerID: "openai", name: "GPT-5", enabled: true, variants: [{ id: "minimal" }, { id: "high" }] },
+];
+const DEFAUT = MODELES[0];
+const SESSION = { id: "ses_a", location: { directory: "/p" } };
+
+/** Faux opencode : catalogue, sessions et écritures ; `etat` se modifie en cours de test. */
+function faux({ modeles = MODELES, defaut = DEFAUT, sessions = { ses_a: SESSION, ses_b: { id: "ses_b" } } } = {}) {
+  const etat = { modeles, defaut, sessions, ecritures: [], statutModeles: null, coupure: false, refus: null, delaiSession: null };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url, options = {}) => {
+      if (etat.coupure) throw new TypeError("coupure");
+      const u = url.replace("/api/opencode/api", "");
+      const methode = options.method ?? "GET";
+      if (methode === "POST") {
+        etat.ecritures.push({ url: u, corps: JSON.parse(options.body) });
+        if (etat.refus) return etat.refus instanceof Promise ? etat.refus : reponse(etat.refus);
+        return reponse(204);
+      }
+      let m;
+      if (u === "/model") return etat.statutModeles ? reponse(etat.statutModeles, "x") : reponse(200, { data: etat.modeles });
+      if (u === "/model/default") return reponse(200, { data: etat.defaut });
+      if (/\/(message|permission|form)/.test(u)) return reponse(200, { data: [], cursor: {} });
+      if (/^\/session\?parentID/.test(u)) return reponse(200, { data: [] });
+      if ((m = /^\/session\/([^/?]+)$/.exec(u))) {
+        const s = etat.sessions[m[1]];
+        const r = s ? reponse(200, { data: s }) : reponse(404, "x");
+        if (etat.delaiSession) await etat.delaiSession;
+        return r;
+      }
+      return reponse(500, "route inconnue : " + u);
+    }),
+  );
+  return etat;
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+const cleDe = (c, providerID, id) => c.modeles.find((m) => m.providerID === providerID && m.id === id).cle;
+
+describe("modèle et effort d'une session opencode (REQ-074)", () => {
+  it("REQ074_AC1_sans_choix_modele_par_defaut_effort_par_defaut", async () => {
+    faux();
+    await suivre("ses_a");
+    await tick();
+    const c = oc.choixModele("ses_a");
+    expect(c.etat).toBe("pret");
+    expect(c.courant).toMatchObject({ id: "claude-sonnet-4-5", providerID: "anthropic", variante: null });
+  });
+
+  it("REQ074_AC2_valeur_de_la_session_variant_default_ou_absent", async () => {
+    faux({ sessions: { ses_a: { ...SESSION, model: { id: "gpt-5", providerID: "openai", variant: "high" } }, ses_b: { id: "ses_b", model: { id: "gpt-5", providerID: "openai", variant: "default" } }, ses_c: { id: "ses_c", model: { id: "gpt-5", providerID: "openai" } } } });
+    await suivre("ses_a");
+    await suivre("ses_b");
+    await suivre("ses_c");
+    await tick();
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ id: "gpt-5", providerID: "openai", variante: "high" });
+    expect(oc.choixModele("ses_b").courant).toMatchObject({ id: "gpt-5", variante: null });
+    expect(oc.choixModele("ses_c").courant).toMatchObject({ id: "gpt-5", variante: null });
+  });
+
+  it("REQ074_AC3_seuls_les_actifs_ordre_et_texte_avec_provider", async () => {
+    faux();
+    await suivre("ses_a");
+    await tick();
+    const { modeles } = oc.choixModele("ses_a");
+    expect(modeles.map((m) => m.texte)).toEqual(["Claude Sonnet 4.5 · anthropic", "Claude Sonnet 4.5 · openrouter", "GPT-5 · openai"]);
+    expect(new Set(modeles.map((m) => m.cle)).size).toBe(3);
+  });
+
+  it("REQ074_AC4_autre_modele_sans_variant_cette_session_seule", async () => {
+    const f = faux();
+    await suivre("ses_a");
+    await suivre("ses_b");
+    await tick();
+    const r = await oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openai", "gpt-5"), null);
+    expect(r.donnees).toBeNull();
+    expect(f.ecritures).toEqual([{ url: "/session/ses_a/model", corps: { model: { id: "gpt-5", providerID: "openai" } } }]);
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ id: "gpt-5", variante: null });
+    expect(oc.choixModele("ses_b").courant).toMatchObject({ id: "claude-sonnet-4-5", providerID: "anthropic" });
+  });
+
+  it("REQ074_AC5_efforts_du_modele_affiche", async () => {
+    faux();
+    await suivre("ses_a");
+    await tick();
+    expect(oc.choixModele("ses_a").efforts).toEqual(["low", "high", "max"]);
+    await oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openrouter", "claude-sonnet-4-5"), null);
+    expect(oc.choixModele("ses_a").efforts).toEqual([]);
+    await oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openai", "gpt-5"), null);
+    expect(oc.choixModele("ses_a").efforts).toEqual(["minimal", "high"]);
+  });
+
+  it("REQ074_AC6_variante_et_modele_par_defaut_envoyes", async () => {
+    const f = faux();
+    await suivre("ses_a");
+    await tick();
+    // Session sans choix : le modèle par défaut est envoyé avec la variante.
+    await oc.choisirModele("ses_a", oc.choixModele("ses_a").courant.cle, "max");
+    expect(f.ecritures[0].corps).toEqual({ model: { id: "claude-sonnet-4-5", providerID: "anthropic", variant: "max" } });
+    expect(oc.choixModele("ses_a").courant.variante).toBe("max");
+    // « Par défaut » : le modèle affiché, sans variant.
+    await oc.choisirModele("ses_a", oc.choixModele("ses_a").courant.cle, null);
+    expect(f.ecritures[1].corps).toEqual({ model: { id: "claude-sonnet-4-5", providerID: "anthropic" } });
+    expect(oc.choixModele("ses_a").courant.variante).toBeNull();
+  });
+
+  it("REQ074_AC7_evenement_selected_cette_session_seule", async () => {
+    faux();
+    const { es } = await suivre("ses_a");
+    await suivre("ses_b");
+    await tick();
+    es.emettre({ type: "session.model.selected", data: { sessionID: "ses_a", model: { id: "gpt-5", providerID: "openai", variant: "high" } } });
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ id: "gpt-5", variante: "high" });
+    expect(oc.choixModele("ses_b").courant).toMatchObject({ id: "claude-sonnet-4-5" });
+  });
+
+  it("REQ074_AC7_get_en_retard_n_ecrase_pas_l_evenement", async () => {
+    const f = faux();
+    let liberer;
+    f.delaiSession = new Promise((r) => (liberer = r));
+    const rappel = vi.fn();
+    oc.abonner("ses_a", rappel);
+    source().ouvrir();
+    await tick();
+    source().emettre({ type: "session.model.selected", data: { sessionID: "ses_a", model: { id: "gpt-5", providerID: "openai" } } });
+    liberer();
+    await oc.pret("ses_a");
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ id: "gpt-5", providerID: "openai" });
+  });
+
+  it("REQ074_AC8_AC15_valeurs_absentes_en_tete_rien_envoye", async () => {
+    const f = faux({ sessions: { ses_a: { ...SESSION, model: { id: "claude-3-opus", providerID: "anthropic", variant: "turbo" } } } });
+    await suivre("ses_a");
+    await tick();
+    const c = oc.choixModele("ses_a");
+    expect(c.modeles[0].texte).toBe("claude-3-opus · anthropic");
+    expect(c.modeles).toHaveLength(4);
+    expect(c.efforts).toEqual(["turbo"]);
+    expect(c.courant).toMatchObject({ id: "claude-3-opus", variante: "turbo" });
+    expect(f.ecritures).toEqual([]);
+    // Modèle listé mais variante inconnue : en tête des efforts du modèle.
+    oc.reinitialiser();
+    faux({ sessions: { ses_a: { ...SESSION, model: { id: "gpt-5", providerID: "openai", variant: "turbo" } } } });
+    await suivre("ses_a");
+    await tick();
+    expect(oc.choixModele("ses_a").efforts).toEqual(["turbo", "minimal", "high"]);
+  });
+
+  it("REQ074_AC10_refus_ancienne_valeur_et_dernier_choix_gagne", async () => {
+    const f = faux();
+    await suivre("ses_a");
+    await tick();
+    const cle = cleDe(oc.choixModele("ses_a"), "openai", "gpt-5");
+    // Pendant l'appel, le choix est déjà montré ; refusé, l'ancienne valeur revient.
+    let finir;
+    f.refus = new Promise((r) => (finir = r));
+    const p = oc.choisirModele("ses_a", cle, null);
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ id: "gpt-5" });
+    finir(reponse(503, "indisponible"));
+    expect((await p).erreur).toBe("indisponible");
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ id: "claude-sonnet-4-5", providerID: "anthropic" });
+    f.coupure = true;
+    expect((await oc.choisirModele("ses_a", cle, null)).coupure).toBe(true);
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ id: "claude-sonnet-4-5" });
+    f.coupure = false;
+    f.refus = null;
+    // Deux choix rapprochés : le dernier l'emporte, même si le premier finit après.
+    let fin1;
+    f.refus = new Promise((r) => (fin1 = r));
+    const p1 = oc.choisirModele("ses_a", cle, null);
+    f.refus = null;
+    const p2 = oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openrouter", "claude-sonnet-4-5"), null);
+    await p2;
+    fin1(reponse(204));
+    await p1;
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ providerID: "openrouter" });
+  });
+
+  it("REQ074_AC11_aucun_modele", async () => {
+    faux({ modeles: [], defaut: null });
+    await suivre("ses_a");
+    await tick();
+    expect(oc.choixModele("ses_a")).toMatchObject({ etat: "aucun", modeles: [], courant: null });
+  });
+
+  it("REQ074_AC12_illisible_puis_reconnexion_et_model_updated", async () => {
+    const f = faux();
+    f.statutModeles = 503;
+    const rappel = vi.fn();
+    oc.abonner("ses_a", rappel);
+    const es = source();
+    es.ouvrir();
+    expect(oc.choixModele("ses_a").etat).toBe("chargement");
+    await oc.pret("ses_a");
+    await tick();
+    expect(oc.choixModele("ses_a").etat).toBe("illisible");
+    // Reconnexion : le catalogue se remplit.
+    f.statutModeles = null;
+    es.ouvrir();
+    await tick();
+    expect(oc.choixModele("ses_a").etat).toBe("pret");
+    // La valeur connue reste nommée quand la relecture échoue.
+    f.statutModeles = 503;
+    es.emettre({ type: "model.updated", data: {} });
+    await tick();
+    expect(oc.choixModele("ses_a")).toMatchObject({ etat: "illisible", courant: { id: "claude-sonnet-4-5" } });
+    // model.updated : relecture, sans changer le choix de la session ; pas de chargement pendant la relecture.
+    f.statutModeles = null;
+    f.modeles = [...MODELES, { id: "nouveau", providerID: "x", name: "Nouveau", enabled: true, variants: [] }];
+    es.emettre({ type: "session.model.selected", data: { sessionID: "ses_a", model: { id: "gpt-5", providerID: "openai" } } });
+    rappel.mockClear();
+    es.emettre({ type: "model.updated", data: {} });
+    expect(oc.choixModele("ses_a").etat).not.toBe("chargement");
+    await tick();
+    const c = oc.choixModele("ses_a");
+    expect(c.modeles.map((m) => m.id)).toContain("nouveau");
+    expect(c.courant).toMatchObject({ id: "gpt-5" });
+    expect(rappel).toHaveBeenCalled();
+  });
+
+  it("REQ074_AC12_flux_qui_ne_s_ouvre_pas_illisible_puis_reouverture", async () => {
+    faux();
+    vi.useFakeTimers();
+    try {
+      const rappel = vi.fn();
+      oc.abonner("ses_a", rappel);
+      const es = source();
+      expect(oc.choixModele("ses_a").etat).toBe("chargement");
+      es.readyState = 2;
+      es.onerror();
+      expect(oc.choixModele("ses_a").etat).toBe("illisible");
+      expect(rappel).toHaveBeenCalled();
+      vi.advanceTimersByTime(2100);
+      source().ouvrir();
+      vi.useRealTimers();
+      await oc.pret("ses_a");
+      await tick();
+      expect(oc.choixModele("ses_a").etat).toBe("pret");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("REQ074_AC12_relecture_en_retard_ne_remplace_pas_la_plus_recente", async () => {
+    const f = faux();
+    await suivre("ses_a");
+    await tick();
+    const reel = fetch;
+    let liberer;
+    const bloque = new Promise((r) => (liberer = r));
+    let premier = true;
+    vi.stubGlobal("fetch", async (url, o) => {
+      if (url.endsWith("/model") && premier) {
+        premier = false;
+        await bloque; // la première relecture répondra après la seconde, avec l'ancienne liste
+        return reponse(200, { data: [] });
+      }
+      return reel(url, o);
+    });
+    const es = source();
+    es.emettre({ type: "model.updated", data: {} });
+    es.emettre({ type: "model.updated", data: {} });
+    await tick();
+    expect(oc.choixModele("ses_a").modeles.length).toBe(3);
+    liberer();
+    await tick();
+    expect(oc.choixModele("ses_a").modeles.length).toBe(3);
+    expect(f.modeles).toBe(MODELES);
+  });
+});

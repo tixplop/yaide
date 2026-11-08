@@ -341,3 +341,9 @@ export const questions = (sessionId) => appelOpencode(`/session/${q(sessionId)}/
 /** `reponse` : valeurs par clé de champ. */
 export const repondreQuestion = (sessionId, id, reponse) => appelOpencode(`/session/${q(sessionId)}/form/${q(id)}/reply`, json("POST", { answer: reponse }));
 export const ignorerQuestion = (sessionId, id) => appelOpencode(`/session/${q(sessionId)}/form/${q(id)}`, { method: "DELETE" });
+
+export const modelesOpencode = () => appelOpencode("/model");
+export const modeleParDefaut = () => appelOpencode("/model/default");
+/** `variant` n'est envoyé que s'il a une valeur. */
+export const choisirModele = (sessionId, { id, providerID, variant }) =>
+  appelOpencode(`/session/${q(sessionId)}/model`, json("POST", { model: { id, providerID, ...(variant ? { variant } : {}) } }));
