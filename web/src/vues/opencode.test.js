@@ -21,6 +21,14 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+const MODELES = [
+  { cle: "anthropic/s", id: "s", providerID: "anthropic", texte: "Claude Sonnet 4.5 · anthropic", variantes: ["low", "high"] },
+  { cle: "openrouter/s", id: "s", providerID: "openrouter", texte: "Claude Sonnet 4.5 · openrouter", variantes: [] },
+];
+const CHOIX = { etat: "pret", modeles: MODELES, efforts: ["low", "high"], courant: { cle: "anthropic/s", id: "s", providerID: "anthropic", variante: null } };
+const liste = (nom) => [...document.querySelectorAll("select")].find((s) => s.labels[0]?.textContent === nom);
+const textes = (select) => [...select.options].map((o) => o.textContent);
+
 /** Faux `opencode.js` : un modèle de session que les tests modifient, puis `changer()` le notifie à la vue. */
 function fauxOc(depart = {}) {
   const etat = {
@@ -30,6 +38,9 @@ function fauxOc(depart = {}) {
     desabonnements: 0,
     reponses: [],
     resultat: { donnees: null },
+    choix: depart.choix ?? CHOIX,
+    appelsChoix: [],
+    resultatChoix: { donnees: null },
   };
   const oc = {
     abonner: vi.fn((id, rappel) => {
@@ -50,6 +61,11 @@ function fauxOc(depart = {}) {
       etat.reponses.push({ sid, id, reponse });
       return suite(etat, id);
     }),
+    choixModele: vi.fn(() => etat.choix),
+    choisirModele: vi.fn(async (sid, cle, variante) => {
+      etat.appelsChoix.push({ sid, cle, variante });
+      return etat.resultatChoix;
+    }),
     ignorerQuestion: vi.fn(async (sid, id) => {
       etat.reponses.push({ sid, id, ignore: true });
       return suite(etat, id);
@@ -66,8 +82,8 @@ function suite(etat, id) {
   return etat.resultat;
 }
 
-async function monter({ modele, demandes, sousAgent = false, api, surOuvrir = vi.fn(), surQuestion = vi.fn() } = {}) {
-  const { oc, etat } = fauxOc({ modele, demandes });
+async function monter({ modele, demandes, choix, sousAgent = false, api, surOuvrir = vi.fn(), surQuestion = vi.fn() } = {}) {
+  const { oc, etat } = fauxOc({ modele, demandes, choix });
   const apiFausse = api ?? { envoyer: vi.fn(async () => ({ donnees: null })), interrompre: vi.fn(async () => ({ donnees: null })) };
   const vue = vueOpencode({ sessionId: "s1", sousAgent, surOuvrir, surQuestion, oc, api: apiFausse });
   vues.push(vue);
@@ -264,8 +280,8 @@ describe("vue opencode", () => {
       { cle: "o2", type: "sousAgent", id: "s2", agent: "explore", titre: "T", etat: "enCours" },
     ];
     await monter({ modele: { enCours: true, entrees }, demandes: [{ type: "autorisation", id: "p1", sessionId: "s1", action: "bash", ressources: [] }] });
-    const ordre = [...document.querySelectorAll("button, textarea, [tabindex='0']")].filter((e) => !e.disabled && !e.hidden && !e.closest("[hidden]")).map((e) => e.getAttribute("role") === "log" ? "journal" : e.getAttribute("aria-label") || e.textContent.trim() || e.tagName.toLowerCase());
-    const attendu = ["journal", "Autoriser une fois", "Toujours autoriser", "Refuser", "textarea", "Arrêter"];
+    const ordre = [...document.querySelectorAll("button, textarea, select, [tabindex='0']")].filter((e) => !e.disabled && !e.hidden && !e.closest("[hidden]")).map((e) => e.getAttribute("role") === "log" ? "journal" : e.tagName === "SELECT" ? "select" : e.getAttribute("aria-label") || e.textContent.trim() || e.tagName.toLowerCase());
+    const attendu = ["journal", "Autoriser une fois", "Toujours autoriser", "Refuser", "textarea", "select", "select", "Arrêter"];
     const sansFil = ordre.filter((x) => attendu.includes(x));
     expect(sansFil).toEqual(attendu);
     // Les outils et « Ouvrir » sont dans la conversation, avant les demandes ; « Envoyer » désactivé n'est pas un arrêt.
@@ -276,6 +292,206 @@ describe("vue opencode", () => {
     expect(position(log, document.querySelector(".ya-attentes"))).toBeTruthy();
     expect(position(document.querySelector(".ya-attentes"), champ())).toBeTruthy();
     expect(position(champ(), btn("Arrêter"))).toBeTruthy();
+  });
+
+  it("REQ074_AC14_listes_sous_le_champ_et_ordre_de_tab", async () => {
+    await monter({ modele: { enCours: true } });
+    const m = liste("Modèle");
+    const e = liste("Effort");
+    expect(m.labels[0].htmlFor).toBe(m.id);
+    expect(textes(m)).toEqual(["Claude Sonnet 4.5 · anthropic", "Claude Sonnet 4.5 · openrouter"]);
+    expect(textes(e)).toEqual(["Par défaut", "low", "high"]);
+    expect(e.value).toBe("");
+    const ordre = [...document.querySelectorAll("button, textarea, select")].filter((x) => !x.disabled && !x.closest("[hidden]"));
+    expect(ordre.map((x) => x.tagName === "BUTTON" ? x.getAttribute("aria-label") : x.tagName)).toEqual(["TEXTAREA", "SELECT", "SELECT", "Arrêter"]);
+    const pos = (a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(pos(champ(), m)).toBeTruthy();
+    expect(pos(e, btn("Arrêter"))).toBeTruthy();
+    expect(pos(btn("Arrêter"), btn("Envoyer"))).toBeTruthy();
+  });
+
+  it("REQ074_AC13_sous_agent_ni_listes_ni_appel", async () => {
+    const { oc } = await monter({ sousAgent: true });
+    expect(document.querySelectorAll("select")).toHaveLength(0);
+    expect(oc.choixModele).not.toHaveBeenCalled();
+    expect(oc.choisirModele).not.toHaveBeenCalled();
+  });
+
+  it("REQ074_AC4_choix_modele_appelle_sans_variante", async () => {
+    const { etat } = await monter();
+    taper("mon texte");
+    const m = liste("Modèle");
+    m.focus();
+    m.value = "openrouter/s";
+    m.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(etat.appelsChoix).toEqual([{ sid: "s1", cle: "openrouter/s", variante: null }]);
+    expect(document.activeElement).toBe(m);
+    expect(champ().value).toBe("mon texte");
+  });
+
+  it("REQ074_AC6_choix_effort_appelle_avec_variante", async () => {
+    const { etat } = await monter();
+    const e = liste("Effort");
+    e.value = "high";
+    e.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    e.value = "";
+    e.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(etat.appelsChoix).toEqual([
+      { sid: "s1", cle: "anthropic/s", variante: "high" },
+      { sid: "s1", cle: "anthropic/s", variante: null },
+    ]);
+  });
+
+  it("REQ074_AC9_choix_pendant_un_tour_arreter_reste", async () => {
+    const { etat, api } = await monter({ modele: { enCours: true } });
+    expect(liste("Modèle").disabled).toBe(false);
+    expect(liste("Effort").disabled).toBe(false);
+    const m = liste("Modèle");
+    m.value = "openrouter/s";
+    m.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(etat.appelsChoix).toHaveLength(1);
+    expect(api.interrompre).not.toHaveBeenCalled();
+    expect(btn("Arrêter").closest("[hidden]")).toBeNull();
+  });
+
+  it("REQ074_AC10_AC17_refus_message_focus_et_retour_de_valeur", async () => {
+    const { etat } = await monter();
+    taper("mon texte");
+    etat.resultatChoix = { coupure: true };
+    const e = liste("Effort");
+    e.focus();
+    e.value = "high";
+    e.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    const alerte = document.querySelector(".session-bas [role=alert]");
+    expect(alerte.textContent).toContain("Connexion perdue. Réessayez au retour.");
+    expect(alerte.nextElementSibling.contains(champ())).toBe(true);
+    expect(document.activeElement).toBe(e);
+    expect(e.value).toBe("");
+    expect(champ().value).toBe("mon texte");
+    etat.resultatChoix = { erreur: "port occupé" };
+    e.value = "low";
+    e.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelectorAll(".session-bas [role=alert]")).toHaveLength(1);
+    expect(document.querySelector(".session-bas [role=alert]").textContent).toContain("opencode ne répond pas : port occupé. Réessayez.");
+    btn("Fermer").click();
+    expect(document.querySelector(".session-bas [role=alert]")).toBeNull();
+  });
+
+  it("REQ074_AC10_choix_sur_session_disparue", async () => {
+    const { etat } = await monter();
+    etat.resultatChoix = { disparue: true };
+    const m = liste("Modèle");
+    m.value = "openrouter/s";
+    m.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.body.textContent).toContain("Cette session n'existe plus dans opencode.");
+    expect(champ()).toBeNull();
+  });
+
+  it("REQ074_AC17_message_disparait_au_choix_accepte", async () => {
+    const { etat } = await monter();
+    etat.resultatChoix = { coupure: true };
+    const m = liste("Modèle");
+    m.value = "openrouter/s";
+    m.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector(".session-bas [role=alert]")).not.toBeNull();
+    etat.resultatChoix = { donnees: null };
+    m.value = "anthropic/s";
+    m.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector(".session-bas [role=alert]")).toBeNull();
+  });
+
+  it("REQ074_AC16_chargement_illisible_sans_variante_titres", async () => {
+    const { etat } = await monter({ choix: { etat: "chargement", modeles: [], efforts: [], courant: null } });
+    expect(textes(liste("Modèle"))).toEqual(["Chargement…"]);
+    expect(liste("Modèle").disabled && liste("Effort").disabled).toBe(true);
+    etat.choix = { etat: "illisible", modeles: [], efforts: [], courant: null };
+    etat.changer();
+    expect(textes(liste("Modèle"))).toEqual(["Indisponible"]);
+    expect(liste("Modèle").title).toBe("Liste indisponible pour l'instant.");
+    expect(liste("Effort").title).toBe("Liste indisponible pour l'instant.");
+    etat.choix = { etat: "illisible", modeles: MODELES, efforts: ["low", "high"], courant: { ...CHOIX.courant, variante: "high" } };
+    etat.changer();
+    expect(liste("Modèle").value).toBe("anthropic/s");
+    expect(liste("Effort").value).toBe("high");
+    expect(liste("Effort").disabled).toBe(true);
+    etat.choix = { ...CHOIX, modeles: MODELES, efforts: [], courant: { ...MODELES[1], variante: null } };
+    etat.changer();
+    expect(liste("Effort").disabled).toBe(true);
+    expect(liste("Effort").title).toBe("Ce modèle n'a pas d'effort à choisir.");
+    expect(liste("Modèle").title).toBe("Claude Sonnet 4.5 · openrouter");
+    etat.choix = CHOIX;
+    etat.changer();
+    expect(liste("Modèle").title).toBe("Claude Sonnet 4.5 · anthropic");
+    expect(liste("Effort").disabled).toBe(false);
+    expect(liste("Effort").title).toBe("Par défaut");
+    etat.choix = { ...CHOIX, courant: { ...CHOIX.courant, variante: "high" } };
+    etat.changer();
+    expect(liste("Effort").title).toBe("high");
+  });
+
+  it("REQ074_AC17_message_reste_pendant_l_attente_puis_part_a_l_acceptation", async () => {
+    const { etat, oc } = await monter();
+    etat.resultatChoix = { coupure: true };
+    const m = liste("Modèle");
+    m.value = "openrouter/s";
+    m.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    let fin;
+    oc.choisirModele.mockImplementationOnce(() => new Promise((r) => (fin = r)));
+    m.value = "anthropic/s";
+    m.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector(".session-bas [role=alert]")).not.toBeNull();
+    fin({ donnees: null });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector(".session-bas [role=alert]")).toBeNull();
+  });
+
+  it("REQ074_AC11_aucun_modele_envoi_possible", async () => {
+    const { api } = await monter({ choix: { etat: "aucun", modeles: [], efforts: [], courant: null } });
+    expect(textes(liste("Modèle"))).toEqual(["Aucun modèle"]);
+    expect(textes(liste("Effort"))).toEqual(["Par défaut"]);
+    expect(liste("Modèle").disabled && liste("Effort").disabled).toBe(true);
+    taper("bonjour");
+    btn("Envoyer").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.envoyer).toHaveBeenCalledWith("s1", "bonjour");
+  });
+
+  it("REQ074_AC7_redessin_sans_deplacer_le_focus", async () => {
+    const { etat } = await monter();
+    const m = liste("Modèle");
+    m.focus();
+    etat.choix = { ...CHOIX, courant: { ...MODELES[1], variante: null }, efforts: [] };
+    etat.changer();
+    expect(liste("Modèle").value).toBe("openrouter/s");
+    expect(document.activeElement).toBe(m);
+    expect(champ().value).toBe("");
+  });
+
+  it("REQ074_options_inchangees_liste_non_refaite", async () => {
+    const { etat } = await monter();
+    const avant = liste("Modèle").options[0];
+    etat.changer();
+    expect(liste("Modèle").options[0]).toBe(avant);
+  });
+
+  it("REQ074_effort_desactive_rend_le_focus_a_modele", async () => {
+    const { etat } = await monter();
+    liste("Effort").focus();
+    etat.choix = { ...CHOIX, courant: { ...MODELES[1], variante: null }, efforts: [] };
+    etat.changer();
+    expect(liste("Effort").disabled).toBe(true);
+    expect(document.activeElement).toBe(liste("Modèle"));
   });
 
   it("REQ072_session_disparue_message", async () => {

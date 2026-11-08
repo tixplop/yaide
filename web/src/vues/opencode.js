@@ -1,5 +1,6 @@
 import * as apiReelle from "../api.js";
 import * as ocReel from "../opencode.js";
+import { champ as champUi } from "../ui/champ.js";
 import { conversation, attentes } from "../ui/conversation.js";
 import { indication } from "../ui/indication.js";
 import { message } from "../ui/message.js";
@@ -14,6 +15,10 @@ function texteRefus(r) {
   if (r.coupure) return TEXTE_COUPURE;
   return `opencode ne répond pas : ${r.erreur}. Réessayez.`;
 }
+
+const TEXTE_SANS_EFFORT = "Ce modèle n'a pas d'effort à choisir.";
+const TEXTE_INDISPONIBLE = "Liste indisponible pour l'instant.";
+const SANS_MODELE = { chargement: "Chargement…", illisible: "Indisponible", aucun: "Aucun modèle" };
 
 const reussie = (r) => !r?.coupure && !r?.erreur;
 
@@ -60,6 +65,8 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
 
   let saisie = null;
   let champ = null;
+  let listeModele = null; // { enveloppe, select, signature }
+  let listeEffort = null;
   if (sousAgent) {
     const note = document.createElement("div");
     note.className = "session-contenu";
@@ -72,6 +79,9 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
     zone.className = "session-contenu session-saisie";
     zone.append(saisie.champMessage, saisie.barre);
     bas.append(zone);
+    listeModele = creerListe("Modèle", (e) => choisir(e.target.value, null));
+    listeEffort = creerListe("Effort", (e) => choisir(oc.choixModele(sessionId).courant?.cle, e.target.value || null));
+    saisie.barre.prepend(listeModele.enveloppe, listeEffort.enveloppe);
     champ.addEventListener("input", majBoutons);
     saisie.arreter.addEventListener("click", () => {
       api.interrompre(sessionId);
@@ -89,6 +99,67 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
     const enCours = Boolean(dernier?.enCours);
     saisie.envoyer.disabled = enCours || envoi || !champ.value.trim();
     saisie.arreter.enveloppe.hidden = !enCours;
+  }
+
+  function creerListe(libelle, surChoix) {
+    const enveloppe = champUi({ libelle, type: "liste", presentation: "barre", desactive: true });
+    const select = enveloppe.querySelector("select");
+    select.addEventListener("change", surChoix);
+    return { enveloppe, select, signature: null };
+  }
+
+  /** Options et valeur d'une liste ; les options ne sont refaites que si elles changent (une liste ouverte reste ouverte). */
+  function remplir(liste, options, valeur, desactive, titre) {
+    const signature = JSON.stringify(options);
+    if (signature !== liste.signature) {
+      liste.signature = signature;
+      liste.select.replaceChildren(
+        ...options.map(([v, t]) => {
+          const o = document.createElement("option");
+          o.value = v;
+          o.textContent = t;
+          return o;
+        }),
+      );
+    }
+    liste.select.value = valeur;
+    liste.select.disabled = desactive;
+    liste.select.title = titre ?? "";
+  }
+
+  function majListes() {
+    if (!listeModele) return;
+    const c = oc.choixModele(sessionId);
+    const surEffort = document.activeElement === listeEffort.select;
+    const pret = c.etat === "pret";
+    const illisible = c.etat === "illisible";
+    const optionsModele = c.modeles.length ? c.modeles.map((m) => [m.cle, m.texte]) : [["", SANS_MODELE[c.etat] ?? SANS_MODELE.aucun]];
+    const texteModele = optionsModele.find(([v]) => v === (c.courant?.cle ?? ""))?.[1];
+    remplir(listeModele, optionsModele, c.courant?.cle ?? "", !pret, illisible ? TEXTE_INDISPONIBLE : pret ? texteModele : "");
+    const optionsEffort = [["", "Par défaut"], ...c.efforts.map((e) => [e, e])];
+    const effort = c.courant?.variante ?? "";
+    const sansEffort = pret && c.efforts.length === 0;
+    remplir(listeEffort, optionsEffort, effort, !pret || sansEffort, illisible ? TEXTE_INDISPONIBLE : sansEffort ? TEXTE_SANS_EFFORT : pret ? effort || "Par défaut" : "");
+    if (surEffort && listeEffort.select.disabled) listeModele.select.focus();
+  }
+
+  async function choisir(cle, variante) {
+    const r = await oc.choisirModele(sessionId, cle, variante);
+    if (detruite) return;
+    if (r?.disparue) {
+      disparueALEnvoi = true;
+    } else if (reussie(r)) effacerRefus();
+    else afficherRefus(r);
+    dessiner();
+  }
+
+  function afficherRefus(r) {
+    effacerRefus();
+    refus = message({ texte: texteRefus(r), variante: "erreur", fermable: true });
+    refus.addEventListener("click", (e) => {
+      if (e.target.closest("button")) champ.focus();
+    });
+    champ.closest(".session-saisie").before(refus);
   }
 
   function effacerRefus() {
@@ -112,12 +183,7 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
     }
     if (!reussie(r)) {
       majBoutons();
-      effacerRefus();
-      refus = message({ texte: texteRefus(r), variante: "erreur", fermable: true });
-      refus.addEventListener("click", (e) => {
-        if (e.target.closest("button")) champ.focus();
-      });
-      champ.closest(".session-saisie").before(refus);
+      afficherRefus(r);
       return;
     }
     effacerRefus();
@@ -152,6 +218,7 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
       bas.remove();
       return;
     }
+    majListes();
     if (!charge || !m) return;
     if (!bas.isConnected) corps.append(bas);
     if (!fil) {
