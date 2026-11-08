@@ -384,6 +384,13 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .session-saisie .agent-barre .ya-barre + .ya-barre { flex-shrink: 1; min-width: 100px; margin-left: calc(var(--space-3) - var(--space-1)); }
 .session-saisie .agent-barre .ya-barre + .ya-barre .ya-input { flex: 0 1 104px; }
 .session-saisie .agent-barre .ya-barre:has(+ :not(.ya-barre)) { margin-right: auto; padding-right: calc(var(--space-3) - var(--space-1)); }
+/* Compteur de contexte (REQ-076) : seuil de 535,98 px, indépendant de la police racine ; dans le flux à 536 px de colonne et plus, 12 px après « Effort » et 4 px avant les boutons. */
+.session-saisie { container: ya-saisie / inline-size; position: relative; }
+.session-saisie .agent-compteur { margin: 0; padding: 0; }
+@container ya-saisie (max-width: 535.98px) {
+  .session-saisie:has(.agent-compteur:not([hidden])) .agent-barre { height: calc(var(--size-control) + var(--space-1) + var(--space-4)); align-items: flex-start; }
+  .session-saisie:has(.agent-compteur:not([hidden])) .agent-compteur { position: absolute; right: var(--space-3); bottom: 0; }
+}
 .session-contenu { box-sizing: border-box; width: 100%; max-width: calc(var(--largeur-session) + 2 * var(--space-3)); margin-inline: auto; padding-inline: var(--space-3); }
 .cadre-shells { flex: 0 0 var(--taille-shells, var(--part-shells)); min-height: 0; background: var(--bg-000); }
 .ya-crumbs { cursor: default; box-sizing: border-box; height: 24px; display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-3); background: var(--bg-200); color: var(--ink-muted); font-size: 12px; white-space: nowrap; overflow: hidden; }

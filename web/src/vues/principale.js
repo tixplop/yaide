@@ -5,6 +5,7 @@ import { borner, limites } from "../ui/poignee.js";
 import { ecrire, lire } from "../stockage.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
+import { reprendreDernierChoix } from "../opencode.js";
 import { surveiller } from "../connexion.js";
 import { changerTheme, themeCourant } from "../ui/theme.js";
 import { vueAgent } from "./agent.js";
@@ -71,11 +72,13 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     boutonOpencode.definirOccupe(true);
     boutonOpencode.setAttribute("aria-disabled", "true");
     const r = await creerSession(chemin);
+    const id = r.donnees?.data?.id;
+    // Le dernier choix est repris avant l'onglet, le bouton restant occupé (REQ-075).
+    if (!detruite && !r.coupure && r.erreur === undefined && id !== undefined) await reprendreDernierChoix(id);
     boutonOpencode.definirOccupe(false);
     boutonOpencode.removeAttribute("aria-disabled");
     if (detruite) return;
     if (r.coupure) return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
-    const id = r.donnees?.data?.id;
     if (r.erreur !== undefined || id === undefined) return dire({ texte: `Impossible d'ouvrir une session opencode : ${String(r.erreur ?? "réponse illisible").replace(/\.$/, "")}.`, variante: "alerte", fermable: true });
     editeur.ouvrirOpencode({ sessionId: id });
   });

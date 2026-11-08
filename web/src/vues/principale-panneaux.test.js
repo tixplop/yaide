@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vitest";
+import * as oc from "../opencode.js";
 import { ecrire, lire } from "../stockage.js";
 import { vues, monter, attendre, poignees, simulerShells, simulerServeur, ETAT_GIT, ligne, simulerRelecture, avecHorloge, barreTitre, icone, aside, repliDuPanneau, resultatsVides, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne, boutonClaudeDe, simulerTout, nomsRail, sans, simulerOpencode, boutonOcDe, ongletsOc, nomDuChamp, nomsRailDroit } from "./principale.aides.js";
 
@@ -643,6 +644,37 @@ test("REQ072_AC30_second_clic_pendant_le_lancement_ignore", async () => {
   await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(1));
   expect(appels.filter((a) => a.startsWith("POST /api/opencode/api/session")).length).toBe(1);
   expect(boutonOcDe(vue).hasAttribute("aria-busy")).toBe(false);
+});
+
+test("REQ075_AC3_AC11_reprise_avant_l_onglet_et_occupe_pendant", async () => {
+  simulerOpencode();
+  let liberer;
+  const reprise = vi.spyOn(oc, "reprendreDernierChoix").mockImplementation(() => new Promise((r) => { liberer = r; }));
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  boutonOcDe(vue).click();
+  await vi.waitFor(() => expect(reprise).toHaveBeenCalledWith("ses_1"));
+  expect(ongletsOc(vue).length).toBe(0);
+  expect(boutonOcDe(vue).getAttribute("aria-busy")).toBe("true");
+  boutonOcDe(vue).click();
+  expect(reprise).toHaveBeenCalledTimes(1);
+  liberer();
+  await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(1));
+  expect(boutonOcDe(vue).hasAttribute("aria-busy")).toBe(false);
+  reprise.mockRestore();
+});
+
+test("REQ075_AC12_aucun_bandeau", async () => {
+  simulerOpencode();
+  const reprise = vi.spyOn(oc, "reprendreDernierChoix").mockResolvedValue(undefined);
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  await attendre();
+  const avant = vue.querySelectorAll("[role=alert]").length;
+  boutonOcDe(vue).click();
+  await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(1));
+  expect(vue.querySelectorAll("[role=alert]").length).toBe(avant);
+  reprise.mockRestore();
 });
 
 test("REQ072_AC13_coupure_et_503_aucun_onglet", async () => {

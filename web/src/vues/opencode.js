@@ -4,7 +4,7 @@ import { champ as champUi } from "../ui/champ.js";
 import { conversation, attentes } from "../ui/conversation.js";
 import { indication } from "../ui/indication.js";
 import { message } from "../ui/message.js";
-import { saisieMessage } from "./agent.js";
+import { formaterTokens, saisieMessage } from "./agent.js";
 
 const TEXTE_VIDE = "Écrivez un message pour commencer.";
 const TEXTE_DISPARUE = "Cette session n'existe plus dans opencode. Fermez cet onglet.";
@@ -67,6 +67,7 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
   let champ = null;
   let listeModele = null; // { enveloppe, select, signature }
   let listeEffort = null;
+  let compteur = null;
   if (sousAgent) {
     const note = document.createElement("div");
     note.className = "session-contenu";
@@ -81,7 +82,10 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
     bas.append(zone);
     listeModele = creerListe("Modèle", (e) => choisir(e.target.value, null));
     listeEffort = creerListe("Effort", (e) => choisir(oc.choixModele(sessionId).courant?.cle, e.target.value || null));
-    saisie.barre.prepend(listeModele.enveloppe, listeEffort.enveloppe);
+    compteur = document.createElement("span");
+    compteur.className = "agent-compteur";
+    compteur.hidden = true;
+    saisie.barre.prepend(listeModele.enveloppe, listeEffort.enveloppe, compteur);
     champ.addEventListener("input", majBoutons);
     saisie.arreter.addEventListener("click", () => {
       api.interrompre(sessionId);
@@ -141,6 +145,19 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
     const sansEffort = pret && c.efforts.length === 0;
     remplir(listeEffort, optionsEffort, effort, !pret || sansEffort, illisible ? TEXTE_INDISPONIBLE : sansEffort ? TEXTE_SANS_EFFORT : pret ? effort || "Par défaut" : "");
     if (surEffort && listeEffort.select.disabled) listeModele.select.focus();
+  }
+
+  /** Tokens occupés, fenêtre et pourcentage ; caché tant que la fenêtre du modèle affiché est inconnue. */
+  function majCompteur() {
+    if (!compteur) return;
+    const c = oc.contexteSession(sessionId);
+    compteur.hidden = !c;
+    if (!c) return;
+    const tokens = formaterTokens(c.tokens);
+    const fenetre = formaterTokens(c.fenetre);
+    compteur.textContent = `${tokens} / ${fenetre} · ${c.pourcent} %`;
+    compteur.setAttribute("aria-label", `Contexte : ${tokens} tokens sur ${fenetre}, ${c.pourcent} %`);
+    compteur.setAttribute("role", "img");
   }
 
   async function choisir(cle, variante) {
@@ -219,6 +236,7 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
       return;
     }
     majListes();
+    majCompteur();
     if (!charge || !m) return;
     if (!bas.isConnected) corps.append(bas);
     if (!fil) {

@@ -41,6 +41,7 @@ function fauxOc(depart = {}) {
     choix: depart.choix ?? CHOIX,
     appelsChoix: [],
     resultatChoix: { donnees: null },
+    contexte: depart.contexte ?? null,
   };
   const oc = {
     abonner: vi.fn((id, rappel) => {
@@ -61,6 +62,8 @@ function fauxOc(depart = {}) {
       etat.reponses.push({ sid, id, reponse });
       return suite(etat, id);
     }),
+    contexteSession: vi.fn(() => etat.contexte),
+    reprendreDernierChoix: vi.fn(async () => {}),
     choixModele: vi.fn(() => etat.choix),
     choisirModele: vi.fn(async (sid, cle, variante) => {
       etat.appelsChoix.push({ sid, cle, variante });
@@ -82,8 +85,8 @@ function suite(etat, id) {
   return etat.resultat;
 }
 
-async function monter({ modele, demandes, choix, sousAgent = false, api, surOuvrir = vi.fn(), surQuestion = vi.fn() } = {}) {
-  const { oc, etat } = fauxOc({ modele, demandes, choix });
+async function monter({ modele, demandes, choix, contexte, sousAgent = false, api, surOuvrir = vi.fn(), surQuestion = vi.fn() } = {}) {
+  const { oc, etat } = fauxOc({ modele, demandes, choix, contexte });
   const apiFausse = api ?? { envoyer: vi.fn(async () => ({ donnees: null })), interrompre: vi.fn(async () => ({ donnees: null })) };
   const vue = vueOpencode({ sessionId: "s1", sousAgent, surOuvrir, surQuestion, oc, api: apiFausse });
   vues.push(vue);
@@ -580,6 +583,96 @@ describe("vue opencode", () => {
     const css = readFileSync("web/src/ui/composants.css", "utf8");
     expect(css).toMatch(/\.session-saisie \{[^}]*display: flex;[^}]*flex-direction: column;[^}]*gap: var\(--space-2\);/);
     expect(css).toMatch(/\.session-saisie \.agent-barre \{[^}]*justify-content: flex-end;/);
+  });
+
+  const compteur = () => document.querySelector(".agent-compteur");
+  const ctx = (tokens, fenetre) => ({ tokens, fenetre, pourcent: Math.round((tokens / fenetre) * 100) });
+
+  it("REQ075_AC10_sous_agent_ni_lecture_ni_ecriture", async () => {
+    const api = { envoyer: vi.fn(), interrompre: vi.fn(), lireFichier: vi.fn(), ecrireFichier: vi.fn() };
+    const { oc } = await monter({ sousAgent: true, api });
+    expect(oc.reprendreDernierChoix).not.toHaveBeenCalled();
+    expect(api.lireFichier).not.toHaveBeenCalled();
+    expect(api.ecrireFichier).not.toHaveBeenCalled();
+  });
+
+  it("REQ076_AC1_texte_et_nom_accessible", async () => {
+    await monter({ contexte: ctx(15000, 200000) });
+    expect(compteur().hidden).toBe(false);
+    expect(compteur().textContent).toBe("15 k / 200 k · 8 %");
+    expect(compteur().getAttribute("role")).toBe("img");
+    expect(compteur().getAttribute("aria-label")).toBe("Contexte : 15 k tokens sur 200 k, 8 %");
+    const barre = compteur().parentElement;
+    expect(compteur().previousElementSibling).toBe(liste("Effort").closest(".ya-barre"));
+    expect(compteur().nextElementSibling).toBe(btn("Arrêter").closest(".bouton-enveloppe"));
+    expect(barre.contains(compteur())).toBe(true);
+  });
+
+  it("REQ076_AC2_zero", async () => {
+    await monter({ contexte: ctx(0, 200000) });
+    expect(compteur().textContent).toBe("0 / 200 k · 0 %");
+  });
+
+  it("REQ076_AC3_mise_a_jour_sans_deplacer_le_focus", async () => {
+    const { etat } = await monter({ contexte: ctx(0, 200000) });
+    champ().focus();
+    etat.contexte = ctx(15000, 200000);
+    etat.changer();
+    expect(compteur().textContent).toBe("15 k / 200 k · 8 %");
+    expect(document.activeElement).toBe(champ());
+    expect(compteur().hasAttribute("aria-live")).toBe(false);
+  });
+
+  it("REQ076_AC7_compteur_absent_puis_revenu", async () => {
+    const { etat } = await monter({ contexte: null });
+    expect(compteur().hidden).toBe(true);
+    etat.contexte = ctx(15000, 200000);
+    etat.changer();
+    expect(compteur().hidden).toBe(false);
+    etat.contexte = null;
+    etat.changer();
+    expect(compteur().hidden).toBe(true);
+  });
+
+  it("REQ076_AC8_au_dela_de_100", async () => {
+    await monter({ contexte: ctx(210000, 200000) });
+    expect(compteur().textContent).toBe("210 k / 200 k · 105 %");
+  });
+
+  it("REQ076_AC9_sous_agent_sans_compteur", async () => {
+    const { oc } = await monter({ sousAgent: true, contexte: ctx(15000, 200000) });
+    expect(compteur()).toBeNull();
+    expect(oc.contexteSession).not.toHaveBeenCalled();
+  });
+
+  it("REQ076_AC10_pas_un_arret_de_tab_ordre_inchange", async () => {
+    await monter({ contexte: ctx(15000, 200000) });
+    expect(compteur().hasAttribute("tabindex")).toBe(false);
+    expect(compteur().querySelector("button, a, input")).toBeNull();
+    const tabulables = [...document.querySelectorAll("textarea, select, button")].filter((e) => !e.disabled && !e.closest("[hidden]"));
+    expect(tabulables.map((e) => e.tagName)).toContain("TEXTAREA");
+    expect(tabulables.includes(compteur())).toBe(false);
+  });
+
+  it("REQ076_AC10_format_850_12k_1M5", async () => {
+    const { etat } = await monter({ contexte: ctx(850, 12000) });
+    expect(compteur().textContent).toBe("850 / 12 k · 7 %");
+    etat.contexte = ctx(1500000, 1500000);
+    etat.changer();
+    expect(compteur().textContent).toBe("1,5 M / 1,5 M · 100 %");
+  });
+
+  it("REQ076_css_seuil_portee_session_saisie_seule", () => {
+    const css = readFileSync("web/src/ui/composants.css", "utf8");
+    expect(css).toMatch(/\.session-saisie \{[^}]*container: ya-saisie \/ inline-size;/);
+    const bloc = css.slice(css.indexOf("@container ya-saisie (max-width: 535.98px)"));
+    expect(bloc).toContain(".session-saisie:has(.agent-compteur:not([hidden])) .agent-barre { height: calc(var(--size-control) + var(--space-1) + var(--space-4)); align-items: flex-start; }");
+    expect(bloc).toMatch(/\.agent-compteur \{ position: absolute; right: var\(--space-3\); bottom: 0; \}/);
+    // Toute règle du seuil commence par .session-saisie : la vue Agent ne bouge pas.
+    const regles = bloc.slice(0, bloc.indexOf("\n}")).split("\n").slice(1).filter((l) => l.trim());
+    expect(regles.length).toBeGreaterThan(0);
+    for (const l of regles) expect(l.trim().startsWith(".session-saisie")).toBe(true);
+    expect(bloc.slice(0, bloc.indexOf("\n}"))).not.toContain("flex-wrap");
   });
 
   it("REQ072_detruire_desabonne", async () => {
