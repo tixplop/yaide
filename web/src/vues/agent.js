@@ -51,6 +51,28 @@ function texteReglagesIllisibles(erreur) {
 }
 
 /**
+ * Zone de saisie commune aux vues Agent et opencode : champ multiligne (Entrée envoie, Maj+Entrée ajoute une ligne),
+ * « Arrêter » (masqué) et « Envoyer » (désactivé). Rend `{ champMessage, texteSaisi, barre, arreter, envoyer }`.
+ */
+export function saisieMessage({ libelle, surEnvoi }) {
+  const champMessage = champ({ libelle, type: "multiligne", indication: "Message (Entrée pour envoyer)", libelleMasque: true });
+  const texteSaisi = champMessage.querySelector("textarea");
+  const barre = document.createElement("div");
+  barre.className = "agent-barre";
+  const arreter = bouton({ icone: "circle-stop", nomAccessible: "Arrêter", infoBulle: "Arrêter" });
+  arreter.enveloppe.hidden = true;
+  const envoyer = bouton({ icone: "send-horizontal", nomAccessible: "Envoyer", infoBulle: "Envoyer (Entrée)", desactive: true });
+  barre.append(arreter.enveloppe, envoyer.enveloppe);
+  texteSaisi.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
+    e.preventDefault();
+    surEnvoi();
+  });
+  envoyer.addEventListener("click", () => surEnvoi());
+  return { champMessage, texteSaisi, barre, arreter, envoyer };
+}
+
+/**
  * V-007. `api` : `reglagesAgent`, `envoyerMessage`, `lireConversation`, `arreterConversation`, `listeConversations`.
  * Rend `{ corps, deplier(), focuser(), relireReglages(), demarrerAvec(agents), detruire() }`.
  */
@@ -138,17 +160,11 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
   // Saisie.
   const saisie = document.createElement("div");
   saisie.className = "agent-saisie";
-  const champMessage = champ({ libelle: "Message à l'agent", type: "multiligne", indication: "Message (Entrée pour envoyer)", libelleMasque: true });
-  const texteSaisi = champMessage.querySelector("textarea");
-  const barre = document.createElement("div");
-  barre.className = "agent-barre";
+  const { champMessage, texteSaisi, barre, arreter, envoyer } = saisieMessage({ libelle: "Message à l'agent", surEnvoi: () => envoyerMessage() });
   let champProfil = null;
   const compteur = document.createElement("span");
   compteur.className = "agent-compteur";
-  const arreter = bouton({ icone: "circle-stop", nomAccessible: "Arrêter", infoBulle: "Arrêter" });
-  arreter.enveloppe.hidden = true;
-  const envoyer = bouton({ icone: "send-horizontal", nomAccessible: "Envoyer", infoBulle: "Envoyer (Entrée)", desactive: true });
-  barre.append(compteur, arreter.enveloppe, envoyer.enveloppe);
+  barre.prepend(compteur);
   saisie.append(champMessage, barre);
   corps.append(entete, ligneAgents, fil, saisie);
 
@@ -326,12 +342,6 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
   }
 
   texteSaisi.addEventListener("input", majBoutons);
-  texteSaisi.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
-    e.preventDefault();
-    envoyerMessage();
-  });
-  envoyer.addEventListener("click", envoyerMessage);
   arreter.addEventListener("click", async () => {
     if (!convId) return;
     const gen = generation;
