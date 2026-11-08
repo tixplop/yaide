@@ -334,6 +334,14 @@ test("REQ072_AC22_ligne_sous_agent_role_noms_et_etats", () => {
   expect(lignes[0].querySelectorAll("button")).toHaveLength(1);
 });
 
+test("REQ072_AC22_ouvrir_donne_la_session_fille_connue_apres_la_creation_de_la_ligne", () => {
+  const ouvert = vi.fn();
+  const c = conversation({ entrees: [sous({ id: undefined })], surOuvrir: ouvert });
+  c.mettreAJour([sous({ id: "ses_f9" })]);
+  c.querySelector(".ya-sous button").click();
+  expect(ouvert).toHaveBeenCalledWith("ses_f9");
+});
+
 test("REQ072_AC22_sous_agent_change_d_etat_sur_place", () => {
   const c = conversation({ entrees: [sous()] });
   document.body.append(c);

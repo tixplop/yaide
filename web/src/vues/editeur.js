@@ -370,9 +370,9 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       sousAgent: agent !== undefined,
       surOuvrir: ouvrirSousAgent,
       surQuestion: (oui) => {
-        if (o.marque === oui || !liste.includes(o)) return;
-        o.marque = oui;
-        afficher();
+        if (o.marque === oui) return;
+        o.marque = oui; // la vue peut le dire avant que l'onglet ne soit dans la liste
+        if (liste.includes(o)) afficher();
       },
     });
     o.zone = o.vue.corps;

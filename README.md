@@ -93,6 +93,17 @@ Si la commande `claude` (Claude Code) est dans le `PATH` du serveur au moment o�
 - La session s'arrête quand vous fermez son onglet, et toutes les sessions s'arrêtent avec Yaide.
 - Dans un onglet Claude, les raccourcis de Yaide (Ctrl+P, Ctrl+S) vont à Claude Code. Ctrl+Maj+F ramène le focus sur le rail.
 
+## Session opencode
+
+Si la commande `opencode` (version 2) est dans le `PATH` du serveur au moment où vous chargez la page, un bouton « opencode » apparaît dans le rail droit, sous « Claude ». Avec une autre version, ou sans `opencode`, le bouton n'existe pas.
+
+- Au premier clic, Yaide lance `opencode serve` dans le dossier du projet, sur 127.0.0.1, avec un mot de passe tiré au hasard. Il l'arrête avec lui.
+- Chaque clic ouvre une nouvelle conversation dans un onglet de l'éditeur (« opencode 1 », « opencode 2 »…) : une conversation par onglet. Les réponses s'écrivent au fil de leur arrivée.
+- Quand opencode lance un sous-agent, sa ligne apparaît dans la conversation ; « Ouvrir » affiche sa conversation dans son propre onglet.
+- Les autorisations et les questions d'opencode s'affichent au-dessus du champ de saisie, et l'onglet porte la marque `!` tant qu'une demande attend. Une demande d'un sous-agent nomme le sous-agent et est visible dans son onglet et dans celui de la conversation qui l'a lancé.
+- opencode garde la session : fermer l'onglet ne l'arrête pas, et un tour en cours continue. `opencode -s <id>` la reprend dans le terminal.
+- Après une mise à jour d'opencode, `node e2e/capturer-opencode.js` relève de nouveau le contrat de son API (dans `web/src/opencode-captures/`).
+
 ## Réglages de l'interface
 
 Le fichier `.yaide/interface.json` du projet règle l'interface. Écrivez-le vous-même, dans l'éditeur de Yaide ou ailleurs, ou réglez-le par le dialogue « Préférences d'interface » (voir plus bas). Yaide ne l'écrit que par « Enregistrer » de ce dialogue. Il a deux parties, toutes deux facultatives, comme chacune de leurs clés.

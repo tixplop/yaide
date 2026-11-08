@@ -256,8 +256,8 @@ describe("modèle d'une session opencode", () => {
     rejouer(racine.es, evenementsDe(sousagent, demande + 1));
     const attendu = { type: "autorisation", sessionId: enfant, action: "shell", ressources: ["cargo test parse_args"] };
     expect(oc.attentes(id)).toEqual([expect.objectContaining({ ...attendu, sousAgent: "explore" })]);
-    expect(oc.attentes(enfant)).toEqual([expect.objectContaining(attendu)]);
-    expect(oc.attentes(enfant)[0].sousAgent).toBeUndefined();
+    // Dans l'onglet du sous-agent, sa propre demande porte aussi son nom d'agent.
+    expect(oc.attentes(enfant)).toEqual([expect.objectContaining({ ...attendu, sousAgent: "explore" })]);
     expect(racine.rappel).toHaveBeenCalled();
     expect(filleSuivie.rappel).toHaveBeenCalled();
     // Une réponse donnée la retire partout et l'envoie à opencode.

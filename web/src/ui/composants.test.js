@@ -168,3 +168,7 @@ test("REQ072_AC24_regles_des_demandes_en_attente", () => {
   a(".ya-lien", "color: var(--info)");
   a(".ya-lien", "text-decoration: underline");
 });
+
+test("REQ072_AC19_session_cachee_n_est_pas_affichee_malgre_display_flex", () => {
+  expect(css).toMatch(/\.session\[hidden\]\s*\{\s*display:\s*none;?\s*\}/);
+});

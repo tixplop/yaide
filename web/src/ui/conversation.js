@@ -87,7 +87,7 @@ function rendreSousAgent(e, surOuvrir) {
     ligne.append(sp);
   }
   const ouvrir = bouton({ libelle: "Ouvrir", nomAccessible: `Ouvrir ${e.agent}`, variante: "secondaire" });
-  ouvrir.addEventListener("click", () => surOuvrir?.(e.id));
+  ouvrir.addEventListener("click", () => surOuvrir?.(ligne.dataset.idSession));
   ligne.append(ouvrir);
   majSousAgent(ligne, e);
   return ligne;
@@ -96,6 +96,7 @@ function rendreSousAgent(e, surOuvrir) {
 // Met la ligne à jour sur place : le focus de « Ouvrir » reste où il est.
 function majSousAgent(ligne, e) {
   const etat = ETATS_SOUS_AGENT[e.etat];
+  ligne.dataset.idSession = e.id ?? ""; // la session fille n'est connue qu'après la création de la ligne
   if (!etat) throw new Error(`conversation : état de sous-agent inconnu « ${e.etat} »`);
   ligne.setAttribute("aria-label", `Sous-agent ${e.agent}, ${etat.nom}`);
   if (ligne.firstElementChild.getAttribute("data-icone") !== etat.icone) ligne.firstElementChild.replaceWith(icone(etat.icone, 14));

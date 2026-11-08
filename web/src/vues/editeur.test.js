@@ -37,6 +37,7 @@ vi.mock("./opencode.js", () => ({
       detruire: vi.fn(() => faux.journal.push(`detruire oc:${opts.sessionId}`)),
     };
     faux.oc.push(v);
+    if (faux.marqueAuDepart) opts.surQuestion?.(true); // une demande attend déjà à la création de la vue
     return v;
   },
 }));
@@ -918,6 +919,17 @@ test("REQ072_AC24_marque_question_suit_la_vue", () => {
   expect(onglet("opencode 1").getAttribute("aria-label")).toBe("opencode 1");
   expect(onglet("opencode 1").textContent).not.toContain("!");
   expect(onglet("explore").getAttribute("aria-label")).toBe("explore, sous-agent : T");
+});
+
+test("REQ072_AC24_marque_d_une_demande_deja_la_a_l_ouverture_de_l_onglet", () => {
+  const { e } = monterOc();
+  faux.marqueAuDepart = true;
+  try {
+    e.ouvrirOpencode({ sessionId: "s1" });
+  } finally {
+    faux.marqueAuDepart = false;
+  }
+  expect(onglet("opencode 1").getAttribute("aria-label")).toBe("opencode 1, question en attente");
 });
 
 test("REQ072_AC11_fermer_sans_question_ni_appel", () => {

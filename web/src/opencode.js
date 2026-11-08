@@ -568,7 +568,7 @@ export function attentes(sessionId) {
   const liste = [];
   for (const d of demandes.values()) {
     if (!estDansLaFamille(d.sessionId, sessionId)) continue;
-    const sousAgent = d.sessionId === sessionId ? undefined : (infos.get(d.sessionId)?.agent ?? "");
+    const sousAgent = infos.get(d.sessionId)?.parentID ? (infos.get(d.sessionId).agent ?? "") : undefined;
     liste.push({ ...d, sousAgent });
   }
   return liste;

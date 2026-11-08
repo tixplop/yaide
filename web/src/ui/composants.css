@@ -368,6 +368,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 /* Session opencode (C-010) : conversation qui défile seule, puis demandes et saisie sous un filet. Hauteur trop petite : l'éditeur défile. */
 .cadre-code:has(> .session) { overflow-y: auto; }
 .session { box-sizing: border-box; display: flex; flex-direction: column; min-height: 100%; background: var(--bg-200); }
+.session[hidden] { display: none; }
 .session-conversation { flex: 1 1 0; min-height: 0; overflow-y: auto; }
 .session-bas { flex: none; border-top: var(--trait) solid var(--line); padding: var(--space-2) 0 var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
 .session-attentes { max-height: 50cqh; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); }
