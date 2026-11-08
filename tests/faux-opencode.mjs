@@ -52,7 +52,16 @@ const donneesSession = (s) => ({
   title: s.title ?? "",
   time: { created: 1, updated: 1 },
   location: { directory: s.directory },
+  ...(s.model ? { model: s.model } : {}),
 });
+
+// Modèles de P-038 (REQ-074), plus un modèle inactif.
+const MODELES = [
+  { id: "claude-sonnet-4-5", providerID: "anthropic", name: "Claude Sonnet 4.5", enabled: true, variants: [{ id: "low" }, { id: "high" }, { id: "max" }] },
+  { id: "gpt-5", providerID: "openai", name: "GPT-5", enabled: true, variants: [{ id: "low" }, { id: "medium" }, { id: "high" }] },
+  { id: "claude-sonnet-4-5", providerID: "openrouter", name: "Claude Sonnet 4.5", enabled: true, variants: [] },
+  { id: "cache", providerID: "anthropic", name: "Caché", enabled: false, variants: [] },
+];
 
 /** Le relevé du scénario, ses identifiants réécrits : ceux de la session racine sont donnés, les autres sont neufs. */
 function lireScenario(nom, racine, directory) {
@@ -202,6 +211,10 @@ function gerer(req, res, chemin, url) {
       res.write('data: {"type":"server.connected","data":{}}\n\n');
       abonnes.add(res);
       res.on("close", () => abonnes.delete(res));
+    } else if (req.method === "GET" && chemin === "/api/model") {
+      json(res, 200, { data: MODELES });
+    } else if (req.method === "GET" && chemin === "/api/model/default") {
+      json(res, 200, { data: { id: "claude-sonnet-4-5", providerID: "anthropic" } });
     } else if (req.method === "POST" && chemin === "/api/session") {
       const id = `ses_n${Date.now().toString(36)}${Object.keys(sessions).length}`;
       sessions[id] = { id, title: "", directory: corps.location?.directory ?? process.cwd(), messages: [], permissions: [], forms: [] };
@@ -219,7 +232,12 @@ function gerer(req, res, chemin, url) {
       else if (req.method === "GET" && suite === "/message") json(res, 200, { data: copie(s.messages), cursor: { previous: null, next: null } });
       else if (req.method === "GET" && suite === "/permission") json(res, 200, { data: s.permissions });
       else if (req.method === "GET" && suite === "/form") json(res, 200, { data: s.forms });
-      else if (req.method === "POST" && suite === "/prompt") {
+      else if (req.method === "POST" && suite === "/model") {
+        s.model = { ...corps.model, variant: corps.model?.variant ?? "default" };
+        garder();
+        diffuser({ type: "session.model.selected", data: { sessionID: s.id, model: s.model } });
+        res.writeHead(204).end();
+      } else if (req.method === "POST" && suite === "/prompt") {
         const marque = /\[scenario:(\w+)\]/.exec(corps.text ?? "");
         const nom = marque?.[1] ?? process.env.FAUX_OPENCODE_SCENARIO ?? "texte";
         chaines.set(s.id, (chaines.get(s.id) ?? Promise.resolve()).then(() => rejouer(s.id, nom, (corps.text ?? "").replace(/\[scenario:\w+\]\s*/, ""))).catch((e) => console.error(e)));

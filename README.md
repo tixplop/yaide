@@ -101,6 +101,7 @@ Si la commande `opencode` (version 2) est dans le `PATH` du serveur au moment o�
 - Chaque clic ouvre une nouvelle conversation dans un onglet de l'éditeur (« opencode 1 », « opencode 2 »…) : une conversation par onglet. Les réponses s'écrivent au fil de leur arrivée.
 - Quand opencode lance un sous-agent, sa ligne apparaît dans la conversation ; « Ouvrir » affiche sa conversation dans son propre onglet.
 - Les autorisations et les questions d'opencode s'affichent au-dessus du champ de saisie, et l'onglet porte la marque `!` tant qu'une demande attend. Une demande d'un sous-agent nomme le sous-agent et est visible dans son onglet et dans celui de la conversation qui l'a lancé.
+- Le modèle et l'effort se choisissent dans l'onglet, avec les listes « Modèle » et « Effort » sous le champ du message. Le choix vaut pour cette session et opencode le garde : il revient après un rechargement. Une nouvelle session part du modèle par défaut d'opencode.
 - opencode garde la session : fermer l'onglet ne l'arrête pas, et un tour en cours continue. `opencode -s <id>` la reprend dans le terminal.
 - Après une mise à jour d'opencode, `node e2e/capturer-opencode.js` relève de nouveau le contrat de son API (dans `web/src/opencode-captures/`).
 

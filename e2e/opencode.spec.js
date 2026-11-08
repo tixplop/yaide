@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { depotExemple, lancerYaide, nomLigne, ouvrirYaide, avancer } from "./aides.js";
+import { depotExemple, gardeContient, lancerYaide, nomLigne, ouvrirYaide, avancer } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 test.skip(({ browserName }) => browserName !== "chromium", "Chromium seul (DEC-037)");
@@ -275,4 +275,110 @@ test("REQ072_parcours_37_question_erreur_coupure_a_800_par_480", async ({ page }
   await page.keyboard.press("Enter");
   await expect(alerte(page, /^opencode ne répond pas : .+\. Réessayez\.$/)).toBeVisible();
   await expect(champ(page)).toHaveValue("Un dernier message");
+});
+
+test("REQ074_parcours_38_choix_recharge_et_largeurs", async ({ page }) => {
+  const opencode = fauxOpencode("texte");
+  yaide = await lancerYaide({ opencode, claude: fauxClaude() });
+  relais = await lancerRelais(yaide.port);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await ouvrirYaide(page, relais.origine);
+  const modele = page.getByLabel("Modèle", { exact: true });
+  const effort = page.getByLabel("Effort", { exact: true });
+  const etat = () => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(opencode, "etat.json"), "utf8")).sessions;
+    } catch {
+      return {}; // fichier en cours d'écriture
+    }
+  };
+  const modeleDe = () => Object.values(etat())[0]?.model;
+
+  // 1. Le modèle par défaut et « Par défaut ».
+  await boutonOpencode(page).click();
+  await expect(champ(page)).toBeFocused();
+  await expect(modele.locator("option:checked")).toHaveText("Claude Sonnet 4.5 · anthropic");
+  await expect(effort.locator("option:checked")).toHaveText("Par défaut");
+  await expect(modele.locator("option")).toHaveCount(3);
+
+  // 2. Un effort, puis un modèle : le faux opencode reçoit les deux, l'effort revient à « Par défaut ».
+  await effort.focus();
+  await effort.selectOption("high");
+  await expect.poll(modeleDe).toEqual({ id: "claude-sonnet-4-5", providerID: "anthropic", variant: "high" });
+  await expect(effort).toBeFocused();
+  await modele.selectOption({ label: "GPT-5 · openai" });
+  await expect.poll(modeleDe).toEqual({ id: "gpt-5", providerID: "openai", variant: "default" });
+  await expect(effort.locator("option:checked")).toHaveText("Par défaut");
+
+  // 3. Le vrai rechargement : mêmes valeurs.
+  await gardeContient(page, '"opencode":true'); // la liste des onglets est écrite avec un délai
+  await page.reload();
+  await expect(onglet(page, "opencode 1")).toHaveAttribute("aria-selected", "true");
+  await expect(modele.locator("option:checked")).toHaveText("GPT-5 · openai");
+  await expect(effort.locator("option:checked")).toHaveText("Par défaut");
+  await expect(effort.locator("option")).toHaveText(["Par défaut", "low", "medium", "high"]);
+
+  // 4. Un choix fait ailleurs (POST direct sur le faux opencode) : la liste change en direct, le focus ne bouge pas.
+  const [ligneTemoin] = fs.readFileSync(path.join(opencode, "temoin"), "utf8").trim().split("\n").slice(-1);
+  const port = JSON.parse(ligneTemoin).args[JSON.parse(ligneTemoin).args.indexOf("--port") + 1];
+  const mdp = fs.readFileSync(path.join(opencode, "temoin.mdp"), "utf8");
+  const id = Object.keys(etat())[0];
+  await champ(page).focus();
+  const r = await fetch(`http://127.0.0.1:${port}/api/session/${id}/model`, {
+    method: "POST",
+    headers: { authorization: "Basic " + Buffer.from("opencode:" + mdp).toString("base64"), "content-type": "application/json" },
+    body: JSON.stringify({ model: { id: "claude-sonnet-4-5", providerID: "openrouter" } }),
+  });
+  expect(r.status).toBe(204);
+  await expect(modele.locator("option:checked")).toHaveText("Claude Sonnet 4.5 · openrouter");
+  await expect(effort).toBeDisabled();
+  await expect(champ(page)).toBeFocused();
+
+  // 5. Un tour qui reste ouvert, puis des largeurs d'éditeur exactes (panneau replié, agent déplié) : la barre ne
+  // déborde pas, « Envoyer » et « Arrêter » sont entiers ; à 460 px « Effort » garde 104 px et « Modèle » rétrécit.
+  await envoyer(page, "[scenario:question] Prépare la release.");
+  await expect(page.getByRole("button", { name: "Arrêter" })).toBeVisible();
+  await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  const principal = page.locator("main.cadre-principal");
+  const mesurer = async (cible) => {
+    // La fenêtre se règle jusqu'à 800 px (en dessous, la mise en page change) ; le reste se prend à la poignée de l'agent.
+    for (let i = 0; i < 4; i++) {
+      const w = (await principal.boundingBox()).width;
+      if (Math.abs(w - cible) < 1) break;
+      const v = page.viewportSize();
+      const largeur = Math.max(800, Math.round(v.width + cible - w));
+      if (largeur !== v.width) {
+        await page.setViewportSize({ width: largeur, height: v.height });
+        continue;
+      }
+      const p = await page.getByRole("separator", { name: "Largeur de l'agent" }).boundingBox();
+      const x = p.x + p.width / 2;
+      const y = p.y + p.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x - (w - cible), y, { steps: 4 });
+      await page.mouse.up();
+    }
+    expect(Math.abs((await principal.boundingBox()).width - cible), `éditeur à ${cible}, fenêtre ${page.viewportSize().width}`).toBeLessThan(1);
+    return page.evaluate(() => {
+      const barre = document.querySelector(".session-saisie").lastElementChild;
+      const entier = (nom) => {
+        const b = [...barre.querySelectorAll("button")].find((x) => x.getAttribute("aria-label") === nom);
+        return b.getBoundingClientRect().width > 0 && b.scrollWidth <= b.clientWidth;
+      };
+      const [m, e] = [...barre.querySelectorAll("select")].map((x) => x.getBoundingClientRect().width);
+      return { deborde: barre.scrollWidth > barre.clientWidth, envoyer: entier("Envoyer"), arreter: entier("Arrêter"), modele: m, effort: e };
+    });
+  };
+  const mesures = {};
+  for (const cible of [720, 460, 320]) {
+    const m = (mesures[cible] = await mesurer(cible));
+    expect(m.deborde, `barre à ${cible}`).toBe(false);
+    expect(m.envoyer, `Envoyer à ${cible}`).toBe(true);
+    expect(m.arreter, `Arrêter à ${cible}`).toBe(true);
+  }
+  expect(Math.abs(mesures[460].effort - 104)).toBeLessThan(1);
+  expect(Math.abs(mesures[720].effort - 104)).toBeLessThan(1);
+  expect(mesures[460].modele).toBeLessThan(mesures[720].modele - 1);
 });
