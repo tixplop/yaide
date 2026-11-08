@@ -12,14 +12,17 @@ import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { zoneCode } from "../ui/zone-code.js";
 import { vueClaude } from "./claude.js";
+import { vueOpencode } from "./opencode.js";
 
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const DELAI_DETECTION = 4000;
 const INTERVALLE_DISQUE = 1500;
 const SANS_SUITE = "sans suite";
 const CLAUDE = "\0claude:"; // préfixe de la clé d'un onglet Claude
+const OPENCODE = "\0oc:"; // préfixe de la clé d'un onglet opencode (session ou sous-agent)
 const DIFF = "\0diff"; // identifiant de l'onglet de diff, qui n'est pas un fichier ouvert
 const TEXTE_SUPPRIME = "Fichier supprimé du disque. Ctrl+S le recrée.";
+const estFichier = (o) => !o.claude && !o.opencode;
 const avecHybride = (chemin) => /\.(md|markdown)$/i.test(chemin);
 const avecApercu = (chemin) => /\.(md|markdown|html|htm)$/i.test(chemin);
 
@@ -32,7 +35,8 @@ const avecApercu = (chemin) => /\.(md|markdown|html|htm)$/i.test(chemin);
  * `claude` : faux, les onglets Claude gardés ne sont ni affichés ni branchés, mais restent dans la liste enregistrée, à leur place.
  * `chemin` : le chemin du projet, dit par l'info-bulle des onglets Claude.
  * Un onglet Claude (REQ-068) est dans la même liste que les fichiers : `{ claude: true, id, numero, instance }`, sa clé `chemin` ne désigne aucun fichier.
- * Rend `{ definirStatuts(statuts), barre, fil, code, lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), renomme(…), supprime(…), restaurer(), detruire() }`.
+ * Un onglet opencode (REQ-072) l'est aussi : `{ opencode: true, id, numero }` (session) ou `{ opencode: true, id, agent, titre }` (sous-agent).
+ * Rend `{ definirStatuts(statuts), barre, fil, code, lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirOpencode({ sessionId }), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
 export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {}, claude = true }) {
   const barre = document.createElement("div");
@@ -63,9 +67,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   /** `Map` onglet -> `{ libelle, detail }` : « Claude <n> », ou le nom du fichier (avec son dossier si un autre porte le même nom). */
   function nomsOnglets() {
-    const fichiers = liste.filter((x) => !x.claude);
+    const fichiers = liste.filter(estFichier);
     const noms = libelles(fichiers.map((x) => x.chemin));
-    return new Map(liste.map((x) => [x, x.claude ? { libelle: `Claude ${x.numero}` } : noms[fichiers.indexOf(x)]]));
+    const autre = (x) => (x.claude ? { libelle: `Claude ${x.numero}` } : { libelle: x.agent ?? `opencode ${x.numero}` });
+    return new Map(liste.map((x) => [x, estFichier(x) ? noms[fichiers.indexOf(x)] : autre(x)]));
   }
 
   function garderListe() {
@@ -77,11 +82,20 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     }, 200);
   }
 
+  /** Clé d'un onglet gardé dans la liste : son chemin, ou celle de l'onglet opencode. */
+  const cleGarde = (g) => (g.opencode ? OPENCODE + g.id : g.chemin);
+
+  function garde(o) {
+    if (o.claude) return { claude: true, id: o.id, numero: o.numero, instance: o.instance };
+    if (o.opencode) return o.agent === undefined ? { opencode: true, id: o.id, numero: o.numero } : { opencode: true, id: o.id, agent: o.agent, titre: o.titre };
+    return { chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) };
+  }
+
   function ecrireGarde() {
-    const gardes = liste.map((o) => (o.claude ? { claude: true, id: o.id, numero: o.numero, instance: o.instance } : { chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) }));
+    const gardes = liste.map(garde);
     const deja = new Map(); // apres -> nombre d'onglets cachés déjà réinsérés à cet endroit
     for (const { garde, apres } of cachees) {
-      const i = apres === null ? -1 : gardes.findIndex((g) => g.chemin === apres);
+      const i = apres === null ? -1 : gardes.findIndex((g) => cleGarde(g) === apres);
       const n = deja.get(apres) ?? 0;
       deja.set(apres, n + 1);
       gardes.splice((apres !== null && i < 0 ? gardes.length : i + 1) + n, 0, garde);
@@ -106,7 +120,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       surCourant(null);
       return surActif(null);
     }
-    if (o.claude) {
+    if (!estFichier(o)) {
       fil.hidden = true;
       fil.replaceChildren();
       surCourant(null);
@@ -159,7 +173,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     }
     const noms = nomsOnglets();
     let actionsDroite = [];
-    if (o !== diff && !o.claude && avecHybride(o.chemin)) {
+    if (o !== diff && estFichier(o) && avecHybride(o.chemin)) {
       const hy = bouton({ icone: "type", variante: "discret", nomAccessible: "Mode hybride", presse: o.hybride });
       hy.addEventListener("click", () => {
         o.hybride = !o.hybride;
@@ -169,7 +183,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       });
       actionsDroite.push(hy.enveloppe);
     }
-    if (o !== diff && !o.claude && avecApercu(o.chemin)) {
+    if (o !== diff && estFichier(o) && avecApercu(o.chemin)) {
       const ap = bouton({ icone: "eye", variante: "discret", nomAccessible: "Aperçu", presse: o.apercu });
       ap.addEventListener("click", () => {
         o.apercu = !o.apercu;
@@ -180,7 +194,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       actionsDroite.push(ap.enveloppe);
     }
     const ongl = onglets({
-      onglets: [...(diff ? [{ id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true }] : []), ...liste.map((x) => x.claude ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "asterisk", titre: `Claude Code dans ${cheminProjet}`, fermable: true } : ({
+      onglets: [...(diff ? [{ id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true }] : []), ...liste.map((x) => x.claude ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "asterisk", titre: `Claude Code dans ${cheminProjet}`, fermable: true } : x.opencode ? ongletOpencode(x, noms.get(x).libelle) : ({
         id: x.chemin,
         libelle: noms.get(x).libelle,
         detail: noms.get(x).detail,
@@ -211,6 +225,13 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     for (const enfant of [...code.children]) if (!zones.some(([, z]) => z === enfant)) enfant.remove();
     if (lectures > 0) code.prepend(indication({ texte: "Chargement…", variante: "chargement" }));
     publier(o);
+  }
+
+  /** Entrée de la barre d'un onglet opencode : icône, `title` et nom accessible (le sous-agent dit son titre). */
+  function ongletOpencode(x, libelle) {
+    const sous = x.agent === undefined ? {} : { nomAccessible: `${libelle}, sous-agent : ${x.titre}` };
+    const titre = x.agent === undefined ? `opencode dans ${cheminProjet}` : x.titre;
+    return { id: x.chemin, libelle, icone: "code-xml", titre, question: x.marque, fermable: true, ...sous };
   }
 
   // Choix d'un onglet : la barre est refaite après le rappel, qui peut encore donner le focus à l'ancien onglet.
@@ -336,6 +357,52 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       o.instance = l.instance;
       garderListe();
     });
+  }
+
+  // ---- Onglets opencode (REQ-072) ----
+
+  function creerOpencode({ id, numero, agent, titre }, apres) {
+    const o = { opencode: true, id, chemin: OPENCODE + id, modifie: false, marque: false };
+    if (agent === undefined) o.numero = numero;
+    else Object.assign(o, { agent, titre });
+    o.vue = vueOpencode({
+      sessionId: id,
+      sousAgent: agent !== undefined,
+      surOuvrir: ouvrirSousAgent,
+      surQuestion: (oui) => {
+        if (o.marque === oui || !liste.includes(o)) return;
+        o.marque = oui;
+        afficher();
+      },
+    });
+    o.zone = o.vue.corps;
+    o.zone.detruire = o.vue.detruire;
+    o.zone.vue = { focus: o.vue.focus };
+    if (apres === undefined) liste.push(o);
+    else liste.splice(apres, 0, o);
+    return o;
+  }
+
+  /** Ouvre « opencode <n> » (plus petit numéro libre) à droite des onglets, actif, le focus dans « Message à opencode ». */
+  function ouvrirOpencode({ sessionId }) {
+    dernierGeste++;
+    const o = trouver(OPENCODE + sessionId) ?? creerOpencode({ id: sessionId, numero: plusPetitNumeroLibre(liste.filter((x) => x.numero !== undefined && x.opencode).map((x) => x.numero)) });
+    activerOpencode(o);
+  }
+
+  /** Ouvre l'onglet d'un sous-agent à droite de l'onglet actif, ou active celui qui existe. */
+  function ouvrirSousAgent({ id, agent, titre }) {
+    dernierGeste++;
+    const i = liste.findIndex((x) => x.chemin === actif);
+    const o = trouver(OPENCODE + id) ?? creerOpencode({ id, agent, titre }, i + 1);
+    activerOpencode(o);
+  }
+
+  function activerOpencode(o) {
+    actif = o.chemin;
+    afficher();
+    o.vue.focus();
+    garderListe();
   }
 
   // ---- Onglet de diff (V-005) ----
@@ -491,7 +558,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   }
 
   async function verifierDisque() {
-    const fichiers = () => liste.filter((o) => !o.claude);
+    const fichiers = () => liste.filter(estFichier);
     if (coupe || !pret || detruit || sondageEnCours || fichiers().length === 0) return;
     sondageEnCours = true;
     try {
@@ -700,7 +767,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     e.preventDefault();
     if (document.querySelector("[role=dialog], dialog[open]")) return;
     const o = trouver(actif);
-    if (!o || o.claude) return;
+    if (!o || !estFichier(o)) return;
     if (o.question) return montrerQuestion(o);
     if (coupe) mettreEnAttente(o);
     else sauvegarderEtDire(o);
@@ -723,7 +790,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   async function restaurer() {
     const gardes = await retrouver();
     const instance = claude && gardes.liste.some((g) => g.claude) ? (await listeShells())?.instance : undefined;
-    const lus = await Promise.all(gardes.liste.map((g) => (g.claude ? null : lireGarde(g))));
+    const lus = await Promise.all(gardes.liste.map((g) => (g.claude || g.opencode ? null : lireGarde(g))));
     if (detruit) return;
     lectures--;
     const aVerifier = [];
@@ -733,7 +800,11 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
         cachees.push({ garde: g, apres: precedent });
         return;
       }
-      if (!g.claude) precedent = g.chemin;
+      if (!g.claude) precedent = cleGarde(g);
+      if (g.opencode) {
+        if (!trouver(OPENCODE + g.id)) creerOpencode(g);
+        return;
+      }
       if (g.claude) {
         // Yaide relancé : ses sessions n'existent plus. Sans réponse du serveur, la vue se rebranche ou découvre la disparition.
         if (g.instance && instance && g.instance !== instance) return;
@@ -797,6 +868,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     },
     ouvrir,
     ouvrirClaude,
+    ouvrirOpencode,
     ouvrirDiff,
     fermerDiff,
     /** Chemin du fichier dont le diff est ouvert, ou null. */

@@ -5,7 +5,7 @@ import { lire } from "../stockage.js";
 import { nomLangage } from "../ui/langages.js";
 
 // Faux vueClaude : un corps avec un champ de saisie, et le journal des appels dans l'ordre.
-const faux = vi.hoisted(() => ({ vues: [], journal: [] }));
+const faux = vi.hoisted(() => ({ vues: [], oc: [], journal: [] }));
 vi.mock("./claude.js", () => ({
   vueClaude: (opts) => {
     const corps = document.createElement("div");
@@ -19,6 +19,24 @@ vi.mock("./claude.js", () => ({
       detruire: vi.fn(() => faux.journal.push(`detruire ${opts.id}`)),
     };
     faux.vues.push(v);
+    return v;
+  },
+}));
+// Faux vueOpencode : un corps avec un champ « Message à opencode » (session) ou une conversation (sous-agent).
+vi.mock("./opencode.js", () => ({
+  vueOpencode: (opts) => {
+    const corps = document.createElement("div");
+    const cible = document.createElement(opts.sousAgent ? "div" : "textarea");
+    if (opts.sousAgent) cible.tabIndex = 0;
+    corps.append(cible);
+    const v = {
+      ...opts,
+      corps,
+      cible,
+      focus: vi.fn(() => cible.focus()),
+      detruire: vi.fn(() => faux.journal.push(`detruire oc:${opts.sessionId}`)),
+    };
+    faux.oc.push(v);
     return v;
   },
 }));
@@ -800,4 +818,194 @@ test("REQ018_brouillon_garde_identique_au_disque_n_est_ni_modifie_ni_en_conflit"
   expect(document.body.textContent).not.toContain("Quelle version garder ?");
   vi.doUnmock("../onglets-fichiers.js");
   vi.resetModules();
+});
+
+// ---- Onglets opencode (REQ-072) ----
+
+const ocGarde = (id, numero) => ({ opencode: true, id, numero });
+const saGarde = (id, agent, titre) => ({ opencode: true, id, agent, titre });
+
+function monterOc(options = {}, restaurer = false) {
+  faux.oc.length = 0;
+  return monterClaude(options, restaurer);
+}
+
+test("REQ072_AC3_AC18_ouvre_opencode_1_puis_2_actif_focus", () => {
+  const { e } = monterOc();
+  e.ouvrir({ chemin: "src/main.rs", contenu: "x", version: "1" });
+  e.ouvrirOpencode({ sessionId: "s1" });
+  expect(nomsOnglets()).toEqual(["main.rs", "opencode 1"]);
+  expect(actifNom()).toBe("opencode 1");
+  const t = onglet("opencode 1");
+  expect(t.title).toBe("opencode dans ~/code/projet");
+  expect(t.getAttribute("aria-label")).toBe("opencode 1");
+  expect(t.querySelector("svg[data-icone=code-xml]")).not.toBeNull();
+  expect(faux.oc[0].sessionId).toBe("s1");
+  expect(faux.oc[0].sousAgent).toBeFalsy();
+  expect(document.activeElement).toBe(faux.oc[0].cible);
+  expect(faux.oc[0].corps.hidden).toBe(false);
+  e.ouvrirOpencode({ sessionId: "s2" });
+  expect(nomsOnglets()).toEqual(["main.rs", "opencode 1", "opencode 2"]);
+  expect(actifNom()).toBe("opencode 2");
+  expect(faux.oc[0].corps.hidden).toBe(true);
+  expect(document.activeElement).toBe(faux.oc[1].cible);
+  onglet("opencode 1").click();
+  expect(faux.oc[0].corps.hidden).toBe(false);
+  expect(faux.oc[0].detruire).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(faux.oc[0].cible);
+});
+
+test("REQ072_AC18_plus_petit_numero_libre", () => {
+  const { e } = monterOc();
+  e.ouvrirClaude({ id: "c" });
+  e.ouvrirOpencode({ sessionId: "a" });
+  e.ouvrirOpencode({ sessionId: "b" });
+  e.ouvrirOpencode({ sessionId: "c" });
+  croix("opencode 1").click();
+  e.ouvrirOpencode({ sessionId: "d" });
+  expect(nomsOnglets()).toEqual(["Claude 1", "opencode 2", "opencode 3", "opencode 1"]);
+});
+
+test("REQ072_AC19_sans_fil_d_ariane_ni_boutons_ni_position", () => {
+  const { e, surActif, surCourant } = monterOc();
+  e.ouvrir({ chemin: "notes.md", contenu: "# x", version: "1" });
+  expect(document.querySelector("[aria-label='Mode hybride']")).not.toBeNull();
+  e.ouvrirOpencode({ sessionId: "s1" });
+  expect(e.fil.hidden).toBe(true);
+  expect(document.querySelector("[aria-label='Mode hybride']")).toBeNull();
+  expect(document.querySelector("[aria-label='Aperçu']")).toBeNull();
+  expect(dernier(surActif)).toEqual({});
+  expect(dernier(surCourant)).toBeNull();
+});
+
+test("REQ072_AC7_sous_agent_nouvel_onglet_puis_reactive", () => {
+  const { e } = monterOc();
+  e.ouvrir({ chemin: "a.txt", contenu: "x", version: "1" });
+  e.ouvrirOpencode({ sessionId: "s1" });
+  e.ouvrir({ chemin: "b.txt", contenu: "x", version: "1" });
+  onglet("opencode 1").click();
+  faux.oc[0].surOuvrir({ id: "sa1", agent: "explore", titre: "Chercher les usages" });
+  expect(nomsOnglets()).toEqual(["a.txt", "opencode 1", "explore", "b.txt"]);
+  expect(actifNom()).toBe("explore");
+  const t = onglet("explore");
+  expect(t.title).toBe("Chercher les usages");
+  expect(t.getAttribute("aria-label")).toBe("explore, sous-agent : Chercher les usages");
+  expect(faux.oc[1].sousAgent).toBe(true);
+  expect(faux.oc[1].sessionId).toBe("sa1");
+  expect(document.activeElement).toBe(faux.oc[1].cible);
+  // Second « Ouvrir » : l'onglet est activé, sans second onglet.
+  onglet("opencode 1").click();
+  faux.oc[0].surOuvrir({ id: "sa1", agent: "explore", titre: "Chercher les usages" });
+  expect(nomsOnglets()).toEqual(["a.txt", "opencode 1", "explore", "b.txt"]);
+  expect(actifNom()).toBe("explore");
+  expect(faux.oc.length).toBe(2);
+  // Un sous-agent du sous-agent s'ouvre de même.
+  faux.oc[1].surOuvrir({ id: "sa2", agent: "general", titre: "Lire" });
+  expect(nomsOnglets()).toEqual(["a.txt", "opencode 1", "explore", "general", "b.txt"]);
+});
+
+test("REQ072_AC24_marque_question_suit_la_vue", () => {
+  const { e } = monterOc();
+  e.ouvrirOpencode({ sessionId: "s1" });
+  faux.oc[0].surOuvrir({ id: "sa1", agent: "explore", titre: "T" });
+  faux.oc[0].surQuestion(true);
+  faux.oc[1].surQuestion(true);
+  expect(onglet("opencode 1").getAttribute("aria-label")).toBe("opencode 1, question en attente");
+  expect(onglet("opencode 1").textContent).toContain("!");
+  expect(onglet("explore").getAttribute("aria-label")).toBe("explore, sous-agent : T, question en attente");
+  faux.oc[0].surQuestion(false);
+  faux.oc[1].surQuestion(false);
+  expect(onglet("opencode 1").getAttribute("aria-label")).toBe("opencode 1");
+  expect(onglet("opencode 1").textContent).not.toContain("!");
+  expect(onglet("explore").getAttribute("aria-label")).toBe("explore, sous-agent : T");
+});
+
+test("REQ072_AC11_fermer_sans_question_ni_appel", () => {
+  const { e } = monterOc();
+  e.ouvrirOpencode({ sessionId: "a" });
+  e.ouvrirOpencode({ sessionId: "b" });
+  e.ouvrirOpencode({ sessionId: "c" });
+  faux.oc[0].surQuestion(true);
+  croix("opencode 1").click();
+  expect(nomsOnglets()).toEqual(["opencode 2", "opencode 3"]);
+  expect(document.querySelector("[role=dialog], dialog[open]")).toBeNull();
+  touche(onglet("opencode 2"), "Delete");
+  expect(nomsOnglets()).toEqual(["opencode 3"]);
+  clicDroit(onglet("opencode 3"));
+  choisirCommande("Fermer tous les onglets");
+  expect(nomsOnglets()).toEqual([]);
+  expect(faux.journal).toEqual(["detruire oc:a", "detruire oc:b", "detruire oc:c"]);
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test("REQ072_AC11_fermer_tous_avec_onglets_opencode", async () => {
+  const { e } = monterOc();
+  e.ouvrir({ chemin: "a.txt", contenu: "x", version: "1" });
+  e.ouvrirOpencode({ sessionId: "a" });
+  e.ouvrirOpencode({ sessionId: "b" });
+  e.definirEtat("coupe");
+  clicDroit(onglet("opencode 2"));
+  choisirCommande("Fermer tous les onglets");
+  await vi.waitFor(() => expect(nomsOnglets()).toEqual([]));
+  expect(fermes()).toEqual([]);
+});
+
+test("REQ072_AC10_AC28_restaures_et_focus_au_chargement", async () => {
+  gardes([ocGarde("a", 1), saGarde("sa", "explore", "Chercher")], "\0oc:a");
+  const { e } = monterOc({}, true);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["opencode 1", "explore"]);
+  expect(actifNom()).toBe("opencode 1");
+  expect(faux.oc.map((v) => [v.sessionId, Boolean(v.sousAgent)])).toEqual([["a", false], ["sa", true]]);
+  expect(document.activeElement).toBe(faux.oc[0].cible);
+  expect(onglet("explore").getAttribute("aria-label")).toBe("explore, sous-agent : Chercher");
+  expect(onglet("explore").title).toBe("Chercher");
+  onglet("explore").click();
+  expect(document.activeElement).toBe(faux.oc[1].cible);
+  // Aucune vérification d'instance ni lecture de fichier.
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test("REQ028_AC23_ctrl_s_ne_fait_rien_sur_opencode", () => {
+  const { e } = monterOc();
+  e.ouvrirOpencode({ sessionId: "a" });
+  const ev = new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true });
+  faux.oc[0].cible.dispatchEvent(ev);
+  expect(ev.defaultPrevented).toBe(true);
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test("REQ018_fichiers_claude_et_opencode_restaures_dans_l_ordre", async () => {
+  gardes([fichierGarde("a.txt"), ocGarde("x", 2), claudeGarde("c", 1), saGarde("sa", "explore", "T"), fichierGarde("b.txt")], "b.txt");
+  const { e } = monterOc({}, true);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["a.txt", "opencode 2", "Claude 1", "explore", "b.txt"]);
+  const { ecrire } = await import("../stockage.js");
+  ecrire.mockClear();
+  e.ouvrirOpencode({ sessionId: "z" });
+  await vi.waitFor(() => expect(ecrire).toHaveBeenCalled());
+  expect(nomsOnglets().at(-1)).toBe("opencode 1");
+  const [, valeur] = ecrire.mock.calls.at(-1);
+  expect(valeur.liste).toEqual([
+    expect.objectContaining({ chemin: "a.txt" }),
+    { opencode: true, id: "x", numero: 2 },
+    { claude: true, id: "c", numero: 1, instance: "i1" },
+    { opencode: true, id: "sa", agent: "explore", titre: "T" },
+    expect.objectContaining({ chemin: "b.txt" }),
+    { opencode: true, id: "z", numero: 1 },
+  ]);
+  expect(valeur.actif).toBe("\0oc:z");
+});
+
+test("REQ018_onglet_claude_cache_garde_sa_place_apres_un_onglet_opencode", async () => {
+  gardes([fichierGarde("a.txt"), ocGarde("x", 1), claudeGarde("c", 1), fichierGarde("b.txt")], "a.txt");
+  const { e } = monterOc({ claude: false }, true);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["a.txt", "opencode 1", "b.txt"]);
+  const { ecrire } = await import("../stockage.js");
+  ecrire.mockClear();
+  e.ouvrirOpencode({ sessionId: "z" });
+  await vi.waitFor(() => expect(ecrire).toHaveBeenCalled());
+  const [, valeur] = ecrire.mock.calls.at(-1);
+  expect(valeur.liste.map((g) => g.chemin ?? g.id)).toEqual(["a.txt", "x", "c", "b.txt", "z"]);
 });
