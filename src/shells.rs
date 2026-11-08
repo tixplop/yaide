@@ -66,9 +66,8 @@ fn signaler(pgid: i32, signal: i32) -> bool {
     unsafe { libc::kill(-pgid, signal) == 0 }
 }
 
-/// Processus vivants de la session du shell : le contrôle des tâches du shell
-/// place ses tâches de fond dans d'autres groupes, que le signal au groupe manque.
-fn membres(session: i32) -> Vec<i32> {
+/// Processus vivants (pid, ppid, session), sans les zombies, d'après `/proc/<pid>/stat`.
+fn processus() -> Vec<(i32, i32, i32)> {
     let Ok(dossier) = std::fs::read_dir("/proc") else {
         return Vec::new();
     };
@@ -80,10 +79,48 @@ fn membres(session: i32) -> Vec<i32> {
             // Après le nom (entre parenthèses) : état, ppid, groupe, session.
             let mut champs = stat.rsplit_once(')')?.1.split_whitespace();
             let etat = champs.next()?;
-            let sid: i32 = champs.nth(2)?.parse().ok()?;
-            (sid == session && etat != "Z").then_some(pid)
+            let ppid: i32 = champs.next()?.parse().ok()?;
+            let sid: i32 = champs.nth(1)?.parse().ok()?;
+            (etat != "Z").then_some((pid, ppid, sid))
         })
         .collect()
+}
+
+/// Processus vivants de la session du shell : le contrôle des tâches du shell
+/// place ses tâches de fond dans d'autres groupes, que le signal au groupe manque.
+fn membres(session: i32) -> Vec<i32> {
+    processus()
+        .into_iter()
+        .filter(|&(_, _, sid)| sid == session)
+        .map(|(pid, _, _)| pid)
+        .collect()
+}
+
+/// Tous les descendants vivants de `racine`, à toute profondeur, même dans une autre session.
+pub(crate) fn descendants(racine: i32) -> Vec<i32> {
+    let tous = processus();
+    let mut trouves: Vec<i32> = Vec::new();
+    let mut a_voir = vec![racine];
+    while let Some(parent) = a_voir.pop() {
+        for &(pid, ppid, _) in &tous {
+            if ppid == parent && !trouves.contains(&pid) {
+                trouves.push(pid);
+                a_voir.push(pid);
+            }
+        }
+    }
+    trouves
+}
+
+/// Vrai si le processus existe encore et n'est pas un zombie.
+pub(crate) fn vivant(pid: i32) -> bool {
+    processus().iter().any(|&(p, _, _)| p == pid)
+}
+
+/// Signal à un processus seul.
+pub(crate) fn signaler_pid(pid: i32, signal: i32) {
+    // SAFETY : kill n'a pas d'effet mémoire ; le pid vient d'un descendant d'un processus lancé par nous.
+    unsafe { libc::kill(pid, signal) };
 }
 
 /// Signal au groupe du shell et à tous les processus de sa session.
@@ -336,23 +373,34 @@ impl Registre {
         true
     }
 
-    /// Arrêt du serveur : signal au groupe de chaque shell, puis abandon forcé.
+    /// Arrêt du serveur : signal au groupe de chaque shell, puis abandon forcé. Pour une session
+    /// Claude, ses descendants (même dans une autre session Unix) sont relevés avant le premier
+    /// signal, reçoivent les mêmes signaux et sont attendus.
     pub async fn arreter(&self) {
         self.arret.store(true, Ordering::SeqCst);
-        let groupes: Vec<i32> = self
-            .liste
-            .lock()
-            .unwrap()
-            .shells
-            .values()
-            .map(|s| s.pgid)
-            .collect();
+        let (groupes, claude): (Vec<i32>, Vec<i32>) = {
+            let l = self.liste.lock().unwrap();
+            (
+                l.shells.values().map(|s| s.pgid).collect(),
+                l.shells
+                    .values()
+                    .filter(|s| s.claude)
+                    .map(|s| s.pgid)
+                    .collect(),
+            )
+        };
+        let suivis: Vec<i32> = claude.iter().flat_map(|&p| descendants(p)).collect();
         for &g in &groupes {
             signaler_tout(g, libc::SIGHUP);
             signaler_tout(g, libc::SIGTERM);
         }
+        for &p in &suivis {
+            signaler_pid(p, libc::SIGHUP);
+            signaler_pid(p, libc::SIGTERM);
+        }
         for _ in 0..30 {
-            if groupes.iter().all(|&g| membres(g).is_empty()) {
+            if groupes.iter().all(|&g| membres(g).is_empty()) && !suivis.iter().any(|&p| vivant(p))
+            {
                 self.attendre_clients().await;
                 return;
             }
@@ -360,6 +408,9 @@ impl Registre {
         }
         for &g in &groupes {
             signaler_tout(g, libc::SIGKILL);
+        }
+        for &p in &suivis {
+            signaler_pid(p, libc::SIGKILL);
         }
         self.attendre_clients().await;
     }

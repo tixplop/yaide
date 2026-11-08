@@ -4,11 +4,14 @@ use ring::rand::{SecureRandom, SystemRandom};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as MutexStd};
 use std::time::{Duration, Instant};
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
+
+use crate::shells::{descendants, signaler_pid, vivant};
 
 pub const RAISON_PAR_DEFAUT: &str = "le serveur opencode ne répond pas";
 const STDERR_MAX: usize = 4096;
@@ -74,12 +77,17 @@ struct Lance {
 #[derive(Default)]
 pub struct Opencode {
     lance: Mutex<Option<Lance>>,
+    /// Posé dès le début de l'arrêt de Yaide : plus aucun lancement.
+    arret: AtomicBool,
 }
 
 impl Opencode {
     /// Port et mot de passe d'un serveur prêt, lancé au besoin. Les demandes simultanées
     /// attendent le même lancement. Erreur : la raison, en texte.
     pub async fn assurer(&self, projet: &Path) -> Result<(u16, String), String> {
+        if self.arret.load(Ordering::SeqCst) {
+            return Err("Yaide s'arrête".to_string());
+        }
         let mut lance = self.lance.lock().await;
         if let Some(l) = lance.as_mut() {
             if matches!(l.enfant.try_wait(), Ok(None)) {
@@ -87,14 +95,16 @@ impl Opencode {
             }
             *lance = None;
         }
-        let nouveau = demarrer(projet).await?;
+        let nouveau = demarrer(projet, &self.arret).await?;
         let r = (nouveau.port, nouveau.mdp.clone());
         *lance = Some(nouveau);
         Ok(r)
     }
 
-    /// Arrêt de Yaide : SIGTERM au groupe du serveur, SIGKILL après 3 s.
+    /// Arrêt de Yaide : SIGTERM au groupe du serveur et à ses descendants (même dans une autre
+    /// session Unix), SIGKILL à ce qui reste après 3 s, même si le chef du groupe a déjà quitté.
     pub async fn arreter(&self) {
+        self.arret.store(true, Ordering::SeqCst);
         let mut lance = self.lance.lock().await;
         let Some(mut l) = lance.take() else {
             return;
@@ -102,15 +112,32 @@ impl Opencode {
         let Some(pgid) = l.enfant.id() else {
             return;
         };
-        signaler(pgid as i32, libc::SIGTERM);
-        if tokio::time::timeout(Duration::from_secs(3), l.enfant.wait())
-            .await
-            .is_err()
-        {
-            signaler(pgid as i32, libc::SIGKILL);
-            let _ = l.enfant.wait().await;
+        let pgid = pgid as i32;
+        let suivis = descendants(pgid);
+        signaler(pgid, libc::SIGTERM);
+        for &p in &suivis {
+            signaler_pid(p, libc::SIGTERM);
         }
+        let debut = Instant::now();
+        while debut.elapsed() < Duration::from_secs(3) {
+            let chef_fini = matches!(l.enfant.try_wait(), Ok(Some(_)));
+            if chef_fini && !suivis.iter().any(|&p| vivant(p)) && !groupe_vivant(pgid) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        signaler(pgid, libc::SIGKILL);
+        for &p in &suivis {
+            signaler_pid(p, libc::SIGKILL);
+        }
+        let _ = l.enfant.wait().await;
     }
+}
+
+/// Reste-t-il un processus dans le groupe `pgid` ?
+fn groupe_vivant(pgid: i32) -> bool {
+    // SAFETY : le signal 0 ne fait que tester l'existence du groupe.
+    unsafe { libc::kill(-pgid, 0) == 0 }
 }
 
 fn signaler(pgid: i32, signal: i32) {
@@ -135,7 +162,7 @@ fn derniere_ligne(tampon: &MutexStd<Vec<u8>>) -> String {
         .map_or_else(|| RAISON_PAR_DEFAUT.to_string(), str::to_string)
 }
 
-async fn demarrer(projet: &Path) -> Result<Lance, String> {
+async fn demarrer(projet: &Path, arret: &AtomicBool) -> Result<Lance, String> {
     let chemin = trouver().ok_or(RAISON_PAR_DEFAUT)?;
     let port = port_libre()?;
     let mut octets = [0u8; 32];
@@ -187,6 +214,9 @@ async fn demarrer(projet: &Path) -> Result<Lance, String> {
     let url = format!("http://127.0.0.1:{port}/api/info");
     let debut = Instant::now();
     while debut.elapsed() < Duration::from_secs(30) {
+        if arret.load(Ordering::SeqCst) {
+            break;
+        }
         if let Ok(Some(_)) = enfant.try_wait() {
             if let Some(l) = lecture {
                 let _ = tokio::time::timeout(Duration::from_secs(1), l).await;
@@ -233,5 +263,13 @@ mod tests {
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_'));
         assert_eq!(base64url(b"Ma"), "TWE");
+    }
+
+    #[tokio::test]
+    async fn assurer_apres_arreter_refuse() {
+        let o = Opencode::default();
+        o.arreter().await;
+        let r = o.assurer(Path::new("/")).await;
+        assert_eq!(r, Err("Yaide s'arrête".to_string()));
     }
 }

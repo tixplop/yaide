@@ -608,6 +608,11 @@ fn req021_ac1_sigint_arrete_les_shells_et_leurs_processus() {
 }
 
 #[test]
+fn req073_ac2_sighup_arrete_les_shells_et_leurs_processus() {
+    arret_propre("HUP");
+}
+
+#[test]
 fn acces_refuses_sans_session_ou_avec_mauvaise_origine() {
     let s = lancer("acces", Some("/bin/sh"));
     let id = ouvrir(&s);

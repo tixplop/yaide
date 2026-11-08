@@ -581,3 +581,93 @@ fn req068_ac10_erreur_immediate_lisible() {
     let bonne = format!("https://127.0.0.1:{}", s.port);
     assert_eq!(essayer_ws(s.port, &s.cookie, &bonne, id).err(), Some(404));
 }
+
+/// Faux `claude` qui ignore HUP et TERM, lance un `sh` dans sa propre session (même idée que
+/// les commandes de Claude Code) qui les ignore aussi, et note son pid et celui du détaché.
+fn faux_claude_sourd(nom: &str) -> (String, PathBuf, PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = dossier(&format!("bin-{nom}"));
+    let temoin = bin.join("temoin");
+    let detache = bin.join("detache");
+    let script = format!(
+        "#!/bin/sh\ntrap '' HUP TERM\nsetsid sh -c \"trap '' HUP TERM; echo \\$\\$ > '{d}'; while :; do sleep 1; done\" &\necho \"pid=$$\" > '{t}'\nwhile :; do sleep 1; done\n",
+        d = detache.display(),
+        t = temoin.display()
+    );
+    let f = bin.join("claude");
+    std::fs::write(&f, script).unwrap();
+    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
+    (format!("{}:/usr/bin:/bin", bin.display()), temoin, detache)
+}
+
+fn pid_du_fichier(f: &PathBuf, prefixe: &str) -> u32 {
+    assert!(attendre(10, || std::fs::read_to_string(f).is_ok_and(|t| t
+        .trim_start_matches(prefixe)
+        .trim()
+        .parse::<u32>()
+        .is_ok())));
+    std::fs::read_to_string(f)
+        .unwrap()
+        .trim_start_matches(prefixe)
+        .trim()
+        .parse()
+        .unwrap()
+}
+
+/// Tue les PID connus à la fin du test, même si une assertion échoue avant.
+struct TueursDePid(Vec<u32>);
+
+impl Drop for TueursDePid {
+    fn drop(&mut self) {
+        for p in &self.0 {
+            let _ = Command::new("kill").args(["-9", &p.to_string()]).status();
+        }
+    }
+}
+
+/// Signal à Yaide ; renvoie le pid de claude et celui du processus détaché, une fois Yaide parti.
+fn arret_claude_sourd(nom: &str, signal: &str) -> (u32, u32) {
+    let (path, temoin, detache) = faux_claude_sourd(nom);
+    let mut s = lancer(nom, &path);
+    let _w = ws(&s, ouvrir(&s));
+    let claude = pid_du_fichier(&temoin, "pid=");
+    let det = pid_du_fichier(&detache, "");
+    let _tueurs = TueursDePid(vec![claude, det]);
+    assert!(vivant(claude) && vivant(det));
+    let r = Command::new("kill")
+        .args([&format!("-{signal}"), &s.child.id().to_string()])
+        .status()
+        .unwrap();
+    assert!(r.success());
+    assert!(
+        attendre(15, || s.child.try_wait().unwrap().is_some()),
+        "Yaide ne quitte pas"
+    );
+    let (c, d) = (
+        attendre(5, || !vivant(claude)),
+        attendre(5, || !vivant(det)),
+    );
+    assert!(c, "claude tourne encore");
+    assert!(d, "le processus détaché tourne encore");
+    (claude, det)
+}
+
+#[test]
+fn req073_ac1_sighup_arrete_claude() {
+    arret_claude_sourd("hup", "HUP");
+}
+
+#[test]
+fn req073_ac3_processus_detache_de_claude_arrete_sigterm() {
+    arret_claude_sourd("det-term", "TERM");
+}
+
+#[test]
+fn req073_ac3_processus_detache_de_claude_arrete_sigint() {
+    arret_claude_sourd("det-int", "INT");
+}
+
+#[test]
+fn req073_ac3_processus_detache_de_claude_arrete_sighup() {
+    arret_claude_sourd("det-hup", "HUP");
+}

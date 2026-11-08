@@ -1181,14 +1181,37 @@ pub async fn servir(
     }
 }
 
-/// Attend SIGTERM ou SIGINT.
+/// Vrai si SIGHUP est ignoré dès le lancement (`nohup yaide`).
+fn sighup_ignore() -> bool {
+    // SAFETY : sigaction ne fait ici que lire la disposition courante (nouvelle action nulle).
+    unsafe {
+        let mut ancien: libc::sigaction = std::mem::zeroed();
+        libc::sigaction(libc::SIGHUP, std::ptr::null(), &mut ancien) == 0
+            && ancien.sa_sigaction == libc::SIG_IGN
+    }
+}
+
+/// Attend SIGTERM, SIGINT ou SIGHUP (sauf si SIGHUP est ignoré au lancement : il n'arrête alors rien).
 async fn arret() {
     use tokio::signal::unix::{signal, SignalKind};
+    // À lire avant d'enregistrer le signal : tokio remplacerait l'ignorance.
+    let hup_ignore = sighup_ignore();
     let (Ok(mut term), Ok(mut int)) = (
         signal(SignalKind::terminate()),
         signal(SignalKind::interrupt()),
     ) else {
         return std::future::pending().await;
     };
-    tokio::select! { _ = term.recv() => {}, _ = int.recv() => {} }
+    let hup = if hup_ignore {
+        None
+    } else {
+        signal(SignalKind::hangup()).ok()
+    };
+    let hup = async {
+        match hup {
+            Some(mut h) => h.recv().await,
+            None => std::future::pending().await,
+        }
+    };
+    tokio::select! { _ = term.recv() => {}, _ = int.recv() => {}, _ = hup => {} }
 }

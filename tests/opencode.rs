@@ -25,6 +25,14 @@ impl Serveur {
             .map(|l| serde_json::from_str(l).unwrap())
             .collect()
     }
+    /// PID notés par le faux dans `temoin.<suffixe>` (processus détaché ou membre du groupe).
+    fn pids_de(&self, suffixe: &str) -> Vec<i64> {
+        std::fs::read_to_string(self.dir.join(format!("temoin.{suffixe}")))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| l.trim().parse().ok())
+            .collect()
+    }
     fn mdp(&self) -> String {
         std::fs::read_to_string(self.dir.join("temoin.mdp")).unwrap()
     }
@@ -38,8 +46,14 @@ impl Drop for Serveur {
         let _ = self.child.kill();
         let _ = self.child.wait();
         // Un faux opencode laissé en vie ne doit pas survivre au test.
-        for l in self.lancements() {
-            let pid = l["pid"].as_i64().unwrap_or(0);
+        let mut pids: Vec<i64> = self
+            .lancements()
+            .iter()
+            .map(|l| l["pid"].as_i64().unwrap_or(0))
+            .collect();
+        pids.extend(self.pids_de("detache"));
+        pids.extend(self.pids_de("membre"));
+        for pid in pids {
             let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
         }
     }
@@ -134,6 +148,11 @@ fn script_faux() -> String {
 
 /// Lance Yaide avec un faux `opencode` en tête d'un `PATH` maîtrisé.
 fn lancer(nom: &str, env: &[(&str, &str)]) -> Serveur {
+    lancer_avec(nom, env, false)
+}
+
+/// `nohup` : Yaide est lancé avec SIGHUP ignoré, comme par `nohup yaide`.
+fn lancer_avec(nom: &str, env: &[(&str, &str)], nohup: bool) -> Serveur {
     let d = std::env::temp_dir().join(format!("opencode-{nom}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(d.join("projet")).unwrap();
@@ -153,7 +172,14 @@ fn lancer(nom: &str, env: &[(&str, &str)]) -> Serveur {
     assert!(c.wait().unwrap().success());
     let port = port_libre();
     let journal = std::fs::File::create(d.join("yaide.log")).unwrap();
-    let child = Command::new(EXE)
+    let mut cmd = if nohup {
+        let mut c = Command::new("sh");
+        c.args(["-c", "trap \"\" HUP; exec \"$@\"", "sh", EXE]);
+        c
+    } else {
+        Command::new(EXE)
+    };
+    let child = cmd
         .arg(d.join("projet"))
         .args(["--port", &port.to_string()])
         .env("XDG_CONFIG_HOME", &cfg)
@@ -539,4 +565,112 @@ fn REQ072_AC14_ecoute_sur_127_0_0_1() {
         })
         .collect();
     assert_eq!(ecoute, ["0100007F"], "à l'écoute sur 127.0.0.1 seulement");
+}
+
+/// Envoie `signal` à Yaide et attend sa sortie (10 s au plus).
+fn signaler_et_attendre_la_sortie(s: &mut Serveur, signal: &str) {
+    let _ = Command::new("kill")
+        .args([&format!("-{signal}"), &s.child.id().to_string()])
+        .output();
+    assert!(
+        attendre(|| s.child.try_wait().unwrap().is_some(), 10),
+        "Yaide s'arrête"
+    );
+}
+
+#[test]
+fn REQ073_AC1_sighup_arrete_le_serveur_opencode_qui_ignore_les_signaux() {
+    let mut s = lancer("hup", &[("FAUX_OPENCODE_SIGNAUX", "ignorer")]);
+    assert_eq!(http(&s, "GET", "/api/opencode/api/info", "").0, 200);
+    let pid = s.lancements()[0]["pid"].as_i64().unwrap();
+    assert!(vivant(pid));
+    signaler_et_attendre_la_sortie(&mut s, "HUP");
+    assert!(attendre(|| !vivant(pid), 5), "le serveur opencode s'arrête");
+}
+
+fn detache_arrete(signal: &str) {
+    let mut s = lancer(
+        &format!("detache-{signal}"),
+        &[("FAUX_OPENCODE_DETACHE", "1")],
+    );
+    assert_eq!(http(&s, "GET", "/api/opencode/api/info", "").0, 200);
+    assert!(attendre(|| !s.pids_de("detache").is_empty(), 10));
+    let pid = s.pids_de("detache")[0];
+    assert!(vivant(pid));
+    signaler_et_attendre_la_sortie(&mut s, signal);
+    assert!(attendre(|| !vivant(pid), 5), "le processus détaché reste");
+}
+
+#[test]
+fn REQ073_AC4_processus_detache_d_opencode_arrete_sigterm() {
+    detache_arrete("TERM");
+}
+
+#[test]
+fn REQ073_AC4_processus_detache_d_opencode_arrete_sigint() {
+    detache_arrete("INT");
+}
+
+#[test]
+fn REQ073_AC4_processus_detache_d_opencode_arrete_sighup() {
+    detache_arrete("HUP");
+}
+
+#[test]
+fn REQ073_AC4_membre_du_groupe_qui_ignore_sigterm_arrete() {
+    let mut s = lancer("membre", &[("FAUX_OPENCODE_MEMBRE", "1")]);
+    assert_eq!(http(&s, "GET", "/api/opencode/api/info", "").0, 200);
+    assert!(attendre(|| !s.pids_de("membre").is_empty(), 10));
+    let pid = s.pids_de("membre")[0];
+    assert!(vivant(pid));
+    signaler_et_attendre_la_sortie(&mut s, "TERM");
+    assert!(attendre(|| !vivant(pid), 5), "le membre du groupe reste");
+}
+
+#[test]
+fn REQ073_AC5_lancement_en_cours_abandonne() {
+    let mut s = lancer("lent", &[("FAUX_OPENCODE_LENT", "1")]);
+    let (port, cookie) = (s.port, s.cookie.clone());
+    let demande = std::thread::spawn(move || {
+        curl(
+            port,
+            "GET",
+            "/api/opencode/api/info",
+            &[
+                format!("Cookie: {cookie}"),
+                format!("Origin: https://127.0.0.1:{port}"),
+            ],
+            "",
+        )
+        .0
+    });
+    assert!(attendre(|| !s.lancements().is_empty(), 10));
+    let pid = s.lancements()[0]["pid"].as_i64().unwrap();
+    let debut = Instant::now();
+    let _ = Command::new("kill")
+        .args(["-TERM", &s.child.id().to_string()])
+        .output();
+    assert!(
+        attendre(|| s.child.try_wait().unwrap().is_some(), 3),
+        "Yaide quitte en moins de 3 s"
+    );
+    assert!(debut.elapsed() < Duration::from_secs(3));
+    assert!(attendre(|| !vivant(pid), 5), "le lancement est abandonné");
+    let _ = demande.join();
+}
+
+#[test]
+fn REQ073_AC6_nohup_ignore_sighup() {
+    let mut s = lancer_avec("nohup", &[], true);
+    assert_eq!(http(&s, "GET", "/api/opencode/api/info", "").0, 200);
+    let pid = s.lancements()[0]["pid"].as_i64().unwrap();
+    let _ = Command::new("kill")
+        .args(["-HUP", &s.child.id().to_string()])
+        .output();
+    std::thread::sleep(Duration::from_secs(1));
+    assert!(s.child.try_wait().unwrap().is_none(), "Yaide continue");
+    assert_eq!(curl(s.port, "GET", "/api/info", &[], "").0, 200);
+    assert!(vivant(pid));
+    signaler_et_attendre_la_sortie(&mut s, "TERM");
+    assert!(attendre(|| !vivant(pid), 5));
 }

@@ -809,6 +809,8 @@ Always give file paths relative to the project root.",
             .into_iter()
             .flatten()
             .flatten()
+            // Les fichiers temporaires de l'écriture atomique ne sont pas des conversations.
+            .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
             .filter_map(|e| serde_json::from_slice(&std::fs::read(e.path()).ok()?).ok())
             .collect();
         toutes.sort_by_key(|a| std::cmp::Reverse(a.maj));
@@ -1130,6 +1132,18 @@ mod tests {
                 provider: None
             })
         );
+    }
+
+    #[tokio::test]
+    async fn liste_ignore_les_fichiers_temporaires() {
+        let b = banc("liste-tmp", false, None).await;
+        let dossier = b.dir.join(".yaide").join("conversations");
+        std::fs::create_dir_all(&dossier).unwrap();
+        let c = json!({ "id": "a1", "titre": "t", "profil": "p", "cree": 1, "maj": 1,
+            "enCours": false, "instructions": "", "tokens": 0, "entrees": [] });
+        std::fs::write(dossier.join("a1.json"), c.to_string()).unwrap();
+        std::fs::write(dossier.join("a1.tmp123"), c.to_string()).unwrap();
+        assert_eq!(b.g.liste().as_array().unwrap().len(), 1);
     }
 
     fn resultats_dans(requete: &str) -> usize {

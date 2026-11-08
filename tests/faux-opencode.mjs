@@ -1,5 +1,9 @@
 // Faux `opencode` pour les tests : sans dépendance, petit et lisible.
 // Variables : FAUX_OPENCODE_VERSION, FAUX_OPENCODE_TEMOIN, FAUX_OPENCODE_ECHEC.
+// Arrêt (REQ-073) : FAUX_OPENCODE_SIGNAUX=ignorer ignore SIGHUP et SIGTERM ; FAUX_OPENCODE_DETACHE=1 lance au `serve`
+// un `sh` dans sa propre session qui ignore HUP et TERM (PID dans <témoin>.detache) ; FAUX_OPENCODE_MEMBRE=1 lance
+// de même un `sh` dans le groupe (PID dans <témoin>.membre) et quitte sur SIGTERM ; FAUX_OPENCODE_LENT=1 n'écoute
+// jamais (lancement qui n'aboutit pas).
 // Avec FAUX_OPENCODE_ETAT (fichier JSON des sessions, gardé entre deux lancements), il rejoue un scénario relevé
 // sur le vrai opencode (`web/src/opencode-captures/`) à chaque message : FAUX_OPENCODE_SCENARIO le choisit
 // (`[scenario:xxx]` dans le message l'emporte), FAUX_OPENCODE_PAS (ms) espace les événements.
@@ -9,6 +13,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
 
 const CAPTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "web", "src", "opencode-captures");
 const ETAT = process.env.FAUX_OPENCODE_ETAT;
@@ -256,6 +261,23 @@ if (args[0] === "serve") {
     fs.appendFileSync(temoin, JSON.stringify(ligne) + "\n");
     fs.writeFileSync(temoin + ".mdp", mdp);
   }
+  if (process.env.FAUX_OPENCODE_SIGNAUX === "ignorer") {
+    for (const sig of ["SIGHUP", "SIGTERM"]) process.on(sig, () => {});
+  }
+  const sourd = (fichier, detache) => {
+    const script = `trap '' HUP TERM; echo $$ >> '${fichier}'; while :; do sleep 1; done`;
+    spawn("sh", ["-c", script], { detached: detache, stdio: "ignore" }).unref();
+  };
+  if (temoin && process.env.FAUX_OPENCODE_DETACHE === "1") sourd(temoin + ".detache", true);
+  if (temoin && process.env.FAUX_OPENCODE_MEMBRE === "1") {
+    sourd(temoin + ".membre", false);
+    process.on("SIGTERM", () => process.exit(0));
+  }
+  if (process.env.FAUX_OPENCODE_LENT === "1") setInterval(() => {}, 1000);
+  else serveur(mdp, args);
+}
+
+function serveur(mdp, args) {
   if (ETAT) charger();
   const attendu = "Basic " + Buffer.from("opencode:" + mdp).toString("base64");
   const port = Number(args[args.indexOf("--port") + 1]);

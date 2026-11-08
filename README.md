@@ -90,14 +90,14 @@ Si la commande `claude` (Claude Code) est dans le `PATH` du serveur au moment o�
 
 - Chaque clic sur « Claude » ouvre une nouvelle session dans un onglet de l'éditeur (« Claude 1 », « Claude 2 »…), dans le dossier du projet.
 - Yaide lance `claude` sans argument : Claude Code suit le mode de permissions de vos réglages (par exemple l'auto-mode). Une session marche aussi quand Yaide est lancé depuis Claude Code.
-- La session s'arrête quand vous fermez son onglet, et toutes les sessions s'arrêtent avec Yaide.
+- La session s'arrête quand vous fermez son onglet, et toutes les sessions s'arrêtent avec Yaide, avec ce que Claude Code a lancé, y compris quand vous fermez votre terminal (SIGHUP). Un `kill -9` ne peut pas être intercepté : il n'arrête rien. Lancé avec `nohup yaide`, Yaide continue après la fermeture du terminal.
 - Dans un onglet Claude, les raccourcis de Yaide (Ctrl+P, Ctrl+S) vont à Claude Code. Ctrl+Maj+F ramène le focus sur le rail.
 
 ## Session opencode
 
 Si la commande `opencode` (version 2) est dans le `PATH` du serveur au moment où vous chargez la page, un bouton « opencode » apparaît dans le rail droit, sous « Claude ». Avec une autre version, ou sans `opencode`, le bouton n'existe pas.
 
-- Au premier clic, Yaide lance `opencode serve` dans le dossier du projet, sur 127.0.0.1, avec un mot de passe tiré au hasard. Il l'arrête avec lui.
+- Au premier clic, Yaide lance `opencode serve` dans le dossier du projet, sur 127.0.0.1, avec un mot de passe tiré au hasard. Il l'arrête avec lui, avec ce qu'il a lancé, y compris quand vous fermez votre terminal ; pas avec `kill -9`. `nohup yaide` continue après la fermeture du terminal.
 - Chaque clic ouvre une nouvelle conversation dans un onglet de l'éditeur (« opencode 1 », « opencode 2 »…) : une conversation par onglet. Les réponses s'écrivent au fil de leur arrivée.
 - Quand opencode lance un sous-agent, sa ligne apparaît dans la conversation ; « Ouvrir » affiche sa conversation dans son propre onglet.
 - Les autorisations et les questions d'opencode s'affichent au-dessus du champ de saisie, et l'onglet porte la marque `!` tant qu'une demande attend. Une demande d'un sous-agent nomme le sous-agent et est visible dans son onglet et dans celui de la conversation qui l'a lancé.
