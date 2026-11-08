@@ -399,3 +399,67 @@ test("REQ072_AC20_opencode_travaille", () => {
   expect(e.querySelector(".indication").textContent).toBe("explore travaille…");
   expect(conversation({ enAttente: true }).querySelector(".indication").textContent).toBe("L'agent travaille…");
 });
+
+const AGENT = (markdown) => ({ type: "agent", markdown });
+
+test("REQ077_AC4_liens_partout_conversation", () => {
+  const c = conversation({ entrees: [AGENT("[doc](https://exemple.org/a)")] });
+  expect(c.querySelector(".ya-chat-agent a").target).toBe("_blank");
+});
+
+test("REQ077_AC8_AC17_lien_garde_le_focus_pendant_l_arrivee", () => {
+  const c = conversation({ entrees: [AGENT("Voir [doc](https://exemple.org/a)")] });
+  document.body.append(c);
+  c.querySelector("a").focus();
+  c.mettreAJour([AGENT("Voir [doc](https://exemple.org/a) et la suite")]);
+  expect(document.activeElement.tagName).toBe("A");
+  expect(document.activeElement.getAttribute("href")).toBe("https://exemple.org/a");
+  expect(document.activeElement.textContent).toBe("doc");
+  expect(c.contains(document.activeElement)).toBe(true);
+});
+
+test("REQ077_AC17_lien_disparu_focus_sur_la_conversation", () => {
+  const c = conversation({ entrees: [AGENT("Voir [doc](https://exemple.org/a)")] });
+  document.body.append(c);
+  c.querySelector("a").focus();
+  c.mettreAJour([AGENT("Autre texte")]);
+  expect(document.activeElement).toBe(c);
+});
+
+test("REQ077_AC8_focus_ailleurs_ne_bouge_pas", () => {
+  const c = conversation({ entrees: [AGENT("Voir [doc](https://exemple.org/a)")] });
+  const champ = document.createElement("input");
+  document.body.append(c, champ);
+  champ.focus();
+  c.mettreAJour([AGENT("Voir [doc](https://exemple.org/a) suite")]);
+  expect(document.activeElement).toBe(champ);
+});
+
+test("REQ077_AC18_bloc_coupe_reste_un_pre_et_message_hors_du_pre", () => {
+  const c = conversation({ entrees: [AGENT("```rust\nfn main() {"), { type: "fin", texte: "Arrêté." }] });
+  const pre = c.querySelector(".ya-chat-agent pre");
+  expect(pre.textContent).toContain("fn main() {");
+  const fin = c.querySelector(".ya-fin");
+  expect(fin.textContent).toBe("Arrêté.");
+  expect(pre.contains(fin)).toBe(false);
+});
+
+test("REQ077_AC19_message_utilisateur_tel_quel", () => {
+  const c = conversation({ entrees: [{ type: "utilisateur", texte: "**mot** | a | b |" }] });
+  const u = c.querySelector(".ya-chat-user");
+  expect(u.querySelector("strong")).toBeNull();
+  expect(u.querySelector("table")).toBeNull();
+  expect(u.textContent).toBe("Vous : **mot** | a | b |");
+});
+
+test("REQ077_AC20_elements_natifs_sans_role_ni_tabindex", () => {
+  const md = "| a |\n|---|\n| b |\n\n> c\n\n- d\n\n1. e\n\n---\n\n```\nf\n```";
+  const c = conversation({ entrees: [AGENT(md)] });
+  const a = c.querySelector(".ya-chat-agent");
+  for (const s of ["table", "th", "td", "blockquote", "ul", "ol", "li", "hr", "pre"]) {
+    const el = a.querySelector(s);
+    expect(el, s).not.toBeNull();
+    expect(el.hasAttribute("role"), s).toBe(false);
+    expect(el.hasAttribute("tabindex"), s).toBe(false);
+  }
+});

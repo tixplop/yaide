@@ -2,7 +2,7 @@ import { icone } from "./icones.js";
 import { indication } from "./indication.js";
 import { message } from "./message.js";
 import { avatar } from "./avatar.js";
-import { rendreMarkdown } from "./apercu.js";
+import { rendreReponse } from "./apercu.js";
 import { bouton } from "./bouton.js";
 
 export { attentes } from "./attentes.js";
@@ -149,8 +149,16 @@ function sr(texte) {
 }
 
 function majAgent(n, e, nom) {
-  n.innerHTML = rendreMarkdown(e.markdown);
+  const actif = document.activeElement;
+  const liens = [...n.querySelectorAll("a")];
+  const rang = actif ? liens.indexOf(actif) : -1;
+  const avant = rang >= 0 ? { href: actif.getAttribute("href"), texte: actif.textContent } : null;
+  n.innerHTML = rendreReponse(e.markdown);
   n.prepend(sr(`${e.auteur?.nom ?? nom} : `));
+  if (!avant) return;
+  const lien = n.querySelectorAll("a")[rang];
+  if (lien && lien.getAttribute("href") === avant.href && lien.textContent === avant.texte) lien.focus({ preventScroll: true });
+  else n.closest(".ya-chat")?.focus({ preventScroll: true });
 }
 
 const memeAuteur = (a, b) => !!a && !!b && a.nom === b.nom && a.avatar === b.avatar && a.couleur === b.couleur;
