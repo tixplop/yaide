@@ -431,6 +431,24 @@ test("REQ048_parcours_16_replier_depuis_l_en_tete", async ({ page }) => {
   expect(await contour(deplier)).toBe(true);
   await expect(tooltip).toHaveCount(0);
   // 6. Rechargement : le panneau reste replié, le focus est dans l'éditeur.
+  // Le repli est écrit dans IndexedDB sans attente : on laisse l'écriture finir, un rechargement la couperait.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise((resolu) => {
+            const o = indexedDB.open("yaide", 1);
+            o.onsuccess = () => {
+              const g = o.result.transaction("cles").objectStore("cles").get("replis");
+              g.onsuccess = () => {
+                o.result.close();
+                resolu(g.result?.panneau);
+              };
+            };
+          }),
+      ),
+    )
+    .toBe(true);
   await page.reload();
   await deplier.waitFor();
   await expect(aside).toBeHidden();
