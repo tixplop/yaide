@@ -1996,7 +1996,7 @@ test("REQ070_AC8_tout_desactive_fichiers_seul", () =>
     expect(vue.querySelector(".cadre-rail-droit")).toBeNull();
     expect(vue.querySelector(".cadre-shells")).toBeNull();
     expect(agentCol(vue)).toBeNull();
-    expect(appels.filter((a) => !a.includes("/api/fichiers") && !a.includes("/api/session"))).toEqual([]);
+    expect(appels.filter((a) => !a.includes("/api/fichiers") && !a.includes("/api/session"))).toEqual(["GET /api/opencode"]); // aucune fonction ne retire « opencode »
     // Le panneau affiche Fichiers.
     expect(vue.querySelector("aside h2").textContent).toBe("Fichiers");
   }));
@@ -2023,4 +2023,172 @@ test("REQ070_vue_gardee_absente_retombe_sur_fichiers", async () => {
   expect(vue.querySelector("[role=tab][aria-selected=true]").getAttribute("aria-label")).toBe("Fichiers");
   expect(vue.querySelector("aside h2").textContent).toBe("Fichiers");
   expect(vue.querySelector(".fichiers").hidden).toBe(false);
+});
+
+// ---- T-126 : « opencode » dans le rail droit ----
+
+/** Serveur simulé : détection d'opencode, création de session (`creation` : { status, corps } ou fonction, `null` = coupure). */
+function simulerOpencode({ opencode = true, claude = true, creation } = {}) {
+  let n = 0;
+  if (creation === undefined) creation = () => ({ status: 200, corps: { data: { id: `ses_${++n}` } } });
+  FauxWebSocket.tous = [];
+  vi.stubGlobal("WebSocket", FauxWebSocket);
+  vi.stubGlobal("EventSource", class { close() {} });
+  const appels = [];
+  const rep = (corps, status = 200) => ({ ok: status < 400, status, json: async () => corps, text: async () => (typeof corps === "string" ? corps : JSON.stringify(corps)) });
+  vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+    const chemin = String(url).split("?")[0];
+    appels.push(`${opts.method ?? "GET"} ${chemin}${opts.body ? ` ${opts.body}` : ""}`);
+    if (chemin === "/api/opencode") return rep({ disponible: opencode });
+    if (chemin === "/api/opencode/api/session" && opts.method === "POST") {
+      const c = typeof creation === "function" ? await creation() : creation;
+      return c === null ? null : rep(c.corps, c.status);
+    }
+    if (chemin === "/api/claude") return rep({ disponible: claude });
+    if (chemin === "/api/shells") return rep({ instance: "i1", shells: [] });
+    if (chemin === "/api/fichiers") return rep({ entrees: [{ nom: "main.rs", dossier: false, ignore: false }] });
+    if (chemin === "/api/fichier") return { ok: true, status: 200, text: async () => "fn main() {}", headers: { get: () => "1" } };
+    if (chemin === "/api/git/etat") return rep({ branche: "main", detachee: false, branches: ["main"], changements: [] });
+    if (chemin === "/api/agent/agents") return rep({ agents: [], erreurs: [] });
+    if (chemin === "/api/agent/reglages") return rep({ providers: [], profils: [] });
+    return rep({}, 409);
+  }));
+  vi.mocked(lire).mockImplementation(async () => undefined);
+  return appels;
+}
+const boutonOcDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label=opencode]");
+const ongletsOc = (vue) => [...vue.querySelectorAll("[role=tab]")].filter((t) => t.getAttribute("aria-label")?.startsWith("opencode "));
+const nomDuChamp = (el) => el?.getAttribute("aria-label") ?? el?.labels?.[0]?.textContent;
+const nomsRailDroit = (vue) => [...vue.querySelectorAll(".cadre-rail-droit button")].map((b) => b.getAttribute("aria-label"));
+
+test("REQ072_AC1_bouton_selon_la_detection", async () => {
+  simulerOpencode();
+  const a = monter().vue;
+  await vi.waitFor(() => expect(boutonOcDe(a)).not.toBeNull());
+  expect(nomsRailDroit(a)).toEqual(["Agent", "Agents", "Claude", "opencode"]);
+  expect(icone(boutonOcDe(a))).toBe("code-xml");
+  simulerOpencode({ opencode: false });
+  const b = monter().vue;
+  await vi.waitFor(() => expect(boutonClaudeDe(b)).not.toBeNull());
+  expect(boutonOcDe(b)).toBeNull();
+  expect(nomsRailDroit(b)).toEqual(["Agent", "Agents", "Claude"]);
+});
+
+test("REQ072_AC3_clic_ouvre_un_onglet", async () => {
+  const appels = simulerOpencode();
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  boutonOcDe(vue).click();
+  await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(1));
+  expect(appels).toContain('POST /api/opencode/api/session {"location":{"directory":"/home/x/projet"}}');
+  expect(ongletsOc(vue)[0].getAttribute("aria-selected")).toBe("true");
+  expect(ongletsOc(vue)[0].title).toBe("opencode dans /home/x/projet");
+  expect(nomDuChamp(document.activeElement)).toBe("Message à opencode");
+  expect(boutonOcDe(vue).hasAttribute("aria-busy")).toBe(false);
+  boutonOcDe(vue).click();
+  await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(2));
+  expect(appels.filter((a) => a.startsWith("POST /api/opencode/api/session")).length).toBe(2);
+  expect(ongletsOc(vue).map((t) => t.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+  expect(ongletsOc(vue)[1].getAttribute("aria-label")).toBe("opencode 2");
+});
+
+test("REQ072_AC30_second_clic_pendant_le_lancement_ignore", async () => {
+  let liberer;
+  const appels = simulerOpencode({ creation: () => new Promise((r) => { liberer = () => r({ status: 200, corps: { data: { id: "ses_1" } } }); }) });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  boutonOcDe(vue).focus();
+  boutonOcDe(vue).click();
+  expect(boutonOcDe(vue).getAttribute("aria-busy")).toBe("true");
+  expect(boutonOcDe(vue).getAttribute("aria-disabled")).toBe("true");
+  boutonOcDe(vue).click();
+  expect(document.activeElement).toBe(boutonOcDe(vue));
+  liberer();
+  await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(1));
+  expect(appels.filter((a) => a.startsWith("POST /api/opencode/api/session")).length).toBe(1);
+  expect(boutonOcDe(vue).hasAttribute("aria-busy")).toBe(false);
+});
+
+test("REQ072_AC13_coupure_et_503_aucun_onglet", async () => {
+  simulerOpencode({ creation: null });
+  const a = monter().vue;
+  await vi.waitFor(() => expect(boutonOcDe(a)).not.toBeNull());
+  boutonOcDe(a).click();
+  await vi.waitFor(() => expect(a.textContent).toContain("Connexion perdue. Réessayez au retour."));
+  expect(ongletsOc(a).length).toBe(0);
+  simulerOpencode({ creation: { status: 503, corps: "opencode a quitté\n" } });
+  const b = monter().vue;
+  await vi.waitFor(() => expect(boutonOcDe(b)).not.toBeNull());
+  boutonOcDe(b).click();
+  await vi.waitFor(() => expect(b.textContent).toContain("Impossible d'ouvrir une session opencode : opencode a quitté."));
+  expect(ongletsOc(b).length).toBe(0);
+});
+
+test("REQ072_AC16_shells_et_compteur_inchanges", async () => {
+  const appels = simulerOpencode();
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  await attendre();
+  const avant = vue.querySelector(".cadre-shells").outerHTML;
+  const barreAvant = vue.querySelector("footer").outerHTML;
+  const nbAvant = appels.filter((a) => a.includes("/api/shells")).length;
+  boutonOcDe(vue).click();
+  await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(1));
+  await attendre();
+  expect(appels.filter((a) => a.startsWith("POST /api/shells"))).toEqual([]);
+  expect(appels.filter((a) => a.includes("/api/shells")).length).toBe(nbAvant);
+  expect(vue.querySelector(".cadre-shells").outerHTML).toBe(avant);
+  expect(vue.querySelector("footer").outerHTML).toBe(barreAvant);
+});
+
+test("REQ028_AC22_touches_sur_opencode", async () => {
+  simulerOpencode();
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  const b = boutonOcDe(vue);
+  b.focus();
+  for (const k of ["f", "r", "g"]) clavier(b, k);
+  expect(vue.querySelector("[role=tab][aria-label=Fichiers]").getAttribute("aria-selected")).toBe("true");
+  expect(vue.querySelector("[role=tab][aria-label=Recherche]").getAttribute("aria-selected")).toBe("false");
+  expect(document.activeElement).toBe(b);
+  clavier(b, "a");
+  await vi.waitFor(() => expect(document.activeElement).toBe(champAgent(vue)));
+});
+
+test("REQ028_AC8_ordre_de_tab_avec_opencode", async () => {
+  simulerOpencode();
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  expect(nomsRailDroit(vue)).toEqual(["Agent", "Agents", "Claude", "opencode"]);
+  const rail = [...vue.querySelectorAll(".cadre-rail-droit button")];
+  expect(rail.every((e) => e.tabIndex >= 0)).toBe(true);
+  // Dans le document, « opencode » suit « Claude ».
+  expect(boutonClaudeDe(vue).compareDocumentPosition(boutonOcDe(vue)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test("REQ028_AC23_ctrl_p_et_ctrl_maj_f_sur_un_onglet_opencode", async () => {
+  simulerOpencode();
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  boutonOcDe(vue).click();
+  await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(1));
+  expect(nomDuChamp(document.activeElement)).toBe("Message à opencode");
+  document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "F", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+  expect(document.activeElement).toBe(vue.querySelector("[role=tab][aria-selected=true][aria-label=Fichiers]"));
+  document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "p", ctrlKey: true, bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect([...document.querySelectorAll("input")].some((i) => nomDuChamp(i) === "Chemin du fichier")).toBe(true));
+});
+
+test("REQ070_AC20_agents_ou_claude_desactives_avec_opencode", async () => {
+  simulerOpencode();
+  const a = monter({ reglages: { fonctions: { claude: false } } }).vue;
+  await vi.waitFor(() => expect(boutonOcDe(a)).not.toBeNull());
+  expect(nomsRailDroit(a)).toEqual(["Agent", "Agents", "opencode"]);
+  const b = monter({ reglages: { fonctions: { agents: false, claude: false } } }).vue;
+  await vi.waitFor(() => expect(boutonOcDe(b)).not.toBeNull());
+  expect(nomsRailDroit(b)).toEqual(["opencode"]);
+  expect(b.querySelector(".cadre-rail-droit")).not.toBeNull();
+  const c = monter({ reglages: { fonctions: { agents: false } } }).vue;
+  await vi.waitFor(() => expect(boutonOcDe(c)).not.toBeNull());
+  expect(nomsRailDroit(c)).toEqual(["Claude", "opencode"]);
 });

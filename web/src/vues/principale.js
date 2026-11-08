@@ -1,4 +1,4 @@
-import { claudeDisponible, creerChemin, deconnexion, lireFichier, ouvrirClaude } from "../api.js";
+import { claudeDisponible, creerChemin, creerSession, deconnexion, lireFichier, opencodeDisponible, ouvrirClaude } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { cadre } from "../ui/cadre.js";
 import { borner, limites } from "../ui/poignee.js";
@@ -64,6 +64,20 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (r.coupure) return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
     if (r.erreur !== undefined) return dire({ texte: `Impossible d'ouvrir une session Claude : ${String(r.erreur).replace(/\.$/, "")}.`, variante: "alerte", fermable: true });
     editeur.ouvrirClaude({ id: r.id });
+  });
+  const boutonOpencode = bouton({ icone: "code-xml", nomAccessible: "opencode", infoBulle: "Nouvelle session opencode", positionInfoBulle: "gauche" });
+  boutonOpencode.addEventListener("click", async () => {
+    if (boutonOpencode.getAttribute("aria-busy") === "true") return;
+    boutonOpencode.definirOccupe(true);
+    boutonOpencode.setAttribute("aria-disabled", "true");
+    const r = await creerSession(chemin);
+    boutonOpencode.definirOccupe(false);
+    boutonOpencode.removeAttribute("aria-disabled");
+    if (detruite) return;
+    if (r.coupure) return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
+    const id = r.donnees?.data?.id;
+    if (r.erreur !== undefined || id === undefined) return dire({ texte: `Impossible d'ouvrir une session opencode : ${String(r.erreur ?? "réponse illisible").replace(/\.$/, "")}.`, variante: "alerte", fermable: true });
+    editeur.ouvrirOpencode({ sessionId: id });
   });
   boutonAgent.addEventListener("click", entrerDansAgent);
   boutonAgents.addEventListener("click", entrerDansAgents);
@@ -302,12 +316,13 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     surFin: () => ecrire("tailles", { ...choisies }),
   });
 
-  // « Claude » n'existe que si `claude` est dans le PATH du serveur, vérifié à chaque chargement.
-  if (avec.claude) {
-    claudeDisponible().then((oui) => {
-      if (oui && !detruite) racine.ajouterCommandeDroite(boutonClaude.enveloppe);
-    });
-  }
+  // « Claude » et « opencode » n'existent que si leur commande est dans le PATH du serveur, vérifié à chaque chargement.
+  // « opencode » vient toujours après « Claude », quel que soit l'ordre des réponses.
+  Promise.all([avec.claude ? claudeDisponible() : false, opencodeDisponible()]).then(([claude, opencode]) => {
+    if (detruite) return;
+    if (claude) racine.ajouterCommandeDroite(boutonClaude.enveloppe);
+    if (opencode) racine.ajouterCommandeDroite(boutonOpencode.enveloppe);
+  });
 
   // Sans shell à l'arrivée : la zone reste hors page le temps de lire la liste.
   racine.dataset.vueColonne = vueColonne;

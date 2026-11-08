@@ -29,22 +29,22 @@ export function depotExemple(nom = "projet") {
   return dossier;
 }
 
-let dossiersSansClaude;
-/** `PATH` donné à Yaide : celui de la machine sans dossier qui contient un `claude`, et `claude` (dossier d'un faux `claude`) en tête s'il est donné. */
-function pathSansClaude(claude) {
-  dossiersSansClaude ??= (process.env.PATH ?? "").split(path.delimiter).filter((d) => d && !fs.existsSync(path.join(d, "claude")));
-  return (claude ? [claude, ...dossiersSansClaude] : dossiersSansClaude).join(path.delimiter);
+let dossiersSansAides;
+/** `PATH` donné à Yaide : celui de la machine sans dossier qui contient un `claude` ou un `opencode`, et les dossiers de faux `claude` et `opencode` en tête s'ils sont donnés. */
+function pathSansAides(claude, opencode) {
+  dossiersSansAides ??= (process.env.PATH ?? "").split(path.delimiter).filter((d) => d && !fs.existsSync(path.join(d, "claude")) && !fs.existsSync(path.join(d, "opencode")));
+  return [...(opencode ? [opencode] : []), ...(claude ? [claude] : []), ...dossiersSansAides].join(path.delimiter);
 }
 
-/** Lance Yaide sur un port libre (ou `port`). `claude` : dossier d'un faux `claude`, sinon aucun `claude` dans le `PATH`. Rend `{ origine, port, dossier, arreter, relancer }`. */
-export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple(), port, shell = "/bin/sh", reprise = false, binaire, claude } = {}) {
+/** Lance Yaide sur un port libre (ou `port`). `claude`, `opencode` : dossier d'un faux `claude` ou `opencode`, sinon aucun dans le `PATH`. Rend `{ origine, port, dossier, arreter, relancer }`. */
+export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple(), port, shell = "/bin/sh", reprise = false, binaire, claude, opencode } = {}) {
   const imposé = port !== undefined;
   const racine = path.dirname(dossier);
   const home = path.join(racine, "home");
   fs.mkdirSync(home, { recursive: true });
   const cwd = binaire ? path.dirname(binaire) : undefined;
   const exe = binaire ?? "target/debug/yaide";
-  const env = { ...process.env, XDG_CONFIG_HOME: path.join(racine, "cfg"), HOME: home, PATH: pathSansClaude(claude) };
+  const env = { ...process.env, XDG_CONFIG_HOME: path.join(racine, "cfg"), HOME: home, PATH: pathSansAides(claude, opencode) };
   if (shell) env.SHELL = shell;
   if (!reprise) spawnSync(exe, ["passwd"], { input: `${motDePasse}\n`, env, cwd });
   let proc, sorti, origine;
@@ -86,7 +86,7 @@ export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple()
     /** Arrête Yaide et le relance sur le même port, avec la même configuration. */
     relancer: async function () {
       await this.arreter();
-      return lancerYaide({ motDePasse, dossier, port, shell, reprise: true, binaire, claude });
+      return lancerYaide({ motDePasse, dossier, port, shell, reprise: true, binaire, claude, opencode });
     },
   };
 }
