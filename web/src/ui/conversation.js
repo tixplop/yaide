@@ -3,11 +3,20 @@ import { indication } from "./indication.js";
 import { message } from "./message.js";
 import { avatar } from "./avatar.js";
 import { rendreMarkdown } from "./apercu.js";
+import { bouton } from "./bouton.js";
+
+export { attentes } from "./attentes.js";
 
 const ETATS = {
   enCours: { icone: "circle-dashed", nom: "en cours", classe: "encours" },
   reussi: { icone: "circle-check", nom: "réussi", classe: "ok" },
   echec: { icone: "circle-x", nom: "échec", classe: "ko" },
+};
+const ETATS_SOUS_AGENT = {
+  enCours: { icone: "circle-dashed", nom: "en cours", classe: "encours" },
+  termine: { icone: "circle-check", nom: "terminé", classe: "ok" },
+  echec: { icone: "circle-x", nom: "échec", classe: "ko" },
+  interrompu: { icone: "circle-minus", nom: "interrompu", classe: "encours" },
 };
 const MARGE_BAS = 24;
 let compteur = 0;
@@ -67,19 +76,53 @@ function majOutil(racine, e) {
   texteZone(racine.querySelector(".ya-step-res"), e);
 }
 
-function rendreEntree(e, surDeplier) {
+function rendreSousAgent(e, surOuvrir) {
+  const ligne = document.createElement("div");
+  ligne.className = "ya-sous";
+  ligne.setAttribute("role", "group");
+  ligne.append(icone("circle-dashed", 14));
+  for (const c of ["ya-sous-agent", "ya-sous-titre", "ya-sous-etat"]) {
+    const sp = document.createElement("span");
+    sp.className = c;
+    ligne.append(sp);
+  }
+  const ouvrir = bouton({ libelle: "Ouvrir", nomAccessible: `Ouvrir ${e.agent}`, variante: "secondaire" });
+  ouvrir.addEventListener("click", () => surOuvrir?.(e.id));
+  ligne.append(ouvrir);
+  majSousAgent(ligne, e);
+  return ligne;
+}
+
+// Met la ligne à jour sur place : le focus de « Ouvrir » reste où il est.
+function majSousAgent(ligne, e) {
+  const etat = ETATS_SOUS_AGENT[e.etat];
+  if (!etat) throw new Error(`conversation : état de sous-agent inconnu « ${e.etat} »`);
+  ligne.setAttribute("aria-label", `Sous-agent ${e.agent}, ${etat.nom}`);
+  if (ligne.firstElementChild.getAttribute("data-icone") !== etat.icone) ligne.firstElementChild.replaceWith(icone(etat.icone, 14));
+  ligne.firstElementChild.setAttribute("class", `ya-step-etat ${etat.classe}`);
+  ligne.querySelector(".ya-sous-agent").textContent = e.agent;
+  const titre = ligne.querySelector(".ya-sous-titre");
+  titre.textContent = e.titre ?? "";
+  titre.title = e.titre ?? "";
+  ligne.querySelector(".ya-sous-etat").textContent = etat.nom;
+  ligne.querySelector("button").setAttribute("aria-label", `Ouvrir ${e.agent}`);
+}
+
+function rendreEntree(e, surDeplier, surOuvrir, nom) {
   let n;
   switch (e.type) {
     case "utilisateur":
       n = document.createElement("div");
       n.className = "ya-chat-user";
-      n.append(sr("Vous : "), String(e.texte ?? ""));
+      n.append(sr(e.consigne ? "Consigne : " : "Vous : "), String(e.texte ?? ""));
       return n;
     case "agent":
       n = document.createElement("div");
       n.className = "ya-chat-agent";
-      majAgent(n, e);
+      majAgent(n, e, nom);
       return n;
+    case "sousAgent":
+      return rendreSousAgent(e, surOuvrir);
     case "outil":
       return rendreOutil(e, surDeplier);
     case "fin":
@@ -104,9 +147,9 @@ function sr(texte) {
   return s;
 }
 
-function majAgent(n, e) {
+function majAgent(n, e, nom) {
   n.innerHTML = rendreMarkdown(e.markdown);
-  n.prepend(sr(`${e.auteur?.nom ?? "Agent"} : `));
+  n.prepend(sr(`${e.auteur?.nom ?? nom} : `));
 }
 
 const memeAuteur = (a, b) => !!a && !!b && a.nom === b.nom && a.avatar === b.avatar && a.couleur === b.couleur;
@@ -128,7 +171,7 @@ function creerGroupe(auteur) {
   return { auteur, el, corps };
 }
 
-export function conversation({ entrees = [], enAttente = false, vide, surDeplier } = {}) {
+export function conversation({ entrees = [], enAttente = false, vide, surDeplier, surOuvrir, nom = "Agent" } = {}) {
   const el = document.createElement("div");
   el.className = "ya-chat";
   el.setAttribute("role", "log");
@@ -153,7 +196,9 @@ export function conversation({ entrees = [], enAttente = false, vide, surDeplier
       if (e.type === "outil" && entree.type === "outil") {
         if (e.etat !== entree.etat || e.resultat !== entree.resultat || e.argument !== entree.argument) majOutil(noeud, e);
       } else if (e.type === "agent" && entree.type === "agent" && e.markdown !== entree.markdown) {
-        majAgent(noeud, e);
+        majAgent(noeud, e, nom);
+      } else if (e.type === "sousAgent" && entree.type === "sousAgent" && JSON.stringify(e) !== JSON.stringify(entree)) {
+        majSousAgent(noeud, e);
       }
       rendus[i].entree = e;
     }
@@ -164,7 +209,7 @@ export function conversation({ entrees = [], enAttente = false, vide, surDeplier
     }
     for (let i = rendus.length; i < liste.length; i++) {
       const e = liste[i];
-      const noeud = rendreEntree(e, surDeplier);
+      const noeud = rendreEntree(e, surDeplier, surOuvrir, nom);
       let groupe = null;
       if (e.auteur && e.type !== "utilisateur" && e.type !== "message") {
         groupe = rendus.at(-1)?.groupe;
@@ -182,7 +227,7 @@ export function conversation({ entrees = [], enAttente = false, vide, surDeplier
     const cle = enAttenteNouveau ? JSON.stringify(auteurAttente) : "";
     if (attente && cle !== cleAttente) attente = null;
     if (enAttenteNouveau && !attente) {
-      attente = indication({ texte: auteurAttente ? `${auteurAttente.nom} travaille…` : "L'agent travaille…", variante: "chargement" });
+      attente = indication({ texte: auteurAttente ? `${auteurAttente.nom} travaille…` : nom === "Agent" ? "L'agent travaille…" : `${nom} travaille…`, variante: "chargement" });
     } else if (!enAttenteNouveau) {
       attente = null;
     }

@@ -64,6 +64,15 @@
 .message-texte { flex: 1; }
 .message-actions { display: flex; gap: var(--space-2); }
 .message-detail { flex-basis: 100%; margin: 0; max-height: var(--hauteur-detail); overflow: auto; font: var(--texte-petit) var(--font-mono); white-space: pre-wrap; }
+/* C-003 avec `champs` (REQ-072) : sans fond propre, filet --info, champs en grille de deux colonnes (une sous 30rem = 480 px). */
+.message-avec-champs { background: none; border-left-color: var(--info); container-type: inline-size; }
+.message-champs { flex-basis: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2) var(--space-3); align-items: start; }
+@container (max-width: 30rem) { .message-champs { grid-template-columns: minmax(0, 1fr); } }
+.ya-champs [hidden] { display: none; }
+.ya-champs .champ { gap: 2px; min-width: 0; border: 0; margin: 0; padding: 0; }
+.ya-champs .champ-libelle { color: var(--ink); padding: 0; }
+.ya-champs .ya-cases { display: flex; flex-wrap: wrap; gap: var(--space-1) 16px; align-items: center; min-height: var(--size-control); }
+.ya-lien { color: var(--info); text-decoration: underline; }
 
 /* C-006 : glisser-déposer. L'identifiant inexistant dans `:not(#depot)` fait passer la cible avant les fonds de sélection et de survol. */
 .ya-tree .liste-ligne[data-depot]:not(#depot) { background: var(--accent-soft); outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
@@ -530,6 +539,18 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .agents-ligne-avatar { display: flex; align-items: center; gap: var(--space-2); }
 .agents-ligne-avatar .ya-input { width: 64px; }
 .agents-fichiers { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* C-015 sousAgent (REQ-072) : ligne de 26 px alignée sur les appels d'outil ; seul le titre rétrécit. */
+.ya-sous { display: flex; align-items: center; gap: 6px; height: var(--size-control); padding: 0 0 0 var(--space-1); font: 12.5px var(--font-sans); color: var(--ink); }
+.ya-sous svg { flex: none; }
+.ya-sous-agent { flex: none; font: 600 12px var(--font-mono); color: var(--ink); }
+.ya-sous-titre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-muted); }
+.ya-sous-etat { flex: none; margin-right: 2px; font-size: 12px; color: var(--ink-muted); white-space: nowrap; }
+.ya-sous .ya-btn { flex: none; }
+.ya-chat > .ya-steps + .ya-sous, .ya-chat > .ya-sous + .ya-steps, .ya-chat > .ya-sous + .ya-sous, .ya-tour-corps > .ya-steps + .ya-sous, .ya-tour-corps > .ya-sous + .ya-steps, .ya-tour-corps > .ya-sous + .ya-sous { margin-top: -10px; }
+/* C-015 attentes (REQ-072) */
+.ya-attentes { display: flex; flex-direction: column; gap: var(--space-2); }
+.ya-attente { display: flex; flex-direction: column; gap: var(--space-2); }
 
 .zone-code {
   display: flex;

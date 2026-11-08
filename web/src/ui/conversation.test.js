@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { conversation } from "./conversation.js";
 import { indication } from "./indication.js";
@@ -300,4 +301,93 @@ test("REQ067_mise_a_jour_garde_focus_et_groupe", () => {
   expect(groupes(c)).toEqual([g0]);
   expect(g0.querySelector(".ya-tour-corps").children.length).toBe(2);
   expect(g0.textContent).toContain("Relecteur : fini");
+});
+
+const sous = (o = {}) => ({ type: "sousAgent", id: "ses_f1", agent: "explore", titre: "Lister les appels de parse_args", etat: "enCours", ...o });
+
+test("REQ072_AC22_ligne_sous_agent_role_noms_et_etats", () => {
+  const ouvert = vi.fn();
+  const c = conversation({
+    entrees: [sous(), sous({ id: "s2", etat: "termine" }), sous({ id: "s3", agent: "general", etat: "echec" }), sous({ id: "s4", etat: "interrompu" })],
+    surOuvrir: ouvert,
+    nom: "opencode",
+  });
+  const lignes = [...c.querySelectorAll(".ya-sous")];
+  expect(lignes.map((l) => l.getAttribute("role"))).toEqual(["group", "group", "group", "group"]);
+  expect(lignes.map((l) => l.getAttribute("aria-label"))).toEqual([
+    "Sous-agent explore, en cours",
+    "Sous-agent explore, terminé",
+    "Sous-agent general, échec",
+    "Sous-agent explore, interrompu",
+  ]);
+  expect(lignes.map((l) => l.querySelector(".ya-sous-etat").textContent)).toEqual(["en cours", "terminé", "échec", "interrompu"]);
+  expect(lignes.map((l) => l.querySelector("svg").getAttribute("data-icone"))).toEqual(["circle-dashed", "circle-check", "circle-x", "circle-minus"]);
+  expect(lignes[1].querySelector("svg").getAttribute("class")).toContain("ok");
+  expect(lignes[2].querySelector("svg").getAttribute("class")).toContain("ko");
+  const ouvrir = lignes[0].querySelector("button");
+  expect(ouvrir.getAttribute("aria-label")).toBe("Ouvrir explore");
+  expect(ouvrir.textContent).toBe("Ouvrir");
+  expect(ouvrir.className).toContain("bouton-secondaire");
+  ouvrir.click();
+  expect(ouvert).toHaveBeenCalledWith("ses_f1");
+  // La ligne n'est pas un bouton : un seul bouton par ligne.
+  expect(lignes[0].querySelectorAll("button")).toHaveLength(1);
+});
+
+test("REQ072_AC22_sous_agent_change_d_etat_sur_place", () => {
+  const c = conversation({ entrees: [sous()] });
+  document.body.append(c);
+  const ouvrir = c.querySelector(".ya-sous button");
+  ouvrir.focus();
+  c.mettreAJour([sous({ etat: "termine", titre: "Nouveau titre" })]);
+  expect(c.querySelectorAll(".ya-sous")).toHaveLength(1);
+  const l = c.querySelector(".ya-sous");
+  expect(l.getAttribute("aria-label")).toBe("Sous-agent explore, terminé");
+  expect(l.querySelector(".ya-sous-etat").textContent).toBe("terminé");
+  expect(l.querySelector(".ya-sous-titre").title).toBe("Nouveau titre");
+  expect(l.querySelector("svg").getAttribute("data-icone")).toBe("circle-check");
+  expect(l.querySelector("svg").getAttribute("class")).toContain("ok");
+  expect(document.activeElement).toBe(ouvrir);
+});
+
+test("REQ072_AC22_sous_agent_a_320_px_titre_retreci", () => {
+  const long = "Mettre à jour le CHANGELOG pour la version 0.4.0";
+  const c = conversation({ entrees: [sous({ titre: long })] });
+  const l = c.querySelector(".ya-sous");
+  const titre = l.querySelector(".ya-sous-titre");
+  expect(titre.textContent).toBe(long);
+  expect(titre.title).toBe(long);
+  // Seul le titre rétrécit : les autres éléments ne rétrécissent pas, le titre est coupé par « … ».
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  const corps = (sel) => css.match(new RegExp(`${sel.replace(".", "\\.")}\\s*{([^}]*)}`))[1];
+  expect(corps(".ya-sous-titre")).toMatch(/min-width:\s*0/);
+  expect(corps(".ya-sous-titre")).toMatch(/text-overflow:\s*ellipsis/);
+  expect(corps(".ya-sous-titre")).toMatch(/flex:\s*1\b/);
+  for (const s of [".ya-sous-agent", ".ya-sous-etat"]) expect(corps(s)).toMatch(/flex:\s*none/);
+  expect(corps(".ya-sous")).toMatch(/height:\s*var\(--size-control\)/);
+});
+
+test("REQ072_AC23_consigne_et_nom_lus", () => {
+  const c = conversation({
+    nom: "explore",
+    entrees: [
+      { type: "utilisateur", texte: "Cherche parse_args", consigne: true },
+      { type: "utilisateur", texte: "Un message normal" },
+      { type: "agent", markdown: "Trouvé." },
+    ],
+  });
+  const [a, b] = c.querySelectorAll(".ya-chat-user");
+  expect(a.textContent).toBe("Consigne : Cherche parse_args");
+  expect(b.textContent).toBe("Vous : Un message normal");
+  expect(c.querySelector(".ya-chat-agent").textContent.startsWith("explore : ")).toBe(true);
+});
+
+test("REQ072_AC20_opencode_travaille", () => {
+  const c = conversation({ nom: "opencode", entrees: [{ type: "agent", markdown: "Salut" }], enAttente: true });
+  vi.advanceTimersByTime(300);
+  expect(c.querySelector(".ya-chat-agent").textContent.startsWith("opencode : ")).toBe(true);
+  expect(c.querySelector(".indication").textContent).toBe("opencode travaille…");
+  const e = conversation({ nom: "explore", enAttente: true });
+  expect(e.querySelector(".indication").textContent).toBe("explore travaille…");
+  expect(conversation({ enAttente: true }).querySelector(".indication").textContent).toBe("L'agent travaille…");
 });

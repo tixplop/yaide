@@ -133,3 +133,38 @@ test("REQ071_regles_du_groupe_de_reglages", () => {
   expect(r(".ya-reglages .ya-groupe-aide")).toContain("font: var(--texte-petit)");
   expect(r(".ya-reglages .ya-groupe-aide")).toContain("color: var(--ink-muted)");
 });
+
+test("REQ072_AC22_regles_de_la_ligne_de_sous_agent", () => {
+  a(".ya-sous", "height: var(--size-control)");
+  a(".ya-sous", "display: flex");
+  a(".ya-sous-agent", "font: 600 12px var(--font-mono)");
+  a(".ya-sous-agent", "flex: none");
+  a(".ya-sous-titre", "flex: 1");
+  a(".ya-sous-titre", "min-width: 0");
+  a(".ya-sous-titre", "text-overflow: ellipsis");
+  a(".ya-sous-titre", "white-space: nowrap");
+  a(".ya-sous-titre", "color: var(--ink-muted)");
+  a(".ya-sous-etat", "flex: none");
+  // 2 px des appels d'outil voisins, comme entre deux appels d'outil
+  a(".ya-chat > .ya-steps + .ya-sous", "margin-top: -10px");
+  a(".ya-chat > .ya-sous + .ya-steps", "margin-top: -10px");
+  a(".ya-tour-corps > .ya-sous + .ya-sous", "margin-top: -10px");
+});
+
+test("REQ072_AC26_regles_du_message_a_champs", () => {
+  a(".message-avec-champs", "background: none");
+  a(".message-avec-champs", "border-left-color: var(--info)");
+  a(".message-champs", "display: grid");
+  a(".message-champs", "grid-template-columns: repeat(2, minmax(0, 1fr))");
+  a(".message-champs", "gap: var(--space-2) var(--space-3)");
+  // une seule colonne sous 480 px (30rem) de large
+  expect(css).toMatch(/@container \(max-width: 30rem\)\s*{\s*\.message-champs\s*{\s*grid-template-columns:\s*minmax\(0, 1fr\)/);
+  a(".ya-champs [hidden]", "display: none");
+});
+
+test("REQ072_AC24_regles_des_demandes_en_attente", () => {
+  a(".ya-attentes", "flex-direction: column");
+  a(".ya-attentes", "gap: var(--space-2)");
+  a(".ya-lien", "color: var(--info)");
+  a(".ya-lien", "text-decoration: underline");
+});
