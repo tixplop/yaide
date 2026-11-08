@@ -464,3 +464,30 @@ test("REQ071_contrastes_du_texte_sur_les_messages_alerte_et_succes_poses_sur_bg_
     for (const msg of ["--msg-alerte", "--msg-succes"]) expect(ratio(theme, "--ink", msg, "--bg-300"), `${msg} (${theme})`).toBeGreaterThanOrEqual(4.5);
   }
 });
+
+test("REQ072_AC21_token_largeur_session", () => {
+  expect(css).toMatch(/--largeur-session:\s*720px;/);
+});
+
+// Tableau « Session opencode » de design-system.md : [texte, fond, sous, seuil, [sombre, clair]].
+test("REQ072_contrastes_de_la_session_opencode_dans_les_deux_themes", () => {
+  const paires = [
+    ["--ink", "--msg-alerte", "--bg-200", 4.5, [7.4, 13.4]],
+    ["--accent-fg", "--msg-alerte", "--bg-200", 3, [4.8, 5.1]],
+    ["--ink-muted", "--bg-200", null, 4.5, [6.3, 6.6]],
+    ["--danger", "--bg-200", null, 4.5, [6, 6.6]],
+    ["--info", "--bg-200", null, 4.5, [6.6, 6.3]],
+    ["--warning", "--bg-200", null, 4.5, [9.5, 6.4]],
+    ["--warning", "--bg-100", null, 4.5, [9.9, 6]],
+    ["--ink", "--msg-erreur", "--bg-200", 4.5, [8.2, 13]],
+    ["--line-strong", "--bg-200", null, 3, [3.4, 3.4]],
+  ];
+  for (const [texte, fond, sous, seuil, mesures] of paires) {
+    THEMES.forEach((theme, i) => {
+      const r = ratio(theme, texte, fond, sous);
+      const nom = `${texte} sur ${fond} (${theme})`;
+      expect(r, nom).toBeGreaterThanOrEqual(seuil);
+      egalA(r, mesures[i], nom);
+    });
+  }
+});

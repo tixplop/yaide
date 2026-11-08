@@ -148,6 +148,7 @@
   --largeur-agent: 360px;
   --largeur-agent-min: 240px;
   --largeur-agent-max: 720px;
+  --largeur-session: 720px;
   --largeur-editeur-min: 320px;
   --hauteur-ligne: 24px;
   --part-shells: 35%;

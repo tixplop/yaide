@@ -50,6 +50,8 @@ export function bouton({
   // Commande du rail droit : `data-actif` porte le filet ; ni aria-pressed ni aria-expanded.
   b.definirActif = (oui) => b.toggleAttribute("data-actif", Boolean(oui));
   if (actif !== undefined) b.definirActif(actif);
+  // Lancement en cours (commande « opencode ») : le bouton reste actif et garde le focus.
+  b.definirOccupe = (oui) => (oui ? b.setAttribute("aria-busy", "true") : b.removeAttribute("aria-busy"));
   b.definirOuvert = (oui) => b.setAttribute("aria-expanded", String(Boolean(oui)));
   let badge = null;
   b.definirCompteur = (n) => {

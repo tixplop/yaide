@@ -381,3 +381,37 @@ test("REQ059_AC13_claude_jamais_de_filet", () => {
   const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
   expect(css).toMatch(/\.cadre-rail-droit \.ya-icon-btn\s*\{[^}]*color: var\(--ink-faint\)/);
 });
+
+test("REQ072_AC17_commande_opencode_nom_info_bulle_sans_raccourci_ni_filet", () => {
+  vi.useFakeTimers();
+  const b = bouton({ icone: "code-xml", nomAccessible: "opencode", infoBulle: "Nouvelle session opencode", positionInfoBulle: "gauche" });
+  expect(b.querySelector('[data-icone="code-xml"]')).not.toBeNull();
+  expect(b.getAttribute("aria-label")).toBe("opencode");
+  expect(b.hasAttribute("aria-keyshortcuts")).toBe(false);
+  expect(b.hasAttribute("data-actif")).toBe(false);
+  expect(b.hasAttribute("aria-pressed") || b.hasAttribute("aria-expanded")).toBe(false);
+  document.body.append(b.enveloppe);
+  b.enveloppe.getBoundingClientRect = () => ({ left: window.innerWidth - 48, right: window.innerWidth, top: 200, bottom: 248, width: 48, height: 48 });
+  b.enveloppe.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  const t = document.querySelector("[role=tooltip]");
+  expect(t.textContent).toBe("Nouvelle session opencode");
+  expect(parseFloat(t.style.left)).toBe(window.innerWidth - 48);
+  b.enveloppe.dispatchEvent(new Event("pointerleave"));
+  vi.useRealTimers();
+});
+
+test("REQ072_AC30_commande_occupee_aria_busy", () => {
+  const b = bouton({ icone: "code-xml", nomAccessible: "opencode" });
+  document.body.append(b.enveloppe);
+  b.focus();
+  expect(b.hasAttribute("aria-busy")).toBe(false);
+  b.definirOccupe(true);
+  expect(b.getAttribute("aria-busy")).toBe("true");
+  expect(b.disabled).toBe(false);
+  expect(document.activeElement).toBe(b);
+  expect(b.getAttribute("aria-label")).toBe("opencode");
+  b.definirOccupe(false);
+  expect(b.hasAttribute("aria-busy")).toBe(false);
+  expect(document.activeElement).toBe(b);
+});

@@ -154,3 +154,17 @@ test("asterisk_unique", () => {
   expect(dessin).toContain("m5.07 8 13.86 8");
   expect(NOMS.filter((n) => n !== "asterisk").map((n) => icone(n).innerHTML)).not.toContain(dessin);
 });
+
+test("code_xml_et_circle_minus_uniques", () => {
+  const attendu = {
+    "code-xml": ['m18 16 4-4-4-4', 'm6 8-4 4 4 4', 'm14.5 4-5 16'],
+    "circle-minus": ['<circle cx="12" cy="12" r="10"', 'M8 12h8'],
+  };
+  for (const [nom, morceaux] of Object.entries(attendu)) {
+    expect(NOMS).toContain(nom);
+    const s = icone(nom, 20);
+    expect(s.getAttribute("stroke-width")).toBe("1.6");
+    for (const m of morceaux) expect(s.innerHTML).toContain(m);
+    expect(NOMS.filter((n) => n !== nom).map((n) => icone(n).innerHTML)).not.toContain(s.innerHTML);
+  }
+});

@@ -346,6 +346,8 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre-rail-droit .ya-icon-btn.ya-focus-garde { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait-fort)); }
 /* « Claude » : 8 px de vide au-dessus quand il suit une autre commande ; seul, il est tout en haut. */
 .cadre-rail-droit .bouton-enveloppe:nth-child(n+3) { margin-top: var(--space-2); }
+/* « opencode » suit « Claude », collé ; sans « Claude », il est le troisième et prend les 8 px. */
+.cadre-rail-droit .bouton-enveloppe:nth-child(n+4) { margin-top: 0; }
 .cadre-rail-droit .ya-icon-btn svg { width: var(--taille-icone-rail); height: var(--taille-icone-rail); }
 .cadre-panneau, .cadre-agent { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg-100); }
 .ya-panel-head { flex: none; box-sizing: border-box; height: var(--size-tab); display: flex; align-items: center; padding: 0 var(--space-1) 0 var(--space-3); }
@@ -353,7 +355,14 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre-panneau-corps { flex: 1 1 0; min-height: 0; overflow: auto; }
 .cadre-principal { background: var(--bg-200); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .cadre-bandeaux, .cadre-onglets, .cadre-question, .cadre-fil { flex: 0 0 auto; }
-.cadre-code { flex: 1 1 0; min-height: 0; }
+.cadre-code { flex: 1 1 0; min-height: 0; container-type: size; }
+/* Session opencode (C-010) : conversation qui défile seule, puis demandes et saisie sous un filet. Hauteur trop petite : l'éditeur défile. */
+.cadre-code:has(> .session) { overflow-y: auto; }
+.session { box-sizing: border-box; display: flex; flex-direction: column; min-height: 100%; background: var(--bg-200); }
+.session-conversation { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+.session-bas { flex: none; border-top: var(--trait) solid var(--line); padding: var(--space-2) 0 var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.session-attentes { max-height: 50cqh; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); }
+.session-contenu { box-sizing: border-box; width: 100%; max-width: calc(var(--largeur-session) + 2 * var(--space-3)); margin-inline: auto; padding-inline: var(--space-3); }
 .cadre-shells { flex: 0 0 var(--taille-shells, var(--part-shells)); min-height: 0; background: var(--bg-000); }
 .ya-crumbs { cursor: default; box-sizing: border-box; height: 24px; display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-3); background: var(--bg-200); color: var(--ink-muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
 .ya-crumbs[hidden] { display: none; }

@@ -579,3 +579,91 @@ test("REQ070_ajouter_commande_droite_cree_le_rail", () => {
   c.ajouterCommandeDroite(p("autre"));
   expect(c.querySelectorAll(".cadre-rail-droit")).toHaveLength(1);
 });
+
+const cmdDroite = (icone, nomAccessible) => bouton({ icone, nomAccessible, positionInfoBulle: "gauche" }).enveloppe;
+const avecVide = (rd) => [...rd.children].map((e) => e.matches(".bouton-enveloppe:nth-child(n+3):not(:nth-child(n+4))"));
+
+test("REQ059_AC20_opencode_colle_a_claude_ou_8_px_sous_agents", () => {
+  expect(regle(".cadre-rail-droit .bouton-enveloppe:nth-child(n+3)")).toContain("margin-top: var(--space-2)");
+  expect(regle(".cadre-rail-droit .bouton-enveloppe:nth-child(n+4)")).toContain("margin-top: 0");
+  const noms = (c) => [...c.querySelectorAll(".cadre-rail-droit button")].map((b) => b.getAttribute("aria-label"));
+  // Avec « Claude » : le vide est avant « Claude », « opencode » le suit, collé.
+  const a = cadre({ railDroit: { commandes: [cmdDroite("bot", "Agent"), cmdDroite("users", "Agents"), cmdDroite("asterisk", "Claude"), cmdDroite("code-xml", "opencode")] } });
+  expect(noms(a)).toEqual(["Agent", "Agents", "Claude", "opencode"]);
+  expect(avecVide(a.querySelector(".cadre-rail-droit"))).toEqual([false, false, true, false]);
+  // Sans « Claude » : « opencode » prend les 8 px.
+  const b = cadre({ railDroit: { commandes: [cmdDroite("bot", "Agent"), cmdDroite("users", "Agents"), cmdDroite("code-xml", "opencode")] } });
+  expect(avecVide(b.querySelector(".cadre-rail-droit"))).toEqual([false, false, true]);
+  // Ajouté après coup, comme « Claude » : même résultat.
+  const c = cadre({ railDroit: { commandes: [cmdDroite("bot", "Agent"), cmdDroite("users", "Agents")] } });
+  c.ajouterCommandeDroite(cmdDroite("asterisk", "Claude"));
+  c.ajouterCommandeDroite(cmdDroite("code-xml", "opencode"));
+  expect(avecVide(c.querySelector(".cadre-rail-droit"))).toEqual([false, false, true, false]);
+});
+
+test("REQ070_AC20_rail_droit_avec_opencode_seul", () => {
+  const sans = cadre({ fonctions: { agents: false, claude: false }, railDroit: { commandes: [] } });
+  expect(sans.querySelector(".cadre-rail-droit")).toBeNull();
+  expect(sans.classList.contains("cadre-sans-rail-droit")).toBe(true);
+  const c = cadre({ fonctions: { agents: false, claude: false }, railDroit: { commandes: [cmdDroite("code-xml", "opencode")] } });
+  const rd = c.querySelector(".cadre-rail-droit");
+  expect(rd).not.toBeNull();
+  expect(c.classList.contains("cadre-sans-rail-droit")).toBe(false);
+  expect([...rd.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["opencode"]);
+  // Seul, il est au bord haut : aucun vide avant lui.
+  expect(avecVide(rd)).toEqual([false]);
+  // Sans « Agent » ni « Agents » : « Claude » au bord haut, « opencode » collé dessous.
+  const e = cadre({ fonctions: { agents: false }, railDroit: { commandes: [cmdDroite("asterisk", "Claude"), cmdDroite("code-xml", "opencode")] } });
+  const rde = e.querySelector(".cadre-rail-droit");
+  expect([...rde.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Claude", "opencode"]);
+  expect(avecVide(rde)).toEqual([false, false]);
+  const f = cadre({ fonctions: { agents: false }, railDroit: { commandes: [] } });
+  f.ajouterCommandeDroite(cmdDroite("asterisk", "Claude"));
+  f.ajouterCommandeDroite(cmdDroite("code-xml", "opencode"));
+  expect(avecVide(f.querySelector(".cadre-rail-droit"))).toEqual([false, false]);
+  // Rail créé après coup avec « opencode » seul.
+  const d = cadre({ fonctions: { agents: false }, railDroit: { commandes: [] } });
+  d.ajouterCommandeDroite(cmdDroite("code-xml", "opencode"));
+  expect(avecVide(d.querySelector(".cadre-rail-droit"))).toEqual([false]);
+});
+
+test("REQ028_AC14_rail_droit_quatre_commandes_a_480", () => {
+  const c = cadre({ railDroit: { commandes: [cmdDroite("bot", "Agent"), cmdDroite("users", "Agents"), cmdDroite("asterisk", "Claude"), cmdDroite("code-xml", "opencode")] } });
+  document.body.append(c);
+  const px = (nom) => parseFloat(tokens.match(new RegExp(`${nom}:\\s*(\\d+)px`))[1]);
+  expect(c.querySelectorAll(".cadre-rail-droit button")).toHaveLength(4);
+  // 4 × 48 + 8 de vide = 200 px, pour 480 - 35 - 22 = 423 px disponibles, sans défilement.
+  expect(4 * px("--size-activity") + px("--space-2")).toBe(200);
+  expect(4 * px("--size-activity") + px("--space-2")).toBeLessThanOrEqual(px("--hauteur-min") - px("--size-titlebar") - px("--size-status"));
+  expect(regle(".cadre-rail-droit")).not.toMatch(/overflow/);
+  expect(regle(".cadre-rail-droit .ya-icon-btn")).toContain("height: var(--size-activity)");
+});
+
+test("REQ072_AC21_session_largeur_max_centree", () => {
+  expect(tokens).toMatch(/--largeur-session:\s*720px;/);
+  const session = regle(".session");
+  expect(session).toContain("display: flex");
+  expect(session).toContain("flex-direction: column");
+  expect(session).toContain("min-height: 100%");
+  expect(session).toContain("background: var(--bg-200)");
+  // La conversation défile seule et descend jusqu'à 0 ; le reste ne rétrécit pas.
+  expect(regle(".session-conversation")).toMatch(/flex: 1 1 0;.*min-height: 0;.*overflow-y: auto/);
+  const bas = regle(".session-bas");
+  expect(bas).toContain("flex: none");
+  expect(bas).toContain("border-top: var(--trait) solid var(--line)");
+  // Demandes : la moitié de la hauteur de l'éditeur au plus, puis défilement.
+  expect(regle(".session-attentes")).toMatch(/max-height: 50cqh;.*overflow-y: auto/);
+  expect(regle(".cadre-code")).toContain("container-type: size");
+  // Contenu : 720 px au plus, centré, marges de --space-3.
+  const contenu = regle(".session-contenu");
+  expect(contenu).toContain("max-width: calc(var(--largeur-session) + 2 * var(--space-3))");
+  expect(contenu).toContain("margin-inline: auto");
+  expect(contenu).toContain("padding-inline: var(--space-3)");
+  // Hauteur trop petite : l'éditeur défile, pas la page.
+  expect(regle(".cadre-code:has(> .session)")).toContain("overflow-y: auto");
+  // Une session posée dans le cadre remplace l'éditeur, sans toucher à la page.
+  const s = document.createElement("div");
+  s.className = "session";
+  const c = cadre({ principal: { code: s } });
+  expect(c.querySelector(".cadre-code").firstElementChild).toBe(s);
+});

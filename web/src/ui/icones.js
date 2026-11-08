@@ -16,7 +16,7 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-Icônes Lucide (ISC) utilisées ici : panel-left-close, panel-left-open, panel-right-close, panel-bottom-close, panel-bottom-open, bot, message-square-plus, history, send-horizontal, circle-stop, circle-dashed, circle-check, circle-x, type, users, user-plus, sliders-horizontal, arrow-left, asterisk.
+Icônes Lucide (ISC) utilisées ici : panel-left-close, panel-left-open, panel-right-close, panel-bottom-close, panel-bottom-open, bot, message-square-plus, history, send-horizontal, circle-stop, circle-dashed, circle-check, circle-x, type, users, user-plus, sliders-horizontal, arrow-left, asterisk, code-xml, circle-minus.
 
 ---
 
@@ -93,6 +93,8 @@ const CHEMINS = {
   "sliders-horizontal": "<path d=\"M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4\"/>",
   "arrow-left": "<path d=\"m12 19-7-7 7-7\"/><path d=\"M19 12H5\"/>",
   "asterisk": "<path d=\"M12 4v16\"/><path d=\"M18.93 8 5.07 16\"/><path d=\"m5.07 8 13.86 8\"/>",
+  "code-xml": "<path d=\"m18 16 4-4-4-4\"/><path d=\"m6 8-4 4 4 4\"/><path d=\"m14.5 4-5 16\"/>",
+  "circle-minus": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M8 12h8\"/>",
 };
 
 export const NOMS = Object.keys(CHEMINS);

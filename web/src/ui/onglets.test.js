@@ -408,3 +408,56 @@ test("REQ068_AC13_onglet_claude_icone_croix_title_sans_statut", () => {
   const css = readFileSync("web/src/ui/composants.css", "utf8");
   expect(css).toMatch(/\.ya-tabs \.onglet svg\s*\{[^}]*width: 15px/);
 });
+
+const ocOnglets = (extra = {}, surs = {}) =>
+  onglets({
+    actif: "oc-1",
+    ...surs,
+    onglets: [
+      { id: "a", libelle: "a.rs", fermable: true },
+      { id: "oc-1", libelle: "opencode 1", icone: "code-xml", titre: "opencode dans ~/code/projet", fermable: true, ...extra },
+      { id: "sa-1", libelle: "explore", nomAccessible: "explore, sous-agent : Chercher les usages", icone: "code-xml", titre: "opencode dans ~/code/projet", fermable: true },
+    ],
+  });
+
+test("REQ072_AC18_onglet_opencode_session_et_sous_agent", () => {
+  const r = ocOnglets();
+  const s = tab(r, 1);
+  expect(s.querySelector("svg").getAttribute("data-icone")).toBe("code-xml");
+  expect(s.textContent).toBe("opencode 1");
+  expect(s.title).toBe("opencode dans ~/code/projet");
+  expect(s.getAttribute("aria-label")).toBe("opencode 1");
+  expect(s.hasAttribute("data-modifie")).toBe(false);
+  expect(s.querySelector(".onglet-question")).toBeNull();
+  expect(s.querySelector(".onglet-nom").className).toBe("onglet-nom");
+  const sa = tab(r, 2);
+  expect(sa.querySelector("svg").getAttribute("data-icone")).toBe("code-xml");
+  expect(sa.textContent).toBe("explore");
+  expect(sa.getAttribute("aria-label")).toBe("explore, sous-agent : Chercher les usages");
+  const cell = r.querySelectorAll(".onglet-cellule");
+  expect(cell[1].querySelector('[aria-label="Fermer opencode 1"]')).not.toBeNull();
+  expect(cell[2].querySelector('[aria-label="Fermer explore, sous-agent : Chercher les usages"]')).not.toBeNull();
+  expect(regle(".ya-tabs .onglet svg")).toContain("width: 15px");
+});
+
+test("REQ072_AC24_onglet_question_marque_et_nom_accessible", () => {
+  const surFermer = vi.fn();
+  const surMenu = vi.fn();
+  const r = ocOnglets({ question: true }, { surFermer, surMenu });
+  const s = tab(r, 1);
+  expect(s.querySelector(".onglet-question").textContent.trim()).toBe("!");
+  expect(s.getAttribute("aria-label")).toBe("opencode 1, question en attente");
+  expect(s.hasAttribute("data-modifie")).toBe(false);
+  // Le nom de la croix ne porte pas la question : l'onglet se ferme sans confirmation, comme sans modification.
+  const croix = r.querySelectorAll(".onglet-cellule")[1].querySelector(".onglet-fermer");
+  expect(croix.getAttribute("aria-label")).toBe("Fermer opencode 1");
+  croix.click();
+  expect(surFermer).toHaveBeenLastCalledWith("oc-1", "croix");
+  touche(s, "Delete");
+  expect(surFermer).toHaveBeenLastCalledWith("oc-1", "touche");
+  s.parentElement.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 6, button: 2 }));
+  expect(surMenu).toHaveBeenLastCalledWith("oc-1", { x: 5, y: 6 });
+  // Sous-agent avec question.
+  const r2 = onglets({ actif: "sa", onglets: [{ id: "sa", libelle: "explore", nomAccessible: "explore, sous-agent : T", icone: "code-xml", fermable: true, question: true }] });
+  expect(tab(r2, 0).getAttribute("aria-label")).toBe("explore, sous-agent : T, question en attente");
+});
