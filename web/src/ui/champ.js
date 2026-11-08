@@ -2,7 +2,7 @@ import { icone } from "./icones.js";
 import { COULEURS } from "./avatar.js";
 
 const TYPES = ["texte", "motDePasse", "secret", "multiligne", "liste", "case", "couleur"];
-const PRESENTATIONS = ["normale", "ligne"];
+const PRESENTATIONS = ["normale", "ligne", "barre"];
 const NOMS_COULEURS = { violet: "Violet", vert: "Vert", orange: "Orange", rose: "Rose", sarcelle: "Sarcelle", gris: "Gris" };
 const CLAVIERS = { numerique: "numeric", decimal: "decimal" };
 let compteur = 0;
@@ -12,11 +12,12 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
   if (!TYPES.includes(type)) throw new Error(`champ : type inconnu « ${type} »`);
   if (clavier !== undefined && !(clavier in CLAVIERS)) throw new Error(`champ : clavier inconnu « ${clavier} »`);
   if (!PRESENTATIONS.includes(presentation)) throw new Error(`champ : presentation inconnue « ${presentation} »`);
+  if (presentation === "barre" && type !== "liste") throw new Error("champ : la presentation « barre » n'existe que pour une liste");
   const n = ++compteur;
   if (type === "couleur") return champCouleur(libelle, valeur || "violet", n, desactive);
   if (type === "case" && presentation === "ligne") return caseEnLigne({ libelle, valeur, avant, action, desactive, n });
   const racine = document.createElement("div");
-  racine.className = type === "case" ? "champ ya-case" : "champ";
+  racine.className = type === "case" ? "champ ya-case" : presentation === "barre" ? "champ ya-barre" : "champ";
 
   const label = document.createElement("label");
   label.className = libelleMasque ? "champ-libelle masque" : "champ-libelle";
@@ -58,7 +59,7 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
   const decrit = [];
   if (type === "case") racine.append(saisie, label);
   else racine.append(label, saisie);
-  if (aide) {
+  if (aide && presentation !== "barre") {
     const a = document.createElement("div");
     a.className = "champ-aide";
     a.id = `champ-${n}-aide`;
@@ -66,7 +67,7 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
     decrit.push(a.id);
     racine.append(a);
   }
-  if (erreur) {
+  if (erreur && presentation !== "barre") {
     const e = document.createElement("div");
     e.className = "champ-erreur";
     e.id = `champ-${n}-erreur`;

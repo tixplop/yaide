@@ -37,6 +37,10 @@
 .ya-input:disabled { opacity: .45; }
 .ya-input[aria-invalid="true"], .ya-input[aria-invalid="true"]:focus-visible { border-color: var(--danger); }
 .champ-libelle { color: var(--ink-muted); }
+.ya-barre { flex-direction: row; align-items: center; height: var(--size-control); }
+.ya-barre .champ-libelle { flex: none; white-space: nowrap; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+.ya-barre .ya-input { flex: 1 1 0; min-width: 0; width: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ya-barre:has(:disabled) .champ-libelle { opacity: .45; }
 .champ-aide { font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
 .champ-erreur { font: var(--texte-petit) var(--font-sans); color: var(--danger); }
 /* C-002 : un bouton à droite de la saisie (Réglages en dialogue). */
@@ -374,6 +378,12 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .session-attentes { max-height: 50cqh; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); }
 .session-saisie { display: flex; flex-direction: column; gap: var(--space-2); }
 .session-saisie .agent-barre { justify-content: flex-end; }
+.session-saisie .agent-barre .ya-barre { flex: 0 1 auto; }
+.session-saisie .agent-barre .ya-barre:first-child { flex-shrink: 1000; min-width: 116px; }
+.session-saisie .agent-barre .ya-barre:first-child .ya-input { flex: 0 1 280px; }
+.session-saisie .agent-barre .ya-barre + .ya-barre { flex-shrink: 1; min-width: 100px; margin-left: calc(var(--space-3) - var(--space-1)); }
+.session-saisie .agent-barre .ya-barre + .ya-barre .ya-input { flex: 0 1 104px; }
+.session-saisie .agent-barre .ya-barre:has(+ :not(.ya-barre)) { margin-right: auto; padding-right: calc(var(--space-3) - var(--space-1)); }
 .session-contenu { box-sizing: border-box; width: 100%; max-width: calc(var(--largeur-session) + 2 * var(--space-3)); margin-inline: auto; padding-inline: var(--space-3); }
 .cadre-shells { flex: 0 0 var(--taille-shells, var(--part-shells)); min-height: 0; background: var(--bg-000); }
 .ya-crumbs { cursor: default; box-sizing: border-box; height: 24px; display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-3); background: var(--bg-200); color: var(--ink-muted); font-size: 12px; white-space: nowrap; overflow: hidden; }

@@ -186,3 +186,28 @@ test("REQ065_AC7_couleur_six_radios_un_arret_droite_et_coche", () => {
   expect(champ({ libelle: "Couleur", type: "couleur" }).querySelector("input:checked").value).toBe("violet");
   expect(() => champ({ libelle: "Couleur", type: "couleur", valeur: "bleu" })).toThrow(/couleur/);
 });
+
+test("REQ074_AC14_barre_libelle_visible_et_lie", () => {
+  const r = champ({ libelle: "Modèle", type: "liste", presentation: "barre", options: ["a", "b"], valeur: "b", aide: "x", erreur: "y" });
+  const label = r.querySelector("label");
+  const select = r.querySelector("select");
+  expect(r.classList.contains("ya-barre")).toBe(true);
+  expect(r.firstElementChild).toBe(label);
+  expect(label.htmlFor).toBe(select.id);
+  expect(label.textContent).toBe("Modèle");
+  expect(label.classList.contains("masque")).toBe(false);
+  expect(r.querySelector(".champ-aide, .champ-erreur")).toBeNull();
+  expect(select.hasAttribute("aria-describedby")).toBe(false);
+  expect(select.value).toBe("b");
+});
+
+test("REQ074_barre_refusee_hors_liste", () => {
+  for (const type of ["texte", "motDePasse", "secret", "multiligne", "case", "couleur"]) {
+    expect(() => champ({ libelle: "X", type, presentation: "barre" })).toThrow(/barre/);
+  }
+});
+
+test("REQ074_barre_desactivee_select_disabled", () => {
+  const r = champ({ libelle: "Effort", type: "liste", presentation: "barre", options: ["a"], desactive: true });
+  expect(r.querySelector("select").disabled).toBe(true);
+});
