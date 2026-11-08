@@ -1,0 +1,861 @@
+{
+ "scenario": "question",
+ "version": "opencode v2.2.5",
+ "racine": "ses_e4538e89effeWQbmsniEih6GUg",
+ "session": {
+  "data": {
+   "id": "ses_e4538e89effeWQbmsniEih6GUg",
+   "projectID": "global",
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "outcome": "succeeded",
+   "time": {
+    "created": 1794134972259,
+    "updated": 1794134972625,
+    "busy": 1794134972264,
+    "idle": 1794134972627
+   },
+   "title": "Session de capture",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   }
+  }
+ },
+ "sessionsFilles": [],
+ "evenements": [
+  {
+   "id": "evt_1bac71763001ArHlnn2TZGrMn0",
+   "created": 1794134972259,
+   "type": "session.created",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "slug": "cosmic-cabin",
+    "version": "2.2.5",
+    "projectID": "global",
+    "location": {
+     "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+    },
+    "subpath": ""
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 0,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71767001nX3L8VdvjkLux0",
+   "created": 1794134972263,
+   "type": "session.inbox.enqueued",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "inboxID": "msg_1bac71766001ptQSqEdf2nxSOl",
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "item": {
+     "type": "user",
+     "payload": {
+      "text": "[scenario:question] Pose-moi une question."
+     },
+     "delivery": "steer"
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 1,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac717680010gwZ1pj42HQARb",
+   "created": 1794134972264,
+   "type": "session.execution.started",
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 2,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7176c001c6u4beH0aZjP17",
+   "created": 1794134972268,
+   "metadata": {
+    "instructions": {
+     "initial": true
+    }
+   },
+   "type": "session.instructions.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "delta": {
+     "core/codemode": "1f1291478accf8b3e4d96a40c150bf844d60557dede4aae56c47ea0043bbdce2",
+     "core/skill-guidance": "296bd951f0a7490f38579ec63d8c07d856269aef4fd9deb013673ee8184e6bb2",
+     "core/date": "f5037a79687112a772ccf5ed4b2589caebf713959392bc4d0630977e1a6b4009",
+     "core/environment": "bce958bfee7636d4c9571dc8b2d69371e8efac803a73fffdac8920294705a37a"
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 3,
+    "version": 2
+   }
+  },
+  {
+   "id": "evt_1bac7176d001eTAM6AWZMy5Nrz",
+   "created": 1794134972269,
+   "type": "session.inbox.delivered",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "inboxID": "msg_1bac71766001ptQSqEdf2nxSOl"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 4,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71781001Q67I1BG1z84Zvl",
+   "created": 1794134972289,
+   "type": "session.usage.updated",
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac71782001e6MSWbpfOYWeRN",
+   "created": 1794134972290,
+   "type": "session.renamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "title": "Session de capture"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 6,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71788001GeP7PyJ47E8eg4",
+   "created": 1794134972296,
+   "type": "session.step.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "agent": "build",
+    "model": {
+     "id": "faux-1",
+     "providerID": "faux"
+    },
+    "assistantMessageID": "msg_1bac71779001t6dU3BGAEqpcim",
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "started": 1794134972284
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 7,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7178a001gVPJIauJwIfbxs",
+   "created": 1794134972298,
+   "type": "session.tool.input.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "assistantMessageID": "msg_1bac71779001t6dU3BGAEqpcim",
+    "id": "call_question_0",
+    "name": "question"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 8,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7178c001FyKdmVQA14oC9G",
+   "created": 1794134972300,
+   "type": "session.tool.input.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "assistantMessageID": "msg_1bac71779001t6dU3BGAEqpcim",
+    "id": "call_question_0",
+    "text": "{\"questions\":[{\"question\":\"Quelle version publier ?\",\"header\":\"Version\",\"options\":[{\"label\":\"1.0\",\"description\":\"Première\"},{\"label\":\"2.0\",\"description\":\"Seconde\"}]},{\"question\":\"Quelles plateformes cibler ?\",\"header\":\"Plateformes\",\"multiple\":true,\"options\":[{\"label\":\"linux\",\"description\":\"Linux\"},{\"label\":\"macos\",\"description\":\"macOS\"}]}]}"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 9,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7178d0013nWbEoX2Bv4qiR",
+   "created": 1794134972301,
+   "type": "session.tool.called",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "assistantMessageID": "msg_1bac71779001t6dU3BGAEqpcim",
+    "id": "call_question_0",
+    "input": {
+     "questions": [
+      {
+       "question": "Quelle version publier ?",
+       "header": "Version",
+       "options": [
+        {
+         "label": "1.0",
+         "description": "Première"
+        },
+        {
+         "label": "2.0",
+         "description": "Seconde"
+        }
+       ]
+      },
+      {
+       "question": "Quelles plateformes cibler ?",
+       "header": "Plateformes",
+       "multiple": true,
+       "options": [
+        {
+         "label": "linux",
+         "description": "Linux"
+        },
+        {
+         "label": "macos",
+         "description": "macOS"
+        }
+       ]
+      }
+     ]
+    },
+    "executed": false
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 10,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7178e001753XW5zEgBaTPO",
+   "created": 1794134972302,
+   "type": "session.step.streamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "assistantMessageID": "msg_1bac71779001t6dU3BGAEqpcim"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 11,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7179e002Ju9XGMpPVcb02K",
+   "created": 1794134972318,
+   "type": "form.created",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "form": {
+     "id": "frm_1bac7179e001olXDQDsA95Kv3Z",
+     "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+     "title": "Questions",
+     "metadata": {
+      "kind": "question",
+      "tool": {
+       "messageID": "msg_1bac71779001t6dU3BGAEqpcim",
+       "id": "call_question_0"
+      }
+     },
+     "fields": [
+      {
+       "key": "q0",
+       "title": "Version",
+       "description": "Quelle version publier ?",
+       "type": "string",
+       "options": [
+        {
+         "value": "1.0",
+         "label": "1.0",
+         "description": "Première"
+        },
+        {
+         "value": "2.0",
+         "label": "2.0",
+         "description": "Seconde"
+        }
+       ],
+       "custom": true
+      },
+      {
+       "key": "q1",
+       "title": "Plateformes",
+       "description": "Quelles plateformes cibler ?",
+       "type": "multiselect",
+       "options": [
+        {
+         "value": "linux",
+         "label": "linux",
+         "description": "Linux"
+        },
+        {
+         "value": "macos",
+         "label": "macos",
+         "description": "macOS"
+        }
+       ],
+       "custom": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "evt_1bac7186d001O0pfLYTPhA7zYl",
+   "created": 1794134972525,
+   "type": "form.replied",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "id": "frm_1bac7179e001olXDQDsA95Kv3Z",
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "answer": {
+     "q0": "1.0",
+     "q1": [
+      "linux"
+     ]
+    }
+   }
+  },
+  {
+   "id": "evt_1bac7186d002nWbh1hRATgBuYy",
+   "created": 1794134972525,
+   "type": "session.tool.success",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "assistantMessageID": "msg_1bac71779001t6dU3BGAEqpcim",
+    "id": "call_question_0",
+    "content": [
+     {
+      "type": "text",
+      "text": "User has answered your questions: \"Quelle version publier ?\"=\"1.0\", \"Quelles plateformes cibler ?\"=\"linux\". You can now continue with the user's answers in mind."
+     }
+    ],
+    "metadata": {
+     "answers": [
+      [
+       "1.0"
+      ],
+      [
+       "linux"
+      ]
+     ],
+     "truncated": false
+    },
+    "executed": false
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 12,
+    "version": 2
+   }
+  },
+  {
+   "id": "evt_1bac7187a001EihXCS0aJO88ve",
+   "created": 1794134972538,
+   "type": "session.step.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "assistantMessageID": "msg_1bac71779001t6dU3BGAEqpcim",
+    "finish": "tool-calls",
+    "rawFinish": "tool_calls",
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "cost": 0,
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "files": []
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 13,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7187c0011fzPnUde4kq1LI",
+   "created": 1794134972540,
+   "type": "session.usage.updated",
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac718910012pis5u2TXOWThE",
+   "created": 1794134972561,
+   "type": "session.step.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "agent": "build",
+    "model": {
+     "id": "faux-1",
+     "providerID": "faux"
+    },
+    "assistantMessageID": "msg_1bac71886001o6gCgPN5sK90Y7",
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "started": 1794134972554
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 14,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71894001VudXczOb1LCtDi",
+   "created": 1794134972564,
+   "type": "session.text.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "assistantMessageID": "msg_1bac71886001o6gCgPN5sK90Y7",
+    "ordinal": 0
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 15,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac718ca001pw1WpgYTcCTm3i",
+   "created": 1794134972618,
+   "type": "session.text.delta",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "assistantMessageID": "msg_1bac71886001o6gCgPN5sK90Y7",
+    "ordinal": 0,
+    "delta": "Merci."
+   }
+  },
+  {
+   "id": "evt_1bac718ca002V97NrHlxWnCxoq",
+   "created": 1794134972618,
+   "type": "session.text.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "assistantMessageID": "msg_1bac71886001o6gCgPN5sK90Y7",
+    "ordinal": 0,
+    "text": "Merci."
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 16,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac718cc001CWsMfiQwC3JEp1",
+   "created": 1794134972620,
+   "type": "session.step.streamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "assistantMessageID": "msg_1bac71886001o6gCgPN5sK90Y7"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 17,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac718d1001iK2oigEisndGYb",
+   "created": 1794134972625,
+   "type": "session.step.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "assistantMessageID": "msg_1bac71886001o6gCgPN5sK90Y7",
+    "finish": "stop",
+    "rawFinish": "stop",
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "cost": 0,
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "files": []
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 18,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac718d2001nkVol2uoev7kct",
+   "created": 1794134972626,
+   "type": "session.usage.updated",
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac718d3001mlimBhPKCIQvRv",
+   "created": 1794134972627,
+   "type": "session.execution.succeeded",
+   "data": {
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "seq": 19,
+    "version": 1
+   }
+  }
+ ],
+ "messages": {
+  "ses_e4538e89effeWQbmsniEih6GUg": {
+   "data": [
+    {
+     "id": "msg_1bac71766001ptQSqEdf2nxSOl",
+     "time": {
+      "created": 1794134972269
+     },
+     "text": "[scenario:question] Pose-moi une question.",
+     "type": "user"
+    },
+    {
+     "id": "msg_1bac71779001t6dU3BGAEqpcim",
+     "time": {
+      "created": 1794134972284,
+      "streamed": 1794134972302,
+      "completed": 1794134972538
+     },
+     "type": "assistant",
+     "agent": "build",
+     "model": {
+      "id": "faux-1",
+      "providerID": "faux"
+     },
+     "content": [
+      {
+       "type": "tool",
+       "id": "call_question_0",
+       "name": "question",
+       "executed": false,
+       "state": {
+        "status": "completed",
+        "input": {
+         "questions": [
+          {
+           "question": "Quelle version publier ?",
+           "header": "Version",
+           "options": [
+            {
+             "label": "1.0",
+             "description": "Première"
+            },
+            {
+             "label": "2.0",
+             "description": "Seconde"
+            }
+           ]
+          },
+          {
+           "question": "Quelles plateformes cibler ?",
+           "header": "Plateformes",
+           "multiple": true,
+           "options": [
+            {
+             "label": "linux",
+             "description": "Linux"
+            },
+            {
+             "label": "macos",
+             "description": "macOS"
+            }
+           ]
+          }
+         ]
+        },
+        "content": [
+         {
+          "type": "text",
+          "text": "User has answered your questions: \"Quelle version publier ?\"=\"1.0\", \"Quelles plateformes cibler ?\"=\"linux\". You can now continue with the user's answers in mind."
+         }
+        ],
+        "metadata": {
+         "answers": [
+          [
+           "1.0"
+          ],
+          [
+           "linux"
+          ]
+         ],
+         "truncated": false
+        }
+       },
+       "time": {
+        "created": 1794134972298,
+        "ran": 1794134972301,
+        "completed": 1794134972525
+       }
+      }
+     ],
+     "snapshot": {
+      "start": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "end": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "files": []
+     },
+     "finish": "tool-calls",
+     "rawFinish": "tool_calls",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    },
+    {
+     "id": "msg_1bac71886001o6gCgPN5sK90Y7",
+     "time": {
+      "created": 1794134972554,
+      "streamed": 1794134972620,
+      "completed": 1794134972625
+     },
+     "type": "assistant",
+     "agent": "build",
+     "model": {
+      "id": "faux-1",
+      "providerID": "faux"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Merci."
+      }
+     ],
+     "snapshot": {
+      "start": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "end": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "files": []
+     },
+     "finish": "stop",
+     "rawFinish": "stop",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    },
+    {
+     "id": "msg_1bac718d3001mlimBhPKCIQvRv",
+     "time": {
+      "created": 1794134972627
+     },
+     "type": "idle",
+     "outcome": "succeeded"
+    }
+   ],
+   "cursor": {
+    "previous": "eyJpZCI6Im1zZ18xYmFjNzE3NjYwMDFwdFFTcUVkZjJueFNPbCIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoicHJldmlvdXMifQ",
+    "next": "eyJpZCI6Im1zZ18xYmFjNzE4ZDMwMDFtbGltQmhQS0NJUXZSdiIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoibmV4dCJ9"
+   }
+  }
+ },
+ "attentes": [
+  {
+   "apresEvenement": 13,
+   "formulaire": {
+    "id": "frm_1bac7179e001olXDQDsA95Kv3Z",
+    "sessionID": "ses_e4538e89effeWQbmsniEih6GUg",
+    "title": "Questions",
+    "metadata": {
+     "kind": "question",
+     "tool": {
+      "messageID": "msg_1bac71779001t6dU3BGAEqpcim",
+      "id": "call_question_0"
+     }
+    },
+    "fields": [
+     {
+      "key": "q0",
+      "title": "Version",
+      "description": "Quelle version publier ?",
+      "type": "string",
+      "options": [
+       {
+        "value": "1.0",
+        "label": "1.0",
+        "description": "Première"
+       },
+       {
+        "value": "2.0",
+        "label": "2.0",
+        "description": "Seconde"
+       }
+      ],
+      "custom": true
+     },
+     {
+      "key": "q1",
+      "title": "Plateformes",
+      "description": "Quelles plateformes cibler ?",
+      "type": "multiselect",
+      "options": [
+       {
+        "value": "linux",
+        "label": "linux",
+        "description": "Linux"
+       },
+       {
+        "value": "macos",
+        "label": "macos",
+        "description": "macOS"
+       }
+      ],
+      "custom": true
+     }
+    ]
+   }
+  }
+ ],
+ "reponses": [
+  {
+   "formulaire": "frm_1bac7179e001olXDQDsA95Kv3Z",
+   "answer": {
+    "q0": "1.0",
+    "q1": [
+     "linux"
+    ]
+   },
+   "statut": 204
+  }
+ ],
+ "fichesApres": {
+  "autorisations": {
+   "data": []
+  },
+  "formulaires": {
+   "data": []
+  }
+ }
+}

@@ -1,0 +1,282 @@
+{
+ "scenario": "refus",
+ "version": "opencode v2.2.5",
+ "racine": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+ "session": {
+  "data": {
+   "id": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+   "projectID": "global",
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "outcome": "failed",
+   "time": {
+    "created": 1794134975557,
+    "updated": 1794134975602,
+    "busy": 1794134975563,
+    "idle": 1794134975605
+   },
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   }
+  }
+ },
+ "sessionsFilles": [],
+ "evenements": [
+  {
+   "id": "evt_1bac72445001BzbAt8Mfj52CA4",
+   "created": 1794134975557,
+   "type": "session.created",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "slug": "misty-river",
+    "version": "2.2.5",
+    "projectID": "global",
+    "location": {
+     "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+    },
+    "subpath": ""
+   },
+   "durable": {
+    "aggregateID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "seq": 0,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac72449001KOcHP2Lf3HCT05",
+   "created": 1794134975561,
+   "type": "session.inbox.enqueued",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "inboxID": "msg_1bac72448001rSiUMUIMFPERjJ",
+    "sessionID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "item": {
+     "type": "user",
+     "payload": {
+      "text": "[scenario:refus] Réponds."
+     },
+     "delivery": "steer"
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "seq": 1,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7244b001kbXDdelUEngEsA",
+   "created": 1794134975563,
+   "type": "session.execution.started",
+   "data": {
+    "sessionID": "ses_e4538dbbdffeuvcRaEZEg5EPcx"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "seq": 2,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7244e001o5KiLWeCsIrEla",
+   "created": 1794134975566,
+   "metadata": {
+    "instructions": {
+     "initial": true
+    }
+   },
+   "type": "session.instructions.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "delta": {
+     "core/codemode": "1f1291478accf8b3e4d96a40c150bf844d60557dede4aae56c47ea0043bbdce2",
+     "core/skill-guidance": "296bd951f0a7490f38579ec63d8c07d856269aef4fd9deb013673ee8184e6bb2",
+     "core/date": "f5037a79687112a772ccf5ed4b2589caebf713959392bc4d0630977e1a6b4009",
+     "core/environment": "bce958bfee7636d4c9571dc8b2d69371e8efac803a73fffdac8920294705a37a"
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "seq": 3,
+    "version": 2
+   }
+  },
+  {
+   "id": "evt_1bac72450001qt67BD4vcfbYw2",
+   "created": 1794134975568,
+   "type": "session.inbox.delivered",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "inboxID": "msg_1bac72448001rSiUMUIMFPERjJ"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "seq": 4,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7246a001ECRWTmH8ck3LVa",
+   "created": 1794134975594,
+   "type": "session.step.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "agent": "build",
+    "model": {
+     "id": "faux-1",
+     "providerID": "faux"
+    },
+    "assistantMessageID": "msg_1bac7245b0016EH9jaZpDWUhOA",
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "started": 1794134975583
+   },
+   "durable": {
+    "aggregateID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "seq": 5,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac72472001TZd7OQU0diLK2t",
+   "created": 1794134975602,
+   "type": "session.step.failed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "assistantMessageID": "msg_1bac7245b0016EH9jaZpDWUhOA",
+    "error": {
+     "type": "provider.auth",
+     "message": "Clé d'API invalide (faux provider)",
+     "status": 401,
+     "response": {
+      "body": "{\"error\":{\"message\":\"Clé d'API invalide (faux provider)\",\"type\":\"invalid_request_error\"}}"
+     }
+    },
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "files": []
+   },
+   "durable": {
+    "aggregateID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "seq": 6,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac72475001RHeWOPc4Mx18li",
+   "created": 1794134975605,
+   "type": "session.execution.failed",
+   "data": {
+    "sessionID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "error": {
+     "type": "provider.auth",
+     "message": "Clé d'API invalide (faux provider)",
+     "status": 401,
+     "response": {
+      "body": "{\"error\":{\"message\":\"Clé d'API invalide (faux provider)\",\"type\":\"invalid_request_error\"}}"
+     }
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538dbbdffeuvcRaEZEg5EPcx",
+    "seq": 7,
+    "version": 1
+   }
+  }
+ ],
+ "messages": {
+  "ses_e4538dbbdffeuvcRaEZEg5EPcx": {
+   "data": [
+    {
+     "id": "msg_1bac72448001rSiUMUIMFPERjJ",
+     "time": {
+      "created": 1794134975568
+     },
+     "text": "[scenario:refus] Réponds.",
+     "type": "user"
+    },
+    {
+     "id": "msg_1bac7245b0016EH9jaZpDWUhOA",
+     "time": {
+      "created": 1794134975583,
+      "completed": 1794134975602
+     },
+     "type": "assistant",
+     "agent": "build",
+     "model": {
+      "id": "faux-1",
+      "providerID": "faux"
+     },
+     "content": [],
+     "snapshot": {
+      "start": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "end": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "files": []
+     },
+     "finish": "error",
+     "error": {
+      "type": "provider.auth",
+      "message": "Clé d'API invalide (faux provider)",
+      "status": 401,
+      "response": {
+       "body": "{\"error\":{\"message\":\"Clé d'API invalide (faux provider)\",\"type\":\"invalid_request_error\"}}"
+      }
+     }
+    },
+    {
+     "id": "msg_1bac72475001RHeWOPc4Mx18li",
+     "time": {
+      "created": 1794134975605
+     },
+     "type": "idle",
+     "outcome": "failed",
+     "error": {
+      "type": "provider.auth",
+      "message": "Clé d'API invalide (faux provider)",
+      "status": 401,
+      "response": {
+       "body": "{\"error\":{\"message\":\"Clé d'API invalide (faux provider)\",\"type\":\"invalid_request_error\"}}"
+      }
+     }
+    }
+   ],
+   "cursor": {
+    "previous": "eyJpZCI6Im1zZ18xYmFjNzI0NDgwMDFyU2lVTVVJTUZQRVJqSiIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoicHJldmlvdXMifQ",
+    "next": "eyJpZCI6Im1zZ18xYmFjNzI0NzUwMDFSSGVXT1BjNE14MThsaSIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoibmV4dCJ9"
+   }
+  }
+ },
+ "attentes": [],
+ "reponses": [],
+ "fichesApres": {
+  "autorisations": {
+   "data": []
+  },
+  "formulaires": {
+   "data": []
+  }
+ }
+}

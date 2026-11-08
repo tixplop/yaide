@@ -1,0 +1,1520 @@
+{
+ "scenario": "outils",
+ "version": "opencode v2.2.5",
+ "racine": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+ "session": {
+  "data": {
+   "id": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+   "projectID": "global",
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "outcome": "succeeded",
+   "time": {
+    "created": 1794134970158,
+    "updated": 1794134970530,
+    "busy": 1794134970165,
+    "idle": 1794134970533
+   },
+   "title": "Session de capture",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   }
+  }
+ },
+ "sessionsFilles": [],
+ "evenements": [
+  {
+   "id": "evt_1bac70f2e001i7U5HCQOjOWEUI",
+   "created": 1794134970158,
+   "type": "session.created",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "slug": "proud-river",
+    "version": "2.2.5",
+    "projectID": "global",
+    "location": {
+     "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+    },
+    "subpath": ""
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 0,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f33001QbDySVBJ7qhGj7",
+   "created": 1794134970163,
+   "type": "session.inbox.enqueued",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "inboxID": "msg_1bac70f320014CgO3YSDyJgyZ3",
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "item": {
+     "type": "user",
+     "payload": {
+      "text": "[scenario:outils] Lis le fichier, puis lance une commande."
+     },
+     "delivery": "steer"
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 1,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f35001pkG5g4m7jHxuqK",
+   "created": 1794134970165,
+   "type": "session.execution.started",
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 2,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f39001Jz08RxQATWaHS2",
+   "created": 1794134970169,
+   "metadata": {
+    "instructions": {
+     "initial": true
+    }
+   },
+   "type": "session.instructions.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "delta": {
+     "core/codemode": "1f1291478accf8b3e4d96a40c150bf844d60557dede4aae56c47ea0043bbdce2",
+     "core/skill-guidance": "296bd951f0a7490f38579ec63d8c07d856269aef4fd9deb013673ee8184e6bb2",
+     "core/date": "f5037a79687112a772ccf5ed4b2589caebf713959392bc4d0630977e1a6b4009",
+     "core/environment": "bce958bfee7636d4c9571dc8b2d69371e8efac803a73fffdac8920294705a37a"
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 3,
+    "version": 2
+   }
+  },
+  {
+   "id": "evt_1bac70f3b0017fx5c4GpTpmLJE",
+   "created": 1794134970171,
+   "type": "session.inbox.delivered",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "inboxID": "msg_1bac70f320014CgO3YSDyJgyZ3"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 4,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f5400151Qic4vQQ1DI38",
+   "created": 1794134970196,
+   "type": "session.usage.updated",
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac70f54002gr34SDxj6r5N35",
+   "created": 1794134970197,
+   "type": "session.renamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "title": "Session de capture"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 6,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f5c0019ih3x2Pmeb5RNK",
+   "created": 1794134970204,
+   "type": "session.step.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "agent": "build",
+    "model": {
+     "id": "faux-1",
+     "providerID": "faux"
+    },
+    "assistantMessageID": "msg_1bac70f4a001yqwb44JF7SXINn",
+    "snapshot": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+    "started": 1794134970191
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 7,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f5f001RI5KPwVKJROMC7",
+   "created": 1794134970207,
+   "type": "session.text.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f4a001yqwb44JF7SXINn",
+    "ordinal": 0
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 8,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f62001GN7tK3XWvU2lNa",
+   "created": 1794134970211,
+   "type": "session.text.delta",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f4a001yqwb44JF7SXINn",
+    "ordinal": 0,
+    "delta": "Je lis le fichier. "
+   }
+  },
+  {
+   "id": "evt_1bac70f63001q233kvOGUQJmjt",
+   "created": 1794134970211,
+   "type": "session.tool.input.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f4a001yqwb44JF7SXINn",
+    "id": "call_outils_0",
+    "name": "read"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 9,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f66001x1Ym1OhDqJSMYA",
+   "created": 1794134970214,
+   "type": "session.tool.input.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f4a001yqwb44JF7SXINn",
+    "id": "call_outils_0",
+    "text": "{\"path\":\"/home/spela/code/yaide/yaide/.test-data/capture/depot/LISEZMOI.md\"}"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 10,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f68001k1OzQs8uV2vKbb",
+   "created": 1794134970216,
+   "type": "session.tool.called",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f4a001yqwb44JF7SXINn",
+    "id": "call_outils_0",
+    "input": {
+     "path": "/home/spela/code/yaide/yaide/.test-data/capture/depot/LISEZMOI.md"
+    },
+    "executed": false
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 11,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f6b001fHjks0YWD6PDFc",
+   "created": 1794134970219,
+   "type": "session.text.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f4a001yqwb44JF7SXINn",
+    "ordinal": 0,
+    "text": "Je lis le fichier. "
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 12,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f6d001rttzp7w1WwQjNA",
+   "created": 1794134970221,
+   "type": "session.step.streamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f4a001yqwb44JF7SXINn"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 13,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f73001KXIx9WRrJV0p06",
+   "created": 1794134970227,
+   "type": "session.tool.success",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f4a001yqwb44JF7SXINn",
+    "id": "call_outils_0",
+    "content": [
+     {
+      "type": "text",
+      "text": "Read file /home/spela/code/yaide/yaide/.test-data/capture/depot/LISEZMOI.md, lines 1-3\n1: # Dépôt d'exemple\n2: \n3: Un texte de capture."
+     }
+    ],
+    "metadata": {
+     "truncated": false
+    },
+    "executed": false
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 14,
+    "version": 2
+   }
+  },
+  {
+   "id": "evt_1bac70f7b001AqIP8brugIEPvk",
+   "created": 1794134970235,
+   "type": "session.step.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f4a001yqwb44JF7SXINn",
+    "finish": "tool-calls",
+    "rawFinish": "tool_calls",
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "cost": 0,
+    "snapshot": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+    "files": []
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 15,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f7e001sfL2f3AVcq15j7",
+   "created": 1794134970238,
+   "type": "session.usage.updated",
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac70f94001fkyZwrt6NjToRS",
+   "created": 1794134970260,
+   "type": "session.step.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "agent": "build",
+    "model": {
+     "id": "faux-1",
+     "providerID": "faux"
+    },
+    "assistantMessageID": "msg_1bac70f86001nMgqUd30IAhRmo",
+    "snapshot": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+    "started": 1794134970251
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 16,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f97001lk7S8TWi6uqYwB",
+   "created": 1794134970263,
+   "type": "session.tool.input.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f86001nMgqUd30IAhRmo",
+    "id": "call_outils_1",
+    "name": "read"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 17,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f99001vzhIsMFHOCB24Y",
+   "created": 1794134970265,
+   "type": "session.tool.input.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f86001nMgqUd30IAhRmo",
+    "id": "call_outils_1",
+    "text": "{\"path\":\"/home/spela/code/yaide/yaide/.test-data/capture/depot/absent.md\"}"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 18,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f9b001eF3bgK1Tk7r3Y8",
+   "created": 1794134970267,
+   "type": "session.tool.called",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f86001nMgqUd30IAhRmo",
+    "id": "call_outils_1",
+    "input": {
+     "path": "/home/spela/code/yaide/yaide/.test-data/capture/depot/absent.md"
+    },
+    "executed": false
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 19,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70f9d001yqmadvie6ASIVo",
+   "created": 1794134970269,
+   "type": "session.step.streamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f86001nMgqUd30IAhRmo"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 20,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70fa5001pSwO6xqajfaApj",
+   "created": 1794134970277,
+   "type": "session.tool.failed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f86001nMgqUd30IAhRmo",
+    "id": "call_outils_1",
+    "error": {
+     "type": "tool.execution",
+     "message": "File not found: /home/spela/code/yaide/yaide/.test-data/capture/depot/absent.md"
+    },
+    "executed": false
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 21,
+    "version": 2
+   }
+  },
+  {
+   "id": "evt_1bac70fae001DFoC1AHBiwD2dY",
+   "created": 1794134970286,
+   "type": "session.step.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70f86001nMgqUd30IAhRmo",
+    "finish": "tool-calls",
+    "rawFinish": "tool_calls",
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "cost": 0,
+    "snapshot": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+    "files": []
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 22,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70fb0001goSLplkKS5Qa0l",
+   "created": 1794134970288,
+   "type": "session.usage.updated",
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac70fd1001bjLdMOBpAQ6QSa",
+   "created": 1794134970321,
+   "type": "session.step.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "agent": "build",
+    "model": {
+     "id": "faux-1",
+     "providerID": "faux"
+    },
+    "assistantMessageID": "msg_1bac70fb7001FVFi5VwzsHuVrk",
+    "snapshot": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+    "started": 1794134970300
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 23,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70fd4001ub02wU67dQGk21",
+   "created": 1794134970324,
+   "type": "session.tool.input.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70fb7001FVFi5VwzsHuVrk",
+    "id": "call_outils_2",
+    "name": "write"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 24,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70fd60015vpfkElpGnEM2C",
+   "created": 1794134970326,
+   "type": "session.tool.input.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70fb7001FVFi5VwzsHuVrk",
+    "id": "call_outils_2",
+    "text": "{\"path\":\"/home/spela/code/yaide/yaide/.test-data/capture/depot/NOTES.md\",\"content\":\"notes\\n\"}"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 25,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70fd700139Av2EyCL6nXZY",
+   "created": 1794134970327,
+   "type": "session.tool.called",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70fb7001FVFi5VwzsHuVrk",
+    "id": "call_outils_2",
+    "input": {
+     "path": "/home/spela/code/yaide/yaide/.test-data/capture/depot/NOTES.md",
+     "content": "notes\n"
+    },
+    "executed": false
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 26,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70fd90017YgFFb5B2zpNa1",
+   "created": 1794134970329,
+   "type": "session.step.streamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70fb7001FVFi5VwzsHuVrk"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 27,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70fdd00176HY43WQIIIOB7",
+   "created": 1794134970333,
+   "type": "session.tool.success",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70fb7001FVFi5VwzsHuVrk",
+    "id": "call_outils_2",
+    "content": [
+     {
+      "type": "text",
+      "text": "Created file successfully: NOTES.md"
+     }
+    ],
+    "metadata": {
+     "truncated": false
+    },
+    "executed": false
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 28,
+    "version": 2
+   }
+  },
+  {
+   "id": "evt_1bac70ff8001G496gbaRIvc9Zh",
+   "created": 1794134970360,
+   "type": "session.step.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac70fb7001FVFi5VwzsHuVrk",
+    "finish": "tool-calls",
+    "rawFinish": "tool_calls",
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "cost": 0,
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "files": [
+     "NOTES.md"
+    ]
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 29,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70ffa0010d4TwVkEYv3faf",
+   "created": 1794134970362,
+   "type": "session.usage.updated",
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac71010001QL9aMpOMNxVz1h",
+   "created": 1794134970384,
+   "type": "session.step.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "agent": "build",
+    "model": {
+     "id": "faux-1",
+     "providerID": "faux"
+    },
+    "assistantMessageID": "msg_1bac71001001KDmJ4plj9GCgA9",
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "started": 1794134970375
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 30,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71013001eWaI8CoiQSMulS",
+   "created": 1794134970387,
+   "type": "session.tool.input.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac71001001KDmJ4plj9GCgA9",
+    "id": "call_outils_3",
+    "name": "shell"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 31,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac710150014H93zOiX17yPeF",
+   "created": 1794134970389,
+   "type": "session.tool.input.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac71001001KDmJ4plj9GCgA9",
+    "id": "call_outils_3",
+    "text": "{\"command\":\"echo bonjour\"}"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 32,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71016001GZaqoexrTstnan",
+   "created": 1794134970390,
+   "type": "session.tool.called",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac71001001KDmJ4plj9GCgA9",
+    "id": "call_outils_3",
+    "input": {
+     "command": "echo bonjour"
+    },
+    "executed": false
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 33,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71018001ZUMjk3l45eU5RZ",
+   "created": 1794134970392,
+   "type": "session.step.streamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac71001001KDmJ4plj9GCgA9"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 34,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7101c002QwutJqTpvOkoy1",
+   "created": 1794134970396,
+   "type": "permission.asked",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "id": "per_1bac7101c001i1fK3oLPDclMLa",
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "action": "shell",
+    "resources": [
+     "echo bonjour"
+    ],
+    "save": [
+     "echo *"
+    ],
+    "source": {
+     "type": "tool",
+     "messageID": "msg_1bac71001001KDmJ4plj9GCgA9",
+     "id": "call_outils_3"
+    }
+   }
+  },
+  {
+   "id": "evt_1bac710360012NpT6IUQroxRt8",
+   "created": 1794134970422,
+   "type": "permission.replied",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "requestID": "per_1bac7101c001i1fK3oLPDclMLa",
+    "reply": "once"
+   }
+  },
+  {
+   "id": "evt_1bac7103c001fsv33ZsFCmY7y4",
+   "created": 1794134970428,
+   "type": "shell.created",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "info": {
+     "id": "sh_1bac71036002V0c0MVMSDGkm1u",
+     "status": "running",
+     "command": "echo bonjour",
+     "cwd": "/home/spela/code/yaide/yaide/.test-data/capture/depot",
+     "shell": "/usr/bin/zsh",
+     "file": "/home/spela/code/yaide/yaide/.test-data/capture/data/opencode/shell/global/sh_1bac71036002V0c0MVMSDGkm1u.out",
+     "metadata": {
+      "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz"
+     },
+     "time": {
+      "started": 1794134970422
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac7103c002SRE9q1B7ncglTO",
+   "created": 1794134970428,
+   "type": "session.tool.progress",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac71001001KDmJ4plj9GCgA9",
+    "id": "call_outils_3",
+    "metadata": {
+     "shellID": "sh_1bac71036002V0c0MVMSDGkm1u"
+    }
+   }
+  },
+  {
+   "id": "evt_1bac7103f001WGS7Nc5xbspozK",
+   "created": 1794134970431,
+   "type": "shell.exited",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "id": "sh_1bac71036002V0c0MVMSDGkm1u",
+    "exit": 0,
+    "status": "exited"
+   }
+  },
+  {
+   "id": "evt_1bac71040001JxVKLwSEe7F29Z",
+   "created": 1794134970432,
+   "type": "session.tool.success",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac71001001KDmJ4plj9GCgA9",
+    "id": "call_outils_3",
+    "content": [
+     {
+      "type": "text",
+      "text": "bonjour\n"
+     }
+    ],
+    "metadata": {
+     "status": "completed",
+     "truncated": false,
+     "exit": 0
+    },
+    "executed": false
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 35,
+    "version": 2
+   }
+  },
+  {
+   "id": "evt_1bac7104c001fDcCOyTmYp8hz4",
+   "created": 1794134970444,
+   "type": "session.step.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac71001001KDmJ4plj9GCgA9",
+    "finish": "tool-calls",
+    "rawFinish": "tool_calls",
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "cost": 0,
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "files": []
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 36,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7104e001sSY7SExyeDP6Q0",
+   "created": 1794134970446,
+   "type": "session.usage.updated",
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac71063001LRr1OA2dNPFYWA",
+   "created": 1794134970467,
+   "type": "session.step.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "agent": "build",
+    "model": {
+     "id": "faux-1",
+     "providerID": "faux"
+    },
+    "assistantMessageID": "msg_1bac71055001o5KXOxiqk5UsRV",
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "started": 1794134970457
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 37,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac710650015fM7bIaf503eAY",
+   "created": 1794134970469,
+   "type": "session.text.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac71055001o5KXOxiqk5UsRV",
+    "ordinal": 0
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 38,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71099001lAVJLlv2qOjjbz",
+   "created": 1794134970521,
+   "type": "session.text.delta",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac71055001o5KXOxiqk5UsRV",
+    "ordinal": 0,
+    "delta": "Terminé."
+   }
+  },
+  {
+   "id": "evt_1bac71099002HmreTI4sQul5zv",
+   "created": 1794134970521,
+   "type": "session.text.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac71055001o5KXOxiqk5UsRV",
+    "ordinal": 0,
+    "text": "Terminé."
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 39,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7109c001PxM3YPYb3xcCIk",
+   "created": 1794134970524,
+   "type": "session.step.streamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac71055001o5KXOxiqk5UsRV"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 40,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac710a2001X1nVq8cEVq1wSm",
+   "created": 1794134970530,
+   "type": "session.step.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "assistantMessageID": "msg_1bac71055001o5KXOxiqk5UsRV",
+    "finish": "stop",
+    "rawFinish": "stop",
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "cost": 0,
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "files": []
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 41,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac710a4001guHd5GC9RYUYXg",
+   "created": 1794134970532,
+   "type": "session.usage.updated",
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac710a5001TO2i1rN61OCpl6",
+   "created": 1794134970533,
+   "type": "session.execution.succeeded",
+   "data": {
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "seq": 42,
+    "version": 1
+   }
+  }
+ ],
+ "messages": {
+  "ses_e4538f0d3ffeSxCcIpJc1VcVlz": {
+   "data": [
+    {
+     "id": "msg_1bac70f320014CgO3YSDyJgyZ3",
+     "time": {
+      "created": 1794134970171
+     },
+     "text": "[scenario:outils] Lis le fichier, puis lance une commande.",
+     "type": "user"
+    },
+    {
+     "id": "msg_1bac70f4a001yqwb44JF7SXINn",
+     "time": {
+      "created": 1794134970191,
+      "streamed": 1794134970221,
+      "completed": 1794134970235
+     },
+     "type": "assistant",
+     "agent": "build",
+     "model": {
+      "id": "faux-1",
+      "providerID": "faux"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Je lis le fichier. "
+      },
+      {
+       "type": "tool",
+       "id": "call_outils_0",
+       "name": "read",
+       "executed": false,
+       "state": {
+        "status": "completed",
+        "input": {
+         "path": "/home/spela/code/yaide/yaide/.test-data/capture/depot/LISEZMOI.md"
+        },
+        "content": [
+         {
+          "type": "text",
+          "text": "Read file /home/spela/code/yaide/yaide/.test-data/capture/depot/LISEZMOI.md, lines 1-3\n1: # Dépôt d'exemple\n2: \n3: Un texte de capture."
+         }
+        ],
+        "metadata": {
+         "truncated": false
+        }
+       },
+       "time": {
+        "created": 1794134970211,
+        "ran": 1794134970216,
+        "completed": 1794134970227
+       }
+      }
+     ],
+     "snapshot": {
+      "start": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+      "end": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+      "files": []
+     },
+     "finish": "tool-calls",
+     "rawFinish": "tool_calls",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    },
+    {
+     "id": "msg_1bac70f86001nMgqUd30IAhRmo",
+     "time": {
+      "created": 1794134970251,
+      "streamed": 1794134970269,
+      "completed": 1794134970286
+     },
+     "type": "assistant",
+     "agent": "build",
+     "model": {
+      "id": "faux-1",
+      "providerID": "faux"
+     },
+     "content": [
+      {
+       "type": "tool",
+       "id": "call_outils_1",
+       "name": "read",
+       "executed": false,
+       "state": {
+        "status": "error",
+        "input": {
+         "path": "/home/spela/code/yaide/yaide/.test-data/capture/depot/absent.md"
+        },
+        "error": {
+         "type": "tool.execution",
+         "message": "File not found: /home/spela/code/yaide/yaide/.test-data/capture/depot/absent.md"
+        }
+       },
+       "time": {
+        "created": 1794134970263,
+        "ran": 1794134970267,
+        "completed": 1794134970277
+       }
+      }
+     ],
+     "snapshot": {
+      "start": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+      "end": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+      "files": []
+     },
+     "finish": "tool-calls",
+     "rawFinish": "tool_calls",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    },
+    {
+     "id": "msg_1bac70fb7001FVFi5VwzsHuVrk",
+     "time": {
+      "created": 1794134970300,
+      "streamed": 1794134970329,
+      "completed": 1794134970360
+     },
+     "type": "assistant",
+     "agent": "build",
+     "model": {
+      "id": "faux-1",
+      "providerID": "faux"
+     },
+     "content": [
+      {
+       "type": "tool",
+       "id": "call_outils_2",
+       "name": "write",
+       "executed": false,
+       "state": {
+        "status": "completed",
+        "input": {
+         "path": "/home/spela/code/yaide/yaide/.test-data/capture/depot/NOTES.md",
+         "content": "notes\n"
+        },
+        "content": [
+         {
+          "type": "text",
+          "text": "Created file successfully: NOTES.md"
+         }
+        ],
+        "metadata": {
+         "truncated": false
+        }
+       },
+       "time": {
+        "created": 1794134970324,
+        "ran": 1794134970327,
+        "completed": 1794134970333
+       }
+      }
+     ],
+     "snapshot": {
+      "start": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+      "end": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "files": [
+       "NOTES.md"
+      ]
+     },
+     "finish": "tool-calls",
+     "rawFinish": "tool_calls",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    },
+    {
+     "id": "msg_1bac71001001KDmJ4plj9GCgA9",
+     "time": {
+      "created": 1794134970375,
+      "streamed": 1794134970392,
+      "completed": 1794134970444
+     },
+     "type": "assistant",
+     "agent": "build",
+     "model": {
+      "id": "faux-1",
+      "providerID": "faux"
+     },
+     "content": [
+      {
+       "type": "tool",
+       "id": "call_outils_3",
+       "name": "shell",
+       "executed": false,
+       "state": {
+        "status": "completed",
+        "input": {
+         "command": "echo bonjour"
+        },
+        "content": [
+         {
+          "type": "text",
+          "text": "bonjour\n"
+         }
+        ],
+        "metadata": {
+         "status": "completed",
+         "truncated": false,
+         "exit": 0
+        }
+       },
+       "time": {
+        "created": 1794134970387,
+        "ran": 1794134970390,
+        "completed": 1794134970432
+       }
+      }
+     ],
+     "snapshot": {
+      "start": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "end": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "files": []
+     },
+     "finish": "tool-calls",
+     "rawFinish": "tool_calls",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    },
+    {
+     "id": "msg_1bac71055001o5KXOxiqk5UsRV",
+     "time": {
+      "created": 1794134970457,
+      "streamed": 1794134970524,
+      "completed": 1794134970530
+     },
+     "type": "assistant",
+     "agent": "build",
+     "model": {
+      "id": "faux-1",
+      "providerID": "faux"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Terminé."
+      }
+     ],
+     "snapshot": {
+      "start": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "end": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "files": []
+     },
+     "finish": "stop",
+     "rawFinish": "stop",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    },
+    {
+     "id": "msg_1bac710a5001TO2i1rN61OCpl6",
+     "time": {
+      "created": 1794134970533
+     },
+     "type": "idle",
+     "outcome": "succeeded"
+    }
+   ],
+   "cursor": {
+    "previous": "eyJpZCI6Im1zZ18xYmFjNzBmMzIwMDE0Q2dPM1lTRHlKZ3laMyIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoicHJldmlvdXMifQ",
+    "next": "eyJpZCI6Im1zZ18xYmFjNzEwYTUwMDFUTzJpMXJONjFPQ3BsNiIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoibmV4dCJ9"
+   }
+  }
+ },
+ "attentes": [
+  {
+   "apresEvenement": 40,
+   "autorisation": {
+    "id": "per_1bac7101c001i1fK3oLPDclMLa",
+    "sessionID": "ses_e4538f0d3ffeSxCcIpJc1VcVlz",
+    "action": "shell",
+    "resources": [
+     "echo bonjour"
+    ],
+    "save": [
+     "echo *"
+    ],
+    "source": {
+     "type": "tool",
+     "messageID": "msg_1bac71001001KDmJ4plj9GCgA9",
+     "id": "call_outils_3"
+    }
+   }
+  }
+ ],
+ "reponses": [
+  {
+   "autorisation": "per_1bac7101c001i1fK3oLPDclMLa",
+   "decision": "once",
+   "statut": 204
+  }
+ ],
+ "fichesApres": {
+  "autorisations": {
+   "data": []
+  },
+  "formulaires": {
+   "data": []
+  }
+ }
+}

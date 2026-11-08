@@ -289,3 +289,55 @@ export async function enregistrerAgent(saisie) {
   }
   return erreurServeur(r);
 }
+
+/** Vrai si une installation d'opencode 2 est détectée par le serveur ; faux sans réponse. */
+export async function opencodeDisponible() {
+  const r = await appeler("/api/opencode");
+  if (!r || !r.ok) return false;
+  return (await r.json()).disponible === true;
+}
+
+const OC = "/api/opencode/api";
+
+/**
+ * Appel de l'API d'opencode, relayée par Yaide. Rend `{ donnees }` (corps JSON, null s'il est vide),
+ * `{ coupure: true }`, `{ erreur: raison }` (503 ou autre échec) ou `{ disparue: true }` (404).
+ */
+async function appelOpencode(chemin, options) {
+  const r = await appeler(`${OC}${chemin}`, options);
+  if (!r) return { coupure: true };
+  if (r.status === 404) return { disparue: true };
+  const texte = await r.text().catch(() => "");
+  if (r.ok) {
+    try {
+      return { donnees: texte ? JSON.parse(texte) : null };
+    } catch {
+      return { erreur: "réponse illisible" };
+    }
+  }
+  let raison = texte.trim();
+  try {
+    raison = JSON.parse(texte).message ?? raison;
+  } catch {
+    // Texte brut : gardé tel quel.
+  }
+  return { erreur: raison || `erreur ${r.status}` };
+}
+
+const json = (methode, corps) => ({ method: methode, headers: { "content-type": "application/json" }, body: JSON.stringify(corps) });
+
+/** `dossier` : le dossier du projet. Rend `{ donnees: { data: session } }` (voir `appelOpencode`). */
+export const creerSession = (dossier) => appelOpencode("/session", json("POST", { location: { directory: dossier } }));
+export const session = (id) => appelOpencode(`/session/${q(id)}`);
+/** Une page de l'historique, du plus ancien au plus récent ; `curseur` : `cursor.next` de la page précédente. */
+export const messages = (id, curseur) => appelOpencode(`/session/${q(id)}/message?limit=200&${curseur ? `cursor=${q(curseur)}` : "order=asc"}`);
+export const sessionsFilles = (id) => appelOpencode(`/session?parentID=${q(id)}`);
+export const envoyer = (id, texte) => appelOpencode(`/session/${q(id)}/prompt`, json("POST", { text: texte }));
+export const interrompre = (id) => appelOpencode(`/session/${q(id)}/interrupt`, { method: "POST" });
+export const autorisations = (sessionId) => appelOpencode(`/session/${q(sessionId)}/permission`);
+/** `decision` : "once", "always" ou "reject". */
+export const repondreAutorisation = (sessionId, id, decision) => appelOpencode(`/session/${q(sessionId)}/permission/${q(id)}/reply`, json("POST", { decision }));
+export const questions = (sessionId) => appelOpencode(`/session/${q(sessionId)}/form`);
+/** `reponse` : valeurs par clé de champ. */
+export const repondreQuestion = (sessionId, id, reponse) => appelOpencode(`/session/${q(sessionId)}/form/${q(id)}/reply`, json("POST", { answer: reponse }));
+export const ignorerQuestion = (sessionId, id) => appelOpencode(`/session/${q(sessionId)}/form/${q(id)}`, { method: "DELETE" });

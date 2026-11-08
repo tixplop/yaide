@@ -1,0 +1,425 @@
+{
+ "scenario": "interruption",
+ "version": "opencode v2.2.5",
+ "racine": "ses_e4538e166ffeKaRBaadJo2JZXI",
+ "session": {
+  "data": {
+   "id": "ses_e4538e166ffeKaRBaadJo2JZXI",
+   "projectID": "global",
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "outcome": "interrupted",
+   "time": {
+    "created": 1794134974107,
+    "updated": 1794134974790,
+    "busy": 1794134974115,
+    "idle": 1794134974792
+   },
+   "title": "Session de capture",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   }
+  }
+ },
+ "sessionsFilles": [],
+ "evenements": [
+  {
+   "id": "evt_1bac71e9b001DjGJhPEEAX3QCV",
+   "created": 1794134974107,
+   "type": "session.created",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "slug": "glowing-falcon",
+    "version": "2.2.5",
+    "projectID": "global",
+    "location": {
+     "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+    },
+    "subpath": ""
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "seq": 0,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71ea0001vtA3x1UZLWNadK",
+   "created": 1794134974112,
+   "type": "session.inbox.enqueued",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "inboxID": "msg_1bac71e9f001lehuWOKa9SDC40",
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "item": {
+     "type": "user",
+     "payload": {
+      "text": "[scenario:interruption] Écris longuement."
+     },
+     "delivery": "steer"
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "seq": 1,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71ea3001JUnydpUGbp5fTZ",
+   "created": 1794134974115,
+   "type": "session.execution.started",
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "seq": 2,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71ea80017z3HM5j5c6HgS2",
+   "created": 1794134974120,
+   "metadata": {
+    "instructions": {
+     "initial": true
+    }
+   },
+   "type": "session.instructions.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "delta": {
+     "core/codemode": "1f1291478accf8b3e4d96a40c150bf844d60557dede4aae56c47ea0043bbdce2",
+     "core/skill-guidance": "296bd951f0a7490f38579ec63d8c07d856269aef4fd9deb013673ee8184e6bb2",
+     "core/date": "f5037a79687112a772ccf5ed4b2589caebf713959392bc4d0630977e1a6b4009",
+     "core/environment": "bce958bfee7636d4c9571dc8b2d69371e8efac803a73fffdac8920294705a37a"
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "seq": 3,
+    "version": 2
+   }
+  },
+  {
+   "id": "evt_1bac71eaa001ZRXuNNUrc9zWsC",
+   "created": 1794134974122,
+   "type": "session.inbox.delivered",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "inboxID": "msg_1bac71e9f001lehuWOKa9SDC40"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "seq": 4,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71ec0001pIQp0YbjF8BB2i",
+   "created": 1794134974144,
+   "type": "session.usage.updated",
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac71ec00029ir0h2w825NLBZ",
+   "created": 1794134974144,
+   "type": "session.renamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "title": "Session de capture"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "seq": 6,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71ec7001Bx9ipQgsRsP1j3",
+   "created": 1794134974151,
+   "type": "session.step.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "agent": "build",
+    "model": {
+     "id": "faux-1",
+     "providerID": "faux"
+    },
+    "assistantMessageID": "msg_1bac71eb5001NEJbLEyCgR0ybA",
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "started": 1794134974138
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "seq": 7,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71ec9001gx9O7aYAFh6pj9",
+   "created": 1794134974153,
+   "type": "session.text.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "assistantMessageID": "msg_1bac71eb5001NEJbLEyCgR0ybA",
+    "ordinal": 0
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "seq": 8,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71f2e001HomXgmfM0qg5DB",
+   "created": 1794134974254,
+   "type": "session.text.delta",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "assistantMessageID": "msg_1bac71eb5001NEJbLEyCgR0ybA",
+    "ordinal": 0,
+    "delta": "morceau 0 "
+   }
+  },
+  {
+   "id": "evt_1bac71fb8001C7utEmB126abkq",
+   "created": 1794134974392,
+   "type": "session.text.delta",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "assistantMessageID": "msg_1bac71eb5001NEJbLEyCgR0ybA",
+    "ordinal": 0,
+    "delta": "morceau 1 "
+   }
+  },
+  {
+   "id": "evt_1bac7204f001FnwNSKpk7KsWbb",
+   "created": 1794134974543,
+   "type": "session.text.delta",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "assistantMessageID": "msg_1bac71eb5001NEJbLEyCgR0ybA",
+    "ordinal": 0,
+    "delta": "morceau 2 "
+   }
+  },
+  {
+   "id": "evt_1bac720e5001tGvixXekOYXq2t",
+   "created": 1794134974693,
+   "type": "session.text.delta",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "assistantMessageID": "msg_1bac71eb5001NEJbLEyCgR0ybA",
+    "ordinal": 0,
+    "delta": "morceau 3 "
+   }
+  },
+  {
+   "id": "evt_1bac7213d001cmXX1qhCLe14N3",
+   "created": 1794134974781,
+   "type": "session.text.delta",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "assistantMessageID": "msg_1bac71eb5001NEJbLEyCgR0ybA",
+    "ordinal": 0,
+    "delta": "morceau 4 "
+   }
+  },
+  {
+   "id": "evt_1bac7213e001PzWlCovgaoMK7g",
+   "created": 1794134974782,
+   "type": "session.text.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "assistantMessageID": "msg_1bac71eb5001NEJbLEyCgR0ybA",
+    "ordinal": 0,
+    "text": "morceau 0 morceau 1 morceau 2 morceau 3 morceau 4 "
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "seq": 9,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7213f001eiu9wpTrPec6Me",
+   "created": 1794134974783,
+   "type": "session.step.streamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "assistantMessageID": "msg_1bac71eb5001NEJbLEyCgR0ybA"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "seq": 10,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac72146001Ota5fEz6mxjEiq",
+   "created": 1794134974790,
+   "type": "session.step.failed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "assistantMessageID": "msg_1bac71eb5001NEJbLEyCgR0ybA",
+    "error": {
+     "type": "aborted",
+     "message": "Step interrupted"
+    },
+    "snapshot": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+    "files": []
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "seq": 11,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac721480015J7tpCT2ILRnQF",
+   "created": 1794134974792,
+   "type": "session.execution.interrupted",
+   "data": {
+    "sessionID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "reason": "user"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e166ffeKaRBaadJo2JZXI",
+    "seq": 12,
+    "version": 1
+   }
+  }
+ ],
+ "messages": {
+  "ses_e4538e166ffeKaRBaadJo2JZXI": {
+   "data": [
+    {
+     "id": "msg_1bac71e9f001lehuWOKa9SDC40",
+     "time": {
+      "created": 1794134974122
+     },
+     "text": "[scenario:interruption] Écris longuement.",
+     "type": "user"
+    },
+    {
+     "id": "msg_1bac71eb5001NEJbLEyCgR0ybA",
+     "time": {
+      "created": 1794134974138,
+      "streamed": 1794134974783,
+      "completed": 1794134974790
+     },
+     "type": "assistant",
+     "agent": "build",
+     "model": {
+      "id": "faux-1",
+      "providerID": "faux"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "morceau 0 morceau 1 morceau 2 morceau 3 morceau 4 "
+      }
+     ],
+     "snapshot": {
+      "start": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "end": "34089ffdb34fecc95c3738b95517e8bf27a65896",
+      "files": []
+     },
+     "finish": "error",
+     "error": {
+      "type": "aborted",
+      "message": "Step interrupted"
+     }
+    },
+    {
+     "id": "msg_1bac721480015J7tpCT2ILRnQF",
+     "time": {
+      "created": 1794134974792
+     },
+     "type": "idle",
+     "outcome": "interrupted"
+    }
+   ],
+   "cursor": {
+    "previous": "eyJpZCI6Im1zZ18xYmFjNzFlOWYwMDFsZWh1V09LYTlTREM0MCIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoicHJldmlvdXMifQ",
+    "next": "eyJpZCI6Im1zZ18xYmFjNzIxNDgwMDE1Sjd0cENUMklMUm5RRiIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoibmV4dCJ9"
+   }
+  }
+ },
+ "attentes": [],
+ "reponses": [],
+ "fichesApres": {
+  "autorisations": {
+   "data": []
+  },
+  "formulaires": {
+   "data": []
+  }
+ }
+}

@@ -1,0 +1,634 @@
+{
+ "scenario": "texte",
+ "version": "opencode v2.2.5",
+ "racine": "ses_e4538fa80ffeQdkHmomyazE2FY",
+ "session": {
+  "data": {
+   "id": "ses_e4538fa80ffeQdkHmomyazE2FY",
+   "projectID": "global",
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "outcome": "succeeded",
+   "time": {
+    "created": 1794134967710,
+    "updated": 1794134969537,
+    "busy": 1794134969114,
+    "idle": 1794134969542
+   },
+   "title": "Session de capture",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   }
+  }
+ },
+ "sessionsFilles": [],
+ "evenements": [
+  {
+   "id": "evt_1bac7057c001yS5jXnAItvmh0c",
+   "type": "server.connected",
+   "data": {}
+  },
+  {
+   "id": "evt_1bac7059b001XHxHQ4msJWLdWU",
+   "created": 1794134967707,
+   "type": "worktree.resolved",
+   "data": {
+    "projectID": "global",
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot",
+    "previous": "global"
+   },
+   "durable": {
+    "aggregateID": "global",
+    "seq": 0,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac7059e001ixvmOn873U8glD",
+   "created": 1794134967710,
+   "type": "session.created",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "slug": "brave-wolf",
+    "version": "2.2.5",
+    "projectID": "global",
+    "location": {
+     "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+    },
+    "subpath": ""
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 0,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac705ae001CZwE72qJD7tFC4",
+   "created": 1794134967726,
+   "type": "project.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "id": "global",
+    "canonical": "/home/spela/code/yaide/yaide/.test-data/capture/depot",
+    "vcs": "git",
+    "time": {
+     "created": 1794134967704,
+     "updated": 1794134967704,
+     "active": 1794134967726
+    },
+    "sandboxes": []
+   }
+  },
+  {
+   "id": "evt_1bac7090d001gFhY7SkqghrAs6",
+   "created": 1794134968589,
+   "type": "models-dev.refreshed",
+   "data": {}
+  },
+  {
+   "id": "evt_1bac70acb0019Y9DqEwsKquQoN",
+   "created": 1794134969035,
+   "type": "integration.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {}
+  },
+  {
+   "id": "evt_1bac70ad1001QgWiyuL1JdWvAN",
+   "created": 1794134969041,
+   "type": "provider.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {}
+  },
+  {
+   "id": "evt_1bac70ad9001vIbV45zp6CyQxY",
+   "created": 1794134969049,
+   "type": "model.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {}
+  },
+  {
+   "id": "evt_1bac70aec001dX9dOn4wNYCNsd",
+   "created": 1794134969068,
+   "type": "vcs.branch.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "branch": "master"
+   }
+  },
+  {
+   "id": "evt_1bac70aed001uh42niqq2uRfPo",
+   "created": 1794134969069,
+   "type": "agent.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {}
+  },
+  {
+   "id": "evt_1bac70aed002IUajnOpn4tiJhK",
+   "created": 1794134969069,
+   "type": "command.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {}
+  },
+  {
+   "id": "evt_1bac70aef0016fZOj7ca0PX34R",
+   "created": 1794134969071,
+   "type": "skill.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {}
+  },
+  {
+   "id": "evt_1bac70af2001ZUKOXUHY15QR4G",
+   "created": 1794134969074,
+   "type": "websearch.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {}
+  },
+  {
+   "id": "evt_1bac70b0f001jaCkLVUpzDwVSD",
+   "created": 1794134969103,
+   "type": "reference.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {}
+  },
+  {
+   "id": "evt_1bac70b15001W2xoSIfxpXFEyR",
+   "created": 1794134969109,
+   "type": "plugin.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {}
+  },
+  {
+   "id": "evt_1bac70b16001wE3HMaC6FC8hIX",
+   "created": 1794134969110,
+   "type": "session.inbox.enqueued",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "inboxID": "msg_1bac705f4001NwEqCs5cbsuJAQ",
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "item": {
+     "type": "user",
+     "payload": {
+      "text": "[scenario:texte] Dis bonjour."
+     },
+     "delivery": "steer"
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 1,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70b1a0019zcZz01Nj4cUwe",
+   "created": 1794134969114,
+   "type": "session.execution.started",
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 2,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70b240015JTMiW92sZrYfM",
+   "created": 1794134969124,
+   "metadata": {
+    "instructions": {
+     "initial": true
+    }
+   },
+   "type": "session.instructions.updated",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "delta": {
+     "core/codemode": "1f1291478accf8b3e4d96a40c150bf844d60557dede4aae56c47ea0043bbdce2",
+     "core/skill-guidance": "296bd951f0a7490f38579ec63d8c07d856269aef4fd9deb013673ee8184e6bb2",
+     "core/date": "f5037a79687112a772ccf5ed4b2589caebf713959392bc4d0630977e1a6b4009",
+     "core/environment": "bce958bfee7636d4c9571dc8b2d69371e8efac803a73fffdac8920294705a37a"
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 3,
+    "version": 2
+   }
+  },
+  {
+   "id": "evt_1bac70b27001Z36hswizPU6brX",
+   "created": 1794134969127,
+   "type": "session.inbox.delivered",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "inboxID": "msg_1bac705f4001NwEqCs5cbsuJAQ"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 4,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70b5c001MeomAsPRPH3BIp",
+   "created": 1794134969180,
+   "type": "session.usage.updated",
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac70b5c002XtwOQXm7OKB4um",
+   "created": 1794134969180,
+   "type": "session.renamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "title": "Session de capture"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 6,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70b7f001o7g1jHkouMbiP9",
+   "created": 1794134969215,
+   "type": "session.step.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "agent": "build",
+    "model": {
+     "id": "faux-1",
+     "providerID": "faux"
+    },
+    "assistantMessageID": "msg_1bac70b3e0017S810XjGvtwceH",
+    "snapshot": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+    "started": 1794134969156
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 7,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70b82001xZoWEHfUGHb70X",
+   "created": 1794134969218,
+   "type": "session.reasoning.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "assistantMessageID": "msg_1bac70b3e0017S810XjGvtwceH",
+    "ordinal": 0,
+    "native": {
+     "reasoningField": "reasoning_content"
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 8,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70b86001wPUm8QfvHeBzFC",
+   "created": 1794134969222,
+   "type": "session.reasoning.delta",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "assistantMessageID": "msg_1bac70b3e0017S810XjGvtwceH",
+    "ordinal": 0,
+    "delta": "Je réfléchis à la réponse."
+   }
+  },
+  {
+   "id": "evt_1bac70b86002U5pMQGwl4njyNV",
+   "created": 1794134969222,
+   "type": "session.text.started",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "assistantMessageID": "msg_1bac70b3e0017S810XjGvtwceH",
+    "ordinal": 0
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 9,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70bee001jFwx0UpcPwS9mQ",
+   "created": 1794134969326,
+   "type": "session.text.delta",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "assistantMessageID": "msg_1bac70b3e0017S810XjGvtwceH",
+    "ordinal": 0,
+    "delta": "Voici une **réponse** en plusieurs "
+   }
+  },
+  {
+   "id": "evt_1bac70c62001IGW6nMg9PwehFA",
+   "created": 1794134969442,
+   "type": "session.text.delta",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "assistantMessageID": "msg_1bac70b3e0017S810XjGvtwceH",
+    "ordinal": 0,
+    "delta": "morceaux :\n\n- un\n"
+   }
+  },
+  {
+   "id": "evt_1bac70cb4001iAwA1YXe7qXl10",
+   "created": 1794134969524,
+   "type": "session.reasoning.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "assistantMessageID": "msg_1bac70b3e0017S810XjGvtwceH",
+    "ordinal": 0,
+    "text": "Je réfléchis à la réponse.",
+    "native": {
+     "reasoningField": "reasoning_content"
+    }
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 10,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70cb7001hBwmd0uhPZw1nu",
+   "created": 1794134969527,
+   "type": "session.text.delta",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "assistantMessageID": "msg_1bac70b3e0017S810XjGvtwceH",
+    "ordinal": 0,
+    "delta": "- deux\n"
+   }
+  },
+  {
+   "id": "evt_1bac70cb7002BopGK6rWqgmbYh",
+   "created": 1794134969527,
+   "type": "session.text.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "assistantMessageID": "msg_1bac70b3e0017S810XjGvtwceH",
+    "ordinal": 0,
+    "text": "Voici une **réponse** en plusieurs morceaux :\n\n- un\n- deux\n"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 11,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70cb9001TOe7uUOIIIbqSY",
+   "created": 1794134969529,
+   "type": "session.step.streamed",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "assistantMessageID": "msg_1bac70b3e0017S810XjGvtwceH"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 12,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70cc10012Nw7UizJd538CH",
+   "created": 1794134969537,
+   "type": "session.step.ended",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "assistantMessageID": "msg_1bac70b3e0017S810XjGvtwceH",
+    "finish": "stop",
+    "rawFinish": "stop",
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "cost": 0,
+    "snapshot": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+    "files": []
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 13,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac70cc4001yUq8B3yD40SLCD",
+   "created": 1794134969540,
+   "type": "session.usage.updated",
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "evt_1bac70cc6001cGMXiuQ6NeAEBw",
+   "created": 1794134969542,
+   "type": "session.execution.succeeded",
+   "data": {
+    "sessionID": "ses_e4538fa80ffeQdkHmomyazE2FY"
+   },
+   "durable": {
+    "aggregateID": "ses_e4538fa80ffeQdkHmomyazE2FY",
+    "seq": 14,
+    "version": 1
+   }
+  }
+ ],
+ "messages": {
+  "ses_e4538fa80ffeQdkHmomyazE2FY": {
+   "data": [
+    {
+     "id": "msg_1bac705f4001NwEqCs5cbsuJAQ",
+     "time": {
+      "created": 1794134969127
+     },
+     "text": "[scenario:texte] Dis bonjour.",
+     "type": "user"
+    },
+    {
+     "id": "msg_1bac70b3e0017S810XjGvtwceH",
+     "time": {
+      "created": 1794134969156,
+      "streamed": 1794134969529,
+      "completed": 1794134969537
+     },
+     "type": "assistant",
+     "agent": "build",
+     "model": {
+      "id": "faux-1",
+      "providerID": "faux"
+     },
+     "content": [
+      {
+       "type": "reasoning",
+       "text": "Je réfléchis à la réponse.",
+       "native": {
+        "reasoningField": "reasoning_content"
+       },
+       "time": {
+        "created": 1794134969218,
+        "completed": 1794134969524
+       }
+      },
+      {
+       "type": "text",
+       "text": "Voici une **réponse** en plusieurs morceaux :\n\n- un\n- deux\n"
+      }
+     ],
+     "snapshot": {
+      "start": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+      "end": "f6b60d3874e4ebada3ff1d2820aaead1adf949c5",
+      "files": []
+     },
+     "finish": "stop",
+     "rawFinish": "stop",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    },
+    {
+     "id": "msg_1bac70cc6001cGMXiuQ6NeAEBw",
+     "time": {
+      "created": 1794134969542
+     },
+     "type": "idle",
+     "outcome": "succeeded"
+    }
+   ],
+   "cursor": {
+    "previous": "eyJpZCI6Im1zZ18xYmFjNzA1ZjQwMDFOd0VxQ3M1Y2JzdUpBUSIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoicHJldmlvdXMifQ",
+    "next": "eyJpZCI6Im1zZ18xYmFjNzBjYzYwMDFjR01YaXVRNk5lQUVCdyIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoibmV4dCJ9"
+   }
+  }
+ },
+ "attentes": [],
+ "reponses": [],
+ "fichesApres": {
+  "autorisations": {
+   "data": []
+  },
+  "formulaires": {
+   "data": []
+  }
+ }
+}

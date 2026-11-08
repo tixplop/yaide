@@ -1,0 +1,318 @@
+{
+ "scenario": "formulaire",
+ "version": "opencode v2.2.5",
+ "racine": "ses_e4538e472ffeWngUJ0AwGBiU4j",
+ "session": {
+  "data": {
+   "id": "ses_e4538e472ffeWngUJ0AwGBiU4j",
+   "projectID": "global",
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "time": {
+    "created": 1794134973327,
+    "updated": 1794134973327
+   },
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   }
+  }
+ },
+ "sessionsFilles": [],
+ "evenements": [
+  {
+   "id": "evt_1bac71b8f001nBphlT913BAHKs",
+   "created": 1794134973327,
+   "type": "session.created",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "sessionID": "ses_e4538e472ffeWngUJ0AwGBiU4j",
+    "slug": "witty-lagoon",
+    "version": "2.2.5",
+    "projectID": "global",
+    "location": {
+     "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+    },
+    "subpath": ""
+   },
+   "durable": {
+    "aggregateID": "ses_e4538e472ffeWngUJ0AwGBiU4j",
+    "seq": 0,
+    "version": 1
+   }
+  },
+  {
+   "id": "evt_1bac71b94002AZP8V90QBNYE4x",
+   "created": 1794134973332,
+   "type": "form.created",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "form": {
+     "id": "frm_1bac71b940017aWV9HvLq1PPsU",
+     "sessionID": "ses_e4538e472ffeWngUJ0AwGBiU4j",
+     "title": "Préparer la release",
+     "fields": [
+      {
+       "key": "version",
+       "title": "Version",
+       "description": "Numéro à publier.",
+       "required": true,
+       "type": "string",
+       "placeholder": "1.2.3"
+      },
+      {
+       "key": "canal",
+       "title": "Canal",
+       "type": "string",
+       "default": "stable",
+       "options": [
+        {
+         "value": "stable",
+         "label": "Stable"
+        },
+        {
+         "value": "beta",
+         "label": "Bêta"
+        }
+       ]
+      },
+      {
+       "key": "taille",
+       "title": "Taille",
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 10
+      },
+      {
+       "key": "ratio",
+       "title": "Ratio",
+       "type": "number"
+      },
+      {
+       "key": "notes",
+       "title": "Notes publiées",
+       "type": "boolean",
+       "default": true
+      },
+      {
+       "key": "cibles",
+       "title": "Cibles",
+       "type": "multiselect",
+       "options": [
+        {
+         "value": "linux",
+         "label": "Linux"
+        },
+        {
+         "value": "macos",
+         "label": "macOS"
+        }
+       ],
+       "minItems": 1,
+       "maxItems": 2
+      },
+      {
+       "key": "doc",
+       "type": "external",
+       "url": "https://example.com/doc",
+       "title": "Documentation"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "evt_1bac71b960021hJ3nkQsmmOHg8",
+   "created": 1794134973334,
+   "type": "form.created",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "form": {
+     "id": "frm_1bac71b96001HYi0iihh5Z6t6P",
+     "sessionID": "ses_e4538e472ffeWngUJ0AwGBiU4j",
+     "title": "Ignorée",
+     "fields": [
+      {
+       "key": "x",
+       "type": "string"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "evt_1bac71c98001RWtKMQry7hhtWD",
+   "created": 1794134973592,
+   "type": "form.replied",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "id": "frm_1bac71b940017aWV9HvLq1PPsU",
+    "sessionID": "ses_e4538e472ffeWngUJ0AwGBiU4j",
+    "answer": {
+     "version": "1.2.3",
+     "canal": "beta",
+     "notes": true,
+     "cibles": [
+      "linux"
+     ],
+     "doc": true
+    }
+   }
+  },
+  {
+   "id": "evt_1bac71c99001geu9BioHAGrzAD",
+   "created": 1794134973593,
+   "type": "form.cancelled",
+   "location": {
+    "directory": "/home/spela/code/yaide/yaide/.test-data/capture/depot"
+   },
+   "data": {
+    "id": "frm_1bac71b96001HYi0iihh5Z6t6P",
+    "sessionID": "ses_e4538e472ffeWngUJ0AwGBiU4j"
+   }
+  }
+ ],
+ "messages": {
+  "ses_e4538e472ffeWngUJ0AwGBiU4j": {
+   "data": [],
+   "cursor": {
+    "previous": null,
+    "next": null
+   }
+  }
+ },
+ "attentes": [
+  {
+   "apresEvenement": 3,
+   "formulaire": {
+    "id": "frm_1bac71b940017aWV9HvLq1PPsU",
+    "sessionID": "ses_e4538e472ffeWngUJ0AwGBiU4j",
+    "title": "Préparer la release",
+    "fields": [
+     {
+      "key": "version",
+      "title": "Version",
+      "description": "Numéro à publier.",
+      "required": true,
+      "type": "string",
+      "placeholder": "1.2.3"
+     },
+     {
+      "key": "canal",
+      "title": "Canal",
+      "type": "string",
+      "default": "stable",
+      "options": [
+       {
+        "value": "stable",
+        "label": "Stable"
+       },
+       {
+        "value": "beta",
+        "label": "Bêta"
+       }
+      ]
+     },
+     {
+      "key": "taille",
+      "title": "Taille",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10
+     },
+     {
+      "key": "ratio",
+      "title": "Ratio",
+      "type": "number"
+     },
+     {
+      "key": "notes",
+      "title": "Notes publiées",
+      "type": "boolean",
+      "default": true
+     },
+     {
+      "key": "cibles",
+      "title": "Cibles",
+      "type": "multiselect",
+      "options": [
+       {
+        "value": "linux",
+        "label": "Linux"
+       },
+       {
+        "value": "macos",
+        "label": "macOS"
+       }
+      ],
+      "minItems": 1,
+      "maxItems": 2
+     },
+     {
+      "key": "doc",
+      "type": "external",
+      "url": "https://example.com/doc",
+      "title": "Documentation"
+     }
+    ]
+   }
+  },
+  {
+   "apresEvenement": 3,
+   "formulaire": {
+    "id": "frm_1bac71b96001HYi0iihh5Z6t6P",
+    "sessionID": "ses_e4538e472ffeWngUJ0AwGBiU4j",
+    "title": "Ignorée",
+    "fields": [
+     {
+      "key": "x",
+      "type": "string"
+     }
+    ]
+   }
+  }
+ ],
+ "reponses": [
+  {
+   "formulaire": "frm_1bac71b940017aWV9HvLq1PPsU",
+   "answer": {
+    "version": "1.2.3",
+    "canal": "beta",
+    "notes": true,
+    "cibles": [
+     "linux"
+    ],
+    "doc": true
+   },
+   "statut": 204
+  },
+  {
+   "formulaire": "frm_1bac71b96001HYi0iihh5Z6t6P",
+   "ignore": true,
+   "statut": 204
+  }
+ ],
+ "fichesApres": {
+  "autorisations": {
+   "data": []
+  },
+  "formulaires": {
+   "data": []
+  }
+ }
+}
