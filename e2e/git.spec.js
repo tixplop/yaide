@@ -25,9 +25,9 @@ function depot() {
   return dossier;
 }
 
-async function ouvrir(page, dossier) {
+async function ouvrir(page, dossier, avecShell = false) {
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: avecShell });
 }
 const panneauGit = async (page) => {
   await page.getByRole("tab", { name: "Git" }).click();
@@ -315,7 +315,7 @@ test("REQ025_AC2_AC3_AC5_echec_du_push_message_de_git_et_renvoi_vers_le_shell", 
 });
 
 test("REQ028_AC1_F_R_G_changent_de_panneau_sans_toucher_aux_onglets", async ({ page }) => {
-  await ouvrir(page, depot());
+  await ouvrir(page, depot(), true);
   await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
   await expect(page.getByRole("tab", { name: "README.md" })).toBeVisible();
   await page.getByRole("tab", { name: "Fichiers" }).focus();
@@ -350,7 +350,7 @@ test("REQ022_AC6_AC10_dossier_parent_long_le_nom_et_la_lettre_restent_visibles_a
   const long = path.join("dossier-parent-tres-long-pour-la-coupure", "autre-niveau-encore-plus-long-que-le-precedent");
   fs.mkdirSync(path.join(dossier, long), { recursive: true });
   fs.writeFileSync(path.join(dossier, long, "fichier.txt"), "x\n");
-  await ouvrir(page, dossier);
+  await ouvrir(page, dossier, true);
   const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
   await poignee.focus();
   for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");

@@ -12,8 +12,8 @@ test.afterEach(() => yaide.arreter());
 
 const main = () => path.join(yaide.dossier, "src", "main.rs");
 
-async function ouvrirMain(page) {
-  await ouvrirYaide(page, yaide.origine);
+async function ouvrirMain(page, avecShell = true) {
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: avecShell });
   await page.getByRole("treeitem", { name: nomLigne("src") }).click();
   await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
   await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
@@ -89,7 +89,7 @@ test("REQ028_AC9_800_par_480_avec_fichier_et_deux_shells_rien_ne_se_superpose", 
 
 test("REQ028_AC10_dialogue_ouvert_les_raccourcis_sont_sans_effet_et_le_focus_revient", async ({ page }) => {
   const avant = fs.readFileSync(main(), "utf8");
-  await ouvrirMain(page);
+  await ouvrirMain(page, false);
   await page.keyboard.type("// brouillon\n");
   await expect(page.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
   await page.keyboard.press("Control+p");
@@ -188,10 +188,10 @@ function depotStatuts() {
   return dossier;
 }
 
-async function relancerSur(page, dossier) {
+async function relancerSur(page, dossier, avecShell = false) {
   await yaide.arreter();
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: avecShell });
 }
 
 /** Relit dans le thème courant (sombre), puis en clair, et rend le thème comme il était. `lecture(theme)` fait les assertions. */
@@ -295,7 +295,7 @@ test("REQ035_AC11_info_bulles_a_droite_et_bouton_desactive_sans_arret_de_Tab", a
 });
 
 test("REQ033_AC1_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_arbre_relus_au_style_calcule_dans_les_deux_themes", async ({ page }) => {
-  await relancerSur(page, depotStatuts());
+  await relancerSur(page, depotStatuts(), true);
   await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
   await expect(page.getByRole("button", { name: "Aperçu", exact: true })).toBeVisible();
   const pied = (nom) => page.locator(`.fichiers-entete [aria-label="${nom}"]`);
@@ -372,7 +372,7 @@ test("REQ033_AC1_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_arbre_rel
 });
 
 test("REQ033_AC2_AC9_AC4_lettres_de_statut_et_commit_relus_au_style_calcule_et_commit_sur_toute_la_largeur", async ({ page }) => {
-  await relancerSur(page, depotStatuts());
+  await relancerSur(page, depotStatuts(), true);
   await page.getByRole("tab", { name: "Git", exact: true }).click();
   await expect(page.getByRole("button", { name: "Indexer nouveau.txt" })).toBeVisible();
   const jetons = { M: "--git-modified", R: "--git-modified", A: "--git-added", D: "--git-deleted", U: "--git-untracked", C: "--git-conflict" };
@@ -420,7 +420,7 @@ test("REQ023_AC9_REQ031_AC7_panneau_de_240_px_branche_pull_et_push_sur_une_ligne
   const attente = path.join(path.dirname(dossier), "attente.sh");
   fs.writeFileSync(attente, `#!/bin/sh\nwhile [ ! -f "${libere}" ]; do sleep 0.1; done\nexec git-upload-pack "$@"\n`, { mode: 0o755 });
   git(dossier, "config", "remote.origin.uploadpack", attente);
-  await relancerSur(page, dossier);
+  await relancerSur(page, dossier, true);
   const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
   await poignee.focus();
   for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
@@ -454,7 +454,7 @@ test("REQ033_AC3_AC10_messages_info_succes_alerte_erreur_relus_au_style_calcule"
   git("config", "user.email", "t@example.org");
   fs.writeFileSync(path.join(dossier, "README.md"), "# Autre\n");
   fs.writeFileSync(path.join(dossier, "notes.bin"), Buffer.from([0, 1, 2, 0]));
-  await relancerSur(page, dossier);
+  await relancerSur(page, dossier, true);
   const jetons = ["--msg-info", "--msg-succes", "--msg-alerte", "--msg-erreur", "--git-added", "--warning", "--danger"];
   const relire = (message, fond, bord) => dansLesDeuxThemes(page, async (theme) => {
     const t = await resoudre(page, jetons);
@@ -486,7 +486,7 @@ test("REQ033_AC3_AC10_messages_info_succes_alerte_erreur_relus_au_style_calcule"
 });
 
 test("REQ031_AC9_Renommer_desactive_montre_son_info_bulle", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await expect(page.locator('.fichiers-entete [aria-label="Renommer"]')).toBeDisabled();
   const t = await resoudre(page, ["--ink-muted"]);
   // AC-033-11 : un bouton à icône désactivé est atténué (opacité .45), pas recoloré.
@@ -579,7 +579,7 @@ test("REQ037_AC4_AC10_AC11_AC12_barre_d_etat_et_fil_d_Ariane", async ({ page }) 
 
 test("REQ037_AC11_fichier_inconnu_Texte_et_aucun_fichier_rien_a_droite", async ({ page }) => {
   fs.writeFileSync(path.join(yaide.dossier, "notes.xyz"), "abc\n");
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await expect(page.locator("footer")).not.toContainText("Ln ");
   await page.getByRole("treeitem", { name: nomLigne("notes.xyz") }).click();
   await expect(page.locator("footer")).toContainText("Texte");
@@ -642,7 +642,7 @@ test("REQ031_AC10_barre_de_titre_info_bulles_sous_le_bouton_et_dans_la_fenetre",
 });
 
 test("REQ036_AC13_le_chevron_d_un_dossier_charge_a_une_transition_de_transform_a_l_ouverture_et_a_la_fermeture", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   const src = page.getByRole("treeitem", { name: nomLigne("src") });
   await src.click();
   await expect(page.getByRole("treeitem", { name: nomLigne("main.rs") })).toBeVisible();

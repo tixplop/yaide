@@ -15,10 +15,10 @@ const g = (dossier, ...args) => {
   return r.stdout;
 };
 
-async function ouvrir(page, dossier = depotExemple()) {
+async function ouvrir(page, dossier = depotExemple(), avecShell = false) {
   g(dossier, "branch", "-M", "main");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: avecShell });
   return dossier;
 }
 const arbre = (page) => page.getByRole("tree", { name: "Fichiers" });
@@ -35,7 +35,7 @@ const taper = async (page, commande) => {
 
 test("REQ045_AC1_un_fichier_cree_ou_supprime_dans_un_shell_apparait_ou_disparait_dossier_deplie_compris", async ({ page }) => {
   await page.clock.install();
-  await ouvrir(page);
+  await ouvrir(page, undefined, true);
   await ligne(page, "src").click();
   await expect(ligne(page, "main.rs")).toBeVisible();
   const dossier = yaide.dossier;
@@ -98,7 +98,7 @@ test("REQ045_AC4_git_init_dans_un_dossier_sans_depot_remplace_le_message_par_la_
   fs.writeFileSync(path.join(dossier, "a.txt"), "a\n");
   await page.clock.install();
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await rail(page, "Git").click();
   await expect(page.getByText("Ce dossier n'est pas un dépôt git.")).toBeVisible();
   g(dossier, "init", "-q", "-b", "principale");
@@ -113,7 +113,7 @@ test("REQ045_AC5_le_defilement_de_l_arbre_et_la_frappe_dans_le_terminal_ne_sont_
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "gros"));
   for (let i = 0; i < 200; i++) fs.writeFileSync(path.join(dossier, "gros", `f${String(i).padStart(3, "0")}.txt`), "");
-  await ouvrir(page, dossier);
+  await ouvrir(page, dossier, true);
   await ligne(page, "gros").click();
   await expect(ligne(page, "f199.txt")).toBeAttached();
   const defile = await page.locator("aside.cadre-panneau .cadre-panneau-corps").evaluate((e) => {

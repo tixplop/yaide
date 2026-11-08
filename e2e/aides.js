@@ -36,6 +36,21 @@ function pathSansAides(claude, opencode) {
   return [...(opencode ? [opencode] : []), ...(claude ? [claude] : []), ...dossiersSansAides].join(path.delimiter);
 }
 
+const modeles = new Map();
+/** Le mot de passe est haché une fois par processus de test et par mot de passe, dans un dossier modèle ; chaque lancement en copie le fichier. */
+function copierMotDePasse(motDePasse, exe, env, cible) {
+  if (!modeles.has(motDePasse)) {
+    const modele = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "mdp-"));
+    const r = spawnSync(exe, ["passwd"], { input: `${motDePasse}\n`, env: { ...env, XDG_CONFIG_HOME: modele } });
+    if (r.status !== 0) throw new Error(`yaide passwd a échoué (${r.status})`);
+    modeles.set(motDePasse, path.join(modele, "yaide", "mot-de-passe"));
+  }
+  const source = modeles.get(motDePasse);
+  fs.mkdirSync(cible, { recursive: true, mode: 0o700 });
+  fs.copyFileSync(source, path.join(cible, "mot-de-passe"));
+  fs.chmodSync(path.join(cible, "mot-de-passe"), fs.statSync(source).mode);
+}
+
 /** Lance Yaide sur un port libre (ou `port`). `claude`, `opencode` : dossier d'un faux `claude` ou `opencode`, sinon aucun dans le `PATH`. Rend `{ origine, port, dossier, arreter, relancer }`. */
 export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple(), port, shell = "/bin/sh", reprise = false, binaire, claude, opencode } = {}) {
   const imposé = port !== undefined;
@@ -46,7 +61,10 @@ export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple()
   const exe = binaire ?? "target/debug/yaide";
   const env = { ...process.env, XDG_CONFIG_HOME: path.join(racine, "cfg"), HOME: home, PATH: pathSansAides(claude, opencode) };
   if (shell) env.SHELL = shell;
-  if (!reprise) spawnSync(exe, ["passwd"], { input: `${motDePasse}\n`, env, cwd });
+  if (!reprise) {
+    if (binaire) spawnSync(exe, ["passwd"], { input: `${motDePasse}\n`, env, cwd });
+    else copierMotDePasse(motDePasse, exe, env, path.join(racine, "cfg", "yaide"));
+  }
   let proc, sorti, origine;
   for (let essai = 0; ; essai++) {
     if (!imposé) port = await portLibre();

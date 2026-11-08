@@ -9,7 +9,7 @@ test.afterEach(async () => {
   await yaide?.arreter();
 });
 
-async function ouvrir(page, preparer = () => {}) {
+async function ouvrir(page, preparer = () => {}, avecShell = false) {
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "tests"));
   fs.writeFileSync(path.join(dossier, "tests", "main.rs"), "// tests\n");
@@ -17,7 +17,7 @@ async function ouvrir(page, preparer = () => {}) {
   fs.writeFileSync(path.join(dossier, "x.zzz"), "inconnu");
   preparer(dossier);
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: avecShell });
   await expect(arbre(page)).toBeVisible();
   return dossier;
 }
@@ -50,7 +50,7 @@ const taper = async (page, nom, texte) => {
 };
 
 test("REQ008_AC1_et_AC2_et_AC6_ouvrir_un_fichier_sans_doublon_focus_dans_l_editeur", async ({ page }) => {
-  await ouvrir(page);
+  await ouvrir(page, undefined, true);
   await expect(page.getByText("Aucun fichier ouvert.")).toBeVisible();
   await ouvrirMain(page);
   await expect(onglet(page, "main.rs")).toHaveAttribute("aria-selected", "true");
@@ -211,7 +211,7 @@ test("REQ013_AC1_et_AC2_et_AC4_point_apres_frappe_ecriture_seulement_au_ctrl_s",
 });
 
 test("REQ013_AC6_ctrl_s_hors_de_l_editeur_sauvegarde_sans_dialogue_du_navigateur_et_dans_un_shell_va_au_shell", async ({ page }) => {
-  const dossier = await ouvrir(page);
+  const dossier = await ouvrir(page, undefined, true);
   const fichier = path.join(dossier, "a.txt");
   await page.evaluate(() => {
     window.__prevenus = [];
@@ -365,7 +365,7 @@ test("REQ014_AC4_et_AC6_annuler_ou_echap_garde_l_onglet_et_son_texte", async ({ 
 });
 
 test("REQ014_AC5_et_AC7_onglet_non_modifie_se_ferme_sans_question_puis_droite_sinon_gauche", async ({ page }) => {
-  await ouvrir(page);
+  await ouvrir(page, undefined, true);
   await ligne(page, "a.txt").click();
   await ligne(page, "README.md").click();
   await ligne(page, "x.zzz").click();
@@ -489,6 +489,7 @@ test("REQ008_AC8_le_dernier_geste_l_emporte_sur_une_lecture_precedente", async (
 test("REQ018_un_fichier_disparu_n_est_pas_rouvert", async ({ page }) => {
   const dossier = await ouvrir(page);
   await ligne(page, "a.txt").click();
+  await expect(onglet(page, "a.txt")).toHaveAttribute("aria-selected", "true");
   await ligne(page, "README.md").click();
   await expect.poll(async () => (await gardes(page)).map((o) => o.chemin)).toEqual(["a.txt", "README.md"]);
   fs.rmSync(path.join(dossier, "a.txt"));
@@ -553,7 +554,7 @@ test("REQ031_AC1_fermer_un_onglet_de_texte_par_une_icone_sans_title", async ({ p
 
 test("REQ061_parcours_P024_fermer_des_onglets_d_un_coup", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
-  const dossier = await ouvrir(page, (d) => fs.appendFileSync(path.join(d, "README.md"), "\nmodifié sur le disque\n"));
+  const dossier = await ouvrir(page, (d) => fs.appendFileSync(path.join(d, "README.md"), "\nmodifié sur le disque\n"), true);
   const ong = (nom) => page.getByRole("tab", { name: new RegExp(`^${nom.replace(".", "\\.")}(,|$)`) });
   await ouvrirMain(page);
   await taper(page, "main.rs", "X");

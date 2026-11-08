@@ -29,7 +29,7 @@ const main = () => path.join(dossier, "src", "main.rs");
 const ORIGINE = 'fn main() {\n    println!("salut");\n}\n';
 
 async function ouvrirMain(page) {
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   await ligne(page, "src").click();
   await ligne(page, "main.rs").click();
   await expect(editeur(page)).toBeFocused();
@@ -140,7 +140,7 @@ test("REQ016_AC3_apres_une_sauvegarde_recharger_affiche_le_disque_sans_point", a
 });
 
 test("REQ015_AC8_pendant_la_coupure_deplier_un_dossier_est_refuse", async ({ page }) => {
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   await expect(arbre(page)).toBeVisible();
   await expect(page.locator(".ya-status-branche")).toBeVisible();
   await couper(page);
@@ -154,7 +154,7 @@ test("REQ015_AC8_pendant_la_coupure_deplier_un_dossier_est_refuse", async ({ pag
 const REFUS = "Connexion perdue. Réessayez au retour.";
 
 test("REQ015_AC8_pendant_la_coupure_creer_renommer_supprimer_disent_de_reessayer", async ({ page }) => {
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   await ligne(page, "README.md").click();
   await couper(page);
   await page.getByRole("button", { name: "Nouveau fichier" }).click();
@@ -178,7 +178,7 @@ test("REQ015_AC8_pendant_la_coupure_creer_renommer_supprimer_disent_de_reessayer
 });
 
 test("REQ015_AC8_pendant_la_coupure_changer_de_panneau_garde_l_arbre", async ({ page }) => {
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   await expect(ligne(page, "README.md")).toBeVisible();
   await couper(page);
   await page.getByRole("tab", { name: "Recherche" }).click();
@@ -233,7 +233,7 @@ test("REQ005_AC8_deconnexion_avec_du_texte_non_sauvegarde_sans_question_puis_le_
 
 test("REQ044_AC5_pendant_la_coupure_le_bloc_se_colore_a_la_frappe", async ({ page }) => {
   fs.writeFileSync(path.join(dossier, "README.md"), "```inconnu\nfn main() {}\n```\n");
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   await ligne(page, "README.md").click();
   await page.getByRole("button", { name: "Aperçu", exact: true }).click();
   const apercu = page.getByRole("region", { name: "Aperçu" });

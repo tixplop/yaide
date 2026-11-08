@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { lancerYaide, ouvrirYaide, depotExemple, nomLigne, tailleStable, temoin, attendre } from "./aides.js";
+import { lancerYaide, ouvrirYaide, depotExemple, nomLigne, tailleStable, temoin, attendre, avancer } from "./aides.js";
 import { lancerFauxProvider, reponse, erreur } from "./faux-provider.js";
 
 let yaide;
@@ -34,6 +34,9 @@ const arreter = (page) => page.getByRole("button", { name: "Arrêter", exact: tr
 const envoyer = (page) => page.getByRole("button", { name: "Envoyer", exact: true });
 const rail = (page, nom) =>
   nom === "Agent" ? page.getByRole("button", { name: "Agent", exact: true }) : page.getByRole("navigation", { name: "Panneaux" }).getByRole("tab", { name: nom });
+
+/** La conversation se relit toutes les 500 ms (horloge de la page installée avant l'ouverture) : on fait avancer l'horloge par pas de 500 ms jusqu'à ce que `attente` réussisse. */
+const patienter = (page, attente) => avancer(page, attente, { pas: 500 });
 
 /** Appelle l'API de Yaide depuis la page, comme le fait l'interface (session déjà ouverte). */
 const api = (page, methode, chemin, corps) =>
@@ -187,6 +190,7 @@ test("REQ055_parcours_20_reprendre_refus_arreter_erreur", async ({ page }) => {
     reponse({ outils: [{ id: "t1", nom: "bash", entree: { command: "sleep 30" } }], tokens: 1500 }),
     erreur(429, "rate_limit_error", "Trop de requêtes, patientez."),
   ]);
+  await page.clock.install();
   yaide = await lancerYaide({ dossier: depotAgent() });
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await reglerAnthropic(page);
@@ -198,8 +202,8 @@ test("REQ055_parcours_20_reprendre_refus_arreter_erreur", async ({ page }) => {
   // Une première conversation.
   await champMessage(page).fill(MESSAGE);
   await page.keyboard.press("Enter");
-  await expect(fil(page)).toContainText("Le test attend une avance de 1.");
-  await expect(arreter(page)).toBeHidden();
+  await patienter(page, () => expect(fil(page)).toContainText("Le test attend une avance de 1.", { timeout: 300 }));
+  await patienter(page, () => expect(arreter(page)).toBeHidden({ timeout: 300 }));
 
   // 1. Au rechargement, la vue rouvre la conversation.
   await page.reload();
@@ -228,7 +232,7 @@ test("REQ055_parcours_20_reprendre_refus_arreter_erreur", async ({ page }) => {
   await champMessage(page).press("Enter");
   await expect(page.getByText("Aucune clé pour OpenAI.")).toHaveCount(0);
   const bash = page.getByRole("button", { name: /^bash sleep 30, en cours$/ });
-  await expect(bash).toBeVisible({ timeout: 15000 });
+  await patienter(page, () => expect(bash).toBeVisible({ timeout: 300 }));
   await arreter(page).click();
   await expect(page.getByRole("button", { name: /^bash sleep 30, échec$/ })).toBeVisible();
   await expect(fil(page).getByText("Arrêté.")).toBeVisible();
@@ -238,9 +242,9 @@ test("REQ055_parcours_20_reprendre_refus_arreter_erreur", async ({ page }) => {
   // 5. Erreur du provider.
   await champMessage(page).fill("Relance seulement les tests du module args.");
   await page.keyboard.press("Enter");
-  await expect(fil(page)).toContainText("Anthropic a refusé la requête (429).");
+  await patienter(page, () => expect(fil(page)).toContainText("Anthropic a refusé la requête (429).", { timeout: 300 }));
   await expect(fil(page)).toContainText("rate_limit_error");
-  await expect(arreter(page)).toBeHidden();
+  await patienter(page, () => expect(arreter(page)).toBeHidden({ timeout: 300 }));
   await champMessage(page).fill("Encore.");
   await expect(envoyer(page)).toBeEnabled();
 
@@ -329,6 +333,7 @@ test("REQ059_parcours_23_garder_l_agent_a_cote_de_son_code", async ({ page, brow
     reponse({ outils: [{ id: "a1", nom: "bash", entree: { command: commande } }], tokens: 1500 }),
     reponse({ texte: "La suite est passée.", tokens: 1800 }),
   ]);
+  await page.clock.install();
   yaide = await lancerYaide({ dossier: depotAgent() });
   await page.setViewportSize({ width: 1600, height: 900 });
   await ouvrirYaide(page, yaide.origine);
@@ -342,7 +347,7 @@ test("REQ059_parcours_23_garder_l_agent_a_cote_de_son_code", async ({ page, brow
   await expect(champMessage(page)).toBeFocused();
   await champMessage(page).fill(MESSAGE);
   await page.keyboard.press("Enter");
-  await expect(fil(page)).toContainText("Hier, rien à signaler.", { timeout: 15000 });
+  await patienter(page, () => expect(fil(page)).toContainText("Hier, rien à signaler.", { timeout: 300 }));
   await expect(arreter(page)).toBeHidden();
   await page.getByRole("button", { name: "Replier l'agent" }).click();
   await expect
@@ -409,7 +414,7 @@ test("REQ059_parcours_23_garder_l_agent_a_cote_de_son_code", async ({ page, brow
   // 4. Un tour est lancé, puis « Replier l'agent » : la colonne disparaît, le tour continue.
   await champMessage(page).fill("Lance toute la suite de tests.");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("button", { name: nomBouton("en cours") })).toBeVisible({ timeout: 15000 });
+  await patienter(page, () => expect(page.getByRole("button", { name: nomBouton("en cours") })).toBeVisible({ timeout: 300 }));
   await page.getByRole("button", { name: "Replier l'agent" }).click();
   await expect(colonne).toBeHidden();
   await expect(page.getByRole("separator", { name: "Largeur de l'agent" })).toBeHidden();
@@ -428,7 +433,7 @@ test("REQ059_parcours_23_garder_l_agent_a_cote_de_son_code", async ({ page, brow
   await expect(colonne).toBeVisible();
   expect(await largeur("aside.cadre-agent")).toBe(720);
   fs.writeFileSync(depart, "");
-  await expect(fil(page)).toContainText("La suite est passée.", { timeout: 15000 });
+  await patienter(page, () => expect(fil(page)).toContainText("La suite est passée.", { timeout: 300 }));
   await expect(page.getByRole("button", { name: nomBouton("réussi") })).toBeVisible();
   await expect(champMessage(page)).toBeFocused();
   await expect(champMessage(page)).toHaveValue("");
@@ -472,6 +477,7 @@ test("REQ028_AC20_AC21_la_page_ne_defile_jamais", async ({ page, browserName }) 
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
   const longue = (i) => Array.from({ length: 40 }, (_, j) => "Réponse " + (i + 1) + ", paragraphe " + (j + 1) + ".").join("\n\n");
   faux = await lancerFauxProvider(Array.from({ length: 3 }, (_, i) => reponse({ texte: longue(i), tokens: 100 + i })));
+  await page.clock.install();
   yaide = await lancerYaide({ dossier: depotAgent() });
   await page.setViewportSize({ width: 1280, height: 720 });
   await ouvrirYaide(page, yaide.origine);
@@ -483,7 +489,7 @@ test("REQ028_AC20_AC21_la_page_ne_defile_jamais", async ({ page, browserName }) 
   for (let i = 1; i <= 3; i++) {
     await champMessage(page).fill(`Message ${i}`);
     await page.keyboard.press("Enter");
-    await expect(fil(page)).toContainText(`Réponse ${i}, paragraphe 40.`, { timeout: 15000 });
+    await patienter(page, () => expect(fil(page)).toContainText(`Réponse ${i}, paragraphe 40.`, { timeout: 300 }));
     await expect(arreter(page)).toBeHidden();
   }
 
@@ -533,6 +539,7 @@ test("REQ067_parcours_28_29_deux_agents_relisent_puis_arret", async ({ page, bro
     { ...reponse({ texte: "inutile" }), retenir: new Promise((ok) => (ouvrir5 = ok)) },
   ]);
   const dossier = depotAgent();
+  await page.clock.install();
   yaide = await lancerYaide({ dossier });
   await page.setViewportSize({ width: 1280, height: 800 });
   await ouvrirYaide(page, yaide.origine);
@@ -619,7 +626,7 @@ test("REQ067_parcours_28_29_deux_agents_relisent_puis_arret", async ({ page, bro
   // 8 : la relecture. Relecteur (sonnet) lit args.rs, Testeur (rapide) lance les tests.
   await champMessage(page).fill("Relis src/args.rs, puis lance les tests.");
   await page.keyboard.press("Enter");
-  await expect(fil(page).getByRole("group", { name: "Testeur" })).toContainText("Les tests passent.", { timeout: 15000 });
+  await patienter(page, () => expect(fil(page).getByRole("group", { name: "Testeur" })).toContainText("Les tests passent.", { timeout: 300 }));
   await expect(arreter(page)).toBeHidden();
   await expect(fil(page).getByRole("group")).toHaveCount(2);
   await expect(fil(page).getByRole("group", { name: "Relecteur" })).toContainText("Relu : la branche");

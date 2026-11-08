@@ -10,7 +10,7 @@ test.afterEach(async () => {
 
 async function ouvrir(page, dossier) {
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
 }
 const rail = (page) => page.getByRole("tab", { name: "Recherche" });
 const champ = (page) => page.getByRole("textbox", { name: "Rechercher" });

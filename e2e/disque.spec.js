@@ -29,9 +29,9 @@ const main = () => path.join(dossier, "src", "main.rs");
 const DISQUE = "// du disque\nfn main() {}\n";
 const bandeau = (page) => page.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." });
 
-async function ouvrirMain(page, dejaConnecte = false) {
+async function ouvrirMain(page, dejaConnecte = false, avecShell = false) {
   if (dejaConnecte) await page.goto(relais.origine + "/");
-  else await ouvrirYaide(page, relais.origine);
+  else await ouvrirYaide(page, relais.origine, "mdp", { shell: avecShell });
   await ligne(page, "src").click();
   await ligne(page, "main.rs").click();
   await expect(editeur(page)).toBeFocused();
@@ -68,7 +68,7 @@ test("REQ017_AC1_le_curseur_reste_sur_la_meme_ligne_au_rechargement", async ({ p
 });
 
 test("REQ017_AC10_le_focus_reste_dans_le_terminal_quand_la_question_apparait", async ({ page }) => {
-  await ouvrirMain(page);
+  await ouvrirMain(page, false, true);
   await taper(page, "// moi\n");
   const focusDansTerminal = () => page.evaluate(() => document.activeElement?.classList.contains("xterm-helper-textarea"));
   await page.locator(".terminal:visible .xterm-helper-textarea").focus();

@@ -29,9 +29,9 @@ async function demarrer() {
 }
 const arbre = (page) => page.getByRole("tree", { name: "Fichiers" });
 const ligne = (page, nom) => arbre(page).getByRole("treeitem", { name: nomLigne(nom) });
-const ouvrir = async (page) => {
+const ouvrir = async (page, avecShell = false) => {
   const dossier = await demarrer();
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: avecShell });
   await expect(arbre(page)).toBeVisible();
   // état git lu : le menu de l'arbre a « Indexer »
   await expect(page.locator(".ya-status-branche")).toBeVisible();
@@ -71,7 +71,7 @@ test("REQ007_AC4_hors_depot_git_rien_n_est_grise", async ({ page }) => {
   fs.writeFileSync(path.join(dossier, "projet", "target"), "x");
   fs.writeFileSync(path.join(dossier, "projet", ".gitignore"), "target\n");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "projet") });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await expect(ligne(page, "target")).toBeVisible();
   await expect(arbre(page).locator(".liste-attenuee")).toHaveCount(0);
 });
@@ -105,7 +105,7 @@ test("REQ008_un_fichier_dont_le_nom_commence_par_tilde_s_ouvre_et_se_selectionne
   const dossier = depotExemple();
   fs.writeFileSync(path.join(dossier, "~x"), "texte");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   const requete = page.waitForRequest((r) => r.method() === "GET" && r.url().includes("/api/fichier?chemin=~x"));
   await ligne(page, "~x").click();
   await requete;
@@ -116,7 +116,7 @@ test("REQ007_AC7_projet_vide", async ({ page }) => {
   const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "vide-"));
   fs.mkdirSync(path.join(dossier, "projet"));
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "projet") });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await expect(page.getByText("Dossier vide.")).toBeVisible();
   await page.locator(".fichiers-arbre").getByRole("button", { name: "Nouveau fichier" }).click();
   await expect(page.getByRole("dialog", { name: "Nouveau fichier" })).toBeVisible();
@@ -249,7 +249,7 @@ test("REQ010_apres_la_derniere_suppression_le_focus_va_sur_Fichier", async ({ pa
   fs.mkdirSync(path.join(dossier, "projet"));
   fs.writeFileSync(path.join(dossier, "projet", "seul.txt"), "x");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "projet") });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await ligne(page, "seul.txt").click();
   await page.getByRole("button", { name: "Supprimer" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
@@ -341,7 +341,7 @@ test("REQ034_AC2_projet_vide_le_menu_s_ouvre_sur_Dossier_vide", async ({ page })
   const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "vide-"));
   fs.mkdirSync(path.join(dossier, "p"));
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "p") });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await expect(page.getByText("Dossier vide.")).toBeVisible();
   await page.getByText("Dossier vide.").click({ button: "right" });
   await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier"]);
@@ -352,7 +352,7 @@ test("REQ034_AC2_projet_vide_dans_un_depot_propose_aussi_commit", async ({ page 
   fs.mkdirSync(path.join(dossier, "p"));
   spawnSync("git", ["init", "-q"], { cwd: path.join(dossier, "p") });
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "p") });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await expect(page.getByText("Dossier vide.")).toBeVisible();
   // état git lu : le menu du projet a « Commit »
   await expect(page.locator(".ya-status-branche")).toBeVisible();
@@ -371,7 +371,7 @@ test("REQ034_AC16_clic_droit_sur_une_ligne_d_erreur_est_la_partie_vide_et_ne_pre
   fs.chmodSync(path.join(projet, "noir"), 0);
   try {
     yaide = await lancerYaide({ shell: "/bin/sh", dossier: projet });
-    await ouvrirYaide(page, yaide.origine);
+    await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
     await ligne(page, "a.txt").focus();
     await ligne(page, "noir").click();
     const erreur = page.getByRole("treeitem", { name: /Impossible de lire ce dossier/ });
@@ -481,7 +481,7 @@ test("REQ034_AC9_hors_depot_ni_indexer_ni_commit", async ({ page }) => {
   fs.mkdirSync(path.join(dossier, "p"));
   fs.writeFileSync(path.join(dossier, "p", "a.txt"), "a");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "p") });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await ligne(page, "a.txt").click({ button: "right" });
   const m = menu(page, "Actions sur a.txt");
   await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr"]);
@@ -492,7 +492,7 @@ test("REQ034_AC9_hors_depot_ni_indexer_ni_commit", async ({ page }) => {
 });
 
 test("REQ034_AC12_clic_droit_dans_l_editeur_et_le_shell_n_ouvre_pas_le_menu_de_Yaide", async ({ page }) => {
-  await ouvrir(page);
+  await ouvrir(page, true);
   await ligne(page, "a.txt").click();
   await expect(page.locator(".cm-content")).toBeVisible();
   for (const cible of [page.locator(".cm-content"), page.locator(".terminal:visible .xterm-screen")]) {
@@ -510,7 +510,7 @@ test("REQ034_AC13_indexer_pendant_une_coupure_dit_connexion_perdue_et_rien_ne_ch
   const dossier = await demarrer();
   const relais = await lancerRelais(yaide.port);
   try {
-    await ouvrirYaide(page, relais.origine);
+    await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
     // état git lu : le menu de l'arbre a « Indexer »
     await expect(page.locator(".ya-status-branche")).toBeVisible();
     await ligne(page, "a.txt").click({ button: "right" });
@@ -582,7 +582,7 @@ test("REQ034_AC17_a_800_x_480_le_menu_reste_entier_sur_la_derniere_ligne_visible
 });
 
 test("REQ034_la_partie_vide_remplit_la_hauteur_du_panneau", async ({ page }) => {
-  await ouvrir(page);
+  await ouvrir(page, true);
   const r = await page.evaluate(() => {
     const f = document.querySelector(".fichiers-arbre").getBoundingClientRect();
     const p = document.querySelector("aside.cadre-panneau .cadre-panneau-corps").getBoundingClientRect();
@@ -616,7 +616,7 @@ test("REQ039_AC1_AC2_AC3_AC5_AC6_AC7_AC8_lettres_couleurs_points_et_mots_dans_l_
   git("add", "indexe.txt");
   fs.writeFileSync(path.join(dossier, "ignore.log"), "x\n");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   // Fichiers : lettre à droite, nom coloré, mot complet à la fin du nom accessible.
   const cas = [
     ["nouveau.txt", "nouveau", "U", "--git-untracked"],
@@ -656,14 +656,14 @@ test("REQ039_AC4_hors_depot_aucune_lettre_ni_nombre_sur_le_rail", async ({ page 
   const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "horsdepot-"));
   fs.writeFileSync(path.join(dossier, "a.txt"), "a");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await expect(ligne(page, "a.txt")).toBeVisible();
   await expect(page.locator(".fichiers .liste-statut, .fichiers .liste-point")).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Git", exact: true }).locator(".ya-badge")).toHaveCount(0);
 });
 
 test("REQ009_AC9_AC10_en_tete_du_projet_a_240_px_26_px_une_ligne_et_ordre_de_tabulation", async ({ page }) => {
-  await ouvrir(page);
+  await ouvrir(page, true);
   const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
   await poignee.focus();
   for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
@@ -697,7 +697,7 @@ test("REQ039_AC1_indexer_depuis_le_menu_fait_passer_la_lettre_de_U_a_A", async (
 
 test("REQ039_AC1_AC5_AC037_7_ctrl_s_met_a_jour_la_lettre_l_onglet_et_le_compteur_sans_changer_de_panneau", async ({ page }) => {
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: depotExemple() });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await ligne(page, "src").click();
   await ligne(page, "main.rs").click();
   await page.locator(".cm-content").first().click();
@@ -776,7 +776,7 @@ test("REQ050_AC4_partie_vide_reste_atteignable_a_800x480", async ({ page }) => {
 });
 
 test("REQ050_AC12_depot_sur_editeur_et_shell_n_insere_rien", async ({ page }) => {
-  const dossier = await ouvrir(page);
+  const dossier = await ouvrir(page, true);
   await ligne(page, "a.txt").click();
   const editeur = page.getByRole("textbox", { name: "Éditeur a.txt" });
   await expect(editeur).toBeFocused();

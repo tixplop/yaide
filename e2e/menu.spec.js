@@ -1,13 +1,14 @@
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
-import { mkdirSync, writeFileSync, copyFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, copyFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const dossier = resolve(process.env.TMPDIR ?? ".test-data", "menu");
+let dossier;
 
 test.beforeAll(async () => {
-  mkdirSync(dossier, { recursive: true });
+  mkdirSync(resolve(process.env.TMPDIR ?? ".test-data"), { recursive: true });
+  dossier = mkdtempSync(resolve(process.env.TMPDIR ?? ".test-data", "menu-"));
   writeFileSync(
     resolve(dossier, "entree.js"),
     `import { onglets } from ${JSON.stringify(resolve("web/src/ui/onglets.js"))};
