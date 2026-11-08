@@ -272,4 +272,19 @@ mod tests {
         let r = o.assurer(Path::new("/")).await;
         assert_eq!(r, Err("Yaide s'arrête".to_string()));
     }
+
+    #[tokio::test(start_paused = true)]
+    async fn disponible_faux_si_opencode_ne_repond_pas() {
+        use std::os::unix::fs::PermissionsExt;
+        let dossier =
+            std::env::temp_dir().join(format!("yaide-opencode-muet-{}", std::process::id()));
+        std::fs::create_dir_all(&dossier).unwrap();
+        let script = dossier.join("opencode");
+        std::fs::write(&script, "#!/bin/sh\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // nextest lance chaque test dans son propre processus.
+        std::env::set_var("PATH", format!("{}:/usr/bin:/bin", dossier.display()));
+        assert!(!disponible().await);
+        let _ = std::fs::remove_dir_all(&dossier);
+    }
 }

@@ -99,11 +99,20 @@ test("REQ022_AC7_fermer_le_dernier_fichier_laisse_l_onglet_de_diff", async ({ pa
   await expect(page.getByLabel("Diff main.rs")).toBeVisible();
 });
 
-test("REQ022_AC3_et_REQ028_AC2_la_barre_d_etat_affiche_la_branche_et_pas_la_barre_de_titre", async ({ page }) => {
+test("REQ022_AC3_AC5_REQ028_AC2_depot_propre_barre_d_etat_et_aucun_changement", async ({ page }) => {
   await ouvrir(page, depot());
+  await test.step("REQ022_AC3_et_REQ028_AC2_la_barre_d_etat_affiche_la_branche_et_pas_la_barre_de_titre", async () => {
+    await expect(barre(page)).toContainText("main");
+    await expect(barre(page).locator("[aria-label=Déconnexion]")).toHaveCount(0);
+    await expect(page.locator("header").getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  });
+  await page.reload();
   await expect(barre(page)).toContainText("main");
-  await expect(barre(page).locator("[aria-label=Déconnexion]")).toHaveCount(0);
-  await expect(page.locator("header").getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  await test.step("REQ022_AC5_aucun_changement", async () => {
+    await panneauGit(page);
+    await expect(page.getByText("Aucun changement.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Commit" })).toBeVisible();
+  });
 });
 
 test("REQ022_AC4_dossier_sans_depot_git", async ({ page }) => {
@@ -116,13 +125,6 @@ test("REQ022_AC4_dossier_sans_depot_git", async ({ page }) => {
   await expect(page.getByText("Ce dossier n'est pas un dépôt git.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Commit" })).toHaveCount(0);
   await expect(barre(page)).toHaveText("");
-});
-
-test("REQ022_AC5_aucun_changement", async ({ page }) => {
-  await ouvrir(page, depot());
-  await panneauGit(page);
-  await expect(page.getByText("Aucun changement.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Commit" })).toBeVisible();
 });
 
 test("REQ022_AC8_diff_d_un_binaire", async ({ page }) => {

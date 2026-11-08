@@ -243,7 +243,6 @@ fn REQ072_AC1_detection_v2_v1_absent_illisible() {
         ("echo bonjour", false),
         ("echo 'opencode v2.x'", false),
         ("exit 3", false),
-        ("exec sleep 30", false),
     ] {
         ecrire_script(&s.dir, &format!("#!/bin/sh\n{sortie}\n"));
         assert_eq!(
@@ -578,8 +577,7 @@ fn signaler_et_attendre_la_sortie(s: &mut Serveur, signal: &str) {
     );
 }
 
-#[test]
-fn REQ073_AC1_sighup_arrete_le_serveur_opencode_qui_ignore_les_signaux() {
+fn serveur_sourd_arrete_par_sighup() {
     let mut s = lancer("hup", &[("FAUX_OPENCODE_SIGNAUX", "ignorer")]);
     assert_eq!(http(&s, "GET", "/api/opencode/api/info", "").0, 200);
     let pid = s.lancements()[0]["pid"].as_i64().unwrap();
@@ -601,23 +599,7 @@ fn detache_arrete(signal: &str) {
     assert!(attendre(|| !vivant(pid), 5), "le processus détaché reste");
 }
 
-#[test]
-fn REQ073_AC4_processus_detache_d_opencode_arrete_sigterm() {
-    detache_arrete("TERM");
-}
-
-#[test]
-fn REQ073_AC4_processus_detache_d_opencode_arrete_sigint() {
-    detache_arrete("INT");
-}
-
-#[test]
-fn REQ073_AC4_processus_detache_d_opencode_arrete_sighup() {
-    detache_arrete("HUP");
-}
-
-#[test]
-fn REQ073_AC4_membre_du_groupe_qui_ignore_sigterm_arrete() {
+fn membre_du_groupe_arrete_par_sigterm() {
     let mut s = lancer("membre", &[("FAUX_OPENCODE_MEMBRE", "1")]);
     assert_eq!(http(&s, "GET", "/api/opencode/api/info", "").0, 200);
     assert!(attendre(|| !s.pids_de("membre").is_empty(), 10));
@@ -625,6 +607,35 @@ fn REQ073_AC4_membre_du_groupe_qui_ignore_sigterm_arrete() {
     assert!(vivant(pid));
     signaler_et_attendre_la_sortie(&mut s, "TERM");
     assert!(attendre(|| !vivant(pid), 5), "le membre du groupe reste");
+}
+
+#[test]
+fn REQ073_AC1_AC4_opencode_arrete_par_term_int_hup() {
+    type Scenario = Box<dyn FnOnce() + Send>;
+    let scenarios: Vec<(&str, Scenario)> = vec![
+        ("sourd-HUP", Box::new(serveur_sourd_arrete_par_sighup)),
+        ("detache-TERM", Box::new(|| detache_arrete("TERM"))),
+        ("detache-INT", Box::new(|| detache_arrete("INT"))),
+        ("detache-HUP", Box::new(|| detache_arrete("HUP"))),
+        ("membre-TERM", Box::new(membre_du_groupe_arrete_par_sigterm)),
+    ];
+    std::thread::scope(|sc| {
+        let fils: Vec<_> = scenarios
+            .into_iter()
+            .map(|(nom, f)| {
+                std::thread::Builder::new()
+                    .name(nom.to_string())
+                    .spawn_scoped(sc, f)
+                    .unwrap()
+            })
+            .collect();
+        for f in fils {
+            let nom = f.thread().name().unwrap().to_string();
+            if f.join().is_err() {
+                panic!("scénario {nom} en échec");
+            }
+        }
+    });
 }
 
 #[test]

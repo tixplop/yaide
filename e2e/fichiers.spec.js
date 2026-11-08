@@ -38,31 +38,129 @@ const ouvrir = async (page, avecShell = false) => {
   return dossier;
 };
 
-test("REQ007_AC1_et_AC3_et_AC8_arbre_deplie_et_replie_dossiers_d_abord_sans_git", async ({ page }) => {
+test("REQ007_AC1_AC2_AC3_AC5_AC6_AC8_REQ008_AC5_REQ009_AC5_REQ034_AC1_AC4_AC14_AC16_arbre_ignores_clavier_boutons_binaire_menu_et_focus", async ({ page }) => {
   await ouvrir(page);
-  const noms = await arbre(page).getByRole("treeitem").evaluateAll((l) => l.map((e) => e.querySelector(".liste-libelle").textContent));
-  expect(noms).toEqual(["src", "target", "Zeta", ".gitignore", "a.txt", "b.txt", "gros.log", "notes.bin", "notes.txt", "README.md"]);
-  await expect(ligne(page, "main.rs")).toHaveCount(0);
-  await ligne(page, "src").click();
-  await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "true");
-  await expect(ligne(page, "main.rs")).toBeVisible();
-  await ligne(page, "src").click();
-  await expect(ligne(page, "main.rs")).toHaveCount(0);
-});
-
-test("REQ007_AC2_et_AC6_dossier_ignore_grise_en_italique_avec_nom_accessible", async ({ page }) => {
-  await ouvrir(page);
-  const cible = page.getByRole("treeitem", { name: "target, ignoré par git" });
-  await expect(cible).toBeVisible();
-  await expect(cible).toHaveCSS("font-style", "italic");
-  await expect(cible).toHaveClass(/liste-attenuee/);
-  await cible.click();
-  const contenu = page.getByRole("treeitem", { name: "out.txt, ignoré par git" });
-  await expect(contenu).toBeVisible();
-  await expect(contenu).toHaveCSS("font-style", "italic");
-  await expect(contenu).toHaveClass(/liste-attenuee/);
-  await expect(ligne(page, "src")).not.toHaveClass(/liste-attenuee/);
-  await expect(ligne(page, "src")).toHaveCSS("font-style", "normal");
+  await test.step("REQ007_AC1_et_AC3_et_AC8_arbre_deplie_et_replie_dossiers_d_abord_sans_git", async () => {
+    const noms = await arbre(page).getByRole("treeitem").evaluateAll((l) => l.map((e) => e.querySelector(".liste-libelle").textContent));
+    expect(noms).toEqual(["src", "target", "Zeta", ".gitignore", "a.txt", "b.txt", "gros.log", "notes.bin", "notes.txt", "README.md"]);
+    await expect(ligne(page, "main.rs")).toHaveCount(0);
+    await ligne(page, "src").click();
+    await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "true");
+    await expect(ligne(page, "main.rs")).toBeVisible();
+    await ligne(page, "src").click();
+    await expect(ligne(page, "main.rs")).toHaveCount(0);
+  });
+  await page.reload();
+  await expect(arbre(page)).toBeVisible();
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
+  await test.step("REQ007_AC2_et_AC6_dossier_ignore_grise_en_italique_avec_nom_accessible", async () => {
+    const cible = page.getByRole("treeitem", { name: "target, ignoré par git" });
+    await expect(cible).toBeVisible();
+    await expect(cible).toHaveCSS("font-style", "italic");
+    await expect(cible).toHaveClass(/liste-attenuee/);
+    await cible.click();
+    const contenu = page.getByRole("treeitem", { name: "out.txt, ignoré par git" });
+    await expect(contenu).toBeVisible();
+    await expect(contenu).toHaveCSS("font-style", "italic");
+    await expect(contenu).toHaveClass(/liste-attenuee/);
+    await expect(ligne(page, "src")).not.toHaveClass(/liste-attenuee/);
+    await expect(ligne(page, "src")).toHaveCSS("font-style", "normal");
+  });
+  await page.reload();
+  await expect(arbre(page)).toBeVisible();
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
+  await test.step("REQ007_AC5_roles_clavier_et_un_seul_arret_de_tabulation", async () => {
+    await expect(arbre(page)).toHaveAttribute("role", "tree");
+    await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "false");
+    await expect(ligne(page, "a.txt")).not.toHaveAttribute("aria-expanded");
+    expect(await arbre(page).locator("[role=treeitem][tabindex='0']").count()).toBe(1);
+    await ligne(page, "src").focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press("ArrowDown");
+    await expect(ligne(page, "main.rs")).toBeFocused();
+    await page.keyboard.press("ArrowLeft");
+    await expect(ligne(page, "src")).toBeFocused();
+    await page.keyboard.press("ArrowLeft");
+    await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "false");
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("treeitem", { name: "target, ignoré par git" })).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("Enter");
+    await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "true");
+    await ligne(page, "notes.bin").focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("alert").filter({ hasText: "notes.bin est un fichier binaire." })).toBeVisible();
+  });
+  await page.reload();
+  await expect(arbre(page)).toBeVisible();
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
+  await test.step("REQ009_AC5_boutons_du_panneau_et_etat_sans_selection", async () => {
+    for (const nom of ["Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer"]) await expect(page.getByRole("button", { name: nom })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Renommer" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Supprimer" })).toBeDisabled();
+    await ligne(page, "a.txt").click();
+    await expect(page.getByRole("button", { name: "Renommer" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Supprimer" })).toBeEnabled();
+  });
+  await page.reload();
+  await expect(arbre(page)).toBeVisible();
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
+  await test.step("REQ008_AC5_messages_pour_un_binaire_et_un_gros_fichier", async () => {
+    await ligne(page, "notes.bin").click();
+    const alerte = page.getByRole("alert").filter({ hasText: "notes.bin est un fichier binaire. Yaide ne l'ouvre pas." });
+    await expect(alerte).toBeVisible();
+    await ligne(page, "gros.log").click();
+    await expect(page.getByRole("alert").filter({ hasText: "gros.log dépasse 5 Mo. Yaide ne l'ouvre pas." })).toBeVisible();
+    await page.getByRole("button", { name: "Fermer", exact: true }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "gros.log" })).toHaveCount(0);
+  });
+  await page.reload();
+  await expect(arbre(page)).toBeVisible();
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
+  await test.step("REQ034_AC1_AC14_clic_droit_sur_une_ligne_ouvre_le_menu_sans_ouvrir_ni_deplier", async () => {
+    await expect(ligne(page, "README.md")).toHaveAttribute("aria-haspopup", "menu");
+    await ligne(page, "README.md").click({ button: "right" });
+    const m = menu(page, "Actions sur README.md");
+    await expect(m).toBeVisible();
+    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit"]);
+    await expect(m.getByRole("menuitem", { name: "Renommer", exact: true })).toBeVisible();
+    await expect(m.getByRole("separator")).toHaveCount(2);
+    await expect(ligne(page, "README.md")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "README.md" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await ligne(page, "src").click({ button: "right" });
+    await expect(menu(page, "Actions sur src/")).toBeVisible();
+    await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "false");
+  });
+  await page.reload();
+  await expect(arbre(page)).toBeVisible();
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
+  await test.step("REQ034_AC4_renommer_et_supprimer_ouvrent_les_dialogues_de_la_ligne", async () => {
+    await ligne(page, "a.txt").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Renommer" }).click();
+    await expect(page.getByLabel("Nouveau chemin")).toHaveValue("a.txt");
+    await page.keyboard.press("Escape");
+    await ligne(page, "b.txt").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Supprimer" }).click();
+    await expect(page.getByRole("dialog", { name: "Supprimer b.txt ?" })).toBeVisible();
+  });
+  await page.reload();
+  await expect(arbre(page)).toBeVisible();
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
+  await test.step("REQ034_AC16_echap_rend_le_focus_a_la_ligne_et_un_clic_ailleurs_n_ouvre_pas_le_fichier", async () => {
+    await ligne(page, "a.txt").click({ button: "right" });
+    await page.keyboard.press("Escape");
+    await expect(ligne(page, "a.txt")).toBeFocused();
+    await ligne(page, "a.txt").click({ button: "right" });
+    await ligne(page, "README.md").click({ position: { x: 5, y: 5 } });
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "README.md" })).toHaveCount(0);
+    await ligne(page, "a.txt").click({ button: "right" });
+    await ligne(page, "b.txt").click({ button: "right", position: { x: 5, y: 5 } });
+    await expect(page.getByRole("menu")).toHaveCount(1);
+    await expect(menu(page, "Actions sur b.txt")).toBeVisible();
+  });
 });
 
 test("REQ007_AC4_hors_depot_git_rien_n_est_grise", async ({ page }) => {
@@ -74,31 +172,6 @@ test("REQ007_AC4_hors_depot_git_rien_n_est_grise", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await expect(ligne(page, "target")).toBeVisible();
   await expect(arbre(page).locator(".liste-attenuee")).toHaveCount(0);
-});
-
-test("REQ007_AC5_roles_clavier_et_un_seul_arret_de_tabulation", async ({ page }) => {
-  await ouvrir(page);
-  await expect(arbre(page)).toHaveAttribute("role", "tree");
-  await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "false");
-  await expect(ligne(page, "a.txt")).not.toHaveAttribute("aria-expanded");
-  expect(await arbre(page).locator("[role=treeitem][tabindex='0']").count()).toBe(1);
-  await ligne(page, "src").focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "true");
-  await page.keyboard.press("ArrowDown");
-  await expect(ligne(page, "main.rs")).toBeFocused();
-  await page.keyboard.press("ArrowLeft");
-  await expect(ligne(page, "src")).toBeFocused();
-  await page.keyboard.press("ArrowLeft");
-  await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "false");
-  await page.keyboard.press("ArrowDown");
-  await expect(page.getByRole("treeitem", { name: "target, ignoré par git" })).toBeFocused();
-  await page.keyboard.press("ArrowUp");
-  await page.keyboard.press("Enter");
-  await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "true");
-  await ligne(page, "notes.bin").focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("alert").filter({ hasText: "notes.bin est un fichier binaire." })).toBeVisible();
 });
 
 test("REQ008_un_fichier_dont_le_nom_commence_par_tilde_s_ouvre_et_se_selectionne", async ({ page }) => {
@@ -129,16 +202,6 @@ test("REQ007_la_relecture_au_clic_montre_ce_qui_est_cree_hors_de_yaide", async (
   await ligne(page, "src").click();
   await ligne(page, "src").click();
   await expect(ligne(page, "venu_du_shell.rs")).toBeVisible();
-});
-
-test("REQ009_AC5_boutons_du_panneau_et_etat_sans_selection", async ({ page }) => {
-  await ouvrir(page);
-  for (const nom of ["Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer"]) await expect(page.getByRole("button", { name: nom })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Renommer" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Supprimer" })).toBeDisabled();
-  await ligne(page, "a.txt").click();
-  await expect(page.getByRole("button", { name: "Renommer" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Supprimer" })).toBeEnabled();
 });
 
 test("REQ009_AC1_creer_un_fichier_et_un_dossier_chemin_prérempli_avec_le_dossier_selectionne", async ({ page }) => {
@@ -281,17 +344,6 @@ test("REQ010_AC5_supprimer_un_dossier_et_son_contenu", async ({ page }) => {
   expect(fs.existsSync(path.join(dossier, "src"))).toBe(false);
 });
 
-test("REQ008_AC5_messages_pour_un_binaire_et_un_gros_fichier", async ({ page }) => {
-  await ouvrir(page);
-  await ligne(page, "notes.bin").click();
-  const alerte = page.getByRole("alert").filter({ hasText: "notes.bin est un fichier binaire. Yaide ne l'ouvre pas." });
-  await expect(alerte).toBeVisible();
-  await ligne(page, "gros.log").click();
-  await expect(page.getByRole("alert").filter({ hasText: "gros.log dépasse 5 Mo. Yaide ne l'ouvre pas." })).toBeVisible();
-  await page.getByRole("button", { name: "Fermer", exact: true }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "gros.log" })).toHaveCount(0);
-});
-
 // ---- REQ-034 : menu de l'arborescence ----
 
 const menu = (page, nom) => page.getByRole("menu", { name: nom });
@@ -305,36 +357,65 @@ const clicVide = async (page) => {
   await page.mouse.click(p.x, p.y, { button: "right" });
 };
 
-test("REQ034_AC1_AC14_clic_droit_sur_une_ligne_ouvre_le_menu_sans_ouvrir_ni_deplier", async ({ page }) => {
+test("REQ034_AC2_AC3_AC16_AC19_REQ049_AC2_AC9_AC12_menu_du_projet_nouveau_depuis_une_ligne_partie_vide_et_plage", async ({ page }) => {
   await ouvrir(page);
-  await expect(ligne(page, "README.md")).toHaveAttribute("aria-haspopup", "menu");
-  await ligne(page, "README.md").click({ button: "right" });
-  const m = menu(page, "Actions sur README.md");
-  await expect(m).toBeVisible();
-  await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit"]);
-  await expect(m.getByRole("menuitem", { name: "Renommer", exact: true })).toBeVisible();
-  await expect(m.getByRole("separator")).toHaveCount(2);
-  await expect(ligne(page, "README.md")).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tab", { name: "README.md" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await ligne(page, "src").click({ button: "right" });
-  await expect(menu(page, "Actions sur src/")).toBeVisible();
-  await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "false");
-});
-
-test("REQ034_AC2_AC19_partie_vide_menu_du_projet_sans_changer_la_selection_ni_remplir_le_chemin", async ({ page }) => {
-  await ouvrir(page);
-  await ligne(page, "src").click();
-  await ligne(page, "main.rs").click();
-  await expect(page.locator(".cm-content")).toBeFocused(); // la lecture du fichier est finie : elle ne prendra plus le focus au menu
-  await clicVide(page);
-  const m = menu(page, "Actions sur le projet");
-  await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Commit"]);
-  await expect(m.getByRole("separator")).toHaveCount(1);
-  await expect(ligne(page, "main.rs")).toHaveAttribute("aria-selected", "true");
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.getByLabel("Chemin")).toHaveValue("");
+  await test.step("REQ034_AC2_AC19_partie_vide_menu_du_projet_sans_changer_la_selection_ni_remplir_le_chemin", async () => {
+    await ligne(page, "src").click();
+    await ligne(page, "main.rs").click();
+    await expect(page.locator(".cm-content")).toBeFocused(); // la lecture du fichier est finie : elle ne prendra plus le focus au menu
+    await clicVide(page);
+    const m = menu(page, "Actions sur le projet");
+    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Commit"]);
+    await expect(m.getByRole("separator")).toHaveCount(1);
+    await expect(ligne(page, "main.rs")).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByLabel("Chemin")).toHaveValue("");
+  });
+  await page.reload();
+  await expect(arbre(page)).toBeVisible();
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
+  await test.step("REQ034_AC3_nouveau_fichier_depuis_une_ligne_remplit_le_dossier_visé", async () => {
+    await ligne(page, "src").click();
+    await ligne(page, "main.rs").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Nouveau fichier" }).click();
+    await expect(page.getByLabel("Chemin")).toHaveValue("src/");
+    await page.keyboard.press("Escape");
+    await ligne(page, "a.txt").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Nouveau dossier" }).click();
+    await expect(page.getByLabel("Chemin")).toHaveValue("");
+  });
+  await page.reload();
+  await expect(arbre(page)).toBeVisible();
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
+  await test.step("REQ034_AC16_depuis_la_partie_vide_le_panneau_ne_prend_pas_le_focus_et_il_revient", async () => {
+    await ligne(page, "a.txt").focus();
+    await clicVide(page);
+    await page.keyboard.press("Escape");
+    await expect(ligne(page, "a.txt")).toBeFocused();
+  });
+  await page.reload();
+  await expect(arbre(page)).toBeVisible();
+  await expect(page.locator(".ya-status-branche")).toBeVisible();
+  await test.step("REQ049_AC2_AC9_AC12_plage_contour_et_aucun_texte_selectionne", async () => {
+    await ligne(page, "a.txt").click();
+    await ligne(page, "notes.txt").click({ modifiers: ["Shift"] });
+    const choisies = arbre(page).locator("[aria-selected=true] .liste-libelle");
+    await expect(choisies).toHaveText(["a.txt", "b.txt", "gros.log", "notes.bin", "notes.txt"]);
+    expect(await page.evaluate(() => String(getSelection()))).toBe("");
+    await expect(page.getByRole("tab", { name: "notes.txt" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Renommer" })).toBeDisabled();
+    await expect(arbre(page).locator("[aria-selected=true] .liste-coche")).toHaveCount(5);
+    // Ctrl+clic sur une ligne choisie : elle sort, garde le focus et son contour, pas le fond.
+    await ligne(page, "b.txt").click({ modifiers: ["Control"] });
+    const b = ligne(page, "b.txt");
+    await expect(b).toHaveAttribute("aria-selected", "false");
+    await expect(b).toBeFocused();
+    await expect(b).toHaveCSS("outline-style", "solid");
+    const fond = (l) => l.evaluate((e) => getComputedStyle(e).backgroundColor);
+    expect(await fond(b)).not.toBe(await fond(ligne(page, "a.txt")));
+    await expect(ligne(page, "a.txt")).not.toHaveCSS("outline-style", "solid");
+  });
 });
 
 test("REQ034_AC2_projet_vide_le_menu_s_ouvre_sur_Dossier_vide", async ({ page }) => {
@@ -385,29 +466,6 @@ test("REQ034_AC16_clic_droit_sur_une_ligne_d_erreur_est_la_partie_vide_et_ne_pre
   } finally {
     fs.chmodSync(path.join(projet, "noir"), 0o755);
   }
-});
-
-test("REQ034_AC3_nouveau_fichier_depuis_une_ligne_remplit_le_dossier_visé", async ({ page }) => {
-  await ouvrir(page);
-  await ligne(page, "src").click();
-  await ligne(page, "main.rs").click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Nouveau fichier" }).click();
-  await expect(page.getByLabel("Chemin")).toHaveValue("src/");
-  await page.keyboard.press("Escape");
-  await ligne(page, "a.txt").click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Nouveau dossier" }).click();
-  await expect(page.getByLabel("Chemin")).toHaveValue("");
-});
-
-test("REQ034_AC4_renommer_et_supprimer_ouvrent_les_dialogues_de_la_ligne", async ({ page }) => {
-  await ouvrir(page);
-  await ligne(page, "a.txt").click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Renommer" }).click();
-  await expect(page.getByLabel("Nouveau chemin")).toHaveValue("a.txt");
-  await page.keyboard.press("Escape");
-  await ligne(page, "b.txt").click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Supprimer" }).click();
-  await expect(page.getByRole("dialog", { name: "Supprimer b.txt ?" })).toBeVisible();
 });
 
 test("REQ034_AC5_AC6_AC18_indexer_un_fichier_puis_un_dossier_avec_message_et_focus", async ({ page }) => {
@@ -522,29 +580,6 @@ test("REQ034_AC13_indexer_pendant_une_coupure_dit_connexion_perdue_et_rien_ne_ch
   } finally {
     relais.fermer();
   }
-});
-
-test("REQ034_AC16_echap_rend_le_focus_a_la_ligne_et_un_clic_ailleurs_n_ouvre_pas_le_fichier", async ({ page }) => {
-  await ouvrir(page);
-  await ligne(page, "a.txt").click({ button: "right" });
-  await page.keyboard.press("Escape");
-  await expect(ligne(page, "a.txt")).toBeFocused();
-  await ligne(page, "a.txt").click({ button: "right" });
-  await ligne(page, "README.md").click({ position: { x: 5, y: 5 } });
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "README.md" })).toHaveCount(0);
-  await ligne(page, "a.txt").click({ button: "right" });
-  await ligne(page, "b.txt").click({ button: "right", position: { x: 5, y: 5 } });
-  await expect(page.getByRole("menu")).toHaveCount(1);
-  await expect(menu(page, "Actions sur b.txt")).toBeVisible();
-});
-
-test("REQ034_AC16_depuis_la_partie_vide_le_panneau_ne_prend_pas_le_focus_et_il_revient", async ({ page }) => {
-  await ouvrir(page);
-  await ligne(page, "a.txt").focus();
-  await clicVide(page);
-  await page.keyboard.press("Escape");
-  await expect(ligne(page, "a.txt")).toBeFocused();
 });
 
 test("REQ034_AC17_a_800_x_480_le_menu_reste_entier_sur_la_derniere_ligne_visible_et_s_ouvre_sous_la_ligne_au_clavier", async ({ page }) => {
@@ -724,27 +759,6 @@ test("REQ009_AC9_l_en_tete_du_projet_ne_defile_pas_avec_l_arbre", async ({ page 
   expect(await page.locator("aside.cadre-panneau .cadre-panneau-corps").evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
   expect(await entete.boundingBox()).toEqual(avant);
   await expect(page.getByRole("button", { name: "Supprimer" })).toBeInViewport();
-});
-
-test("REQ049_AC2_AC9_AC12_plage_contour_et_aucun_texte_selectionne", async ({ page }) => {
-  await ouvrir(page);
-  await ligne(page, "a.txt").click();
-  await ligne(page, "notes.txt").click({ modifiers: ["Shift"] });
-  const choisies = arbre(page).locator("[aria-selected=true] .liste-libelle");
-  await expect(choisies).toHaveText(["a.txt", "b.txt", "gros.log", "notes.bin", "notes.txt"]);
-  expect(await page.evaluate(() => String(getSelection()))).toBe("");
-  await expect(page.getByRole("tab", { name: "notes.txt" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Renommer" })).toBeDisabled();
-  await expect(arbre(page).locator("[aria-selected=true] .liste-coche")).toHaveCount(5);
-  // Ctrl+clic sur une ligne choisie : elle sort, garde le focus et son contour, pas le fond.
-  await ligne(page, "b.txt").click({ modifiers: ["Control"] });
-  const b = ligne(page, "b.txt");
-  await expect(b).toHaveAttribute("aria-selected", "false");
-  await expect(b).toBeFocused();
-  await expect(b).toHaveCSS("outline-style", "solid");
-  const fond = (l) => l.evaluate((e) => getComputedStyle(e).backgroundColor);
-  expect(await fond(b)).not.toBe(await fond(ligne(page, "a.txt")));
-  await expect(ligne(page, "a.txt")).not.toHaveCSS("outline-style", "solid");
 });
 
 const parChemin = (page, chemin) => arbre(page).locator(`[data-chemin="${chemin}"]`);

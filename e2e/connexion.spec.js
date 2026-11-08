@@ -41,25 +41,25 @@ test("REQ004_AC3_cinq_echecs_demandent_d_attendre_une_minute", async ({ page }) 
   await expect(page.getByRole("alert")).toHaveText("Trop d'essais. Attendez une minute.");
 });
 
-test("REQ004_AC5_ecran_de_connexion_affiche_le_nom_et_le_chemin", async ({ page }) => {
+test("REQ004_AC5_ecran_de_connexion_nom_chemin_et_chemin_long_coupe_au_debut", async ({ page }) => {
   await ouvrir(page);
-  await expect(page.getByRole("heading", { name: "yaide", exact: true })).toBeVisible();
-  await expect(page.locator(".connexion-chemin")).toHaveText(yaide.dossier);
-});
-
-test("REQ004_AC5_chemin_long_coupe_au_debut_avec_info_bulle", async ({ page }) => {
-  await ouvrir(page);
-  await page.setViewportSize({ width: 800, height: 480 });
-  await page.evaluate(() => {
-    const p = document.querySelector(".connexion-chemin");
-    p.title = "/" + "tres-long-dossier/".repeat(10) + "projet";
-    p.firstChild.textContent = p.title;
+  await test.step("REQ004_AC5_ecran_de_connexion_affiche_le_nom_et_le_chemin", async () => {
+    await expect(page.getByRole("heading", { name: "yaide", exact: true })).toBeVisible();
+    await expect(page.locator(".connexion-chemin")).toHaveText(yaide.dossier);
   });
-  const p = page.locator(".connexion-chemin");
-  expect(await p.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
-  expect(await p.evaluate((e) => getComputedStyle(e).textOverflow)).toBe("ellipsis");
-  expect(await p.evaluate((e) => getComputedStyle(e).direction)).toBe("rtl");
-  await expect(p).toHaveAttribute("title", /projet$/);
+  await test.step("REQ004_AC5_chemin_long_coupe_au_debut_avec_info_bulle", async () => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    await page.evaluate(() => {
+      const p = document.querySelector(".connexion-chemin");
+      p.title = "/" + "tres-long-dossier/".repeat(10) + "projet";
+      p.firstChild.textContent = p.title;
+    });
+    const p = page.locator(".connexion-chemin");
+    expect(await p.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
+    expect(await p.evaluate((e) => getComputedStyle(e).textOverflow)).toBe("ellipsis");
+    expect(await p.evaluate((e) => getComputedStyle(e).direction)).toBe("rtl");
+    await expect(p).toHaveAttribute("title", /projet$/);
+  });
 });
 
 test("REQ004_AC6_focus_dans_le_champ_et_Entree_envoie", async ({ page }) => {
@@ -119,86 +119,76 @@ test("REQ005_AC4_la_session_reste_valide_au_rechargement", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
 });
 
-test("REQ028_AC2_barre_de_titre_nom_du_projet_et_deconnexion", async ({ page }) => {
+test("REQ028_AC1_AC2_AC3_AC4_AC5_AC6_AC7_AC8_apres_connexion_titre_theme_rail_touches_focus_et_tab", async ({ page }) => {
   await seConnecter(page);
-  await expect(page.locator("header").getByRole("button", { name: "Ouverture rapide" })).toHaveText(yaide.dossier.split("/").pop());
-  await expect(page.locator("header").getByRole("button", { name: "Déconnexion" })).toBeVisible();
-});
-
-test("REQ028_AC3_theme_sombre_et_accent_bleu_sur_l_onglet_actif", async ({ page }) => {
-  await seConnecter(page);
-  const fond = await page.locator(".cadre").evaluate((e) => getComputedStyle(e).backgroundColor);
-  expect(fond).toBe("rgb(31, 31, 31)");
-  const actif = page.getByRole("tab", { name: "Fichiers" });
-  expect(await actif.evaluate((e) => getComputedStyle(e).boxShadow)).toContain("rgb(77, 170, 252)");
-  const police = await page.locator(".cadre").evaluate((e) => getComputedStyle(e).fontFamily);
-  expect(police).toContain("system-ui");
-});
-
-test("REQ028_AC1_F_R_G_affichent_les_panneaux", async ({ page }) => {
-  await seConnecter(page);
-  for (const [nom, titre] of [["Recherche", "Recherche"], ["Git", "Git"], ["Fichiers", "Fichiers"]]) {
-    await page.getByRole("tab", { name: nom }).click();
-    await expect(page.locator("aside.cadre-panneau h2")).toHaveText(titre);
-    await expect(page.getByRole("tab", { name: nom })).toHaveAttribute("aria-selected", "true");
-  }
-});
-
-test("REQ028_AC4_le_rail_est_une_liste_d_onglets_verticale", async ({ page }) => {
-  await seConnecter(page);
-  const rail = page.getByRole("navigation", { name: "Panneaux" }).getByRole("tablist");
-  await expect(rail).toHaveAttribute("aria-orientation", "vertical");
-  await expect(rail.getByRole("tab")).toHaveText(["", "", ""]);
-  expect(await rail.getByRole("tab").evaluateAll((l) => l.map((t) => t.getAttribute("aria-keyshortcuts")))).toEqual(["F", "R", "G"]);
-  for (const nom of ["Fichiers", "Recherche", "Git"]) await expect(rail.getByRole("tab", { name: nom })).toHaveAttribute("aria-selected", /true|false/);
-  // « Agent » et « Agents » sont en haut du rail droit, hors de cette liste.
-  await expect(rail.getByRole("tab", { name: "Agent" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Agent", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Agents", exact: true })).toBeVisible();
-});
-
-test("REQ028_AC5_touches_F_R_G_sur_le_rail_seulement", async ({ page }) => {
-  await seConnecter(page);
-  await page.getByRole("tab", { name: "Fichiers" }).focus();
-  await page.keyboard.press("r");
-  await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Recherche");
-  expect(await page.evaluate(() => !!document.activeElement.closest("aside"))).toBe(true);
-  // Hors du rail, la lettre ne fait rien.
-  await page.getByRole("button", { name: "Déconnexion" }).focus();
-  await page.keyboard.press("g");
-  await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Recherche");
-  await page.getByRole("tab", { name: "Recherche" }).focus();
-  await page.keyboard.press("G");
-  await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Git");
-});
-
-test("REQ028_AC6_titre_de_l_onglet_du_navigateur", async ({ page }) => {
-  await seConnecter(page);
-  const nom = yaide.dossier.split("/").pop();
-  await expect(page).toHaveTitle(`${nom} — yaide`);
-});
-
-test("REQ028_AC7_contour_de_focus_visible_sur_les_elements_atteints_par_Tab", async ({ page }) => {
-  await seConnecter(page);
-  await page.getByRole("button", { name: "Déconnexion" }).focus();
-  {
+  await test.step("REQ028_AC2_barre_de_titre_nom_du_projet_et_deconnexion", async () => {
+    await expect(page.locator("header").getByRole("button", { name: "Ouverture rapide" })).toHaveText(yaide.dossier.split("/").pop());
+    await expect(page.locator("header").getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  });
+  await test.step("REQ028_AC3_theme_sombre_et_accent_bleu_sur_l_onglet_actif", async () => {
+    const fond = await page.locator(".cadre").evaluate((e) => getComputedStyle(e).backgroundColor);
+    expect(fond).toBe("rgb(31, 31, 31)");
+    const actif = page.getByRole("tab", { name: "Fichiers" });
+    expect(await actif.evaluate((e) => getComputedStyle(e).boxShadow)).toContain("rgb(77, 170, 252)");
+    const police = await page.locator(".cadre").evaluate((e) => getComputedStyle(e).fontFamily);
+    expect(police).toContain("system-ui");
+  });
+  await test.step("REQ028_AC4_le_rail_est_une_liste_d_onglets_verticale", async () => {
+    const rail = page.getByRole("navigation", { name: "Panneaux" }).getByRole("tablist");
+    await expect(rail).toHaveAttribute("aria-orientation", "vertical");
+    await expect(rail.getByRole("tab")).toHaveText(["", "", ""]);
+    expect(await rail.getByRole("tab").evaluateAll((l) => l.map((t) => t.getAttribute("aria-keyshortcuts")))).toEqual(["F", "R", "G"]);
+    for (const nom of ["Fichiers", "Recherche", "Git"]) await expect(rail.getByRole("tab", { name: nom })).toHaveAttribute("aria-selected", /true|false/);
+    // « Agent » et « Agents » sont en haut du rail droit, hors de cette liste.
+    await expect(rail.getByRole("tab", { name: "Agent" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Agent", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Agents", exact: true })).toBeVisible();
+  });
+  await test.step("REQ028_AC6_titre_de_l_onglet_du_navigateur", async () => {
+    const nom = yaide.dossier.split("/").pop();
+    await expect(page).toHaveTitle(`${nom} — yaide`);
+  });
+  await test.step("REQ028_AC7_contour_de_focus_visible_sur_les_elements_atteints_par_Tab", async () => {
+    await page.getByRole("button", { name: "Déconnexion" }).focus();
+    {
+      await page.keyboard.press("Tab");
+      const style = await page.evaluate(() => {
+        const s = getComputedStyle(document.activeElement);
+        return [s.outlineStyle, s.outlineWidth];
+      });
+      expect(style[0]).not.toBe("none");
+      expect(style[1]).not.toBe("0px");
+    }
+    await page.getByRole("button", { name: "Déconnexion" }).focus();
+    expect(await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle)).not.toBe("none");
+  });
+  await test.step("REQ028_AC8_Tab_va_de_Deconnexion_au_rail_puis_au_panneau", async () => {
+    await page.getByRole("button", { name: "Déconnexion" }).focus();
     await page.keyboard.press("Tab");
-    const style = await page.evaluate(() => {
-      const s = getComputedStyle(document.activeElement);
-      return [s.outlineStyle, s.outlineWidth];
-    });
-    expect(style[0]).not.toBe("none");
-    expect(style[1]).not.toBe("0px");
-  }
-  await page.getByRole("button", { name: "Déconnexion" }).focus();
-  expect(await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle)).not.toBe("none");
-});
-
-test("REQ028_AC8_Tab_va_de_Deconnexion_au_rail_puis_au_panneau", async ({ page }) => {
-  await seConnecter(page);
-  await page.getByRole("button", { name: "Déconnexion" }).focus();
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("tab", { name: "Fichiers" })).toBeFocused();
+    await expect(page.getByRole("tab", { name: "Fichiers" })).toBeFocused();
+  });
+  await test.step("REQ028_AC1_F_R_G_affichent_les_panneaux", async () => {
+    for (const [nom, titre] of [["Recherche", "Recherche"], ["Git", "Git"], ["Fichiers", "Fichiers"]]) {
+      await page.getByRole("tab", { name: nom }).click();
+      await expect(page.locator("aside.cadre-panneau h2")).toHaveText(titre);
+      await expect(page.getByRole("tab", { name: nom })).toHaveAttribute("aria-selected", "true");
+    }
+  });
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  await test.step("REQ028_AC5_touches_F_R_G_sur_le_rail_seulement", async () => {
+    await page.getByRole("tab", { name: "Fichiers" }).focus();
+    await page.keyboard.press("r");
+    await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Recherche");
+    expect(await page.evaluate(() => !!document.activeElement.closest("aside"))).toBe(true);
+    // Hors du rail, la lettre ne fait rien.
+    await page.getByRole("button", { name: "Déconnexion" }).focus();
+    await page.keyboard.press("g");
+    await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Recherche");
+    await page.getByRole("tab", { name: "Recherche" }).focus();
+    await page.keyboard.press("G");
+    await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Git");
+  });
 });
 
 test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", async ({ page }) => {

@@ -598,18 +598,24 @@ fn req021_ac2_la_connexion_se_ferme_en_1001_a_l_arret_et_en_1000_apres_exit() {
 }
 
 #[test]
-fn req021_ac1_sigterm_arrete_les_shells_et_leurs_processus() {
-    arret_propre("TERM");
-}
-
-#[test]
-fn req021_ac1_sigint_arrete_les_shells_et_leurs_processus() {
-    arret_propre("INT");
-}
-
-#[test]
-fn req073_ac2_sighup_arrete_les_shells_et_leurs_processus() {
-    arret_propre("HUP");
+fn req021_ac1_req073_ac2_term_int_hup_arretent_les_shells_et_leurs_processus() {
+    std::thread::scope(|sc| {
+        let fils: Vec<_> = ["TERM", "INT", "HUP"]
+            .into_iter()
+            .map(|signal| {
+                std::thread::Builder::new()
+                    .name(signal.to_string())
+                    .spawn_scoped(sc, move || arret_propre(signal))
+                    .unwrap()
+            })
+            .collect();
+        for f in fils {
+            let nom = f.thread().name().unwrap().to_string();
+            if f.join().is_err() {
+                panic!("scénario {nom} en échec");
+            }
+        }
+    });
 }
 
 #[test]

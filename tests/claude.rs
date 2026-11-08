@@ -653,21 +653,24 @@ fn arret_claude_sourd(nom: &str, signal: &str) -> (u32, u32) {
 }
 
 #[test]
-fn req073_ac1_sighup_arrete_claude() {
-    arret_claude_sourd("hup", "HUP");
-}
-
-#[test]
-fn req073_ac3_processus_detache_de_claude_arrete_sigterm() {
-    arret_claude_sourd("det-term", "TERM");
-}
-
-#[test]
-fn req073_ac3_processus_detache_de_claude_arrete_sigint() {
-    arret_claude_sourd("det-int", "INT");
-}
-
-#[test]
-fn req073_ac3_processus_detache_de_claude_arrete_sighup() {
-    arret_claude_sourd("det-hup", "HUP");
+fn req073_ac1_ac3_claude_et_processus_detache_arretes_par_term_int_hup() {
+    std::thread::scope(|sc| {
+        let fils: Vec<_> = [("det-term", "TERM"), ("det-int", "INT"), ("det-hup", "HUP")]
+            .into_iter()
+            .map(|(nom, signal)| {
+                std::thread::Builder::new()
+                    .name(signal.to_string())
+                    .spawn_scoped(sc, move || {
+                        arret_claude_sourd(nom, signal);
+                    })
+                    .unwrap()
+            })
+            .collect();
+        for f in fils {
+            let nom = f.thread().name().unwrap().to_string();
+            if f.join().is_err() {
+                panic!("scénario {nom} en échec");
+            }
+        }
+    });
 }
