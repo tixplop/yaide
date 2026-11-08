@@ -7,6 +7,7 @@ mod config;
 mod depot;
 mod fichiers;
 mod git;
+mod opencode;
 mod recherche;
 mod serveur;
 mod shells;

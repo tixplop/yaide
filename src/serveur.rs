@@ -2,14 +2,14 @@ use crate::agent::agents::Agents;
 use crate::agent::conversation::{ErreurEnvoi, Gestionnaire};
 use crate::agent::outils::Limites;
 use crate::agent::reglages::{Erreur, Reglages};
-use crate::{auth, config, fichiers, git, recherche, shells};
+use crate::{auth, config, fichiers, git, opencode, recherche, shells};
 use axum::body::Bytes;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{DefaultBodyLimit, Path as CheminUrl, Query, Request, State};
 use axum::http::{header, HeaderMap, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post, put};
+use axum::routing::{any, delete, get, post, put};
 use axum::Router;
 use std::collections::HashMap;
 use std::net::{SocketAddr, TcpListener};
@@ -29,6 +29,8 @@ struct Etat {
     reglages: Arc<Reglages>,
     agent: Arc<Gestionnaire>,
     agents: Agents,
+    opencode: opencode::Opencode,
+    client_opencode: reqwest::Client,
 }
 
 type Partage = Arc<Etat>;
@@ -94,6 +96,14 @@ async fn garde(State(etat): State<Partage>, req: Request, next: Next) -> Respons
     let lecture = matches!(*req.method(), Method::GET | Method::HEAD);
     let ouverture_ws = req.headers().contains_key(header::UPGRADE);
     if (!lecture || ouverture_ws) && !origine_ok(&req) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    // Un GET vers opencode qui vient d'une autre origine est refusé aussi (sans `Origin` : accepté).
+    if lecture
+        && req.uri().path().starts_with("/api/opencode")
+        && req.headers().contains_key(header::ORIGIN)
+        && !origine_ok(&req)
+    {
         return StatusCode::FORBIDDEN.into_response();
     }
     let mut rep = next.run(req).await;
@@ -257,6 +267,68 @@ async fn ouvrir_claude(State(etat): State<Partage>) -> Response {
         )
             .into_response(),
     }
+}
+
+async fn opencode_disponible() -> Response {
+    let corps = format!("{{\"disponible\":{}}}", opencode::disponible().await);
+    ([(header::CONTENT_TYPE, "application/json")], corps).into_response()
+}
+
+/// Relais vers `/api/<chemin>` du serveur opencode : statut, `content-type` et corps au fil de l'eau.
+async fn relais_opencode(State(etat): State<Partage>, req: Request) -> Response {
+    // Chemin brut, encodage intact : ni `.`/`..` (même encodés), ni décodage de `%2F` ou `%3F`.
+    let brut = req
+        .uri()
+        .path()
+        .strip_prefix("/api/opencode")
+        .unwrap_or("")
+        .to_string();
+    if brut.split('/').any(|s| {
+        matches!(
+            s.to_ascii_lowercase().as_str(),
+            "." | ".." | "%2e" | ".%2e" | "%2e." | "%2e%2e"
+        )
+    }) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let (port, mdp) = match etat.opencode.assurer(&etat.projet_dir).await {
+        Ok(p) => p,
+        Err(raison) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                raison,
+            )
+                .into_response()
+        }
+    };
+    let (entete, corps) = req.into_parts();
+    let Ok(corps) = axum::body::to_bytes(corps, 64 * 1024 * 1024).await else {
+        return texte(StatusCode::BAD_REQUEST, "corps illisible");
+    };
+    let mut url = format!("http://127.0.0.1:{port}{brut}");
+    if let Some(q) = entete.uri.query() {
+        url.push('?');
+        url.push_str(q);
+    }
+    let mut demande = etat
+        .client_opencode
+        .request(entete.method, url)
+        .basic_auth("opencode", Some(mdp))
+        .body(corps);
+    if let Some(t) = entete.headers.get(header::CONTENT_TYPE) {
+        demande = demande.header(header::CONTENT_TYPE, t);
+    }
+    let Ok(rep) = demande.send().await else {
+        return texte(StatusCode::SERVICE_UNAVAILABLE, opencode::RAISON_PAR_DEFAUT);
+    };
+    let mut sortie = Response::builder().status(rep.status());
+    if let Some(t) = rep.headers().get(header::CONTENT_TYPE) {
+        sortie = sortie.header(header::CONTENT_TYPE, t);
+    }
+    sortie
+        .body(axum::body::Body::from_stream(rep.bytes_stream()))
+        .unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response())
 }
 
 async fn fermer_shell(State(etat): State<Partage>, CheminUrl(id): CheminUrl<u32>) -> StatusCode {
@@ -1026,10 +1098,17 @@ pub async fn servir(
         instance: identifiant_instance(),
         shells: Default::default(),
         agents: Agents::new(projet.join(".yaide"), reglages.clone()),
+        opencode: Default::default(),
+        client_opencode: reqwest::Client::builder()
+            .no_proxy()
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .build()
+            .map_err(|e| e.to_string())?,
         reglages,
         agent,
     });
     let registre = etat.shells.clone();
+    let etat_arret = etat.clone();
     let app = Router::new()
         .route("/", get(index))
         .route("/main.js", get(main_js))
@@ -1052,6 +1131,8 @@ pub async fn servir(
         .route("/api/session", get(session))
         .route("/api/shells", get(liste_shells).post(ouvrir_shell))
         .route("/api/claude", get(claude_disponible).post(ouvrir_claude))
+        .route("/api/opencode", get(opencode_disponible))
+        .route("/api/opencode/api/{*chemin}", any(relais_opencode))
         .route("/api/shells/{id}", delete(fermer_shell))
         .route("/api/shells/{id}/ws", get(ws_shell))
         .route("/api/fichiers", get(liste_fichiers))
@@ -1093,6 +1174,7 @@ pub async fn servir(
     tokio::select! {
         r = serveur => r.map_err(|e| format!("le serveur s'est arrêté : {e}")),
         _ = arret() => {
+            etat_arret.opencode.arreter().await;
             registre.arreter().await;
             Ok(())
         }
