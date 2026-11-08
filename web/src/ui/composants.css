@@ -468,6 +468,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 
 /* C-015 */
 .ya-chat { display: flex; flex-direction: column; gap: var(--space-3); position: relative; box-sizing: border-box; height: 100%; overflow: auto; padding: var(--space-2) var(--space-3); background: var(--bg-100); color: var(--ink); font: 13px/20px var(--font-sans); }
+.session .ya-chat { background: none; }
 .ya-chat:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
 .ya-chat > .ya-steps + .ya-steps { margin-top: -10px; }
 .ya-tour { display: flex; flex-direction: column; gap: 6px; }
@@ -488,7 +489,6 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-chat-agent pre { margin: 0 0 var(--space-2); background: var(--apercu-fond); border-radius: var(--radius-sm); padding: 6px var(--space-2); font: 12px/18px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .ya-chat-agent pre code { padding: 0; background: none; font: inherit; }
 .ya-chat-agent a { color: var(--info); text-decoration: underline; }
-.ya-chat-agent ul, .ya-chat-agent ol { margin: 0 0 var(--space-2); padding-left: 18px; }
 .ya-steps { display: flex; flex-direction: column; gap: 2px; }
 .ya-step { font: 12px var(--font-mono); height: var(--size-row); width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 var(--space-1); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
 .ya-step:hover { background: var(--hover); }
@@ -571,6 +571,24 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-attentes { display: flex; flex-direction: column; gap: var(--space-2); }
 .ya-attente { display: flex; flex-direction: column; gap: var(--space-2); }
 
+/* C-015 `agent` : valeurs propres à la réponse, `.ya-chat` en plus pour passer devant les règles partagées avec l'aperçu, plus bas. */
+.ya-chat .ya-chat-agent table { margin: 0 0 var(--space-2); }
+.ya-chat .ya-chat-agent blockquote { margin: 0 0 var(--space-2); padding: 6px var(--space-2); }
+.ya-chat-agent ul, .ya-chat-agent ol { margin: 0 0 var(--space-2); padding-left: var(--space-6); }
+.ya-chat-agent ul { list-style-type: disc; }
+.ya-chat-agent ul ul { list-style-type: circle; }
+.ya-chat-agent ul ul ul { list-style-type: square; }
+.ya-chat-agent ol { list-style-type: decimal; }
+.ya-chat-agent li ul, .ya-chat-agent li ol { margin: 0; }
+.ya-chat-agent strong { font-weight: var(--graisse-forte); }
+.ya-chat-agent hr { border: 0; border-top: var(--trait) solid var(--line-strong); margin: var(--space-3) 0; }
+.ya-chat .ya-chat-agent li > :last-child, .ya-chat .ya-chat-agent blockquote > :last-child, .ya-chat .ya-chat-agent > :last-child { margin-bottom: 0; }
+.ya-chat-agent .ya-note { border: var(--trait) solid var(--info); border-radius: var(--radius-sm); }
+.ya-chat-agent .ya-note-titre { margin: 0 0 var(--space-1); color: var(--info); font-weight: var(--graisse-forte); }
+.ya-chat-agent .ya-tache { list-style: none; }
+.ya-tache input { appearance: none; box-sizing: border-box; position: relative; width: 14px; height: 14px; margin: 0 6px 0 -20px; vertical-align: -2px; border: var(--trait) solid var(--ink-muted); border-radius: var(--radius-xs); opacity: 1; }
+.ya-tache input:checked::before { content: ""; position: absolute; left: 2px; top: 2px; width: 8px; height: 4px; border: solid var(--ink); border-width: 0 0 2px 2px; transform: rotate(-45deg); }
+
 .zone-code {
   display: flex;
   height: 100%;
@@ -605,15 +623,15 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .zone-code-apercu h2 { font: var(--texte-sous-titre) var(--font-sans); font-weight: var(--graisse-forte); }
 .zone-code-apercu h3, .zone-code-apercu h4, .zone-code-apercu h5, .zone-code-apercu h6 { font: var(--texte-lecture) var(--font-sans); font-weight: var(--graisse-forte); }
 .zone-code-apercu a, .cm-hy-tableau a { color: var(--info); text-decoration: underline; }
-.zone-code-apercu a:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: var(--trait-fort); }
-.zone-code-apercu table, .cm-hy-tableau table { border-collapse: collapse; max-width: 100%; margin: var(--space-3) 0; overflow-wrap: anywhere; }
-.zone-code-apercu th, .zone-code-apercu td, .cm-hy-tableau th, .cm-hy-tableau td { border: var(--trait) solid var(--line-strong); padding: var(--space-1) var(--space-2); text-align: left; }
-.zone-code-apercu th, .cm-hy-tableau th { background: var(--apercu-entete); font-weight: var(--graisse-forte); }
-.zone-code-apercu tbody tr:nth-child(even) td, .cm-hy-tableau tbody tr:nth-child(even) td { background: var(--apercu-fond); }
-.zone-code-apercu blockquote { margin: var(--space-3) 0; padding: var(--space-2) var(--space-3); border-left: var(--filet-note) solid var(--info); background: var(--msg-info); }
+.zone-code-apercu a:focus-visible, .ya-chat-agent a:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: var(--trait-fort); }
+.zone-code-apercu table, .cm-hy-tableau table, .ya-chat-agent table { border-collapse: collapse; max-width: 100%; margin: var(--space-3) 0; overflow-wrap: anywhere; }
+.zone-code-apercu th, .zone-code-apercu td, .cm-hy-tableau th, .cm-hy-tableau td, .ya-chat-agent th, .ya-chat-agent td { border: var(--trait) solid var(--line-strong); padding: var(--space-1) var(--space-2); text-align: left; }
+.zone-code-apercu th, .cm-hy-tableau th, .ya-chat-agent th { background: var(--apercu-entete); font-weight: var(--graisse-forte); }
+.zone-code-apercu tbody tr:nth-child(even) td, .cm-hy-tableau tbody tr:nth-child(even) td, .ya-chat-agent tbody tr:nth-child(even) td { background: var(--apercu-fond); }
+.zone-code-apercu blockquote, .ya-chat-agent blockquote { margin: var(--space-3) 0; padding: var(--space-2) var(--space-3); border-left: var(--filet-note) solid var(--info); background: var(--msg-info); }
 .zone-code-apercu blockquote > :first-child { margin-top: 0; }
 .zone-code-apercu blockquote > :last-child { margin-bottom: 0; }
-.zone-code-apercu blockquote blockquote { background: none; }
+.zone-code-apercu blockquote blockquote, .ya-chat-agent blockquote blockquote { background: none; }
 .zone-code-apercu code, .cm-hy-tableau code { padding: 0 var(--space-1); border-radius: var(--radius-xs); font: var(--texte-code-ligne) var(--font-mono); background: var(--apercu-fond); }
 .zone-code-apercu pre { margin: var(--space-3) 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font: var(--texte-code) var(--font-mono); background: var(--apercu-fond); white-space: pre-wrap; overflow-wrap: anywhere; }
 .zone-code-apercu pre code { padding: 0; border-radius: 0; font: inherit; background: none; }

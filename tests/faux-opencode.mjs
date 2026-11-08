@@ -66,8 +66,20 @@ const MODELES = [
 /** Le relevé du scénario, ses identifiants réécrits : ceux de la session racine sont donnés, les autres sont neufs. */
 function lireScenario(nom, racine, directory) {
   // `contexte` et `depasse` : le relevé `texte`, avec les tokens d'AC-076-1 (15 000 en tout) ou 210 000 (AC-076-8) sur la réponse et sur la fin du pas.
-  const relevé = fs.readFileSync(path.join(CAPTURES, `${/^(contexte|depasse)$/.test(nom) ? "texte" : nom}.json`), "utf8");
+  // `markdown` : le relevé `texte`, avec une réponse en deux morceaux, le premier coupé après la ligne d'en-tête d'un tableau (AC-077-8).
+  const relevé = fs.readFileSync(path.join(CAPTURES, `${/^(contexte|depasse|markdown)$/.test(nom) ? "texte" : nom}.json`), "utf8");
   const doc = JSON.parse(relevé);
+  if (nom === "markdown") {
+    const morceaux = ["Voici un tableau :\n\n| Nom | Valeur |\n", "|---|---|\n| a | 1 |\n| b | 2 |\n\n```rust\nfn main() {}\n```\n\nVoir https://exemple.org/a.\n"];
+    const complet = morceaux.join("");
+    let rang = 0;
+    doc.evenements = doc.evenements.filter((ev) => {
+      if (ev.type === "session.text.delta") return rang++ < morceaux.length && !!(ev.data.delta = morceaux[rang - 1]);
+      if (ev.type === "session.text.ended") ev.data.text = complet;
+      return true;
+    });
+    for (const liste of Object.values(doc.messages)) for (const m of liste.data) if (m.type === "assistant") for (const c of m.content) if (c.type === "text") c.text = complet;
+  }
   if (nom === "contexte" || nom === "depasse") {
     const tokens = nom === "contexte" ? { input: 10000, output: 1500, reasoning: 500, cache: { read: 3000, write: 0 } } : { input: 200000, output: 5000, reasoning: 0, cache: { read: 5000, write: 0 } };
     for (const liste of Object.values(doc.messages)) for (const m of liste.data) if (m.type === "assistant") m.tokens = tokens;

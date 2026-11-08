@@ -491,3 +491,31 @@ test("REQ072_contrastes_de_la_session_opencode_dans_les_deux_themes", () => {
     });
   }
 });
+
+// Tableau « Réponses de la conversation » de design-system.md (AC-077-12, AC-077-22) :
+// [texte, fond, seuil, [sombre, clair] sur --bg-200, [sombre, clair] sur --bg-100]. `fond` null : le fond de la conversation.
+test("REQ077_AC12_AC22_contrastes_des_reponses_sur_bg_200_et_bg_100", () => {
+  const paires = [
+    ["--ink", null, 4.5, [10.2, 16.4], [10.7, 15.5]],
+    ["--ink", "--apercu-entete", 4.5, [7.3, 13.2], [7.3, 13.2]],
+    ["--ink", "--apercu-fond", 4.5, [8.6, 14.4], [8.6, 14.4]],
+    ["--ink", "--msg-info", 4.5, [8.1, 13.2], [8.4, 12.5]],
+    ["--info", null, 4.5, [6.6, 6.3], [6.9, 5.9]],
+    ["--info", "--apercu-entete", 4.5, [4.7, 5], [4.7, 5]],
+    ["--info", "--apercu-fond", 4.5, [5.5, 5.5], [5.5, 5.5]],
+    ["--info", "--msg-info", 4.5, [5.2, 5], [5.5, 4.8]],
+    ["--line-strong", null, 3, [3.4, 3.4], [3.6, 3.2]],
+    ["--ink-muted", null, 3, [6.3, 6.6], [6.5, 6.2]],
+    ["--ink-muted", "--msg-info", 3, [4.9, 5.3], [5.2, 5.1]],
+  ];
+  THEMES.forEach((theme, i) => {
+    ["--bg-200", "--bg-100"].forEach((conv, j) => {
+      for (const [texte, fond, seuil, ...mesures] of paires) {
+        const r = fond ? ratio(theme, texte, fond, conv) : ratio(theme, texte, conv);
+        const nom = `${texte} sur ${fond ?? conv} posé sur ${conv} (${theme})`;
+        expect(r, nom).toBeGreaterThanOrEqual(seuil);
+        egalA(r, mesures[j][i], nom);
+      }
+    });
+  });
+});

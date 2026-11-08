@@ -22,10 +22,10 @@ test.afterEach(async () => {
  * Dossier d'un faux `opencode` qui rejoue `scenario`. Ses sessions vivent dans `etat.json` (elles survivent à un
  * redémarrage de Yaide) ; le fichier `casse` fait échouer son prochain `opencode serve`.
  */
-function fauxOpencode(scenario) {
+function fauxOpencode(scenario, pas) {
   const bin = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "faux-opencode-"));
   const script = `#!/bin/sh
-export FAUX_OPENCODE_ETAT='${bin}/etat.json' FAUX_OPENCODE_SCENARIO='${scenario}' FAUX_OPENCODE_TEMOIN='${bin}/temoin'
+export FAUX_OPENCODE_ETAT='${bin}/etat.json' FAUX_OPENCODE_SCENARIO='${scenario}' FAUX_OPENCODE_TEMOIN='${bin}/temoin'${pas ? ` FAUX_OPENCODE_PAS='${pas}'` : ""}
 [ -e '${bin}/casse' ] && export FAUX_OPENCODE_ECHEC=1
 exec '${process.execPath}' '${FAUX}' "$@"
 `;
@@ -524,4 +524,56 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
   await expect(compteur).toBeVisible();
   const bas = await compteur.evaluate((e) => ({ compteur: e.getBoundingClientRect().bottom, code: document.querySelector(".cadre-code").getBoundingClientRect().bottom }));
   expect(bas.compteur, `bas du compteur ${bas.compteur}, bas de l'éditeur ${bas.code}`).toBeLessThanOrEqual(bas.code + 0.5);
+});
+
+test("REQ077_parcours_42_44_arrivee_rechargement_nouvel_onglet", async ({ page, context }) => {
+  const opencode = fauxOpencode("markdown", 500);
+  yaide = await lancerYaide({ opencode, claude: fauxClaude() });
+  relais = await lancerRelais(yaide.port);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await ouvrirYaide(page, relais.origine);
+  const requetes = [];
+  await context.route("https://exemple.org/**", (route) => {
+    requetes.push(route.request().url());
+    return route.fulfill({ contentType: "text/html", body: "<title>exemple</title>" });
+  });
+  const reponse = page.locator(".session:visible .ya-chat-agent");
+  const couleurAttendue = (nom) => page.evaluate((n) => { const d = document.createElement("i"); d.style.color = `var(${n})`; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; }, nom);
+
+  await boutonOpencode(page).click();
+  await expect(champ(page)).toBeFocused();
+  await envoyer(page, "[scenario:markdown] Montre un tableau.");
+
+  // AC-077-8 : la ligne d'en-tête reste du texte, puis le tableau apparaît ; le focus ne bouge pas.
+  await expect(reponse).toContainText("| Nom | Valeur |", { timeout: 20000 });
+  await expect(reponse.locator("table")).toHaveCount(0);
+  await expect(champ(page)).toBeFocused();
+  await expect(reponse.locator("table")).toHaveCount(1);
+  await expect(reponse.locator("tbody tr")).toHaveCount(2);
+  await expect(champ(page)).toBeFocused();
+  await expect(reponse.locator("pre")).toContainText("fn main() {}");
+  await expect(reponse.locator("a")).toHaveText("https://exemple.org/a");
+
+  // AC-077-7, AC-077-8 : le vrai rechargement, sans fichier ouvert, même mise en forme et code coloré.
+  await gardeContient(page, '"opencode":true');
+  await page.reload();
+  await expect(onglet(page, "opencode 1")).toHaveAttribute("aria-selected", "true");
+  await expect(reponse.locator("table")).toHaveCount(1);
+  expect(await page.locator(".cm-editor").count()).toBe(0);
+  const fn = reponse.locator("pre span", { hasText: /^fn$/ });
+  await expect(fn).toHaveCount(1);
+  expect(await fn.evaluate((e) => getComputedStyle(e).color)).toBe(await couleurAttendue("--syn-keyword"));
+  expect((await reponse.locator("th").first().evaluate((e) => getComputedStyle(e).borderTopWidth))).toBe("1px");
+
+  // AC-077-26 : un brouillon dans le champ, clic sur l'adresse → un nouvel onglet ; Yaide garde adresse, onglet et brouillon.
+  const adresse = page.url();
+  await champ(page).fill("brouillon à garder");
+  const [nouvelle] = await Promise.all([context.waitForEvent("page"), reponse.locator("a").click()]);
+  await nouvelle.waitForLoadState();
+  expect(nouvelle.url()).toBe("https://exemple.org/a");
+  expect(requetes).toContain("https://exemple.org/a");
+  expect(page.url()).toBe(adresse);
+  await expect(onglet(page, "opencode 1")).toHaveAttribute("aria-selected", "true");
+  await expect(champ(page)).toHaveValue("brouillon à garder");
+  await nouvelle.close();
 });
