@@ -6,6 +6,7 @@ import * as api from "./api.js";
 const SOURCE = "/api/opencode/api/event";
 const OUTILS_SOUS_AGENT = new Set(["subagent"]);
 const ATTENTE_RELANCE_MS = 2000;
+const CHEMIN = ".yaide/opencode.json";
 const ECHEC_TOUR = "Le tour a échoué. Vous pouvez envoyer un autre message.";
 
 /** id de session → { id, items, cles, enCours, dernierMsg, execSeq, disparue, coupure, pret }. */
@@ -39,6 +40,13 @@ function noterSession(s) {
   if (s.title) i.titre = s.title;
   if (s.location?.directory) i.dossier = s.location.directory;
   if (s.outcome) i.issue = s.outcome;
+}
+
+/** Tokens occupés par une réponse : somme des cinq compteurs, 0 si illisible. */
+function totalTokens(t) {
+  const n = (v) => (Number.isFinite(v) ? v : 0);
+  if (!t || typeof t !== "object") return 0;
+  return n(t.input) + n(t.output) + n(t.reasoning) + n(t.cache?.read) + n(t.cache?.write);
 }
 
 function texteDes(contenu) {
@@ -103,7 +111,7 @@ function notifier(sid) {
 
 function magasin(id) {
   if (!sessions.has(id)) {
-    sessions.set(id, { id, items: [], cles: new Map(), enCours: false, dernierMsg: null, execSeq: 0, disparue: false, coupure: false, pret: Promise.resolve(), flux: new Set(), synchro: false, tampon: [] });
+    sessions.set(id, { id, items: [], cles: new Map(), enCours: false, dernierMsg: null, execSeq: 0, occupes: 0, disparue: false, coupure: false, pret: Promise.resolve(), flux: new Set(), synchro: false, tampon: [] });
   }
   return sessions.get(id);
 }
@@ -163,6 +171,12 @@ function appliquerEvenement(s, ev) {
       s.enCours = false;
       ajouterFin(s);
       break;
+    case "session.step.ended": {
+      const total = totalTokens(d.tokens);
+      if (total === 0) return false;
+      s.occupes = total;
+      break;
+    }
     case "session.step.started":
       s.dernierMsg = d.assistantMessageID;
       break;
@@ -329,6 +343,13 @@ function appliquerHistorique(s, donnees) {
   });
   for (const c of s.items) if (!vus.has(c.cle)) fusion.push(c);
   s.items = fusion;
+  for (let k = donnees.length - 1; k >= 0; k--) {
+    const total = donnees[k].type === "assistant" ? totalTokens(donnees[k].tokens) : 0;
+    if (total !== 0) {
+      s.occupes = total;
+      break;
+    }
+  }
   s.cles = new Map(fusion.map((i) => [i.cle, i]));
   if (dernier && !s.cles.has(`fin:${s.dernierMsg}`)) s.dernierMsg = dernier;
   for (const [cle, item] of s.cles) if (item.type === "agent" && item.complet) s.flux.delete(cle);
@@ -651,10 +672,10 @@ export function choixModele(sessionId) {
   const valeur = i.choix ?? i.model;
   const base = valeur ?? catalogue.defaut;
   const courant = base ? { cle: cleModele(base.providerID, base.id), id: base.id, providerID: base.providerID, variante: valeur ? variante(valeur.variant) : null } : null;
-  const modeles = catalogue.modeles.map((m) => ({ cle: cleModele(m.providerID, m.id), id: m.id, providerID: m.providerID, texte: `${m.name} · ${m.providerID}`, variantes: (m.variants ?? []).map((v) => v.id) }));
+  const modeles = catalogue.modeles.map((m) => ({ cle: cleModele(m.providerID, m.id), id: m.id, providerID: m.providerID, fenetre: m.limit?.context || 0, texte: `${m.name} · ${m.providerID}`, variantes: (m.variants ?? []).map((v) => v.id) }));
   let affiche = courant && modeles.find((m) => m.cle === courant.cle);
   if (courant && !affiche) {
-    affiche = { cle: courant.cle, id: courant.id, providerID: courant.providerID, texte: `${courant.id} · ${courant.providerID}`, variantes: [] };
+    affiche = { cle: courant.cle, id: courant.id, providerID: courant.providerID, texte: `${courant.id} · ${courant.providerID}`, fenetre: 0, variantes: [] };
     modeles.unshift(affiche);
   }
   const efforts = [...(affiche?.variantes ?? [])];
@@ -681,11 +702,58 @@ export async function choisirModele(sessionId, cle, variante) {
     if ("donnees" in r) {
       i.model = choix;
       i.modelSeq = (i.modelSeq ?? 0) + 1;
+      // Le dernier choix accepté est gardé pour le projet ; un échec d'écriture est sans effet.
+      api.ecrireFichier(CHEMIN, JSON.stringify(choix, null, 2) + "\n").catch(() => {});
     }
     delete i.choix;
     notifier(sessionId);
   }
   return r;
+}
+
+/**
+ * Occupation du contexte de la session : `{ tokens, fenetre, pourcent }`, ou null si la fenêtre du modèle affiché
+ * est inconnue.
+ */
+export function contexteSession(sessionId) {
+  const c = choixModele(sessionId);
+  if (c.etat !== "pret" || !c.courant) return null;
+  const fenetre = c.modeles.find((m) => m.cle === c.courant.cle)?.fenetre || 0;
+  if (!fenetre) return null;
+  const tokens = sessions.get(sessionId)?.occupes ?? 0;
+  return { tokens, fenetre, pourcent: Math.round((tokens / fenetre) * 100) };
+}
+
+/**
+ * À appeler entre la création de la session et l'ouverture de l'onglet : lui donne le dernier choix gardé du projet,
+ * s'il est utilisable. Ne rejette jamais, n'écrit jamais le fichier.
+ */
+export async function reprendreDernierChoix(sessionId) {
+  try {
+    const f = await api.lireFichier(CHEMIN);
+    if (typeof f.contenu !== "string") return;
+    let lu;
+    try {
+      lu = JSON.parse(f.contenu);
+    } catch {
+      return;
+    }
+    const chaine = (v) => typeof v === "string" && v !== "";
+    if (!lu || typeof lu !== "object" || !chaine(lu.id) || !chaine(lu.providerID) || (lu.variant !== undefined && typeof lu.variant !== "string")) return;
+    await lireCatalogue();
+    if (catalogue.etat !== "pret") return;
+    const m = catalogue.modeles.find((x) => x.id === lu.id && x.providerID === lu.providerID);
+    if (!m) return;
+    const choix = { id: lu.id, providerID: lu.providerID };
+    if (lu.variant && (m.variants ?? []).some((v) => v.id === lu.variant)) choix.variant = lu.variant;
+    const r = await api.choisirModele(sessionId, choix);
+    if (!("donnees" in r)) return;
+    const i = info(sessionId);
+    i.model = choix;
+    i.modelSeq = (i.modelSeq ?? 0) + 1;
+  } catch {
+    // Jamais de rejet : la session part du modèle par défaut.
+  }
 }
 
 /** Remet le module à zéro (tests). */

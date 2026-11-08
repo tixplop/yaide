@@ -552,23 +552,32 @@ describe("appels de api.js", () => {
 // --- REQ-074 : modèles et effort -----------------------------------------------------------------
 
 const MODELES = [
-  { id: "claude-sonnet-4-5", providerID: "anthropic", name: "Claude Sonnet 4.5", enabled: true, variants: [{ id: "low" }, { id: "high" }, { id: "max" }] },
+  { id: "claude-sonnet-4-5", providerID: "anthropic", name: "Claude Sonnet 4.5", enabled: true, limit: { context: 200000, output: 8000 }, variants: [{ id: "low" }, { id: "high" }, { id: "max" }] },
   { id: "claude-sonnet-4-5", providerID: "openrouter", name: "Claude Sonnet 4.5", enabled: true, variants: [] },
   { id: "cache", providerID: "anthropic", name: "Caché", enabled: false, variants: [] },
-  { id: "gpt-5", providerID: "openai", name: "GPT-5", enabled: true, variants: [{ id: "minimal" }, { id: "high" }] },
+  { id: "gpt-5", providerID: "openai", name: "GPT-5", enabled: true, limit: { context: 400000, output: 8000 }, variants: [{ id: "minimal" }, { id: "high" }] },
 ];
 const DEFAUT = MODELES[0];
 const SESSION = { id: "ses_a", location: { directory: "/p" } };
 
 /** Faux opencode : catalogue, sessions et écritures ; `etat` se modifie en cours de test. */
 function faux({ modeles = MODELES, defaut = DEFAUT, sessions = { ses_a: SESSION, ses_b: { id: "ses_b" } } } = {}) {
-  const etat = { modeles, defaut, sessions, ecritures: [], statutModeles: null, coupure: false, refus: null, delaiSession: null };
+  const etat = { modeles, defaut, sessions, ecritures: [], statutModeles: null, coupure: false, refus: null, delaiSession: null, fichier: undefined, fichierPut: [], echecPut: false, messages: {}, requetes: [] };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url, options = {}) => {
       if (etat.coupure) throw new TypeError("coupure");
       const u = url.replace("/api/opencode/api", "");
       const methode = options.method ?? "GET";
+      etat.requetes.push(`${methode} ${u}`);
+      if (u.startsWith("/api/fichier")) {
+        if (methode === "PUT") {
+          etat.fichierPut.push({ url: u, corps: options.body });
+          if (etat.echecPut) return reponse(500, "x");
+          return reponse(200, { version: "v" });
+        }
+        return etat.fichier === undefined ? reponse(404, "x") : { ...reponse(200, etat.fichier), headers: { get: () => "v1" } };
+      }
       if (methode === "POST") {
         etat.ecritures.push({ url: u, corps: JSON.parse(options.body) });
         if (etat.refus) return etat.refus instanceof Promise ? etat.refus : reponse(etat.refus);
@@ -577,6 +586,7 @@ function faux({ modeles = MODELES, defaut = DEFAUT, sessions = { ses_a: SESSION,
       let m;
       if (u === "/model") return etat.statutModeles ? reponse(etat.statutModeles, "x") : reponse(200, { data: etat.modeles });
       if (u === "/model/default") return reponse(200, { data: etat.defaut });
+      if ((m = /^\/session\/([^/?]+)\/message/.exec(u)) && etat.messages[m[1]]) return reponse(200, { data: etat.messages[m[1]], cursor: {} });
       if (/\/(message|permission|form)/.test(u)) return reponse(200, { data: [], cursor: {} });
       if (/^\/session\?parentID/.test(u)) return reponse(200, { data: [] });
       if ((m = /^\/session\/([^/?]+)$/.exec(u))) {
@@ -823,5 +833,255 @@ describe("modèle et effort d'une session opencode (REQ-074)", () => {
     await tick();
     expect(oc.choixModele("ses_a").modeles.length).toBe(3);
     expect(f.modeles).toBe(MODELES);
+  });
+});
+
+// --- REQ-075 : dernier choix gardé et repris -----------------------------------------------------
+
+const CHOIX_GPT = { id: "gpt-5", providerID: "openai", variant: "high" };
+const posts = (f) => f.ecritures.filter((e) => /\/model$/.test(e.url));
+
+describe("dernier choix gardé (REQ-075)", () => {
+  it("REQ075_AC1_choix_accepte_ecrit_modele_et_variante", async () => {
+    const f = faux();
+    await suivre("ses_a");
+    await tick();
+    await oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openai", "gpt-5"), "high");
+    expect(f.fichierPut).toHaveLength(1);
+    expect(f.fichierPut[0].url).toBe("/api/fichier?chemin=.yaide%2Fopencode.json");
+    expect(JSON.parse(f.fichierPut[0].corps)).toEqual(CHOIX_GPT);
+  });
+
+  it("REQ075_AC1_par_defaut_ecrit_sans_variante", async () => {
+    const f = faux();
+    await suivre("ses_a");
+    await tick();
+    await oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openai", "gpt-5"), null);
+    expect(JSON.parse(f.fichierPut[0].corps)).toEqual({ id: "gpt-5", providerID: "openai" });
+  });
+
+  it("REQ075_AC2_refus_et_evenement_n_ecrivent_pas", async () => {
+    const f = faux();
+    const { es } = await suivre("ses_a");
+    await tick();
+    f.refus = 503;
+    await oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openai", "gpt-5"), null);
+    es.emettre({ type: "session.model.selected", data: { sessionID: "ses_a", model: { id: "gpt-5", providerID: "openai" } } });
+    await tick();
+    expect(f.fichierPut).toEqual([]);
+  });
+
+  it("REQ075_AC2_echec_d_ecriture_sans_effet", async () => {
+    const f = faux();
+    await suivre("ses_a");
+    await tick();
+    f.echecPut = true;
+    const r = await oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openai", "gpt-5"), null);
+    await tick();
+    expect(r.donnees).toBeNull();
+    expect(f.fichierPut).toHaveLength(1);
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ id: "gpt-5" });
+  });
+
+  it("REQ075_dernier_de_deux_choix_rapproches_seul_ecrit", async () => {
+    const f = faux();
+    await suivre("ses_a");
+    await tick();
+    let fin1;
+    f.refus = new Promise((r) => (fin1 = r));
+    const p1 = oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openai", "gpt-5"), null);
+    f.refus = null;
+    await oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openrouter", "claude-sonnet-4-5"), null);
+    fin1(reponse(204));
+    await p1;
+    expect(f.fichierPut).toHaveLength(1);
+    expect(JSON.parse(f.fichierPut[0].corps)).toEqual({ id: "claude-sonnet-4-5", providerID: "openrouter" });
+  });
+
+  it("REQ075_AC3_reprise_envoie_avant_de_rendre_la_main", async () => {
+    const f = faux();
+    f.fichier = JSON.stringify(CHOIX_GPT);
+    await oc.reprendreDernierChoix("ses_a");
+    expect(posts(f)).toEqual([{ url: "/session/ses_a/model", corps: { model: CHOIX_GPT } }]);
+    expect(f.fichierPut).toEqual([]);
+  });
+
+  it("REQ075_AC5_sans_fichier_aucune_requete", async () => {
+    const f = faux();
+    await oc.reprendreDernierChoix("ses_a");
+    expect(f.requetes).toEqual(["GET /api/fichier?chemin=.yaide%2Fopencode.json"]);
+  });
+
+  it("REQ075_AC6_modele_retire_ou_liste_illisible_aucun_post", async () => {
+    const f = faux();
+    f.fichier = JSON.stringify({ id: "gpt-5", providerID: "inconnu" });
+    await oc.reprendreDernierChoix("ses_a");
+    f.fichier = JSON.stringify(CHOIX_GPT);
+    f.statutModeles = 500;
+    await oc.reprendreDernierChoix("ses_a");
+    expect(posts(f)).toEqual([]);
+    expect(f.fichierPut).toEqual([]);
+  });
+
+  it("REQ075_AC7_variante_retiree_modele_seul", async () => {
+    const f = faux();
+    f.fichier = JSON.stringify({ ...CHOIX_GPT, variant: "turbo" });
+    await oc.reprendreDernierChoix("ses_a");
+    expect(posts(f)).toEqual([{ url: "/session/ses_a/model", corps: { model: { id: "gpt-5", providerID: "openai" } } }]);
+    f.sessions.ses_a = { ...SESSION, model: { id: "gpt-5", providerID: "openai" } }; // ce que opencode relit
+    await suivre("ses_a");
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ id: "gpt-5", variante: null });
+  });
+
+  it("REQ075_AC8_fichier_casse_ou_forme_inattendue", async () => {
+    const f = faux();
+    for (const contenu of ["{pas du json", "[]", "null", '{"id":"gpt-5"}', '{"id":"","providerID":"openai"}', '{"id":"gpt-5","providerID":"openai","variant":3}', '{"id":4,"providerID":"openai"}']) {
+      f.fichier = contenu;
+      await expect(oc.reprendreDernierChoix("ses_a")).resolves.toBeUndefined();
+    }
+    expect(f.requetes.filter((r) => r !== "GET /api/fichier?chemin=.yaide%2Fopencode.json")).toEqual([]);
+  });
+
+  it("REQ075_AC9_post_refuse_ne_rejette_pas", async () => {
+    const f = faux();
+    f.fichier = JSON.stringify(CHOIX_GPT);
+    f.refus = 503;
+    await expect(oc.reprendreDernierChoix("ses_a")).resolves.toBeUndefined();
+    await suivre("ses_a");
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ id: "claude-sonnet-4-5" });
+    expect(f.fichierPut).toEqual([]);
+  });
+
+  it("REQ075_AC10_autre_session_inchangee", async () => {
+    const f = faux();
+    f.fichier = JSON.stringify(CHOIX_GPT);
+    await suivre("ses_b");
+    await oc.reprendreDernierChoix("ses_a");
+    expect(oc.choixModele("ses_b").courant).toMatchObject({ id: "claude-sonnet-4-5", providerID: "anthropic" });
+  });
+
+  it("REQ075_AC11_courant_connu_avant_le_premier_dessin_avec_son_nom", async () => {
+    const f = faux();
+    f.fichier = JSON.stringify(CHOIX_GPT);
+    await oc.reprendreDernierChoix("ses_a");
+    const c = oc.choixModele("ses_a");
+    expect(c.courant).toMatchObject({ id: "gpt-5", providerID: "openai", variante: "high" });
+    expect(c.modeles.find((m) => m.cle === c.courant.cle).texte).toBe("GPT-5 · openai");
+  });
+});
+
+// --- REQ-076 : occupation du contexte ------------------------------------------------------------
+
+const assistant = (id, tokens) => ({ type: "assistant", id, content: [], tokens });
+const T = (input, output = 0, reasoning = 0, read = 0, write = 0) => ({ input, output, reasoning, cache: { read, write } });
+
+describe("occupation du contexte (REQ-076)", () => {
+  async function ouvrir(messages = [], extra = {}) {
+    const f = faux(extra);
+    f.messages.ses_a = messages;
+    const s = await suivre("ses_a");
+    await tick();
+    return { f, ...s };
+  }
+
+  it("REQ076_AC1_somme_et_arrondi", async () => {
+    await ouvrir([assistant("m1", T(10000, 1500, 500, 3000, 0))]);
+    expect(oc.contexteSession("ses_a")).toEqual({ tokens: 15000, fenetre: 200000, pourcent: 8 });
+  });
+
+  it("REQ076_AC2_sans_reponse_zero", async () => {
+    await ouvrir();
+    expect(oc.contexteSession("ses_a")).toEqual({ tokens: 0, fenetre: 200000, pourcent: 0 });
+  });
+
+  it("REQ076_AC3_step_ended_cette_session_seule", async () => {
+    const { es, rappel } = await ouvrir();
+    const autre = await suivre("ses_b");
+    rappel.mockClear();
+    autre.rappel.mockClear();
+    es.emettre({ type: "session.step.ended", data: { sessionID: "ses_a", assistantMessageID: "m1", tokens: T(1000, 500) } });
+    expect(oc.contexteSession("ses_a").tokens).toBe(1500);
+    expect(rappel).toHaveBeenCalled();
+    expect(autre.rappel).not.toHaveBeenCalled();
+    expect(oc.contexteSession("ses_b").tokens).toBe(0);
+  });
+
+  it("REQ076_AC4_relu_dans_l_historique", async () => {
+    await ouvrir([assistant("m1", T(100)), { type: "user", id: "u", text: "x" }, assistant("m2", T(2000, 0, 0, 500))]);
+    expect(oc.contexteSession("ses_a").tokens).toBe(2500);
+  });
+
+  it("REQ076_AC5_total_nul_garde_le_precedent", async () => {
+    const { es } = await ouvrir([assistant("m1", T(4000)), assistant("m2", T(0))]);
+    expect(oc.contexteSession("ses_a").tokens).toBe(4000);
+    es.emettre({ type: "session.step.ended", data: { sessionID: "ses_a", assistantMessageID: "m3", tokens: T(0) } });
+    es.emettre({ type: "session.step.ended", data: { sessionID: "ses_a", assistantMessageID: "m3" } });
+    expect(oc.contexteSession("ses_a").tokens).toBe(4000);
+  });
+
+  it("REQ076_cumul_de_session_ignore", async () => {
+    const { es } = await ouvrir([{ ...assistant("m1", T(300)) }]);
+    es.emettre({ type: "session.usage.updated", data: { sessionID: "ses_a", tokens: T(99999) } });
+    expect(oc.contexteSession("ses_a").tokens).toBe(300);
+  });
+
+  it("REQ076_AC6_fenetre_du_choix_en_cours_et_retour_au_refus", async () => {
+    const { f } = await ouvrir([assistant("m1", T(40000))]);
+    expect(oc.contexteSession("ses_a").pourcent).toBe(20);
+    let fin;
+    f.refus = new Promise((r) => (fin = r));
+    const p = oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openai", "gpt-5"), null);
+    expect(oc.contexteSession("ses_a")).toEqual({ tokens: 40000, fenetre: 400000, pourcent: 10 });
+    fin(reponse(503, "x"));
+    await p;
+    expect(oc.contexteSession("ses_a")).toEqual({ tokens: 40000, fenetre: 200000, pourcent: 20 });
+  });
+
+  it("REQ076_AC7_fenetre_inconnue_null_puis_retour", async () => {
+    const f = faux({ modeles: MODELES.map((m) => ({ ...m, limit: undefined })) });
+    await suivre("ses_a");
+    await tick();
+    expect(oc.contexteSession("ses_a")).toBeNull();
+    f.modeles = MODELES;
+    source().emettre({ type: "model.updated", data: {} });
+    await tick();
+    expect(oc.contexteSession("ses_a")).not.toBeNull();
+  });
+
+  it("REQ076_AC7_liste_illisible_null_puis_retour", async () => {
+    const f = faux();
+    await suivre("ses_a");
+    await tick();
+    expect(oc.contexteSession("ses_a")).not.toBeNull();
+    f.statutModeles = 500;
+    source().emettre({ type: "model.updated", data: {} });
+    await tick();
+    expect(oc.choixModele("ses_a").etat).toBe("illisible");
+    expect(oc.choixModele("ses_a").courant).not.toBeNull();
+    expect(oc.contexteSession("ses_a")).toBeNull();
+    f.statutModeles = null;
+    source().emettre({ type: "model.updated", data: {} });
+    await tick();
+    expect(oc.contexteSession("ses_a")).not.toBeNull();
+  });
+
+  it("REQ076_AC7_modele_absent_des_listes_null", async () => {
+    faux({ sessions: { ses_a: { ...SESSION, model: { id: "retire", providerID: "x" } } } });
+    await suivre("ses_a");
+    await tick();
+    expect(oc.choixModele("ses_a").etat).toBe("pret");
+    expect(oc.contexteSession("ses_a")).toBeNull();
+  });
+
+  it("REQ076_AC7_chargement_null", async () => {
+    faux();
+    oc.abonner("ses_a", () => {});
+    expect(oc.choixModele("ses_a").etat).toBe("chargement");
+    expect(oc.contexteSession("ses_a")).toBeNull();
+  });
+
+  it("REQ076_AC8_au_dela_de_100", async () => {
+    await ouvrir([assistant("m1", T(210000))]);
+    expect(oc.contexteSession("ses_a")).toEqual({ tokens: 210000, fenetre: 200000, pourcent: 105 });
   });
 });
