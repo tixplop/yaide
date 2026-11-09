@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { cibles, couper, feuilles, retirerGroupe, valider, zoneVisee } from "./disposition.js";
+import {
+  appliquer,
+  bornesAria,
+  cibles,
+  couper,
+  feuilles,
+  limitesPoignee,
+  minimum,
+  partDe,
+  partDepuis,
+  poserPart,
+  retirerGroupe,
+  valider,
+  zoneVisee,
+} from "./disposition.js";
 
 const f = (id, actif = null) => ({ id, actif });
 const MIN = { largeur: 320, hauteur: 120 };
@@ -127,5 +141,91 @@ describe("disposition", () => {
     let profond = f("x0");
     for (let i = 1; i < 100; i++) profond = { sens: "ligne", a: profond, b: f("x" + i) };
     expect(valider(profond)).toBe(false);
+  });
+
+  const deux = (part) => ({ sens: "ligne", a: f("A"), b: f("B"), ...(part === undefined ? {} : { part }) });
+
+  it("REQ080_AC5_minimum_avec_groupes_emboites", () => {
+    expect(minimum(f("A"), "ligne", MIN)).toBe(320);
+    expect(minimum(f("A"), "colonne", MIN)).toBe(120);
+    expect(minimum(deux(), "ligne", MIN)).toBe(1 + 640);
+    expect(minimum(deux(0.4), "ligne", MIN)).toBe(1 + 800);
+    const croix = { sens: "colonne", a: deux(), b: f("C") };
+    expect(minimum(croix, "ligne", MIN)).toBe(641);
+    expect(minimum(croix, "colonne", MIN)).toBe(1 + 240);
+  });
+
+  it("REQ080_AC6_sans_partage_et_partage_hors_bornes", () => {
+    expect(partDe(deux())).toBe(0.5);
+    for (const p of [0, 1, -1, 2, "x", NaN, null]) {
+      expect(partDe(deux(p))).toBe(0.5);
+      expect(valider(deux(p))).toBe(true);
+    }
+    expect(partDe(deux(0.3))).toBe(0.3);
+    expect(valider(deux(0.3))).toBe(true);
+    expect(valider({ ...deux(), extra: 1 })).toBe(false);
+  });
+
+  it("REQ080_AC7_couper_et_retirer_gardent_le_partage", () => {
+    const arbre = { sens: "ligne", part: 0.3, a: f("A"), b: f("B") };
+    const coupe = couper(arbre, "B", "bas", "C");
+    expect(coupe.part).toBe(0.3);
+    expect(partDe(coupe.b)).toBe(0.5);
+    const triple = { sens: "ligne", part: 0.3, a: f("A"), b: { sens: "colonne", part: 0.7, a: f("B"), b: f("C") } };
+    const sans = retirerGroupe(triple, "C");
+    expect(sans).toEqual({ sens: "ligne", part: 0.3, a: f("A"), b: f("B") });
+    const imbrique = { sens: "colonne", part: 0.6, a: { sens: "ligne", part: 0.2, a: f("A"), b: f("B") }, b: f("C") };
+    const r = retirerGroupe(imbrique, "B");
+    expect(r).toEqual({ sens: "colonne", part: 0.6, a: f("A"), b: f("C") });
+    const r2 = retirerGroupe({ sens: "ligne", part: 0.3, a: f("X"), b: imbrique }, "A");
+    expect(r2.part).toBe(0.3);
+    expect(r2.b.part).toBe(0.6);
+    expect(r2.b.a).toEqual(f("B"));
+  });
+
+  it("poserPart pose le partage de la découpe désignée", () => {
+    const arbre = { sens: "ligne", a: { sens: "colonne", a: f("A"), b: f("B") }, b: f("C") };
+    const r = poserPart(arbre, "B", 0.25);
+    expect(r.part).toBe(0.25);
+    const r2 = poserPart(arbre, "A", 0.25);
+    expect(r2.part).toBeUndefined();
+    expect(r2.a.part).toBe(0.25);
+    expect(arbre.part).toBeUndefined();
+  });
+
+  it("REQ080_AC9_AC18_sans_place", () => {
+    const l = limitesPoignee({ noeud: deux(), S: 460, min: MIN });
+    expect(l).toEqual({ min: 320, max: 139 });
+    for (const valeur of [100, 230, 300, 400]) {
+      expect(bornesAria({ ...l, valeur })).toEqual({ min: valeur, max: valeur, valeur });
+      for (const demande of [0, 200, 450]) expect(appliquer({ demande, valeur, ...l })).toBe(valeur);
+    }
+    expect(bornesAria({ ...l, valeur: 229.6 }).valeur).toBe(230);
+  });
+
+  it("REQ080_AC11_limites_a_900_px", () => {
+    const l = limitesPoignee({ noeud: deux(), S: 900, min: MIN });
+    expect(l).toEqual({ min: 320, max: 579 });
+    expect(bornesAria({ ...l, valeur: 450 })).toEqual({ min: 320, max: 579, valeur: 450 });
+  });
+
+  it("REQ080_AC19_partie_sous_son_minimum", () => {
+    const l = limitesPoignee({ noeud: deux(), S: 800, min: MIN });
+    expect(bornesAria({ ...l, valeur: 240 })).toEqual({ min: 240, max: 479, valeur: 240 });
+    expect(appliquer({ demande: 200, valeur: 240, ...l })).toBe(240);
+    expect(appliquer({ demande: 300, valeur: 240, ...l })).toBe(320);
+    expect(appliquer({ demande: 700, valeur: 240, ...l })).toBe(479);
+  });
+
+  it("REQ080_AC20_limites_a_1500_px", () => {
+    const noeud = { sens: "ligne", a: f("A"), b: { sens: "ligne", part: 0.4, a: f("B"), b: f("C") } };
+    expect(limitesPoignee({ noeud, S: 1500, min: MIN })).toEqual({ min: 320, max: 698 });
+  });
+
+  it("colonne : la partie mesurée est b ; partDepuis", () => {
+    const noeud = { sens: "colonne", a: f("A"), b: f("B") };
+    expect(limitesPoignee({ noeud, S: 500, min: MIN })).toEqual({ min: 120, max: 379 });
+    expect(partDepuis({ taille: 100, S: 501, sens: "ligne" })).toBe(0.2);
+    expect(partDepuis({ taille: 100, S: 501, sens: "colonne" })).toBe(0.8);
   });
 });

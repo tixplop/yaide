@@ -23,7 +23,7 @@ export function couper(arbre, id, zone, nouvelId) {
     }
     const a = remplacer(n.a);
     const b = remplacer(n.b);
-    return a === n.a && b === n.b ? n : { sens: n.sens, a, b };
+    return a === n.a && b === n.b ? n : { ...n, a, b };
   };
   return remplacer(arbre);
 }
@@ -37,7 +37,7 @@ export function retirerGroupe(arbre, id) {
   }
   const a = retirerGroupe(arbre.a, id);
   const b = retirerGroupe(arbre.b, id);
-  return a === arbre.a && b === arbre.b ? arbre : { sens: arbre.sens, a, b };
+  return a === arbre.a && b === arbre.b ? arbre : { ...arbre, a, b };
 }
 
 // min : { largeur, hauteur }. source : le groupe est celui de l'onglet glissé.
@@ -76,10 +76,54 @@ export function valider(valeur) {
       vus.add(n.id);
       return true;
     }
-    if (cles === "a,b,sens") {
+    if (cles === "a,b,sens" || cles === "a,b,part,sens") {
       return (n.sens === "ligne" || n.sens === "colonne") && ok(n.a, profondeur + 1) && ok(n.b, profondeur + 1);
     }
     return false;
   };
   return ok(valeur, 0);
 }
+
+// Partage d'une découpe (REQ-080) : proportion de `a`, 0,5 si absente ou hors de ]0, 1[.
+export const partDe = (n) => (typeof n.part === "number" && n.part > 0 && n.part < 1 ? n.part : 0.5);
+
+// id : le dernier groupe de `a`, qui désigne une seule découpe.
+export function poserPart(arbre, id, part) {
+  if (estFeuille(arbre)) return arbre;
+  if (feuilles(arbre.a).at(-1).id === id) return { ...arbre, part };
+  const a = poserPart(arbre.a, id, part);
+  const b = poserPart(arbre.b, id, part);
+  return a === arbre.a && b === arbre.b ? arbre : { ...arbre, a, b };
+}
+
+// min : { largeur, hauteur }. Taille minimale d'un nœud mesurée dans `sens`.
+export function minimum(n, sens, min) {
+  if (estFeuille(n)) return sens === "ligne" ? min.largeur : min.hauteur;
+  if (n.sens !== sens) return Math.max(minimum(n.a, sens, min), minimum(n.b, sens, min));
+  const part = partDe(n);
+  return 1 + Math.max(minimum(n.a, sens, min) / part, minimum(n.b, sens, min) / (1 - part));
+}
+
+// S : taille du nœud dans son sens. La partie mesurée est `a` en ligne, `b` en colonne.
+export function limitesPoignee({ noeud, S, min }) {
+  const mesuree = noeud.sens === "ligne" ? noeud.a : noeud.b;
+  const autre = noeud.sens === "ligne" ? noeud.b : noeud.a;
+  return {
+    min: Math.ceil(minimum(mesuree, noeud.sens, min)),
+    max: Math.floor(S - 1 - minimum(autre, noeud.sens, min)),
+  };
+}
+
+export function bornesAria({ min, max, valeur }) {
+  const v = Math.round(valeur);
+  if (min > max) return { min: v, max: v, valeur: v };
+  return { min: Math.min(min, v), max: Math.max(max, v), valeur: v };
+}
+
+export function appliquer({ demande, valeur, min, max }) {
+  if (min > max) return valeur;
+  const r = Math.min(Math.max(demande, min), max);
+  return (r - valeur) * (demande - valeur) < 0 ? valeur : r;
+}
+
+export const partDepuis = ({ taille, S, sens }) => (sens === "ligne" ? taille / (S - 1) : 1 - taille / (S - 1));
