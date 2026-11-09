@@ -385,6 +385,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .poignee-groupe.poignee-horizontal::after { top: calc((var(--epaisseur-poignee) - var(--trait)) / 2); margin-top: 0; height: var(--trait); }
 .cadre-decoupe > .poignee-groupe:hover, .cadre-decoupe > .poignee-groupe.poignee-active { background: var(--accent-fg); box-shadow: 0 0 0 var(--trait) var(--bg-000); }
 .cadre-decoupe > .poignee-groupe:focus-visible { background: var(--accent-fg); outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); box-shadow: 0 0 0 var(--trait-fort) var(--bg-000); }
+.onglet-glisse .poignee-groupe { pointer-events: none; }
 .cadre-groupe { position: relative; display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; }
 .cadre-groupe > :not(.ya-depot) { isolation: isolate; }
 /* Glissé d'un onglet : couche de dépôt, guides des zones et aperçu de la cible. */

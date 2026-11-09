@@ -66,6 +66,7 @@ export function depotOnglets({ groupes, deplacer, apresFin }) {
   function creerCouches() {
     if (!glisse) return;
     glisse.trame = null;
+    document.documentElement.classList.add("onglet-glisse");
     const style = getComputedStyle(document.documentElement);
     const min = { largeur: parseFloat(style.getPropertyValue("--largeur-editeur-min")), hauteur: parseFloat(style.getPropertyValue("--hauteur-editeur-min")) };
     for (const g of groupes()) {
@@ -153,6 +154,7 @@ export function depotOnglets({ groupes, deplacer, apresFin }) {
     document.removeEventListener("drop", deposer, true);
     document.removeEventListener("dragend", finir, true);
     if (g.trame !== null) cancelAnimationFrame(g.trame);
+    document.documentElement.classList.remove("onglet-glisse");
     for (const couche of g.couches.keys()) couche.remove();
     g.image.remove();
     apresFin?.();

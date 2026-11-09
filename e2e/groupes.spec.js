@@ -178,8 +178,18 @@ test("REQ079_P049_parcours_deux_fichiers_et_claude", async ({ page }) => {
   expect(await filet("Claude 1")).toMatch(/ 2px /); // le dernier groupe où l'on a tapé est courant
   expect(await filet("Claude 2")).toBe("none");
   expect(await filet(/^main\.rs/)).toBe("none");
-  const separations = await page.locator(".cadre-decoupe > :nth-child(2)").evaluateAll((l) => l.map((e) => getComputedStyle(e)).map((s) => [s.borderLeftWidth, s.borderTopWidth]));
-  expect(separations.map((s) => s.sort().join())).toEqual(["0px,1px", "0px,1px"]);
+  const separations = await page.locator(".cadre-decoupe > .poignee-groupe").evaluateAll((l) => {
+    const sonde = document.createElement("i");
+    sonde.style.background = "var(--line)";
+    document.body.append(sonde);
+    const ligne = getComputedStyle(sonde).backgroundColor;
+    sonde.remove();
+    return l.map((e) => {
+      const s = getComputedStyle(e, "::after");
+      return [e.classList.contains("poignee-vertical") ? s.width : s.height, s.backgroundColor === ligne];
+    });
+  });
+  expect(separations).toEqual([["1px", true], ["1px", true]]);
 
   // AC-079-5 : le dernier onglet d'un groupe se ferme → son voisin prend toute la place.
   await page.getByRole("button", { name: "Fermer Claude 1" }).click();
@@ -189,7 +199,8 @@ test("REQ079_P049_parcours_deux_fichiers_et_claude", async ({ page }) => {
   await page.getByRole("button", { name: "Fermer Claude 2" }).click();
   await page.getByRole("button", { name: /^Fermer README\.md/ }).click();
   await expect(groupes(page)).toHaveCount(1);
-  expect((await groupes(page).boundingBox()).width).toBeCloseTo(gauche.width + droite.width, 0);
+  // Le filet de 1 px entre les deux groupes rejoint la place du survivant (S - 1 pour deux groupes, AC-080-11).
+  expect((await groupes(page).boundingBox()).width).toBeCloseTo(gauche.width + droite.width + 1, 0);
 });
 
 test("REQ079_P050_refus_echap_et_petite_fenetre", async ({ page }) => {
@@ -451,3 +462,182 @@ test("REQ079_AC18_AC20_AC33_rechargement_et_quatre_groupes", async ({ page }) =>
 });
 
 const filetActif = (page, nom) => onglet(page, nom).evaluate((t) => getComputedStyle(t.closest(".onglet-cellule")).boxShadow);
+
+// ---- REQ-080 : changer la taille des groupes ----
+
+const poignee = (page, a, b) => page.getByRole("separator", { name: `Entre les groupes ${a} et ${b}` });
+const partGardee = (page) =>
+  page.evaluate(
+    () =>
+      new Promise((ok) => {
+        const d = indexedDB.open("yaide", 1);
+        d.onsuccess = () => {
+          const r = d.result.transaction("cles").objectStore("cles").get("onglets");
+          r.onsuccess = () => ok(JSON.stringify(r.result?.disposition?.arbre ?? null).match(/"part":[\d.]+/g));
+        };
+      }),
+  );
+/** Glisse une poignée vers (x, y), en passant par `par` (points intermédiaires), sans relâcher. */
+async function tirer(page, sep, x, y, par = []) {
+  const b = await sep.boundingBox();
+  // Une poignée verticale se prend en haut : à mi-hauteur, une poignée horizontale peut la croiser.
+  await page.mouse.move(b.x + b.width / 2, b.width < b.height ? b.y + 100 : b.y + b.height / 2);
+  await page.mouse.down();
+  for (const [px, py] of par) await page.mouse.move(px, py, { steps: 6 });
+  await page.mouse.move(x, y, { steps: 6 });
+}
+
+test("REQ080_P051_parcours_largeur_hauteur_clavier_rechargement", async ({ page }) => {
+  yaide = await lancerYaide({ claude: fauxClaude() });
+  await page.setViewportSize({ width: 1700, height: 1000 });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await ouvrirFichiers(page, "src");
+  await ouvrirFichiers(page, "main.rs", "README.md");
+  await deposer(page, onglet(page, /^README\.md/), groupes(page).first(), "droite");
+  await onglet(page, /^main\.rs/).click();
+  await boutonClaude(page).click();
+  const terminal = groupeDe(page, "Claude 1");
+  await expect(terminal.locator(".claude:visible .xterm-rows")).toContainText("$");
+  await taper(page, terminal, "echo avant");
+  await expect(terminal.locator(".claude:visible .xterm-rows")).toContainText("avant");
+
+  // AC-080-16 : boîte de 4 px, 1 px de place entre les deux groupes.
+  const sep = poignee(page, 1, 2);
+  await expect(sep).toHaveAttribute("aria-orientation", "vertical");
+  const [g1, g2] = await boites(page);
+  expect((await sep.boundingBox()).width).toBe(4);
+  expect(g2.left - g1.right).toBeCloseTo(1, 0);
+  const sttyAvant = await stty(page, terminal);
+
+  // AC-080-1, AC-080-14, AC-080-15 : glissé à la souris au-dessus du terminal ; le focus et le pointeur ne changent pas.
+  await terminal.locator(".xterm-helper-textarea").focus();
+  const t = await terminal.locator(".claude:visible").boundingBox();
+  await tirer(page, sep, g1.right - 250, 500, [[t.x + t.width - 40, 500]]);
+  expect(await page.evaluate(() => document.documentElement.classList.contains("poignee-glisse-vertical"))).toBe(true);
+  expect(await terminal.locator(".claude:visible").evaluate((e) => getComputedStyle(e).cursor)).toBe("col-resize");
+  await page.mouse.up();
+  const [a1, a2] = await boites(page);
+  expect(a1.width).toBeCloseTo(g1.width - 250, -1);
+  expect(Math.abs(a1.width + a2.width - (g1.width + g2.width))).toBeLessThanOrEqual(1);
+  await expect(terminal.locator(".xterm-helper-textarea")).toBeFocused();
+  await page.keyboard.type("echo apres");
+  await page.keyboard.press("Enter");
+  // AC-080-10 : le terminal connaît sa taille, sa session n'est pas relancée.
+  const sttyApres = await stty(page, terminal);
+  expect(Number(sttyApres.split(" ")[1])).toBeLessThan(Number(sttyAvant.split(" ")[1]));
+  await expect(terminal.locator(".claude:visible .xterm-rows")).toContainText("avant");
+  await expect(terminal.locator(".claude:visible .xterm-rows")).toContainText("apres");
+
+  // AC-080-5 : la poignée s'arrête à 320 px de large de chaque côté.
+  await tirer(page, sep, 1690, 500);
+  await page.mouse.up();
+  expect((await boites(page))[1].width).toBeGreaterThanOrEqual(319);
+  await tirer(page, sep, 5, 500);
+  await page.mouse.up();
+  expect((await boites(page))[0].width).toBeGreaterThanOrEqual(319);
+
+  // Deux groupes l'un sur l'autre à droite (README.md en haut, main.rs en bas).
+  await deposer(page, onglet(page, /^main\.rs/), groupeDe(page, /^README\.md/), "bas");
+  await expect(groupes(page)).toHaveCount(3);
+  const [b1, b2, b3] = await boites(page);
+  expect(Math.abs(b2.height - b3.height)).toBeLessThanOrEqual(1);
+  // AC-080-4 : la poignée verticale garde le rapport de hauteur des deux groupes de droite.
+  await tirer(page, sep, b1.right + 150, 500);
+  await page.mouse.up();
+  const [c1, c2, c3] = await boites(page);
+  expect(c1.width).toBeGreaterThan(b1.width + 100);
+  expect(Math.abs(c2.height / c3.height - b2.height / b3.height)).toBeLessThan(0.02);
+  // AC-080-2 et AC-080-4 : la poignée horizontale ne touche pas au groupe de gauche et garde la somme des hauteurs.
+  const hor = poignee(page, 2, 3);
+  await expect(hor).toHaveAttribute("aria-orientation", "horizontal");
+  const h = await hor.boundingBox();
+  await tirer(page, hor, h.x + h.width / 2, h.y - 120);
+  expect(await hor.evaluate((e) => getComputedStyle(e).cursor)).toBe("row-resize");
+  await page.mouse.up();
+  const [d1, d2, d3] = await boites(page);
+  expect(d1).toEqual(c1);
+  expect(d2.height).toBeCloseTo(c2.height - 120, -1);
+  expect(Math.abs(d2.height + d3.height - (c2.height + c3.height))).toBeLessThanOrEqual(1);
+
+  // AC-080-7 : fermer un onglet qui vide un groupe garde le partage des autres découpes.
+  await page.getByRole("button", { name: /^Fermer main\.rs/ }).click();
+  await expect(groupes(page)).toHaveCount(2);
+  const [e1] = await boites(page);
+  expect(Math.abs(e1.width - d1.width)).toBeLessThanOrEqual(1);
+
+  // AC-080-6 : au clavier (16 px), puis après un rechargement, le partage est le même à 1 px près.
+  await sep.focus();
+  await page.keyboard.press("ArrowRight");
+  const [f1, f2] = await boites(page);
+  expect(Math.abs(f1.width - e1.width - 16)).toBeLessThanOrEqual(1);
+  await expect.poll(async () => Math.abs(Number(((await partGardee(page)) ?? [])[0]?.slice(7)) - f1.width / (f1.width + f2.width))).toBeLessThan(0.002);
+  await page.reload();
+  await expect(groupes(page)).toHaveCount(2);
+  await expect.poll(async () => Math.abs((await boites(page))[0].width - f1.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs((await boites(page))[1].width - f2.width)).toBeLessThanOrEqual(1);
+});
+
+test("REQ080_P052_petite_fenetre_sans_place", async ({ page }) => {
+  yaide = await lancerYaide();
+  await page.setViewportSize({ width: 1700, height: 1000 });
+  await ouvrirYaide(page, yaide.origine);
+  await ouvrirFichiers(page, "src");
+  await ouvrirFichiers(page, "main.rs", "README.md");
+  await deposer(page, onglet(page, /^README\.md/), groupes(page).first(), "droite");
+  const sep = poignee(page, 1, 2);
+  await sep.focus();
+  await page.keyboard.press("ArrowRight");
+  const grand = await boites(page);
+  await expect.poll(() => partGardee(page)).not.toBeNull();
+  const avant = await partGardee(page);
+
+  // AC-080-8 : fenêtre rétrécie, les proportions restent ; AC-080-9, AC-080-18 : la place manque.
+  await page.setViewportSize({ width: 800, height: 480 });
+  const petit = await boites(page);
+  expect(Math.abs(petit[0].width / petit[1].width - grand[0].width / grand[1].width)).toBeLessThan(0.1);
+  expect(petit[0].width + petit[1].width).toBeLessThan(640);
+  const gauche = String(Math.round(petit[0].width));
+  for (const attr of ["aria-valuemin", "aria-valuemax", "aria-valuenow"]) await expect.poll(async () => Math.abs(Number(await sep.getAttribute(attr)) - Number(gauche))).toBeLessThanOrEqual(1);
+  expect(await sep.evaluate((e) => getComputedStyle(e).cursor)).toBe("col-resize");
+  await sep.focus();
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowRight");
+  const b = await sep.boundingBox();
+  await tirer(page, sep, b.x + 60, b.y + 100);
+  await page.mouse.up();
+  expect(await boites(page)).toEqual(petit);
+  expect(await partGardee(page)).toEqual(avant);
+
+  // AC-028-9 et AC-028-20 : rien ne déborde ; AC-080-8 : fenêtre rendue, groupes rendus.
+  expect(await page.evaluate(() => ({ h: document.documentElement.scrollHeight, w: document.documentElement.scrollWidth }))).toEqual({ h: 480, w: 800 });
+  await page.setViewportSize({ width: 1700, height: 1000 });
+  await expect.poll(async () => Math.abs((await boites(page))[0].width - grand[0].width)).toBeLessThanOrEqual(1);
+  expect(Math.abs((await boites(page))[1].width - grand[1].width)).toBeLessThanOrEqual(1);
+  expect(await partGardee(page)).toEqual(avant);
+});
+
+test("REQ080_AC1_glisse_au_dessus_d_un_apercu_html", async ({ page }) => {
+  const dossier = depotExemple();
+  fs.writeFileSync(path.join(dossier, "page.html"), "<h1>Bonjour</h1>\n");
+  yaide = await lancerYaide({ dossier });
+  await page.setViewportSize({ width: 1700, height: 1000 });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await ouvrirFichiers(page, "page.html", "README.md");
+  await onglet(page, /^page\.html/).click();
+  await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+  await expect(page.locator("iframe:visible")).toHaveCount(1);
+  await deposer(page, onglet(page, /^README\.md/), groupeDe(page, /^page\.html/), "droite");
+  const [g1, g2] = await boites(page);
+  const sep = poignee(page, 1, 2);
+  const iframe = await page.locator("iframe:visible").boundingBox();
+  // Vers la gauche, au-dessus de l'aperçu : la taille suit ; relâché dessus, le glissé finit.
+  await tirer(page, sep, iframe.x + 100, iframe.y + 200, [[iframe.x + iframe.width - 50, iframe.y + 100]]);
+  await expect.poll(async () => (await boites(page))[0].width).toBeLessThan(g1.width - 100);
+  await page.mouse.up();
+  const [a1, a2] = await boites(page);
+  expect(a1.width).toBeLessThan(g1.width - 100);
+  expect(Math.abs(a1.width + a2.width - (g1.width + g2.width))).toBeLessThanOrEqual(1);
+  expect(await page.evaluate(() => document.documentElement.classList.contains("poignee-glisse-vertical"))).toBe(false);
+  await page.mouse.move(a1.right - 100, 400);
+  expect(await boites(page)).toEqual([a1, a2]);
+});

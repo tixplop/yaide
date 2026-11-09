@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cadre } from "../ui/cadre.js";
 import { vueEditeur } from "./editeur.js";
@@ -272,4 +273,40 @@ test("REQ079_source_disparue", async () => {
   expect(() => evt("drop", couches()[1], AU_MILIEU)).not.toThrow();
   expect(couches()).toEqual([]);
   expect(barres().map(noms)).toEqual([["a.txt"], ["c.txt"]]);
+});
+
+// REQ-080 AC-21 : les poignées sont inertes pendant un glissé d'onglet.
+const classePosee = () => document.documentElement.classList.contains("onglet-glisse");
+test("REQ080_AC21_poignees_inertes_pendant_le_glisse", async () => {
+  const { e } = deux();
+  expect(classePosee()).toBe(false);
+  // Posée au tour suivant le dragstart, jamais pendant.
+  evt("dragstart", onglet("a.txt"));
+  expect(classePosee()).toBe(false);
+  await trame();
+  expect(classePosee()).toBe(true);
+  // Dépôt.
+  evt("dragover", couches()[1], AU_MILIEU);
+  evt("drop", couches()[1], AU_MILIEU);
+  evt("dragend", document.body);
+  expect(classePosee()).toBe(false);
+  // Échap : dragend.
+  await glisser("c.txt");
+  expect(classePosee()).toBe(true);
+  evt("dragend", onglet("c.txt"));
+  expect(classePosee()).toBe(false);
+  // Source disparue.
+  await glisser("b.txt");
+  e.supprime({ chemin: "b.txt" });
+  evt("drop", couches()[0], AU_MILIEU);
+  evt("dragend", document.body);
+  expect(classePosee()).toBe(false);
+  // Fin avant la trame : la classe n'est jamais posée.
+  evt("dragstart", onglet("a.txt") ?? onglet("c.txt"));
+  evt("dragend", document.body);
+  await trame();
+  expect(classePosee()).toBe(false);
+  // La règle CSS.
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  expect(css).toMatch(/\.onglet-glisse \.poignee-groupe\s*\{\s*pointer-events:\s*none;?\s*\}/);
 });

@@ -595,3 +595,54 @@ test("REQ079_AC18_ancien_format", async () => {
   await f.restaurer();
   expect(barres().map(noms)).toEqual([["a.txt", "b.txt", "c.txt", "d.txt"]]);
 });
+
+// REQ-080 : le partage de chaque découpe est gardé avec la disposition.
+const avecPart = { arbre: { sens: "ligne", part: 0.3, a: feuille("g1", "a.txt"), b: { sens: "colonne", part: 0.7, a: feuille("g2", "c.txt"), b: feuille("g3", "d.txt") } }, courant: "g2" };
+function remonterEspion() {
+  let c = null;
+  const vus = [];
+  const e = vueEditeur({ dire: vi.fn(), surGroupes: (arbre, courant) => (vus.push(arbre), c?.definirGroupes(arbre, courant)) });
+  editeurs.push(e);
+  c = cadre({ principal: { groupes: e.groupes() } });
+  document.body.append(c);
+  return { e, vus };
+}
+
+test("REQ080_AC6_le_partage_revient_apres_un_rechargement", async () => {
+  fichiersDu();
+  lire.mockResolvedValueOnce({ liste: gardesTrois, actif: "c.txt", disposition: avecPart });
+  const { e, vus } = remonterEspion();
+  await e.restaurer();
+  expect(vus.at(-1).part).toBe(0.3);
+  expect(vus.at(-1).b.part).toBe(0.7);
+  // Un mouvement (non final) met l'arbre à jour sans écrire ; la fin écrit.
+  ecrire.mockClear();
+  vus.at(-1).surPartage(0.4, false);
+  expect(ecrire).not.toHaveBeenCalled();
+  vus.at(-1).b.surPartage(0.6, true);
+  expect(derniereEcriture().disposition.arbre.part).toBe(0.4);
+  expect(derniereEcriture().disposition.arbre.b.part).toBe(0.6);
+});
+
+test("REQ080_AC6_garde_sans_partage", async () => {
+  fichiersDu();
+  lire.mockResolvedValueOnce({ liste: gardesTrois, actif: "c.txt", disposition });
+  const e = remonter();
+  await e.restaurer();
+  e.detruire();
+  expect(derniereEcriture().disposition.arbre).toEqual(disposition.arbre);
+  expect(Object.keys(derniereEcriture().disposition.arbre)).not.toContain("part");
+});
+
+test("REQ080_AC7_fermer_un_onglet_garde_les_autres_decoupes", async () => {
+  fichiersDu();
+  lire.mockResolvedValueOnce({ liste: gardesTrois, actif: "c.txt", disposition: avecPart });
+  const e = remonter();
+  await e.restaurer();
+  e.supprime({ chemin: "d.txt" }); // g3 disparaît, la découpe de g1 garde son partage
+  e.detruire();
+  const arbre = derniereEcriture().disposition.arbre;
+  expect(arbre.sens).toBe("ligne");
+  expect(arbre.part).toBe(0.3);
+  expect(arbre.b.id).toBe("g2");
+});

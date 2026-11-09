@@ -59,7 +59,7 @@ Le dossier est obligatoire. Le port par défaut est 8443. Ouvrez ensuite `https:
 
 Aucun shell n'est lancé au démarrage : « Nouveau shell » en ouvre un, et porte le nombre de shells ouverts.
 
-Pour diviser l'éditeur, glissez un onglet sur le côté d'un groupe (gauche, droite, haut ou bas) : il s'ouvre dans un nouveau groupe. Déposé au centre ou sur la barre d'onglets d'un autre groupe, il s'y ajoute. Échap annule le glissé.
+Pour diviser l'éditeur, glissez un onglet sur le côté d'un groupe (gauche, droite, haut ou bas) : il s'ouvre dans un nouveau groupe. Déposé au centre ou sur la barre d'onglets d'un autre groupe, il s'y ajoute. Échap annule le glissé. La poignée entre deux groupes change leur taille : glissez-la, ou utilisez les flèches une fois le focus dessus. Le partage est gardé au rechargement.
 
 Messages d'erreur courants : sans mot de passe défini, lancez `yaide passwd` ; si le port est occupé, Yaide prend le suivant libre parmi les 10 suivants et l'affiche ; si tous le sont, choisissez-en un autre avec `--port` ; le dossier doit exister.
 

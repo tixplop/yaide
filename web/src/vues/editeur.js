@@ -1,7 +1,7 @@
 import { ecrireFichier, fermerShell, lireFichier, listeShells, versionsFichiers } from "../api.js";
 import { decider, texteAttente } from "../brouillons.js";
 import { decisionDisque } from "../disque.js";
-import { couper, feuilles, retirerGroupe } from "../disposition.js";
+import { couper, feuilles, poserPart, retirerGroupe } from "../disposition.js";
 import { apresFermeture, estSous, garder, libelles, nomDe, plusPetitNumeroLibre, retrouver, suivreRenommage } from "../onglets-fichiers.js";
 import { bouton } from "../ui/bouton.js";
 import { dialogue } from "../ui/dialogue.js";
@@ -158,7 +158,15 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   /** Arbre des groupes avec les éléments de chacun, pour le cadre. */
   function arbreComplet(n = arbre) {
-    if (n.sens !== undefined) return { sens: n.sens, a: arbreComplet(n.a), b: arbreComplet(n.b) };
+    if (n.sens !== undefined) {
+      const id = feuilles(n.a).at(-1).id;
+      // Le partage change sans refaire la page : l'arbre garde la dernière valeur, l'écriture attend la fin du mouvement.
+      const surPartage = (part, final) => {
+        arbre = poserPart(arbre, id, part);
+        if (final && pret) ecrireGarde();
+      };
+      return { sens: n.sens, ...(n.part === undefined ? {} : { part: n.part }), surPartage, a: arbreComplet(n.a), b: arbreComplet(n.b) };
+    }
     const g = groupes.get(n.id);
     return { id: g.id, ongletsFichiers: g.barre, questionOnglet: g.questionOnglet, fil: g.fil, code: g.code };
   }
@@ -259,7 +267,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     }
     // Le diff n'est jamais gardé : son groupe garde son premier onglet à la place.
     const gardable = (g) => (actifDe(g) === DIFF ? (liste.find((x) => x.groupe === g.id)?.chemin ?? null) : actifDe(g));
-    const avecActifs = (n) => (n.sens === undefined ? { id: n.id, actif: gardable(groupes.get(n.id)) } : { sens: n.sens, a: avecActifs(n.a), b: avecActifs(n.b) });
+    const avecActifs = (n) => (n.sens === undefined ? { id: n.id, actif: gardable(groupes.get(n.id)) } : { sens: n.sens, ...(n.part === undefined ? {} : { part: n.part }), a: avecActifs(n.a), b: avecActifs(n.b) });
     garder(gardes, gardable(groupes.get(courant)), { arbre: avecActifs(arbre), courant });
   }
 
