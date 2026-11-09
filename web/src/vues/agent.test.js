@@ -714,3 +714,139 @@ test("REQ067_AC15_ordre_de_tab_sans_profil", async () => {
   const tabulables = [...vue.corps.querySelectorAll("button, textarea, select, a[href], [tabindex='0']")].map(nom);
   expect(tabulables).toEqual(["Nouvelle conversation", "Conversations", "Conversation", "Message à l'agent", "Arrêter", "Envoyer"]);
 });
+
+// ---- Dans un onglet de l'éditeur (REQ-078) ----
+
+/** Une vue d'onglet : réglages et liste lus à la création, rien dans le stockage. */
+async function monterOnglet({ profils = [SONNET, RAPIDE], lectures = [], conversations = [], envoi = { conversation: "c1" }, ...options } = {}) {
+  const api = {
+    reglagesAgent: vi.fn(async () => ({ providers: [], profils, erreur: null })),
+    listeConversations: vi.fn(async () => conversations),
+    envoyerMessage: vi.fn(async () => envoi),
+    lireConversation: vi.fn(async () => lectures.shift() ?? { entrees: [], enCours: false, total: 0, tokens: 0 }),
+    arreterConversation: vi.fn(async () => ({})),
+  };
+  const surConversation = vi.fn();
+  const vue = vueAgent({ api, ouvrirProfils: vi.fn(), surConversation, ...options });
+  vues.push(vue);
+  document.body.append(vue.corps);
+  await vi.advanceTimersByTimeAsync(0);
+  return { vue, api, surConversation };
+}
+
+test("REQ078_AC1_vue_vide_sans_conversation_chargee_ni_stockage", async () => {
+  const { vue, api, surConversation } = await monterOnglet({ conversations: CONVS() });
+  expect(api.lireConversation).not.toHaveBeenCalled();
+  expect(vue.corps.querySelector("select").value).toBe("sonnet");
+  expect(vue.corps.querySelector("[aria-label=Conversations]").disabled).toBe(false);
+  expect(surConversation).not.toHaveBeenCalled();
+  expect(lire).not.toHaveBeenCalled();
+});
+
+test("REQ078_AC2_premier_message_dit_la_conversation", async () => {
+  const { vue, surConversation } = await monterOnglet({ lectures: [{ entrees: [], enCours: true, total: 1, tokens: 0 }] });
+  taper(vue, "bonjour");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(surConversation).toHaveBeenCalledTimes(1);
+  expect(surConversation).toHaveBeenCalledWith("c1");
+  expect(ecrire).not.toHaveBeenCalled();
+  vue.corps.querySelector("[aria-label='Nouvelle conversation']").click();
+  expect(surConversation).toHaveBeenLastCalledWith(null);
+  expect(ecrire).not.toHaveBeenCalled();
+});
+
+test("REQ078_AC6_conversation_chargee_a_la_creation_sans_la_redire", async () => {
+  const { vue, api, surConversation } = await monterOnglet({
+    conversation: "c9",
+    lectures: [{ titre: "Reprise", profil: "p2", entrees: [{ type: "utilisateur", texte: "avant" }], enCours: false, total: 1, tokens: 5 }],
+  });
+  expect(api.lireConversation).toHaveBeenCalledWith("c9", 0);
+  expect(fil(vue).textContent).toContain("avant");
+  expect(vue.corps.querySelector(".agent-titre").textContent).toBe("Reprise");
+  expect(vue.corps.querySelector("select").value).toBe("rapide");
+  expect(surConversation).not.toHaveBeenCalled();
+  expect(ecrire).not.toHaveBeenCalled();
+});
+
+test("REQ078_AC6_conversation_disparue_onglet_vide", async () => {
+  const { vue, surConversation } = await monterOnglet({ conversation: "perdue", lectures: [{ introuvable: true }] });
+  expect(surConversation).toHaveBeenCalledWith(null);
+  expect(vue.corps.querySelector(".agent-titre").textContent).toBe("Nouvelle conversation");
+});
+
+test("REQ078_AC6_coupure_au_retour_reessaie", async () => {
+  const { vue, api, surConversation } = await monterOnglet({ conversation: "c9", lectures: [{ coupure: true }, { titre: "Là", entrees: [], enCours: false, total: 0, tokens: 0 }] });
+  expect(vue.corps.querySelector(".agent-titre").textContent).toBe("Nouvelle conversation");
+  await tick(1500);
+  expect(api.lireConversation).toHaveBeenCalledTimes(2);
+  expect(vue.corps.querySelector(".agent-titre").textContent).toBe("Là");
+  expect(surConversation).not.toHaveBeenCalled();
+});
+
+test("REQ078_AC6_equipe_d_une_conversation_vide", async () => {
+  const equipe = [{ dossier: "a", nom: "Alice", couleur: "violet" }];
+  const { vue, api } = await monterOnglet({ equipe });
+  expect(vue.corps.querySelector(".ya-agents").hidden).toBe(false);
+  expect(vue.corps.querySelector(".ya-agents").textContent).toContain("Alice");
+  expect(vue.corps.querySelector("select")).toBeNull();
+  taper(vue, "salut");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(api.envoyerMessage).toHaveBeenCalledWith({ agents: ["a"], texte: "salut" });
+});
+
+test("REQ078_AC5_menu_conversation_deja_ouverte_ne_charge_rien", async () => {
+  const surDejaOuverte = vi.fn((id) => id === "a");
+  const { vue, api, surConversation } = await monterOnglet({
+    conversations: CONVS(),
+    surDejaOuverte,
+    lectures: [{ titre: "Le test parse_args", entrees: [{ type: "utilisateur", texte: "contenu de b" }], enCours: false, total: 1, tokens: 0 }],
+  });
+  const ouvrirMenu = async () => {
+    vue.corps.querySelector("[aria-label=Conversations]").click();
+    await tick(0);
+    return [...document.querySelectorAll("[role=menuitem]")];
+  };
+  let lignes = await ouvrirMenu();
+  touche(lignes[0], "Enter");
+  await tick(0);
+  expect(surDejaOuverte).toHaveBeenCalledWith("a");
+  expect(api.lireConversation).not.toHaveBeenCalled();
+  expect(fil(vue).textContent).toContain("Écrivez un message pour commencer.");
+  // Une conversation dans aucun onglet s'affiche ici.
+  lignes = await ouvrirMenu();
+  touche(lignes[0], "ArrowDown");
+  touche(lignes[1], "Enter");
+  await tick(0);
+  expect(api.lireConversation).toHaveBeenCalledWith("b", 0);
+  expect(fil(vue).textContent).toContain("contenu de b");
+  expect(surConversation).toHaveBeenCalledWith("b");
+  expect(document.activeElement).toBe(champ(vue));
+});
+
+test("REQ078_AC6_coupure_puis_envoi_la_nouvelle_tentative_n_ecrase_rien", async () => {
+  const { vue, api } = await monterOnglet({ conversation: "c9", lectures: [{ coupure: true }, { entrees: [], enCours: true, total: 1, tokens: 0 }] });
+  expect(api.lireConversation).toHaveBeenCalledTimes(1);
+  taper(vue, "salut");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  const avant = api.lireConversation.mock.calls.filter(([id]) => id === "c9").length;
+  await tick(1500);
+  expect(api.lireConversation.mock.calls.filter(([id]) => id === "c9")).toHaveLength(avant);
+  expect(fil(vue).textContent).toContain("salut");
+});
+
+test("REQ078_AC22_choisir_la_conversation_de_l_onglet_ne_change_rien", async () => {
+  const surDejaOuverte = vi.fn(() => false);
+  const { vue, api, surConversation } = await monterOnglet({ conversation: "a", conversations: CONVS(), surDejaOuverte, lectures: [{ titre: "A", entrees: [], enCours: false, total: 0, tokens: 0 }] });
+  champ(vue).blur();
+  vue.corps.querySelector("[aria-label=Conversations]").click();
+  await tick(0);
+  touche(document.querySelectorAll("[role=menuitem]")[0], "Enter");
+  await tick(0);
+  expect(api.lireConversation).toHaveBeenCalledTimes(1);
+  expect(surDejaOuverte).not.toHaveBeenCalled();
+  expect(surConversation).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(champ(vue));
+});

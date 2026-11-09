@@ -74,9 +74,12 @@ export function saisieMessage({ libelle, surEnvoi }) {
 
 /**
  * V-007. `api` : `reglagesAgent`, `envoyerMessage`, `lireConversation`, `arreterConversation`, `listeConversations`.
+ * Dans un onglet de l'éditeur (REQ-078), `surConversation` est donnée : `conversation` (id à charger à la création) ou `equipe`
+ * (agents d'une conversation vide) disent d'où part la vue, `surConversation(id | null)` est appelée à chaque changement de conversation
+ * (rien n'est gardé ici), et `surDejaOuverte(id)` rend vrai si un autre onglet affiche `id` et vient d'être activé : le menu ne charge alors rien.
  * Rend `{ corps, deplier(), focuser(), relireReglages(), demarrerAvec(agents), detruire() }`.
  */
-export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } = {}) {
+export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, conversation: conversationGardee, equipe: agentsInitiaux, surConversation, surDejaOuverte } = {}) {
   const corps = document.createElement("div");
   corps.className = "agent-corps";
 
@@ -98,6 +101,10 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
   let equipe = null; // agents de la conversation (copie du serveur), ou null sans agent personnalisé
   let actif = null; // dossier de l'agent dont c'est le tour
   let dernierDossier = null; // dernier agent qui a répondu
+
+  let retour = null; // nouvelle tentative d'ouverture de la conversation gardée, après une coupure
+  /** Dans un onglet, le changement de conversation est dit à l'éditeur ; sinon il est gardé ici. */
+  const garderConversation = (id) => (surConversation ? surConversation(id) : ecrire("agent", { conversation: id }));
 
   const profils = () => reglages?.profils ?? [];
   const defaut = () => profils().find((p) => p.defaut) ?? profils()[0];
@@ -328,7 +335,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     if (convId !== r.conversation) {
       convId = r.conversation;
       generation++;
-      ecrire("agent", { conversation: convId });
+      garderConversation(convId);
     }
     liste.disabled = false;
     entrees = [...entrees, { type: "utilisateur", texte }];
@@ -352,14 +359,19 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     relire(gen);
   });
 
-  /** Ouvre une conversation enregistrée, en bas du fil, avec son profil. Vrai si elle est affichée. */
-  async function charger(id) {
+  /**
+   * Ouvre une conversation enregistrée, en bas du fil, avec son profil. Rend `true` si elle est affichée, sinon
+   * `"introuvable"`, `"coupure"` ou `"obsolete"` (la vue a changé de conversation entre-temps ou a été détruite).
+   * `garder` : faux pour la conversation que l'éditeur connaît déjà.
+   */
+  async function charger(id, garder = true) {
     const jeton = ++chargements;
     const r = await api.lireConversation(id, 0);
-    if (detruite || jeton !== chargements) return false;
+    if (detruite || jeton !== chargements) return "obsolete";
     if (!Array.isArray(r?.entrees)) {
-      if (r?.introuvable) ecrire("agent", { conversation: null });
-      return false;
+      if (!r?.introuvable) return "coupure";
+      if (!surConversation) ecrire("agent", { conversation: null });
+      return "introuvable";
     }
     generation++;
     clearTimeout(minuteur);
@@ -376,9 +388,18 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     dessinerProfils();
     remplacerFil();
     afficher();
-    ecrire("agent", { conversation: id });
+    if (garder) garderConversation(id);
     if (enCours) planifier(generation);
     return true;
+  }
+
+  /** Conversation gardée par l'éditeur : réessayée tant que le serveur ne répond pas, l'onglet vidé si elle a disparu. */
+  async function ouvrirGardee(id) {
+    if (convId) return;
+    const r = await charger(id, false);
+    if (detruite || r === true || r === "obsolete" || convId) return;
+    if (r === "introuvable") return surConversation(null);
+    retour = setTimeout(() => ouvrirGardee(id), 1500);
   }
 
   async function restaurer() {
@@ -406,7 +427,11 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
         l.map((c) => ({
           libelle: c.titre || "Nouvelle conversation",
           touche: quand(c.maj),
-          surChoix: () => charger(c.id).then((ok) => ok && focuser()),
+          surChoix: () => {
+            if (surConversation && c.id === convId) return focuser();
+            if (surDejaOuverte?.(c.id)) return;
+            charger(c.id).then((ok) => ok === true && focuser());
+          },
         })),
       ],
       surFermeture: () => {},
@@ -416,10 +441,11 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     generation++;
     chargements++;
     clearTimeout(minuteur);
+    clearTimeout(retour);
     convId = null;
     effacerRefus();
     remplacerFil();
-    ecrire("agent", { conversation: null });
+    garderConversation(null);
     titre = null;
     tokens = 0;
     entrees = [];
@@ -435,6 +461,11 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
 
   majVide();
   afficher();
+  if (surConversation) {
+    if (!conversationGardee) fixerEquipe(agentsInitiaux);
+    majListe();
+    relireReglages().then(() => conversationGardee && ouvrirGardee(conversationGardee));
+  }
 
   return {
     corps,
@@ -456,6 +487,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel } 
     detruire() {
       detruite = true;
       clearTimeout(minuteur);
+      clearTimeout(retour);
     },
   };
 }

@@ -5,7 +5,7 @@ import { lire } from "../stockage.js";
 import { nomLangage } from "../ui/langages.js";
 
 // Faux vueClaude : un corps avec un champ de saisie, et le journal des appels dans l'ordre.
-const faux = vi.hoisted(() => ({ vues: [], oc: [], journal: [] }));
+const faux = vi.hoisted(() => ({ vues: [], oc: [], ag: [], journal: [] }));
 vi.mock("./claude.js", () => ({
   vueClaude: (opts) => {
     const corps = document.createElement("div");
@@ -38,6 +38,25 @@ vi.mock("./opencode.js", () => ({
     };
     faux.oc.push(v);
     if (faux.marqueAuDepart) opts.surQuestion?.(true); // une demande attend déjà à la création de la vue
+    return v;
+  },
+}));
+// Faux vueAgent : un corps avec le champ « Message à l'agent », et les options reçues.
+vi.mock("./agent.js", () => ({
+  vueAgent: (opts) => {
+    const corps = document.createElement("div");
+    const champ = document.createElement("textarea");
+    corps.append(champ);
+    const v = {
+      ...opts,
+      corps,
+      champ,
+      focuser: vi.fn(() => champ.focus()),
+      majListe: vi.fn(),
+      relireReglages: vi.fn(),
+      detruire: vi.fn(() => faux.journal.push("detruire agent")),
+    };
+    faux.ag.push(v);
     return v;
   },
 }));
@@ -1020,4 +1039,247 @@ test("REQ018_onglet_claude_cache_garde_sa_place_apres_un_onglet_opencode", async
   await vi.waitFor(() => expect(ecrire).toHaveBeenCalled());
   const [, valeur] = ecrire.mock.calls.at(-1);
   expect(valeur.liste.map((g) => g.chemin ?? g.id)).toEqual(["a.txt", "x", "c", "b.txt", "z"]);
+});
+
+// ---- Onglets Agent (REQ-078) ----
+
+const agGarde = (numero, conversation = null) => ({ conversationAgent: true, numero, conversation });
+function monterAg(options = {}, restaurer = false) {
+  faux.ag.length = 0;
+  faux.oc.length = 0;
+  return monterClaude(options, restaurer);
+}
+async function derniereGarde() {
+  const { ecrire } = await import("../stockage.js");
+  await vi.waitFor(() => expect(ecrire).toHaveBeenCalled());
+  return ecrire.mock.calls.at(-1)[1];
+}
+
+test("REQ078_AC2_onglet_vide_rien_enregistre", async () => {
+  gardes([], null);
+  const { e } = monterAg({}, true);
+  await e.restaurer();
+  const { ecrire } = await import("../stockage.js");
+  ecrire.mockClear();
+  e.ouvrirAgent({ equipe: [{ dossier: "a", nom: "A" }] });
+  expect(faux.ag[0].equipe).toEqual([{ dossier: "a", nom: "A" }]);
+  expect(faux.ag[0].conversation).toBeUndefined();
+  const g = await derniereGarde();
+  expect(g.liste).toEqual([{ conversationAgent: true, numero: 1, conversation: null }]);
+  expect(g.actif).toBe("\0agent:1");
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test("REQ078_AC5_conversation_deja_ouverte_active_son_onglet", () => {
+  const { e } = monterAg();
+  e.ouvrirAgent();
+  e.ouvrirAgent();
+  faux.ag[0].surConversation("c1");
+  expect(actifNom()).toBe("Agent 2");
+  expect(faux.ag[1].surDejaOuverte("c1")).toBe(true);
+  expect(actifNom()).toBe("Agent 1");
+  expect(document.activeElement).toBe(faux.ag[0].champ);
+  expect(faux.ag[1].surDejaOuverte("autre")).toBe(false);
+  expect(actifNom()).toBe("Agent 1");
+  expect(nomsOnglets()).toEqual(["Agent 1", "Agent 2"]);
+});
+
+test("REQ078_AC5_autre_conversation_dans_l_onglet_courant", async () => {
+  gardes([], null);
+  const { e } = monterAg({}, true);
+  await e.restaurer();
+  const { ecrire } = await import("../stockage.js");
+  ecrire.mockClear();
+  e.ouvrirAgent();
+  e.ouvrirAgent();
+  faux.ag[0].surConversation("c1");
+  faux.ag[1].surConversation("c2");
+  const g = await derniereGarde();
+  expect(g.liste).toEqual([agGarde(1, "c1"), agGarde(2, "c2")]);
+  expect(actifNom()).toBe("Agent 2");
+});
+
+test("REQ078_AC6_retour_avec_conversation_et_vide", async () => {
+  gardes([agGarde(1, "c1"), agGarde(2)], "\0agent:2");
+  const { e } = monterAg({}, true);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["Agent 1", "Agent 2"]);
+  expect(actifNom()).toBe("Agent 2");
+  expect(faux.ag[0].conversation).toBe("c1");
+  expect(faux.ag[0].equipe).toBeUndefined();
+  expect(faux.ag[1].conversation).toBeUndefined();
+  expect(faux.ag[1].equipe).toBeUndefined();
+  expect(document.activeElement).toBe(faux.ag[1].champ);
+});
+
+test("REQ078_AC6_conversation_disparue_onglet_vide", async () => {
+  gardes([agGarde(1, "c1")], "\0agent:1");
+  const { e } = monterAg({}, true);
+  await e.restaurer();
+  const { ecrire } = await import("../stockage.js");
+  ecrire.mockClear();
+  faux.ag[0].surConversation(null);
+  const g = await derniereGarde();
+  expect(g.liste).toEqual([agGarde(1, null)]);
+  expect(nomsOnglets()).toEqual(["Agent 1"]);
+});
+
+test("REQ078_AC7_fermer_sans_question_ni_requete", async () => {
+  const { e } = monterAg();
+  e.ouvrirAgent();
+  e.ouvrirAgent();
+  e.ouvrirAgent();
+  faux.ag[0].surConversation("c1");
+  fetch.mockClear();
+  croix("Agent 1").click();
+  expect(nomsOnglets()).toEqual(["Agent 2", "Agent 3"]);
+  expect(faux.ag[0].detruire).toHaveBeenCalled();
+  e.definirEtat("coupe");
+  croix("Agent 2").click();
+  expect(nomsOnglets()).toEqual(["Agent 3"]);
+  expect(dialogueOuvert()).toBeNull();
+  clicDroit(onglet("Agent 3"));
+  choisirCommande("Fermer tous les onglets");
+  await vi.waitFor(() => expect(nomsOnglets()).toEqual([]));
+  expect(fetch).not.toHaveBeenCalled();
+  expect(faux.journal.filter((j) => j.startsWith("fermer"))).toEqual([]);
+});
+
+test("REQ078_AC8_profils_relus_dans_tous_les_onglets", () => {
+  const { e } = monterAg();
+  e.ouvrirAgent();
+  e.ouvrirAgent();
+  e.relireReglagesAgents();
+  expect(faux.ag[0].relireReglages).toHaveBeenCalledTimes(1);
+  expect(faux.ag[1].relireReglages).toHaveBeenCalledTimes(1);
+});
+
+test("REQ078_AC9_onglet_cache_revient_a_sa_place", async () => {
+  gardes([fichierGarde("a.txt"), agGarde(1, "c1"), fichierGarde("b.txt")], "a.txt");
+  const { e } = monterAg({ agents: false }, true);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["a.txt", "b.txt"]);
+  expect(faux.ag).toHaveLength(0);
+  const { ecrire } = await import("../stockage.js");
+  ecrire.mockClear();
+  e.ouvrir({ chemin: "z.txt", contenu: "x", version: "1" });
+  const g = await derniereGarde();
+  expect(g.liste.map((x) => x.chemin ?? x.numero)).toEqual(["a.txt", 1, "b.txt", "z.txt"]);
+  expect(g.liste[1]).toEqual(agGarde(1, "c1"));
+});
+
+test("REQ078_AC9_onglet_affiche_compte_comme_precedent", async () => {
+  gardes([agGarde(1, "c1"), claudeGarde("c", 1), fichierGarde("b.txt")], "b.txt");
+  const { e } = monterAg({ claude: false }, true);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["Agent 1", "b.txt"]);
+  const { ecrire } = await import("../stockage.js");
+  ecrire.mockClear();
+  e.ouvrirAgent();
+  const g = await derniereGarde();
+  expect(g.liste.map((x) => x.chemin ?? x.id ?? `agent${x.numero}`)).toEqual(["agent1", "c", "b.txt", "agent2"]);
+});
+
+test("REQ078_AC9_onglet_cache_apres_un_onglet_claude_affiche_reste_apres_lui", async () => {
+  gardes([claudeGarde("c", 1), agGarde(1, "c1"), fichierGarde("b.txt")], "b.txt");
+  const { e } = monterAg({ agents: false }, true);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["Claude 1", "b.txt"]);
+  const { ecrire } = await import("../stockage.js");
+  ecrire.mockClear();
+  e.ouvrir({ chemin: "z.txt", contenu: "x", version: "1" });
+  const g = await derniereGarde();
+  expect(g.liste.map((x) => x.chemin ?? x.id ?? `agent${x.numero}`)).toEqual(["c", "agent1", "b.txt", "z.txt"]);
+});
+
+test("REQ078_AC20_focus_apres_fermeture_d_un_onglet_agent", () => {
+  const { e } = monterAg();
+  e.ouvrirAgent();
+  e.ouvrirAgent();
+  // Croix d'un onglet inactif : rien ne change.
+  const actifAvant = document.activeElement;
+  croix("Agent 1").click();
+  expect(actifNom()).toBe("Agent 2");
+  expect(document.activeElement).toBe(actifAvant);
+  e.ouvrirAgent();
+  expect(nomsOnglets()).toEqual(["Agent 2", "Agent 1"]);
+  // Suppr sur l'onglet actif, le dernier : l'avant-dernier devient actif, le focus dans son champ.
+  onglet("Agent 1").focus();
+  touche(onglet("Agent 1"), "Delete");
+  expect(actifNom()).toBe("Agent 2");
+  expect(document.activeElement).toBe(faux.ag[1].champ);
+  // Dernier onglet fermé.
+  onglet("Agent 2").focus();
+  touche(onglet("Agent 2"), "Delete");
+  expect(nomsOnglets()).toEqual([]);
+  expect(document.activeElement.textContent).toBe("Ouvrir un fichier");
+});
+
+test("REQ078_AC11_noms_et_plus_petit_numero_libre", () => {
+  const { e } = monterAg();
+  e.ouvrir({ chemin: "src/main.rs", contenu: "x", version: "1" });
+  e.ouvrirAgent();
+  e.ouvrirAgent();
+  e.ouvrirAgent();
+  expect(nomsOnglets()).toEqual(["main.rs", "Agent 1", "Agent 2", "Agent 3"]);
+  const t = onglet("Agent 1");
+  expect(t.title).toBe("Agent dans ~/code/projet");
+  expect(t.getAttribute("aria-label")).toBe("Agent 1");
+  expect(t.querySelector("svg[data-icone=bot]")).not.toBeNull();
+  expect(t.querySelector(".onglet-statut-M, .onglet-modifie")).toBeNull();
+  expect(croix("Agent 1")).not.toBeNull();
+  const region = faux.ag[0].corps;
+  expect(region.getAttribute("role")).toBe("region");
+  expect(region.getAttribute("aria-label")).toBe("Agent 1");
+  croix("Agent 1").click();
+  e.ouvrirAgent();
+  expect(nomsOnglets()).toEqual(["main.rs", "Agent 2", "Agent 3", "Agent 1"]);
+  expect(actifNom()).toBe("Agent 1");
+});
+
+test("REQ078_AC12_ni_fil_ni_hybride_ni_apercu", () => {
+  const { e, surActif, surCourant } = monterAg();
+  e.ouvrir({ chemin: "notes.md", contenu: "# x", version: "1" });
+  expect(document.querySelector("[aria-label='Aperçu']")).not.toBeNull();
+  e.ouvrirAgent();
+  expect(e.fil.hidden).toBe(true);
+  expect(document.querySelector("[aria-label='Mode hybride']")).toBeNull();
+  expect(document.querySelector("[aria-label='Aperçu']")).toBeNull();
+  expect(dernier(surActif)).toEqual({});
+  expect(dernier(surCourant)).toBeNull();
+});
+
+test("REQ078_AC14_focus_rechargement_et_clic", async () => {
+  gardes([agGarde(1, "c1"), agGarde(2)], "\0agent:1");
+  const { e } = monterAg({}, true);
+  await e.restaurer();
+  expect(document.activeElement).toBe(faux.ag[0].champ);
+  onglet("Agent 2").click();
+  expect(document.activeElement).toBe(faux.ag[1].champ);
+  onglet("Agent 1").click();
+  expect(document.activeElement).toBe(faux.ag[0].champ);
+});
+
+test("REQ078_liste_conversations_relue_au_retour_sur_l_onglet", () => {
+  const { e } = monterAg();
+  e.ouvrirAgent();
+  e.ouvrirAgent();
+  faux.ag[0].majListe.mockClear();
+  onglet("Agent 1").click();
+  expect(faux.ag[0].majListe).toHaveBeenCalledTimes(1);
+  expect(faux.ag[0].majListe.mock.invocationCallOrder[0]).toBeLessThan(faux.ag[0].focuser.mock.invocationCallOrder.at(-1));
+  expect(faux.ag[1].majListe).toHaveBeenCalledTimes(1); // à son ouverture
+});
+
+test("REQ078_sous_agent_opencode_reste_un_onglet_opencode", async () => {
+  gardes([ocGarde("s", 1), saGarde("sa", "explore", "Chercher"), agGarde(1)], "\0oc:sa");
+  const { e } = monterAg({}, true);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["opencode 1", "explore", "Agent 1"]);
+  expect(faux.oc).toHaveLength(2);
+  expect(faux.ag).toHaveLength(1);
+  expect(onglet("explore").getAttribute("aria-label")).toBe("explore, sous-agent : Chercher");
+  e.ouvrirAgent();
+  const g = await derniereGarde();
+  expect(g.liste).toEqual([ocGarde("s", 1), saGarde("sa", "explore", "Chercher"), agGarde(1), agGarde(2)]);
 });
