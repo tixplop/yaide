@@ -519,3 +519,31 @@ test("REQ077_AC12_AC22_contrastes_des_reponses_sur_bg_200_et_bg_100", () => {
     });
   });
 });
+
+// REQ-079 : guides et aperçu de dépôt d'un onglet (design-system.md, « Guides et aperçu de dépôt d'un onglet »).
+test("REQ079_contrastes_des_guides_et_de_l_apercu_de_depot_dans_les_deux_themes", () => {
+  THEMES.forEach((theme, k) => {
+    const exact = (nom, fond, attendu, seuil = 3) => {
+      const r = ratio(theme, nom, fond);
+      expect(r, `${nom} sur ${fond} (${theme})`).toBe(attendu);
+      expect(r).toBeGreaterThanOrEqual(seuil);
+    };
+    const melange = (nom, sous, attendu, seuil) => {
+      const r = ratio(theme, nom, "--accent-soft", sous);
+      egalA(r, attendu, `${nom} sur --accent-soft/${sous} (${theme})`);
+      expect(r).toBeGreaterThanOrEqual(seuil);
+    };
+    exact("--accent-fg", "--bg-300", [5.7, 6.3][k]);
+    exact("--accent-fg", "--bg-200", [6.6, 6.3][k]);
+    exact("--accent-fg", "--bg-000", [7.1, 5.5][k]);
+    // Sur la page blanche d'un aperçu HTML, le bleu sombre seul n'atteint pas 3 : le filet intérieur --bg-000 prend le relais.
+    expect(ratio(theme, "--accent-fg", "--apercu-page")).toBe([2.4, 6.3][k]);
+    if (k === 0) exact("--bg-000", "--apercu-page", 17.7);
+    melange("--ink", "--bg-200", [8.3, 13.7][k], 4.5);
+    melange("--ink", "--bg-000", [9, 12.1][k], 4.5);
+    melange("--ink-muted", "--bg-200", [5.1, 5.5][k], 4.5);
+    melange("--ink-muted", "--bg-100", [5.3, 5.2][k], 4.5);
+    melange("--accent-fg", "--bg-200", [5.4, 5.2][k], 3);
+    melange("--accent-fg", "--bg-000", [5.8, 4.6][k], 3);
+  });
+});

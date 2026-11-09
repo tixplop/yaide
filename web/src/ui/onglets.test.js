@@ -485,3 +485,69 @@ test("REQ078_AC11_onglet_agent_icone_bot_croix_sans_statut", () => {
   croix.click();
   expect(surFermer).toHaveBeenLastCalledWith("ag-1", "croix");
 });
+
+const barreFichiers = (extra = {}) =>
+  onglets({
+    presentation: "fichiers",
+    actif: "a",
+    onglets: [
+      { id: "a", libelle: "a.rs", fermable: true },
+      { id: "b", libelle: "b.rs", fermable: true },
+    ],
+    ...extra,
+  });
+
+test("REQ079_AC15_croix_ne_glisse_pas", () => {
+  const surGlisser = vi.fn();
+  const r = barreFichiers({ surGlisser });
+  document.body.append(r);
+  const croix = r.querySelector(".onglet-fermer");
+  const ev = new Event("dragstart", { bubbles: true, cancelable: true });
+  croix.dispatchEvent(ev);
+  expect(ev.defaultPrevented).toBe(true);
+  expect(surGlisser).not.toHaveBeenCalled();
+  const ev2 = new Event("dragstart", { bubbles: true, cancelable: true });
+  tab(r, 1).dispatchEvent(ev2);
+  expect(surGlisser).toHaveBeenCalledWith("b", ev2);
+  expect(ev2.defaultPrevented).toBe(false);
+  r.remove();
+});
+
+test("REQ079_AC17_onglet_de_shell_non_glissable", () => {
+  const liste = [{ id: "a", libelle: "a" }];
+  const surGlisser = vi.fn();
+  expect(barreFichiers({ surGlisser }).querySelector('[role="tab"]').draggable).toBe(true);
+  expect(barreFichiers().querySelector('[role="tab"]').draggable).toBe(false);
+  for (const presentation of ["shells", "rail"]) {
+    const r = onglets({ presentation, onglets: liste, actif: "a", surGlisser });
+    expect(r.querySelector('[draggable="true"]')).toBeNull();
+    tab(r, 0).dispatchEvent(new Event("dragstart", { bubbles: true }));
+    expect(surGlisser).not.toHaveBeenCalled();
+  }
+});
+
+test("REQ079_AC26_filet_du_seul_groupe_courant", () => {
+  expect(regle('.ya-tabs .onglet-cellule:has(> .onglet[aria-selected="true"])')).toContain("inset 0 var(--trait-fort) 0 var(--accent-fg)");
+  const autre = regle('.ya-tabs[data-courant="false"] .onglet-cellule:has(> .onglet[aria-selected="true"])');
+  expect(autre).toContain("box-shadow: none");
+  expect(autre).not.toContain("background");
+  const r = barreFichiers();
+  document.body.append(r);
+  expect(r.dataset.courant).toBeUndefined();
+  tab(r, 1).focus();
+  const t = tab(r, 1);
+  r.definirCourant(false);
+  expect(r.dataset.courant).toBe("false");
+  expect(tab(r, 1)).toBe(t);
+  expect(document.activeElement).toBe(t);
+  r.definirCourant(true);
+  expect(r.dataset.courant).toBeUndefined();
+  expect(barreFichiers({ courant: false }).dataset.courant).toBe("false");
+  r.remove();
+});
+
+test("REQ079_AC27_nom_de_la_barre", () => {
+  expect(barreFichiers({ nomBarre: "Fichiers ouverts, groupe 2" }).getAttribute("aria-label")).toBe("Fichiers ouverts, groupe 2");
+  expect(barreFichiers({ nomBarre: "Fichiers ouverts" }).getAttribute("aria-label")).toBe("Fichiers ouverts");
+  expect(barreFichiers().hasAttribute("aria-label")).toBe(false);
+});

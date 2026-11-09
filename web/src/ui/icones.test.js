@@ -168,3 +168,15 @@ test("code_xml_et_circle_minus_uniques", () => {
     expect(NOMS.filter((n) => n !== nom).map((n) => icone(n).innerHTML)).not.toContain(s.innerHTML);
   }
 });
+
+test("zones_de_depot_cinq_icones_uniques", () => {
+  const zones = ["zone-gauche", "zone-droite", "zone-haut", "zone-bas", "zone-centre"];
+  for (const n of zones) {
+    expect(NOMS).toContain(n);
+    const s = icone(n);
+    expect(s.getAttribute("stroke-width")).toBe("1.6");
+    expect(s.innerHTML).toContain('width="18"');
+    expect(s.innerHTML).toContain('fill="currentColor"');
+  }
+  expect(new Set(zones.map((n) => icone(n).innerHTML)).size).toBe(5);
+});

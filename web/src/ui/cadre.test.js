@@ -666,3 +666,21 @@ test("REQ072_AC21_session_largeur_max_centree", () => {
   const c = cadre({ principal: { code: s } });
   expect(c.querySelector(".cadre-code").firstElementChild).toBe(s);
 });
+
+test("REQ079_css_groupes_de_l_editeur_et_guides_de_depot", () => {
+  expect(regle(".cadre-groupes")).toMatch(/flex: 1 1 0.*min-height: 0|min-height: 0.*flex: 1 1 0/);
+  expect(regle('.cadre-decoupe[data-sens="ligne"]')).toContain("flex-direction: row");
+  expect(regle('.cadre-decoupe[data-sens="colonne"]')).toContain("flex-direction: column");
+  expect(regle('.cadre-decoupe[data-sens="ligne"] > :nth-child(2)')).toContain("var(--trait) solid var(--line)");
+  expect(regle(".cadre-groupe")).toContain("position: relative");
+  expect(regle(".cadre-groupe > :not(.ya-depot)")).toContain("isolation: isolate");
+  expect(regle(".ya-depot")).toContain("inset: 0");
+  expect(regle(".ya-depot-corps")).toContain("--g: 25%");
+  expect(regle("[data-zone-depot]")).toContain("pointer-events: none");
+  expect(regle('[data-zone-depot="centre"]')).toContain("inset: calc(var(--h) + var(--space-1))");
+  expect(regle('.ya-depot [data-depot="haut"]')).toContain("inset: 0 0 50% 0");
+  expect(regle('.ya-depot [data-depot="centre"]')).toContain("inset: 0");
+  const bloc = css.slice(css.indexOf(".cadre-groupes {"), css.indexOf('.ya-depot [data-depot="centre"]'));
+  expect(bloc).not.toMatch(/transition/);
+  expect(bloc).not.toMatch(/#[0-9a-f]{3,6}\b/i);
+});

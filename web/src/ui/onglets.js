@@ -8,7 +8,7 @@ const PRESENTATIONS = { fichiers: "ya-tabs", shells: "ya-term-tabs", rail: "ya-a
 // Mot dit par le nom accessible pour chaque statut git d'un onglet.
 const STATUTS = { M: "modifié", A: "ajouté", U: "nouveau" };
 
-export function onglets({ presentation, orientation = "horizontale", onglets: liste, actif, actionsDroite = [], surChoix, surFermer, surMenu }) {
+export function onglets({ presentation, orientation = "horizontale", onglets: liste, actif, actionsDroite = [], surChoix, surFermer, surMenu, nomBarre, courant = true, surGlisser }) {
   if (!ORIENTATIONS.includes(orientation)) throw new Error(`onglets : orientation inconnue « ${orientation} »`);
   // `orientation` est l'ancienne option : verticale = rail.
   presentation ??= orientation === "verticale" ? "rail" : "fichiers";
@@ -21,12 +21,15 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
     if (o.statut !== undefined && !(o.statut in STATUTS)) throw new Error(`onglets : statut inconnu « ${o.statut} »`);
     if (o.compteur !== undefined && (!Number.isInteger(o.compteur) || o.compteur < 0)) throw new Error("onglets : compteur entier positif ou nul requis");
   }
+  const fichiers = presentation === "fichiers";
   const vertical = orientation === "verticale";
   const racine = document.createElement("div");
   racine.className = `onglets onglets-${orientation} ${PRESENTATIONS[presentation]}`;
   // Le rôle tablist est porté par la racine : les actions de droite en font partie.
   racine.setAttribute("role", "tablist");
   racine.setAttribute("aria-orientation", vertical ? "vertical" : "horizontal");
+  if (fichiers && nomBarre) racine.setAttribute("aria-label", nomBarre);
+  if (fichiers && !courant) racine.dataset.courant = "false";
 
   const elements = new Map();
   // `surMenu` ne vaut que pour les onglets de fichiers.
@@ -81,6 +84,14 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
     t.addEventListener("click", () => choisir(o.id, true));
     t.addEventListener("keydown", (e) => touche(e, o));
     cellule.append(t);
+    if (fichiers && typeof surGlisser === "function") {
+      t.draggable = true;
+      t.addEventListener("dragstart", (e) => surGlisser(o.id, e));
+      // La croix est dans la cellule, à côté de l'onglet : un glissé qui en part est annulé.
+      cellule.addEventListener("dragstart", (e) => {
+        if (e.target.closest?.(".onglet-fermer")) e.preventDefault();
+      });
+    }
     if (avecMenu) {
       t.setAttribute("aria-haspopup", "menu");
       // La cellule couvre l'onglet, sa croix et son point.
@@ -149,6 +160,11 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
   racine.definirCompteur = (id, valeur) => {
     elements.get(id)?.querySelector(".ya-badge")?.remove();
     if (valeur > 0) definirCompteur(id, valeur);
+  };
+  // Change le filet sans refaire la barre : un rendu pendant un clic casserait ce clic.
+  racine.definirCourant = (oui) => {
+    if (oui) delete racine.dataset.courant;
+    else racine.dataset.courant = "false";
   };
   if (avecMenu) racine.addEventListener("pointerdown", () => (cleRecente = false));
   const premier = liste[0]?.id;

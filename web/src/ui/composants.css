@@ -135,6 +135,8 @@
 .ya-tabs .onglet { height: 100%; }
 .ya-tabs .onglet-cellule:hover .onglet, .ya-tabs .onglet[aria-selected="true"] { color: var(--ink); }
 .ya-tabs .onglet-cellule:has(> .onglet[aria-selected="true"]) { background: var(--bg-200); box-shadow: inset 0 var(--trait-fort) 0 var(--accent-fg); }
+/* Le filet n'est que dans le groupe courant (REQ-079) : un autre groupe garde le fond, sans filet. */
+.ya-tabs[data-courant="false"] .onglet-cellule:has(> .onglet[aria-selected="true"]) { box-shadow: none; }
 .ya-tabs .onglet-cellule .bouton-enveloppe { margin-left: calc(-1 * var(--space-3)); opacity: 0; }
 .ya-tabs .onglet-cellule:hover .bouton-enveloppe, .ya-tabs .onglet-cellule:focus-within .bouton-enveloppe, .ya-tabs .onglet-cellule:has(> .onglet[aria-selected="true"]) .bouton-enveloppe { opacity: 1; }
 /* Modifié : un point de 7 px prend la place de la croix, qui revient au survol. */
@@ -369,6 +371,32 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre-principal { background: var(--bg-200); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .cadre-bandeaux, .cadre-onglets, .cadre-question, .cadre-fil { flex: 0 0 auto; }
 .cadre-code { flex: 1 1 0; min-height: 0; container-type: size; }
+/* Groupes de l'éditeur (REQ-079) : une découpe met ses deux parts côte à côte (ligne) ou l'une sur l'autre (colonne), à parts égales, séparées par un filet. */
+.cadre-groupes { flex: 1 1 0; min-height: 0; min-width: 0; display: flex; }
+.cadre-decoupe { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
+.cadre-decoupe[data-sens="ligne"] { flex-direction: row; }
+.cadre-decoupe[data-sens="colonne"] { flex-direction: column; }
+.cadre-decoupe > * { flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden; }
+.cadre-decoupe[data-sens="ligne"] > :nth-child(2) { border-left: var(--trait) solid var(--line); }
+.cadre-decoupe[data-sens="colonne"] > :nth-child(2) { border-top: var(--trait) solid var(--line); }
+.cadre-groupe { position: relative; display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; }
+.cadre-groupe > :not(.ya-depot) { isolation: isolate; }
+/* Glissé d'un onglet : couche de dépôt, guides des zones et aperçu de la cible. */
+.ya-depot { position: absolute; inset: 0; }
+.ya-depot-corps { position: absolute; inset: var(--size-tab) 0 0 0; --g: 25%; --d: 25%; --h: 25%; --b: 25%; pointer-events: none; }
+[data-zone-depot] { position: absolute; display: grid; place-items: center; pointer-events: none; border: var(--trait) dashed var(--accent-fg); border-radius: var(--radius-sm); box-shadow: inset 0 0 0 var(--trait) var(--bg-000); }
+[data-zone-depot] > .ya-depot-pastille { display: grid; place-items: center; width: var(--space-6); height: var(--space-6); background: var(--bg-300); border: var(--trait) solid var(--accent-fg); border-radius: var(--radius-sm); color: var(--accent-fg); }
+[data-zone-depot="centre"] { inset: calc(var(--h) + var(--space-1)) calc(var(--d) + var(--space-1)) calc(var(--b) + var(--space-1)) calc(var(--g) + var(--space-1)); }
+[data-zone-depot="gauche"] { left: var(--space-1); width: calc(25% - 2 * var(--space-1)); top: calc(var(--h) + var(--space-1)); bottom: calc(var(--b) + var(--space-1)); }
+[data-zone-depot="droite"] { right: var(--space-1); width: calc(25% - 2 * var(--space-1)); top: calc(var(--h) + var(--space-1)); bottom: calc(var(--b) + var(--space-1)); }
+[data-zone-depot="haut"] { top: var(--space-1); height: calc(25% - 2 * var(--space-1)); left: calc(var(--g) + var(--space-1)); right: calc(var(--d) + var(--space-1)); }
+[data-zone-depot="bas"] { bottom: var(--space-1); height: calc(25% - 2 * var(--space-1)); left: calc(var(--g) + var(--space-1)); right: calc(var(--d) + var(--space-1)); }
+.ya-depot [data-depot] { position: absolute; pointer-events: none; background: var(--accent-soft); outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait-fort)); box-shadow: inset 0 0 0 calc(var(--trait-fort) + var(--trait)) var(--bg-000); }
+.ya-depot [data-depot="gauche"] { inset: 0 50% 0 0; }
+.ya-depot [data-depot="droite"] { inset: 0 0 0 50%; }
+.ya-depot [data-depot="haut"] { inset: 0 0 50% 0; }
+.ya-depot [data-depot="bas"] { inset: 50% 0 0 0; }
+.ya-depot [data-depot="centre"] { inset: 0; }
 /* Session opencode (C-010) : conversation qui défile seule, puis demandes et saisie sous un filet ; hauteur trop petite : les demandes défilent, la saisie reste entière. */
 .session { box-sizing: border-box; display: flex; flex-direction: column; height: 100%; background: var(--bg-200); }
 .session[hidden] { display: none; }
