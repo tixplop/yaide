@@ -13,6 +13,7 @@ import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { zoneCode } from "../ui/zone-code.js";
 import { vueAgent } from "./agent.js";
+import { depotOnglets } from "./depot-onglets.js";
 import { vueClaude } from "./claude.js";
 import { vueOpencode } from "./opencode.js";
 
@@ -104,6 +105,17 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   const fil = premier.fil;
   const code = premier.code;
   const questionOnglet = premier.questionOnglet;
+  // Pendant un glissé, aucun rendu de barre : retirer l'onglet source du DOM annulerait le glissé. `afficher()` est refait à la fin.
+  let aRefaire = false;
+  const depot = depotOnglets({
+    groupes: () => [...groupes.values()].map((g) => ({ id: g.id, barre: g.barre, nombre: ongletsDe(g).length })),
+    deplacer: (id, cible, zone) => deplacer(id, cible, zone),
+    apresFin: () => {
+      if (!aRefaire) return;
+      aRefaire = false;
+      afficher();
+    },
+  });
   const finPression = () => setTimeout(() => (enPression = false), 0);
   const finsPression = ["pointerup", "pointercancel", "dragend"];
   for (const ev of finsPression) document.addEventListener(ev, finPression);
@@ -363,6 +375,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       surChoix: choisir,
       surFermer: fermer,
       surMenu: ouvrirMenu,
+      surGlisser: (id, ev) => depot.debuter(id, ev, item(id)?.groupe),
       nomBarre: groupes.size > 1 ? `Fichiers ouverts, groupe ${feuilles(arbre).findIndex((f) => f.id === g.id) + 1}` : "Fichiers ouverts",
       courant: estCourant,
     });
@@ -377,6 +390,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   function afficher() {
     if (detruit) return;
+    if (depot.enCours()) {
+      aRefaire = true;
+      return;
+    }
     const rendus = new Map([...groupes.values()].map((g) => [g, rendreGroupe(g)]));
     // D'abord chaque vue dans le contenu de son groupe, puis ce qui ne lui appartient plus en sort.
     for (const g of groupes.values()) {
@@ -1219,6 +1236,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     restaurer,
     detruire() {
       detruit = true;
+      depot.detruire();
       clearTimeout(minuteur);
       clearTimeout(minuteurDisque);
       if (pret) ecrireGarde(); // le texte tapé dans les dernières 200 ms n'est pas perdu
