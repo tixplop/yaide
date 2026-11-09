@@ -392,7 +392,7 @@ test("REQ074_parcours_38_choix_recharge_et_largeurs", async ({ page }) => {
   await envoyer(page, "[scenario:question] Prépare la release.");
   await expect(page.getByRole("button", { name: "Arrêter" })).toBeVisible();
   await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
-  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  await page.getByRole("button", { name: "Agents", exact: true }).click();
   const mesurer = (cible) => mesurerBarre(page, cible);
   const mesures = {};
   for (const cible of [720, 460, 320]) {
@@ -474,7 +474,7 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
   await expect(compteur).toHaveText("210 k / 200 k · 105 %");
   expect(await compteur.evaluate((e) => getComputedStyle(e).color)).toBe(couleur8);
   await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
-  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  await page.getByRole("button", { name: "Agents", exact: true }).click();
   const avant = {};
   for (const cible of [559, 560]) avant[cible] = await mesurerBarre(page, cible);
 
@@ -515,7 +515,7 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
   await expect(compteur).toBeVisible();
 
   // La page ne défile pas à 800 × 480, et le compteur reste entier au-dessus du bas de l'éditeur, une question en attente, panneau à 240 px.
-  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  await page.getByRole("button", { name: "Replier l'agent" }).click();
   await page.getByRole("banner").getByRole("button", { name: "Déplier le panneau" }).click();
   await page.setViewportSize({ width: 800, height: 480 });
   const d = () => page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: innerWidth, sh: document.documentElement.scrollHeight, ih: innerHeight }));

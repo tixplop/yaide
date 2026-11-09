@@ -276,7 +276,7 @@ test("REQ070_parcours_33_claude_seul_a_800_par_480", async ({ page }) => {
   expect(ag.y - (await page.locator(".cadre-rail-droit").boundingBox()).y).toBe(haut - rail);
   expect(cl.y - (ags.y + ags.height)).toBe(8);
   await expect(page.locator("aside.cadre-agent")).toBeVisible();
-  await expect(page.locator("aside.cadre-agent")).toHaveAccessibleName("Agent");
+  await expect(page.locator("aside.cadre-agent")).toHaveAccessibleName("Agents");
   await expect(page.locator("aside.cadre-panneau")).toBeHidden();
   await expect(page.getByRole("tab", { name: "Claude 1", exact: true })).toBeVisible();
 });
