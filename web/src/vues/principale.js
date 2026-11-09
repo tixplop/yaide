@@ -1,4 +1,4 @@
-import { claudeDisponible, creerChemin, creerSession, deconnexion, lireFichier, opencodeDisponible, ouvrirClaude } from "../api.js";
+import { claudeDisponible, creerChemin, creerSession, deconnexion, lireFichier, opencodeDisponible, ouvrirClaude, reglagesAgent } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { cadre } from "../ui/cadre.js";
 import { borner, limites } from "../ui/poignee.js";
@@ -8,7 +8,6 @@ import { onglets } from "../ui/onglets.js";
 import { reprendreDernierChoix } from "../opencode.js";
 import { surveiller } from "../connexion.js";
 import { changerTheme, themeCourant } from "../ui/theme.js";
-import { vueAgent } from "./agent.js";
 import { vueAgents } from "./agents.js";
 import { vueEditeur } from "./editeur.js";
 import { vueFichiers } from "./fichiers.js";
@@ -55,7 +54,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   // Le panneau replié laisse la place à l'éditeur ; la vue et les tailles restent en mémoire.
   let agentConserve; // repli de l'agent gardé, que l'on n'écrase pas quand les agents sont désactivés
   const gardeReplis = () => ({ panneau: panneauReplie, agent: avec.agents ? agentReplie : agentConserve });
-  const boutonAgent = bouton({ icone: "bot", nomAccessible: "Agent", raccourci: "A", positionInfoBulle: "gauche", actif: false });
+  const boutonAgent = bouton({ icone: "bot", nomAccessible: "Agent", infoBulle: "Nouvelle session Agent", raccourci: "A", positionInfoBulle: "gauche" });
   const boutonAgents = bouton({ icone: "users", nomAccessible: "Agents", positionInfoBulle: "gauche", actif: false });
   const repliAgent = bouton({ icone: "panel-right-close", nomAccessible: "Replier l'agent", positionInfoBulle: "gauche" });
   const boutonClaude = bouton({ icone: "asterisk", nomAccessible: "Claude", infoBulle: "Nouvelle session Claude", positionInfoBulle: "gauche" });
@@ -82,16 +81,15 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (r.erreur !== undefined || id === undefined) return dire({ texte: `Impossible d'ouvrir une session opencode : ${String(r.erreur ?? "réponse illisible").replace(/\.$/, "")}.`, variante: "alerte", fermable: true });
     editeur.ouvrirOpencode({ sessionId: id });
   });
-  boutonAgent.addEventListener("click", entrerDansAgent);
+  boutonAgent.addEventListener("click", () => ouvrirConversation());
   boutonAgents.addEventListener("click", entrerDansAgents);
   repliAgent.addEventListener("click", () => {
     replierAgent(true);
-    (vueColonne === "agent" ? boutonAgent : boutonAgents).poserFocus();
+    boutonAgents.poserFocus();
   });
   const boutonPanneau = bouton({ icone: "panel-left-close", nomAccessible: "Replier le panneau" });
   let panneauReplie = false;
   let agentReplie = true;
-  let vueColonne = "agent"; // la vue affichée dans la colonne ; non gardée dans le navigateur
   boutonPanneau.addEventListener("click", () => {
     replierPanneau(!panneauReplie);
     if (panneauReplie) boutonPanneau.poserFocus();
@@ -121,36 +119,24 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     recalculer();
     ecrire("replis", gardeReplis());
   }
-  // « Agent » et A : déplie l'agent s'il est replié, et met le focus dans « Message à l'agent ».
-  function entrerDansAgent() {
+  // « Agent » et A : une nouvelle conversation dans un onglet de l'éditeur ; la colonne ne bouge pas.
+  async function ouvrirConversation(equipe) {
     if (!avec.agents) return;
-    const absent = agentReplie || vueColonne !== "agent";
-    if (agentReplie) replierAgent(false);
-    montrerVue("agent");
-    if (absent) agent.deplier();
-    agent.focuser();
+    const r = await reglagesAgent();
+    if (detruite) return;
+    if (r.coupure) return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
+    editeur.ouvrirAgent({ equipe });
   }
-  // « Agents » : déplie la colonne si besoin, affiche V-010 et relit la liste.
+  // « Agents » : déplie la colonne si besoin et relit la liste.
   function entrerDansAgents() {
     if (!avec.agents) return;
     if (agentReplie) replierAgent(false);
-    montrerVue("agents");
     agents.afficher();
   }
   const majCommandes = () => {
     if (!avec.agents) return;
-    boutonAgent.definirActif(!agentReplie && vueColonne === "agent");
-    boutonAgents.definirActif(!agentReplie && vueColonne === "agents");
+    boutonAgents.definirActif(!agentReplie);
   };
-  function montrerVue(v) {
-    if (!avec.agents) return;
-    vueColonne = v;
-    agent.corps.hidden = v !== "agent";
-    agents.corps.hidden = v !== "agents";
-    racine.definirTitreAgent(v === "agent" ? "Agent" : "Agents");
-    racine.dataset.vueColonne = v;
-    majCommandes();
-  }
   // Un fichier d'agent s'ouvre dans l'éditeur, recréé vide s'il manque.
   async function surFichier(chemin) {
     const nom = chemin.split("/").pop();
@@ -171,13 +157,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     }
     editeur.lecture(false);
   }
-  // « Démarrer une conversation » : V-007 sur une nouvelle conversation avec ces agents.
+  // « Démarrer une conversation » : un onglet avec ces agents ; la colonne garde sa liste et ses cases.
   function surDemarrer(equipe) {
-    montrerVue("agent");
-    agent.demarrerAvec(equipe);
-    // Colonne repliée au chargement : ni les réglages ni la liste n'ont été lus.
-    agent.relireReglages();
-    agent.majListe();
+    ouvrirConversation(equipe);
   }
   const etroit = () => window.innerWidth < limites({ L: window.innerWidth, H: window.innerHeight }).seuil;
   // Dépliage : l'arborescence est relue (silencieusement), puis le focus entre dans le panneau.
@@ -234,6 +216,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     surCourant: (chemin) => fichiers?.definirCourant(chemin),
     surSauvegarde: () => git?.rafraichir(),
     claude: avec.claude,
+    agents: avec.agents,
     surActif: (a) => {
       barre.position = a?.position;
       barre.langage = a?.langage;
@@ -254,7 +237,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       }
       const ouvrirPanneau = { providers: ouvrirProviders, profils: ouvrirProfils }[id];
       if (!ouvrirPanneau) return;
-      panneauConfig = ouvrirPanneau({ surFermeture: () => { panneauConfig = null; agent?.relireReglages(); avant?.focus?.(); } });
+      panneauConfig = ouvrirPanneau({ surFermeture: () => { panneauConfig = null; editeur.relireReglagesAgents(); avant?.focus?.(); } });
     },
   });
   fichiers = vueFichiers({
@@ -287,9 +270,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     fermerDiff: editeur.fermerDiff,
     surDisque: editeur.relireDisque,
   }) : { corps: null, estDepot: () => false, rafraichir() {}, relire() {}, montrer() {}, focuserMessage() {}, detruire() {} };
-  const agent = avec.agents ? vueAgent({}) : null;
   const agents = avec.agents ? vueAgents({ surFichier, surDemarrer }) : null;
-  if (agents) agents.corps.hidden = true;
   const restauration = editeur.restaurer();
 
   let nombre = 0; // changements git, affichés sur l'icône Git du rail
@@ -307,7 +288,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [boutonPanneau.enveloppe, shells.repli.enveloppe, theme.enveloppe, sortir.enveloppe].filter(Boolean) },
     rail: { onglets: rail, commandes: shells.commandes },
     panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche?.corps, git.corps].filter(Boolean) },
-    agent: { titre: "Agent", repli: repliAgent.enveloppe, corps: avec.agents ? [agent.corps, agents.corps] : [] },
+    agent: { titre: "Agents", repli: repliAgent.enveloppe, corps: avec.agents ? [agents.corps] : [] },
     railDroit: { commandes: avec.agents ? [boutonAgent.enveloppe, boutonAgents.enveloppe] : [] },
     fonctions: avec,
     principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, fil: editeur.fil, code: editeur.code, shells },
@@ -328,7 +309,6 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
 
   // Sans shell à l'arrivée : la zone reste hors page le temps de lire la liste.
-  racine.dataset.vueColonne = vueColonne;
   racine.definirShellsVisibles(false);
 
   // Poignées : limites recalculées à chaque changement de la fenêtre, des bandeaux ou de la question d'onglet.
@@ -380,7 +360,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     const gardes = { ...precedents, ...imposes };
     if (avec.agents && gardes?.agent === false) {
       replierAgent(false);
-      if (vueColonne === "agent") agent.deplier();
+      agents.afficher({ focus: false });
     }
     if (gardes?.panneau && !panneauReplie) replierPanneau(true);
     if (!panneauReplie) return;
@@ -418,7 +398,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   // Les deux boutons de commande du rail comptent aussi : la garde est posée sur toute la colonne.
   racine.querySelector(".cadre-rail").addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.target.closest("[role=tab], .cadre-rail-commandes button")) return;
-    if (e.key.toLowerCase() === "a") return entrerDansAgent();
+    if (e.key.toLowerCase() === "a") return ouvrirConversation();
     const p = panneaux.find((x) => x.touche === e.key.toLowerCase());
     if (!p) return;
     rail.choisir(p.id);
@@ -434,7 +414,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (!avec.agents || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.target.closest(".cadre-rail-droit button") || e.key.toLowerCase() !== "a") return;
     // Sans cela, la lettre serait tapée dans le champ qui reçoit le focus.
     e.preventDefault();
-    entrerDansAgent();
+    ouvrirConversation();
   });
 
   // Ctrl+Maj+F, partout (même dans un shell) : le focus passe sur le bouton actif du rail.
@@ -488,7 +468,6 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     fichiers.detruire();
     git.detruire();
     recherche?.detruire();
-    agent?.detruire();
     agents?.detruire();
     ouverture.detruire();
     panneauConfig?.fermer();

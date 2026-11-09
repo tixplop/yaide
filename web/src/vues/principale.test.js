@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { ecrire, lire } from "../stockage.js";
-import { monter, attendre, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk } from "./principale.aides.js";
+import { monter, attendre, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne } from "./principale.aides.js";
 
 vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
@@ -326,7 +326,7 @@ test("REQ028_AC17_REQ059_AC1_AC10_rail_droit_avec_le_bouton_Agent", async () => 
   expect(b.hasAttribute("data-actif")).toBe(false);
   expect(vue.querySelector("[role=tablist] [aria-label=Agent]")).toBeNull();
   b.parentElement.dispatchEvent(new Event("pointerenter"));
-  await vi.waitFor(() => expect(document.querySelector("[role=tooltip]").textContent).toBe("Agent (A)"));
+  await vi.waitFor(() => expect(document.querySelector("[role=tooltip]").textContent).toBe("Nouvelle session Agent (A)"));
   expect(vue.querySelector("main").nextElementSibling.nextElementSibling).toBe(agentCol(vue));
 });
 
@@ -336,103 +336,163 @@ test("REQ059_AC8_agent_replie_au_premier_lancement", () => {
   expect(vue.querySelector(".poignee-agent").hidden).toBe(true);
 });
 
-test("REQ028_AC5_REQ059_AC2_A_depuis_les_onglets_deplie_l_agent", () => {
+test("REQ028_AC5_REQ059_AC2_A_depuis_les_onglets_ouvre_un_onglet_sans_deplier", async () => {
+  fauxServeur();
   const { vue } = monter();
   const tab = vue.querySelector("[role=tab]");
   tab.focus();
   clavier(tab, "a");
-  expect(agentCol(vue).hidden).toBe(false);
-  expect(boutonAgentDe(vue).hasAttribute("data-actif")).toBe(true);
-  expect(document.activeElement).toBe(champAgent(vue));
-  // Déplié : seulement le focus, sans replier.
-  tab.focus();
-  clavier(tab, "a");
-  expect(agentCol(vue).hidden).toBe(false);
-  expect(document.activeElement).toBe(champAgent(vue));
+  await vi.waitFor(() => expect(document.activeElement).toBe(champAgent(vue)));
+  expect(agentCol(vue).hidden).toBe(true);
+  expect(boutonAgentDe(vue).hasAttribute("data-actif")).toBe(false);
   expect(vue.querySelector("aside h2").textContent).toBe("Fichiers");
 });
 
-test("REQ028_AC12_REQ059_AC2_A_depuis_les_boutons_des_shells_et_depuis_Agent", () => {
+test("REQ028_AC12_REQ059_AC2_A_depuis_les_boutons_des_shells_et_depuis_Agent", async () => {
+  fauxServeur();
   const { vue } = monter();
-  for (const b of vue.querySelectorAll(".cadre-rail-commandes button")) {
-    vue.querySelector("[role=tab]").focus();
+  let n = 0;
+  const sources = [...vue.querySelectorAll(".cadre-rail-commandes button"), boutonAgentDe(vue)];
+  for (const b of sources) {
+    b.focus();
     clavier(b, "a");
-    expect(agentCol(vue).hidden, b.getAttribute("aria-label")).toBe(false);
-    expect(document.activeElement).toBe(champAgent(vue));
-    vue.querySelector("[aria-label=\"Replier l'agent\"]").click();
+    n++;
+    await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps"), b.getAttribute("aria-label")).toHaveLength(n));
+    expect(document.activeElement.matches(".agent-corps textarea")).toBe(true);
     expect(agentCol(vue).hidden).toBe(true);
   }
+});
+
+test("REQ078_AC1_clic_et_A_ouvrent_chacun_un_onglet", async () => {
+  fauxServeur();
+  const { vue } = monter();
+  boutonAgentDe(vue).click();
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(1));
+  boutonAgentDe(vue).click();
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(2));
   boutonAgentDe(vue).focus();
   clavier(boutonAgentDe(vue), "a");
-  expect(agentCol(vue).hidden).toBe(false);
-  expect(document.activeElement).toBe(champAgent(vue));
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(3));
+  const noms = [...vue.querySelectorAll("[role=tab]")].map((t) => t.textContent).filter((t) => t.startsWith("Agent"));
+  expect(noms).toEqual(["Agent 1", "Agent 2", "Agent 3"]);
+  expect(boutonAgentDe(vue).hasAttribute("data-actif")).toBe(false);
 });
 
-test("REQ059_AC2_clic_sur_Agent_deplie_puis_ne_replie_pas", () => {
+test("REQ078_AC1_colonne_inchangee", async () => {
+  fauxServeur();
   const { vue } = monter();
   boutonAgentDe(vue).click();
-  expect(agentCol(vue).hidden).toBe(false);
-  expect(document.activeElement).toBe(champAgent(vue));
-  vue.querySelector("main").focus();
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(1));
+  expect(agentCol(vue).hidden).toBe(true);
+  expect(vue.querySelector(".poignee-agent").hidden).toBe(true);
+  expect(ecrire).not.toHaveBeenCalledWith("replis", expect.anything());
+  boutonAgentsDe(vue).click();
+  const taille = vue.style.getPropertyValue("--taille-agent");
   boutonAgentDe(vue).click();
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(2));
   expect(agentCol(vue).hidden).toBe(false);
-  expect(document.activeElement).toBe(champAgent(vue));
+  expect(vue.style.getPropertyValue("--taille-agent")).toBe(taille);
+  expect(titreColonne(vue)).toBe("Agents");
 });
 
-test("REQ059_AC3_REQ056_AC14_Replier_l_agent_donne_le_focus_a_Agent_et_garde_le_texte", () => {
+test("REQ078_AC3_premier_onglet_garde_son_champ", async () => {
+  fauxServeur();
   const { vue } = monter();
   boutonAgentDe(vue).click();
-  champAgent(vue).value = "bonjour";
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(1));
+  champAgent(vue).value = "brouillon";
+  boutonAgentDe(vue).click();
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(2));
+  const un = [...vue.querySelectorAll("[role=tab]")].find((t) => t.textContent === "Agent 1");
+  un.click();
+  const visible = [...vue.querySelectorAll(".agent-corps")].find((c) => !c.closest("[hidden]") && !c.hidden);
+  expect(visible.querySelector("textarea").value).toBe("brouillon");
+});
+
+test("REQ078_AC10_ancienne_derniere_conversation_ignoree", async () => {
+  const appels = fauxServeur();
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "agent" ? { conversation: "c1" } : undefined));
+  const { vue } = monter();
+  await attendre();
+  expect(vue.querySelectorAll(".agent-corps")).toHaveLength(0);
+  boutonAgentDe(vue).click();
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(1));
+  await attendre();
+  expect(lire).not.toHaveBeenCalledWith("agent");
+  expect(appels.some((a) => a.includes("/api/agent/conversations/c1"))).toBe(false);
+  expect(vue.querySelector(".agent-titre").textContent).toBe("Nouvelle conversation");
+});
+
+test("REQ078_AC16_coupure_bandeau_sans_onglet", async () => {
+  const appels = [];
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    appels.push(String(url));
+    throw new Error("coupé");
+  }));
+  const { vue } = monter();
+  await attendre();
+  const bandeau = () => [...vue.querySelectorAll(".cadre-bandeaux [role=alert]")].find((a) => a.textContent.includes("Réessayez au retour."));
+  expect(bandeau()).toBeUndefined();
+  const avant = document.activeElement;
+  const nb = () => appels.filter((u) => u === "/api/agent/reglages").length;
+  boutonAgentDe(vue).click();
+  await vi.waitFor(() => expect(nb()).toBe(1));
+  await vi.waitFor(() => expect(bandeau()).toBeDefined());
+  expect(vue.querySelectorAll(".agent-corps")).toHaveLength(0);
+  expect(document.activeElement).toBe(avant);
+});
+
+test("REQ059_AC3_Replier_l_agent_donne_le_focus_a_Agents", () => {
+  fauxServeur();
+  const { vue } = monter();
+  boutonAgentsDe(vue).click();
   const repli = vue.querySelector("[aria-label=\"Replier l'agent\"]");
   expect(agentCol(vue).querySelector("button")).toBe(repli);
-  const noms = [...agentCol(vue).querySelectorAll("button, textarea, select")].map((e) => e.getAttribute("aria-label") ?? e.tagName.toLowerCase());
-  expect(noms.slice(0, 3)).toEqual(["Replier l'agent", "Nouvelle conversation", "Conversations"]);
-  expect(noms.indexOf("textarea")).toBeGreaterThan(2);
   repli.click();
   expect(agentCol(vue).hidden).toBe(true);
   expect(vue.querySelector(".poignee-agent").hidden).toBe(true);
-  expect(boutonAgentDe(vue).hasAttribute("data-actif")).toBe(false);
-  expect(document.activeElement).toBe(boutonAgentDe(vue));
-  expect(boutonAgentDe(vue).classList.contains("ya-focus-garde")).toBe(true);
-  expect(champAgent(vue).value).toBe("bonjour");
-  boutonAgentDe(vue).click();
-  expect(champAgent(vue).value).toBe("bonjour");
+  expect(boutonAgentsDe(vue).hasAttribute("data-actif")).toBe(false);
+  expect(document.activeElement).toBe(boutonAgentsDe(vue));
+  expect(boutonAgentsDe(vue).classList.contains("ya-focus-garde")).toBe(true);
 });
 
-test("REQ059_AC4_un_tour_continue_agent_replie", async () => {
+test("REQ059_AC4_un_tour_continue_colonne_repliee", async () => {
   vi.useFakeTimers();
   let lectures = 0;
-  vi.stubGlobal("fetch", vi.fn(async (url) => {
-    if (url === "/api/agent/reglages") return { ok: true, status: 200, json: async () => ({ providers: [], profils: [{ id: "p", nom: "m", provider: "openai", modele: "x", defaut: true }] }) };
-    if (String(url).startsWith("/api/agent/conversations/c1")) {
+  vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+    const u = String(url);
+    if (u === "/api/agent/reglages") return { ok: true, status: 200, json: async () => ({ providers: [], profils: [{ id: "p", nom: "m", provider: "openai", modele: "x", defaut: true }] }) };
+    if (u === "/api/agent/messages" && opts.method === "POST") return { ok: true, status: 202, json: async () => ({ conversation: "c1" }) };
+    if (u.startsWith("/api/agent/conversations/c1")) {
       lectures++;
       const fini = lectures > 2;
-      return { ok: true, status: 200, json: async () => ({ entrees: fini ? [{ type: "agent", markdown: "Étape arrivée replié." }] : [], enCours: !fini, total: fini ? 1 : 0, tokens: 0 }) };
+      return { ok: true, status: 200, json: async () => ({ entrees: fini ? [{ type: "utilisateur", texte: "Bonjour" }, { type: "agent", markdown: "Étape arrivée colonne repliée." }] : [{ type: "utilisateur", texte: "Bonjour" }], enCours: !fini, total: fini ? 2 : 1, tokens: 0 }) };
     }
     return { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "erreur 500" }) };
   }));
-  vi.mocked(lire).mockImplementation(async (cle) => (cle === "agent" ? { conversation: "c1" } : undefined));
   try {
     const { vue } = monter();
     boutonAgentDe(vue).click();
     await vi.advanceTimersByTimeAsync(100);
-    expect(lectures).toBeGreaterThan(0);
-    vue.querySelector("[aria-label=\"Replier l'agent\"]").click();
+    champAgent(vue).value = "Bonjour";
+    champAgent(vue).dispatchEvent(new Event("input", { bubbles: true }));
+    champAgent(vue).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(agentCol(vue).hidden).toBe(true);
     const avant = lectures;
     await vi.advanceTimersByTimeAsync(10000);
     expect(lectures).toBeGreaterThan(avant);
-    boutonAgentDe(vue).click();
-    await vi.advanceTimersByTimeAsync(100);
-    expect(agentCol(vue).querySelector("[role=log]").textContent).toContain("Étape arrivée replié.");
+    expect(vue.querySelector(".agent-corps [role=log]").textContent).toContain("Étape arrivée colonne repliée.");
   } finally {
     vi.useRealTimers();
   }
 });
 
 test("REQ059_AC5_AC7_sans_taille_gardee_l_agent_est_borne_pour_laisser_320_px_a_l_editeur", () => {
+  fauxServeur();
   largeur(1000);
   const { vue } = monter();
-  boutonAgentDe(vue).click();
+  boutonAgentsDe(vue).click();
   const p = Number.parseInt(vue.style.getPropertyValue("--taille-panneau"), 10);
   const a = Number.parseInt(vue.style.getPropertyValue("--taille-agent"), 10);
   expect(a).toBeLessThan(360);
@@ -441,56 +501,58 @@ test("REQ059_AC5_AC7_sans_taille_gardee_l_agent_est_borne_pour_laisser_320_px_a_
   expect(1000 - 2 * Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue("--size-activity"), 10) - p - a).toBeGreaterThanOrEqual(320);
 });
 
-test("REQ028_AC8_ordre_de_Tab_de_la_page_avec_l_agent_a_droite", () => {
+test("REQ028_AC8_ordre_de_Tab_de_la_page_avec_l_agent_a_droite", async () => {
+  fauxServeur();
   const { vue } = monter();
   const tabbables = () => [...vue.querySelectorAll("button, textarea, input, [tabindex='0'], [role=separator]")].filter((e) => !e.closest("[hidden]") && e.tabIndex >= 0);
   const pos = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
   const poignee = vue.querySelector(".poignee-agent");
   const bouton = boutonAgentDe(vue);
   const terminaux = vue.querySelector(".cadre-shells");
-  // Replié : aucun arrêt dans la colonne, le bouton « Agent » est le dernier.
+  // Replié : aucun arrêt dans la colonne, le bouton « Agents » est le dernier.
   expect(tabbables().some((e) => agentCol(vue).contains(e) || e === poignee)).toBe(false);
   expect(tabbables().slice(-2)).toEqual([bouton, boutonAgentsDe(vue)]);
-  boutonAgentDe(vue).click();
+  boutonAgentsDe(vue).click();
+  await vi.waitFor(() => expect(corpsAgents(vue).querySelector("input, button")).not.toBeNull());
   const liste = tabbables();
   const iPoignee = liste.indexOf(poignee);
-  const iVue = liste.indexOf(champAgent(vue));
   expect(iPoignee).toBeGreaterThan(-1);
   expect(pos(terminaux, poignee)).toBe(true);
-  expect(iVue).toBeGreaterThan(iPoignee);
-  expect(liste.indexOf(bouton)).toBeGreaterThan(iVue);
+  expect(liste.indexOf(bouton)).toBeGreaterThan(iPoignee);
   expect(liste.indexOf(vue.querySelector("[aria-label=\"Replier l'agent\"]"))).toBe(iPoignee + 1);
 });
 
 test("REQ059_AC6_sous_904_deplier_l_agent_replie_le_panneau_et_inversement", () => {
+  fauxServeur();
   largeur(800);
   const { vue } = monter();
   expect(aside(vue).hidden).toBe(false);
-  boutonAgentDe(vue).click();
+  boutonAgentsDe(vue).click();
   expect(agentCol(vue).hidden).toBe(false);
   expect(aside(vue).hidden).toBe(true);
-  expect(document.activeElement).toBe(champAgent(vue));
   barreTitre(vue, "Déplier le panneau").click();
   expect(aside(vue).hidden).toBe(false);
   expect(agentCol(vue).hidden).toBe(true);
 });
 
-test("REQ059_AC6_AC18_A_sous_904_garde_l_onglet_actif_et_le_titre_de_barre", () => {
+test("REQ059_AC6_AC18_A_sous_904_ouvre_un_onglet_sans_toucher_aux_colonnes", async () => {
+  fauxServeur();
   largeur(800);
   const { vue } = monter();
   const tab = vue.querySelector("[role=tab]");
   tab.focus();
   clavier(tab, "a");
-  expect(aside(vue).hidden).toBe(true);
-  expect(barreTitre(vue, "Déplier le panneau")).not.toBeNull();
+  await vi.waitFor(() => expect(document.activeElement).toBe(champAgent(vue)));
+  expect(aside(vue).hidden).toBe(false);
+  expect(agentCol(vue).hidden).toBe(true);
   expect(tab.getAttribute("aria-selected")).toBe("true");
-  expect(document.activeElement).toBe(champAgent(vue));
 });
 
 test("REQ059_AC7_fenetre_qui_retrecit_avec_les_deux_deplies_replie_le_panneau", () => {
+  fauxServeur();
   largeur(1280);
   const { vue } = monter();
-  boutonAgentDe(vue).click();
+  boutonAgentsDe(vue).click();
   expect(aside(vue).hidden).toBe(false);
   expect(agentCol(vue).hidden).toBe(false);
   largeur(800);
@@ -512,16 +574,29 @@ test("REQ059_AC8_replis_et_tailles_relus_apres_rechargement", async () => {
   expect(agentCol(vue).hidden).toBe(false);
   expect(vue.querySelector(".poignee-agent").getAttribute("aria-valuenow")).toBe("500");
   // Un redimensionnement garde la taille et le repli de l'agent avec les autres.
-  boutonAgentDe(vue).click();
   vue.querySelector("[aria-label=\"Replier l'agent\"]").click();
   expect(ecrire).toHaveBeenLastCalledWith("replis", { panneau: false, agent: true });
 });
 
 test("REQ059_AC9_replier_et_deplier_l_agent_mesure_a_nouveau", () => {
+  fauxServeur();
   const { vue } = monter();
   const mesurer = vi.spyOn(vue, "mesurer");
-  boutonAgentDe(vue).click();
+  boutonAgentsDe(vue).click();
   expect(mesurer).toHaveBeenCalledTimes(1);
   vue.querySelector("[aria-label=\"Replier l'agent\"]").click();
   expect(mesurer).toHaveBeenCalledTimes(2);
+});
+
+test("REQ078_AC9_agents_desactives_onglet_garde_non_affiche", async () => {
+  fauxServeur();
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "onglets" ? { liste: [{ conversationAgent: true, numero: 1, conversation: "c1" }], actif: "\0agent:1" } : undefined));
+  const { vue } = monter({ reglages: { fonctions: { agents: false } } });
+  await attendre();
+  await attendre();
+  expect(vue.querySelectorAll(".agent-corps")).toHaveLength(0);
+  expect([...vue.querySelectorAll("[role=tab]")].some((t) => t.textContent.startsWith("Agent"))).toBe(false);
+  for (const [cle, valeur] of vi.mocked(ecrire).mock.calls) {
+    if (cle === "onglets") expect(valeur.liste).toContainEqual({ conversationAgent: true, numero: 1, conversation: "c1" });
+  }
 });

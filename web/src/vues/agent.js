@@ -6,7 +6,6 @@ import { conversation } from "../ui/conversation.js";
 import { indication } from "../ui/indication.js";
 import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
-import { ecrire, lire } from "../stockage.js";
 import { ouvrirProfils as ouvrirProfilsReel } from "./profils.js";
 
 const INTERVALLE = 500;
@@ -74,12 +73,12 @@ export function saisieMessage({ libelle, surEnvoi }) {
 
 /**
  * V-007. `api` : `reglagesAgent`, `envoyerMessage`, `lireConversation`, `arreterConversation`, `listeConversations`.
- * Dans un onglet de l'éditeur (REQ-078), `surConversation` est donnée : `conversation` (id à charger à la création) ou `equipe`
+ * Vue d'un onglet de l'éditeur (REQ-078) : `conversation` (id à charger à la création) ou `equipe`
  * (agents d'une conversation vide) disent d'où part la vue, `surConversation(id | null)` est appelée à chaque changement de conversation
  * (rien n'est gardé ici), et `surDejaOuverte(id)` rend vrai si un autre onglet affiche `id` et vient d'être activé : le menu ne charge alors rien.
- * Rend `{ corps, deplier(), focuser(), relireReglages(), demarrerAvec(agents), detruire() }`.
+ * Rend `{ corps, focuser(), relireReglages(), majListe(), detruire() }`.
  */
-export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, conversation: conversationGardee, equipe: agentsInitiaux, surConversation, surDejaOuverte } = {}) {
+export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, conversation: conversationGardee, equipe: agentsInitiaux, surConversation = () => {}, surDejaOuverte } = {}) {
   const corps = document.createElement("div");
   corps.className = "agent-corps";
 
@@ -94,7 +93,6 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
   let chargements = 0; // change à chaque ouverture de conversation demandée
   let refus = null; // C-003 de refus d'envoi
   let alerteReglages = null; // C-003 des réglages illisibles
-  let restauree = false;
   let generation = 0; // change avec la conversation : une relecture en retard est ignorée
   let minuteur = null;
   let detruite = false;
@@ -103,8 +101,6 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
   let dernierDossier = null; // dernier agent qui a répondu
 
   let retour = null; // nouvelle tentative d'ouverture de la conversation gardée, après une coupure
-  /** Dans un onglet, le changement de conversation est dit à l'éditeur ; sinon il est gardé ici. */
-  const garderConversation = (id) => (surConversation ? surConversation(id) : ecrire("agent", { conversation: id }));
 
   const profils = () => reglages?.profils ?? [];
   const defaut = () => profils().find((p) => p.defaut) ?? profils()[0];
@@ -335,7 +331,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     if (convId !== r.conversation) {
       convId = r.conversation;
       generation++;
-      garderConversation(convId);
+      surConversation(convId);
     }
     liste.disabled = false;
     entrees = [...entrees, { type: "utilisateur", texte }];
@@ -370,7 +366,6 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     if (detruite || jeton !== chargements) return "obsolete";
     if (!Array.isArray(r?.entrees)) {
       if (!r?.introuvable) return "coupure";
-      if (!surConversation) ecrire("agent", { conversation: null });
       return "introuvable";
     }
     generation++;
@@ -388,7 +383,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     dessinerProfils();
     remplacerFil();
     afficher();
-    if (garder) garderConversation(id);
+    if (garder) surConversation(id);
     if (enCours) planifier(generation);
     return true;
   }
@@ -400,14 +395,6 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     if (detruite || r === true || r === "obsolete" || convId) return;
     if (r === "introuvable") return surConversation(null);
     retour = setTimeout(() => ouvrirGardee(id), 1500);
-  }
-
-  async function restaurer() {
-    if (restauree) return;
-    restauree = true;
-    const gardee = await lire("agent");
-    if (detruite || convId || !gardee?.conversation) return;
-    await charger(gardee.conversation);
   }
 
   async function majListe() {
@@ -428,7 +415,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
           libelle: c.titre || "Nouvelle conversation",
           touche: quand(c.maj),
           surChoix: () => {
-            if (surConversation && c.id === convId) return focuser();
+            if (c.id === convId) return focuser();
             if (surDejaOuverte?.(c.id)) return;
             charger(c.id).then((ok) => ok === true && focuser());
           },
@@ -445,7 +432,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     convId = null;
     effacerRefus();
     remplacerFil();
-    garderConversation(null);
+    surConversation(null);
     titre = null;
     tokens = 0;
     entrees = [];
@@ -461,29 +448,15 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
 
   majVide();
   afficher();
-  if (surConversation) {
-    if (!conversationGardee) fixerEquipe(agentsInitiaux);
-    majListe();
-    relireReglages().then(() => conversationGardee && ouvrirGardee(conversationGardee));
-  }
+  if (!conversationGardee) fixerEquipe(agentsInitiaux);
+  majListe();
+  relireReglages().then(() => conversationGardee && ouvrirGardee(conversationGardee));
 
   return {
     corps,
     focuser,
     relireReglages,
     majListe,
-    /** Une conversation vide avec ces agents, gardée ici jusqu'au premier message (le serveur la crée alors). */
-    demarrerAvec(agents) {
-      viderConversation();
-      fixerEquipe(agents);
-      afficher();
-      focuser();
-    },
-    // Au dépliage : liste et réglages relus, conversation gardée restaurée la première fois.
-    deplier() {
-      majListe();
-      relireReglages().then(restaurer);
-    },
     detruire() {
       detruite = true;
       clearTimeout(minuteur);

@@ -1,9 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { ecrire, lire } from "../stockage.js";
 import { formaterTokens, vueAgent } from "./agent.js";
-
-vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
 const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
 for (const [, nom, val] of tokens.matchAll(/(--[\w-]+):\s*([^;]+);/g)) document.documentElement.style.setProperty(nom, val.trim());
@@ -11,8 +8,6 @@ for (const [, nom, val] of tokens.matchAll(/(--[\w-]+):\s*([^;]+);/g)) document.
 let vues = [];
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.mocked(lire).mockReset().mockResolvedValue(undefined);
-  vi.mocked(ecrire).mockClear();
 });
 afterEach(() => {
   for (const v of vues) v.detruire();
@@ -25,7 +20,7 @@ const SONNET = { id: "p1", nom: "sonnet", provider: "anthropic", modele: "claude
 const RAPIDE = { id: "p2", nom: "rapide", provider: "openai", modele: "mini", defaut: false };
 
 /** `lectures` : réponses successives de `lireConversation`. */
-async function monter({ profils = [SONNET, RAPIDE], lectures = [], envoi = { conversation: "c1" }, ouvrirProfils = vi.fn(), erreur = null, conversations = [] } = {}) {
+async function monter({ profils = [SONNET, RAPIDE], lectures = [], envoi = { conversation: "c1" }, ouvrirProfils = vi.fn(), erreur = null, conversations = [], conversation, equipe } = {}) {
   const api = {
     reglagesAgent: vi.fn(async () => ({ providers: [], profils, erreur })),
     listeConversations: vi.fn(async () => conversations),
@@ -33,13 +28,13 @@ async function monter({ profils = [SONNET, RAPIDE], lectures = [], envoi = { con
     lireConversation: vi.fn(async () => lectures.shift() ?? { entrees: [], enCours: false, total: 0, tokens: 0 }),
     arreterConversation: vi.fn(async () => ({})),
   };
-  const vue = vueAgent({ api, ouvrirProfils });
+  const surConversation = vi.fn();
+  const vue = vueAgent({ api, ouvrirProfils, surConversation, conversation, equipe });
   vues.push(vue);
   document.body.append(vue.corps);
-  vue.deplier();
   vue.focuser();
   await vi.advanceTimersByTimeAsync(0);
-  return { vue, api, ouvrirProfils };
+  return { vue, api, ouvrirProfils, surConversation };
 }
 
 const champ = (vue) => vue.corps.querySelector("textarea");
@@ -271,7 +266,7 @@ const alertes = (el) => [...el.querySelectorAll("[role=alert]")];
 const refus = (vue) => alertes(vue.corps).find((a) => !fil(vue).contains(a));
 
 test("REQ055_AC6_AC13_sans_cle_refus_au_dessus_du_champ_texte_garde", async () => {
-  const { vue, api } = await monter({ envoi: { refus: "sans-cle", provider: "OpenAI" } });
+  const { vue, api, surConversation } = await monter({ envoi: { refus: "sans-cle", provider: "OpenAI" } });
   taper(vue, "Lance toute la suite de tests.");
   touche(champ(vue), "Enter");
   await tick(0);
@@ -282,7 +277,7 @@ test("REQ055_AC6_AC13_sans_cle_refus_au_dessus_du_champ_texte_garde", async () =
   expect(fil(vue).textContent).not.toContain("Lance toute");
   expect(fil(vue).textContent).toContain("Écrivez un message pour commencer.");
   expect(api.lireConversation).not.toHaveBeenCalled();
-  expect(ecrire).not.toHaveBeenCalled();
+  expect(surConversation).not.toHaveBeenCalled();
   // La croix le ferme.
   a.querySelector("[aria-label=Fermer]").click();
   expect(refus(vue)).toBeUndefined();
@@ -372,8 +367,7 @@ test("REQ055_AC5_AC12_erreur_du_provider_dans_le_fil_puis_renvoi", async () => {
 });
 
 test("REQ055_AC9_AC14_interrompu_affiche", async () => {
-  vi.mocked(lire).mockResolvedValue({ conversation: "c7" });
-  const { vue } = await monter({
+  const { vue } = await monter({ conversation: "c7",
     lectures: [
       {
         titre: "Mon test",
@@ -409,7 +403,7 @@ test("REQ056_AC6_AC12_menu_conversations_ordre_dates_et_focus", async () => {
   const vide = await monter();
   expect(vide.vue.corps.querySelector("[aria-label=Conversations]").disabled).toBe(true);
   vide.vue.detruire();
-  const { vue, api } = await monter({
+  const { vue, api, surConversation } = await monter({
     conversations: CONVS(),
     lectures: [{ titre: "Le test parse_args", profil: "p2", entrees: [{ type: "utilisateur", texte: "ancien" }, { type: "agent", markdown: "Réponse." }], enCours: false, total: 2, tokens: 3000 }],
   });
@@ -434,7 +428,7 @@ test("REQ056_AC6_AC12_menu_conversations_ordre_dates_et_focus", async () => {
   expect(vue.corps.querySelector(".agent-titre").textContent).toBe("Le test parse_args");
   expect(vue.corps.querySelector("select").value).toBe("rapide");
   expect(document.activeElement).toBe(champ(vue));
-  expect(ecrire).toHaveBeenCalledWith("agent", { conversation: "b" });
+  expect(surConversation).toHaveBeenCalledWith("b");
   // La suite du fil continue cette conversation.
   taper(vue, "suite");
   touche(champ(vue), "Enter");
@@ -444,7 +438,7 @@ test("REQ056_AC6_AC12_menu_conversations_ordre_dates_et_focus", async () => {
 
 test("REQ056_AC12_titre_coupe_et_nouvelle_conversation", async () => {
   const long = `${"a".repeat(50)}…`;
-  const { vue, api } = await monter({
+  const { vue, api, surConversation } = await monter({
     lectures: [{ titre: long, entrees: [{ type: "utilisateur", texte: "premier" }], enCours: true, total: 1, tokens: 0 }],
   });
   taper(vue, "premier");
@@ -461,7 +455,7 @@ test("REQ056_AC12_titre_coupe_et_nouvelle_conversation", async () => {
   expect(fil(vue).textContent).toContain("Écrivez un message pour commencer.");
   expect(vue.corps.querySelector(".agent-titre").textContent).toBe("Nouvelle conversation");
   expect(envoyer(vue).disabled).toBe(true);
-  expect(ecrire).toHaveBeenLastCalledWith("agent", { conversation: null });
+  expect(surConversation).toHaveBeenLastCalledWith(null);
   taper(vue, "autre");
   expect(envoyer(vue).disabled).toBe(false);
   touche(champ(vue), "Enter");
@@ -470,14 +464,12 @@ test("REQ056_AC12_titre_coupe_et_nouvelle_conversation", async () => {
 });
 
 test("REQ056_AC7_rechargement_rouvre_la_derniere", async () => {
-  vi.mocked(lire).mockResolvedValue({ conversation: "c9" });
-  const { vue, api } = await monter({
+  const { vue, api } = await monter({ conversation: "c9",
     lectures: [
       { titre: "Reprise", profil: "p1", entrees: [{ type: "utilisateur", texte: "avant" }, { type: "agent", markdown: "En route." }], enCours: true, total: 2, tokens: 5 },
       { entrees: [{ type: "agent", markdown: "En route." }, { type: "agent", markdown: "Fini." }], enCours: false, total: 3, tokens: 9 },
     ],
   });
-  expect(lire).toHaveBeenCalledWith("agent");
   expect(api.lireConversation).toHaveBeenCalledWith("c9", 0);
   expect(fil(vue).textContent).toContain("avant");
   expect(vue.corps.querySelector(".agent-titre").textContent).toBe("Reprise");
@@ -487,18 +479,17 @@ test("REQ056_AC7_rechargement_rouvre_la_derniere", async () => {
   expect(api.lireConversation).toHaveBeenLastCalledWith("c9", 1);
   expect(fil(vue).textContent).toContain("Fini.");
   expect(arreter(vue).closest(".bouton-enveloppe").hidden).toBe(true);
-  // Un envoi mémorise la conversation.
+  // Un envoi dit la conversation à l'éditeur.
   const autre = await monter();
   taper(autre.vue, "x");
   touche(champ(autre.vue), "Enter");
   await tick(0);
-  expect(ecrire).toHaveBeenCalledWith("agent", { conversation: "c1" });
+  expect(autre.surConversation).toHaveBeenCalledWith("c1");
 });
 
 test("REQ056_AC7_conversation_disparue_oubliee", async () => {
-  vi.mocked(lire).mockResolvedValue({ conversation: "perdue" });
-  const { vue } = await monter({ lectures: [{ introuvable: true }] });
-  expect(ecrire).toHaveBeenCalledWith("agent", { conversation: null });
+  const { vue, surConversation } = await monter({ conversation: "perdue", lectures: [{ introuvable: true }] });
+  expect(surConversation).toHaveBeenCalledWith(null);
   expect(fil(vue).textContent).toContain("Écrivez un message pour commencer.");
 });
 
@@ -533,8 +524,7 @@ test("REQ056_AC14_ordre_de_tab", async () => {
 });
 
 test("profil_supprime_prend_le_defaut", async () => {
-  vi.mocked(lire).mockResolvedValue({ conversation: "c3" });
-  const { vue } = await monter({
+  const { vue } = await monter({ conversation: "c3",
     lectures: [{ titre: "T", profil: "supprime", entrees: [{ type: "agent", markdown: "Bonjour." }], enCours: false, total: 1, tokens: 0 }],
   });
   expect(vue.corps.querySelector("select").value).toBe("sonnet");
@@ -553,10 +543,10 @@ const profilListe = (vue) => vue.corps.querySelector("select");
 const FENETRE = { ...RAPIDE, fenetre: 1048576 };
 
 test("REQ067_AC1_AC15_demarrer_ligne_des_agents_sans_profil_focus", async () => {
-  const { vue } = await monter();
-  expect(ligne(vue).hidden).toBe(true);
-  expect(profilListe(vue)).not.toBeNull();
-  vue.demarrerAvec(AGENTS());
+  const vide = await monter();
+  expect(ligne(vide.vue).hidden).toBe(true);
+  expect(profilListe(vide.vue)).not.toBeNull();
+  const { vue } = await monter({ equipe: AGENTS() });
   expect(ligne(vue).hidden).toBe(false);
   expect(ligne(vue).getAttribute("role")).toBe("list");
   expect([...ligne(vue).querySelectorAll("[role=listitem]")].map((i) => i.textContent)).toEqual(["🦉Relecteur", "TTesteur"]);
@@ -569,8 +559,7 @@ test("REQ067_AC1_AC15_demarrer_ligne_des_agents_sans_profil_focus", async () => 
 });
 
 test("REQ067_premier_envoi_porte_les_agents_puis_la_conversation", async () => {
-  const { vue, api } = await monter({ lectures: [{ entrees: [], enCours: true, total: 1, tokens: 0 }] });
-  vue.demarrerAvec(AGENTS());
+  const { vue, api } = await monter({ equipe: AGENTS(), lectures: [{ entrees: [], enCours: true, total: 1, tokens: 0 }] });
   taper(vue, "Relisez");
   expect(envoyer(vue).disabled).toBe(false);
   touche(champ(vue), "Enter");
@@ -579,8 +568,7 @@ test("REQ067_premier_envoi_porte_les_agents_puis_la_conversation", async () => {
 });
 
 test("REQ067_second_envoi_porte_la_conversation_sans_profil", async () => {
-  const { vue, api } = await monter();
-  vue.demarrerAvec(AGENTS());
+  const { vue, api } = await monter({ equipe: AGENTS() });
   taper(vue, "un");
   touche(champ(vue), "Enter");
   await tick(0);
@@ -592,7 +580,7 @@ test("REQ067_second_envoi_porte_la_conversation_sans_profil", async () => {
 });
 
 test("REQ067_AC6_AC17_auteurs_et_travaille_selon_actif", async () => {
-  const { vue, api } = await monter({
+  const { vue, api } = await monter({ equipe: AGENTS(),
     lectures: [
       { agents: AGENTS(), actif: "relecteur", entrees: [], enCours: true, total: 1, tokens: 0 },
       {
@@ -608,7 +596,6 @@ test("REQ067_AC6_AC17_auteurs_et_travaille_selon_actif", async () => {
       },
     ],
   });
-  vue.demarrerAvec(AGENTS());
   taper(vue, "Relisez");
   touche(champ(vue), "Enter");
   await tick(0);
@@ -629,8 +616,7 @@ test("REQ067_AC6_AC17_auteurs_et_travaille_selon_actif", async () => {
 });
 
 test("REQ067_AC10_nouvelle_conversation_sans_agent_avec_profil", async () => {
-  const { vue } = await monter();
-  vue.demarrerAvec(AGENTS());
+  const { vue } = await monter({ equipe: AGENTS() });
   expect(profilListe(vue)).toBeNull();
   vue.corps.querySelector("[aria-label='Nouvelle conversation']").click();
   expect(ligne(vue).hidden).toBe(true);
@@ -639,9 +625,8 @@ test("REQ067_AC10_nouvelle_conversation_sans_agent_avec_profil", async () => {
 });
 
 test("REQ067_AC11_AC12_reouverture_avec_la_copie_des_agents", async () => {
-  vi.mocked(lire).mockResolvedValue({ conversation: "c9" });
   const copie = [{ ...RELECTEUR, couleur: "rose" }, TESTEUR];
-  const { vue } = await monter({
+  const { vue } = await monter({ conversation: "c9",
     lectures: [
       {
         titre: "Relisez",
@@ -669,14 +654,13 @@ test("REQ067_AC11_AC12_reouverture_avec_la_copie_des_agents", async () => {
 });
 
 test("REQ067_AC18_compteur_du_dernier_agent", async () => {
-  const { vue } = await monter({
+  const { vue } = await monter({ equipe: AGENTS(),
     profils: [SONNET, FENETRE],
     lectures: [
       { agents: AGENTS(), actif: "testeur", entrees: [{ type: "agent", texte: "Bien.", auteur: "relecteur" }], enCours: true, total: 1, tokens: 12000 },
       { agents: AGENTS(), actif: null, entrees: [{ type: "agent", texte: "Bien.", auteur: "relecteur" }, { type: "agent", texte: "Ok.", auteur: "testeur" }], enCours: false, total: 2, tokens: 5000 },
     ],
   });
-  vue.demarrerAvec(AGENTS());
   expect(compteur(vue).textContent).toBe("0 / 200 k");
   taper(vue, "x");
   touche(champ(vue), "Enter");
@@ -688,17 +672,16 @@ test("REQ067_AC18_compteur_du_dernier_agent", async () => {
 });
 
 test("REQ067_AC18_pas_de_compteur_sans_fenetre", async () => {
-  const { vue } = await monter({ profils: [{ ...SONNET, fenetre: undefined }, RAPIDE] });
-  vue.demarrerAvec(AGENTS());
+  const profils = [{ ...SONNET, fenetre: undefined }, RAPIDE];
+  const { vue } = await monter({ profils, equipe: AGENTS() });
   expect(compteur(vue).hidden).toBe(true);
   // Profil supprimé : le profil par défaut.
-  vue.demarrerAvec([{ ...RELECTEUR, profil: "disparu" }]);
-  expect(compteur(vue).hidden).toBe(true);
+  const autre = await monter({ profils, equipe: [{ ...RELECTEUR, profil: "disparu" }] });
+  expect(compteur(autre.vue).hidden).toBe(true);
 });
 
 test("REQ067_AC9_refus_sans_cle_au_nom_du_provider", async () => {
-  const { vue } = await monter({ envoi: { refus: "sans-cle", provider: "Anthropic" } });
-  vue.demarrerAvec(AGENTS());
+  const { vue } = await monter({ equipe: AGENTS(), envoi: { refus: "sans-cle", provider: "Anthropic" } });
   taper(vue, "x");
   touche(champ(vue), "Enter");
   await tick(0);
@@ -708,8 +691,7 @@ test("REQ067_AC9_refus_sans_cle_au_nom_du_provider", async () => {
 });
 
 test("REQ067_AC15_ordre_de_tab_sans_profil", async () => {
-  const { vue } = await monter({ envoi: { refus: "contexte-plein" } });
-  vue.demarrerAvec(AGENTS());
+  const { vue } = await monter({ equipe: AGENTS(), envoi: { refus: "contexte-plein" } });
   const nom = (e) => e.getAttribute("aria-label") ?? e.labels?.[0]?.textContent ?? e.textContent;
   const tabulables = [...vue.corps.querySelectorAll("button, textarea, select, a[href], [tabindex='0']")].map(nom);
   expect(tabulables).toEqual(["Nouvelle conversation", "Conversations", "Conversation", "Message à l'agent", "Arrêter", "Envoyer"]);
@@ -740,7 +722,6 @@ test("REQ078_AC1_vue_vide_sans_conversation_chargee_ni_stockage", async () => {
   expect(vue.corps.querySelector("select").value).toBe("sonnet");
   expect(vue.corps.querySelector("[aria-label=Conversations]").disabled).toBe(false);
   expect(surConversation).not.toHaveBeenCalled();
-  expect(lire).not.toHaveBeenCalled();
 });
 
 test("REQ078_AC2_premier_message_dit_la_conversation", async () => {
@@ -750,10 +731,8 @@ test("REQ078_AC2_premier_message_dit_la_conversation", async () => {
   await tick(0);
   expect(surConversation).toHaveBeenCalledTimes(1);
   expect(surConversation).toHaveBeenCalledWith("c1");
-  expect(ecrire).not.toHaveBeenCalled();
   vue.corps.querySelector("[aria-label='Nouvelle conversation']").click();
   expect(surConversation).toHaveBeenLastCalledWith(null);
-  expect(ecrire).not.toHaveBeenCalled();
 });
 
 test("REQ078_AC6_conversation_chargee_a_la_creation_sans_la_redire", async () => {
@@ -766,7 +745,6 @@ test("REQ078_AC6_conversation_chargee_a_la_creation_sans_la_redire", async () =>
   expect(vue.corps.querySelector(".agent-titre").textContent).toBe("Reprise");
   expect(vue.corps.querySelector("select").value).toBe("rapide");
   expect(surConversation).not.toHaveBeenCalled();
-  expect(ecrire).not.toHaveBeenCalled();
 });
 
 test("REQ078_AC6_conversation_disparue_onglet_vide", async () => {

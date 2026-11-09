@@ -308,19 +308,15 @@ test("REQ064_AC1_agents_deplie_et_affiche_la_liste", async () => {
   const b = boutonAgentsDe(vue);
   expect(b.querySelector("svg[data-icone=users]")).not.toBeNull();
   expect(b.hasAttribute("aria-keyshortcuts")).toBe(false);
-  expect(vue.dataset.vueColonne).toBe("agent");
-  expect(corpsAgents(vue).hidden).toBe(true);
+  expect(corpsAgents(vue).hidden).toBe(false);
+  expect(titreColonne(vue)).toBe("Agents");
   b.parentElement.dispatchEvent(new Event("pointerenter"));
   await vi.waitFor(() => expect(document.querySelector("[role=tooltip]").textContent).toBe("Agents"));
   b.click();
   expect(agentCol(vue).hidden).toBe(false);
-  expect(vue.dataset.vueColonne).toBe("agents");
-  expect(titreColonne(vue)).toBe("Agents");
   expect(agentCol(vue).getAttribute("aria-labelledby")).toBe(agentCol(vue).querySelector("h2").id);
-  expect(corpsAgents(vue).hidden).toBe(false);
-  expect(vue.querySelector(".agent-corps").hidden).toBe(true);
+  expect(vue.querySelector(".agent-corps")).toBeNull();
   await vi.waitFor(() => expect(corpsAgents(vue).textContent).toContain("Relecteur"));
-  expect(ecrire).not.toHaveBeenCalledWith("vueColonne", expect.anything());
 });
 
 test("REQ064_AC1_agents_sous_904_replie_le_panneau", () => {
@@ -332,62 +328,72 @@ test("REQ064_AC1_agents_sous_904_replie_le_panneau", () => {
   expect(aside(vue).hidden).toBe(true);
 });
 
-test("REQ064_AC9_agent_ramene_la_conversation_intacte", async () => {
+test("REQ064_AC9_agent_laisse_la_colonne_sur_agents", async () => {
   fauxServeur();
   const { vue } = monter();
-  boutonAgentDe(vue).click();
-  champAgent(vue).value = "brouillon";
   boutonAgentsDe(vue).click();
-  expect(champAgent(vue).closest(".agent-corps").hidden).toBe(true);
+  await vi.waitFor(() => expect(corpsAgents(vue).querySelector("input[type=checkbox]")).not.toBeNull());
+  corpsAgents(vue).querySelector("input[type=checkbox]").click();
   boutonAgentDe(vue).click();
-  expect(vue.dataset.vueColonne).toBe("agent");
-  expect(titreColonne(vue)).toBe("Agent");
-  expect(corpsAgents(vue).hidden).toBe(true);
-  expect(document.activeElement).toBe(champAgent(vue));
-  expect(champAgent(vue).value).toBe("brouillon");
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(1));
+  expect(titreColonne(vue)).toBe("Agents");
+  expect(corpsAgents(vue).hidden).toBe(false);
+  expect(corpsAgents(vue).querySelector("input[type=checkbox]").checked).toBe(true);
+  expect(agentCol(vue).hidden).toBe(false);
 });
 
-test("REQ059_AC2_a_depuis_les_rails_avec_la_vue_agents_affichee", () => {
+test("REQ059_AC2_a_depuis_les_rails_avec_la_vue_agents_affichee", async () => {
   fauxServeur();
   const { vue } = monter();
   boutonAgentsDe(vue).click();
+  await vi.waitFor(() => expect(corpsAgents(vue).querySelector("input[type=checkbox]")).not.toBeNull());
+  let n = 0;
   for (const source of [vue.querySelector("[role=tab]"), boutonAgentsDe(vue), boutonAgentDe(vue)]) {
-    boutonAgentsDe(vue).click();
     source.focus();
     clavier(source, "a");
-    expect(vue.dataset.vueColonne).toBe("agent");
-    expect(titreColonne(vue)).toBe("Agent");
-    expect(document.activeElement).toBe(champAgent(vue));
+    n++;
+    await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(n));
+    expect(titreColonne(vue)).toBe("Agents");
+    expect(document.activeElement.matches(".agent-corps textarea")).toBe(true);
   }
 });
 
-test("REQ059_AC13_actif_suit_la_vue_et_le_repli", () => {
+test("REQ059_AC13_filet_seulement_sur_agents", async () => {
   fauxServeur();
   const { vue } = monter();
   const actifs = () => [boutonAgentDe(vue).hasAttribute("data-actif"), boutonAgentsDe(vue).hasAttribute("data-actif")];
   expect(actifs()).toEqual([false, false]);
   boutonAgentDe(vue).click();
-  expect(actifs()).toEqual([true, false]);
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(1));
+  expect(actifs()).toEqual([false, false]);
   boutonAgentsDe(vue).click();
+  expect(actifs()).toEqual([false, true]);
+  boutonAgentDe(vue).click();
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(2));
   expect(actifs()).toEqual([false, true]);
   vue.querySelector("[aria-label=\"Replier l'agent\"]").click();
   expect(actifs()).toEqual([false, false]);
   expect(document.activeElement).toBe(boutonAgentsDe(vue));
-  boutonAgentDe(vue).click();
-  expect(actifs()).toEqual([true, false]);
-  vue.querySelector("[aria-label=\"Replier l'agent\"]").click();
-  expect(document.activeElement).toBe(boutonAgentDe(vue));
 });
 
-test("REQ059_AC15_AC028_19_aside_nomme_par_la_vue", () => {
+test("REQ059_AC2_second_clic_sur_agents_relit_la_liste_sans_replier", async () => {
+  const appels = fauxServeur();
+  const { vue } = monter();
+  const lectures = () => appels.filter((a) => a === "GET /api/agent/agents").length;
+  boutonAgentsDe(vue).click();
+  await vi.waitFor(() => expect(lectures()).toBe(1));
+  boutonAgentsDe(vue).click();
+  await vi.waitFor(() => expect(lectures()).toBe(2));
+  expect(agentCol(vue).hidden).toBe(false);
+});
+
+test("REQ059_AC15_AC028_19_aside_nomme_agents", () => {
   fauxServeur();
   const { vue } = monter();
   const nom = () => document.getElementById(agentCol(vue).getAttribute("aria-labelledby")).textContent;
-  expect(nom()).toBe("Agent");
+  expect(nom()).toBe("Agents");
   boutonAgentsDe(vue).click();
   expect(nom()).toBe("Agents");
-  boutonAgentDe(vue).click();
-  expect(nom()).toBe("Agent");
   expect(vue.querySelectorAll("aside.cadre-agent")).toHaveLength(1);
 });
 
@@ -409,7 +415,7 @@ test("REQ066_AC1_AC4_fichier_ouvert_ou_recree_puis_ouvert", async () => {
   await vi.waitFor(() => expect(vue.querySelector(`[aria-label="Éditeur PERSONA.md"]`)).not.toBeNull());
   expect(appels.filter((a) => a === `GET /api/fichier?chemin=${chemin}`)).toHaveLength(2);
   expect(document.activeElement.closest(".editeur-code")).not.toBeNull();
-  expect(vue.dataset.vueColonne).toBe("agents");
+  expect(titreColonne(vue)).toBe("Agents");
 });
 
 test("REQ066_AC1_fichier_illisible_dit_la_raison", async () => {
@@ -423,10 +429,9 @@ test("REQ066_AC1_fichier_illisible_dit_la_raison", async () => {
   await vi.waitFor(() => expect(vue.textContent).toContain("Impossible d'ouvrir AGENTS.md : Disque plein."));
 });
 
-test("REQ067_AC15_demarrer_donne_le_filet_a_agent", async () => {
+test("REQ067_AC1_demarrer_ouvre_un_onglet_cases_gardees", async () => {
   fauxServeur();
   const base = fetch;
-  // Colonne repliée au départ : les réglages ne sont lus qu'après « Démarrer ».
   vi.stubGlobal("fetch", vi.fn(async (url, opts) => {
     if (String(url) === "/api/agent/reglages") return jsonOk({ providers: [], profils: [{ id: "p", nom: "m", provider: "openai", modele: "x", defaut: true }] });
     if (String(url) === "/api/agent/conversations") return jsonOk([{ id: "c1", titre: "Une", maj: 1 }]);
@@ -436,18 +441,24 @@ test("REQ067_AC15_demarrer_donne_le_filet_a_agent", async () => {
   boutonAgentsDe(vue).click();
   await vi.waitFor(() => expect(corpsAgents(vue).querySelector("input[type=checkbox]")).not.toBeNull());
   corpsAgents(vue).querySelector("input[type=checkbox]").click();
-  [...corpsAgents(vue).querySelectorAll("button")].find((b) => b.textContent === "Démarrer une conversation").click();
-  expect(vue.dataset.vueColonne).toBe("agent");
-  expect(titreColonne(vue)).toBe("Agent");
-  expect(boutonAgentDe(vue).hasAttribute("data-actif")).toBe(true);
-  expect(boutonAgentsDe(vue).hasAttribute("data-actif")).toBe(false);
+  const demarrer = () => [...corpsAgents(vue).querySelectorAll("button")].find((b) => b.textContent === "Démarrer une conversation");
+  demarrer().click();
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(1));
+  // La colonne garde sa liste et sa case ; « Agents » garde son filet, « Agent » n'en prend pas.
+  expect(titreColonne(vue)).toBe("Agents");
+  expect(corpsAgents(vue).hidden).toBe(false);
+  expect(corpsAgents(vue).querySelector("input[type=checkbox]").checked).toBe(true);
+  expect(boutonAgentDe(vue).hasAttribute("data-actif")).toBe(false);
+  expect(boutonAgentsDe(vue).hasAttribute("data-actif")).toBe(true);
   expect(document.activeElement).toBe(champAgent(vue));
   expect(vue.querySelector("[role=list][aria-label=\"Agents de la conversation\"]").textContent).toContain("Relecteur");
   champAgent(vue).value = "Bonjour";
   champAgent(vue).dispatchEvent(new Event("input", { bubbles: true }));
-  const envoyer = vue.querySelector("[aria-label=Envoyer]");
-  await vi.waitFor(() => expect(envoyer.disabled).toBe(false));
+  await vi.waitFor(() => expect(vue.querySelector("[aria-label=Envoyer]").disabled).toBe(false));
   await vi.waitFor(() => expect(vue.querySelector("[aria-label=Conversations]").disabled).toBe(false));
+  // Un second « Démarrer » ouvre un second onglet.
+  demarrer().click();
+  await vi.waitFor(() => expect(vue.querySelectorAll(".agent-corps")).toHaveLength(2));
 });
 
 test("REQ028_AC8_ordre_de_tab_avec_agents", async () => {
@@ -466,18 +477,15 @@ test("REQ028_AC8_ordre_de_tab_avec_agents", async () => {
   expect(apres.some((e) => e.closest(".agents-corps"))).toBe(true);
 });
 
-test("rechargement_rouvre_la_conversation", async () => {
+test("REQ069_AC3_colonne_depliee_sans_prendre_le_focus", async () => {
   fauxServeur();
-  vi.mocked(lire).mockImplementation(async (cle) => ({ replis: { panneau: false, agent: false }, agent: { conversation: "c1" } })[cle]);
-  vi.stubGlobal("fetch", vi.fn(async (url) => {
-    const u = String(url);
-    if (u === "/api/agent/reglages") return jsonOk({ providers: [], profils: [{ id: "p", nom: "m", provider: "openai", modele: "x", defaut: true }] });
-    if (u.startsWith("/api/agent/conversations/c1")) return jsonOk({ entrees: [{ type: "agent", markdown: "Souvenir." }], enCours: false, total: 1, tokens: 0 });
-    return { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "erreur 500" }) };
-  }));
+  vi.mocked(lire).mockImplementation(async (cle) => ({ replis: { panneau: false, agent: false } })[cle]);
   const { vue } = monter();
-  await vi.waitFor(() => expect(agentCol(vue).querySelector("[role=log]").textContent).toContain("Souvenir."));
-  expect(vue.dataset.vueColonne).toBe("agent");
+  await vi.waitFor(() => expect(corpsAgents(vue).textContent).toContain("Relecteur"));
+  expect(agentCol(vue).hidden).toBe(false);
+  expect(titreColonne(vue)).toBe("Agents");
+  expect(boutonAgentsDe(vue).hasAttribute("data-actif")).toBe(true);
+  expect(agentCol(vue).contains(document.activeElement)).toBe(false);
   await attendre();
 });
 
@@ -759,4 +767,18 @@ test("REQ070_AC20_agents_ou_claude_desactives_avec_opencode", async () => {
   const c = monter({ reglages: { fonctions: { agents: false } } }).vue;
   await vi.waitFor(() => expect(boutonOcDe(c)).not.toBeNull());
   expect(nomsRailDroit(c)).toEqual(["Claude", "opencode"]);
+});
+
+test("REQ078_AC16_demarrer_en_coupure_bandeau_sans_onglet", async () => {
+  fauxServeur();
+  const { vue } = monter();
+  boutonAgentsDe(vue).click();
+  await vi.waitFor(() => expect(corpsAgents(vue).querySelector("input[type=checkbox]")).not.toBeNull());
+  corpsAgents(vue).querySelector("input[type=checkbox]").click();
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    throw new Error("coupé");
+  }));
+  [...corpsAgents(vue).querySelectorAll("button")].find((b) => b.textContent === "Démarrer une conversation").click();
+  await vi.waitFor(() => expect([...vue.querySelectorAll(".cadre-bandeaux [role=alert]")].some((a) => a.textContent.includes("Réessayez au retour."))).toBe(true));
+  expect(vue.querySelectorAll(".agent-corps")).toHaveLength(0);
 });

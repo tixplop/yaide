@@ -126,10 +126,11 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
 
   const focusInitial = (refs) => (refs.cases[0] ?? refs.aucun ?? refs.nouveau).focus();
 
-  async function afficher() {
+  /** `focus` faux : la liste est relue sans prendre le focus (colonne dépliée au chargement). */
+  async function afficher({ focus = true } = {}) {
     coches.clear();
     fiche = null;
-    await charger(focusInitial);
+    await charger(focus ? focusInitial : () => {});
   }
 
   // ---------- Fiche ----------
