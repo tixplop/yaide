@@ -461,3 +461,27 @@ test("REQ072_AC24_onglet_question_marque_et_nom_accessible", () => {
   const r2 = onglets({ actif: "sa", onglets: [{ id: "sa", libelle: "explore", nomAccessible: "explore, sous-agent : T", icone: "code-xml", fermable: true, question: true }] });
   expect(tab(r2, 0).getAttribute("aria-label")).toBe("explore, sous-agent : T, question en attente");
 });
+
+test("REQ078_AC11_onglet_agent_icone_bot_croix_sans_statut", () => {
+  const surFermer = vi.fn();
+  const r = onglets({
+    actif: "ag-1",
+    surFermer,
+    onglets: [
+      { id: "a", libelle: "a.rs", fermable: true },
+      { id: "ag-1", libelle: "Agent 1", icone: "bot", titre: "Agent dans ~/code/projet", fermable: true },
+    ],
+  });
+  const s = tab(r, 1);
+  expect(s.textContent).toBe("Agent 1");
+  expect(s.title).toBe("Agent dans ~/code/projet");
+  expect(s.getAttribute("aria-label")).toBe("Agent 1");
+  expect(s.querySelector('[data-icone="bot"]')).not.toBeNull();
+  expect(s.hasAttribute("data-modifie")).toBe(false);
+  expect(s.querySelector(".onglet-question")).toBeNull();
+  expect(s.querySelector('[class*="onglet-statut-"]')).toBeNull();
+  const croix = r.querySelectorAll(".onglet-cellule")[1].querySelector(".onglet-fermer");
+  expect(croix.getAttribute("aria-label")).toBe("Fermer Agent 1");
+  croix.click();
+  expect(surFermer).toHaveBeenLastCalledWith("ag-1", "croix");
+});

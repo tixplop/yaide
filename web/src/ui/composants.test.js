@@ -172,3 +172,18 @@ test("REQ072_AC24_regles_des_demandes_en_attente", () => {
 test("REQ072_AC19_session_cachee_n_est_pas_affichee_malgre_display_flex", () => {
   expect(css).toMatch(/\.session\[hidden\]\s*\{\s*display:\s*none;?\s*\}/);
 });
+
+test("REQ078_AC13_regles_largeur_session_sur_agent_corps", () => {
+  a(".cadre-code .agent-corps", "background: var(--bg-200)");
+  a(".cadre-code .agent-corps", "var(--largeur-session)");
+  a(".cadre-code .agent-corps", "var(--space-3)");
+  a(".cadre-code .agent-corps[hidden]", "display: none");
+  a(".cadre-code .agent-fil", "background: none");
+  expect(regle(".cadre-code .agent-fil")).not.toMatch(/overflow/);
+  for (const s of [".cadre-code .agent-entete", ".cadre-code .ya-agents", ".cadre-code .agent-fil", ".cadre-code .agent-saisie"]) a(s, "padding-inline: var(--marge)");
+  // Les filets restent sur les parties pleine largeur : le centrage ne passe que par le remplissage.
+  expect(regle(".cadre-code .agent-entete")).not.toMatch(/max-width|margin/);
+  expect(regle(".cadre-code .agent-saisie")).not.toMatch(/max-width|margin/);
+  // Les règles de la colonne restent jusqu'à T-142.
+  a(".agent-corps", "height: 100%");
+});

@@ -28,12 +28,10 @@ window.conversation = conversation;`,
 
 const COMBOS = [
   ["dark", "--bg-200"],
-  ["dark", "--bg-100"],
   ["light", "--bg-200"],
-  ["light", "--bg-100"],
 ];
 
-/** Réponse suivie d'un message, dans la conversation ; `--bg-200` : le fond de la session, `--bg-100` : celui de la vue Agent. */
+/** Réponse suivie d'un message, dans la conversation , sur `--bg-200` (le fond de la session et de l'onglet Agent). */
 async function monter(page, { theme = "dark", fond = "--bg-200", md, largeur = 700 }) {
   await page.goto(pathToFileURL(resolve(dossier, "index.html")).href);
   await page.evaluate(
@@ -360,10 +358,10 @@ test("REQ077_AC23_AC24_cases", async ({ page }) => {
   }
 });
 
-test("REQ077_AC9_largeurs_320_et_240", async ({ page }) => {
+test("REQ077_AC9_largeur_320", async ({ page }) => {
   const chemin = "src/".concat("dossier/".repeat(10)).slice(0, 80);
   const md = `| a | b | c | d | e | f |\n|---|---|---|---|---|---|\n| 1 | ${chemin} | 3 | 4 | 5 | 6 |\n\n\`\`\`\n${"x".repeat(300)}\n\`\`\``;
-  for (const [largeur, fond] of [[320, "--bg-200"], [240, "--bg-100"]]) {
+  for (const [largeur, fond] of [[320, "--bg-200"]]) {
     await monter(page, { fond, md, largeur });
     const m = await page.locator(".ya-chat").evaluate((e) => [e.scrollWidth, e.clientWidth]);
     expect(m[0], `${largeur} px`).toBe(m[1]);

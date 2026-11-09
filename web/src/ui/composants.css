@@ -466,6 +466,14 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .agent-compteur[hidden] { display: none; }
 .agent-barre .bouton-enveloppe[hidden] { display: none; }
 
+/* Onglet Agent dans l'éditeur (C-005, C-010) : comme .session, fond --bg-200, la conversation défile seule ; filets sur toute la largeur, contenu de --largeur-session au plus, centré. */
+.cadre-code .agent-corps { --marge: max(var(--space-3), calc((100% - var(--largeur-session)) / 2)); background: var(--bg-200); }
+.cadre-code .agent-corps[hidden] { display: none; }
+.cadre-code .agent-entete { padding-inline: var(--marge); }
+.cadre-code .ya-agents { padding-inline: var(--marge); }
+.cadre-code .agent-fil { background: none; padding-inline: var(--marge); }
+.cadre-code .agent-saisie { padding-inline: var(--marge); }
+
 /* C-015 */
 .ya-chat { display: flex; flex-direction: column; gap: var(--space-3); position: relative; box-sizing: border-box; height: 100%; overflow: auto; padding: var(--space-2) var(--space-3); background: var(--bg-100); color: var(--ink); font: 13px/20px var(--font-sans); }
 .session .ya-chat { background: none; }
