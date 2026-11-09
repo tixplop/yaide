@@ -461,7 +461,7 @@ test("REQ061_AC13_pas_de_menu_sur_la_partie_vide_de_la_barre", () => {
 test("REQ061_AC9_liste_gardee_relue_apres_la_serie", async () => {
   vi.resetModules();
   const garder = vi.fn();
-  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder, retrouver: async () => ({ liste: [], actif: null }) }));
+  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder, retrouver: async () => ({ liste: [], actif: null, disposition: { arbre: { id: "g1", actif: null }, courant: "g1" } }) }));
   const { vueEditeur: neuf } = await import("./editeur.js");
   const e = neuf({ dire: vi.fn() });
   editeurs.push(e);
@@ -473,7 +473,7 @@ test("REQ061_AC9_liste_gardee_relue_apres_la_serie", async () => {
   choisirCommande("Fermer les autres onglets");
   await vi.advanceTimersByTimeAsync(250);
   vi.useRealTimers();
-  expect(garder).toHaveBeenLastCalledWith([expect.objectContaining({ chemin: "README.md" })], "README.md");
+  expect(garder).toHaveBeenLastCalledWith([expect.objectContaining({ chemin: "README.md" })], "README.md", expect.anything());
   vi.doUnmock("../onglets-fichiers.js");
   vi.resetModules();
 });
@@ -516,7 +516,7 @@ test("REQ062_AC10_liste_gardee_relue_avec_le_mode_hybride", async () => {
   vi.resetModules();
   const garder = vi.fn();
   const gardee = [{ chemin: "README.md", hybride: true }, { chemin: "notes.md" }];
-  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder, retrouver: async () => ({ liste: gardee, actif: "README.md" }) }));
+  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder, retrouver: async () => ({ liste: gardee, actif: "README.md", disposition: { arbre: { id: "g1", actif: "README.md" }, courant: "g1" } }) }));
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => "# t" })));
   const { vueEditeur: neuf } = await import("./editeur.js");
   const e = neuf({ dire: vi.fn() });
@@ -530,7 +530,7 @@ test("REQ062_AC10_liste_gardee_relue_avec_le_mode_hybride", async () => {
   boutonHybride().click();
   await vi.advanceTimersByTimeAsync(250);
   vi.useRealTimers();
-  expect(garder).toHaveBeenLastCalledWith(expect.arrayContaining([expect.objectContaining({ chemin: "README.md", hybride: true }), expect.objectContaining({ chemin: "notes.md", hybride: true })]), "notes.md");
+  expect(garder).toHaveBeenLastCalledWith(expect.arrayContaining([expect.objectContaining({ chemin: "README.md", hybride: true }), expect.objectContaining({ chemin: "notes.md", hybride: true })]), "notes.md", expect.anything());
   vi.doUnmock("../onglets-fichiers.js");
   vi.resetModules();
 });
@@ -727,8 +727,8 @@ test("REQ068_AC9_session_disparue_onglet_retire_sans_message", () => {
 function gardes(liste, actif) {
   lire.mockResolvedValueOnce({ liste, actif });
 }
-const fichierGarde = (chemin) => ({ chemin, apercu: false, hybride: false });
-const claudeGarde = (id, numero, instance = "i1") => ({ claude: true, id, numero, instance });
+const fichierGarde = (chemin) => ({ groupe: "g1", chemin, apercu: false, hybride: false });
+const claudeGarde = (id, numero, instance = "i1") => ({ groupe: "g1", claude: true, id, numero, instance });
 
 test("REQ068_AC17_rechargement_focus_sur_l_onglet", async () => {
   gardes([fichierGarde("main.rs"), claudeGarde("a", 1)], "\0claude:a");
@@ -768,10 +768,10 @@ test("REQ018_fichiers_et_claude_restaures_dans_l_ordre", async () => {
   const [, valeur] = ecrire.mock.calls.at(-1);
   expect(valeur.liste).toEqual([
     expect.objectContaining({ chemin: "a.txt" }),
-    { claude: true, id: "x", numero: 2, instance: "i1" },
+    { groupe: "g1", claude: true, id: "x", numero: 2, instance: "i1" },
     expect.objectContaining({ chemin: "b.txt" }),
-    { claude: true, id: "y", numero: 1, instance: "i1" },
-    { claude: true, id: "z", numero: 3, instance: "i1" },
+    { groupe: "g1", claude: true, id: "y", numero: 1, instance: "i1" },
+    { groupe: "g1", claude: true, id: "z", numero: 3, instance: "i1" },
   ]);
   expect(valeur.actif).toBe("\0claude:z");
 });
@@ -805,7 +805,7 @@ test("REQ070_AC6_onglets_claude_gardes_caches_puis_rendus", async () => {
     { claude: true, id: "s2", numero: 4, instance: "i1" },
     { chemin: "b.txt" },
   ];
-  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder, retrouver: async () => ({ liste: gardee, actif: "a.txt" }) }));
+  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder, retrouver: async () => ({ liste: gardee, actif: "a.txt", disposition: { arbre: { id: "g1", actif: "a.txt" }, courant: "g1" } }) }));
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => "x" })));
   const { vueEditeur: neuf } = await import("./editeur.js");
   const e = neuf({ dire: vi.fn(), claude: false });
@@ -827,7 +827,7 @@ test("REQ070_AC6_onglets_claude_gardes_caches_puis_rendus", async () => {
 test("REQ018_brouillon_garde_identique_au_disque_n_est_ni_modifie_ni_en_conflit", async () => {
   vi.resetModules();
   const gardee = [{ chemin: "a.txt", texte: "sur le disque", base: "ancien", version: "1" }];
-  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder: vi.fn(), retrouver: async () => ({ liste: gardee, actif: "a.txt" }) }));
+  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder: vi.fn(), retrouver: async () => ({ liste: gardee, actif: "a.txt", disposition: { arbre: { id: "g1", actif: "a.txt" }, courant: "g1" } }) }));
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, headers: new Headers({ "x-version": "2" }), text: async () => "sur le disque" })));
   const { vueEditeur: neuf } = await import("./editeur.js");
   const e = neuf({ dire: vi.fn() });
@@ -842,8 +842,8 @@ test("REQ018_brouillon_garde_identique_au_disque_n_est_ni_modifie_ni_en_conflit"
 
 // ---- Onglets opencode (REQ-072) ----
 
-const ocGarde = (id, numero) => ({ opencode: true, id, numero });
-const saGarde = (id, agent, titre) => ({ opencode: true, id, agent, titre });
+const ocGarde = (id, numero) => ({ groupe: "g1", opencode: true, id, numero });
+const saGarde = (id, agent, titre) => ({ groupe: "g1", opencode: true, id, agent, titre });
 
 function monterOc(options = {}, restaurer = false) {
   faux.oc.length = 0;
@@ -1019,11 +1019,11 @@ test("REQ018_fichiers_claude_et_opencode_restaures_dans_l_ordre", async () => {
   const [, valeur] = ecrire.mock.calls.at(-1);
   expect(valeur.liste).toEqual([
     expect.objectContaining({ chemin: "a.txt" }),
-    { opencode: true, id: "x", numero: 2 },
-    { claude: true, id: "c", numero: 1, instance: "i1" },
-    { opencode: true, id: "sa", agent: "explore", titre: "T" },
+    { groupe: "g1", opencode: true, id: "x", numero: 2 },
+    { groupe: "g1", claude: true, id: "c", numero: 1, instance: "i1" },
+    { groupe: "g1", opencode: true, id: "sa", agent: "explore", titre: "T" },
     expect.objectContaining({ chemin: "b.txt" }),
-    { opencode: true, id: "z", numero: 1 },
+    { groupe: "g1", opencode: true, id: "z", numero: 1 },
   ]);
   expect(valeur.actif).toBe("\0oc:z");
 });
@@ -1043,7 +1043,7 @@ test("REQ018_onglet_claude_cache_garde_sa_place_apres_un_onglet_opencode", async
 
 // ---- Onglets Agent (REQ-078) ----
 
-const agGarde = (numero, conversation = null) => ({ conversationAgent: true, numero, conversation });
+const agGarde = (numero, conversation = null) => ({ groupe: "g1", conversationAgent: true, numero, conversation });
 function monterAg(options = {}, restaurer = false) {
   faux.ag.length = 0;
   faux.oc.length = 0;
@@ -1065,7 +1065,7 @@ test("REQ078_AC2_onglet_vide_rien_enregistre", async () => {
   expect(faux.ag[0].equipe).toEqual([{ dossier: "a", nom: "A" }]);
   expect(faux.ag[0].conversation).toBeUndefined();
   const g = await derniereGarde();
-  expect(g.liste).toEqual([{ conversationAgent: true, numero: 1, conversation: null }]);
+  expect(g.liste).toEqual([{ groupe: "g1", conversationAgent: true, numero: 1, conversation: null }]);
   expect(g.actif).toBe("\0agent:1");
   expect(fetch).not.toHaveBeenCalled();
 });

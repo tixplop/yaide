@@ -1,5 +1,8 @@
-import { expect, test } from "vitest";
-import { apresFermeture, estSous, libelles, plusPetitNumeroLibre, suivreRenommage } from "./onglets-fichiers.js";
+import { expect, test, vi } from "vitest";
+import { apresFermeture, estSous, garder, libelles, plusPetitNumeroLibre, retrouver, suivreRenommage } from "./onglets-fichiers.js";
+import { ecrire, lire } from "./stockage.js";
+
+vi.mock("./stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
 test("REQ011_AC8_le_dossier_parent_suit_le_nom_quand_deux_noms_sont_identiques", () => {
   expect(libelles(["src/main.rs", "tests/main.rs", "README.md"])).toEqual([
@@ -34,4 +37,27 @@ test("REQ068_AC13_plus_petit_numero_libre_parmi_les_numeros_pris", () => {
   expect(plusPetitNumeroLibre([1, 2])).toBe(3);
   expect(plusPetitNumeroLibre([2, 3])).toBe(1);
   expect(plusPetitNumeroLibre([1, 3])).toBe(2);
+});
+
+test("REQ079_AC18_garde_et_retrouve_la_disposition", async () => {
+  const disposition = { arbre: { sens: "ligne", a: { id: "g1", actif: "a" }, b: { id: "g2", actif: null } }, courant: "g2" };
+  garder([{ chemin: "a", groupe: "g1" }], "a", disposition);
+  expect(ecrire).toHaveBeenLastCalledWith("onglets", { liste: [{ chemin: "a", groupe: "g1" }], actif: "a", disposition });
+  lire.mockResolvedValueOnce({ liste: [{ chemin: "a", groupe: "g1" }], actif: "a", disposition });
+  expect(await retrouver()).toEqual({ liste: [{ chemin: "a", groupe: "g1" }], actif: "a", disposition });
+  // Groupe courant inconnu : le premier groupe.
+  lire.mockResolvedValueOnce({ liste: [], actif: null, disposition: { ...disposition, courant: "g7" } });
+  expect((await retrouver()).disposition.courant).toBe("g1");
+});
+
+test("REQ079_AC18_ancien_format_et_disposition_abimee", async () => {
+  const seul = { arbre: { id: "g1", actif: "b" }, courant: "g1" };
+  lire.mockResolvedValueOnce({ liste: [{ chemin: "b" }], actif: "b" });
+  expect(await retrouver()).toEqual({ liste: [{ chemin: "b" }], actif: "b", disposition: seul });
+  for (const abimee of [{ arbre: { sens: "ligne", a: { id: "g1", actif: null } }, courant: "g1" }, { arbre: { id: "g1", actif: null, x: 1 }, courant: "g1" }, "n'importe quoi", null]) {
+    lire.mockResolvedValueOnce({ liste: [{ chemin: "b" }], actif: "b", disposition: abimee });
+    expect((await retrouver()).disposition).toEqual(seul);
+  }
+  lire.mockResolvedValueOnce(undefined);
+  expect(await retrouver()).toEqual({ liste: [], actif: null, disposition: { arbre: { id: "g1", actif: null }, courant: "g1" } });
 });

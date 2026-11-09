@@ -108,7 +108,15 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   const finsPression = ["pointerup", "pointercancel", "dragend"];
   for (const ev of finsPression) document.addEventListener(ev, finPression);
 
-  const ongletsDe = (g) => [...(diff?.groupe === g.id ? [diff] : []), ...liste.filter((x) => x.groupe === g.id)];
+  // Le diff est à gauche des onglets de son groupe ; une fois déplacé, il garde le rang qu'il avait à son arrivée (AC-079-4, AC-079-11).
+  const ongletsDe = (g) => {
+    const propres = liste.filter((x) => x.groupe === g.id);
+    if (diff?.groupe !== g.id) return propres;
+    if (diff.rang === null) return [diff, ...propres];
+    const i = Math.min(diff.rang, propres.length);
+    return [...propres.slice(0, i), diff, ...propres.slice(i)];
+  };
+  const idDe = (x) => (x === diff ? DIFF : x.chemin);
   const actifDe = (g) => (g.id === courant ? actif : g.actif);
   const poserActif = (g, id) => {
     g.actif = id;
@@ -222,10 +230,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   const cleGarde = (g) => (g.claude ? CLAUDE + g.id : g.opencode ? OPENCODE + g.id : g.conversationAgent ? AGENT + g.numero : g.chemin);
 
   function garde(o) {
-    if (o.claude) return { claude: true, id: o.id, numero: o.numero, instance: o.instance };
-    if (o.conversationAgent) return { conversationAgent: true, numero: o.numero, conversation: o.conversation };
-    if (o.opencode) return o.agent === undefined ? { opencode: true, id: o.id, numero: o.numero } : { opencode: true, id: o.id, agent: o.agent, titre: o.titre };
-    return { chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) };
+    if (o.claude) return { groupe: o.groupe, claude: true, id: o.id, numero: o.numero, instance: o.instance };
+    if (o.conversationAgent) return { groupe: o.groupe, conversationAgent: true, numero: o.numero, conversation: o.conversation };
+    if (o.opencode) return o.agent === undefined ? { groupe: o.groupe, opencode: true, id: o.id, numero: o.numero } : { groupe: o.groupe, opencode: true, id: o.id, agent: o.agent, titre: o.titre };
+    return { groupe: o.groupe, chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) };
   }
 
   function ecrireGarde() {
@@ -237,10 +245,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       deja.set(apres, n + 1);
       gardes.splice((apres !== null && i < 0 ? gardes.length : i + 1) + n, 0, garde);
     }
-    garder(
-      gardes,
-      actif === DIFF ? (liste[0]?.chemin ?? null) : actif,
-    );
+    // Le diff n'est jamais gardé : son groupe garde son premier onglet à la place.
+    const gardable = (g) => (actifDe(g) === DIFF ? (liste.find((x) => x.groupe === g.id)?.chemin ?? null) : actifDe(g));
+    const avecActifs = (n) => (n.sens === undefined ? { id: n.id, actif: gardable(groupes.get(n.id)) } : { sens: n.sens, a: avecActifs(n.a), b: avecActifs(n.b) });
+    garder(gardes, gardable(groupes.get(courant)), { arbre: avecActifs(arbre), courant });
   }
 
   function direAttente() {
@@ -340,7 +348,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       actionsDroite.push(ap.enveloppe);
     }
     const ongl = onglets({
-      onglets: [...(diff?.groupe === g.id ? [{ id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true }] : []), ...liste.filter((x) => x.groupe === g.id).map((x) => x.claude ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "asterisk", titre: `Claude Code dans ${cheminProjet}`, fermable: true } : x.conversationAgent ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "bot", titre: `Agent dans ${cheminProjet}`, fermable: true } : x.opencode ? ongletOpencode(x, noms.get(x).libelle) : ({
+      onglets: ongletsDe(g).map((x) => x === diff ? { id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true } : x.claude ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "asterisk", titre: `Claude Code dans ${cheminProjet}`, fermable: true } : x.conversationAgent ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "bot", titre: `Agent dans ${cheminProjet}`, fermable: true } : x.opencode ? ongletOpencode(x, noms.get(x).libelle) : ({
         id: x.chemin,
         libelle: noms.get(x).libelle,
         detail: noms.get(x).detail,
@@ -349,7 +357,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
         statut: statutOnglet(x.chemin),
         question: Boolean(x.question),
         fermable: true,
-      }))],
+      })),
       actif: idActif,
       actionsDroite,
       surChoix: choisir,
@@ -628,12 +636,15 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   /** Ouvre le diff de `chemin` dans l'onglet de diff, qui remplace le précédent. `avis` : texte à montrer au lieu du diff. */
   function ouvrirDiff({ chemin, texte, avis }) {
     dernierGeste++;
-    if (actif !== DIFF) avantDiff = actif;
+    // Le diff déjà ouvert se met à jour dans son groupe ; sinon il s'ouvre dans le groupe courant.
+    const groupeDiff = diff?.groupe ?? courant;
+    const avant = actifDe(groupes.get(groupeDiff));
+    if (avant !== DIFF) avantDiff = avant;
     diff?.el.detruire?.();
     diff?.el.remove();
     // La zone peut signaler sa position pendant sa création : `el` n'existe pas encore, on se repère au chemin.
     const el = avis ? indication({ texte: avis }) : zoneCode({ contenu: texte, mode: "diff", nom: nomDe(chemin), surPosition: () => actif === DIFF && diff?.chemin === chemin && publier(diff) });
-    diff = { chemin, el, groupe: diff?.groupe ?? courant };
+    diff = { chemin, el, groupe: groupeDiff, rang: diff?.rang ?? null };
     activer(DIFF);
     afficher();
     el.vue?.focus();
@@ -684,6 +695,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       liste.push(o);
     }
     o.groupe = arrivee;
+    if (o === diff) diff.rang = liste.filter((x) => x.groupe === arrivee).length;
     passerA(arrivee);
     actif = id;
     groupes.get(arrivee).actif = id;
@@ -988,7 +1000,8 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   // ---- Menu des onglets et série de fermetures (REQ-061) ----
 
-  const ordre = () => [...(diff ? [DIFF] : []), ...liste.map((o) => o.chemin)];
+  /** Onglets de la barre du groupe `groupe`, dans l'ordre de la barre. */
+  const ordreDe = (groupe) => (groupes.has(groupe) ? ongletsDe(groupes.get(groupe)).map(idDe) : []);
   const existe = (id) => (id === DIFF ? Boolean(diff) : Boolean(trouver(id)));
 
   // Sans connexion, la session ne peut pas s'arrêter : l'onglet Claude reste (design.md, coupure).
@@ -996,6 +1009,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   /** Ferme `ids` : d'abord les onglets sans modification, sans question ; puis chaque onglet modifié, un dialogue à la fois. */
   async function fermerSerie(ids, vise) {
+    const groupeVise = item(vise)?.groupe;
     let refus = false;
     for (const id of ids) {
       if (id === DIFF) fermerDiff();
@@ -1016,10 +1030,13 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       if (detruit) return;
     }
     if (detruit) return;
-    const reste = ordre();
-    const apres = arret && existe(arret) ? arret : existe(vise) ? vise : (reste[0] ?? null);
-    if (apres === null) actif = null;
-    else activer(apres);
+    // Barre vidée : le groupe a disparu et son voisin est courant, avec son onglet actif.
+    if (groupes.has(groupeVise)) {
+      const reste = ordreDe(groupeVise);
+      const apres = arret && existe(arret) ? arret : existe(vise) ? vise : (reste[0] ?? null);
+      if (apres === null) poserActif(groupes.get(groupeVise), null);
+      else activer(apres);
+    }
     afficher();
     garderListe();
     focusActif();
@@ -1033,7 +1050,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     const onglet = groupes.get(courant).barre.querySelector("[role=tab][aria-selected=true]");
     onglet?.focus();
     const libelle = id === DIFF ? `${nomDe(diff.chemin)} (diff)` : nomsOnglets().get(trouver(id)).libelle;
-    const tous = ordre();
+    const tous = ordreDe(item(id).groupe);
     const commandes = [];
     if (tous.length >= 2) commandes.push({ libelle: "Fermer les autres onglets", surChoix: () => fermerSerie(tous.filter((x) => x !== id), id) });
     commandes.push({ libelle: "Fermer tous les onglets", surChoix: () => fermerSerie(tous, id) });
@@ -1067,6 +1084,21 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     }
   }
 
+  /** Pose la disposition gardée : un groupe par feuille, chacun avec son onglet actif, et le groupe courant. */
+  function installerDisposition({ arbre: gardee, courant: gardeCourant }) {
+    const ids = feuilles(gardee).map((f) => f.id);
+    groupes.get(courant).actif = actif;
+    for (const id of ids) if (!groupes.has(id)) creerGroupe(id);
+    for (const id of [...groupes.keys()]) if (!ids.includes(id)) groupes.delete(id);
+    for (const f of feuilles(gardee)) groupes.get(f.id).actif = f.actif;
+    arbre = gardee;
+    numeroGroupe = Math.max(numeroGroupe, ...ids.map((id) => (/^g\d+$/.test(id) ? Number(id.slice(1)) : 0)));
+    courant = gardeCourant;
+    actif = groupes.get(courant).actif;
+    // Ce que l'utilisateur a ouvert pendant la lecture, dans un groupe qui n'existe plus, va dans le groupe courant.
+    for (const x of [...liste, ...(diff ? [diff] : [])]) if (!groupes.has(x.groupe)) x.groupe = courant;
+  }
+
   async function restaurer() {
     const gardes = await retrouver();
     const instance = claude && gardes.liste.some((g) => g.claude) ? (await listeShells())?.instance : undefined;
@@ -1075,6 +1107,9 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     lectures--;
     const aVerifier = [];
     let precedent = null;
+    const prefere = actif === DIFF || trouver(actif) ? actif : null; // choisi par l'utilisateur pendant la lecture
+    const dejaLa = new Set(liste);
+    installerDisposition(gardes.disposition);
     gardes.liste.forEach((g, i) => {
       if (g.claude && !claude) {
         cachees.push({ garde: g, apres: precedent });
@@ -1115,7 +1150,15 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       if (o && g.attente) attente.add(o);
     });
     direAttente();
-    if (actif !== DIFF && !trouver(actif)) actif = trouver(gardes.actif) ? gardes.actif : (liste[0]?.chemin ?? null);
+    // Chaque onglet revient dans son groupe s'il existe, sinon dans le groupe courant ; un groupe sans onglet disparaît.
+    for (const g of gardes.liste) {
+      const o = trouver(cleGarde(g));
+      if (o && !dejaLa.has(o)) o.groupe = groupes.has(g.groupe) ? g.groupe : courant;
+    }
+    for (const f of feuilles(arbre)) retirerSiVide(groupes.get(f.id));
+    for (const g of groupes.values()) if (!ongletsDe(g).some((x) => idDe(x) === g.actif)) g.actif = ongletsDe(g).map(idDe)[0] ?? null;
+    actif = groupes.get(courant).actif;
+    if (prefere !== null) activer(prefere);
     pret = true;
     for (const [o, r] of aVerifier) appliquer(o, r, decisionDisque(o, r));
     afficher();

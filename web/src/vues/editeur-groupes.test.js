@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { cadre } from "../ui/cadre.js";
+import { ecrire, lire } from "../stockage.js";
 import { vueEditeur } from "./editeur.js";
 
 const faux = vi.hoisted(() => ({ vues: [], journal: [] }));
@@ -417,4 +418,180 @@ test("REQ079_AC7_question_en_attente_conservee", async () => {
   const questions = [...document.querySelectorAll(".cadre-question")];
   expect(questions[0].textContent).toBe("");
   expect(questions[1].textContent).toContain("a.txt a changé sur le disque");
+});
+
+// ---- T-148 : menu, diff, retour après rechargement ----
+
+const clicDroit = (t) => t.closest(".onglet-cellule").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 10, clientY: 20 }));
+const choisirCommande = (libelle) => [...document.querySelectorAll("[role=menuitem]")].find((c) => c.textContent === libelle).click();
+const commandes = () => [...document.querySelectorAll("[role=menuitem]")].map((c) => c.textContent);
+const derniereEcriture = () => ecrire.mock.calls.at(-1)[1];
+
+test("REQ079_AC12_menu_limite_a_sa_barre", async () => {
+  const { e } = monter(["a.txt", "b.txt", "c.txt", "d.txt"]);
+  e.deplacer("c.txt", "g1", "droite");
+  e.deplacer("d.txt", "g2", "centre");
+  // Gauche : a, b ; droite : c, d. Menu sur b : « Fermer les autres » ne touche que a.
+  clicDroit(onglet("b.txt"));
+  choisirCommande("Fermer les autres onglets");
+  await vi.waitFor(() => expect(barres().map(noms)).toEqual([["b.txt"], ["c.txt", "d.txt"]]));
+  // Menu sur c : « Fermer tous » ferme c et d, pas b ; un seul onglet par barre : pas de « Fermer les autres ».
+  clicDroit(onglet("b.txt"));
+  expect(commandes()).toEqual(["Fermer tous les onglets"]);
+  document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  clicDroit(onglet("c.txt"));
+  expect(commandes()).toContain("Fermer les autres onglets");
+  choisirCommande("Fermer tous les onglets");
+  await vi.waitFor(() => expect(barres().map(noms)).toEqual([["b.txt"]]));
+});
+
+test("REQ079_AC12_barre_videe_focus_voisin", async () => {
+  const { e } = monter(["a.txt", "b.txt", "c.txt"]);
+  e.deplacer("b.txt", "g1", "droite");
+  e.deplacer("c.txt", "g2", "centre");
+  clicDroit(onglet("b.txt"));
+  choisirCommande("Fermer tous les onglets");
+  await vi.waitFor(() => expect(groupesDom().length).toBe(1));
+  expect(barres().map(noms)).toEqual([["a.txt"]]);
+  expect(zoneDe(e, "a.txt").contains(document.activeElement)).toBe(true);
+  // Le dernier groupe vidé reste, avec l'état vide.
+  clicDroit(onglet("a.txt"));
+  choisirCommande("Fermer tous les onglets");
+  await vi.waitFor(() => expect(document.body.textContent).toContain("Aucun fichier ouvert."));
+  expect(groupesDom().length).toBe(1);
+});
+
+test("REQ079_AC11_diff_reste_dans_son_groupe", () => {
+  const { e } = monter(["a.txt", "b.txt"]);
+  e.ouvrirDiff({ chemin: "a.txt", texte: "@@ -1 +1 @@\n-a\n+b\n" });
+  e.deplacer("b.txt", "g1", "droite");
+  // Le diff reste à gauche des onglets de son groupe tant qu'il n'a pas été déplacé.
+  expect(barres().map(noms)).toEqual([["a.txt (diff)", "a.txt"], ["b.txt"]]);
+  // Le groupe de droite est courant ; ouvrir un autre diff met à jour celui de gauche, dont le groupe devient courant.
+  e.ouvrirDiff({ chemin: "b.txt", texte: "@@ -1 +1 @@\n-a\n+b\n" });
+  expect(barres().map(noms)).toEqual([["b.txt (diff)", "a.txt"], ["b.txt"]]);
+  expect(barres().map((b) => b.dataset.courant)).toEqual([undefined, "false"]);
+  expect(actifs()).toEqual(["b.txt (diff)", "b.txt"]);
+  // `avantDiff` vaut pour ce groupe : fermer le diff rend a.txt, pas l'onglet du groupe de droite.
+  e.fermerDiff();
+  expect(actifs()).toEqual(["a.txt", "b.txt"]);
+  // Déplacé, le diff va à droite des onglets de son nouveau groupe.
+  e.ouvrirDiff({ chemin: "a.txt", texte: "x" });
+  e.deplacer("\0diff", "g2", "centre");
+  expect(barres().map(noms)).toEqual([["a.txt"], ["b.txt", "a.txt (diff)"]]);
+  e.ouvrirDiff({ chemin: "b.txt", texte: "x" });
+  expect(barres().map(noms)).toEqual([["a.txt"], ["b.txt", "b.txt (diff)"]]);
+  // Un onglet arrivé ensuite se met à droite du diff déplacé... sans le dépasser à gauche : le diff garde son rang.
+  e.ouvrir({ chemin: "x.txt", contenu: "x", version: "1" });
+  e.deplacer("x.txt", "g2", "centre");
+  expect(barres().map(noms)[1]).toEqual(["b.txt", "b.txt (diff)", "x.txt"]);
+});
+
+test("REQ079_AC11_diff_non_actif_son_groupe_garde_son_avant_diff", () => {
+  // g1 [diff, a, b] avec b actif, g2 courant : ouvrir puis fermer le diff rend b (pas a).
+  const { e } = monter(["a.txt", "b.txt", "c.txt"]);
+  e.ouvrirDiff({ chemin: "a.txt", texte: "x" });
+  e.deplacer("c.txt", "g1", "droite");
+  onglet("b.txt").click();
+  onglet("c.txt").click();
+  e.ouvrirDiff({ chemin: "b.txt", texte: "y" });
+  e.fermerDiff();
+  expect(actifs()[0]).toBe("b.txt");
+});
+
+function fichiersDu(manquants = []) {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (String(url).includes("/api/shells")) return { ok: true, status: 200, json: async () => ({ instance: "i1" }) };
+    const chemin = decodeURIComponent(String(url).split("chemin=")[1]);
+    if (manquants.includes(chemin)) return { ok: false, status: 404, json: async () => ({ cause: "introuvable", message: "absent" }) };
+    return { ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => `contenu ${chemin}` };
+  }));
+}
+const feuille = (id, actif) => ({ id, actif });
+const disposition = { arbre: { sens: "ligne", a: feuille("g1", "a.txt"), b: { sens: "colonne", a: feuille("g2", "c.txt"), b: feuille("g3", "d.txt") } }, courant: "g2" };
+const gardesTrois = [
+  { groupe: "g1", chemin: "a.txt" },
+  { groupe: "g1", chemin: "b.txt" },
+  { groupe: "g2", chemin: "c.txt" },
+  { groupe: "g3", chemin: "d.txt" },
+];
+function remonter() {
+  let c = null;
+  const e = vueEditeur({ dire: vi.fn(), surGroupes: (arbre, courant) => c?.definirGroupes(arbre, courant) });
+  editeurs.push(e);
+  c = cadre({ principal: { groupes: e.groupes() } });
+  document.body.append(c);
+  return e;
+}
+
+test("REQ079_AC18_disposition_rendue_au_retour", async () => {
+  fichiersDu();
+  lire.mockResolvedValueOnce({ liste: gardesTrois, actif: "c.txt", disposition });
+  const e = remonter();
+  await e.restaurer();
+  expect(barres().map(noms)).toEqual([["a.txt", "b.txt"], ["c.txt"], ["d.txt"]]);
+  expect(document.querySelectorAll(".cadre-decoupe").length).toBe(2);
+  expect(document.querySelector(".cadre-decoupe").dataset.sens).toBe("ligne");
+  expect(actifs()).toEqual(["a.txt", "c.txt", "d.txt"]);
+  expect(barres().map((b) => b.dataset.courant)).toEqual(["false", undefined, "false"]);
+  // Ce qui est gardé ensuite est la même disposition, groupe de chaque onglet compris.
+  e.detruire();
+  expect(derniereEcriture().disposition).toEqual(disposition);
+  expect(derniereEcriture().liste.map((g) => g.groupe)).toEqual(["g1", "g1", "g2", "g3"]);
+  expect(derniereEcriture().actif).toBe("c.txt");
+});
+
+test("REQ079_AC18_onglet_absent_groupe_retire", async () => {
+  fichiersDu(["c.txt", "d.txt"]);
+  lire.mockResolvedValueOnce({ liste: gardesTrois, actif: "c.txt", disposition });
+  const e = remonter();
+  await e.restaurer();
+  // g2 (courant) et g3 n'ont plus d'onglet : ils disparaissent, g1 est courant.
+  expect(barres().map(noms)).toEqual([["a.txt", "b.txt"]]);
+  expect(groupesDom().length).toBe(1);
+  expect(document.querySelector(".cadre-decoupe")).toBeNull();
+  e.detruire();
+  expect(derniereEcriture().disposition).toEqual({ arbre: feuille("g1", "a.txt"), courant: "g1" });
+});
+
+test("REQ079_AC18_onglet_cache", async () => {
+  fichiersDu();
+  const claude = { groupe: "g3", claude: true, id: "s1", numero: 1, instance: "i1" };
+  const orphelin = { groupe: "g9", claude: true, id: "s2", numero: 2, instance: "i1" };
+  lire.mockResolvedValue({ liste: [...gardesTrois, claude, orphelin], actif: "c.txt", disposition });
+  try {
+    // Claude désactivé : les onglets cachés gardent leur groupe dans ce qui est écrit.
+    const cache = vueEditeur({ dire: vi.fn(), claude: false });
+    editeurs.push(cache);
+    await cache.restaurer();
+    cache.detruire();
+    expect(derniereEcriture().liste.filter((g) => g.claude).map((g) => g.groupe)).toEqual(["g3", "g9"]);
+    document.body.replaceChildren();
+    // Claude activé : l'onglet revient dans son groupe s'il existe, sinon dans le groupe courant (g2).
+    const e = remonter();
+    await e.restaurer();
+    expect(barres().map(noms)).toEqual([["a.txt", "b.txt"], ["c.txt", "Claude 2"], ["d.txt", "Claude 1"]]);
+  } finally {
+    lire.mockReset();
+    lire.mockResolvedValue(undefined);
+  }
+});
+
+test("REQ079_AC18_ancien_format", async () => {
+  fichiersDu();
+  // Ni `groupe` ni `disposition` : un seul groupe avec tous les onglets, l'onglet actif d'avant.
+  lire.mockResolvedValueOnce({ liste: [{ chemin: "a.txt" }, { chemin: "b.txt" }], actif: "b.txt" });
+  const e = remonter();
+  await e.restaurer();
+  expect(barres().map(noms)).toEqual([["a.txt", "b.txt"]]);
+  expect(actifs()).toEqual(["b.txt"]);
+  e.detruire();
+  expect(derniereEcriture().disposition).toEqual({ arbre: feuille("g1", "b.txt"), courant: "g1" });
+  // Disposition abîmée : même résultat, les gardes gardent leur liste.
+  fichiersDu();
+  document.body.replaceChildren();
+  lire.mockResolvedValueOnce({ liste: gardesTrois, actif: "a.txt", disposition: { arbre: { sens: "ligne", a: feuille("g1", "a.txt") }, courant: "g1" } });
+  const f = remonter();
+  await f.restaurer();
+  expect(barres().map(noms)).toEqual([["a.txt", "b.txt", "c.txt", "d.txt"]]);
 });

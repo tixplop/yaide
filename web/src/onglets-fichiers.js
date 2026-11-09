@@ -1,3 +1,4 @@
+import { feuilles, valider } from "./disposition.js";
 import { ecrire, lire } from "./stockage.js";
 
 const CLE = "onglets";
@@ -37,11 +38,22 @@ export function apresFermeture(ids, ferme) {
   return reste[Math.min(i, reste.length - 1)] ?? null;
 }
 
-/** Garde la liste `[{ chemin, apercu, hybride, texte? }]` et l'onglet actif dans le navigateur. */
-export const garder = (liste, actif) => ecrire(CLE, { liste, actif });
+/**
+ * Garde la liste `[{ chemin, groupe, apercu, hybride, texte? }]`, l'onglet actif du groupe courant et la disposition
+ * `{ arbre, courant }` (feuilles `{ id, actif }`) dans le navigateur.
+ */
+export const garder = (liste, actif, disposition) => ecrire(CLE, { liste, actif, disposition });
 
-/** Liste gardée : `{ liste, actif }`, vide s'il n'y a rien. */
+/** Disposition d'un seul groupe : celle des gardes sans disposition, ou dont la disposition est abîmée. */
+const unGroupe = (actif) => ({ arbre: { id: "g1", actif }, courant: "g1" });
+
+/** Liste gardée : `{ liste, actif, disposition }`, vide s'il n'y a rien ; `disposition` est toujours valide. */
 export async function retrouver() {
   const v = await lire(CLE);
-  return Array.isArray(v?.liste) ? { liste: v.liste, actif: v.actif ?? null } : { liste: [], actif: null };
+  if (!Array.isArray(v?.liste)) return { liste: [], actif: null, disposition: unGroupe(null) };
+  const actif = v.actif ?? null;
+  const d = v.disposition;
+  if (!valider(d?.arbre)) return { liste: v.liste, actif, disposition: unGroupe(actif) };
+  const courant = feuilles(d.arbre).some((f) => f.id === d.courant) ? d.courant : feuilles(d.arbre)[0].id;
+  return { liste: v.liste, actif, disposition: { arbre: d.arbre, courant } };
 }
