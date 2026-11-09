@@ -307,6 +307,24 @@ test("REQ046_parcours_14_replier_pour_lire_le_code", async ({ page }) => {
   await expect(nouveau.locator(".ya-badge")).toHaveText("2");
   await expect(page.getByRole("button", { name: "Réduire le shell", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Fermer le shell", exact: true })).toBeDisabled();
+  // Le repli est écrit dans IndexedDB sans attente : on laisse l'écriture finir, un rechargement la couperait.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise((resolu) => {
+            const o = indexedDB.open("yaide", 1);
+            o.onsuccess = () => {
+              const g = o.result.transaction("cles").objectStore("cles").get("serveur");
+              g.onsuccess = () => {
+                o.result.close();
+                resolu(g.result?.replie);
+              };
+            };
+          }),
+      ),
+    )
+    .toBe(true);
   await page.reload();
   await page.getByRole("button", { name: "Déplier le panneau", exact: true }).waitFor();
   await expect(page.locator("aside.cadre-panneau")).toBeHidden();

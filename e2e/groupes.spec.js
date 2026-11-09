@@ -416,6 +416,25 @@ test("REQ079_AC18_AC20_AC33_rechargement_et_quatre_groupes", async ({ page }) =>
       ),
     )
     .toBe(4);
+  // L'onglet actif et le groupe courant sont écrits dans IndexedDB sans attente : un rechargement coupant l'écriture les perdrait.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise((ok) => {
+            const d = indexedDB.open("yaide", 1);
+            d.onsuccess = () => {
+              const r = d.result.transaction("cles").objectStore("cles").get("onglets");
+              r.onsuccess = () => {
+                d.result.close();
+                const v = r.result;
+                ok(v?.liste?.some((o) => o.opencode && o.numero === 2 && String(v.actif).endsWith(o.id)));
+              };
+            };
+          }),
+      ),
+    )
+    .toBe(true);
   await page.reload();
   await expect(groupes(page)).toHaveCount(4);
   await expect(onglet(page, "opencode 2")).toHaveAttribute("aria-selected", "true");
