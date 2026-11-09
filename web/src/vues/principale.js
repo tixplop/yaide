@@ -213,6 +213,11 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     dire,
     ouvrirRapide: () => ouverture.ouvrir(),
     surAttente: (t) => { attenteTexte = t; montrerCoupure(); },
+    surGroupes: (arbre, courant) => {
+      if (!racine) return;
+      racine.definirGroupes(arbre, courant);
+      observerQuestions();
+    },
     surCourant: (chemin) => fichiers?.definirCourant(chemin),
     surSauvegarde: () => git?.rafraichir(),
     claude: avec.claude,
@@ -291,7 +296,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     agent: { titre: "Agents", repli: repliAgent.enveloppe, corps: avec.agents ? [agents.corps] : [] },
     railDroit: { commandes: avec.agents ? [boutonAgent.enveloppe, boutonAgents.enveloppe] : [] },
     fonctions: avec,
-    principal: { bandeaux, ongletsFichiers: editeur.barre, questionOnglet: editeur.question, fil: editeur.fil, code: editeur.code, shells },
+    principal: { bandeaux, groupes: editeur.groupes(), shells },
     barreEtat: barre,
     surChangement: (zone, taille) => {
       choisies[zone] = taille;
@@ -315,7 +320,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   // La taille choisie ne change que par un glissé ou une flèche ; la taille affichée est la choisie, bornée.
   function recalculer() {
     if (detruite) return;
-    const hauteurs = [bandeaux, editeur.question].reduce((s, e) => s + e.offsetHeight, 0);
+    const hauteurs = bandeaux.offsetHeight + Math.max(0, ...editeur.questions().map((q) => q.offsetHeight));
     const lim = limites({
       L: window.innerWidth,
       H: window.innerHeight,
@@ -339,8 +344,14 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   }
   window.addEventListener("resize", recalculer);
   const observateur = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(recalculer);
-  observateur?.observe(bandeaux);
-  observateur?.observe(editeur.question);
+  // La limite de hauteur des shells prend la plus grande question d'onglet des groupes : on les observe tous.
+  function observerQuestions() {
+    if (!observateur) return;
+    observateur.disconnect();
+    observateur.observe(bandeaux);
+    for (const q of editeur.questions()) observateur.observe(q);
+  }
+  observerQuestions();
   // La vue n'est dans la page qu'après sa création : on mesure juste après le montage.
   queueMicrotask(recalculer);
   lire("tailles").then((gardees) => {

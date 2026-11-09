@@ -1,6 +1,7 @@
 import { ecrireFichier, fermerShell, lireFichier, listeShells, versionsFichiers } from "../api.js";
 import { decider, texteAttente } from "../brouillons.js";
 import { decisionDisque } from "../disque.js";
+import { couper, feuilles, retirerGroupe } from "../disposition.js";
 import { apresFermeture, estSous, garder, libelles, nomDe, plusPetitNumeroLibre, retrouver, suivreRenommage } from "../onglets-fichiers.js";
 import { bouton } from "../ui/bouton.js";
 import { dialogue } from "../ui/dialogue.js";
@@ -36,25 +37,19 @@ const avecApercu = (chemin) => /\.(md|markdown|html|htm)$/i.test(chemin);
  * `surCourant(chemin | null)` : le fichier de l'onglet actif (`null` sans onglet ou sur un diff).
  * `claude` : faux, les onglets Claude gardés ne sont ni affichés ni branchés, mais restent dans la liste enregistrée, à leur place.
  * `agents` : faux, les onglets Agent gardés ne sont ni affichés ni branchés, mais restent dans la liste enregistrée, à leur place.
+ * `surGroupes(arbre, courant)` : l'arbre des groupes (feuilles `{ id, ongletsFichiers, questionOnglet, fil, code }`) ou le groupe courant a changé (REQ-079).
  * `chemin` : le chemin du projet, dit par l'info-bulle des onglets Claude.
  * Un onglet Claude (REQ-068) est dans la même liste que les fichiers : `{ claude: true, id, numero, instance }`, sa clé `chemin` ne désigne aucun fichier.
  * Un onglet opencode (REQ-072) l'est aussi : `{ opencode: true, id, numero }` (session) ou `{ opencode: true, id, agent, titre }` (sous-agent).
  * Un onglet Agent (REQ-078) l'est aussi : `{ conversationAgent: true, numero, conversation }` (`conversation` : `null` tant que rien n'est écrit).
  * Le champ `agent` d'un onglet désigne un sous-agent opencode : l'onglet Agent a son propre drapeau.
- * Rend `{ definirStatuts(statuts), barre, fil, code, lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirAgent({ equipe }), relireReglagesAgents(), ouvrirOpencode({ sessionId }), renomme(…), supprime(…), restaurer(), detruire() }`.
+ * Chaque onglet a un `groupe` ; `barre`, `fil`, `code` et `question` sont ceux du premier groupe, `groupes()` rend l'arbre de tous.
+ * Rend `{ definirStatuts(statuts), barre, fil, code, groupes(), questions(), deplacer(id, groupe, zone), lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirAgent({ equipe }), relireReglagesAgents(), ouvrirOpencode({ sessionId }), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
-export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {}, claude = true, agents = true }) {
-  const barre = document.createElement("div");
-  const fil = document.createElement("div");
-  fil.className = "ya-crumbs";
-  fil.hidden = true;
-  const code = document.createElement("div");
-  code.className = "editeur-code";
-  const questionOnglet = document.createElement("div");
-
-  const liste = []; // { chemin, zone, disque (texte de base), version (de base), apercu, hybride, modifie, question, supprime, avis }
-  let actif = null;
-  let diff = null; // { chemin, el } : l'onglet de diff, au plus un, jamais gardé
+export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {}, surGroupes = () => {}, claude = true, agents = true }) {
+  const liste = []; // { chemin, groupe, zone, disque (texte de base), version (de base), apercu, hybride, modifie, question, supprime, avis }
+  let actif = null; // l'onglet actif du groupe courant
+  let diff = null; // { chemin, el, groupe } : l'onglet de diff, au plus un, jamais gardé
   let avantDiff = null; // onglet actif quand le diff s'est ouvert
   let pret = false;
   let dernierGeste = 0; // numéro du dernier geste de l'utilisateur : le dernier l'emporte sur une lecture plus ancienne
@@ -69,6 +64,142 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   const attente = new Set(); // onglets dont Ctrl+S attend le retour de la connexion
 
   const trouver = (chemin) => liste.find((o) => o.chemin === chemin);
+  const item = (id) => (id === DIFF ? diff : id === null ? undefined : trouver(id));
+
+  // ---- Groupes (REQ-079) ----
+
+  let arbre = { id: "g1", actif: null };
+  let numeroGroupe = 1;
+  let courant = "g1";
+  let derniereSignature = null;
+  let enPression = false; // une pression sur un onglet est en cours
+  const groupes = new Map(); // id -> { id, actif, barre, questionOnglet, fil, code, ongl } ; `actif` du groupe courant : voir `actif`
+
+  function creerGroupe(id) {
+    const fil = document.createElement("div");
+    fil.className = "ya-crumbs";
+    fil.hidden = true;
+    const code = document.createElement("div");
+    code.className = "editeur-code";
+    const g = { id, actif: null, barre: document.createElement("div"), questionOnglet: document.createElement("div"), fil, code, ongl: null };
+    const dansOnglet = (e) => Boolean(e.target.closest?.(".onglet-cellule"));
+    // Presser un onglet ne change pas le groupe courant (le clic le fait) : presser puis Échap ne doit rien changer.
+    for (const el of [g.barre, g.questionOnglet, g.fil, g.code]) {
+      el.addEventListener(
+        "pointerdown",
+        (e) => {
+          enPression = dansOnglet(e);
+          if (!enPression) rendreCourant(g);
+        },
+        true,
+      );
+      el.addEventListener("focusin", (e) => !(enPression && dansOnglet(e)) && rendreCourant(g), true);
+    }
+    groupes.set(id, g);
+    return g;
+  }
+  creerGroupe("g1");
+  const premier = groupes.get("g1");
+  const barre = premier.barre;
+  const fil = premier.fil;
+  const code = premier.code;
+  const questionOnglet = premier.questionOnglet;
+  const finPression = () => setTimeout(() => (enPression = false), 0);
+  const finsPression = ["pointerup", "pointercancel", "dragend"];
+  for (const ev of finsPression) document.addEventListener(ev, finPression);
+
+  const ongletsDe = (g) => [...(diff?.groupe === g.id ? [diff] : []), ...liste.filter((x) => x.groupe === g.id)];
+  const actifDe = (g) => (g.id === courant ? actif : g.actif);
+  const poserActif = (g, id) => {
+    g.actif = id;
+    if (g.id === courant) actif = id;
+  };
+  /** Le groupe `id` devient courant : chacun garde son onglet actif. */
+  function passerA(id) {
+    if (id === courant) return;
+    groupes.get(courant).actif = actif;
+    courant = id;
+    actif = groupes.get(id).actif;
+  }
+  /** Rend `id` actif, et son groupe courant. */
+  function activer(id) {
+    const o = item(id);
+    if (o) passerA(o.groupe);
+    actif = id;
+  }
+  /** Clic ou focus dans un groupe : il devient courant. Jamais `afficher()` : refaire la barre annulerait le clic. */
+  function rendreCourant(g) {
+    if (g.id === courant) return;
+    passerA(g.id);
+    for (const x of groupes.values()) x.ongl?.definirCourant(x.id === courant);
+    publier(item(actif) ?? null);
+    publierGroupes();
+  }
+
+  /** Arbre des groupes avec les éléments de chacun, pour le cadre. */
+  function arbreComplet(n = arbre) {
+    if (n.sens !== undefined) return { sens: n.sens, a: arbreComplet(n.a), b: arbreComplet(n.b) };
+    const g = groupes.get(n.id);
+    return { id: g.id, ongletsFichiers: g.barre, questionOnglet: g.questionOnglet, fil: g.fil, code: g.code };
+  }
+  const structure = (n) => (n.sens === undefined ? n.id : `${n.sens}(${structure(n.a)},${structure(n.b)})`);
+
+  /** Déplacer un groupe dans la page remet à zéro le défilement de ce qu'il contient : on le relève puis on le repose. */
+  function relever() {
+    const r = [];
+    for (const g of groupes.values()) {
+      for (const racine of [g.barre, g.questionOnglet, g.fil, g.code]) {
+        for (const e of [racine, ...racine.querySelectorAll("*")]) if (e.scrollTop > 0 || e.scrollLeft > 0) r.push([e, e.scrollTop, e.scrollLeft]);
+      }
+    }
+    return r;
+  }
+  const poser = (r) => {
+    for (const [e, haut, gauche] of r) {
+      e.scrollTop = haut;
+      e.scrollLeft = gauche;
+    }
+  };
+
+  function publierGroupes() {
+    const signature = `${structure(arbre)}|${courant}`;
+    if (signature === derniereSignature) return;
+    const memoire = derniereSignature === null || derniereSignature.split("|")[0] === structure(arbre) ? null : relever();
+    derniereSignature = signature;
+    // Refaire la structure déplace des groupes dans la page : le focus d'un groupe qui reste est rendu.
+    const focus = document.activeElement;
+    surGroupes(arbreComplet(), courant);
+    if (focus && focus !== document.body && focus.isConnected && document.activeElement !== focus) focus.focus();
+    if (memoire) poser(memoire);
+  }
+
+  /** Le groupe frère d'une feuille dans l'arbre : sa feuille la plus proche. */
+  const frere = (n, id) => {
+    if (n.sens === undefined) return null;
+    if (n.a.sens === undefined && n.a.id === id) return feuilles(n.b)[0].id;
+    if (n.b.sens === undefined && n.b.id === id) return feuilles(n.a).at(-1).id;
+    return frere(n.a, id) ?? frere(n.b, id);
+  };
+
+  /** Le groupe vide disparaît, sauf le dernier ; son voisin de découpe devient courant s'il l'était. Rend vrai si le groupe est parti. */
+  function retirerSiVide(g) {
+    if (groupes.size < 2 || ongletsDe(g).length > 0) return false;
+    const voisin = frere(arbre, g.id);
+    arbre = retirerGroupe(arbre, g.id);
+    const etaitCourant = courant === g.id;
+    groupes.delete(g.id);
+    if (etaitCourant) {
+      courant = voisin;
+      actif = groupes.get(voisin).actif;
+    }
+    return true;
+  }
+
+  /** Le focus va dans le contenu de l'onglet actif du groupe courant, ou sur « Ouvrir un fichier ». */
+  function focusActif() {
+    if (actif === null) return groupes.get(courant).code.querySelector("button")?.focus();
+    (actif === DIFF ? diff.el : trouver(actif).zone).vue?.focus();
+  }
 
   /** `Map` onglet -> `{ libelle, detail }` : « Claude <n> », ou le nom du fichier (avec son dossier si un autre porte le même nom). */
   function nomsOnglets() {
@@ -118,22 +249,15 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   // ---- Affichage ----
 
-  // Fil d'Ariane (texte sans action) et barre d'état : le fichier actif, ou rien.
-  function publier(o) {
-    if (!o) {
-      fil.hidden = true;
-      fil.replaceChildren();
-      surCourant(null);
-      return surActif(null);
-    }
-    if (!estFichier(o)) {
-      fil.hidden = true;
-      fil.replaceChildren();
-      surCourant(null);
-      return surActif({});
+  // Fil d'Ariane (texte sans action) du groupe de `o`, ou rien.
+  function remplirFil(g, o) {
+    if (!o || !estFichier(o)) {
+      g.fil.hidden = true;
+      g.fil.replaceChildren();
+      return;
     }
     const segments = o.chemin.split("/");
-    fil.replaceChildren(
+    g.fil.replaceChildren(
       ...segments.flatMap((nom, i) => {
         const e = document.createElement("span");
         e.className = i === segments.length - 1 ? "ya-crumbs-nom" : "ya-crumbs-segment";
@@ -141,7 +265,20 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
         return i === 0 ? [e] : [icone("chevron", 12), e];
       }),
     );
-    fil.hidden = false;
+    g.fil.hidden = false;
+  }
+
+  // Fil d'Ariane et barre d'état : le fichier actif du groupe courant, ou rien.
+  function publier(o) {
+    remplirFil(groupes.get(o?.groupe ?? courant), o);
+    if (!o) {
+      surCourant(null);
+      return surActif(null);
+    }
+    if (!estFichier(o)) {
+      surCourant(null);
+      return surActif({});
+    }
     const etat = (o === diff ? diff.el : o.zone).vue?.state;
     let position;
     if (etat) {
@@ -159,25 +296,28 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     return l === "M" || l === "A" || l === "U" ? l : undefined;
   };
 
-  function afficher() {
-    if (detruit) return;
-    const avaitLeFocus = barre.contains(document.activeElement);
-    const o = actif === DIFF ? diff : trouver(actif);
+  /** Rend la barre, la question et les boutons d'un groupe. Rend son onglet actif (`null` : état vide). */
+  function rendreGroupe(g) {
+    const estCourant = g.id === courant;
+    const avaitLeFocus = g.barre.contains(document.activeElement);
+    const o = item(estCourant ? actif : g.actif) ?? null;
+    g.ongl = null;
     if (!o && lectures > 0) {
-      barre.replaceChildren();
-      questionOnglet.replaceChildren();
-      code.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
-      return publier(null);
+      g.barre.replaceChildren();
+      g.questionOnglet.replaceChildren();
+      g.code.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
+      return null;
     }
     if (!o) {
       const b = bouton({ libelle: "Ouvrir un fichier" });
       b.addEventListener("click", ouvrirRapide);
-      barre.replaceChildren();
-      questionOnglet.replaceChildren();
-      code.replaceChildren(indication({ texte: "Aucun fichier ouvert.", action: b }));
-      return publier(null);
+      g.barre.replaceChildren();
+      g.questionOnglet.replaceChildren();
+      g.code.replaceChildren(indication({ texte: "Aucun fichier ouvert.", action: b }));
+      return null;
     }
     const noms = nomsOnglets();
+    const idActif = estCourant ? actif : g.actif;
     let actionsDroite = [];
     if (o !== diff && estFichier(o) && avecHybride(o.chemin)) {
       const hy = bouton({ icone: "type", variante: "discret", nomAccessible: "Mode hybride", presse: o.hybride });
@@ -200,7 +340,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       actionsDroite.push(ap.enveloppe);
     }
     const ongl = onglets({
-      onglets: [...(diff ? [{ id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true }] : []), ...liste.map((x) => x.claude ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "asterisk", titre: `Claude Code dans ${cheminProjet}`, fermable: true } : x.conversationAgent ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "bot", titre: `Agent dans ${cheminProjet}`, fermable: true } : x.opencode ? ongletOpencode(x, noms.get(x).libelle) : ({
+      onglets: [...(diff?.groupe === g.id ? [{ id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true }] : []), ...liste.filter((x) => x.groupe === g.id).map((x) => x.claude ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "asterisk", titre: `Claude Code dans ${cheminProjet}`, fermable: true } : x.conversationAgent ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "bot", titre: `Agent dans ${cheminProjet}`, fermable: true } : x.opencode ? ongletOpencode(x, noms.get(x).libelle) : ({
         id: x.chemin,
         libelle: noms.get(x).libelle,
         detail: noms.get(x).detail,
@@ -210,27 +350,44 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
         question: Boolean(x.question),
         fermable: true,
       }))],
-      actif,
+      actif: idActif,
       actionsDroite,
       surChoix: choisir,
       surFermer: fermer,
       surMenu: ouvrirMenu,
+      nomBarre: groupes.size > 1 ? `Fichiers ouverts, groupe ${feuilles(arbre).findIndex((f) => f.id === g.id) + 1}` : "Fichiers ouverts",
+      courant: estCourant,
     });
-    ongl.setAttribute("aria-label", "Fichiers ouverts");
-    barre.replaceChildren(ongl);
-    ongl.choisir(actif);
+    g.ongl = ongl;
+    g.barre.replaceChildren(ongl);
+    ongl.choisir(idActif);
     if (avaitLeFocus) ongl.querySelector("[role=tab][aria-selected=true]")?.focus();
     const avis = o.avis ?? null;
-    if (questionOnglet.firstChild !== avis) questionOnglet.replaceChildren(...(avis ? [avis] : []));
-    const zones = [...liste.map((x) => [x, x.zone]), ...(diff ? [[diff, diff.el]] : [])];
-    for (const [x, z] of zones) {
-      if (z.parentNode !== code) code.append(z);
-      z.hidden = x !== o;
+    if (g.questionOnglet.firstChild !== avis) g.questionOnglet.replaceChildren(...(avis ? [avis] : []));
+    return o;
+  }
+
+  function afficher() {
+    if (detruit) return;
+    const rendus = new Map([...groupes.values()].map((g) => [g, rendreGroupe(g)]));
+    // D'abord chaque vue dans le contenu de son groupe, puis ce qui ne lui appartient plus en sort.
+    for (const g of groupes.values()) {
+      for (const x of ongletsDe(g)) {
+        const z = x === diff ? diff.el : x.zone;
+        if (z.parentNode !== g.code) g.code.append(z);
+        z.hidden = x !== rendus.get(g);
+      }
     }
-    if (o.claude) o.vue.ajuster();
-    for (const enfant of [...code.children]) if (!zones.some(([, z]) => z === enfant)) enfant.remove();
-    if (lectures > 0) code.prepend(indication({ texte: "Chargement…", variante: "chargement" }));
-    publier(o);
+    for (const g of groupes.values()) {
+      const o = rendus.get(g);
+      if (o?.claude) o.vue.ajuster();
+      const zones = ongletsDe(g).map((x) => (x === diff ? diff.el : x.zone));
+      if (o) for (const enfant of [...g.code.children]) if (!zones.includes(enfant)) enfant.remove();
+      if (o && lectures > 0) g.code.prepend(indication({ texte: "Chargement…", variante: "chargement" }));
+      if (g.id !== courant) remplirFil(g, o);
+    }
+    publier(rendus.get(groupes.get(courant)));
+    publierGroupes();
   }
 
   /** Entrée de la barre d'un onglet opencode : icône, `title` et nom accessible (le sous-agent dit son titre). */
@@ -243,8 +400,11 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   // Choix d'un onglet : la barre est refaite après le rappel, qui peut encore donner le focus à l'ancien onglet.
   function choisir(chemin) {
     dernierGeste++;
+    enPression = false;
+    const cible = item(chemin);
+    if (cible) passerA(cible.groupe);
     actif = chemin;
-    for (const o of liste) o.zone.hidden = o.chemin !== chemin;
+    for (const o of liste) if (o.groupe === groupes.get(courant).id) o.zone.hidden = o.chemin !== chemin;
     (chemin === DIFF ? diff?.el : trouver(chemin)?.zone)?.vue?.focus();
     queueMicrotask(afficher);
     garderListe();
@@ -253,7 +413,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   // ---- Ouvrir, renommer, supprimer ----
 
   function creer({ chemin, contenu, version, texte, apercu = false, hybride = false }) {
-    const o = { chemin, disque: contenu, version, apercu, hybride, modifie: false };
+    const o = { chemin, groupe: courant, disque: contenu, version, apercu, hybride, modifie: false };
     o.zone = zoneCode({
       contenu: texte ?? contenu,
       langage: langagePourFichier(nomDe(chemin)) ?? undefined,
@@ -285,7 +445,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       garderListe();
       return;
     }
-    actif = chemin;
+    activer(chemin);
     afficher();
     if (Number.isInteger(ligne)) trouver(chemin).zone.aller(ligne);
     trouver(chemin).zone.vue.focus();
@@ -297,6 +457,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       const nouveau = suivreRenommage(o.chemin, de, vers);
       if (nouveau === o.chemin) continue;
       if (actif === o.chemin) actif = nouveau;
+      for (const g of groupes.values()) if (g.actif === o.chemin) g.actif = nouveau;
       o.chemin = nouveau;
       o.zone.vue.contentDOM.setAttribute("aria-label", `Éditeur ${nomDe(nouveau)}`);
     }
@@ -310,17 +471,18 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   /** `arreter` : la session Claude de l'onglet s'arrête sur le serveur (sauf si elle a fini ou n'existe plus). */
   function retirer(chemin, arreter = true) {
-    const ids = liste.map((o) => o.chemin);
     const i = liste.findIndex((o) => o.chemin === chemin);
     if (i < 0) return;
-    const suivant = apresFermeture(ids, chemin);
+    const g = groupes.get(liste[i].groupe);
+    const suivant = apresFermeture(liste.filter((o) => o.groupe === g.id).map((o) => o.chemin), chemin);
     if (attente.delete(liste[i])) direAttente();
     const [ferme] = liste.splice(i, 1);
     // La vue se détruit avant l'arrêt de la session : sa fermeture ne rappelle pas `surFin`.
     ferme.zone.detruire();
     ferme.zone.remove();
     if (ferme.claude && arreter) fermerShell(ferme.id);
-    if (actif === chemin) actif = suivant ?? (diff ? DIFF : null);
+    if (actifDe(g) === chemin) poserActif(g, suivant ?? (diff?.groupe === g.id ? DIFF : null));
+    retirerSiVide(g);
     afficher();
     garderListe();
   }
@@ -328,7 +490,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   // ---- Onglets Claude (REQ-068) ----
 
   function creerClaude({ id, numero, instance }) {
-    const o = { claude: true, id, numero, instance, chemin: CLAUDE + id, modifie: false };
+    const o = { claude: true, id, numero, instance, groupe: courant, chemin: CLAUDE + id, modifie: false };
     o.vue = vueClaude({ id, nom: `Claude ${numero}`, surFin: (fin) => finClaude(o, fin) });
     // Le corps de la vue joue le rôle de la zone de code : masqué, détruit, retiré comme elle.
     o.zone = o.vue.corps;
@@ -345,8 +507,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     const avaitLeFocus = o.zone.contains(document.activeElement);
     retirer(o.chemin, false);
     if (!avaitLeFocus) return;
-    if (actif === null) code.querySelector("button")?.focus();
-    else (actif === DIFF ? diff.el : trouver(actif).zone).vue?.focus();
+    focusActif();
   }
 
   /** Ouvre « Claude <n> » (plus petit numéro libre) à droite des onglets, actif, le focus dans son terminal. */
@@ -368,7 +529,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   // ---- Onglets Agent (REQ-078) ----
 
   function creerAgent({ numero, conversation, equipe }) {
-    const o = { conversationAgent: true, numero, conversation: conversation ?? null, chemin: AGENT + numero, modifie: false };
+    const o = { conversationAgent: true, numero, conversation: conversation ?? null, groupe: courant, chemin: AGENT + numero, modifie: false };
     o.vue = vueAgent({
       ...(o.conversation ? { conversation: o.conversation } : { equipe }),
       surConversation: (id) => {
@@ -379,7 +540,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
         const autre = liste.find((x) => x !== o && x.conversationAgent && x.conversation === id);
         if (!autre) return false;
         dernierGeste++;
-        actif = autre.chemin;
+        activer(autre.chemin);
         afficher();
         autre.zone.vue.focus();
         garderListe();
@@ -419,7 +580,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   // ---- Onglets opencode (REQ-072) ----
 
   function creerOpencode({ id, numero, agent, titre }, apres) {
-    const o = { opencode: true, id, chemin: OPENCODE + id, modifie: false, marque: false };
+    const o = { opencode: true, id, groupe: courant, chemin: OPENCODE + id, modifie: false, marque: false };
     if (agent === undefined) o.numero = numero;
     else Object.assign(o, { agent, titre });
     o.vue = vueOpencode({
@@ -456,7 +617,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   }
 
   function activerOpencode(o) {
-    actif = o.chemin;
+    activer(o.chemin);
     afficher();
     o.vue.focus();
     garderListe();
@@ -472,8 +633,8 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     diff?.el.remove();
     // La zone peut signaler sa position pendant sa création : `el` n'existe pas encore, on se repère au chemin.
     const el = avis ? indication({ texte: avis }) : zoneCode({ contenu: texte, mode: "diff", nom: nomDe(chemin), surPosition: () => actif === DIFF && diff?.chemin === chemin && publier(diff) });
-    diff = { chemin, el };
-    actif = DIFF;
+    diff = { chemin, el, groupe: diff?.groupe ?? courant };
+    activer(DIFF);
     afficher();
     el.vue?.focus();
   }
@@ -482,9 +643,59 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     if (!diff) return;
     diff.el.detruire?.();
     diff.el.remove();
+    const g = groupes.get(diff.groupe);
     diff = null;
-    if (actif === DIFF) actif = trouver(avantDiff) ? avantDiff : (liste[0]?.chemin ?? null);
+    if (actifDe(g) === DIFF) poserActif(g, trouver(avantDiff)?.groupe === g.id ? avantDiff : (liste.find((x) => x.groupe === g.id)?.chemin ?? null));
+    retirerSiVide(g);
     afficher();
+    garderListe();
+  }
+
+  // ---- Déplacer un onglet (REQ-079) ----
+
+  const ZONES = ["gauche", "droite", "haut", "bas", "centre"];
+
+  /**
+   * Déplace l'onglet `id` vers le groupe `cible` : `centre`, à droite de ses onglets ; un côté coupe le groupe en deux et
+   * l'onglet occupe la nouvelle moitié. La vue est déplacée, jamais recréée ; le groupe d'arrivée devient courant et reçoit le focus.
+   */
+  function deplacer(id, cible, zone) {
+    if (!ZONES.includes(zone)) throw new Error(`zone invalide : ${zone}`);
+    const o = item(id);
+    if (!o || !groupes.has(cible)) return;
+    const depart = groupes.get(o.groupe);
+    // Dans son propre groupe, ni le centre, ni un côté s'il n'a que cet onglet (AC-079-6).
+    if (depart.id === cible && (zone === "centre" || ongletsDe(depart).length === 1)) return;
+    const defilements = relever();
+    let arrivee = cible;
+    if (zone !== "centre") {
+      arrivee = `g${++numeroGroupe}`;
+      arbre = couper(arbre, cible, zone, arrivee);
+      creerGroupe(arrivee);
+    }
+    if (depart.id !== arrivee && actifDe(depart) === id) {
+      const ids = liste.filter((x) => x.groupe === depart.id).map((x) => x.chemin);
+      // Le diff part : comme à sa fermeture, l'onglet d'avant s'il est dans ce groupe, sinon le premier.
+      if (o === diff) poserActif(depart, ids.includes(avantDiff) ? avantDiff : (ids[0] ?? null));
+      else poserActif(depart, apresFermeture(ids, id) ?? (diff && diff.groupe === depart.id ? DIFF : null));
+    }
+    if (o !== diff) {
+      liste.splice(liste.indexOf(o), 1);
+      liste.push(o);
+    }
+    o.groupe = arrivee;
+    passerA(arrivee);
+    actif = id;
+    groupes.get(arrivee).actif = id;
+    retirerSiVide(depart);
+    afficher();
+    poser(defilements);
+    for (const g of groupes.values()) {
+      const a = item(actifDe(g));
+      if (a?.claude) a.vue.ajuster();
+    }
+    window.dispatchEvent(new Event("resize"));
+    (o === diff ? diff.el : o.zone).vue?.focus();
     garderListe();
   }
 
@@ -608,7 +819,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   /** L'onglet de la question devient actif et le focus va sur « Garder ma version ». */
   function montrerQuestion(o) {
-    actif = o.chemin;
+    activer(o.chemin);
     afficher();
     o.question.garder.focus();
     garderListe();
@@ -686,11 +897,17 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   const fermer = (chemin) => {
     const agentActif = actif === chemin && trouver(chemin)?.conversationAgent;
-    fermerOnglet(chemin, false);
-    // L'onglet Agent actif fermé : le focus était sur la barre, il va dans l'onglet devenu actif, ou sur « Ouvrir un fichier ».
-    if (!agentActif || trouver(chemin)) return;
-    if (actif === null) code.querySelector("button")?.focus();
-    else (actif === DIFF ? diff.el : trouver(actif).zone).vue?.focus();
+    const avant = groupes.size;
+    const issue = fermerOnglet(chemin, false);
+    // L'onglet Agent actif fermé, ou son groupe disparu : le focus était sur la barre, il va dans l'onglet actif du groupe courant
+    // (le voisin du groupe disparu), ou sur « Ouvrir un fichier ».
+    if (trouver(chemin)) {
+      // Fichier modifié : le dialogue décide, et le focus suit sa fermeture.
+      issue.then((r) => r === "fermé" && !detruit && groupes.size < avant && focusActif());
+      return;
+    }
+    if (!agentActif && groupes.size === avant) return;
+    focusActif();
   };
 
   /**
@@ -790,7 +1007,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     for (const id of ids) {
       const o = id === DIFF ? null : trouver(id);
       if (!o || o.question || o.claude) continue;
-      actif = id;
+      activer(id);
       afficher();
       if ((await fermerOnglet(id, true)) !== "fermé") {
         arret = id;
@@ -800,19 +1017,20 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     }
     if (detruit) return;
     const reste = ordre();
-    actif = arret && existe(arret) ? arret : existe(vise) ? vise : (reste[0] ?? null);
+    const apres = arret && existe(arret) ? arret : existe(vise) ? vise : (reste[0] ?? null);
+    if (apres === null) actif = null;
+    else activer(apres);
     afficher();
     garderListe();
-    if (actif === null) code.querySelector("button")?.focus();
-    else (actif === DIFF ? diff.el : trouver(actif).zone).vue?.focus();
+    focusActif();
   }
 
   function ouvrirMenu(id, position) {
     if (!existe(id)) return;
     dernierGeste++;
-    actif = id;
+    activer(id);
     afficher();
-    const onglet = barre.querySelector("[role=tab][aria-selected=true]");
+    const onglet = groupes.get(courant).barre.querySelector("[role=tab][aria-selected=true]");
     onglet?.focus();
     const libelle = id === DIFF ? `${nomDe(diff.chemin)} (diff)` : nomsOnglets().get(trouver(id)).libelle;
     const tous = ordre();
@@ -906,7 +1124,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     planifierDisque();
     if (actif && document.activeElement === document.body) {
       // Un onglet Claude reçoit le focus, pas son terminal : Entrée l'y met (AC-068-17).
-      if (trouver(actif)?.claude) barre.querySelector("[role=tab][aria-selected=true]")?.focus();
+      if (trouver(actif)?.claude) groupes.get(courant).barre.querySelector("[role=tab][aria-selected=true]")?.focus();
       else trouver(actif)?.zone.vue.focus();
     }
   }
@@ -916,8 +1134,13 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     barre,
     fil,
     code,
-    /** Zone de la question de l'onglet actif (C-003 dans `questionOnglet`). */
+    /** Zone de la question de l'onglet actif du premier groupe (C-003 dans `questionOnglet`). */
     question: questionOnglet,
+    /** Arbre des groupes, feuilles `{ id, ongletsFichiers, questionOnglet, fil, code }`. */
+    groupes: () => arbreComplet(),
+    /** Les zones de question de tous les groupes. */
+    questions: () => [...groupes.values()].map((g) => g.questionOnglet),
+    deplacer,
     /** Une lecture de fichier commence (`oui`, rend son numéro de geste) ou se termine. */
     lecture(oui) {
       lectures = Math.max(0, lectures + (oui ? 1 : -1));
@@ -957,6 +1180,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       clearTimeout(minuteurDisque);
       if (pret) ecrireGarde(); // le texte tapé dans les dernières 200 ms n'est pas perdu
       document.removeEventListener("keydown", surTouche);
+      for (const ev of finsPression) document.removeEventListener(ev, finPression);
       for (const o of liste) o.zone.detruire();
       diff?.el.detruire?.();
     },

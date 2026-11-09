@@ -45,8 +45,10 @@ test("REQ028_AC8_ordre_dom_barre_rail_panneau_principal_puis_onglets_code_shells
   expect(noms).toEqual(["header", "div", "aside", "div", "main", "div", "aside", "div", "footer"]);
   expect(c.children[3].getAttribute("aria-label")).toBe("Largeur du panneau");
   const textes = [...c.querySelector("main").children].map((e) => e.textContent);
-  expect(textes).toEqual(["bandeau", "of", "q", "fil", "code", "", "shells"]);
-  expect(c.querySelector("main").children[5].getAttribute("aria-label")).toBe("Hauteur des shells");
+  // Les quatre zones de l'éditeur sont dans l'enveloppe d'un groupe (REQ-079), dans le même ordre.
+  expect(textes).toEqual(["bandeau", "ofqfilcode", "", "shells"]);
+  expect([...c.querySelector(".cadre-groupe").children].map((e) => e.textContent)).toEqual(["of", "q", "fil", "code"]);
+  expect(c.querySelector("main").children[2].getAttribute("aria-label")).toBe("Hauteur des shells");
 });
 
 test("REQ028_AC2_titre_de_panneau_h2_corps_defilant_et_aucun_pied", () => {
@@ -683,4 +685,36 @@ test("REQ079_css_groupes_de_l_editeur_et_guides_de_depot", () => {
   const bloc = css.slice(css.indexOf(".cadre-groupes {"), css.indexOf('.ya-depot [data-depot="centre"]'));
   expect(bloc).not.toMatch(/transition/);
   expect(bloc).not.toMatch(/#[0-9a-f]{3,6}\b/i);
+});
+
+test("REQ079_cadre_groupes_arbre_et_definirGroupes_reutilise_les_elements", () => {
+  const feuille = (id) => ({ id, ongletsFichiers: p(`o${id}`), questionOnglet: p(`q${id}`), fil: p(`f${id}`), code: p(`c${id}`) });
+  const [a, b, c] = [feuille("a"), feuille("b"), feuille("c")];
+  const cd = cadre({ principal: { groupes: { sens: "ligne", a, b }, shells: p("shells") } });
+  document.body.append(cd);
+  expect(cd.querySelector(".cadre-principal > .cadre-groupes")).not.toBeNull();
+  expect(cd.querySelector(".cadre-groupes > .cadre-decoupe[data-sens=ligne]").children.length).toBe(2);
+  const [ga, gb] = cd.querySelectorAll(".cadre-groupe");
+  expect([...ga.children].map((x) => x.className)).toEqual(["cadre-onglets", "cadre-question", "cadre-fil", "cadre-code"]);
+  expect(ga.textContent).toBe("oaqafaca");
+  cd.definirGroupes({ sens: "colonne", a: { sens: "ligne", a, b }, b: c }, "b");
+  expect(cd.querySelector(".cadre-decoupe[data-sens=colonne]")).not.toBeNull();
+  const apres = cd.querySelectorAll(".cadre-groupe");
+  expect(apres.length).toBe(3);
+  expect(apres[0]).toBe(ga);
+  expect(apres[1]).toBe(gb);
+  expect(apres[0].querySelector(".cadre-code").firstChild).toBe(a.code);
+  cd.definirGroupes(b, "b");
+  expect(cd.querySelectorAll(".cadre-groupe").length).toBe(1);
+  expect(cd.querySelector(".cadre-decoupe")).toBeNull();
+  expect(cd.querySelector(".cadre-groupe")).toBe(gb);
+});
+
+test("REQ079_cadre_sans_groupes_les_quatre_cles_valent_un_groupe", () => {
+  const cd = monter();
+  const g = cd.querySelectorAll(".cadre-groupe");
+  expect(g.length).toBe(1);
+  expect(g[0].parentElement.className).toBe("cadre-groupes");
+  expect(cd.querySelector(".cadre-decoupe")).toBeNull();
+  expect(g[0].querySelector(".cadre-code").textContent).toBe("code");
 });

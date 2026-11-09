@@ -114,14 +114,46 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
 
   poignees.panneau.classList.add("poignee-panneau");
   poignees.agent?.classList.add("poignee-agent");
-  main.append(
-    zone("div", "cadre-bandeaux", principal.bandeaux),
-    zone("div", "cadre-onglets", principal.ongletsFichiers),
-    zone("div", "cadre-question", principal.questionOnglet),
-    zone("div", "cadre-fil", principal.fil),
-    zone("div", "cadre-code", principal.code),
-    ...(avec.shells ? [poignees.shells, zoneShells] : []),
-  );
+  // Groupes de l'éditeur (REQ-079) : un arbre dont chaque feuille porte { id, ongletsFichiers, questionOnglet, fil, code }.
+  // Sans `groupes`, les quatre clés actuelles forment un groupe unique.
+  const unites = new Map(); // id -> élément `.cadre-groupe`
+  const groupes = zone("div", "cadre-groupes");
+  let structure = null;
+  const feuilleUnique = { id: "", ongletsFichiers: principal.ongletsFichiers, questionOnglet: principal.questionOnglet, fil: principal.fil, code: principal.code };
+  const signature = (n) => (n.sens === undefined ? n.id : `${n.sens}(${signature(n.a)},${signature(n.b)})`);
+  const feuillesDe = (n) => (n.sens === undefined ? [n] : [...feuillesDe(n.a), ...feuillesDe(n.b)]);
+  function construire(n) {
+    if (n.sens !== undefined) {
+      const d = zone("div", "cadre-decoupe", [construire(n.a), construire(n.b)]);
+      d.dataset.sens = n.sens;
+      return d;
+    }
+    let u = unites.get(n.id);
+    if (!u) {
+      u = zone("div", "cadre-groupe", [
+        zone("div", "cadre-onglets", n.ongletsFichiers),
+        zone("div", "cadre-question", n.questionOnglet),
+        zone("div", "cadre-fil", n.fil),
+        zone("div", "cadre-code", n.code),
+      ]);
+      unites.set(n.id, u);
+    }
+    return u;
+  }
+  // La structure n'est refaite que si elle change : déplacer un groupe dans la page lui ferait perdre le focus.
+  racine.definirGroupes = (arbre, courant) => {
+    const cle = signature(arbre);
+    if (cle !== structure) {
+      structure = cle;
+      const ids = new Set(feuillesDe(arbre).map((f) => f.id));
+      for (const id of unites.keys()) if (!ids.has(id)) unites.delete(id);
+      groupes.replaceChildren(construire(arbre));
+    }
+    for (const [id, u] of unites) u.dataset.courant = String(id === courant);
+  };
+  const depart = principal.groupes ?? feuilleUnique;
+  racine.definirGroupes(depart, principal.groupeCourant ?? feuillesDe(depart)[0].id);
+  main.append(zone("div", "cadre-bandeaux", principal.bandeaux), groupes, ...(avec.shells ? [poignees.shells, zoneShells] : []));
 
   const branche = zone("span", "ya-status-branche");
   const espace = zone("span", "ya-status-espace");
