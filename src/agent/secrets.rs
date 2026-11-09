@@ -1,5 +1,5 @@
-//! Clés d'API chiffrées (AES-256-GCM) : `.yaide/secrets` (nonce de 12 octets, puis chiffré)
-//! et la clé de chiffrement dans le dossier de configuration de l'utilisateur (DEC-033).
+//! Clés d'API chiffrées (AES-256-GCM) : `secrets` (nonce de 12 octets, puis chiffré)
+//! et la clé de chiffrement, tous deux dans le dossier de configuration de l'utilisateur (DEC-033).
 
 use crate::config;
 use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM, NONCE_LEN};
@@ -66,7 +66,7 @@ pub fn lire(yaide: &Path, cfg: &Path) -> Result<Cles, String> {
     serde_json::from_slice(clair).map_err(|_| format!("{} est illisible", f.display()))
 }
 
-/// Chiffre avec un nonce neuf et remplace `.yaide/secrets`.
+/// Chiffre avec un nonce neuf et remplace `secrets` du dossier de configuration de l'utilisateur.
 pub fn ecrire(yaide: &Path, cfg: &Path, cles: &Cles) -> Result<(), String> {
     let cle = lire_cle(cfg, true)?;
     let mut nonce = [0u8; NONCE_LEN];

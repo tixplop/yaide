@@ -501,6 +501,12 @@ test("REQ051_AC4_reglages_illisibles_nomment_le_fichier", async () => {
   expect(a.compareDocumentPosition(champ(vue)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
+test("REQ081_AC6_chemin_complet_hors_du_projet", async () => {
+  const { vue } = await monter({ profils: [], erreur: "/home/x/.config/yaide/config.json est illisible : expected value at line 1" });
+  const a = refus(vue);
+  expect(a.textContent).toContain("/home/x/.config/yaide/config.json est illisible. Corrigez-le ou enregistrez de nouveaux réglages.");
+});
+
 test("REQ056_AC14_ordre_de_tab", async () => {
   const nom = (e) => e.getAttribute("aria-label") ?? e.labels?.[0]?.textContent ?? e.textContent;
   const tabulables = (vue) => [...vue.corps.querySelectorAll("button, textarea, select, a[href], [tabindex='0']")].map(nom);

@@ -1,4 +1,4 @@
-//! Réglages de l'agent : `.yaide/config.json` (adresses, profils) et clés d'API (DEC-033).
+//! Réglages de l'agent : `config.json` du dossier de configuration de l'utilisateur (adresses, profils) et clés d'API (DEC-033).
 
 use super::provider::Provider;
 use super::secrets;
@@ -6,7 +6,7 @@ use crate::config;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 const TOUS: [Provider; 6] = [
@@ -178,6 +178,24 @@ fn normaliser(profils: &mut [Profil], defaut: Option<&str>) {
 }
 
 impl Reglages {
+    /// Au premier lancement, reprend `config.json` et `secrets` de l'ancien dossier `.yaide/`
+    /// du projet. Ne touche jamais aux fichiers de `ancien`.
+    pub fn reprendre_du_projet(&self, ancien: &Path) {
+        let _g = self.verrouiller();
+        let noms = ["config.json", "secrets"];
+        if noms.iter().any(|n| self.yaide.join(n).exists()) {
+            return;
+        }
+        for n in noms {
+            let Ok(octets) = std::fs::read(ancien.join(n)) else {
+                continue;
+            };
+            if let Err(e) = config::ecrire_atomique(&self.yaide.join(n), &octets) {
+                eprintln!("{e}");
+            }
+        }
+    }
+
     pub fn new(yaide: PathBuf, cfg: PathBuf) -> Self {
         Reglages {
             yaide,

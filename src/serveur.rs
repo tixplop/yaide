@@ -1084,7 +1084,8 @@ pub async fn servir(
     let tls = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, cle)
         .await
         .map_err(|e| format!("certificat illisible : {e}"))?;
-    let reglages = Arc::new(Reglages::new(projet.join(".yaide"), config.to_path_buf()));
+    let reglages = Arc::new(Reglages::new(config.to_path_buf(), config.to_path_buf()));
+    reglages.reprendre_du_projet(&projet.join(".yaide"));
     let agent = Arc::new(Gestionnaire::new(
         projet.to_path_buf(),
         reglages.clone(),

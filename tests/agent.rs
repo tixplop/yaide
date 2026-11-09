@@ -209,23 +209,29 @@ fn req051_ac1_lancer_et_lire_les_reglages_ne_cree_pas_yaide() {
     assert!(v["erreur"].is_null());
     assert!(!s.yaide().exists());
     assert!(!s.cfg().join("cle-secrets").exists());
+    assert!(!s.cfg().join("config.json").exists());
+    assert!(!s.cfg().join("secrets").exists());
 }
 
 #[test]
-fn req051_ac2_ac3_profil_enregistre_dans_son_projet() {
+fn REQ081_AC1_AC2_reglages_communs_a_deux_projets() {
+    let (adresse, recues) = faux_provider(vec![rep_texte("ok")]);
     let racine = preparer("ac2");
     let a = demarrer(&racine, "a");
     let b = demarrer(&racine, "b");
-    let r = a.appel("PUT", "/api/agent/profils", &profil("rapide"));
-    assert_eq!(r.code, 200, "{}", r.corps);
-    let enregistre = std::fs::read_to_string(a.yaide().join("config.json")).unwrap();
-    assert!(enregistre.contains("rapide"));
-    assert_eq!(a.reglages()["profils"][0]["nom"], "rapide");
-    assert_eq!(b.reglages()["profils"], json!([]));
-    assert!(!b.yaide().exists());
-    b.appel("PUT", "/api/agent/profils", &profil("autre"));
-    assert_eq!(b.reglages()["profils"].as_array().unwrap().len(), 1);
-    assert_eq!(a.reglages()["profils"][0]["nom"], "rapide");
+    let id = configurer(&a, "openai", &adresse);
+    let enregistre = std::fs::read_to_string(a.cfg().join("config.json")).unwrap();
+    assert!(enregistre.contains("openai"));
+    assert!(a.cfg().join("secrets").exists());
+    assert_eq!(a.reglages()["profils"][0]["nom"], "openai");
+    assert_eq!(b.reglages()["profils"][0]["nom"], "openai");
+    assert_eq!(b.reglages()["providers"][0]["cle"], true);
+    let conv = message(&b, &id, "salut");
+    attendre_fin(&b, &conv);
+    assert_eq!(recues.lock().unwrap()[0]["auth"], "Bearer sk-x");
+    assert!(!a.yaide().exists());
+    assert!(!b.yaide().join("config.json").exists());
+    assert!(!b.yaide().join("secrets").exists());
 }
 
 #[test]
@@ -272,11 +278,15 @@ fn req052_ac1_ac3_six_providers_sans_aucune_cle_dans_les_reponses() {
     assert!(!g.corps.contains(secrete));
     assert_eq!(g.json()["providers"][0]["cle"], true);
 
-    let secrets = std::fs::read(s.yaide().join("secrets")).unwrap();
+    let secrets = std::fs::read(s.cfg().join("secrets")).unwrap();
     assert!(!String::from_utf8_lossy(&secrets).contains(secrete));
-    let config = std::fs::read_to_string(s.yaide().join("config.json")).unwrap();
+    let config = std::fs::read_to_string(s.cfg().join("config.json")).unwrap();
     assert!(!config.contains(secrete));
-    for f in [s.yaide().join("secrets"), s.cfg().join("cle-secrets")] {
+    for f in [
+        s.cfg().join("secrets"),
+        s.cfg().join("config.json"),
+        s.cfg().join("cle-secrets"),
+    ] {
         assert_eq!(
             std::fs::metadata(f).unwrap().permissions().mode() & 0o777,
             0o600
@@ -296,6 +306,8 @@ fn req052_ac5_adresse_refusee_rien_enregistre() {
     assert_eq!(r.json(), json!({ "champ": "adresse" }));
     assert!(!s.yaide().exists());
     assert!(!s.cfg().join("cle-secrets").exists());
+    assert!(!s.cfg().join("config.json").exists());
+    assert!(!s.cfg().join("secrets").exists());
     let v = s.reglages();
     assert_eq!(v["providers"][0]["adresse"], "https://api.openai.com/v1");
     assert_eq!(v["providers"][0]["cle"], false);
@@ -392,14 +404,20 @@ type Recues = std::sync::Arc<std::sync::Mutex<Vec<Value>>>;
 fn faux_provider(scenario: Vec<(u16, Value, u64)>) -> (String, Recues) {
     use axum::body::Bytes;
     use axum::extract::State;
-    use axum::http::{StatusCode, Uri};
+    use axum::http::{HeaderMap, StatusCode, Uri};
     use std::collections::VecDeque;
     use std::sync::{Arc, Mutex};
     #[derive(Clone)]
     struct Etat(Arc<Mutex<VecDeque<(u16, Value, u64)>>>, Recues);
-    async fn rep(State(e): State<Etat>, uri: Uri, corps: Bytes) -> (StatusCode, String) {
+    async fn rep(
+        State(e): State<Etat>,
+        uri: Uri,
+        entetes: HeaderMap,
+        corps: Bytes,
+    ) -> (StatusCode, String) {
         e.1.lock().unwrap().push(json!({
             "chemin": uri.path(),
+            "auth": entetes.get("authorization").and_then(|v| v.to_str().ok()),
             "corps": serde_json::from_slice::<Value>(&corps).unwrap_or(Value::Null),
         }));
         let suivante = e.0.lock().unwrap().pop_front();
@@ -801,4 +819,105 @@ fn REQ067_AC12_AC13_tour_par_les_routes_sans_client_puis_relecture() {
     assert_eq!(r.code, 200, "{}", r.corps);
     let r = s.appel("GET", "/api/agent/conversations", &Value::Null);
     assert_eq!(r.json().as_array().unwrap().len(), 1);
+}
+
+/// Prépare une racine, puis `.yaide/` du projet `p` avec `config.json` et `secrets`
+/// produits par une première instance (la clé de chiffrement reste chez l'utilisateur).
+fn projet_avec_anciens_reglages(nom: &str, adresse: &str) -> (PathBuf, String) {
+    let racine = preparer(nom);
+    let s = demarrer(&racine, "p");
+    let r = s.appel("PUT", "/api/agent/profils", &profil("ancien"));
+    let id = r.json()["profils"][0]["id"].as_str().unwrap().to_string();
+    s.appel(
+        "PUT",
+        "/api/agent/providers/openai",
+        &json!({ "adresse": adresse, "cle": "sk-ancienne" }),
+    );
+    let cfg = s.cfg();
+    drop(s);
+    std::fs::create_dir_all(racine.join("p/.yaide")).unwrap();
+    for n in ["config.json", "secrets"] {
+        std::fs::rename(cfg.join(n), racine.join("p/.yaide").join(n)).unwrap();
+    }
+    (racine, id)
+}
+
+#[test]
+fn REQ081_AC3_reprend_les_reglages_du_projet() {
+    let (adresse, recues) = faux_provider(vec![rep_texte("ok")]);
+    let (racine, id) = projet_avec_anciens_reglages("ac3", &adresse);
+    let avant: Vec<Vec<u8>> = ["config.json", "secrets"]
+        .iter()
+        .map(|n| std::fs::read(racine.join("p/.yaide").join(n)).unwrap())
+        .collect();
+    let s = demarrer(&racine, "p");
+    let v = s.reglages();
+    assert_eq!(v["profils"][0]["nom"], "ancien");
+    assert_eq!(v["providers"][0]["cle"], true);
+    assert!(v["erreur"].is_null(), "{v}");
+    let conv = message(&s, &id, "salut");
+    attendre_fin(&s, &conv);
+    assert_eq!(recues.lock().unwrap()[0]["auth"], "Bearer sk-ancienne");
+    for (n, octets) in ["config.json", "secrets"].iter().zip(&avant) {
+        assert_eq!(
+            std::fs::metadata(s.cfg().join(n))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        assert_eq!(
+            &std::fs::read(s.yaide().join(n)).unwrap(),
+            octets,
+            "{n} de l'ancien dossier modifié"
+        );
+    }
+}
+
+#[test]
+fn REQ081_AC4_ne_remplace_pas_ceux_de_l_utilisateur() {
+    let (racine, _) = projet_avec_anciens_reglages("ac4", "https://api.openai.com/v1");
+    let ancien = std::fs::read(racine.join("p/.yaide/config.json")).unwrap();
+    std::fs::create_dir_all(racine.join("cfg/yaide")).unwrap();
+    std::fs::write(
+        racine.join("cfg/yaide/config.json"),
+        r#"{"profils":[{"id":"x","nom":"mien","provider":"openai","modele":"m","defaut":true}]}"#,
+    )
+    .unwrap();
+    let s = demarrer(&racine, "p");
+    let v = s.reglages();
+    assert_eq!(v["profils"].as_array().unwrap().len(), 1);
+    assert_eq!(v["profils"][0]["nom"], "mien");
+    assert_eq!(v["providers"][0]["cle"], false);
+    assert!(!s.cfg().join("secrets").exists());
+    assert_eq!(
+        std::fs::read(s.yaide().join("config.json")).unwrap(),
+        ancien
+    );
+}
+
+#[test]
+fn REQ081_AC4_secrets_de_l_utilisateur_gardes_sans_copier_config() {
+    let (racine, _) = projet_avec_anciens_reglages("ac4s", "https://api.openai.com/v1");
+    let secrets = std::fs::read(racine.join("p/.yaide/secrets")).unwrap();
+    std::fs::create_dir_all(racine.join("cfg/yaide")).unwrap();
+    std::fs::write(racine.join("cfg/yaide/secrets"), &secrets).unwrap();
+    let s = demarrer(&racine, "p");
+    let v = s.reglages();
+    assert_eq!(v["profils"], json!([]));
+    assert_eq!(v["providers"][0]["cle"], true);
+    assert!(!s.cfg().join("config.json").exists());
+    assert_eq!(std::fs::read(s.cfg().join("secrets")).unwrap(), secrets);
+}
+
+#[test]
+fn REQ081_AC5_copie_impossible_ne_bloque_pas() {
+    let racine = preparer("ac5copie");
+    std::fs::create_dir_all(racine.join("p/.yaide/config.json")).unwrap();
+    let s = demarrer(&racine, "p");
+    let v = s.reglages();
+    assert_eq!(v["profils"], json!([]));
+    assert!(v["erreur"].is_null());
+    assert!(!s.cfg().join("config.json").exists());
 }
