@@ -377,8 +377,14 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre-decoupe[data-sens="ligne"] { flex-direction: row; }
 .cadre-decoupe[data-sens="colonne"] { flex-direction: column; }
 .cadre-decoupe > * { flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden; }
-.cadre-decoupe[data-sens="ligne"] > :nth-child(2) { border-left: var(--trait) solid var(--line); }
-.cadre-decoupe[data-sens="colonne"] > :nth-child(2) { border-top: var(--trait) solid var(--line); }
+/* Poignée entre deux groupes (C-011 « groupe ») : 1 px de place, boîte de --epaisseur-poignee qui déborde de chaque côté. */
+.cadre-decoupe > .poignee-groupe { flex: 0 0 var(--epaisseur-poignee); position: relative; z-index: 1; overflow: visible; background: transparent; }
+.cadre-decoupe[data-sens="ligne"] > .poignee-groupe { margin-inline: calc((var(--trait) - var(--epaisseur-poignee)) / 2); }
+.cadre-decoupe[data-sens="colonne"] > .poignee-groupe { margin-block: calc((var(--trait) - var(--epaisseur-poignee)) / 2); }
+.poignee-groupe.poignee-vertical::after { left: calc((var(--epaisseur-poignee) - var(--trait)) / 2); margin-left: 0; width: var(--trait); }
+.poignee-groupe.poignee-horizontal::after { top: calc((var(--epaisseur-poignee) - var(--trait)) / 2); margin-top: 0; height: var(--trait); }
+.cadre-decoupe > .poignee-groupe:hover, .cadre-decoupe > .poignee-groupe.poignee-active { background: var(--accent-fg); box-shadow: 0 0 0 var(--trait) var(--bg-000); }
+.cadre-decoupe > .poignee-groupe:focus-visible { background: var(--accent-fg); outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); box-shadow: 0 0 0 var(--trait-fort) var(--bg-000); }
 .cadre-groupe { position: relative; display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; }
 .cadre-groupe > :not(.ya-depot) { isolation: isolate; }
 /* Glissé d'un onglet : couche de dépôt, guides des zones et aperçu de la cible. */

@@ -673,7 +673,7 @@ test("REQ079_css_groupes_de_l_editeur_et_guides_de_depot", () => {
   expect(regle(".cadre-groupes")).toMatch(/flex: 1 1 0.*min-height: 0|min-height: 0.*flex: 1 1 0/);
   expect(regle('.cadre-decoupe[data-sens="ligne"]')).toContain("flex-direction: row");
   expect(regle('.cadre-decoupe[data-sens="colonne"]')).toContain("flex-direction: column");
-  expect(regle('.cadre-decoupe[data-sens="ligne"] > :nth-child(2)')).toContain("var(--trait) solid var(--line)");
+  expect(regle(".cadre-decoupe > .poignee-groupe")).toContain("flex: 0 0 var(--epaisseur-poignee)");
   expect(regle(".cadre-groupe")).toContain("position: relative");
   expect(regle(".cadre-groupe > :not(.ya-depot)")).toContain("isolation: isolate");
   expect(regle(".ya-depot")).toContain("inset: 0");
@@ -693,7 +693,7 @@ test("REQ079_cadre_groupes_arbre_et_definirGroupes_reutilise_les_elements", () =
   const cd = cadre({ principal: { groupes: { sens: "ligne", a, b }, shells: p("shells") } });
   document.body.append(cd);
   expect(cd.querySelector(".cadre-principal > .cadre-groupes")).not.toBeNull();
-  expect(cd.querySelector(".cadre-groupes > .cadre-decoupe[data-sens=ligne]").children.length).toBe(2);
+  expect(cd.querySelector(".cadre-groupes > .cadre-decoupe[data-sens=ligne]").children.length).toBe(3);
   const [ga, gb] = cd.querySelectorAll(".cadre-groupe");
   expect([...ga.children].map((x) => x.className)).toEqual(["cadre-onglets", "cadre-question", "cadre-fil", "cadre-code"]);
   expect(ga.textContent).toBe("oaqafaca");
@@ -717,4 +717,309 @@ test("REQ079_cadre_sans_groupes_les_quatre_cles_valent_un_groupe", () => {
   expect(g[0].parentElement.className).toBe("cadre-groupes");
   expect(cd.querySelector(".cadre-decoupe")).toBeNull();
   expect(g[0].querySelector(".cadre-code").textContent).toBe("code");
+});
+
+// REQ-080 : poignée entre les groupes. Mise en page simulée : `getBoundingClientRect` suit `style.flex` des parties.
+HTMLElement.prototype.setPointerCapture ??= () => {};
+const base = { width: 901, height: 601 };
+function rectSimule(e) {
+  if (e.classList.contains("cadre-groupes")) return { ...base };
+  const parent = e.parentElement;
+  if (!parent) return { width: 0, height: 0 };
+  if (parent.classList.contains("cadre-groupes")) return rectSimule(parent);
+  if (!parent.classList.contains("cadre-decoupe")) return { width: 0, height: 0 };
+  const pr = rectSimule(parent);
+  const ligne = parent.dataset.sens === "ligne";
+  const [a, , b] = parent.children;
+  const libre = (ligne ? pr.width : pr.height) - 1;
+  const taille = e.classList.contains("poignee-groupe") ? 1 : (libre * parseFloat(e.style.flex)) / (parseFloat(a.style.flex) + parseFloat(b.style.flex));
+  return ligne ? { width: taille, height: pr.height } : { width: pr.width, height: taille };
+}
+const simuler = () =>
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function () {
+    const r = rectSimule(this);
+    return { ...r, left: 0, top: 0, right: r.width, bottom: r.height, x: 0, y: 0 };
+  });
+const feuilleG = (id) => ({ id, ongletsFichiers: p(`o${id}`), questionOnglet: p(`q${id}`), fil: p(`f${id}`), code: p(`c${id}`) });
+const taillesDe = (cd, id) => {
+  const r = cd.querySelector(".cadre-groupes").querySelectorAll(".cadre-groupe");
+  const e = [...r].find((x) => x.textContent.includes(`o${id}q${id}`));
+  return e.getBoundingClientRect();
+};
+function monterGroupes(arbre, L = 901, H = 601) {
+  base.width = L;
+  base.height = H;
+  simuler();
+  const cd = cadre({ principal: { groupes: arbre, groupeCourant: "a", shells: p("shells") } });
+  document.body.append(cd);
+  cd.mesurer();
+  return cd;
+}
+const ptr = (type, x, y) => Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }), { pointerId: 1 });
+const fleche = (e, key) => e.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+const flexes = (cd) => [...cd.querySelectorAll(".cadre-groupe")].map((x) => x.style.flex.replace(/ 0px$/, " 0"));
+const aria = (e) => ["aria-valuenow", "aria-valuemin", "aria-valuemax"].map((a) => e.getAttribute(a));
+
+test("REQ080_AC3_une_poignee_par_decoupe", () => {
+  const seul = monterGroupes(feuilleG("a"));
+  expect(seul.querySelectorAll(".poignee-groupe").length).toBe(0);
+  const [a, b, c, d] = ["a", "b", "c", "d"].map(feuilleG);
+  const quatre = monterGroupes({ sens: "ligne", a: { sens: "colonne", a, b }, b: { sens: "colonne", a: c, b: d } });
+  expect(quatre.querySelectorAll(".poignee-groupe").length).toBe(3);
+  expect(quatre.querySelectorAll(".poignee-groupe")[0].classList.contains("poignee")).toBe(true);
+});
+
+test("REQ080_AC12_ordre_du_dom", () => {
+  const [a, b, c, d] = ["a", "b", "c", "d"].map(feuilleG);
+  const cd = monterGroupes({ sens: "ligne", a, b: { sens: "colonne", a: b, b: { sens: "ligne", a: c, b: d } } });
+  for (const decoupe of cd.querySelectorAll(".cadre-decoupe")) {
+    expect(decoupe.children[1].classList.contains("poignee-groupe")).toBe(true);
+    expect(decoupe.children.length).toBe(3);
+  }
+  const racineDecoupe = cd.querySelector(".cadre-groupes > .cadre-decoupe");
+  expect([...racineDecoupe.children].map((x) => x.className.split(" ")[0])).toEqual(["cadre-groupe", "poignee", "cadre-decoupe"]);
+  expect([...cd.querySelectorAll(".poignee-groupe")].map((x) => x.getAttribute("aria-label"))).toEqual([
+    "Entre les groupes 1 et 2",
+    "Entre les groupes 2 et 3",
+    "Entre les groupes 3 et 4",
+  ]);
+});
+
+test("REQ080_AC17_noms_apres_une_fermeture", () => {
+  const [a, b, c, d] = ["a", "b", "c", "d"].map(feuilleG);
+  const cd = monterGroupes({ sens: "ligne", a: { sens: "colonne", a, b }, b: { sens: "colonne", a: c, b: d } });
+  const noms = () => [...cd.querySelectorAll(".poignee-groupe")].map((x) => x.getAttribute("aria-label"));
+  expect(noms()).toEqual(["Entre les groupes 1 et 2", "Entre les groupes 2 et 3", "Entre les groupes 3 et 4"]);
+  cd.definirGroupes({ sens: "ligne", a, b: { sens: "colonne", a: c, b: d } }, "a");
+  expect(noms()).toEqual(["Entre les groupes 1 et 2", "Entre les groupes 2 et 3"]);
+});
+
+test("REQ080_AC11_attributs", () => {
+  const [a, b, c] = ["a", "b", "c"].map(feuilleG);
+  const cd = monterGroupes({ sens: "ligne", a, b: { sens: "colonne", a: b, b: c } }, 900, 600);
+  const [ligne, colonne] = [...cd.querySelectorAll(".poignee-groupe")];
+  expect(ligne.getAttribute("role")).toBe("separator");
+  expect(ligne.getAttribute("aria-orientation")).toBe("vertical");
+  expect(ligne.getAttribute("aria-label")).toBe("Entre les groupes 1 et 2");
+  expect(ligne.tabIndex).toBe(0);
+  expect(colonne.getAttribute("aria-orientation")).toBe("horizontal");
+  expect(colonne.getAttribute("aria-label")).toBe("Entre les groupes 2 et 3");
+  // Deux groupes côte à côte dans 900 px : 320 et 579 (valeur = 899 / 2, arrondie).
+  const deux = monterGroupes({ sens: "ligne", a, b }, 900, 600);
+  expect(aria(deux.querySelector(".poignee-groupe"))).toEqual(["450", "320", "579"]);
+  // Éditeur de 1500 px, un groupe à gauche, deux côte à côte partagés 0,4 / 0,6 à droite : 320 et 698.
+  const trois = monterGroupes({ sens: "ligne", part: 0.3, a, b: { sens: "ligne", part: 0.4, a: b, b: c } }, 1500, 600);
+  expect(aria(trois.querySelector(".poignee-groupe"))).toEqual(["450", "320", "698"]);
+});
+
+test("REQ080_AC1_AC2_glisse_change_les_deux_parties", () => {
+  const [a, b] = ["a", "b"].map(feuilleG);
+  const surPartage = vi.fn();
+  const resize = vi.fn();
+  window.addEventListener("resize", resize);
+  const cd = monterGroupes({ sens: "ligne", a, b, surPartage });
+  const h = cd.querySelector(".poignee-groupe");
+  expect(taillesDe(cd, "a").width).toBeCloseTo(450, 6);
+  h.dispatchEvent(ptr("pointerdown", 100, 50));
+  h.dispatchEvent(ptr("pointermove", 150, 50));
+  expect(taillesDe(cd, "a").width).toBeCloseTo(500, 6);
+  expect(taillesDe(cd, "b").width).toBeCloseTo(400, 6);
+  expect(surPartage).toHaveBeenLastCalledWith(500 / 900, false);
+  expect(resize).toHaveBeenCalledTimes(1);
+  expect(h.getAttribute("aria-valuenow")).toBe("500");
+  expect(h.classList.contains("poignee-active")).toBe(true);
+  h.dispatchEvent(ptr("pointerup", 150, 50));
+  expect(surPartage).toHaveBeenLastCalledWith(500 / 900, true);
+  expect(surPartage).toHaveBeenCalledTimes(2);
+  window.removeEventListener("resize", resize);
+  // Deux groupes l'un sur l'autre : la partie mesurée est la partie basse, Haut l'agrandit.
+  const v = monterGroupes({ sens: "colonne", a, b }, 901, 601);
+  const hv = v.querySelector(".poignee-groupe");
+  expect(aria(hv)[0]).toBe("300");
+  hv.dispatchEvent(ptr("pointerdown", 50, 300));
+  hv.dispatchEvent(ptr("pointermove", 50, 250));
+  expect(taillesDe(v, "b").height).toBeCloseTo(350, 6);
+  expect(taillesDe(v, "a").height).toBeCloseTo(250, 6);
+  // Rien ne change hors de la découpe : le groupe de gauche ne bouge pas quand on glisse la poignée horizontale (AC-080-4).
+  const [c, d, e] = ["c", "d", "e"].map(feuilleG);
+  const t = monterGroupes({ sens: "ligne", a: c, b: { sens: "colonne", a: d, b: e } });
+  const [verticale, horizontale] = t.querySelectorAll(".poignee-groupe");
+  const colonne = t.querySelector('.cadre-decoupe[data-sens="colonne"]');
+  const gauche = colonne.parentElement.children[0];
+  const [flexGauche, flexColonne] = [gauche.style.flex, colonne.style.flex];
+  horizontale.dispatchEvent(ptr("pointerdown", 50, 300));
+  horizontale.dispatchEvent(ptr("pointermove", 50, 250));
+  horizontale.dispatchEvent(ptr("pointerup", 50, 250));
+  expect([gauche.style.flex, colonne.style.flex]).toEqual([flexGauche, flexColonne]);
+  expect(colonne.children[0].style.flex).not.toBe(colonne.children[2].style.flex);
+  // La poignée verticale garde le rapport de hauteur des deux groupes de droite.
+  const avant = [colonne.children[0].style.flex, colonne.children[2].style.flex];
+  verticale.dispatchEvent(ptr("pointerdown", 450, 50));
+  verticale.dispatchEvent(ptr("pointermove", 500, 50));
+  verticale.dispatchEvent(ptr("pointerup", 500, 50));
+  expect([colonne.children[0].style.flex, colonne.children[2].style.flex]).toEqual(avant);
+  expect(gauche.style.flex).not.toBe(flexGauche);
+});
+
+test("REQ080_AC8_la_fenetre_ne_change_pas_part", () => {
+  const [a, b] = ["a", "b"].map(feuilleG);
+  const surPartage = vi.fn();
+  const cd = monterGroupes({ sens: "ligne", a, b, part: 0.3, surPartage }, 1001, 600);
+  const h = cd.querySelector(".poignee-groupe");
+  const flex = flexes(cd);
+  expect(flex).toEqual(["300 1 0", "700 1 0"]);
+  expect(h.getAttribute("aria-valuenow")).toBe("300");
+  base.width = 701;
+  cd.mesurer();
+  expect(h.getAttribute("aria-valuenow")).toBe("210");
+  expect(flexes(cd)).toEqual(flex);
+  base.width = 1001;
+  cd.mesurer();
+  expect(h.getAttribute("aria-valuenow")).toBe("300");
+  expect(surPartage).not.toHaveBeenCalled();
+});
+
+test("REQ080_AC8_le_ResizeObserver_met_a_jour_les_poignees", () => {
+  let rappel;
+  vi.stubGlobal("ResizeObserver", class { constructor(f) { rappel = f; } observe(e) { this.e = e; } });
+  const [a, b] = ["a", "b"].map(feuilleG);
+  const cd = monterGroupes({ sens: "ligne", a, b }, 901, 600);
+  const h = cd.querySelector(".poignee-groupe");
+  base.width = 1801;
+  rappel();
+  expect(h.getAttribute("aria-valuenow")).toBe("900");
+  vi.unstubAllGlobals();
+});
+
+test("REQ080_AC9_AC18_sans_place_rien_ne_bouge", () => {
+  const [a, b] = ["a", "b"].map(feuilleG);
+  const surPartage = vi.fn();
+  const cd = monterGroupes({ sens: "ligne", a, b, surPartage }, 460, 600);
+  const h = cd.querySelector(".poignee-groupe");
+  expect(aria(h)).toEqual(["230", "230", "230"]);
+  fleche(h, "ArrowRight");
+  fleche(h, "ArrowLeft");
+  h.dispatchEvent(ptr("pointerdown", 100, 50));
+  h.dispatchEvent(ptr("pointermove", 200, 50));
+  h.dispatchEvent(ptr("pointermove", 0, 50));
+  h.dispatchEvent(ptr("pointerup", 0, 50));
+  expect(surPartage).not.toHaveBeenCalled();
+  expect(flexes(cd)).toEqual(["500 1 0", "500 1 0"]);
+  expect(aria(h)).toEqual(["230", "230", "230"]);
+  // Sans taille mesurable (S - 1 <= 0), la poignée n'a pas de valeur et ne bouge pas.
+  const nul = monterGroupes({ sens: "ligne", a, b, surPartage }, 1, 1);
+  const hn = nul.querySelector(".poignee-groupe");
+  expect(aria(hn)).toEqual([null, null, null]);
+  fleche(hn, "ArrowRight");
+  expect(surPartage).not.toHaveBeenCalled();
+});
+
+test("REQ080_AC13_fleches_et_autres_touches", () => {
+  const [a, b] = ["a", "b"].map(feuilleG);
+  const surPartage = vi.fn();
+  const cd = monterGroupes({ sens: "ligne", a, b, surPartage }, 1001, 600);
+  const h = cd.querySelector(".poignee-groupe");
+  h.focus();
+  expect(aria(h)[0]).toBe("500");
+  fleche(h, "ArrowRight");
+  expect(taillesDe(cd, "a").width).toBeCloseTo(516, 6);
+  expect(surPartage).toHaveBeenLastCalledWith(516 / 1000, true);
+  fleche(h, "ArrowLeft");
+  fleche(h, "ArrowLeft");
+  expect(taillesDe(cd, "a").width).toBeCloseTo(484, 6);
+  const n = surPartage.mock.calls.length;
+  for (const k of ["ArrowUp", "ArrowDown", "Home", "End", "a"]) fleche(h, k);
+  expect(surPartage.mock.calls.length).toBe(n);
+  expect(document.activeElement).toBe(h);
+  const v = monterGroupes({ sens: "colonne", a, b }, 600, 1001);
+  const hv = v.querySelector(".poignee-groupe");
+  fleche(hv, "ArrowUp");
+  expect(taillesDe(v, "b").height).toBeCloseTo(516, 6);
+  fleche(hv, "ArrowDown");
+  fleche(hv, "ArrowDown");
+  expect(taillesDe(v, "b").height).toBeCloseTo(484, 6);
+  fleche(hv, "ArrowLeft");
+  fleche(hv, "ArrowRight");
+  expect(taillesDe(v, "b").height).toBeCloseTo(484, 6);
+});
+
+test("REQ080_AC14_pointerdown_sans_focus", () => {
+  const [a, b] = ["a", "b"].map(feuilleG);
+  const cd = monterGroupes({ sens: "ligne", a, b }, 901, 600);
+  const champ = document.createElement("input");
+  document.body.append(champ);
+  champ.focus();
+  const h = cd.querySelector(".poignee-groupe");
+  const courant = [...cd.querySelectorAll(".cadre-groupe")].map((x) => x.dataset.courant);
+  const e = ptr("pointerdown", 100, 50);
+  h.dispatchEvent(e);
+  expect(e.defaultPrevented).toBe(true);
+  h.dispatchEvent(ptr("pointermove", 160, 50));
+  h.dispatchEvent(ptr("pointerup", 160, 50));
+  expect(document.activeElement).toBe(champ);
+  expect([...cd.querySelectorAll(".cadre-groupe")].map((x) => x.dataset.courant)).toEqual(courant);
+});
+
+test("REQ080_AC19_fleche_depuis_sous_le_minimum", () => {
+  const [a, b] = ["a", "b"].map(feuilleG);
+  const surPartage = vi.fn();
+  const cd = monterGroupes({ sens: "ligne", a, b, part: 240 / 799, surPartage }, 800, 600);
+  const h = cd.querySelector(".poignee-groupe");
+  expect(aria(h)).toEqual(["240", "240", "479"]);
+  fleche(h, "ArrowLeft");
+  expect(surPartage).not.toHaveBeenCalled();
+  expect(taillesDe(cd, "a").width).toBeCloseTo(240, 6);
+  fleche(h, "ArrowRight");
+  expect(taillesDe(cd, "a").width).toBeCloseTo(320, 6);
+  expect(aria(h)).toEqual(["320", "320", "479"]);
+});
+
+test("REQ080_structure_refaite_pendant_un_glisse", () => {
+  const [a, b, c] = ["a", "b", "c"].map(feuilleG);
+  const surPartage = vi.fn();
+  const cd = monterGroupes({ sens: "ligne", a, b, surPartage });
+  const h = cd.querySelector(".poignee-groupe");
+  h.dispatchEvent(ptr("pointerdown", 100, 50));
+  h.dispatchEvent(ptr("pointermove", 150, 50));
+  expect(document.documentElement.classList.contains("poignee-glisse-vertical")).toBe(true);
+  surPartage.mockClear();
+  cd.definirGroupes({ sens: "ligne", a, b: { sens: "colonne", a: b, b: c } }, "a");
+  expect(document.documentElement.classList.contains("poignee-glisse-vertical")).toBe(false);
+  expect(h.classList.contains("poignee-active")).toBe(false);
+  expect(h.isConnected).toBe(false);
+  expect(surPartage).not.toHaveBeenCalled();
+});
+
+test("REQ080_meme_structure_ne_recree_rien", () => {
+  const [a, b] = ["a", "b"].map(feuilleG);
+  const cd = monterGroupes({ sens: "ligne", a, b });
+  const [decoupe, h, ga] = [cd.querySelector(".cadre-decoupe"), cd.querySelector(".poignee-groupe"), cd.querySelector(".cadre-groupe")];
+  h.focus();
+  cd.definirGroupes({ sens: "ligne", part: 0.25, a, b }, "b");
+  expect(cd.querySelector(".cadre-decoupe")).toBe(decoupe);
+  expect(cd.querySelector(".poignee-groupe")).toBe(h);
+  expect(cd.querySelector(".cadre-groupe")).toBe(ga);
+  expect(document.activeElement).toBe(h);
+  expect(flexes(cd)).toEqual(["250 1 0", "750 1 0"]);
+  expect(h.getAttribute("aria-valuenow")).toBe("225");
+  // Un groupe qui redevient seul perd son flex.
+  cd.definirGroupes(b, "b");
+  expect(cd.querySelector(".cadre-groupe").style.flex).toBe("");
+});
+
+test("REQ080_AC15_AC16_css_de_la_poignee_groupe", () => {
+  const base = regle(".cadre-decoupe > .poignee-groupe");
+  expect(base).toContain("flex: 0 0 var(--epaisseur-poignee)");
+  expect(base).toContain("position: relative");
+  expect(base).toContain("z-index: 1");
+  expect(base).toContain("overflow: visible");
+  expect(base).toContain("background: transparent");
+  expect(regle('.cadre-decoupe[data-sens="ligne"] > .poignee-groupe')).toContain("margin-inline: calc((var(--trait) - var(--epaisseur-poignee)) / 2)");
+  expect(regle('.cadre-decoupe[data-sens="colonne"] > .poignee-groupe')).toContain("margin-block: calc((var(--trait) - var(--epaisseur-poignee)) / 2)");
+  expect(regle(".poignee-groupe.poignee-vertical::after")).toContain("width: var(--trait)");
+  expect(regle(".cadre-decoupe > .poignee-groupe:hover")).toMatch(/background: var\(--accent-fg\).*box-shadow: 0 0 0 var\(--trait\) var\(--bg-000\)/);
+  expect(regle(".cadre-decoupe > .poignee-groupe:focus-visible")).toMatch(/outline: var\(--trait-fort\) solid var\(--accent-fg\).*outline-offset: calc\(-1 \* var\(--trait\)\).*box-shadow: 0 0 0 var\(--trait-fort\) var\(--bg-000\)/);
+  expect(css).not.toContain(':nth-child(2) { border');
+  expect(regle(".poignee-vertical")).toContain("col-resize");
+  expect(regle(".poignee-horizontal")).toContain("row-resize");
 });

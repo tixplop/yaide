@@ -1,5 +1,6 @@
 import { icone } from "./icones.js";
 import { fermerInfoBulleDans, infoBulle } from "./info-bulle.js";
+import { appliquer as borneMouvement, bornesAria, limitesPoignee, partDe, partDepuis } from "../disposition.js";
 import { limites, poignee } from "./poignee.js";
 
 let compteurAgent = 0;
@@ -122,11 +123,67 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   const feuilleUnique = { id: "", ongletsFichiers: principal.ongletsFichiers, questionOnglet: principal.questionOnglet, fil: principal.fil, code: principal.code };
   const signature = (n) => (n.sens === undefined ? n.id : `${n.sens}(${signature(n.a)},${signature(n.b)})`);
   const feuillesDe = (n) => (n.sens === undefined ? [n] : [...feuillesDe(n.a), ...feuillesDe(n.b)]);
+  const jetonCss = (nom) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(nom));
+  const estDecoupe = (n) => n.sens !== undefined;
+  const postOrdre = (n) => (estDecoupe(n) ? [...postOrdre(n.a), ...postOrdre(n.b), n] : []);
+  // Copie de l'arbre reçu : `part` s'y met à jour pendant un glissé sans toucher à l'arbre de l'appelant.
+  const copie = (n) => (estDecoupe(n) ? { ...n, a: copie(n.a), b: copie(n.b) } : n);
+  let decoupes = []; // { n, el, a, b, poignee } dans l'ordre de `postOrdre`
+  let ordre = []; // ids des groupes, dans l'ordre du DOM
+
+  // Taille de la découpe (S) et de sa partie mesurée (`a` en ligne, `b` en colonne), lues dans la page.
+  function mesure(d) {
+    const ligne = d.n.sens === "ligne";
+    const taille = (e) => {
+      const r = e.getBoundingClientRect();
+      return ligne ? r.width : r.height;
+    };
+    return { S: taille(d.el), valeur: taille(ligne ? d.a : d.b) };
+  }
+  const limitesDe = (d, S) =>
+    limitesPoignee({ noeud: d.n, S, min: { largeur: jetonCss("--largeur-editeur-min"), hauteur: jetonCss("--hauteur-editeur-min") } });
+  function majPoignee(d) {
+    const { S, valeur } = mesure(d);
+    if (!(S - 1 > 0)) return d.poignee.definir({ valeur: undefined, min: undefined, max: undefined });
+    d.poignee.definir(bornesAria({ ...limitesDe(d, S), valeur }));
+  }
+  const majPoignees = () => decoupes.forEach(majPoignee);
+  const poserFlex = (d) => {
+    const part = partDe(d.n);
+    d.a.style.flex = `${1000 * part} 1 0`;
+    d.b.style.flex = `${1000 * (1 - part)} 1 0`;
+  };
+  function deplacer(d, demande) {
+    const { S, valeur } = mesure(d);
+    if (!(S - 1 > 0)) return;
+    const taille = borneMouvement({ demande, valeur, ...limitesDe(d, S) });
+    if (taille === valeur) return;
+    const part = partDepuis({ taille, S, sens: d.n.sens });
+    d.n.part = part;
+    poserFlex(d);
+    d.n.surPartage?.(part, false);
+    window.dispatchEvent(new Event("resize"));
+    majPoignees();
+  }
   function construire(n) {
-    if (n.sens !== undefined) {
-      const d = zone("div", "cadre-decoupe", [construire(n.a), construire(n.b)]);
-      d.dataset.sens = n.sens;
-      return d;
+    if (estDecoupe(n)) {
+      const a = construire(n.a);
+      const b = construire(n.b);
+      const d = { n, a, b };
+      const ligne = n.sens === "ligne";
+      const rang = ordre.indexOf(feuillesDe(n.a).at(-1).id) + 1;
+      d.poignee = poignee({
+        orientation: ligne ? "vertical" : "horizontal",
+        nomAccessible: `Entre les groupes ${rang} et ${rang + 1}`,
+        surChangement: (t) => deplacer(d, t),
+        surFin: () => d.n.surPartage?.(partDe(d.n), true),
+        groupe: true,
+      });
+      d.el = zone("div", "cadre-decoupe", [a, d.poignee, b]);
+      d.el.dataset.sens = n.sens;
+      poserFlex(d);
+      decoupes.push(d);
+      return d.el;
     }
     let u = unites.get(n.id);
     if (!u) {
@@ -143,11 +200,25 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   // La structure n'est refaite que si elle change : déplacer un groupe dans la page lui ferait perdre le focus.
   racine.definirGroupes = (arbre, courant) => {
     const cle = signature(arbre);
+    const interne = copie(arbre);
     if (cle !== structure) {
       structure = cle;
       const ids = new Set(feuillesDe(arbre).map((f) => f.id));
       for (const id of unites.keys()) if (!ids.has(id)) unites.delete(id);
-      groupes.replaceChildren(construire(arbre));
+      for (const d of decoupes) d.poignee.annuler();
+      decoupes = [];
+      ordre = feuillesDe(arbre).map((f) => f.id);
+      const racineDom = construire(interne);
+      groupes.replaceChildren(racineDom);
+      // Un groupe qui redevient seul perd le partage de sa découpe.
+      if (!estDecoupe(interne)) racineDom.style.flex = "";
+      majPoignees();
+    } else {
+      postOrdre(interne).forEach((n, i) => {
+        decoupes[i].n = n;
+        poserFlex(decoupes[i]);
+      });
+      majPoignees();
     }
     for (const [id, u] of unites) u.dataset.courant = String(id === courant);
   };
@@ -234,7 +305,10 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   // À appeler une fois le cadre dans la page : sans taille choisie, pose la taille mesurée sur les poignées.
   racine.mesurer = () => {
     for (const cle of ["panneau", "agent", "shells"]) if (poignees[cle] && !choisies[cle] && !poignees[cle].hidden) poignees[cle].definir({ valeur: mesures[cle]() });
+    majPoignees();
   };
+  // La place des groupes change avec la fenêtre, le panneau, les shells ou un bandeau.
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(majPoignees).observe(groupes);
   racine.definirTailles(tailles);
   racine.definirReplis(replis);
   return racine;

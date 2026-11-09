@@ -293,3 +293,23 @@ test("REQ070_limites_sans_agent_sans_seuil", () => {
   expect(b - a).toBe(48);
   expect(limites({ L: 1200, H: 600 }).seuil).toBe(904);
 });
+
+test("REQ080_annuler_finit_le_glisse_sans_surFin", () => {
+  const { p, surChangement, surFin } = monter();
+  p.dispatchEvent(pointeur("pointerdown", 100, 50));
+  p.dispatchEvent(pointeur("pointermove", 160, 50));
+  expect(document.documentElement.classList.contains("poignee-glisse-vertical")).toBe(true);
+  p.annuler();
+  expect(document.documentElement.classList.contains("poignee-glisse-vertical")).toBe(false);
+  expect(p.classList.contains("poignee-active")).toBe(false);
+  p.dispatchEvent(pointeur("pointermove", 200, 50));
+  p.dispatchEvent(pointeur("pointerup", 200, 50));
+  expect(surChangement).toHaveBeenCalledTimes(1);
+  expect(surFin).not.toHaveBeenCalled();
+  p.annuler(); // sans glissé : rien
+});
+
+test("REQ080_variante_groupe_ajoute_la_classe", () => {
+  expect(monter({ groupe: true }).p.classList.contains("poignee-groupe")).toBe(true);
+  expect(monter().p.classList.contains("poignee-groupe")).toBe(false);
+});

@@ -547,3 +547,18 @@ test("REQ079_contrastes_des_guides_et_de_l_apercu_de_depot_dans_les_deux_themes"
     melange("--accent-fg", "--bg-000", [5.8, 4.6][k], 3);
   });
 });
+
+// REQ-080 : poignée entre les groupes (design-system.md, « Poignée entre les groupes »).
+test("REQ080_contrastes_de_la_poignee_entre_les_groupes_dans_les_deux_themes", () => {
+  THEMES.forEach((theme, k) => {
+    const exact = (nom, fond, attendu) => {
+      const r = ratio(theme, nom, fond);
+      expect(r, `${nom} sur ${fond} (${theme})`).toBe(attendu);
+      expect(r).toBeGreaterThanOrEqual(3);
+    };
+    exact("--accent-fg", "--bg-200", [6.6, 6.3][k]);
+    exact("--accent-fg", "--bg-000", [7.1, 5.5][k]);
+    expect(ratio(theme, "--accent-fg", "--apercu-page")).toBe([2.4, 6.3][k]);
+    if (k === 0) exact("--bg-000", "--apercu-page", 17.7);
+  });
+});

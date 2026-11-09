@@ -48,16 +48,17 @@ const TOUCHES = {
 
 /**
  * Poignée de redimensionnement. `surChangement(taille)` pendant un glissé ou après une flèche ;
+ * `groupe` : variante entre deux groupes de l'éditeur (C-011) ;
  * `surFin(taille)` à la fin d'un glissé qui a changé la taille ou après une flèche (pour garder la taille).
  * Sans `valeur`, la poignée ignore glissé et flèches jusqu'à `definir({ valeur })` (le cadre y pose la taille mesurée).
  */
-export function poignee({ orientation, cote = "gauche", nomAccessible, valeur, min, max, surChangement, surFin } = {}) {
+export function poignee({ orientation, cote = "gauche", nomAccessible, valeur, min, max, surChangement, surFin, groupe = false } = {}) {
   if (orientation !== "vertical" && orientation !== "horizontal") throw new Error("poignée : orientation vertical ou horizontal requise");
   if (cote !== "gauche" && cote !== "droite") throw new Error("poignée : cote gauche ou droite");
   if (!nomAccessible) throw new Error("poignée : nomAccessible requis");
   const vertical = orientation === "vertical";
   const e = document.createElement("div");
-  e.className = `poignee poignee-${orientation}`;
+  e.className = `poignee poignee-${orientation}${groupe ? " poignee-groupe" : ""}`;
   e.setAttribute("role", "separator");
   e.setAttribute("tabindex", "0");
   e.setAttribute("aria-label", nomAccessible);
@@ -99,16 +100,18 @@ export function poignee({ orientation, cote = "gauche", nomAccessible, valeur, m
     depart.change = true;
     surChangement?.(v);
   });
-  function fin() {
+  function terminer(notifier) {
     if (!depart) return;
     const { change } = depart;
     depart = null;
     e.classList.remove("poignee-active");
     document.documentElement.classList.remove(classePage);
-    if (change) surFin?.(etat.valeur);
+    if (notifier && change) surFin?.(etat.valeur);
   }
-  e.addEventListener("pointerup", fin);
-  e.addEventListener("pointercancel", fin);
+  e.addEventListener("pointerup", () => terminer(true));
+  e.addEventListener("pointercancel", () => terminer(true));
+  // Finit le glissé sans `surFin` : la poignée quitte la page sans `pointerup` (structure refaite).
+  e.annuler = () => terminer(false);
 
   e.addEventListener("keydown", (ev) => {
     const sens = TOUCHES[vertical && cote === "droite" ? "vertical-droite" : orientation][ev.key];
