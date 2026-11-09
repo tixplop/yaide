@@ -70,7 +70,7 @@ function lireScenario(nom, racine, directory) {
   const relevé = fs.readFileSync(path.join(CAPTURES, `${/^(contexte|depasse|markdown)$/.test(nom) ? "texte" : nom}.json`), "utf8");
   const doc = JSON.parse(relevé);
   if (nom === "markdown") {
-    const morceaux = ["Voici un tableau :\n\n| Nom | Valeur |\n", "|---|---|\n| a | 1 |\n| b | 2 |\n\n```rust\nfn main() {}\n```\n\nVoir https://exemple.org/a.\n"];
+    const morceaux = ["Voici un tableau :\n\n| Nom | Valeur | Note |\n", "|---|---|---|\n| a | 1 | x |\n| b | 2 | y |\n\n> Une citation.\n\n```rust\nfn main() {}\n```\n\nVoir https://exemple.org/a.\n"];
     const complet = morceaux.join("");
     let rang = 0;
     doc.evenements = doc.evenements.filter((ev) => {

@@ -921,7 +921,7 @@ test("REQ067_parcours_28_demarrer_ouvre_un_onglet", async ({ page }) => {
   await expect(page.getByRole("tab", { name: /^Agent \d$/ })).toHaveCount(2);
 });
 
-test("REQ078_AC13_AC56_17_largeur_720_et_800x480", async ({ page, browserName }) => {
+test("REQ078_AC13_AC56_17_largeur_1200_et_800x480", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
   await agentPret(page);
   await page.setViewportSize({ width: 1600, height: 900 });
@@ -951,13 +951,31 @@ test("REQ078_AC13_AC56_17_largeur_720_et_800x480", async ({ page, browserName })
         page: [document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight],
       };
     });
-  // AC-078-13 : 720 px au plus, centré, panneau et colonne repliés à 1600 px.
+  // AC-078-13 : 1200 px au plus, centré, panneau et colonne repliés à 1600 px.
   const grand = await mesurer();
   for (const z of ["entete", "fil", "saisie"]) {
-    expect(Math.round(grand[z].largeur), z).toBe(720);
+    expect(Math.round(grand[z].largeur), z).toBe(1200);
     expect(Math.abs(grand[z].gauche - grand[z].droite), `${z} centré`).toBeLessThanOrEqual(1);
   }
   expect(grand.page).toEqual([0, 0]);
+
+  // Même fenêtre, panneau à 280 px : 12 px de marge de chaque côté, rien ne défile en largeur (AC-078-23).
+  await page.getByRole("banner").getByRole("button", { name: "Déplier le panneau" }).first().click();
+  const poignee280 = page.getByRole("separator", { name: "Largeur du panneau" });
+  await poignee280.focus();
+  for (let i = 0; i < 60 && (await poignee280.getAttribute("aria-valuenow")) !== "280"; i++) {
+    await page.keyboard.press(Number(await poignee280.getAttribute("aria-valuenow")) > 280 ? "ArrowLeft" : "ArrowRight");
+  }
+  await expect(poignee280).toHaveAttribute("aria-valuenow", "280");
+  const p280 = await mesurer();
+  for (const z of ["entete", "fil", "saisie"]) expect([p280[z].gauche, p280[z].droite], `${z} à 280 px`).toEqual([12, 12]);
+  expect([p280.enteteDefile, p280.filDefile, p280.saisieDefile]).toEqual([0, 0, 0]);
+  expect(p280.page).toEqual([0, 0]);
+  // AC-078-25 : la colonne dépliée garde sa limite de 720 px.
+  await page.getByRole("button", { name: "Agents", exact: true }).click();
+  await expect(page.getByRole("separator", { name: "Largeur de l'agent" })).toHaveAttribute("aria-valuemax", "720");
+  await page.getByRole("button", { name: "Replier l'agent" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).first().click();
 
   // 800 × 480, panneau à 240 px : rien ne déborde, la page ne défile pas.
   await page.setViewportSize({ width: 800, height: 480 });
@@ -1008,6 +1026,8 @@ test("REQ078_AC15_ordre_de_tab_et_touches", async ({ page, browserName }) => {
   await rail(page, "Agent").click();
   await expect(champMessage(page)).toBeFocused();
   await champMessage(page).fill("x");
+  await expect(profil(page)).toBeEnabled(); // les réglages sont chargés : la liste ne sera plus remplacée
+  await expect(envoyer(page)).toBeEnabled();
   // Tab après l'onglet actif : AC-056-14, puis la suite de AC-028-8 (boutons « Agent », « Agents »).
   await ongletAgent(page, 1).focus();
   const attendus = [
@@ -1067,4 +1087,274 @@ test("REQ077_AC9_onglet_agent_320_px", async ({ page, browserName }) => {
     };
   });
   expect(m).toEqual({ defile: 0, tableauDeborde: false, cellule: true, codeDeborde: false });
+});
+
+const REPONSE_MD = [
+  "## Boucle actuelle ou bibliothèque",
+  "",
+  "Je garderais **la boucle actuelle** : `clap` ajoute des dépendances, *sans gain réel* pour quatre options. La boucle lit chaque argument une fois, et une erreur reste facile à suivre dans `parse_args`. Détails dans la [documentation de clap](https://docs.rs/clap).",
+  "",
+  "| Méthode | Lignes | Dépendances |",
+  "|---|---:|:---:|",
+  "| Boucle actuelle | 42 | aucune |",
+  "| `clap` avec `derive` | 18 | 13 |",
+  "| `lexopt` | 31 | 1 |",
+  "",
+  "> Attention : `--sortie` sans valeur passe aujourd'hui sans erreur.",
+  ">",
+  "> > Cas à couvrir par un test.",
+  "",
+  "> [!NOTE]",
+  "> Il faut Rust 1.80.",
+  "",
+  "Ce que je propose :",
+  "",
+  "1. Garder `parse_args`.",
+  "2. Ajouter le cas manquant.",
+  "3. ~~Passer à clap~~ : inutile ici.",
+  "",
+  "- Refuser l'option sans valeur ;",
+  "  - citer l'option dans le message ;",
+  "    - ajouter le test.",
+  "- [ ] à faire",
+  "- [x] fait",
+  "",
+  "---",
+  "",
+  "```rust",
+  "// le cas manquant",
+  "#[test]",
+  "fn sortie_sans_valeur() {",
+  '    let args = vec!["--sortie".to_string()];',
+  "    assert!(parse_args(&args).is_err());",
+  "}",
+  "```",
+].join("\n");
+
+/** Mesures d'une réponse mise en forme dans l'onglet affiché ; les couleurs attendues sont lues sur les tokens. */
+const mesurerReponse = async (page) => {
+  const champ = await champMessage(page).boundingBox();
+  return page.evaluate((champ) => {
+    const f = [...document.querySelectorAll('[role="log"]')].find((l) => l.getClientRects().length);
+    const jeton = (nom) => {
+      const s = document.createElement("span");
+      s.style.color = `var(${nom})`;
+      s.style.backgroundColor = `var(${nom})`;
+      document.body.append(s);
+      const v = getComputedStyle(s).color;
+      s.remove();
+      return v;
+    };
+    const cs = (e, pseudo) => getComputedStyle(e, pseudo);
+    const r = (e) => e.getBoundingClientRect();
+    const rep = [...f.querySelectorAll(".ya-chat-agent")].pop();
+    const table = rep.querySelector("table");
+    const th = table.querySelector("th");
+    const lignes = table.querySelectorAll("tbody tr");
+    const td = lignes[0].querySelector("td");
+    const bq = rep.querySelector("blockquote:not(.ya-note)");
+    const note = rep.querySelector("blockquote.ya-note");
+    const titre = note.querySelector(".ya-note-titre");
+    const pre = rep.querySelector("pre");
+    const enLigne = [...rep.querySelectorAll("p code")].pop();
+    const ul = rep.querySelector(":scope > ul");
+    const ul2 = ul.querySelector("ul");
+    const ul3 = ul2.querySelector("ul");
+    const ol = rep.querySelector(":scope > ol");
+    const cases = [...rep.querySelectorAll(".ya-tache input")];
+    const lis = [...ul.children];
+    const liPuce = lis.find((li) => li.firstChild.textContent.trim().startsWith("Refuser"));
+    const liTache = lis.find((li) => li.classList.contains("ya-tache"));
+    const commentaire = [...pre.querySelectorAll("span")].find((x) => x.textContent.includes("manquant"));
+    const lien = rep.querySelector("a");
+    const corps = rep.closest(".ya-tour-corps");
+    const gauche = (li) => {
+      const g = document.createRange();
+      g.selectNodeContents([...li.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()));
+      return g.getBoundingClientRect().left;
+    };
+    const pad = (e) => [cs(e).paddingTop, cs(e).paddingRight, cs(e).paddingBottom, cs(e).paddingLeft];
+    const borduresNote = ["Top", "Right", "Bottom", "Left"].map((c) => cs(note)["border" + c + "Width"] + " " + cs(note)["border" + c + "Color"]);
+    return {
+      defile: f.scrollWidth - f.clientWidth,
+      groupe: !!corps,
+      debordeGroupe: corps ? r(rep).right > r(corps).right + 0.5 : null,
+      tableau: { largeur: r(table).width, colonne: r(rep).width, gauche: r(table).left, texte: r(rep.querySelector("p")).left },
+      citationDroite: r(bq).right - champ.x - champ.width,
+      codeDroite: r(pre).right - champ.x - champ.width,
+      cellule: { police: cs(th).fontFamily, sans: cs(document.documentElement).getPropertyValue("--font-sans").trim(), taille: cs(th).fontSize, interligne: cs(th).lineHeight, bordure: cs(th).borderTopWidth + " " + cs(th).borderTopColor, bordureAttendue: "1px " + jeton("--line-strong"), marges: pad(th), td: { police: cs(td).fontFamily, taille: cs(td).fontSize, interligne: cs(td).lineHeight, bordure: cs(td).borderTopWidth + " " + cs(td).borderTopColor, marges: pad(td) } },
+      entete: { fond: cs(th).backgroundColor, attendu: jeton("--apercu-entete"), graisse: cs(th).fontWeight },
+      lignePaire: { fond: cs(lignes[1].querySelector("td")).backgroundColor, attendu: jeton("--apercu-fond") },
+      ligneImpaire: cs(lignes[0].querySelector("td")).backgroundColor,
+      citation: { filet: cs(bq).borderLeftWidth + " " + cs(bq).borderLeftColor, infoAttendu: "3px " + jeton("--info"), fond: cs(bq).backgroundColor, fondAttendu: jeton("--msg-info"), couleur: cs(bq).color, ink: jeton("--ink"), marges: [cs(bq).paddingTop, cs(bq).paddingLeft], autresBords: [cs(bq).borderTopWidth, cs(bq).borderRightWidth, cs(bq).borderBottomWidth] },
+      interieur: { filet: cs(bq.querySelector("blockquote")).borderLeftWidth + " " + cs(bq.querySelector("blockquote")).borderLeftColor, fond: cs(bq.querySelector("blockquote")).backgroundColor },
+      note: { bordures: borduresNote, info: jeton("--info"), rayon: cs(note).borderTopLeftRadius, fond: cs(note).backgroundColor, fondAttendu: jeton("--msg-info"), marges: [cs(note).paddingTop, cs(note).paddingLeft], titre: { graisse: cs(titre).fontWeight, couleur: cs(titre).color, marge: cs(titre).marginBottom } },
+      code: { fond: cs(pre).backgroundColor, attendu: jeton("--apercu-fond"), police: cs(pre).fontFamily, mono: cs(document.documentElement).getPropertyValue("--font-mono").trim(), taille: cs(pre).fontSize + " " + cs(pre).lineHeight, marges: [cs(pre).paddingTop, cs(pre).paddingLeft] },
+      commentaire: commentaire ? { couleur: cs(commentaire).color, attendu: jeton("--syn-comment"), style: cs(commentaire).fontStyle } : null,
+      enLigne: { fond: cs(enLigne).backgroundColor, attendu: jeton("--apercu-fond"), couleur: cs(enLigne).color, parent: cs(enLigne.parentElement).color, taille: cs(enLigne).fontSize, police: cs(enLigne).fontFamily },
+      listes: { ul: cs(ul).paddingLeft, ol: cs(ol).paddingLeft, puces: [cs(ul).listStyleType, cs(ul2).listStyleType, cs(ul3).listStyleType], numeros: cs(ol).listStyleType, margeSousListe: cs(ul2).marginBottom },
+      cases: {
+        tailles: cases.map((c) => r(c).width + "x" + r(c).height),
+        contour: cases.map((c) => cs(c).borderTopWidth + " " + cs(c).borderTopColor),
+        contourAttendu: "1px " + jeton("--ink-muted"),
+        puce: cs(liTache).listStyleType,
+        noms: cases.map((c) => c.getAttribute("aria-label")),
+        opaciteCoche: [cs(cases[0]).opacity, cs(cases[1], "::before").opacity, cs(cases[1]).opacity],
+        coche: cs(cases[1], "::before").borderLeftColor,
+        ink: jeton("--ink"),
+        ecartTexte: Math.abs(gauche(liTache) - gauche(liPuce)),
+      },
+      lien: { target: lien.getAttribute("target"), rel: lien.getAttribute("rel") },
+    };
+  }, champ);
+};
+
+/** Contrôles communs aux deux conversations (AC-077-10, 11, 13, 14, 22, 24, 26 ; AC-078-24). */
+function verifierReponse(m, etiquette) {
+  const e = (nom) => `${etiquette} : ${nom}`;
+  // AC-078-24
+  expect(m.defile, e("scrollWidth")).toBe(0);
+  if (etiquette === "avec agents") {
+    expect(m.groupe, e("groupe")).toBe(true);
+    expect(m.debordeGroupe, e("réponse dans son groupe")).toBe(false);
+  }
+  expect(m.tableau.largeur, e("tableau plus étroit")).toBeLessThan(m.tableau.colonne - 20);
+  expect(Math.abs(m.tableau.gauche - m.tableau.texte), e("tableau au bord du texte")).toBeLessThanOrEqual(1);
+  expect(Math.abs(m.citationDroite), e("citation au bord du champ")).toBeLessThanOrEqual(1);
+  expect(Math.abs(m.codeDroite), e("code au bord du champ")).toBeLessThanOrEqual(1);
+  // AC-077-10
+  const sansGuillemets = (t) => t.replaceAll('"', "");
+  expect(sansGuillemets(m.cellule.police), e("police du tableau")).toBe(sansGuillemets(m.cellule.sans));
+  expect([m.cellule.taille, m.cellule.interligne], e("cellule")).toEqual(["13px", "20px"]);
+  expect(m.cellule.bordure, e("bordure")).toBe(m.cellule.bordureAttendue);
+  expect(m.cellule.marges, e("marges de cellule")).toEqual(["4px", "8px", "4px", "8px"]);
+  expect(sansGuillemets(m.cellule.td.police), e("police d'une cellule")).toBe(sansGuillemets(m.cellule.sans));
+  expect([m.cellule.td.taille, m.cellule.td.interligne], e("cellule de corps")).toEqual(["13px", "20px"]);
+  expect(m.cellule.td.bordure, e("bordure de cellule de corps")).toBe(m.cellule.bordureAttendue);
+  expect(m.cellule.td.marges, e("marges de cellule de corps")).toEqual(["4px", "8px", "4px", "8px"]);
+  expect(m.entete.fond, e("fond d'en-tête")).toBe(m.entete.attendu);
+  expect(m.entete.graisse, e("graisse d'en-tête")).toBe("600");
+  expect(m.lignePaire.fond, e("ligne paire")).toBe(m.lignePaire.attendu);
+  expect(m.ligneImpaire, e("ligne impaire")).toBe("rgba(0, 0, 0, 0)");
+  // AC-077-11
+  expect(m.citation.filet, e("filet de citation")).toBe(m.citation.infoAttendu);
+  expect(m.citation.fond, e("fond de citation")).toBe(m.citation.fondAttendu);
+  expect(m.citation.couleur, e("texte de citation")).toBe(m.citation.ink);
+  expect(m.citation.marges, e("marges de citation")).toEqual(["6px", "8px"]);
+  expect(m.citation.autresBords, e("citation : filet gauche seul")).toEqual(["0px", "0px", "0px"]);
+  expect(m.interieur.filet, e("filet intérieur")).toBe(m.citation.infoAttendu);
+  expect(m.interieur.fond, e("fond intérieur")).toBe("rgba(0, 0, 0, 0)");
+  // AC-077-13
+  expect(m.code.fond, e("fond du bloc")).toBe(m.code.attendu);
+  expect(sansGuillemets(m.code.police), e("police du bloc")).toBe(sansGuillemets(m.code.mono));
+  expect(m.code.taille, e("taille du bloc")).toBe("12px 18px");
+  expect(m.code.marges, e("marges du bloc")).toEqual(["6px", "8px"]);
+  expect(m.commentaire, e("commentaire coloré")).toEqual({ couleur: m.commentaire?.attendu, attendu: m.commentaire?.attendu, style: "italic" });
+  expect(m.enLigne.fond, e("code en ligne")).toBe(m.enLigne.attendu);
+  expect(m.enLigne.couleur, e("couleur du code en ligne")).toBe(m.enLigne.parent);
+  expect(m.enLigne.taille, e("taille du code en ligne")).toBe("12px");
+  expect(sansGuillemets(m.enLigne.police), e("police du code en ligne")).toBe(sansGuillemets(m.code.mono));
+  // AC-077-14
+  expect([m.listes.ul, m.listes.ol], e("retrait des listes")).toEqual(["24px", "24px"]);
+  expect(m.listes.puces, e("puces")).toEqual(["disc", "circle", "square"]);
+  expect(m.listes.numeros, e("numéros")).toBe("decimal");
+  expect(m.listes.margeSousListe, e("sous-liste")).toBe("0px");
+  // AC-077-22
+  expect(m.note.bordures, e("bordures de la note")).toEqual(Array(4).fill("1px " + m.note.info));
+  expect(m.note.rayon, e("rayon de la note")).toBe("4px");
+  expect(m.note.fond, e("fond de la note")).toBe(m.note.fondAttendu);
+  expect(m.note.marges, e("marges de la note")).toEqual(["6px", "8px"]);
+  expect(m.note.titre, e("titre de la note")).toEqual({ graisse: "600", couleur: m.note.info, marge: "4px" });
+  // AC-077-24
+  expect(m.cases.tailles, e("taille des cases")).toEqual(["14x14", "14x14"]);
+  expect(m.cases.contour, e("contour des cases")).toEqual([m.cases.contourAttendu, m.cases.contourAttendu]);
+  expect(m.cases.puce, e("pas de puce")).toBe("none");
+  expect(m.cases.noms, e("noms des cases")).toEqual(["À faire", "Fait"]);
+  expect(m.cases.coche, e("coche")).toBe(m.cases.ink);
+  expect(new Set(m.cases.opaciteCoche), e("opacité de la coche")).toEqual(new Set(["1"]));
+  expect(m.cases.ecartTexte, e("texte aligné sur celui d'une puce")).toBeLessThanOrEqual(1);
+  // AC-077-26
+  expect(m.lien, e("lien")).toEqual({ target: "_blank", rel: "noopener noreferrer" });
+}
+
+test("REQ078_AC23_bords_alignes_1200", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  await agentPret(page, [reponse({ texte: "## Titre de réponse\n\nUn texte court.", tokens: 100 })]);
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
+  await rail(page, "Agent").click();
+  await expect(champMessage(page)).toBeFocused();
+  await champMessage(page).fill("Dis bonjour");
+  await expect(envoyer(page)).toBeEnabled();
+  await page.keyboard.press("Enter");
+  await patienter(page, () => expect(fil(page).getByText("Un texte court.")).toBeVisible({ timeout: 300 }));
+  const bords = async () => {
+    const boite = async (l) => {
+      const b = await l.boundingBox();
+      return { gauche: b.x, droite: b.x + b.width, largeur: b.width };
+    };
+    const editeur = await boite(page.locator("main.cadre-principal"));
+    const c = await boite(champMessage(page));
+    return {
+      champ: c,
+      ecart: c.gauche - editeur.gauche,
+      titre: await boite(page.locator(".cadre-code .agent-titre")),
+      titreReponse: await boite(fil(page).locator("h2")),
+      texte: await boite(fil(page).getByText("Un texte court.")),
+      conversations: await boite(page.getByRole("button", { name: "Conversations", exact: true })),
+      envoyer: await boite(envoyer(page)),
+      profil: await boite(profil(page)),
+    };
+  };
+  const proche = (a, b, nom) => expect(Math.abs(a - b), nom).toBeLessThanOrEqual(1);
+  const replie = await bords();
+  expect([Math.round(replie.champ.largeur), Math.round(replie.ecart)]).toEqual([1200, 152]);
+  proche(replie.titre.gauche, replie.champ.gauche, "titre de la conversation, bord gauche");
+  proche(replie.titreReponse.gauche, replie.champ.gauche, "titre de la réponse, bord gauche");
+  proche(replie.texte.gauche, replie.champ.gauche, "texte de la réponse, bord gauche");
+  proche(replie.conversations.droite, replie.champ.droite, "Conversations, bord droit");
+  proche(replie.envoyer.droite, replie.champ.droite, "Envoyer, bord droit");
+  expect(replie.profil.largeur, "Profil").toBe(200);
+  await page.getByRole("banner").getByRole("button", { name: "Déplier le panneau" }).first().click();
+  const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+  await poignee.focus();
+  for (let i = 0; i < 60 && (await poignee.getAttribute("aria-valuenow")) !== "280"; i++) {
+    await page.keyboard.press(Number(await poignee.getAttribute("aria-valuenow")) > 280 ? "ArrowLeft" : "ArrowRight");
+  }
+  await expect(poignee).toHaveAttribute("aria-valuenow", "280");
+  expect(Math.round((await bords()).champ.largeur)).toBe(1196);
+});
+
+test("REQ077_AC28_REQ078_AC24_reponse_onglet_agent_sans_et_avec_agents", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  await agentPret(page, [reponse({ texte: REPONSE_MD, tokens: 100 })]);
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
+  // Une conversation sans agent.
+  await rail(page, "Agent").click();
+  await champMessage(page).fill("Compare");
+  await expect(envoyer(page)).toBeEnabled();
+  await page.keyboard.press("Enter");
+  await patienter(page, () => expect(fil(page).locator("table")).toBeVisible({ timeout: 300 }));
+  await expect(fil(page).locator("pre")).toBeVisible();
+  verifierReponse(await mesurerReponse(page), "sans agent");
+  // Une conversation avec Relecteur et Testeur, créés sur le disque.
+  for (const nom of ["Relecteur", "Testeur"]) {
+    const d = path.join(yaide.dossier, ".yaide", "agents", nom.toLowerCase());
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, "agent.json"), JSON.stringify({ nom, avatar: "", couleur: nom === "Testeur" ? "orange" : "vert" }));
+  }
+  const colonne = page.locator("aside.cadre-agent");
+  await page.getByRole("button", { name: "Agents", exact: true }).click();
+  await colonne.getByRole("checkbox", { name: "Relecteur" }).check();
+  await colonne.getByRole("checkbox", { name: "Testeur" }).check();
+  await colonne.getByRole("button", { name: "Démarrer une conversation" }).click();
+  await expect(ongletAgent(page, 2)).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("button", { name: "Replier l'agent" }).click();
+  await champMessage(page).fill("Relis");
+  await expect(envoyer(page)).toBeEnabled();
+  await page.keyboard.press("Enter");
+  await patienter(page, () => expect(fil(page).getByRole("group", { name: "Testeur" }).locator("table")).toBeVisible({ timeout: 300 }));
+  await expect(fil(page).getByRole("group", { name: "Relecteur" }).locator("pre")).toBeVisible();
+  verifierReponse(await mesurerReponse(page), "avec agents");
 });

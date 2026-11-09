@@ -466,7 +466,7 @@ test("REQ071_contrastes_du_texte_sur_les_messages_alerte_et_succes_poses_sur_bg_
 });
 
 test("REQ072_AC21_token_largeur_session", () => {
-  expect(css).toMatch(/--largeur-session:\s*720px;/);
+  expect(css).toMatch(/--largeur-session:\s*1200px;/);
 });
 
 // Tableau « Session opencode » de design-system.md : [texte, fond, sous, seuil, [sombre, clair]].

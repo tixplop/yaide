@@ -310,7 +310,7 @@ test("REQ072_parcours_37_question_erreur_coupure_a_800_par_480", async ({ page }
     return { largeur: session.getBoundingClientRect().width, page: d.scrollWidth > innerWidth || d.scrollHeight > innerHeight };
   });
   expect(mesures.page).toBe(false);
-  expect(mesures.largeur).toBeLessThanOrEqual(720 + 2 * 12 + 1);
+  expect(mesures.largeur).toBeLessThanOrEqual(1200 + 2 * 12 + 1);
 
   // 7. Un `opencode` cassé et un serveur arrêté : le bandeau à l'ouverture, l'erreur au-dessus du champ à l'envoi.
   fs.writeFileSync(path.join(opencode, "casse"), "");
@@ -576,4 +576,94 @@ test("REQ077_parcours_42_44_arrivee_rechargement_nouvel_onglet", async ({ page, 
   await expect(onglet(page, "opencode 1")).toHaveAttribute("aria-selected", "true");
   await expect(champ(page)).toHaveValue("brouillon à garder");
   await nouvelle.close();
+});
+
+test("REQ072_AC31_AC32_bords_alignes_1200", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  const opencode = fauxOpencode("markdown");
+  yaide = await lancerYaide({ opencode, claude: fauxClaude() });
+  relais = await lancerRelais(yaide.port);
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await ouvrirYaide(page, relais.origine);
+  await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
+  await boutonOpencode(page).click();
+  await expect(champ(page)).toBeFocused();
+  const boite = async (locator) => {
+    const b = await locator.boundingBox();
+    return { gauche: b.x, droite: b.x + b.width, largeur: b.width };
+  };
+  const session = page.locator(".session:visible");
+  const proche = (a, b, nom) => expect(Math.abs(a - b), nom).toBeLessThanOrEqual(1);
+
+  // AC-072-32 : un tableau de 3 colonnes courtes, une citation et un bloc de code.
+  await envoyer(page, "[scenario:markdown] Montre un tableau.");
+  const reponse = session.locator(".ya-chat-agent");
+  await expect(reponse.locator("pre")).toContainText("fn main() {}", { timeout: 20000 });
+  await expect(reponse.locator("table")).toHaveCount(1);
+  const saisie = await boite(champ(page));
+  const editeur = await boite(page.locator("main.cadre-principal"));
+  expect(Math.round(saisie.largeur)).toBe(1200);
+  expect(Math.round(saisie.gauche - editeur.gauche)).toBe(152);
+  const texte = await boite(reponse.locator("p").first());
+  const tableau = await boite(reponse.locator("table"));
+  expect(tableau.largeur).toBeLessThan(texte.largeur - 20);
+  proche(tableau.gauche, texte.gauche, "tableau au bord du texte");
+  expect(Math.round((await boite(reponse.locator("blockquote"))).largeur)).toBe(1200);
+  expect(Math.round((await boite(reponse.locator("pre"))).largeur)).toBe(1200);
+
+  // AC-072-31 : la réponse, « Envoyer » et « Modèle » suivent le champ.
+  proche(texte.gauche, saisie.gauche, "réponse, bord gauche");
+  proche(texte.droite, saisie.droite, "réponse, bord droit");
+  const envoyerBtn = await boite(session.getByRole("button", { name: "Envoyer", exact: true }));
+  proche(envoyerBtn.droite, saisie.droite, "Envoyer, bord droit");
+  const modele = page.getByLabel("Modèle", { exact: true }).and(page.locator(":visible"));
+  expect(Math.round((await boite(modele)).largeur)).toBe(280);
+
+  // Une demande d'autorisation.
+  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
+  await envoyer(page, "[scenario:outils] Écris les notes.");
+  await expect(demandes(page)).toContainText("opencode demande une autorisation : shell.");
+  const autorisation = await boite(demandes(page).locator(".ya-attente").first());
+  proche(autorisation.gauche, saisie.gauche, "autorisation, bord gauche");
+  proche(autorisation.droite, saisie.droite, "autorisation, bord droit");
+  await page.getByRole("button", { name: "Autoriser une fois" }).click();
+  await expect(page.getByText("Terminé.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
+
+  // Une question : ses deux premiers champs côte à côte, de même largeur.
+  await envoyer(page, "[scenario:formulaire] Prépare la release.");
+  await expect(demandes(page)).toContainText("opencode pose une question : Préparer la release.");
+  const question = await boite(demandes(page).locator(".ya-attente").first());
+  proche(question.gauche, saisie.gauche, "question, bord gauche");
+  proche(question.droite, saisie.droite, "question, bord droit");
+  const version = await boite(page.getByLabel("Version (obligatoire)"));
+  const canal = await boite(page.getByLabel("Canal"));
+  expect(canal.gauche).toBeGreaterThan(version.droite - 1);
+  proche(canal.largeur, version.largeur, "deux champs de même largeur");
+
+  // AC-072-21, panneau à 280 px : 12 px de marge de chaque côté, rien ne déborde.
+  await page.getByRole("banner").getByRole("button", { name: "Déplier le panneau" }).first().click();
+  const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+  await poignee.focus();
+  for (let i = 0; i < 60 && (await poignee.getAttribute("aria-valuenow")) !== "280"; i++) {
+    await page.keyboard.press(Number(await poignee.getAttribute("aria-valuenow")) > 280 ? "ArrowLeft" : "ArrowRight");
+  }
+  await expect(poignee).toHaveAttribute("aria-valuenow", "280");
+  // L'éditeur se met en place après le dépliage : on attend que la mise en page se pose.
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+  const mesure = await page.evaluate(() => {
+    const d = document.documentElement;
+    const zones = [...document.querySelectorAll(".session-contenu")].filter((z) => z.getClientRects().length);
+    return {
+      nombre: zones.length,
+      marges: zones.map((z) => [getComputedStyle(z).paddingLeft, getComputedStyle(z).paddingRight]),
+      defile: zones.map((z) => z.scrollWidth - z.clientWidth),
+      page: [d.scrollWidth - innerWidth, d.scrollHeight - innerHeight],
+    };
+  });
+  expect(mesure.nombre).toBeGreaterThanOrEqual(2);
+  expect(mesure.marges).toEqual(Array(mesure.nombre).fill(["12px", "12px"]));
+  expect(mesure.defile).toEqual(Array(mesure.nombre).fill(0));
+  expect(mesure.page).toEqual([0, 0]);
+  expect(Math.round((await boite(champ(page))).largeur)).toBe(1196);
 });

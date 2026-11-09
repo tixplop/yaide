@@ -379,7 +379,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .session-saisie .agent-barre { justify-content: flex-end; }
 .session-saisie .agent-barre .ya-barre { flex: 0 1 auto; }
 .session-saisie .agent-barre .ya-barre:first-child { flex-shrink: 1000; min-width: 116px; }
-.session-saisie .agent-barre .ya-barre:first-child .ya-input { flex: 0 1 280px; }
+.session-saisie .agent-barre .ya-barre:first-child .ya-input { flex: 0 1 280px; width: 280px; }
 .session-saisie .agent-barre .ya-barre + .ya-barre { flex-shrink: 1; min-width: 100px; margin-left: calc(var(--space-3) - var(--space-1)); }
 .session-saisie .agent-barre .ya-barre + .ya-barre .ya-input { flex: 0 1 104px; }
 .session-saisie .agent-barre .ya-barre:has(+ :not(.ya-barre)) { margin-right: auto; padding-right: calc(var(--space-3) - var(--space-1)); }

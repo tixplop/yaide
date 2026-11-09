@@ -640,7 +640,7 @@ test("REQ028_AC14_rail_droit_quatre_commandes_a_480", () => {
 });
 
 test("REQ072_AC21_session_largeur_max_centree", () => {
-  expect(tokens).toMatch(/--largeur-session:\s*720px;/);
+  expect(tokens).toMatch(/--largeur-session:\s*1200px;/);
   const session = regle(".session");
   expect(session).toContain("display: flex");
   expect(session).toContain("flex-direction: column");
@@ -654,7 +654,7 @@ test("REQ072_AC21_session_largeur_max_centree", () => {
   // Demandes : la moitié de la hauteur de l'éditeur au plus, puis défilement.
   expect(regle(".session-attentes")).toMatch(/flex: 0 1 auto;\s*min-height: 0;\s*max-height: 50cqh;.*overflow-y: auto/);
   expect(regle(".cadre-code")).toContain("container-type: size");
-  // Contenu : 720 px au plus, centré, marges de --space-3.
+  // Contenu : 1200 px au plus, centré, marges de --space-3.
   const contenu = regle(".session-contenu");
   expect(contenu).toContain("max-width: calc(var(--largeur-session) + 2 * var(--space-3))");
   expect(contenu).toContain("margin-inline: auto");
