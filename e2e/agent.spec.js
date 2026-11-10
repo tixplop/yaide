@@ -848,6 +848,7 @@ test("REQ078_parcours_46_deja_ouverte_coupure_suppr", async ({ page }) => {
   let liberer;
   await agentPret(page, [{ ...reponse({ texte: "Alpha.", tokens: 100 }), retenir: new Promise((ok) => (liberer = ok)) }]);
   await rail(page, "Agent").click();
+  await expect(profil(page)).toBeEnabled(); // les réglages sont chargés : le message part avec un profil
   await champMessage(page).fill("m1");
   await page.keyboard.press("Enter");
   await expect(arreter(page)).toBeVisible();
@@ -1357,4 +1358,74 @@ test("REQ077_AC28_REQ078_AC24_reponse_onglet_agent_sans_et_avec_agents", async (
   await patienter(page, () => expect(fil(page).getByRole("group", { name: "Testeur" }).locator("table")).toBeVisible({ timeout: 300 }));
   await expect(fil(page).getByRole("group", { name: "Relecteur" }).locator("pre")).toBeVisible();
   verifierReponse(await mesurerReponse(page), "avec agents");
+});
+
+test("REQ085_parcours_56_un_agent_raisonne_l_autre_non", async ({ page }) => {
+  // P-056 : AC-085-5, AC-085-8 (et AC-085-7 : la requête de Testeur ne porte pas le raisonnement).
+  faux = await lancerFauxProvider([
+    reponse({ raisonnement: "Je lis args.rs d'abord.", signature: "sig-r1", outils: [{ id: "r1", nom: "read", entree: { path: "src/args.rs" } }], tokens: 2000 }),
+    reponse({ raisonnement: "Le défaut est clair.", signature: "sig-r2", texte: "Relu : la branche `--sortie` avance de 2.", tokens: 3000 }),
+    reponse({ texte: "Les tests passent.", tokens: 4000 }),
+  ]);
+  const dossier = depotAgent();
+  for (const [nom, couleur] of [["Relecteur", "vert"], ["Testeur", "orange"]]) {
+    const d = path.join(dossier, ".yaide", "agents", nom.toLowerCase());
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, "agent.json"), JSON.stringify({ nom, avatar: "", couleur }));
+  }
+  await page.clock.install();
+  yaide = await lancerYaide({ dossier });
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await reglerAnthropic(page);
+  const colonne = page.locator("aside.cadre-agent");
+  await page.getByRole("button", { name: "Agents", exact: true }).click();
+  await colonne.getByRole("checkbox", { name: "Relecteur" }).check();
+  await colonne.getByRole("checkbox", { name: "Testeur" }).check();
+  await colonne.getByRole("button", { name: "Démarrer une conversation" }).click();
+  await expect(champMessage(page)).toBeFocused();
+  await champMessage(page).fill("Relis src/args.rs, puis lance les tests.");
+  await expect(envoyer(page)).toBeEnabled();
+  await page.keyboard.press("Enter");
+  await patienter(page, () => expect(fil(page).getByRole("group", { name: "Testeur" })).toContainText("Les tests passent.", { timeout: 300 }));
+  await expect(arreter(page)).toBeHidden();
+
+  const groupe = (nom) => fil(page).getByRole("group", { name: nom });
+  const raisons = (nom) => groupe(nom).getByRole("button", { name: "Raisonnement", exact: true });
+  await expect(raisons("Relecteur")).toHaveCount(2);
+  await expect(raisons("Testeur")).toHaveCount(0);
+  await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "false");
+
+  // AC-085-8 : Tab jusqu'au premier, Entrée le déplie ; le filet de Relecteur le longe.
+  await fil(page).focus();
+  await page.keyboard.press("Tab");
+  await expect(raisons("Relecteur").first()).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "true");
+  const zone = groupe("Relecteur").locator(".ya-raison-zone").first();
+  await expect(zone).toBeVisible();
+  await expect(zone).toContainText("Je lis args.rs d'abord.");
+  const vert = await page.evaluate(() => { const d = document.createElement("i"); d.style.color = "var(--agent-vert)"; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; });
+  const filet = groupe("Relecteur").locator(".ya-tour-corps");
+  expect(await filet.evaluate((e) => getComputedStyle(e).borderLeftColor)).toBe(vert);
+  expect(await filet.locator(".ya-raison").first().evaluate((b) => !!b.closest(".ya-tour-corps"))).toBe(true);
+
+  // AC-085-5 : la requête suivante de Relecteur renvoie le bloc thinking et sa signature ; celle de Testeur, non.
+  const assistant = faux.recues[1].corps.messages.find((m) => m.role === "assistant");
+  expect(assistant.content[0]).toMatchObject({ type: "thinking", thinking: "Je lis args.rs d'abord.", signature: "sig-r1" });
+  expect(JSON.stringify(faux.recues[2].corps)).not.toContain("sig-r1");
+
+  // Fermer l'onglet, rouvrir par « Conversations » : raisonnements à leur place, repliés.
+  await ongletAgent(page, 1).focus();
+  await page.keyboard.press("Delete");
+  await expect(ongletAgent(page, 1)).toHaveCount(0);
+  await rail(page, "Agent").click();
+  await page.getByRole("button", { name: "Conversations" }).click();
+  await expect(page.getByRole("menuitem")).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("menuitem")).toHaveCount(0);
+  await patienter(page, () => expect(raisons("Relecteur")).toHaveCount(2, { timeout: 300 }));
+  await expect(raisons("Testeur")).toHaveCount(0);
+  await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "false");
+  await expect(raisons("Relecteur").nth(1)).toHaveAttribute("aria-expanded", "false");
 });

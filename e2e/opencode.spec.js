@@ -537,7 +537,7 @@ test("REQ077_parcours_42_44_arrivee_rechargement_nouvel_onglet", async ({ page, 
     requetes.push(route.request().url());
     return route.fulfill({ contentType: "text/html", body: "<title>exemple</title>" });
   });
-  const reponse = page.locator(".session:visible .ya-chat-agent");
+  const reponse = page.locator(".session:visible .ya-chat-agent:not(.ya-raison-zone)");
   const couleurAttendue = (nom) => page.evaluate((n) => { const d = document.createElement("i"); d.style.color = `var(${n})`; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; }, nom);
 
   await boutonOpencode(page).click();
@@ -597,7 +597,7 @@ test("REQ072_AC31_AC32_bords_alignes_1200", async ({ page, browserName }) => {
 
   // AC-072-32 : un tableau de 3 colonnes courtes, une citation et un bloc de code.
   await envoyer(page, "[scenario:markdown] Montre un tableau.");
-  const reponse = session.locator(".ya-chat-agent");
+  const reponse = session.locator(".ya-chat-agent:not(.ya-raison-zone)");
   await expect(reponse.locator("pre")).toContainText("fn main() {}", { timeout: 20000 });
   await expect(reponse.locator("table")).toHaveCount(1);
   const saisie = await boite(champ(page));
@@ -666,4 +666,73 @@ test("REQ072_AC31_AC32_bords_alignes_1200", async ({ page, browserName }) => {
   expect(mesure.defile).toEqual(Array(mesure.nombre).fill(0));
   expect(mesure.page).toEqual([0, 0]);
   expect(Math.round((await boite(champ(page))).largeur)).toBe(1196);
+});
+
+test("REQ084_parcours_55_raisonnement_opencode", async ({ page }) => {
+  // P-055 : AC-084-1, AC-084-3, AC-084-7.
+  const opencode = fauxOpencode("texte", 300);
+  yaide = await lancerYaide({ opencode, claude: fauxClaude() });
+  relais = await lancerRelais(yaide.port);
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await ouvrirYaide(page, relais.origine);
+  const conversation = page.getByRole("log", { name: "Conversation" });
+  const raisons = conversation.getByRole("button", { name: "Raisonnement", exact: true });
+
+  await boutonOpencode(page).click();
+  await expect(champ(page)).toBeFocused();
+  await envoyer(page, "Bonjour.");
+
+  // AC-084-1 : « Raisonnement » replié, avant la réponse ; déplié, le texte du raisonnement.
+  await expect(raisons).toHaveCount(1, { timeout: 20000 });
+  await expect(raisons).toHaveAttribute("aria-expanded", "false");
+  await raisons.click();
+  await expect(raisons).toHaveAttribute("aria-expanded", "true");
+  await expect(conversation.locator(".ya-raison-zone")).toBeVisible();
+  await expect(conversation.locator(".ya-raison-zone")).toContainText("Je réfléchis à la réponse.");
+  // La suite arrive : le focus reste sur le bouton.
+  await expect(raisons).toBeFocused();
+  await expect(conversation.locator(".ya-raison-zone")).toHaveCount(1);
+  await expect(conversation).toContainText("deux");
+  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
+  await expect(raisons).toBeFocused();
+  // AC-084-1 : le raisonnement est avant la réponse.
+  const avant = await conversation.evaluate((c) => {
+    const b = c.querySelector(".ya-raison");
+    const reponse = [...c.querySelectorAll(".ya-chat-agent")].find((z) => !z.classList.contains("ya-raison-zone"));
+    return !!reponse && !!(b.compareDocumentPosition(reponse) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(avant).toBe(true);
+
+  // Second message.
+  await champ(page).click();
+  await envoyer(page, "Encore une.");
+  await expect(raisons).toHaveCount(2, { timeout: 20000 });
+  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
+
+  // AC-084-7 : Tab depuis la conversation passe par les deux « Raisonnement », puis le champ.
+  await conversation.focus();
+  await page.keyboard.press("Tab");
+  await expect(raisons.nth(0)).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(raisons.nth(1)).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(champ(page)).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Shift+Tab");
+  await expect(raisons.nth(0)).toBeFocused();
+  // Entrée replie puis déplie ; le focus reste sur le bouton.
+  await page.keyboard.press("Enter");
+  await expect(raisons.nth(0)).toHaveAttribute("aria-expanded", "false");
+  await expect(raisons.nth(0)).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(raisons.nth(0)).toHaveAttribute("aria-expanded", "true");
+  await expect(raisons.nth(0)).toBeFocused();
+
+  // AC-084-3 : le vrai rechargement, les deux raisonnements sont là, repliés.
+  await gardeContient(page, '"opencode":true');
+  await page.reload();
+  await expect(raisons).toHaveCount(2);
+  await expect(raisons.nth(0)).toHaveAttribute("aria-expanded", "false");
+  await expect(raisons.nth(1)).toHaveAttribute("aria-expanded", "false");
+  await expect(conversation.locator(".ya-raison-zone").first()).toBeHidden();
 });

@@ -88,6 +88,7 @@ Chaque conversation avec l'agent s'ouvre dans un onglet de l'éditeur, à côté
 - **Agents personnalisés.** Le bouton « Agents », sous « Agent » sur le rail droit, ouvre la colonne avec la liste des agents du projet : « Nouvel agent » en crée un (nom, avatar, couleur, profil), « Modifier » règle un agent existant. Chaque agent est un dossier `.yaide/agents/<nom>/` avec trois fichiers : `agent.json` (nom, avatar, couleur, profil), `AGENTS.md` et `PERSONA.md`. Depuis la fiche d'un agent, `PERSONA.md` (son rôle) et `AGENTS.md` (ses consignes) s'ouvrent dans l'éditeur ; leur contenu est lu au premier message d'une conversation, et une modification ne change pas les conversations déjà commencées.
 - **Conversation à plusieurs agents.** Cochez un ou plusieurs agents, puis « Démarrer une conversation » : à chaque message, les agents répondent chacun à son tour, dans l'ordre de la liste, chacun avec son profil et dans un groupe à sa couleur. « Arrêter » interrompt l'agent en cours, et les suivants ne répondent pas.
 - **Supprimer un agent.** Supprimez son dossier `.yaide/agents/<nom>/` (depuis l'arborescence, par exemple). Un `agent.json` illisible est signalé au-dessus de la liste, sans empêcher les autres agents.
+- **Raisonnement.** Quand le provider le rend, il s'affiche replié sous « Raisonnement ». Avec Anthropic, Yaide le demande sauf si le profil a une température. Claude 4.5 et les versions avant refusent ce réglage : donnez-leur une température.
 
 ## Session Claude
 
@@ -111,6 +112,7 @@ Si la commande `opencode` (version 2) est dans le `PATH` du serveur au moment o�
 - Le compteur à droite des listes donne les tokens occupés par la dernière réponse du modèle, la fenêtre de contexte du modèle choisi et le pourcentage (par exemple « 15 k / 200 k · 8 % ») ; il n'existe pas quand la fenêtre du modèle est inconnue.
 - opencode garde la session : fermer l'onglet ne l'arrête pas, et un tour en cours continue. `opencode -s <id>` la reprend dans le terminal.
 - Après une mise à jour d'opencode, `node e2e/capturer-opencode.js` relève de nouveau le contrat de son API (dans `web/src/opencode-captures/`).
+- **Raisonnement.** Quand le modèle rend son raisonnement, il s'affiche replié sous « Raisonnement » ; un clic ou Entrée le déplie.
 
 ## Réglages de l'interface
 

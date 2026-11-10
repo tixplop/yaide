@@ -1,8 +1,10 @@
 import http from "node:http";
 
-/** Réponse Anthropic : du texte, des appels d'outil, et les tokens comptés (entrée + sortie). */
-export function reponse({ texte = "", outils = [], tokens = 100 } = {}) {
+/** Réponse Anthropic : du texte, des appels d'outil, et les tokens comptés (entrée + sortie). `raisonnement` (avec `signature`) ajoute en tête un bloc `thinking`, `masque` un bloc `redacted_thinking`. */
+export function reponse({ texte = "", outils = [], tokens = 100, raisonnement, signature = "sig", masque } = {}) {
   const content = [];
+  if (raisonnement) content.push({ type: "thinking", thinking: raisonnement, signature });
+  if (masque) content.push({ type: "redacted_thinking", data: masque });
   if (texte) content.push({ type: "text", text: texte });
   for (const o of outils) content.push({ type: "tool_use", id: o.id, name: o.nom, input: o.entree });
   return { statut: 200, corps: { id: "msg", type: "message", role: "assistant", content, stop_reason: outils.length ? "tool_use" : "end_turn", usage: { input_tokens: tokens - 10, output_tokens: 10 } } };
