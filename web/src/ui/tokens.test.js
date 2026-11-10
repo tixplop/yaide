@@ -595,3 +595,12 @@ test("REQ086_AC13_contrastes_de_la_ligne_worktree_sur_bg_100", () => {
     });
   }
 });
+
+test("REQ087_AC8_contraste_du_code_dans_un_lien_de_fichier", () => {
+  expect(composants).toMatch(/\.ya-chat-agent a\.ya-fichier code \{ color: var\(--info\); \}/);
+  THEMES.forEach((theme) => {
+    const r = ratio(theme, "--info", "--apercu-fond");
+    egalA(r, 5.5, `--info sur --apercu-fond (${theme})`);
+    expect(r).toBeGreaterThanOrEqual(4.5);
+  });
+});

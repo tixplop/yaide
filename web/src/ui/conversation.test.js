@@ -564,3 +564,58 @@ test("REQ085_AC8_dans_un_groupe_d_agent_le_raisonnement_longe_le_filet_de_2px", 
   expect(corps.children[0].className).toBe("ya-steps");
   expect(corps.children[1].className).toBe("ya-steps");
 });
+
+const FICHIER = (ouvrir) => {
+  const c = conversation({ entrees: [AGENT("Voir [le code](src/main.rs:3) ici")], surOuvrirFichier: ouvrir });
+  document.body.append(c);
+  return c;
+};
+
+test("REQ087_AC8_AC9_clic_et_modificateurs_ouvrent_sans_suivre_le_lien", () => {
+  const ouvrir = vi.fn();
+  const a = FICHIER(ouvrir).querySelector("a.ya-fichier");
+  for (const init of [{}, { ctrlKey: true }, { shiftKey: true }]) {
+    const e = new MouseEvent("click", { bubbles: true, cancelable: true, ...init });
+    a.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(true);
+  }
+  expect(ouvrir).toHaveBeenCalledTimes(3);
+  expect(ouvrir).toHaveBeenLastCalledWith({ chemin: "src/main.rs", ligne: 3 });
+});
+
+test("REQ087_AC10_clic_du_milieu_et_lien_sans_ligne", () => {
+  const ouvrir = vi.fn();
+  const c = conversation({ entrees: [AGENT("[x](src/a.rs)")], surOuvrirFichier: ouvrir });
+  document.body.append(c);
+  const droit = new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 2 });
+  c.querySelector("a").dispatchEvent(droit);
+  expect(droit.defaultPrevented).toBe(false);
+  expect(ouvrir).not.toHaveBeenCalled();
+  const e = new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 1 });
+  c.querySelector("a").dispatchEvent(e);
+  expect(e.defaultPrevented).toBe(true);
+  expect(ouvrir).toHaveBeenCalledWith({ chemin: "src/a.rs", ligne: undefined });
+});
+
+test("REQ087_AC8_lien_web_non_intercepte_et_tab_atteint_le_lien_fichier", () => {
+  const ouvrir = vi.fn();
+  const c = conversation({ entrees: [AGENT("[w](https://exemple.org/a) et [f](src/a.rs)")], surOuvrirFichier: ouvrir });
+  document.body.append(c);
+  const [w, f] = c.querySelectorAll("a");
+  const e = new MouseEvent("click", { bubbles: true, cancelable: true });
+  w.dispatchEvent(e);
+  expect(e.defaultPrevented).toBe(false);
+  expect(ouvrir).not.toHaveBeenCalled();
+  expect(f.tabIndex).toBe(0);
+  expect([...c.querySelectorAll("a[href]")]).toContain(f);
+  f.click(); // Entrée sur un lien déclenche ce click natif
+  expect(ouvrir).toHaveBeenCalledTimes(1);
+});
+
+test("REQ087_AC9_focus_garde_sur_un_lien_fichier_pendant_l_arrivee", () => {
+  const c = FICHIER(vi.fn());
+  c.querySelector("a").focus();
+  c.mettreAJour([AGENT("Voir [le code](src/main.rs:3) ici et la suite")]);
+  expect(document.activeElement.classList.contains("ya-fichier")).toBe(true);
+  expect(document.activeElement.textContent).toBe("le code");
+});

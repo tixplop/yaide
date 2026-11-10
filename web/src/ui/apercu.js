@@ -45,14 +45,108 @@ const mdReponse = creerMarkdown({ linkify: true });
 // Seules les adresses http:// et https:// deviennent des liens.
 mdReponse.linkify.set({ fuzzyLink: false, fuzzyEmail: false, fuzzyIP: false }).add("ftp:", null).add("mailto:", null).add("//", null);
 
-// Chaque lien d'une réponse s'ouvre dans un nouvel onglet.
+// Adresse avec schéma (`http:`, `mailto:`…) ; `main.rs:42` n'en est pas un (le « schéma » est suivi d'un chiffre).
+const SCHEMA = /^[a-z][a-z0-9+.-]*:(?!\d)/i;
+
+function decoder(s) {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
+// Lien vers un fichier : adresse sans schéma (hors `#ancre` et `//`), ou `file://`. Renvoie { chemin, ligne } ou null.
+function fichierDeLien(href) {
+  if (!href || href.startsWith("#") || href.startsWith("//")) return null;
+  const file = /^file:/i.test(href);
+  if (!file && SCHEMA.test(href)) return null;
+  let ecrit = decoder(file ? href.replace(/^file:(\/\/)?/i, "") : href);
+  let ligne = null;
+  const m = /(?:#L(\d+)(?:-L?\d+)?|:(\d+)(?::\d+)?)$/.exec(ecrit);
+  if (m) {
+    ligne = Number(m[1] ?? m[2]);
+    ecrit = ecrit.slice(0, m.index);
+  }
+  return ecrit ? { chemin: ecrit, ligne } : null;
+}
+
+// markdown-it refuse `file:` : ici c'est une adresse de fichier du projet. javascript:, vbscript: et data: restent refusés.
+const validerLien = mdReponse.validateLink;
+mdReponse.validateLink = (url) => /^file:/i.test(url.trim()) || validerLien(url);
+
+// Un lien web s'ouvre dans un nouvel onglet ; un lien vers un fichier est ouvert par la page (data-chemin, data-ligne).
 mdReponse.renderer.rules.link_open = (tokens, i, options, _env, self) => {
   const t = tokens[i];
-  t.attrSet("target", "_blank");
-  t.attrSet("rel", "noopener noreferrer");
-  t.attrSet("title", "S'ouvre dans un nouvel onglet du navigateur.");
+  const f = fichierDeLien(t.attrGet("href"));
+  if (f) {
+    t.attrJoin("class", "ya-fichier");
+    t.attrSet("data-chemin", f.chemin);
+    if (f.ligne !== null) t.attrSet("data-ligne", String(f.ligne));
+    t.attrSet("title", f.ligne !== null ? `Ouvrir ${f.chemin} à la ligne ${f.ligne} dans l'éditeur.` : `Ouvrir ${f.chemin} dans l'éditeur.`);
+  } else {
+    t.attrSet("target", "_blank");
+    t.attrSet("rel", "noopener noreferrer");
+    t.attrSet("title", "S'ouvre dans un nouvel onglet du navigateur.");
+  }
   return self.renderToken(tokens, i, options);
 };
+
+// Chemin avec au moins un `/`, dernier segment `nom.ext` (extension commençant par une lettre), numéro de ligne facultatif.
+const SEG = "[\\w.~@%+-]";
+const REF = `(\\/?(?:${SEG}+\\/)+[\\w~@%+-]${SEG}*\\.[A-Za-z][\\w-]*)(?::(\\d+)(?::\\d+)?|#L(\\d+)(?:-L?\\d+)?)?(?![\\w/~@%+-]|\\.\\w)`;
+const REF_DANS_TEXTE = new RegExp(`(?<![\\w/.~@%+:-])${REF}`, "g");
+const REF_SEULE = new RegExp(`^${REF}$`);
+
+function hrefFichier(chemin, ligne) {
+  return encodeURI(chemin) + (ligne ? `#L${ligne}` : "");
+}
+
+mdReponse.core.ruler.after("text_join", "fichiers", (state) => {
+  const lien = (type, chemin, ligne) => {
+    const t = new state.Token(type, "a", type === "link_open" ? 1 : -1);
+    if (type === "link_open") t.attrs = [["href", hrefFichier(chemin, ligne)]];
+    return t;
+  };
+  for (const bloc of state.tokens) {
+    if (bloc.type !== "inline" || !bloc.children) continue;
+    const sortie = [];
+    let profondeur = 0;
+    for (const c of bloc.children) {
+      if (c.type === "link_open") profondeur++;
+      else if (c.type === "link_close") profondeur--;
+      if (profondeur > 0) {
+        sortie.push(c);
+      } else if (c.type === "text") {
+        let fin = 0;
+        for (const m of c.content.matchAll(REF_DANS_TEXTE)) {
+          if (m.index > fin) {
+            const av = new state.Token("text", "", 0);
+            av.content = c.content.slice(fin, m.index);
+            sortie.push(av);
+          }
+          const tx = new state.Token("text", "", 0);
+          tx.content = m[0];
+          sortie.push(lien("link_open", m[1], m[2] ?? m[3]), tx, lien("link_close"));
+          fin = m.index + m[0].length;
+        }
+        if (fin === 0) {
+          sortie.push(c);
+        } else if (fin < c.content.length) {
+          const ap = new state.Token("text", "", 0);
+          ap.content = c.content.slice(fin);
+          sortie.push(ap);
+        }
+      } else if (c.type === "code_inline" && REF_SEULE.test(c.content)) {
+        const m = REF_SEULE.exec(c.content);
+        sortie.push(lien("link_open", m[1], m[2] ?? m[3]), c, lien("link_close"));
+      } else {
+        sortie.push(c);
+      }
+    }
+    bloc.children = sortie;
+  }
+});
 
 const MARQUE_NOTE = /^\[!NOTE\](?:[ \t]+|$)/;
 const MARQUE_CASE = /^\[( |x|X)\][ \t]+/;

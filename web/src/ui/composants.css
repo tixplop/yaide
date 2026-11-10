@@ -535,6 +535,8 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-chat-agent pre { margin: 0 0 var(--space-2); background: var(--apercu-fond); border-radius: var(--radius-sm); padding: 6px var(--space-2); font: 12px/18px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .ya-chat-agent pre code { padding: 0; background: none; font: inherit; }
 .ya-chat-agent a { color: var(--info); text-decoration: underline; }
+.ya-chat-agent a.ya-fichier { cursor: pointer; }
+.ya-chat-agent a.ya-fichier code { color: var(--info); }
 .ya-steps { display: flex; flex-direction: column; gap: 2px; }
 .ya-steps[hidden] { display: none; }
 .ya-step { font: 12px var(--font-mono); height: var(--size-row); width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 var(--space-1); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); text-align: left; cursor: pointer; }

@@ -227,12 +227,24 @@ function creerGroupe(auteur) {
   return { auteur, el, corps };
 }
 
-export function conversation({ entrees = [], enAttente = false, vide, surDeplier, surOuvrir, nom = "Agent" } = {}) {
+export function conversation({ entrees = [], enAttente = false, vide, surDeplier, surOuvrir, surOuvrirFichier, nom = "Agent" } = {}) {
   const el = document.createElement("div");
   el.className = "ya-chat";
   el.setAttribute("role", "log");
   el.setAttribute("aria-label", "Conversation");
   el.tabIndex = 0;
+
+  // Un lien vers un fichier n'est jamais suivi par le navigateur : la page l'ouvre (Entrée passe par le click natif).
+  const ouvrirFichier = (e) => {
+    if (e.type === "auxclick" && e.button !== 1) return;
+    const a = e.target.closest?.("a.ya-fichier");
+    if (!a || !el.contains(a)) return;
+    e.preventDefault();
+    const ligne = a.dataset.ligne;
+    surOuvrirFichier?.({ chemin: a.dataset.chemin, ligne: ligne === undefined ? undefined : Number(ligne) });
+  };
+  el.addEventListener("click", ouvrirFichier);
+  el.addEventListener("auxclick", ouvrirFichier);
 
   let rendus = []; // { entree, noeud }
   let attente = null;

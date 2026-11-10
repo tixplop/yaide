@@ -111,7 +111,7 @@ test("REQ077_AC25_adresses", () => {
 });
 
 test("REQ077_AC26_AC27_attributs_de_chaque_lien", () => {
-  const d = dom(`[doc](${URL_}) ${URL_} [rel](/a/b) [titre](${URL_} "mon titre")`);
+  const d = dom(`[doc](${URL_}) ${URL_} [rel](#ancre) [titre](${URL_} "mon titre")`);
   const liens = [...d.querySelectorAll("a")];
   expect(liens).toHaveLength(4);
   for (const a of liens) {
@@ -143,4 +143,58 @@ test("REQ077_apercu_inchange", () => {
   expect(h.querySelector("li").textContent).toBe("[ ] a");
   expect(h.querySelector("input")).toBeNull();
   expect(h.querySelector("a")).toBeNull();
+});
+
+const fichiers = (s) => [...dom(s).querySelectorAll("a.ya-fichier")].map((a) => [a.getAttribute("href"), a.dataset.chemin, a.dataset.ligne ?? null, a.textContent]);
+
+test("REQ087_AC2_liens_markdown_vers_un_fichier_et_numeros_de_ligne", () => {
+  const d = dom("[a](src/main.rs) [b](src/main.rs:42) [c](src/main.rs:42:7) [d](src/main.rs#L42) [e](src/main.rs#L42-L50) [f](file:///home/x/a%20b.rs) [g](./src/main.rs)");
+  const liens = [...d.querySelectorAll("a")];
+  expect(liens.map((a) => [a.dataset.chemin, a.dataset.ligne ?? null])).toEqual([
+    ["src/main.rs", null], ["src/main.rs", "42"], ["src/main.rs", "42"], ["src/main.rs", "42"], ["src/main.rs", "42"],
+    ["/home/x/a b.rs", null], ["./src/main.rs", null],
+  ]);
+  for (const a of liens) {
+    expect(a.classList.contains("ya-fichier")).toBe(true);
+    expect(a.hasAttribute("target")).toBe(false);
+    expect(a.hasAttribute("rel")).toBe(false);
+  }
+  expect(liens[0].getAttribute("href")).toBe("src/main.rs");
+  expect(liens[0].title).toBe("Ouvrir src/main.rs dans l'éditeur.");
+  expect(liens[1].title).toBe("Ouvrir src/main.rs à la ligne 42 dans l'éditeur.");
+  expect(liens[0].textContent).toBe("a");
+});
+
+test("REQ087_AC2_chemin_nu_dans_le_texte_et_en_code_en_ligne", () => {
+  expect(fichiers("Voir src/main.rs:3 ici")).toEqual([["src/main.rs#L3", "src/main.rs", "3", "src/main.rs:3"]]);
+  expect(fichiers("Voir (src/main.rs).")).toEqual([["src/main.rs", "src/main.rs", null, "src/main.rs"]]);
+  expect(fichiers("Voir src/main.rs:3.")[0][3]).toBe("src/main.rs:3");
+  expect(dom("Voir src/main.rs:3.").textContent.trim()).toBe("Voir src/main.rs:3.");
+  expect(fichiers("src/a.rs#L4-L9 et ../essai/b.toml:2:5 et /home/x/c.js")).toEqual([
+    ["src/a.rs#L4", "src/a.rs", "4", "src/a.rs#L4-L9"],
+    ["../essai/b.toml#L2", "../essai/b.toml", "2", "../essai/b.toml:2:5"],
+    ["/home/x/c.js", "/home/x/c.js", null, "/home/x/c.js"],
+  ]);
+  const d = dom("`src/main.rs:3`");
+  const a = d.querySelector("a.ya-fichier");
+  expect(a.querySelector("code").textContent).toBe("src/main.rs:3");
+  expect(a.dataset.ligne).toBe("3");
+  expect(fichiers("`appelle src/main.rs`")).toEqual([]);
+});
+
+test("REQ087_AC2_ce_qui_reste_du_texte", () => {
+  for (const t of ["Cargo.toml", "console.log", "et/ou", "1/2", "src/vues", "exemple.org", "`Cargo.toml`", "```\nsrc/main.rs\n```", "`src/vues`"]) {
+    expect(dom(t).querySelector("a"), t).toBeNull();
+  }
+});
+
+test("REQ087_AC6_adresse_web_reste_un_lien_web_et_pas_de_double_lien", () => {
+  const d = dom("https://exemple.org/src/main.rs et [x](https://exemple.org/a.rs) et [y](src/z.rs) et [src/w.rs](#ancre) et [m](mailto:a@b.org)");
+  const liens = [...d.querySelectorAll("a")];
+  expect(liens).toHaveLength(5);
+  expect(liens.map((a) => a.classList.contains("ya-fichier"))).toEqual([false, false, true, false, false]);
+  expect(liens[0].target).toBe("_blank");
+  expect(liens[3].target).toBe("_blank");
+  expect(liens[4].target).toBe("_blank");
+  expect(d.querySelectorAll("a a")).toHaveLength(0);
 });
