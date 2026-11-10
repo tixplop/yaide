@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 /// Parmi `chemins` (relatifs à `dossier`), ceux que git ignore.
@@ -51,4 +51,91 @@ pub fn est_un_depot(dossier: &Path) -> bool {
         .stderr(Stdio::null())
         .status()
         .is_ok_and(|s| s.success())
+}
+
+pub struct Worktree {
+    /// Chemin relatif depuis le projet (`""` pour le projet lui-même).
+    pub chemin: String,
+    /// Nom du dossier racine du worktree.
+    pub nom: String,
+    pub branche: String,
+    pub detachee: bool,
+    /// Dossier du projet à l'intérieur de ce worktree (canonique).
+    pub dossier: PathBuf,
+}
+
+/// Chemin relatif de `vers` depuis `depuis` (deux chemins absolus canoniques).
+fn chemin_relatif(depuis: &Path, vers: &Path) -> String {
+    let a: Vec<_> = depuis.components().collect();
+    let b: Vec<_> = vers.components().collect();
+    let commun = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
+    let mut parts: Vec<String> = vec!["..".to_string(); a.len() - commun];
+    parts.extend(
+        b[commun..]
+            .iter()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned()),
+    );
+    parts.join("/")
+}
+
+/// Les worktrees du dépôt du projet : le projet d'abord, puis les autres par nom.
+/// Hors dépôt, la liste est vide.
+pub fn worktrees(projet: &Path) -> Vec<Worktree> {
+    let Ok(projet) = projet.canonicalize() else {
+        return Vec::new();
+    };
+    let git = |args: &[&str]| {
+        Command::new("git")
+            .arg("-C")
+            .arg(&projet)
+            .args(args)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .filter(|s| s.status.success())
+            .map(|s| String::from_utf8_lossy(&s.stdout).into_owned())
+    };
+    let Some(prefixe) = git(&["rev-parse", "--show-prefix"]) else {
+        return Vec::new();
+    };
+    let prefixe = prefixe.trim();
+    let Some(liste) = git(&["worktree", "list", "--porcelain"]) else {
+        return Vec::new();
+    };
+    let mut resultat = Vec::new();
+    for bloc in liste.split("\n\n") {
+        let (mut racine, mut branche, mut detachee, mut ecarte) =
+            (None, String::new(), false, false);
+        for ligne in bloc.lines() {
+            if let Some(r) = ligne.strip_prefix("worktree ") {
+                racine = Some(PathBuf::from(r));
+            } else if let Some(b) = ligne.strip_prefix("branch ") {
+                branche = b.strip_prefix("refs/heads/").unwrap_or(b).to_string();
+            } else if ligne == "detached" {
+                detachee = true;
+            } else if ligne == "bare" || ligne.starts_with("prunable") {
+                ecarte = true;
+            }
+        }
+        let Some(racine) = racine.filter(|_| !ecarte) else {
+            continue;
+        };
+        let Ok(dossier) = racine.join(prefixe).canonicalize() else {
+            continue;
+        };
+        let nom = racine
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        resultat.push(Worktree {
+            chemin: chemin_relatif(&projet, &dossier),
+            nom,
+            branche,
+            detachee,
+            dossier,
+        });
+    }
+    resultat.sort_by(|a, b| (!a.chemin.is_empty(), &a.nom).cmp(&(!b.chemin.is_empty(), &b.nom)));
+    resultat
 }

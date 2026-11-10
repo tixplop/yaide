@@ -43,6 +43,30 @@ pub struct Entree {
     pub ignore: bool,
 }
 
+type Cache = Option<Vec<depot::Worktree>>;
+
+/// Un chemin qui commence par `../` mène dans un worktree du dépôt : renvoie sa racine
+/// et le reste du chemin. Les autres chemins restent dans `racine`.
+fn aiguiller(racine: &Path, rel: &str, cache: &mut Cache) -> Result<(PathBuf, String), Erreur> {
+    if rel != ".." && !rel.starts_with("../") {
+        return Ok((racine.to_path_buf(), rel.to_string()));
+    }
+    let liste = cache.get_or_insert_with(|| depot::worktrees(racine));
+    liste
+        .iter()
+        .filter(|w| {
+            !w.chemin.is_empty()
+                && (rel == w.chemin
+                    || (rel.starts_with(&w.chemin) && rel[w.chemin.len()..].starts_with('/')))
+        })
+        .max_by_key(|w| w.chemin.len())
+        .map(|w| {
+            let reste = rel[w.chemin.len()..].trim_start_matches('/');
+            (w.dossier.clone(), reste.to_string())
+        })
+        .ok_or(Erreur::Interdit)
+}
+
 /// Chemin réel de `rel` dans le projet ; refuse tout ce qui en sort
 /// (`..`, chemin absolu, lien symbolique vers l'extérieur).
 pub(crate) fn resoudre(racine: &Path, rel: &str) -> Result<PathBuf, Erreur> {
@@ -101,6 +125,8 @@ pub fn version_de(m: &fs::Metadata) -> String {
 }
 
 pub fn lister(racine: &Path, rel: &str) -> Result<Vec<Entree>, Erreur> {
+    let (racine, rel) = aiguiller(racine, rel, &mut None)?;
+    let (racine, rel) = (racine.as_path(), rel.as_str());
     let dossier = resoudre(racine, rel)?;
     if !fs::metadata(&dossier)?.is_dir() {
         return Err(Erreur::Invalide("Ce n'est pas un dossier."));
@@ -120,26 +146,18 @@ pub fn lister(racine: &Path, rel: &str) -> Result<Vec<Entree>, Erreur> {
         });
     }
     entrees.sort_by_key(|e| (!e.dossier, e.nom.to_lowercase(), e.nom.clone()));
-    let base = rel.trim_matches('/');
-    let chemins: Vec<String> = entrees
-        .iter()
-        .map(|e| {
-            if base.is_empty() {
-                e.nom.clone()
-            } else {
-                format!("{base}/{}", e.nom)
-            }
-        })
-        .collect();
-    let ignores = depot::ignores(&racine.canonicalize()?, &chemins);
-    for (e, c) in entrees.iter_mut().zip(&chemins) {
-        e.ignore = ignores.contains(c);
+    let noms: Vec<String> = entrees.iter().map(|e| e.nom.clone()).collect();
+    let ignores = depot::ignores(&dossier, &noms);
+    for e in entrees.iter_mut() {
+        e.ignore = ignores.contains(&e.nom);
     }
     Ok(entrees)
 }
 
 /// Contenu (UTF-8) et version.
 pub fn lire(racine: &Path, rel: &str) -> Result<(String, String), Erreur> {
+    let (racine, rel) = aiguiller(racine, rel, &mut None)?;
+    let (racine, rel) = (racine.as_path(), rel.as_str());
     let chemin = resoudre(racine, rel)?;
     let f = fs::File::open(&chemin)?;
     let meta = f.metadata()?;
@@ -170,6 +188,8 @@ pub fn ecrire(
     base: Option<&str>,
     contenu: &[u8],
 ) -> Result<String, Erreur> {
+    let (racine, rel) = aiguiller(racine, rel, &mut None)?;
+    let (racine, rel) = (racine.as_path(), rel.as_str());
     let chemin = resoudre(racine, rel)?;
     let existant = fs::metadata(&chemin).ok();
     if let Some(m) = &existant {
@@ -216,6 +236,8 @@ pub fn ecrire(
 }
 
 pub fn creer(racine: &Path, rel: &str, dossier: bool) -> Result<(), Erreur> {
+    let (racine, rel) = aiguiller(racine, rel, &mut None)?;
+    let (racine, rel) = (racine.as_path(), rel.as_str());
     let chemin = resoudre(racine, rel)?;
     if chemin == racine.canonicalize()? {
         return Err(Erreur::Invalide("Chemin invalide."));
@@ -238,6 +260,13 @@ pub fn creer(racine: &Path, rel: &str, dossier: bool) -> Result<(), Erreur> {
 }
 
 pub fn renommer(racine: &Path, de: &str, vers: &str) -> Result<(), Erreur> {
+    let mut cache = None;
+    let (racine_de, de) = aiguiller(racine, de, &mut cache)?;
+    let (racine_vers, vers) = aiguiller(racine, vers, &mut cache)?;
+    if racine_de != racine_vers {
+        return Err(Erreur::Interdit);
+    }
+    let (racine, de, vers) = (racine_de.as_path(), de.as_str(), vers.as_str());
     let source = resoudre_lien(racine, de)?;
     let cible = resoudre(racine, vers)?;
     let reel = racine.canonicalize()?;
@@ -263,6 +292,8 @@ pub fn renommer(racine: &Path, de: &str, vers: &str) -> Result<(), Erreur> {
 }
 
 pub fn supprimer(racine: &Path, rel: &str) -> Result<(), Erreur> {
+    let (racine, rel) = aiguiller(racine, rel, &mut None)?;
+    let (racine, rel) = (racine.as_path(), rel.as_str());
     let chemin = resoudre_lien(racine, rel)?;
     if chemin == racine.canonicalize()? {
         return Err(Erreur::Invalide("Le dossier du projet ne se supprime pas."));
@@ -277,10 +308,12 @@ pub fn supprimer(racine: &Path, rel: &str) -> Result<(), Erreur> {
 
 /// Version de chaque chemin ; `None` pour un fichier absent.
 pub fn versions(racine: &Path, chemins: &[&str]) -> Result<Vec<(String, Option<String>)>, Erreur> {
+    let mut cache = None;
     chemins
         .iter()
         .map(|c| {
-            let p = resoudre(racine, c)?;
+            let (r, rel) = aiguiller(racine, c, &mut cache)?;
+            let p = resoudre(&r, &rel)?;
             Ok((c.to_string(), fs::metadata(p).ok().map(|m| version_de(&m))))
         })
         .collect()

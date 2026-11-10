@@ -2,7 +2,7 @@ use crate::agent::agents::Agents;
 use crate::agent::conversation::{ErreurEnvoi, Gestionnaire};
 use crate::agent::outils::Limites;
 use crate::agent::reglages::{Erreur, Reglages};
-use crate::{auth, config, fichiers, git, opencode, recherche, shells};
+use crate::{auth, config, depot, fichiers, git, opencode, recherche, shells};
 use axum::body::Bytes;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{DefaultBodyLimit, Path as CheminUrl, Query, Request, State};
@@ -676,18 +676,75 @@ fn erreur_git(e: git::Erreur) -> Response {
 
 /// Exécute une opération git hors du fil asynchrone.
 async fn avec_git<T: Send + 'static>(
-    etat: &Etat,
+    dossier: PathBuf,
     f: impl FnOnce(&Path) -> Result<T, git::Erreur> + Send + 'static,
 ) -> Result<T, git::Erreur> {
-    let projet = etat.projet_dir.clone();
-    tokio::task::spawn_blocking(move || f(&projet))
+    tokio::task::spawn_blocking(move || f(&dossier))
         .await
         .unwrap_or_else(|e| Err(git::Erreur::Git(e.to_string())))
 }
 
-async fn git_etat(State(etat): State<Partage>) -> Response {
-    match avec_git(&etat, git::etat).await {
+/// Worktree demandé par `worktree=` : son dossier et son chemin depuis le projet
+/// (`""` pour le projet). Inconnu : 400, rien n'est lancé.
+async fn cible_git(etat: &Etat, q: &HashMap<String, String>) -> Option<(PathBuf, String)> {
+    let demande = param(q, "worktree").to_string();
+    if demande.is_empty() {
+        return Some((etat.projet_dir.clone(), String::new()));
+    }
+    let projet = etat.projet_dir.clone();
+    let liste = tokio::task::spawn_blocking(move || depot::worktrees(&projet))
+        .await
+        .unwrap_or_default();
+    liste
+        .into_iter()
+        .find(|w| w.chemin == demande)
+        .map(|w| (w.dossier, w.chemin))
+}
+
+fn worktree_inconnu() -> Response {
+    json(
+        StatusCode::BAD_REQUEST,
+        "{\"cause\":\"worktree\",\"message\":\"Ce worktree n'existe plus.\"}".to_string(),
+    )
+}
+
+/// Chemin donné par la page (`<chemin>/x`) vers chemin du dossier du worktree (`x`).
+fn sans_prefixe(chemin: &str, rel: String) -> Result<String, git::Erreur> {
+    if chemin.is_empty() {
+        return Ok(rel);
+    }
+    rel.strip_prefix(&format!("{chemin}/"))
+        .map(str::to_string)
+        .ok_or_else(|| git::Erreur::Invalide("Ce chemin n'est pas valide.".into()))
+}
+
+async fn git_etat(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let Some((dossier, chemin)) = cible_git(&etat, &q).await else {
+        return worktree_inconnu();
+    };
+    let projet = etat.projet_dir.clone();
+    let liste = tokio::task::spawn_blocking(move || depot::worktrees(&projet))
+        .await
+        .unwrap_or_default();
+    match avec_git(dossier, git::etat).await {
         Ok(e) => {
+            let worktrees: Vec<String> = liste
+                .iter()
+                .map(|w| {
+                    format!(
+                        "{{\"chemin\":{},\"nom\":{},\"branche\":{},\"detachee\":{}}}",
+                        json_texte(&w.chemin),
+                        json_texte(&w.nom),
+                        json_texte(&w.branche),
+                        w.detachee
+                    )
+                })
+                .collect();
+            let prefixe = if chemin.is_empty() {
+                String::new()
+            } else {
+                format!("{chemin}/")
+            };
             let branches: Vec<String> = e.branches.iter().map(|b| json_texte(b)).collect();
             let changements: Vec<String> = e
                 .changements
@@ -695,7 +752,7 @@ async fn git_etat(State(etat): State<Partage>) -> Response {
                 .map(|c| {
                     format!(
                         "{{\"chemin\":{},\"statut\":{},\"indexe\":{},\"lettre\":{}}}",
-                        json_texte(&c.chemin),
+                        json_texte(&format!("{prefixe}{}", c.chemin)),
                         json_texte(c.statut),
                         c.indexe,
                         json_texte(c.lettre)
@@ -705,11 +762,12 @@ async fn git_etat(State(etat): State<Partage>) -> Response {
             json(
                 StatusCode::OK,
                 format!(
-                    "{{\"branche\":{},\"detachee\":{},\"branches\":[{}],\"changements\":[{}]}}",
+                    "{{\"branche\":{},\"detachee\":{},\"branches\":[{}],\"changements\":[{}],\"worktrees\":[{}]}}",
                     json_texte(&e.branche),
                     e.detachee,
                     branches.join(","),
-                    changements.join(",")
+                    changements.join(","),
+                    worktrees.join(",")
                 ),
             )
         }
@@ -718,8 +776,14 @@ async fn git_etat(State(etat): State<Partage>) -> Response {
 }
 
 async fn git_diff(State(etat): State<Partage>, Query(q): Requete) -> Response {
-    let rel = param(&q, "chemin").to_string();
-    match avec_git(&etat, move |p| git::diff(p, &rel)).await {
+    let Some((dossier, chemin)) = cible_git(&etat, &q).await else {
+        return worktree_inconnu();
+    };
+    let rel = match sans_prefixe(&chemin, param(&q, "chemin").to_string()) {
+        Ok(r) => r,
+        Err(e) => return erreur_git(e),
+    };
+    match avec_git(dossier, move |p| git::diff(p, &rel)).await {
         Ok(d) => json(
             StatusCode::OK,
             format!(
@@ -741,26 +805,44 @@ fn fait(r: Result<(), git::Erreur>) -> Response {
 }
 
 async fn git_indexer(State(etat): State<Partage>, Query(q): Requete) -> Response {
-    let rel = param(&q, "chemin").to_string();
-    fait(avec_git(&etat, move |p| git::indexer(p, &rel)).await)
+    let Some((dossier, chemin)) = cible_git(&etat, &q).await else {
+        return worktree_inconnu();
+    };
+    let rel = match sans_prefixe(&chemin, param(&q, "chemin").to_string()) {
+        Ok(r) => r,
+        Err(e) => return erreur_git(e),
+    };
+    fait(avec_git(dossier, move |p| git::indexer(p, &rel)).await)
 }
 
 /// Corps : le message de commit, tel quel.
-async fn git_commit(State(etat): State<Partage>, message: String) -> Response {
-    fait(avec_git(&etat, move |p| git::commit(p, &message)).await)
+async fn git_commit(State(etat): State<Partage>, Query(q): Requete, message: String) -> Response {
+    let Some((dossier, _)) = cible_git(&etat, &q).await else {
+        return worktree_inconnu();
+    };
+    fait(avec_git(dossier, move |p| git::commit(p, &message)).await)
 }
 
 async fn git_branche(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let Some((dossier, _)) = cible_git(&etat, &q).await else {
+        return worktree_inconnu();
+    };
     let nom = param(&q, "nom").to_string();
-    fait(avec_git(&etat, move |p| git::changer_branche(p, &nom)).await)
+    fait(avec_git(dossier, move |p| git::changer_branche(p, &nom)).await)
 }
 
-async fn git_pull(State(etat): State<Partage>) -> Response {
-    fait(avec_git(&etat, |p| git::synchroniser(p, "pull").map(|_| ())).await)
+async fn git_pull(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let Some((dossier, _)) = cible_git(&etat, &q).await else {
+        return worktree_inconnu();
+    };
+    fait(avec_git(dossier, |p| git::synchroniser(p, "pull").map(|_| ())).await)
 }
 
-async fn git_push(State(etat): State<Partage>) -> Response {
-    fait(avec_git(&etat, |p| git::synchroniser(p, "push").map(|_| ())).await)
+async fn git_push(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let Some((dossier, _)) = cible_git(&etat, &q).await else {
+        return worktree_inconnu();
+    };
+    fait(avec_git(dossier, |p| git::synchroniser(p, "push").map(|_| ())).await)
 }
 
 const INDEX: &[u8] = include_bytes!("../web/dist/index.html");
