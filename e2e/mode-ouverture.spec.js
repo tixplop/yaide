@@ -58,6 +58,7 @@ async function ouvrirParRacine(page) {
 async function ouvrirIndexRapide(page) {
   await page.keyboard.press("Control+p");
   await page.getByRole("textbox", { name: "Chemin du fichier" }).fill("index");
+  await expect(page.getByRole("listbox", { name: "Fichiers proposés" })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(editeur(page, "index.html")).toBeFocused();
 }
