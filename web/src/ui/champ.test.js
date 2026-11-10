@@ -211,3 +211,59 @@ test("REQ074_barre_desactivee_select_disabled", () => {
   const r = champ({ libelle: "Effort", type: "liste", presentation: "barre", options: ["a"], desactive: true });
   expect(r.querySelector("select").disabled).toBe(true);
 });
+
+test("REQ086_AC13_ligne_de_panneau_select_nomme_Worktree_et_options_valeur_texte", () => {
+  const r = champ({ libelle: "Worktree", type: "liste", presentation: "barre", ligne: true, options: [{ valeur: "", texte: "yaide (main)" }, { valeur: "../essai", texte: "essai (essai)" }], valeur: "../essai" });
+  const select = r.querySelector("select");
+  expect(r.classList.contains("ya-barre")).toBe(true);
+  expect(r.classList.contains("ya-ligne")).toBe(true);
+  expect(select.labels[0].textContent).toBe("Worktree");
+  expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([["", "yaide (main)"], ["../essai", "essai (essai)"]]);
+  expect(select.value).toBe("../essai");
+  expect(select.title).toBe("essai (essai)");
+});
+
+test("REQ086_AC13_ligne_texte_long_title_entier_et_desactivee_avec_raison", () => {
+  const long = "x".repeat(60) + " (main)";
+  const r = champ({ libelle: "Worktree", type: "liste", presentation: "barre", ligne: true, options: [{ valeur: "", texte: long }] });
+  expect(r.querySelector("select").title).toBe(long);
+  const d = champ({ libelle: "Worktree", type: "liste", presentation: "barre", ligne: true, options: ["a"], desactive: true, raison: "Attendez la fin du push." });
+  expect(d.querySelector("select").disabled).toBe(true);
+  expect(d.querySelector("select").title).toBe("Attendez la fin du push.");
+});
+
+test("REQ086_AC13_ligne_refusee_hors_barre", () => {
+  expect(() => champ({ libelle: "X", type: "liste", ligne: true })).toThrow(/ligne/);
+});
+
+test("REQ086_AC13_ligne_css_28px_marges_12px_opacite", () => {
+  expect(css).toMatch(/\.ya-barre\.ya-ligne\s*\{[^}]*height:\s*28px[^}]*padding-inline:\s*var\(--space-3\)/);
+  expect(css).toMatch(/\.ya-barre\.ya-ligne:has\(:disabled\)[^}]*opacity:\s*\.45/);
+});
+
+test("REQ086_AC13_ligne_titre_recalcule_apres_mise_a_jour_en_place", () => {
+  const r = champ({ libelle: "Worktree", type: "liste", presentation: "barre", ligne: true, options: [{ valeur: "", texte: "a (main)" }, { valeur: "b", texte: "b (b)" }], raison: "Attendez la fin du pull." });
+  const s = r.querySelector("select");
+  s.value = "b";
+  r.actualiserTitre();
+  expect(s.title).toBe("b (b)");
+  s.disabled = true;
+  r.actualiserTitre();
+  expect(s.title).toBe("Attendez la fin du pull.");
+  s.disabled = false;
+  r.actualiserTitre();
+  expect(s.title).toBe("b (b)");
+  s.disabled = true;
+  r.actualiserTitre("Attendez la fin du push.");
+  expect(s.title).toBe("Attendez la fin du push.");
+});
+
+test("REQ086_AC13_ligne_focus_accent_et_select_natif_sans_clavier_maison", () => {
+  const r = champ({ libelle: "Worktree", type: "liste", presentation: "barre", ligne: true, options: ["a", "b"] });
+  const s = r.querySelector("select");
+  expect(s.tagName).toBe("SELECT");
+  expect(s.classList.contains("ya-input")).toBe(true);
+  expect(css).toMatch(/\.ya-input:focus-visible\s*\{[^}]*outline:\s*1px solid var\(--accent-fg\)/);
+  const src = readFileSync("web/src/ui/champ.js", "utf8");
+  expect(src).not.toMatch(/keydown|keyup|keypress/);
+});

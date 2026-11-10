@@ -580,3 +580,18 @@ test("REQ084_AC6_contrastes_du_raisonnement_dans_les_deux_themes", () => {
     });
   }
 });
+
+// design-system.md, C-002 `liste` en `barre`, ligne « Worktree » (REQ-086) : contrastes sur --bg-100.
+test("REQ086_AC13_contrastes_de_la_ligne_worktree_sur_bg_100", () => {
+  const paires = [
+    ["--ink-muted", [6.58, 6.29]],
+    ["--line-strong", [3.62, 3.25]],
+    ["--accent-fg", [6.94, 5.93]],
+  ];
+  for (const [texte, mesures] of paires) {
+    THEMES.forEach((theme, i) => {
+      const r = ratio(theme, texte, "--bg-100");
+      egalA(r, mesures[i], `${texte} sur --bg-100 (${theme})`);
+    });
+  }
+});

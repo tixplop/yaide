@@ -7,17 +7,18 @@ const NOMS_COULEURS = { violet: "Violet", vert: "Vert", orange: "Orange", rose: 
 const CLAVIERS = { numerique: "numeric", decimal: "decimal" };
 let compteur = 0;
 
-export function champ({ libelle, type = "texte", valeur = "", options = [], indication, aide, erreur, libelleMasque = false, desactive = false, clavier, presentation = "normale", avant, action }) {
+export function champ({ libelle, type = "texte", valeur = "", options = [], indication, aide, erreur, libelleMasque = false, desactive = false, clavier, presentation = "normale", avant, action, ligne = false, raison }) {
   if (!libelle) throw new Error("champ : libelle requis");
   if (!TYPES.includes(type)) throw new Error(`champ : type inconnu « ${type} »`);
   if (clavier !== undefined && !(clavier in CLAVIERS)) throw new Error(`champ : clavier inconnu « ${clavier} »`);
   if (!PRESENTATIONS.includes(presentation)) throw new Error(`champ : presentation inconnue « ${presentation} »`);
   if (presentation === "barre" && type !== "liste") throw new Error("champ : la presentation « barre » n'existe que pour une liste");
+  if (ligne && presentation !== "barre") throw new Error("champ : « ligne » n'existe que pour la presentation « barre »");
   const n = ++compteur;
   if (type === "couleur") return champCouleur(libelle, valeur || "violet", n, desactive);
   if (type === "case" && presentation === "ligne") return caseEnLigne({ libelle, valeur, avant, action, desactive, n });
   const racine = document.createElement("div");
-  racine.className = type === "case" ? "champ ya-case" : presentation === "barre" ? "champ ya-barre" : "champ";
+  racine.className = type === "case" ? "champ ya-case" : presentation === "barre" ? (ligne ? "champ ya-barre ya-ligne" : "champ ya-barre") : "champ";
 
   const label = document.createElement("label");
   label.className = libelleMasque ? "champ-libelle masque" : "champ-libelle";
@@ -33,7 +34,9 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
     saisie = document.createElement("select");
     for (const o of options) {
       const opt = document.createElement("option");
-      opt.value = opt.textContent = o;
+      // Une option est un texte, ou `{ valeur, texte }`.
+      opt.value = typeof o === "string" ? o : o.valeur;
+      opt.textContent = typeof o === "string" ? o : o.texte;
       saisie.append(opt);
     }
     if (valeur) saisie.value = valeur;
@@ -55,6 +58,17 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
   saisie.id = `champ-${n}`;
   if (type !== "case") saisie.className = type === "multiligne" ? "champ-saisie ya-input ya-textarea" : "champ-saisie ya-input";
   saisie.disabled = desactive;
+  if (ligne) {
+    // Texte coupé par « … » : `title` donne le texte entier, ou la raison de la désactivation.
+    // Après une mise à jour en place (valeur, `disabled`, nouvelle raison), la vue appelle `racine.actualiserTitre(raison)`.
+    let derniere = raison;
+    racine.actualiserTitre = (r = derniere) => {
+      derniere = r;
+      saisie.title = saisie.disabled && r ? r : (saisie.selectedOptions[0]?.textContent ?? "");
+    };
+    racine.actualiserTitre();
+    saisie.addEventListener("change", () => racine.actualiserTitre());
+  }
 
   const decrit = [];
   if (type === "case") racine.append(saisie, label);
