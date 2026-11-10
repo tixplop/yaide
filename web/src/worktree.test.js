@@ -152,3 +152,23 @@ test("REQ086_AC11_api_recherche_chemins_et_fichiers_sans_worktree", async () => 
   await api.listerDossier("../essai");
   for (const [u] of f.mock.calls) expect(u).not.toContain("worktree=");
 });
+
+test("REQ086_AC11_ouverture_rapide_recherche_et_shell_restent_sur_le_projet", async () => {
+  const urls = [];
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    urls.push(url);
+    return { ok: true, status: 201, json: async () => ({ chemins: [], resultats: [], id: 1, entrees: [] }) };
+  }));
+  const api = await import("./api.js");
+  w.mettreAJour(LISTE);
+  w.choisir("../essai");
+  await api.listerChemins();
+  await api.chercherTexte("x");
+  await api.ouvrirShell();
+  await api.gitEtat();
+  vi.unstubAllGlobals();
+  expect(urls[0]).toBe("/api/chemins");
+  expect(urls[1]).toBe("/api/recherche?q=x");
+  expect(urls[2]).toBe("/api/shells");
+  expect(urls[3]).toContain("worktree=..%2Fessai"); // seules les routes git suivent le choix
+});

@@ -102,7 +102,7 @@ test("REQ009_AC9_l_en_tete_du_projet_est_hors_du_corps_defilant_et_masque_avec_l
   simulerServeur(ETAT_GIT([]));
   const { vue } = monter();
   await attendre();
-  const entete = vue.querySelector(".fichiers-entete");
+  const entete = vue.querySelector(".fichiers-tete");
   expect(vue.querySelector(".cadre-panneau-corps").contains(entete)).toBe(false);
   expect(entete.hidden).toBe(false);
   [...vue.querySelectorAll("[role=tab]")].find((t) => t.getAttribute("aria-label") === "Git").click();
@@ -781,4 +781,60 @@ test("REQ078_AC16_demarrer_en_coupure_bandeau_sans_onglet", async () => {
   [...corpsAgents(vue).querySelectorAll("button")].find((b) => b.textContent === "Démarrer une conversation").click();
   await vi.waitFor(() => expect([...vue.querySelectorAll(".cadre-bandeaux [role=alert]")].some((a) => a.textContent.includes("Réessayez au retour."))).toBe(true));
   expect(vue.querySelectorAll(".agent-corps")).toHaveLength(0);
+});
+
+test("REQ086_AC13_ordre_de_tab_replier_worktree_puis_boutons_de_l_en_tete", async () => {
+  const w = await import("../worktree.js");
+  simulerServeur({ ...ETAT_GIT([]), worktrees: [{ chemin: "", nom: "projet", branche: "main", detachee: false }, { chemin: "../essai", nom: "essai", branche: "essai", detachee: false }] });
+  const { vue } = monter();
+  await attendre();
+  await attendre();
+  const visibles = [...aside(vue).querySelectorAll("button, select")].filter((b) => !b.closest("[hidden]"));
+  expect(visibles.slice(0, 6).map((b) => b.getAttribute("aria-label") ?? b.tagName)).toEqual(["Replier le panneau", "SELECT", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer"]);
+  expect(visibles[1].labels[0].textContent).toBe("Worktree");
+  // Choisir ici : le focus reste sur la liste, l'en-tête prend le nom du worktree.
+  visibles[1].focus();
+  visibles[1].value = "../essai";
+  visibles[1].dispatchEvent(new Event("change", { bubbles: true }));
+  await attendre();
+  await attendre();
+  expect(w.choisi()).toBe("../essai");
+  expect(document.activeElement.tagName).toBe("SELECT");
+  expect(vue.querySelector(".fichiers-projet").textContent).toBe("essai");
+});
+
+test("REQ086_AC6_onglet_modifie_garde_au_changement_de_choix_et_ctrl_s_ecrit_vers_le_worktree", async () => {
+  const w = await import("../worktree.js");
+  const appels = simulerServeur({ ...ETAT_GIT([]), worktrees: [{ chemin: "", nom: "projet", branche: "main", detachee: false }, { chemin: "../essai", nom: "essai", branche: "essai", detachee: false }] });
+  const { vue } = monter();
+  await attendre();
+  await attendre();
+  w.choisir("../essai");
+  await attendre();
+  await attendre();
+  const brut = fetch;
+  const puts = [];
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    if (init?.method === "PUT") {
+      puts.push(decodeURIComponent(url));
+      return { ok: true, status: 200, json: async () => ({ version: "2" }) };
+    }
+    return brut(url, init);
+  }));
+  ligne(vue, "main.rs").click();
+  await attendre();
+  await attendre();
+  vue.querySelector(".zone-code").vue.dispatch({ changes: { from: 0, insert: "X" } });
+  w.choisir("");
+  await attendre();
+  await attendre();
+  const onglet = [...vue.querySelectorAll("[role=tab]")].find((t) => (t.title || t.querySelector("[title]")?.title) === "../essai/main.rs");
+  expect(onglet).toBeDefined();
+  expect(onglet.textContent).toContain("main.rs");
+  expect(onglet.dataset.modifie).toBe("true");
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+  await attendre();
+  await attendre();
+  expect(puts.some((u) => u.includes("chemin=../essai/main.rs"))).toBe(true);
+  expect(appels.length).toBeGreaterThan(0);
 });

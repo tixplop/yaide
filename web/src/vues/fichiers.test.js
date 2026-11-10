@@ -6,9 +6,13 @@ const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
 for (const [, nom, val] of tokens.matchAll(/(--[\w-]+):\s*([^;]+);/g)) document.documentElement.style.setProperty(nom, val.trim());
 
 let vues = [];
-afterEach(() => {
+afterEach(async () => {
   for (const v of vues) v.detruire();
   vues = [];
+  const w = await import("../worktree.js");
+  w.mettreAJour([]);
+  w.choisir("");
+  w.occuper();
   vi.unstubAllGlobals();
   document.body.replaceChildren();
 });
@@ -678,4 +682,193 @@ test("REQ070_AC1_menu_arbre_sans_git", async () => {
   expect(libelles.length).toBeGreaterThan(0);
   expect(libelles.some((l) => l.startsWith("Indexer") || l.startsWith("Commit"))).toBe(false);
   expect(libelles.some((l) => l.startsWith("Renommer"))).toBe(true);
+});
+
+// ---- REQ-086 : worktree choisi ----
+
+const PROJET = { chemin: "", nom: "yaide", branche: "main", detachee: false };
+const ESSAI = { chemin: "../essai", nom: "essai", branche: "essai", detachee: false };
+
+async function montrerWorktree(disque, liste = [PROJET, ESSAI], choix = "../essai") {
+  const w = await import("../worktree.js");
+  w.mettreAJour(liste);
+  w.choisir(choix);
+  const m = await monter(disque, { projet: "yaide", surOuvrir: vi.fn(), estDepot: () => true });
+  const requetes = [];
+  const brut = fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    requetes.push(`${init?.method ?? "GET"} ${decodeURIComponent(url)}`);
+    return brut(url, init);
+  }));
+  return { ...m, w, requetes };
+}
+const dialogue = () => document.querySelector("dialog");
+const saisir = (valeur) => {
+  const s = dialogue().querySelector("input");
+  s.value = valeur;
+  s.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+};
+
+test("REQ086_AC2_AC3_ligne_worktree_liee_arbre_relu_sans_selection_dossiers_propres_a_chaque_worktree", async () => {
+  const disque = { "": [d("src"), f("a.txt")], src: [f("main.rs")], "../essai": [d("lib"), f("e.txt")], "../essai/lib": [f("x.rs")] };
+  const w = await import("../worktree.js");
+  w.mettreAJour([PROJET, ESSAI]);
+  const { vue } = await monter(disque, { projet: "yaide" });
+  const select = vue.entete.querySelector("select");
+  expect([...select.options].map((o) => o.textContent)).toEqual(["yaide (main)", "essai (essai)"]);
+  expect(vue.entete.querySelector("label").textContent).toBe("Worktree");
+  expect(vue.entete.querySelector(".fichiers-projet").textContent).toBe("yaide");
+  ligne(vue, "src").click();
+  await attendre();
+  expect(noms(vue)).toEqual(["src", "src/main.rs", "a.txt"]);
+  // Choisir ici : le choix est celui de worktree.js (donc de la vue Git).
+  select.focus();
+  select.value = "../essai";
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  await attendre();
+  expect(w.choisi()).toBe("../essai");
+  expect(noms(vue)).toEqual(["../essai/lib", "../essai/e.txt"]);
+  expect(vue.entete.querySelector(".fichiers-projet").textContent).toBe("essai");
+  expect(vue.corps.querySelector("[aria-selected=true]")).toBeNull();
+  expect(bouton(vue, "Renommer").disabled).toBe(true);
+  expect(document.activeElement).toBe(vue.entete.querySelector("select"));
+  ligne(vue, "../essai/lib").click();
+  await attendre();
+  expect(noms(vue)).toEqual(["../essai/lib", "../essai/lib/x.rs", "../essai/e.txt"]);
+  // L'inverse : un choix posé ailleurs (vue Git) met la liste et l'arbre à jour, et chaque worktree retrouve ses dossiers.
+  w.choisir("");
+  await attendre();
+  expect(vue.entete.querySelector("select").value).toBe("");
+  expect(noms(vue)).toEqual(["src", "src/main.rs", "a.txt"]);
+  w.choisir("../essai");
+  await attendre();
+  expect(noms(vue)).toEqual(["../essai/lib", "../essai/lib/x.rs", "../essai/e.txt"]);
+  // Disparition : retour au projet, dossiers dépliés d'avant, ligne masquée, focus sur la première ligne.
+  vue.entete.querySelector("select").focus();
+  w.mettreAJour([PROJET]);
+  await attendre();
+  await attendre();
+  expect(w.choisi()).toBe("");
+  expect(noms(vue)).toEqual(["src", "src/main.rs", "a.txt"]);
+  expect(vue.entete.querySelector("select")).toBeNull();
+  expect(document.activeElement).toBe(lignes(vue)[0]);
+});
+
+test("REQ086_AC2_ligne_masquee_avec_un_seul_worktree_et_chargement_apres_200_ms", async () => {
+  const w = await import("../worktree.js");
+  w.mettreAJour([PROJET]);
+  const disque = { "": [f("a.txt")], "../essai": [f("e.txt")] };
+  const { vue } = await monter(disque);
+  expect(vue.entete.querySelector("select")).toBeNull();
+  w.mettreAJour([PROJET, ESSAI]);
+  expect(vue.entete.querySelector("select")).not.toBeNull();
+  let libere;
+  disque.attente = (url) => (url.includes("chemin=..%2Fessai") ? new Promise((r) => (libere = r)) : undefined);
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  w.choisir("../essai");
+  await vi.advanceTimersByTimeAsync(199);
+  expect(vue.corps.textContent).not.toContain("Chargement…");
+  expect(noms(vue)).toEqual(["a.txt"]);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(vue.corps.textContent).toContain("Chargement…");
+  vi.useRealTimers();
+  libere();
+  await attendre();
+  expect(noms(vue)).toEqual(["../essai/e.txt"]);
+});
+
+test("REQ086_AC4_ouverture_depuis_l_arbre_chemin_depuis_le_projet_et_statut_par_chemin", async () => {
+  const disque = { "../essai": [d("src")], "../essai/src": [f("main.rs")] };
+  const { vue, surOuvrir } = await montrerWorktree(disque);
+  vue.definirStatuts(new Map([["../essai/src/main.rs", { lettre: "M", mot: "modifié" }]]));
+  ligne(vue, "../essai/src").click();
+  await attendre();
+  expect(ligne(vue, "../essai/src/main.rs").querySelector(".liste-statut").textContent).toBe("M");
+  const appels = [];
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    appels.push(url);
+    return { ok: true, status: 200, text: async () => "fn main() {}", headers: { get: () => "1" } };
+  }));
+  ligne(vue, "../essai/src/main.rs").click();
+  await attendre();
+  expect(surOuvrir).toHaveBeenCalledWith(expect.objectContaining({ chemin: "../essai/src/main.rs", contenu: "fn main() {}" }));
+  expect(appels[0]).toContain("chemin=..%2Fessai%2Fsrc%2Fmain.rs");
+});
+
+test("REQ086_AC5_creation_chemins_depuis_le_worktree_et_sortie_refusee_sans_requete", async () => {
+  const disque = { "../essai": [d("src")], "../essai/src": [f("main.rs")] };
+  const { vue, requetes } = await montrerWorktree(disque);
+  bouton(vue, "Nouveau fichier").click();
+  expect(dialogue().querySelector("input").value).toBe("");
+  const avant = requetes.length;
+  saisir("../projet/notes.md");
+  await attendre();
+  expect(dialogue().textContent).toContain("Ce chemin sort du worktree essai.");
+  saisir("src/../../projet/notes.md");
+  await attendre();
+  expect(dialogue().textContent).toContain("Ce chemin sort du worktree essai.");
+  expect(requetes.length).toBe(avant);
+  saisir("src/a.txt");
+  await attendre();
+  await attendre();
+  expect(requetes.some((r) => r.startsWith("POST /api/fichiers/creer?chemin=../essai/src/a.txt&type=fichier"))).toBe(true);
+});
+
+test("REQ086_AC5_renommer_supprimer_deplacer_indexer_avec_le_chemin_complet_et_messages_depuis_le_worktree", async () => {
+  const disque = { "../essai": [d("src"), f("b.txt")], "../essai/src": [f("main.rs")] };
+  const { vue, requetes, dire } = await montrerWorktree(disque);
+  ligne(vue, "../essai/src").click();
+  await attendre();
+  ligne(vue, "../essai/src/main.rs").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+  const menu = document.querySelector("[role=menu]");
+  expect(menu.getAttribute("aria-label")).toBe("Actions sur src/main.rs");
+  [...menu.querySelectorAll("[role=menuitem]")].find((i) => i.textContent.startsWith("Indexer")).click();
+  await attendre();
+  await attendre();
+  expect(requetes.some((r) => r.startsWith("POST /api/git/indexer?chemin=../essai/src/main.rs"))).toBe(true);
+  expect(dire).toHaveBeenCalledWith(expect.objectContaining({ texte: "src/main.rs est indexé." }));
+  // Renommer : le dialogue montre le chemin depuis le worktree.
+  ligne(vue, "../essai/src/main.rs").click();
+  bouton(vue, "Renommer").click();
+  expect(dialogue().querySelector("input").value).toBe("src/main.rs");
+  saisir("src/lib.rs");
+  await attendre();
+  await attendre();
+  expect(requetes.some((r) => r.includes("/api/fichiers/renommer?de=../essai/src/main.rs&vers=../essai/src/lib.rs"))).toBe(true);
+  // Glisser b.txt dans src.
+  await glisser(vue, "../essai/b.txt", "../essai/src");
+  expect(requetes.some((r) => r.includes("renommer?de=../essai/b.txt&vers=../essai/src/b.txt"))).toBe(true);
+  // Supprimer.
+  ligne(vue, "../essai/src").click();
+  bouton(vue, "Supprimer").click();
+  [...dialogue().querySelectorAll("button")].find((b) => b.textContent === "Supprimer").click();
+  await attendre();
+  await attendre();
+  expect(requetes.some((r) => r.startsWith("DELETE /api/fichier?chemin=../essai/src"))).toBe(true);
+});
+
+test("REQ086_AC10_worktree_range_hors_du_projet_a_plusieurs_niveaux", async () => {
+  const profond = { chemin: "../../essai/app", nom: "app", branche: "essai", detachee: false };
+  const disque = { "../../essai/app": [f("x.rs")] };
+  const { vue, requetes } = await montrerWorktree(disque, [PROJET, profond], "../../essai/app");
+  expect(noms(vue)).toEqual(["../../essai/app/x.rs"]);
+  expect(vue.entete.querySelector(".fichiers-projet").textContent).toBe("app");
+  bouton(vue, "Nouveau fichier").click();
+  saisir("n.rs");
+  await attendre();
+  await attendre();
+  expect(requetes.some((r) => r.includes("creer?chemin=../../essai/app/n.rs"))).toBe(true);
+  bouton(vue, "Nouveau fichier").click();
+  saisir("../x");
+  await attendre();
+  expect(dialogue().textContent).toContain("Ce chemin sort du worktree app.");
+});
+
+test("REQ086_AC17_pendant_un_pull_la_liste_est_desactivee_avec_sa_raison", async () => {
+  const { vue, w } = await montrerWorktree({ "": [f("a.txt")], "../essai": [] }, [PROJET, ESSAI], "");
+  vue.entete.querySelector("select").focus();
+  w.occuper("Attendez la fin du pull.");
+  const apres = vue.entete.querySelector("select");
+  expect(apres.disabled).toBe(true);
+  expect(apres.title).toBe("Attendez la fin du pull.");
 });

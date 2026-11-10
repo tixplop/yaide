@@ -1352,3 +1352,26 @@ test("REQ078_sous_agent_opencode_reste_un_onglet_opencode", async () => {
   const g = await derniereGarde();
   expect(g.liste).toEqual([ocGarde("s", 1), saGarde("sa", "explore", "Chercher"), agGarde(1), agGarde(2)]);
 });
+
+// ---- REQ-086 : fichier d'un autre worktree ----
+
+test("REQ086_AC4_onglet_d_un_autre_worktree_fil_sans_points_info_bulle_lettre_et_ecriture", async () => {
+  const appels = ecritures();
+  const { e } = monter();
+  e.ouvrir({ chemin: "src/main.rs", contenu: "fn a() {}", version: "1" });
+  e.ouvrir({ chemin: "../essai/src/main.rs", contenu: "fn b() {}", version: "1" });
+  expect(e.fil.textContent).toBe("essaisrcmain.rs");
+  expect(e.fil.querySelectorAll("svg[data-icone=chevron]").length).toBe(2);
+  const tabs = [...e.barre.querySelectorAll("[role=tab]")];
+  expect(tabs.map((t) => t.title || t.querySelector("[title]")?.title)).toEqual(["src/main.rs", "../essai/src/main.rs"]);
+  // Statut du worktree choisi : seul l'onglet de ce worktree prend la lettre.
+  e.definirStatuts(new Map([["../essai/src/main.rs", { lettre: "M", mot: "modifié" }]]));
+  const labels = [...e.barre.querySelectorAll("[role=tab]")].map((t) => t.getAttribute("aria-label"));
+  expect(labels[0]).not.toContain("modifié");
+  expect(labels[1]).toContain("modifié");
+  // L'onglet modifié reste ouvert et Ctrl+S écrit vers ../essai/…
+  e.code.querySelector(".zone-code:not([hidden])").vue.dispatch({ changes: { from: 0, insert: "X" } });
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(appels).toEqual(["../essai/src/main.rs"]);
+});

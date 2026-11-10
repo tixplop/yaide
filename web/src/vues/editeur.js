@@ -284,7 +284,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       g.fil.replaceChildren();
       return;
     }
-    const segments = o.chemin.split("/");
+    const segments = o.chemin.split("/").filter((nom, i, tous) => nom !== ".." || tous.slice(0, i).some((x) => x !== "..")); // un fichier d'un autre worktree : sans les « .. » de tête
     g.fil.replaceChildren(
       ...segments.flatMap((nom, i) => {
         const e = document.createElement("span");

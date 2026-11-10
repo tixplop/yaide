@@ -6,6 +6,7 @@ import { indication } from "../ui/indication.js";
 import { liste } from "../ui/liste.js";
 import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
+import * as worktree from "../worktree.js";
 
 // Préfixe impossible dans un chemin relatif : marque les lignes qui ne sont pas des fichiers.
 const FACTICE = "\0";
@@ -36,14 +37,23 @@ function texteErreur(r) {
 export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estDepot = () => false, surCommit = () => {}, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {} }) {
   const corps = document.createElement("div");
   corps.className = "fichiers";
-  const entete = document.createElement("div");
-  entete.className = "fichiers-entete";
+  const entete = document.createElement("div"); // ligne « Worktree » (REQ-086) puis ligne du projet
+  entete.className = "fichiers-tete";
+  const zoneWorktree = document.createElement("div");
+  zoneWorktree.hidden = true;
+  const ligneProjet = document.createElement("div");
+  ligneProjet.className = "fichiers-entete";
+  entete.append(zoneWorktree, ligneProjet);
   const zoneArbre = document.createElement("div");
   zoneArbre.className = "fichiers-arbre";
   corps.append(zoneArbre);
 
-  const ouverts = new Set();
-  const dossiers = new Map(); // chemin -> { etat: "charge" | "ok" | "erreur", entrees, raison, lent }
+  // Chaque worktree garde les dossiers qu'on y a dépliés, jusqu'au rechargement de la page.
+  const ouvertsParWorktree = new Map();
+  let vu = worktree.choisi(); // le choix que montre l'arbre
+  let ouverts = new Set();
+  ouvertsParWorktree.set(vu, ouverts);
+  let dossiers = new Map(); // chemin depuis le projet -> { etat: "charge" | "ok" | "erreur", entrees, raison, lent } ; la racine est `vu`
   const types = new Map(); // chemin -> vrai si dossier
   let selection = []; // chemins sélectionnés, dans l'ordre de l'arbre
   let ancre = null; // départ de Maj+clic
@@ -66,7 +76,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   nomProjet.className = "fichiers-projet";
   nomProjet.textContent = projet;
   nomProjet.title = projet;
-  entete.append(nomProjet, bFichier.enveloppe, bDossier.enveloppe, bRenommer.enveloppe, bSupprimer.enveloppe);
+  ligneProjet.append(nomProjet, bFichier.enveloppe, bDossier.enveloppe, bRenommer.enveloppe, bSupprimer.enveloppe);
 
   /** La ligne sélectionnée s'il n'y en a qu'une, sinon `null`. */
   const seule = () => (selection.length === 1 ? selection[0] : null);
@@ -135,17 +145,21 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     const focalisee = focaliser ? undefined : document.activeElement?.closest?.("[data-chemin]")?.dataset.chemin;
     const defile = zoneArbre.closest(".cadre-panneau-corps") ?? zoneArbre; // le conteneur qui défile
     const defilement = defile.scrollTop;
-    const racine = dossiers.get("");
-    if (!racine || racine.etat === "charge") return zoneArbre.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
-    if (racine.etat === "erreur") {
-      return zoneArbre.replaceChildren(message({ texte: `Impossible de lire ce dossier : ${racine.raison}.`, variante: "erreur" }));
+    const base = dossiers.get(vu);
+    if (!base || base.etat === "charge") {
+      // Après un changement de worktree, l'ancien arbre reste affiché jusqu'à « Chargement… » (200 ms).
+      if (!base || base.lent || zoneArbre.childElementCount === 0) zoneArbre.replaceChildren(indication({ texte: "Chargement…", variante: "chargement" }));
+      return;
     }
-    if (racine.entrees.length === 0) {
+    if (base.etat === "erreur") {
+      return zoneArbre.replaceChildren(message({ texte: `Impossible de lire ce dossier : ${base.raison}.`, variante: "erreur" }));
+    }
+    if (base.entrees.length === 0) {
       const nouveau = bouton({ libelle: "Nouveau fichier" });
       nouveau.addEventListener("click", () => ouvrirCreation(false));
       return zoneArbre.replaceChildren(indication({ texte: "Dossier vide.", action: nouveau }));
     }
-    const l = lignes("", 0, []);
+    const l = lignes(vu, 0, []);
     const arbre = liste({
       variante: "arbre",
       lignes: l,
@@ -184,21 +198,22 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
 
   async function charger(chemin) {
     generation++;
+    const sac = dossiers;
     const avant = dossiers.get(chemin);
     if (!avant?.entrees) {
       const d = { etat: "charge", lent: false };
       dossiers.set(chemin, d);
       setTimeout(() => {
-        if (d.etat === "charge" && dossiers.get(chemin) === d) {
+        if (d.etat === "charge" && sac.get(chemin) === d) {
           d.lent = true;
           afficher();
         }
       }, 200);
     }
     const r = await listerDossier(chemin);
-    if (detruit) return;
+    if (detruit || sac !== dossiers) return;
     if (r.entrees) dossiers.set(chemin, { etat: "ok", entrees: r.entrees });
-    else if (r.cause === "introuvable" && chemin !== "") {
+    else if (r.cause === "introuvable" && chemin !== vu) {
       ouverts.delete(chemin);
       dossiers.delete(chemin);
     } else if (!(r.coupure && avant?.entrees)) dossiers.set(chemin, { etat: "erreur", raison: raisonDe(r) });
@@ -206,32 +221,33 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   }
 
   async function rafraichir() {
-    await Promise.all(["", ...ouverts].map(charger).concat(lireEtat()));
+    await Promise.all([vu, ...ouverts].map(charger).concat(lireEtat()));
     afficher();
   }
 
   /** Relecture silencieuse (toutes les 3 s) des dossiers déjà lus : ni message, ni « Chargement… », rien de redessiné sans changement. */
   async function relire() {
-    if (!dossiers.get("")?.entrees) return;
+    if (!dossiers.get(vu)?.entrees) return;
     if (enGlisse || deplacement) {
       relireEnAttente = true;
       return;
     }
     const g = generation;
-    const cibles = ["", ...ouverts].filter((c) => dossiers.get(c)?.entrees);
+    const sac = dossiers;
+    const cibles = [vu, ...ouverts].filter((c) => dossiers.get(c)?.entrees);
     const reponses = await Promise.all(cibles.map((c) => listerDossier(c)));
-    if (detruit || g !== generation) return;
-    const avant = lignes("", 0, []);
+    if (detruit || g !== generation || sac !== dossiers) return;
+    const avant = lignes(vu, 0, []);
     const cleAvant = JSON.stringify(avant);
     cibles.forEach((c, i) => {
       const r = reponses[i];
       if (r.entrees) dossiers.set(c, { etat: "ok", entrees: r.entrees });
-      else if (r.cause === "introuvable" && c !== "") {
+      else if (r.cause === "introuvable" && c !== vu) {
         ouverts.delete(c);
         dossiers.delete(c);
       }
     });
-    const apres = lignes("", 0, []);
+    const apres = lignes(vu, 0, []);
     if (JSON.stringify(apres) === cleAvant) return;
     const ids = new Set(apres.map((l) => l.id));
     const focalisee = zoneArbre.contains(document.activeElement) ? document.activeElement.closest?.("[data-chemin]")?.dataset.chemin : undefined;
@@ -375,7 +391,8 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   // ---- Glisser-déposer ----
 
   /** Un dépôt : `aDeplacer` dans l'ordre de l'arbre, `cible` le dossier ("" = racine), `saisie` la ligne saisie. */
-  async function deposer(aDeplacer, cible = "", saisie) {
+  async function deposer(aDeplacer, dossierCible = "", saisie) {
+    const cible = dossierCible || vu; // la racine de l'arbre est celle du worktree choisi
     generation++;
     enGlisse = false;
     deplacement = true;
@@ -395,7 +412,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
           break;
         }
         if (r.cause) {
-          const raison = r.cause === "existe" ? `ce nom est déjà pris ${cible ? `dans ${cible}/` : "à la racine du projet"}` : sansPoint(r.message);
+          const raison = r.cause === "existe" ? `ce nom est déjà pris ${cible !== vu ? `dans ${worktree.dansWorktree(cible)}/` : "à la racine du projet"}` : sansPoint(r.message);
           refus.push({ nom: `${nomDe(de)}${types.get(de) ? "/" : ""}`, raison, existe: r.cause === "existe" });
           continue;
         }
@@ -412,7 +429,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     const premiere = apres.size > 0 ? apres.values().next().value : saisie;
     ancre = derniere = premiere;
     majBoutons();
-    if (apres.size > 0 && cible) ouverts.add(cible);
+    if (apres.size > 0 && cible !== vu) ouverts.add(cible);
     if (coupure) messageDepot = dire({ texte: TEXTE_COUPURE, variante: "alerte", fermable: true }) ?? null;
     else if (refus.length === 1) {
       const [{ nom, raison, existe }] = refus;
@@ -433,11 +450,11 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     const vide = id === undefined;
     const dossier = !vide && Boolean(types.get(id));
     if (!vide) choisir(id);
-    const base = vide ? "" : dossier ? id : dossierDe(id);
+    const base = vide ? vu : dossier ? id : dossierDe(id);
     const depot = estDepot();
     const commit = { libelle: "Commit", surChoix: surCommit };
     menu({
-      nom: vide ? "Actions sur le projet" : `Actions sur ${id}${dossier ? "/" : ""}`,
+      nom: vide ? "Actions sur le projet" : `Actions sur ${worktree.dansWorktree(id)}${dossier ? "/" : ""}`,
       position,
       groupes: [
         [
@@ -464,7 +481,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     if (r.coupure) dire({ texte: TEXTE_COUPURE, variante: "alerte", fermable: true });
     else if (r.cause) dire({ texte: "Git a refusé.", detail: r.message, variante: "erreur", fermable: true });
     else {
-      dire({ texte: `${chemin}${dossier ? "/" : ""} est indexé.`, variante: "succes", fermable: true });
+      dire({ texte: `${worktree.dansWorktree(chemin)}${dossier ? "/" : ""} est indexé.`, variante: "succes", fermable: true });
       await lireEtat();
       if (detruit) return;
     }
@@ -474,8 +491,20 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   // ---- Dialogues ----
 
   function montrerChemin(chemin) {
-    const parts = chemin.split("/");
-    for (let i = 1; i < parts.length; i++) ouverts.add(parts.slice(0, i).join("/"));
+    const parts = worktree.dansWorktree(chemin).split("/");
+    for (let i = 1; i < parts.length; i++) ouverts.add(worktree.depuisWorktree(parts.slice(0, i).join("/")));
+  }
+
+  /** Texte d'erreur si le chemin tapé (depuis le dossier du worktree choisi) en sort, sinon `undefined`. */
+  function sortDuWorktree(chemin) {
+    if (vu === "") return undefined;
+    let profondeur = 0;
+    for (const segment of chemin.split("/")) {
+      if (segment === "..") profondeur--;
+      else if (segment !== "" && segment !== ".") profondeur++;
+      if (profondeur < 0) return `Ce chemin sort du worktree ${worktree.nomChoisi()}.`;
+    }
+    return undefined;
   }
 
   /** Dialogue à un champ « chemin ». `envoyer(chemin)` rend `{}` si réussi, sinon l'erreur du serveur. */
@@ -507,8 +536,10 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     async function valider() {
       const v = nettoyer(saisie.value);
       if (!v) return refuser("Indiquez un chemin.", saisie.value);
+      const sortie = sortDuWorktree(v);
+      if (sortie) return refuser(sortie, saisie.value);
       dlg.enCours(true);
-      const r = await envoyer(v, dlg);
+      const r = await envoyer(worktree.depuisWorktree(v), dlg);
       if (detruit) return;
       dlg.enCours(false);
       if (r.fait) return;
@@ -534,12 +565,13 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
 
   function ouvrirCreation(dossier, depuisMenu) {
     origineArbre = false;
-    let base = depuisMenu ?? "";
+    let base = depuisMenu ?? vu;
     if (depuisMenu === undefined && selection.length > 0 && derniere !== null) base = types.get(derniere) ? derniere : dossierDe(derniere);
+    const rel = worktree.dansWorktree(base);
     formulaire({
       titre: dossier ? "Nouveau dossier" : "Nouveau fichier",
       libelle: "Chemin",
-      valeur: base ? `${base}/` : "",
+      valeur: rel ? `${rel}/` : "",
       libelleBouton: "Créer",
       async envoyer(chemin, dlg) {
         const r = await creerChemin(chemin, dossier ? "dossier" : "fichier");
@@ -568,7 +600,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     formulaire({
       titre: "Renommer ou déplacer",
       libelle: "Nouveau chemin",
-      valeur: de,
+      valeur: worktree.dansWorktree(de),
       libelleBouton: "Valider",
       selectionNom: true,
       async envoyer(vers, dlg) {
@@ -625,11 +657,70 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     dlg.ouvrir();
   }
 
+  // ---- Worktree (REQ-086) ----
+
+  function afficherWorktree() {
+    const liste = worktree.lister();
+    const raison = worktree.occupe();
+    zoneWorktree.hidden = liste.length < 2;
+    const cle = JSON.stringify([liste, worktree.choisi(), raison]);
+    if (cle === cleWorktree) return;
+    cleWorktree = cle;
+    if (liste.length < 2) return zoneWorktree.replaceChildren();
+    const avait = zoneWorktree.contains(document.activeElement);
+    const c = champ({
+      libelle: "Worktree",
+      type: "liste",
+      presentation: "barre",
+      ligne: true,
+      options: liste.map((w) => ({ valeur: w.chemin, texte: worktree.texte(w) })),
+      valeur: worktree.choisi(),
+      desactive: Boolean(raison),
+      raison,
+    });
+    const select = c.querySelector("select");
+    select.addEventListener("change", () => worktree.choisir(select.value));
+    zoneWorktree.replaceChildren(c);
+    if (avait) select.focus({ preventScroll: true });
+  }
+  let cleWorktree = null;
+
+  function nommerProjet() {
+    const nom = vu === "" ? projet : (worktree.nomChoisi() ?? nomDe(vu));
+    nomProjet.textContent = nom;
+    nomProjet.title = nom;
+  }
+
+  const desabonner = worktree.abonner(({ disparu }) => {
+    if (detruit) return;
+    const f = document.activeElement;
+    const surListeOuArbre = zoneWorktree.contains(f) || zoneArbre.contains(f); // avant que la liste soit refaite
+    afficherWorktree();
+    if (worktree.choisi() === vu) return;
+    const focusPerdu = disparu && surListeOuArbre;
+    vu = worktree.choisi();
+    if (!ouvertsParWorktree.has(vu)) ouvertsParWorktree.set(vu, new Set());
+    ouverts = ouvertsParWorktree.get(vu);
+    dossiers = new Map();
+    types.clear();
+    selection = [];
+    ancre = derniere = null;
+    generation++;
+    majBoutons();
+    nommerProjet();
+    rafraichir().then(() => {
+      if (detruit || !focusPerdu) return;
+      (zoneArbre.querySelector("[role=treeitem][tabindex='0']") ?? bFichier).focus();
+    });
+  });
+
   bFichier.addEventListener("click", () => ouvrirCreation(false));
   bDossier.addEventListener("click", () => ouvrirCreation(true));
   bRenommer.addEventListener("click", ouvrirRenommage);
   bSupprimer.addEventListener("click", ouvrirSuppression);
   majBoutons();
+  nommerProjet();
+  afficherWorktree();
   rafraichir();
 
   return {
@@ -652,6 +743,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     },
     detruire() {
       detruit = true;
+      desabonner();
     },
   };
 }
