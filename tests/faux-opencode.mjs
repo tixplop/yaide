@@ -7,6 +7,8 @@
 // Avec FAUX_OPENCODE_ETAT (fichier JSON des sessions, gardé entre deux lancements), il rejoue un scénario relevé
 // sur le vrai opencode (`web/src/opencode-captures/`) à chaque message : FAUX_OPENCODE_SCENARIO le choisit
 // (`[scenario:xxx]` dans le message l'emporte), FAUX_OPENCODE_PAS (ms) espace les événements.
+// FAUX_OPENCODE_RETENIR=<type d'événement> : au premier tour, après le premier événement de ce type, attend que
+// le fichier `<FAUX_OPENCODE_ETAT sans extension>.suite` existe.
 // Une autorisation ou une question en attente bloque la suite jusqu'à sa réponse, « interrupt » arrête un tour
 // interrompu dans le relevé, et l'outil `write` écrit son fichier dans le dossier du projet.
 import http from "node:http";
@@ -18,6 +20,9 @@ import { spawn } from "node:child_process";
 const CAPTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "web", "src", "opencode-captures");
 const ETAT = process.env.FAUX_OPENCODE_ETAT;
 const PAS = Number(process.env.FAUX_OPENCODE_PAS ?? 25);
+const RETENIR = process.env.FAUX_OPENCODE_RETENIR;
+const SUITE = ETAT ? `${ETAT.replace(/\.[^./]*$/, "")}.suite` : "";
+let retenu = false;
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const json = (res, statut, corps) => res.writeHead(statut, { "content-type": "application/json" }).end(JSON.stringify(corps));
 
@@ -205,6 +210,11 @@ async function rejouer(racine, nom, texte) {
     }
     garder();
     diffuser(ev);
+    // Retenue (FAUX_OPENCODE_RETENIR=<type>) : au premier tour, après le premier événement de ce type, attend le fichier `.suite`.
+    if (RETENIR && tours === 1 && ev.type === RETENIR && !retenu) {
+      retenu = true;
+      while (!fs.existsSync(SUITE)) await pause(20);
+    }
   }
 }
 

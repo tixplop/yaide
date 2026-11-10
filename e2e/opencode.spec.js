@@ -22,10 +22,10 @@ test.afterEach(async () => {
  * Dossier d'un faux `opencode` qui rejoue `scenario`. Ses sessions vivent dans `etat.json` (elles survivent à un
  * redémarrage de Yaide) ; le fichier `casse` fait échouer son prochain `opencode serve`.
  */
-function fauxOpencode(scenario, pas) {
+function fauxOpencode(scenario, pas, retenir) {
   const bin = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "faux-opencode-"));
   const script = `#!/bin/sh
-export FAUX_OPENCODE_ETAT='${bin}/etat.json' FAUX_OPENCODE_SCENARIO='${scenario}' FAUX_OPENCODE_TEMOIN='${bin}/temoin'${pas ? ` FAUX_OPENCODE_PAS='${pas}'` : ""}
+export FAUX_OPENCODE_ETAT='${bin}/etat.json' FAUX_OPENCODE_SCENARIO='${scenario}' FAUX_OPENCODE_TEMOIN='${bin}/temoin'${pas ? ` FAUX_OPENCODE_PAS='${pas}'` : ""}${retenir ? ` FAUX_OPENCODE_RETENIR='${retenir}'` : ""}
 [ -e '${bin}/casse' ] && export FAUX_OPENCODE_ECHEC=1
 exec '${process.execPath}' '${FAUX}' "$@"
 `;
@@ -527,7 +527,7 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
 });
 
 test("REQ077_parcours_42_44_arrivee_rechargement_nouvel_onglet", async ({ page, context }) => {
-  const opencode = fauxOpencode("markdown", 500);
+  const opencode = fauxOpencode("markdown", 0, "session.text.delta");
   yaide = await lancerYaide({ opencode, claude: fauxClaude() });
   relais = await lancerRelais(yaide.port);
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -548,6 +548,7 @@ test("REQ077_parcours_42_44_arrivee_rechargement_nouvel_onglet", async ({ page, 
   await expect(reponse).toContainText("| Nom | Valeur |", { timeout: 20000 });
   await expect(reponse.locator("table")).toHaveCount(0);
   await expect(champ(page)).toBeFocused();
+  fs.writeFileSync(path.join(opencode, "etat.suite"), "");
   await expect(reponse.locator("table")).toHaveCount(1);
   await expect(reponse.locator("tbody tr")).toHaveCount(2);
   await expect(champ(page)).toBeFocused();
@@ -670,7 +671,7 @@ test("REQ072_AC31_AC32_bords_alignes_1200", async ({ page, browserName }) => {
 
 test("REQ084_parcours_55_raisonnement_opencode", async ({ page }) => {
   // P-055 : AC-084-1, AC-084-3, AC-084-7.
-  const opencode = fauxOpencode("texte", 300);
+  const opencode = fauxOpencode("texte", 0, "session.reasoning.delta");
   yaide = await lancerYaide({ opencode, claude: fauxClaude() });
   relais = await lancerRelais(yaide.port);
   await page.setViewportSize({ width: 1600, height: 900 });
@@ -690,6 +691,7 @@ test("REQ084_parcours_55_raisonnement_opencode", async ({ page }) => {
   await expect(conversation.locator(".ya-raison-zone")).toBeVisible();
   await expect(conversation.locator(".ya-raison-zone")).toContainText("Je réfléchis à la réponse.");
   // La suite arrive : le focus reste sur le bouton.
+  fs.writeFileSync(path.join(opencode, "etat.suite"), "");
   await expect(raisons).toBeFocused();
   await expect(conversation.locator(".ya-raison-zone")).toHaveCount(1);
   await expect(conversation).toContainText("deux");
