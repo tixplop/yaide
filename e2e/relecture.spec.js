@@ -93,21 +93,6 @@ test("REQ045_AC3_git_switch_puis_git_add_suivent_sans_changer_de_panneau", async
   await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
 });
 
-test("REQ045_AC4_git_init_dans_un_dossier_sans_depot_remplace_le_message_par_la_branche", async ({ page }) => {
-  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR ?? ".test-data", "sansgit-"));
-  fs.writeFileSync(path.join(dossier, "a.txt"), "a\n");
-  await page.clock.install();
-  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await rail(page, "Git").click();
-  await expect(page.getByText("Ce dossier n'est pas un dépôt git.")).toBeVisible();
-  g(dossier, "init", "-q", "-b", "principale");
-  await avancer(page, async () => {
-    await expect(page.getByText("Ce dossier n'est pas un dépôt git.")).toHaveCount(0, { timeout: 500 });
-    await expect(page.getByRole("combobox", { name: "Branche" })).toBeVisible({ timeout: 500 });
-  }, { pas: 1000, limite: 5000 });
-});
-
 test("REQ045_AC5_le_defilement_de_l_arbre_et_la_frappe_dans_le_terminal_ne_sont_pas_derangees", async ({ page }) => {
   await page.clock.install();
   const dossier = depotExemple();

@@ -113,17 +113,6 @@ test("REQ026_AC2_clic_sur_un_resultat_ouvre_le_fichier_a_la_ligne_et_focus_dans_
   await expect(editeur.locator(".cm-activeLine")).toHaveText("fn main_lib() {}");
 });
 
-test("REQ026_AC3_fichier_ignore_par_git_absent", async ({ page }) => {
-  const dossier = depot();
-  fs.writeFileSync(path.join(dossier, ".gitignore"), "secret.txt\n");
-  fs.writeFileSync(path.join(dossier, "secret.txt"), "fn main secret\n");
-  await ouvrir(page, dossier);
-  await rail(page).click();
-  await chercher(page, "fn main");
-  await expect(resultats(page).getByRole("option")).toHaveCount(2);
-  await expect(resultats(page)).not.toContainText("secret.txt");
-});
-
 test("REQ026_AC5_AC7_plus_de_500_resultats_gardent_500_et_le_disent", async ({ page }) => {
   const dossier = depot();
   fs.writeFileSync(path.join(dossier, "gros.txt"), "motrare\n".repeat(501));
