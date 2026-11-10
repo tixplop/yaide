@@ -293,8 +293,8 @@ test("REQ072_parcours_37_question_erreur_coupure_a_800_par_480", async ({ page }
 
   // Un tour long coupé en route : au retour, la conversation reprend en direct (AC-072-10).
   await envoyer(page, "[scenario:interruption] Réessaie.");
-  await expect(page.getByRole("button", { name: "Arrêter" })).toBeVisible();
-  await expect(page.getByText("morceau 4")).toBeVisible();
+  await avancer(page, () => expect(page.getByRole("button", { name: "Arrêter" })).toBeVisible({ timeout: 300 }));
+  await avancer(page, () => expect(page.getByText("morceau 4")).toBeVisible({ timeout: 300 }));
   await couper();
   await retablir();
   const arreter = page.getByRole("button", { name: "Arrêter" });
@@ -527,7 +527,7 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
 });
 
 test("REQ077_parcours_42_44_arrivee_rechargement_nouvel_onglet", async ({ page, context }) => {
-  const opencode = fauxOpencode("markdown", 500);
+  const opencode = fauxOpencode("markdown", 250);
   yaide = await lancerYaide({ opencode, claude: fauxClaude() });
   relais = await lancerRelais(yaide.port);
   await page.setViewportSize({ width: 1280, height: 800 });

@@ -23,6 +23,10 @@ const taper = async (page, commande) => {
   await page.keyboard.type(commande);
   await page.keyboard.press("Enter");
 };
+const effacer = async (page) => {
+  await taper(page, "clear");
+  await expect.poll(async () => (await ecran(page).locator("> div").allInnerTexts()).some((l) => /^\d+ \d+\s*$/.test(l))).toBe(false);
+};
 const onglets = (page) => page.getByRole("tablist", { name: "Shells" }).getByRole("tab");
 
 test("REQ019_AC1_aucun_shell_a_l_ouverture_puis_deux_avec_leur_session", async ({ page }) => {
@@ -55,77 +59,143 @@ test("REQ019_AC9_apres_un_redemarrage_le_message_s_affiche_et_aucun_shell_n_est_
   expect((await page.evaluate(() => fetch("/api/shells").then((r) => r.json()))).shells).toEqual([]);
 });
 
-test("REQ019_AC5_noms_des_onglets_et_focus_dans_le_terminal", async ({ page }) => {
+test("REQ019_AC5_REQ041_AC1_AC2_AC3_AC5_AC8_AC9_noms_focus_barre_et_croix_de_shell_2", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
-  const focusDansTerminal = () => page.evaluate(() => document.activeElement?.classList.contains("xterm-helper-textarea"));
-  await page.getByRole("button", { name: "Nouveau shell" }).click();
-  await expect.poll(focusDansTerminal).toBe(true);
-  await expect(page.getByRole("tab", { name: "shell 2" })).toBeVisible();
-  await page.getByRole("button", { name: "Déconnexion" }).focus();
-  await page.getByRole("tab", { name: "shell 1" }).click();
-  await expect.poll(focusDansTerminal).toBe(true);
-  await expect(page.locator(".terminal-zone:visible")).toHaveAttribute("aria-label", "Shell 1");
+  await test.step("REQ019_AC5_noms_des_onglets_et_focus_dans_le_terminal", async () => {
+    const focusDansTerminal = () => page.evaluate(() => document.activeElement?.classList.contains("xterm-helper-textarea"));
+    await page.getByRole("button", { name: "Nouveau shell" }).click();
+    await expect.poll(focusDansTerminal).toBe(true);
+    await expect(page.getByRole("tab", { name: "shell 2" })).toBeVisible();
+    await page.getByRole("button", { name: "Déconnexion" }).focus();
+    await page.getByRole("tab", { name: "shell 1" }).click();
+    await expect.poll(focusDansTerminal).toBe(true);
+    await expect(page.locator(".terminal-zone:visible")).toHaveAttribute("aria-label", "Shell 1");
+  });
+  await test.step("REQ041_AC8_AC9_presentation_de_la_barre_et_de_la_croix", async () => {
+    const barre = page.getByRole("tablist", { name: "Shells" });
+    await expect(barre).toHaveClass(/ya-term-tabs/);
+    await expect(barre).not.toHaveClass(/ya-tabs/);
+    expect((await barre.boundingBox()).height).toBe(30);
+    expect(await barre.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(await page.evaluate(() => {
+      const t = document.createElement("div");
+      t.style.backgroundColor = "var(--bg-000)";
+      document.body.append(t);
+      const c = getComputedStyle(t).backgroundColor;
+      t.remove();
+      return c;
+    }));
+    const tab = page.getByRole("tab", { name: "shell 1", exact: true });
+    expect((await tab.boundingBox()).height).toBe(22);
+    const icone = await tab.locator("svg").first().boundingBox();
+    expect([icone.width, icone.height]).toEqual([14, 14]);
+    const x = await croix(page, 2).boundingBox();
+    expect(x.width).toBeGreaterThanOrEqual(18);
+    expect(x.height).toBeGreaterThanOrEqual(18);
+    await expect(croix(page, 2)).toHaveAttribute("tabindex", "-1");
+    await expect(croix(page, 2)).toHaveText("");
+    await croix(page, 2).hover();
+    await expect(page.getByRole("tooltip", { name: "Fermer shell 2" })).toBeVisible();
+  });
+  await test.step("REQ041_AC1_AC2_AC3_AC5_croix_de_shell_2_depuis_shell_1_actif", async () => {
+    await page.getByRole("tab", { name: "shell 2", exact: true }).click();
+    await taper(page, "sleep 300 & echo PID=$! FIN$((1+1))");
+    await expect(ecran(page)).toContainText("FIN2");
+    const pid = Number((await ecran(page).innerText()).match(/PID=(\d+) FIN2/)[1]);
+    await page.getByRole("tab", { name: "shell 1", exact: true }).click();
+    await estActif(page, 1);
+    for (const n of [1, 2]) expect(await croix(page, n).evaluate((e) => getComputedStyle(e.closest(".bouton-enveloppe") ?? e).opacity)).toBe("1");
+    await croix(page, 2).click();
+    const dlg = dialogue(page, "Fermer shell 2 ?");
+    await expect(dlg).toBeVisible();
+    await estActif(page, 1);
+    await page.keyboard.press("Escape");
+    await expect(dlg).toHaveCount(0);
+    await expect(onglets(page)).toHaveCount(2);
+    await expect.poll(() => focusDansTerminal(page)).toBe(true);
+    expect(vivant(pid)).toBe(true);
+    await croix(page, 2).click();
+    await pleinFermer(page, 2).click();
+    await expect(dlg).toHaveCount(0);
+    await expect(onglets(page)).toHaveText(["shell 1"]);
+    await estActif(page, 1);
+    await expect.poll(() => focusDansTerminal(page)).toBe(true);
+    await expect.poll(() => vivant(pid)).toBe(false);
+  });
 });
 
-test("REQ019_AC2_demarre_dans_le_projet_et_suit_la_taille", async ({ page }) => {
+test("REQ019_AC2_REQ036_AC5_AC12_ligne_au_plus_18_px_stty_size_juste_taille_suivie_et_fenetre_changee", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await ouvrirYaide(page, yaide.origine);
-  await taper(page, 'basename "$PWD"');
-  await expect(ecran(page)).toContainText("projet");
-  const lignes = () => ecran(page).locator("> div").count();
-  const taille = async () => {
+  await test.step("REQ036_AC5_une_ligne_du_terminal_mesure_au_plus_18_px", async () => {
+    await page.evaluate(() => document.fonts.load('12.5px "JetBrains Mono"'));
+    await tailleStable(page);
+    const h = await page.evaluate(() => document.querySelector(".terminal:not([hidden]) .xterm-rows > div").getBoundingClientRect().height);
+    expect(h).toBeLessThanOrEqual(18);
+  });
+  await test.step("REQ036_AC12_stty_size_donne_la_zone_affichee_une_fois_la_police_chargee", async () => {
+    await page.evaluate(() => document.fonts.load('12.5px "JetBrains Mono"'));
     await tailleStable(page);
     await taper(page, "stty size");
     await expect.poll(async () => (await ecran(page).locator("> div").allInnerTexts()).some((l) => /^\d+ \d+\s*$/.test(l))).toBe(true);
-    const lignes = await ecran(page).locator("> div").allInnerTexts();
-    return lignes.filter((l) => /^\d+ \d+\s*$/.test(l)).pop().trim().split(" ").map(Number);
-  };
-  const [l1, c1] = await taille();
-  expect(l1).toBe(await lignes());
-  // Le terminal remplit sa zone, à une cellule près.
-  const vide = () =>
-    page.evaluate(() => {
+    const [l, c] = (await ecran(page).locator("> div").allInnerTexts()).filter((x) => /^\d+ \d+\s*$/.test(x)).pop().trim().split(" ").map(Number);
+    const mesure = await page.evaluate(() => {
       const zone = document.querySelector(".terminal-zone:not([hidden])");
       const ecran = zone.querySelector(".xterm-screen");
-      return zone.clientHeight - ecran.offsetHeight < ecran.offsetHeight / document.querySelectorAll(".xterm-rows > div").length;
+      const lignes = document.querySelectorAll(".terminal:not([hidden]) .xterm-rows > div").length;
+      const defilement = zone.querySelector(".xterm-viewport");
+      const barre = defilement.offsetWidth - defilement.clientWidth;
+      const cellW = ecran.offsetWidth / document.querySelector(".terminal:not([hidden])").term.cols;
+      return { cellH: ecran.offsetHeight / lignes, zoneH: zone.clientHeight, zoneW: zone.clientWidth, barre, cellW };
     });
-  expect(await vide()).toBe(true);
-  await page.setViewportSize({ width: 900, height: 600 });
-  await expect.poll(async () => (await taille())[1], { timeout: 15000 }).toBeLessThan(c1);
-  const [l2] = await taille();
-  expect(l2).toBeLessThan(l1);
-  expect(l2).toBe(await lignes());
-});
-
-test("REQ036_AC12_stty_size_donne_la_zone_affichee_une_fois_la_police_chargee", async ({ page }) => {
-  await page.setViewportSize({ width: 1200, height: 800 });
-  await ouvrirYaide(page, yaide.origine);
-  await page.evaluate(() => document.fonts.load('12.5px "JetBrains Mono"'));
-  await tailleStable(page);
-  await taper(page, "stty size");
-  await expect.poll(async () => (await ecran(page).locator("> div").allInnerTexts()).some((l) => /^\d+ \d+\s*$/.test(l))).toBe(true);
-  const [l, c] = (await ecran(page).locator("> div").allInnerTexts()).filter((x) => /^\d+ \d+\s*$/.test(x)).pop().trim().split(" ").map(Number);
-  const mesure = await page.evaluate(() => {
-    const zone = document.querySelector(".terminal-zone:not([hidden])");
-    const ecran = zone.querySelector(".xterm-screen");
-    const lignes = document.querySelectorAll(".terminal:not([hidden]) .xterm-rows > div").length;
-    const defilement = zone.querySelector(".xterm-viewport");
-    const barre = defilement.offsetWidth - defilement.clientWidth;
-    const cellW = ecran.offsetWidth / document.querySelector(".terminal:not([hidden])").term.cols;
-    return { cellH: ecran.offsetHeight / lignes, zoneH: zone.clientHeight, zoneW: zone.clientWidth, barre, cellW };
+    expect(l).toBe(Math.floor(mesure.zoneH / mesure.cellH));
+    expect(c).toBe(Math.floor((mesure.zoneW - mesure.barre) / mesure.cellW));
   });
-  expect(l).toBe(Math.floor(mesure.zoneH / mesure.cellH));
-  expect(c).toBe(Math.floor((mesure.zoneW - mesure.barre) / mesure.cellW));
+  await test.step("REQ019_AC2_demarre_dans_le_projet_et_suit_la_taille", async () => {
+    await effacer(page);
+    await taper(page, 'basename "$PWD"');
+    await expect(ecran(page)).toContainText("projet");
+    const lignes = () => ecran(page).locator("> div").count();
+    const taille = async () => {
+      await tailleStable(page);
+      await taper(page, "stty size");
+      await expect.poll(async () => (await ecran(page).locator("> div").allInnerTexts()).some((l) => /^\d+ \d+\s*$/.test(l))).toBe(true);
+      const lignes = await ecran(page).locator("> div").allInnerTexts();
+      return lignes.filter((l) => /^\d+ \d+\s*$/.test(l)).pop().trim().split(" ").map(Number);
+    };
+    const [l1, c1] = await taille();
+    expect(l1).toBe(await lignes());
+    // Le terminal remplit sa zone, à une cellule près.
+    const vide = () =>
+      page.evaluate(() => {
+        const zone = document.querySelector(".terminal-zone:not([hidden])");
+        const ecran = zone.querySelector(".xterm-screen");
+        return zone.clientHeight - ecran.offsetHeight < ecran.offsetHeight / document.querySelectorAll(".xterm-rows > div").length;
+      });
+    expect(await vide()).toBe(true);
+    await page.setViewportSize({ width: 900, height: 600 });
+    await expect.poll(async () => (await taille())[1], { timeout: 15000 }).toBeLessThan(c1);
+    const [l2] = await taille();
+    expect(l2).toBeLessThan(l1);
+    expect(l2).toBe(await lignes());
+  });
+  await test.step("REQ019_AC2_fenetre_changee_sur_un_autre_onglet_le_shell_repris_remplit_sa_zone", async () => {
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await effacer(page);
+    const avant = await tailleStable(page);
+    await page.getByRole("button", { name: "Nouveau shell" }).click();
+    await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
+    await page.setViewportSize({ width: 1000, height: 640 });
+    // xterm met son rendu en pause une fois le terminal hors de la vue : c'est ce cas qu'on vérifie.
+    await page.waitForTimeout(500);
+    await onglets(page).filter({ hasText: "shell 1" }).click();
+    const apres = await tailleStable(page);
+    expect(apres).not.toBe(avant);
+    await taper(page, "stty size");
+    await expect(ecran(page)).toContainText(apres);
+  });
 });
 
-test("REQ036_AC5_une_ligne_du_terminal_mesure_au_plus_18_px", async ({ page }) => {
-  await page.setViewportSize({ width: 1200, height: 800 });
-  await ouvrirYaide(page, yaide.origine);
-  await page.evaluate(() => document.fonts.load('12.5px "JetBrains Mono"'));
-  await tailleStable(page);
-  const h = await page.evaluate(() => document.querySelector(".terminal:not([hidden]) .xterm-rows > div").getBoundingClientRect().height);
-  expect(h).toBeLessThanOrEqual(18);
-});
+
 
 test("REQ019_AC3_exit_ferme_l_onglet", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
@@ -135,16 +205,41 @@ test("REQ019_AC3_exit_ferme_l_onglet", async ({ page }) => {
   await expect(onglets(page)).toHaveText(["shell 1"]);
 });
 
-test("REQ019_AC6_dernier_shell_ferme_par_exit_donne_l_etat_vide_sans_reouverture", async ({ page }) => {
+test("REQ019_AC6_REQ020_AC1_REQ028_AC12_shell_apres_depart_du_navigateur_touche_F_et_dernier_exit", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
-  await taper(page, "exit");
-  await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
-  await expect(page.getByText("Aucun shell ouvert.")).toHaveCount(0);
-  await page.waitForTimeout(2000);
-  await expect(onglets(page)).toHaveCount(0);
-  await page.getByRole("button", { name: "Nouveau shell" }).click();
-  await expect(onglets(page)).toHaveCount(1);
-  await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toBeVisible();
+  await test.step("REQ020_AC1_le_shell_continue_apres_le_depart_du_navigateur", async () => {
+    const depart = temoin();
+    const fini = temoin();
+    await taper(page, attendre(depart, `echo fini_$((6*7)); touch ${fini}`));
+    await page.goto("about:blank");
+    fs.writeFileSync(depart, "");
+    await expect.poll(() => fs.existsSync(fini)).toBe(true);
+    await page.goto(yaide.origine + "/");
+    await expect(page.getByRole("tab", { name: "shell 1" })).toBeVisible();
+    await expect(ecran(page)).toContainText("fini_42");
+    await expect(onglets(page)).toHaveCount(1);
+  });
+  await test.step("REQ028_AC12_F_depuis_les_boutons_du_rail_affiche_les_fichiers", async () => {
+    const titres = { f: "Fichiers", r: "Recherche", g: "Git" };
+    for (const nom of ["Nouveau shell", "Fermer le shell"]) {
+      for (const touche of ["g", "r", "f"]) {
+        await page.getByRole("button", { name: nom }).focus();
+        await page.keyboard.press(touche);
+        await expect(page.locator("aside.cadre-panneau h2")).toHaveText(titres[touche]);
+        await expect.poll(() => page.evaluate(() => document.querySelector(".cadre-panneau").contains(document.activeElement))).toBe(true);
+      }
+    }
+  });
+  await test.step("REQ019_AC6_dernier_shell_ferme_par_exit_donne_l_etat_vide_sans_reouverture", async () => {
+    await taper(page, "exit");
+    await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toHaveCount(0);
+    await expect(page.getByText("Aucun shell ouvert.")).toHaveCount(0);
+    await page.waitForTimeout(2000);
+    await expect(onglets(page)).toHaveCount(0);
+    await page.getByRole("button", { name: "Nouveau shell" }).click();
+    await expect(onglets(page)).toHaveCount(1);
+    await expect(page.getByRole("separator", { name: "Hauteur des shells" })).toBeVisible();
+  });
 });
 
 test("REQ018_AC2_les_shells_ouverts_reviennent_avec_leurs_onglets", async ({ page }) => {
@@ -157,19 +252,6 @@ test("REQ018_AC2_les_shells_ouverts_reviennent_avec_leurs_onglets", async ({ pag
   await expect(onglets(page)).toHaveCount(2);
 });
 
-test("REQ020_AC1_le_shell_continue_apres_le_depart_du_navigateur", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  const depart = temoin();
-  const fini = temoin();
-  await taper(page, attendre(depart, `echo fini_$((6*7)); touch ${fini}`));
-  await page.goto("about:blank");
-  fs.writeFileSync(depart, "");
-  await expect.poll(() => fs.existsSync(fini)).toBe(true);
-  await page.goto(yaide.origine + "/");
-  await expect(page.getByRole("tab", { name: "shell 1" })).toBeVisible();
-  await expect(ecran(page)).toContainText("fini_42");
-  await expect(onglets(page)).toHaveCount(1);
-});
 
 test("REQ020_AC2_REQ015_AC1_coupure_puis_reprise_sans_recharger_ni_doublon", async ({ page }) => {
   await ouvrirYaide(page, relais.origine);
@@ -431,67 +513,12 @@ test("REQ021_AC3_un_shell_ferme_par_le_bouton_n_entraine_pas_de_message_apres_re
   await expect(page.getByText("Yaide a été arrêté. 2 shells")).toHaveCount(0);
 });
 
-test("REQ028_AC12_F_depuis_les_boutons_du_rail_affiche_les_fichiers", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  const titres = { f: "Fichiers", r: "Recherche", g: "Git" };
-  for (const nom of ["Nouveau shell", "Fermer le shell"]) {
-    for (const touche of ["g", "r", "f"]) {
-      await page.getByRole("button", { name: nom }).focus();
-      await page.keyboard.press(touche);
-      await expect(page.locator("aside.cadre-panneau h2")).toHaveText(titres[touche]);
-      await expect.poll(() => page.evaluate(() => document.querySelector(".cadre-panneau").contains(document.activeElement))).toBe(true);
-    }
-  }
-});
 
-test("REQ019_AC2_fenetre_changee_sur_un_autre_onglet_le_shell_repris_remplit_sa_zone", async ({ page }) => {
-  await page.setViewportSize({ width: 1200, height: 800 });
-  await ouvrirYaide(page, yaide.origine);
-  const avant = await tailleStable(page);
-  await page.getByRole("button", { name: "Nouveau shell" }).click();
-  await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
-  await page.setViewportSize({ width: 1000, height: 640 });
-  // xterm met son rendu en pause une fois le terminal hors de la vue : c'est ce cas qu'on vérifie.
-  await page.waitForTimeout(500);
-  await onglets(page).filter({ hasText: "shell 1" }).click();
-  const apres = await tailleStable(page);
-  expect(apres).not.toBe(avant);
-  await taper(page, "stty size");
-  await expect(ecran(page)).toContainText(apres);
-});
 
 const croix = (page, n) => page.getByRole("button", { name: `Fermer shell ${n}`, exact: true });
 const pleinFermer = (page, n) => dialogue(page, `Fermer shell ${n} ?`).getByRole("button", { name: "Fermer", exact: true });
 const estActif = (page, n) => expect(page.getByRole("tab", { name: `shell ${n}`, exact: true })).toHaveAttribute("aria-selected", "true");
 
-test("REQ041_AC1_AC2_AC3_AC5_croix_de_shell_2_depuis_shell_1_actif", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  await page.getByRole("button", { name: "Nouveau shell" }).click();
-  await expect(onglets(page)).toHaveCount(2);
-  await page.getByRole("tab", { name: "shell 2", exact: true }).click();
-  await taper(page, "sleep 300 & echo PID=$! FIN$((1+1))");
-  await expect(ecran(page)).toContainText("FIN2");
-  const pid = Number((await ecran(page).innerText()).match(/PID=(\d+) FIN2/)[1]);
-  await page.getByRole("tab", { name: "shell 1", exact: true }).click();
-  await estActif(page, 1);
-  for (const n of [1, 2]) expect(await croix(page, n).evaluate((e) => getComputedStyle(e.closest(".bouton-enveloppe") ?? e).opacity)).toBe("1");
-  await croix(page, 2).click();
-  const dlg = dialogue(page, "Fermer shell 2 ?");
-  await expect(dlg).toBeVisible();
-  await estActif(page, 1);
-  await page.keyboard.press("Escape");
-  await expect(dlg).toHaveCount(0);
-  await expect(onglets(page)).toHaveCount(2);
-  await expect.poll(() => focusDansTerminal(page)).toBe(true);
-  expect(vivant(pid)).toBe(true);
-  await croix(page, 2).click();
-  await pleinFermer(page, 2).click();
-  await expect(dlg).toHaveCount(0);
-  await expect(onglets(page)).toHaveText(["shell 1"]);
-  await estActif(page, 1);
-  await expect.poll(() => focusDansTerminal(page)).toBe(true);
-  await expect.poll(() => vivant(pid)).toBe(false);
-});
 
 test("REQ041_AC4_croix_de_l_onglet_actif_voisin_puis_dernier_shell", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
@@ -563,31 +590,3 @@ test("REQ041_AC7_coupure_croix_puis_suppr_sans_dialogue", async ({ page }) => {
   relais.retablir();
 });
 
-test("REQ041_AC8_AC9_presentation_de_la_barre_et_de_la_croix", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  await page.getByRole("button", { name: "Nouveau shell" }).click();
-  await expect(onglets(page)).toHaveCount(2);
-  const barre = page.getByRole("tablist", { name: "Shells" });
-  await expect(barre).toHaveClass(/ya-term-tabs/);
-  await expect(barre).not.toHaveClass(/ya-tabs/);
-  expect((await barre.boundingBox()).height).toBe(30);
-  expect(await barre.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(await page.evaluate(() => {
-    const t = document.createElement("div");
-    t.style.backgroundColor = "var(--bg-000)";
-    document.body.append(t);
-    const c = getComputedStyle(t).backgroundColor;
-    t.remove();
-    return c;
-  }));
-  const tab = page.getByRole("tab", { name: "shell 1", exact: true });
-  expect((await tab.boundingBox()).height).toBe(22);
-  const icone = await tab.locator("svg").first().boundingBox();
-  expect([icone.width, icone.height]).toEqual([14, 14]);
-  const x = await croix(page, 2).boundingBox();
-  expect(x.width).toBeGreaterThanOrEqual(18);
-  expect(x.height).toBeGreaterThanOrEqual(18);
-  await expect(croix(page, 2)).toHaveAttribute("tabindex", "-1");
-  await expect(croix(page, 2)).toHaveText("");
-  await croix(page, 2).hover();
-  await expect(page.getByRole("tooltip", { name: "Fermer shell 2" })).toBeVisible();
-});

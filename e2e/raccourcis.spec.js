@@ -48,53 +48,53 @@ test("REQ019_AC7_ctrl_maj_f_dans_un_shell_met_le_focus_sur_le_rail_sans_rien_env
   expect(texte).toContain("cat -v");
 });
 
-test("REQ032_AC11_glisser_une_poignee_au_dessus_du_terminal_laisse_la_frappe_au_shell", async ({ page }) => {
+test("REQ031_AC5_REQ032_AC11_REQ034_AC1_AC11_AC16_info_bulle_menu_de_ligne_et_glisser_une_poignee", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
-  await lancerCat(page);
-  const sep = page.getByRole("separator", { name: "Largeur du panneau" });
-  const valeur = async () => Number(await sep.getAttribute("aria-valuenow"));
-  const avant = await valeur();
-  const p = await sep.boundingBox();
-  const x = p.x + p.width / 2;
-  await page.mouse.move(x, p.y + 100);
-  await page.mouse.down();
-  await page.mouse.move(x + 50, p.y + p.height - 20, { steps: 5 });
-  await page.mouse.up();
-  expect(await valeur()).toBe(avant + 50);
-  await expect(page.locator(".terminal:visible .xterm-helper-textarea")).toBeFocused();
-  await page.keyboard.type("bonjour");
-  await expect(ecran(page)).toContainText("bonjour");
-});
-
-test("REQ031_AC5_l_info_bulle_d_un_onglet_du_rail_donne_son_nom_et_sa_touche", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  await page.getByRole("tab", { name: "Recherche" }).hover();
-  await expect(page.getByRole("tooltip")).toHaveText("Recherche (R)");
-});
-
-test("REQ034_AC1_AC11_AC16_clic_droit_touche_menu_et_maj_f10_ouvrent_une_seule_fois_et_echap_rend_le_focus", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  const ligne = page.getByRole("tree", { name: "Fichiers" }).getByRole("treeitem", { name: nomLigne("README.md") });
-  await ligne.click({ button: "right" });
-  await expect(page.getByRole("menu", { name: "Actions sur README.md" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(ligne).toBeFocused();
-  for (const touche of ["ContextMenu", "Shift+F10"]) {
-    await ligne.focus();
-    await page.keyboard.press(touche);
-    await expect(page.getByRole("menu")).toHaveCount(1);
-    await expect(page.getByRole("menuitem", { name: "Nouveau fichier" })).toBeFocused();
-    await page.waitForTimeout(700);
-    await expect(page.getByRole("menu")).toHaveCount(1);
+  await test.step("REQ031_AC5_l_info_bulle_d_un_onglet_du_rail_donne_son_nom_et_sa_touche", async () => {
+    await page.getByRole("tab", { name: "Recherche" }).hover();
+    await expect(page.getByRole("tooltip")).toHaveText("Recherche (R)");
+  });
+  await test.step("REQ034_AC1_AC11_AC16_clic_droit_touche_menu_et_maj_f10_ouvrent_une_seule_fois_et_echap_rend_le_focus", async () => {
+    const ligne = page.getByRole("tree", { name: "Fichiers" }).getByRole("treeitem", { name: nomLigne("README.md") });
+    await ligne.click({ button: "right" });
+    await expect(page.getByRole("menu", { name: "Actions sur README.md" })).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(ligne).toBeFocused();
-  }
-  await ligne.focus();
-  await page.keyboard.press("ContextMenu");
-  await page.keyboard.press("End");
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Message" })).toBeFocused();
+    for (const touche of ["ContextMenu", "Shift+F10"]) {
+      await ligne.focus();
+      await page.keyboard.press(touche);
+      await expect(page.getByRole("menu")).toHaveCount(1);
+      await expect(page.getByRole("menuitem", { name: "Nouveau fichier" })).toBeFocused();
+      await page.waitForTimeout(700);
+      await expect(page.getByRole("menu")).toHaveCount(1);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect(ligne).toBeFocused();
+    }
+    await ligne.focus();
+    await page.keyboard.press("ContextMenu");
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeFocused();
+  });
+  await test.step("REQ032_AC11_glisser_une_poignee_au_dessus_du_terminal_laisse_la_frappe_au_shell", async () => {
+    await lancerCat(page);
+    const sep = page.getByRole("separator", { name: "Largeur du panneau" });
+    const valeur = async () => Number(await sep.getAttribute("aria-valuenow"));
+    const avant = await valeur();
+    const p = await sep.boundingBox();
+    const x = p.x + p.width / 2;
+    await page.mouse.move(x, p.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(x + 50, p.y + p.height - 20, { steps: 5 });
+    await page.mouse.up();
+    expect(await valeur()).toBe(avant + 50);
+    await expect(page.locator(".terminal:visible .xterm-helper-textarea")).toBeFocused();
+    await page.keyboard.type("bonjour");
+    await expect(ecran(page)).toContainText("bonjour");
+  });
 });
+
+

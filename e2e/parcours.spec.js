@@ -92,7 +92,7 @@ test("REQ030_AC1_parcours_2_shell_retrouve_et_coupure", async ({ page, context }
   // Le témoin n'existe qu'une fois la commande finie : le navigateur est parti avant.
   const temoin = path.join(yaide.dossier, "temoin.txt");
   const depart = nouveauTemoin();
-  await page.keyboard.type(attendre(depart, "echo fini_$((20+2)) && touch temoin.txt"));
+  await page.keyboard.insertText(attendre(depart, "echo fini_$((20+2)) && touch temoin.txt"));
   await page.keyboard.press("Enter");
   await page.close();
   fs.writeFileSync(depart, "");
