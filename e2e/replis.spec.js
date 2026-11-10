@@ -103,21 +103,7 @@ test("REQ032_AC15_REQ046_AC4_AC12_AC15_shell_et_largeur_hauteur_bornee_contour_e
     await page.setViewportSize({ width: 800, height: 600 });
     const poignee = page.getByRole("separator", { name: "Hauteur des shells" });
     await poignee.focus();
-    // La hauteur chargée dépend de la fenêtre d'avant, et le pas des flèches (16) n'atteint pas toujours 350 : on glisse la poignée.
-    let actuelle = -1;
-    await expect(async () => {
-      const lue = Number(await poignee.getAttribute("aria-valuenow"));
-      await page.waitForTimeout(100);
-      expect(Number(await poignee.getAttribute("aria-valuenow"))).toBe(lue);
-      actuelle = lue;
-    }).toPass();
-    const boite = await poignee.boundingBox();
-    const x = boite.x + boite.width / 2;
-    const y = boite.y + boite.height / 2;
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.mouse.move(x, y - (350 - actuelle), { steps: 5 });
-    await page.mouse.up();
+    for (let i = 0; i < 30 && (await poignee.getAttribute("aria-valuenow")) !== "350"; i++) await page.keyboard.press("ArrowUp");
     await expect(poignee).toHaveAttribute("aria-valuenow", "350");
     await bouton(page, "Replier les shells").click();
     await page.setViewportSize({ width: 800, height: 480 });
