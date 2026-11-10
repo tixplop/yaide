@@ -207,3 +207,18 @@ fn req060_ac4_argument_en_trop() {
     assert!(!e.appels());
     assert_eq!(e.binaire(), avant);
 }
+
+#[test]
+fn req082_ac4_update_help_ne_telecharge_rien() {
+    let e = Env::new("aide");
+    e.preparer_release(true);
+    let avant = e.binaire();
+    for a in ["--help", "-h"] {
+        let o = e.lancer(&["update", a]);
+        assert_eq!(o.status.code(), Some(0), "{}", texte(&o));
+        assert!(String::from_utf8_lossy(&o.stdout).starts_with("Usage : yaide update"));
+        assert!(!e.appels());
+        assert_eq!(e.binaire(), avant);
+        assert!(!e.racine.join("home/.config/yaide").exists());
+    }
+}

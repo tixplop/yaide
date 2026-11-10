@@ -57,6 +57,8 @@ yaide <dossier> [--port <n>]
 
 Le dossier est obligatoire. Le port par défaut est 8443. Ouvrez ensuite `https://localhost:8443` sur cette machine, ou `https://<adresse de la machine>:8443` depuis une autre. N'ouvrez pas `https://0.0.0.0:8443` : les navigateurs peuvent refuser cette adresse. Pour servir un dossier nommé `update`, écrivez `yaide ./update`. Plusieurs instances peuvent tourner en même temps, chacune sur son port et son dossier.
 
+`yaide --help` affiche l'aide, `yaide <action> --help` celle de `passwd` ou `update` ; `yaide ./--help` pour servir un dossier de ce nom.
+
 Aucun shell n'est lancé au démarrage : « Nouveau shell » en ouvre un, et porte le nombre de shells ouverts.
 
 Pour diviser l'éditeur, glissez un onglet sur le côté d'un groupe (gauche, droite, haut ou bas) : il s'ouvre dans un nouveau groupe. Déposé au centre ou sur la barre d'onglets d'un autre groupe, il s'y ajoute. Échap annule le glissé. La poignée entre deux groupes change leur taille : glissez-la, ou utilisez les flèches une fois le focus dessus. Le partage est gardé au rechargement.

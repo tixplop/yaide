@@ -402,3 +402,56 @@ fn req002_ac6_affiche_une_adresse_qui_s_ouvre() {
     );
     assert!(!texte.contains("0.0.0.0"), "{texte}");
 }
+
+fn avec_entree(args: &[&str], cfg: &Path, entree: &str) -> std::process::Output {
+    let mut c = Command::new(EXE)
+        .args(args)
+        .env("XDG_CONFIG_HOME", cfg)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::io::Write::write_all(&mut c.stdin.take().unwrap(), entree.as_bytes()).ok();
+    c.wait_with_output().unwrap()
+}
+
+#[test]
+fn req082_ac2_ac5_aide_sans_effet() {
+    let d = dossier("aide");
+    let cfg = d.join("absent");
+    let port = port_libre();
+    let absent = d.join("pas-la");
+    let p = port.to_string();
+    let essais: Vec<Vec<&str>> = vec![
+        vec!["--help"],
+        vec![absent.to_str().unwrap(), "--help"],
+        vec!["--port", &p, "--help"],
+        vec!["passwd", "--help"],
+    ];
+    for args in essais {
+        let o = avec_entree(&args, &cfg, "mdp\n");
+        assert_eq!(o.status.code(), Some(0), "{args:?}");
+        let out = String::from_utf8_lossy(&o.stdout);
+        assert!(
+            out.contains("Usage") || out.contains("Usages"),
+            "{args:?} : {out}"
+        );
+        assert!(!cfg.exists(), "{args:?}");
+        assert!(
+            std::net::TcpStream::connect(("127.0.0.1", port)).is_err(),
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+fn req082_ac3_passwd_help_ne_change_pas_le_mot_de_passe() {
+    let (_d, cfg) = prete("aide-passwd");
+    let f = cfg.join("yaide/mot-de-passe");
+    let avant = std::fs::read(&f).unwrap();
+    let o = avec_entree(&["passwd", "-h"], &cfg, "autre\n");
+    assert_eq!(o.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&o.stdout).starts_with("Usage : yaide passwd"));
+    assert_eq!(std::fs::read(&f).unwrap(), avant);
+}

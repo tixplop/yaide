@@ -39,12 +39,16 @@ fn mettre_a_jour() -> ! {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let commande = cli::analyser(&args).unwrap_or_else(|e| echec(2, &e));
+    if let Commande::Aide(texte) = commande {
+        print!("{texte}");
+        std::process::exit(0);
+    }
     if commande == Commande::Update {
         mettre_a_jour();
     }
     let config = config::dossier_config().unwrap_or_else(|e| echec(1, &e));
     match commande {
-        Commande::Update => unreachable!(),
+        Commande::Update | Commande::Aide(_) => unreachable!(),
         Commande::Passwd => {
             let mdp = cli::lire_mot_de_passe().unwrap_or_else(|e| echec(1, &e));
             config::definir_mot_de_passe(&config, &mdp).unwrap_or_else(|e| echec(1, &e));
