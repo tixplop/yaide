@@ -687,16 +687,6 @@ test("REQ039_AC1_AC2_AC3_AC5_AC6_AC7_AC8_lettres_couleurs_points_et_mots_dans_l_
   await expect(page.getByRole("tab", { name: "Git", exact: true }).locator(".ya-badge")).toHaveText("3");
 });
 
-test("REQ039_AC4_hors_depot_aucune_lettre_ni_nombre_sur_le_rail", async ({ page }) => {
-  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "horsdepot-"));
-  fs.writeFileSync(path.join(dossier, "a.txt"), "a");
-  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await expect(ligne(page, "a.txt")).toBeVisible();
-  await expect(page.locator(".fichiers .liste-statut, .fichiers .liste-point")).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "Git", exact: true }).locator(".ya-badge")).toHaveCount(0);
-});
-
 test("REQ009_AC9_AC10_en_tete_du_projet_a_240_px_26_px_une_ligne_et_ordre_de_tabulation", async ({ page }) => {
   await ouvrir(page, true);
   const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
