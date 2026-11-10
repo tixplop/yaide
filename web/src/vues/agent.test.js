@@ -20,7 +20,7 @@ const SONNET = { id: "p1", nom: "sonnet", provider: "anthropic", modele: "claude
 const RAPIDE = { id: "p2", nom: "rapide", provider: "openai", modele: "mini", defaut: false };
 
 /** `lectures` : réponses successives de `lireConversation`. */
-async function monter({ profils = [SONNET, RAPIDE], lectures = [], envoi = { conversation: "c1" }, ouvrirProfils = vi.fn(), erreur = null, conversations = [], conversation, equipe } = {}) {
+async function monter({ ouvrirReference, profils = [SONNET, RAPIDE], lectures = [], envoi = { conversation: "c1" }, ouvrirProfils = vi.fn(), erreur = null, conversations = [], conversation, equipe } = {}) {
   const api = {
     reglagesAgent: vi.fn(async () => ({ providers: [], profils, erreur })),
     listeConversations: vi.fn(async () => conversations),
@@ -29,7 +29,7 @@ async function monter({ profils = [SONNET, RAPIDE], lectures = [], envoi = { con
     arreterConversation: vi.fn(async () => ({})),
   };
   const surConversation = vi.fn();
-  const vue = vueAgent({ api, ouvrirProfils, surConversation, conversation, equipe });
+  const vue = vueAgent({ api, ouvrirProfils, ouvrirReference, surConversation, conversation, equipe });
   vues.push(vue);
   document.body.append(vue.corps);
   vue.focuser();
@@ -936,4 +936,18 @@ test("REQ085_AC8_etape_qui_arrive_ne_replie_rien_et_laisse_le_focus_sur_le_raiso
   expect(boutonsRaison(vue)[0]).toBe(b);
   expect(b.getAttribute("aria-expanded")).toBe("true");
   expect(document.activeElement).toBe(b);
+});
+
+test("REQ087_AC7_un_lien_fichier_de_l_onglet_Agent_sans_et_avec_agents_appelle_ouvrirReference", async () => {
+  for (const equipe of [undefined, [{ dossier: "a", nom: "A" }]]) {
+    const ouvrirReference = vi.fn();
+    const { vue } = await monter({ ouvrirReference, equipe, conversation: "c1", lectures: [{ entrees: [{ type: "agent", markdown: "Voir [main](src/main.rs:3)" }], enCours: false, total: 1, tokens: 0 }] });
+    await tick(0);
+    const a = vue.corps.querySelector("a.ya-fichier");
+    a.focus();
+    a.click();
+    expect(ouvrirReference).toHaveBeenCalledWith({ chemin: "src/main.rs", ligne: 3 }, a);
+    vue.detruire();
+    document.body.replaceChildren();
+  }
 });

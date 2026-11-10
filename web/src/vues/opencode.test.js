@@ -85,10 +85,10 @@ function suite(etat, id) {
   return etat.resultat;
 }
 
-async function monter({ modele, demandes, choix, contexte, sousAgent = false, api, surOuvrir = vi.fn(), surQuestion = vi.fn() } = {}) {
+async function monter({ modele, demandes, choix, contexte, sousAgent = false, api, surOuvrir = vi.fn(), surQuestion = vi.fn(), ouvrirReference } = {}) {
   const { oc, etat } = fauxOc({ modele, demandes, choix, contexte });
   const apiFausse = api ?? { envoyer: vi.fn(async () => ({ donnees: null })), interrompre: vi.fn(async () => ({ donnees: null })) };
-  const vue = vueOpencode({ sessionId: "s1", sousAgent, surOuvrir, surQuestion, oc, api: apiFausse });
+  const vue = vueOpencode({ sessionId: "s1", sousAgent, surOuvrir, surQuestion, ouvrirReference, oc, api: apiFausse });
   vues.push(vue);
   document.body.append(vue.corps);
   await vi.advanceTimersByTimeAsync(0);
@@ -108,6 +108,20 @@ const entree = (options = {}) => champ().dispatchEvent(new KeyboardEvent("keydow
 const raison = (cle, markdown) => ({ cle, id: cle, type: "raisonnement", markdown });
 
 describe("vue opencode", () => {
+  it("REQ087_AC7_un_lien_fichier_d_une_session_et_d_un_sous_agent_appelle_ouvrirReference", async () => {
+    for (const sousAgent of [false, true]) {
+      const ouvrirReference = vi.fn();
+      await monter({ sousAgent, ouvrirReference, modele: { entrees: [agent("txt:m:0", "Voir [main](src/main.rs:3)")] } });
+      const a = document.querySelector("a.ya-fichier");
+      a.focus();
+      a.click();
+      expect(ouvrirReference).toHaveBeenCalledWith({ chemin: "src/main.rs", ligne: 3 }, a);
+      for (const v of vues) v.detruire();
+      vues = [];
+      document.body.replaceChildren();
+    }
+  });
+
   it("REQ084_AC1_AC6_raisonnement_replie_une_etape_ne_change_ni_etat_ni_focus", async () => {
     const { etat } = await monter({ modele: { entrees: [user("u", "Salut"), raison("rsn:m:0", "Je lis"), agent("txt:m:0", "Bonjour")] } });
     const fil = document.querySelector("[role=log]");

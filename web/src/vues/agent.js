@@ -89,10 +89,10 @@ export function saisieMessage({ libelle, surEnvoi }) {
  * V-007. `api` : `reglagesAgent`, `envoyerMessage`, `lireConversation`, `arreterConversation`, `listeConversations`.
  * Vue d'un onglet de l'éditeur (REQ-078) : `conversation` (id à charger à la création) ou `equipe`
  * (agents d'une conversation vide) disent d'où part la vue, `surConversation(id | null)` est appelée à chaque changement de conversation
- * (rien n'est gardé ici), et `surDejaOuverte(id)` rend vrai si un autre onglet affiche `id` et vient d'être activé : le menu ne charge alors rien.
+ * (rien n'est gardé ici), `ouvrirReference({ chemin, ligne }, lien)` ouvre un fichier cité par une réponse, et `surDejaOuverte(id)` rend vrai si un autre onglet affiche `id` et vient d'être activé : le menu ne charge alors rien.
  * Rend `{ corps, focuser(), relireReglages(), majListe(), detruire() }`.
  */
-export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, conversation: conversationGardee, equipe: agentsInitiaux, surConversation = () => {}, surDejaOuverte } = {}) {
+export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, conversation: conversationGardee, equipe: agentsInitiaux, surConversation = () => {}, surDejaOuverte, ouvrirReference } = {}) {
   const corps = document.createElement("div");
   corps.className = "agent-corps";
 
@@ -169,7 +169,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
   const vide = document.createElement("div");
   let fil = nouveauFil();
   function nouveauFil() {
-    const f = conversation({ vide });
+    const f = conversation({ vide, surOuvrirFichier: (ref) => ouvrirReference?.(ref, document.activeElement) });
     f.classList.add("agent-fil");
     return f;
   }

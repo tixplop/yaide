@@ -27,7 +27,7 @@ const reussie = (r) => !r?.coupure && !r?.erreur;
  * `surOuvrir({ id, agent, titre })` ouvre l'onglet d'un sous-agent ; `surQuestion(vrai|faux)` dit si une demande attend.
  * Rend `{ corps, focus(), detruire() }`.
  */
-export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuestion, oc = ocReel, api = apiReelle }) {
+export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuestion, ouvrirReference, oc = ocReel, api = apiReelle }) {
   const corps = document.createElement("div");
   corps.className = "session";
 
@@ -243,6 +243,7 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
       const vide = indication({ texte: TEXTE_VIDE });
       fil = conversation({
         vide,
+        surOuvrirFichier: (ref) => ouvrirReference?.(ref, document.activeElement),
         nom: sousAgent ? m.agent || "opencode" : "opencode",
         surOuvrir: (id) => {
           const e = dernier.entrees.find((x) => x.type === "sousAgent" && x.id === id);

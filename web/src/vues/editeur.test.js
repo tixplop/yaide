@@ -3,6 +3,8 @@ import { afterEach, expect, test, vi } from "vitest";
 import { vueEditeur } from "./editeur.js";
 import { lire } from "../stockage.js";
 import { nomLangage } from "../ui/langages.js";
+import { choisi } from "../worktree.js";
+import { cadre } from "../ui/cadre.js";
 
 // Faux vueClaude : un corps avec un champ de saisie, et le journal des appels dans l'ordre.
 const faux = vi.hoisted(() => ({ vues: [], oc: [], ag: [], journal: [] }));
@@ -1374,4 +1376,132 @@ test("REQ086_AC4_onglet_d_un_autre_worktree_fil_sans_points_info_bulle_lettre_et
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
   await new Promise((r) => setTimeout(r, 20));
   expect(appels).toEqual(["../essai/src/main.rs"]);
+});
+
+// ---- Ouvrir le fichier cité (REQ-087) ----
+
+const PROJET = "/home/u/code/projet";
+function fauxFichiers(fichiers) {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const chemin = decodeURIComponent(new URL(String(url), "http://x").searchParams.get("chemin"));
+    const f = fichiers[chemin];
+    if (f === "coupure") throw new TypeError("réseau");
+    if (f?.cause) return { ok: false, status: 400, json: async () => f };
+    if (f === undefined) return { ok: false, status: 404, json: async () => ({ cause: "introuvable", message: "Fichier introuvable." }) };
+    return { ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => f };
+  }));
+}
+const lienFichier = () => {
+  const a = document.createElement("a");
+  a.href = "src/x";
+  document.body.append(a);
+  a.focus();
+  return a;
+};
+
+test("REQ087_AC1_AC2_AC10_clic_dans_l_onglet_Agent_ouvre_le_fichier_a_la_ligne_focus_dans_l_editeur", async () => {
+  const { e } = monterAg({ chemin: PROJET });
+  fauxFichiers({ "src/main.rs": "a\nb\nc\nd\n", "src/court.rs": "x\ny" });
+  e.ouvrirAgent();
+  await faux.ag[0].ouvrirReference({ chemin: "src/main.rs", ligne: 3 }, lienFichier());
+  expect(nomsOnglets()).toEqual(["Agent 1", "main.rs"]);
+  expect(actifNom()).toBe("main.rs");
+  const vue = e.code.querySelector(".zone-code").vue;
+  expect(document.activeElement).toBe(vue.contentDOM);
+  expect(vue.state.selection.main.head).toBe(vue.state.doc.line(3).from);
+  await faux.ag[0].ouvrirReference({ chemin: "src/court.rs", ligne: 99 }, lienFichier());
+  const v2 = e.code.querySelector(".zone-code:not([hidden])")?.vue ?? e.code.querySelector(".zone-code").vue;
+  expect(actifNom()).toBe("court.rs");
+  expect(v2.state.selection.main.head).toBe(v2.state.doc.line(2).from);
+});
+
+test("REQ087_AC3_onglet_deja_ouvert_active_sans_relire_et_garde_les_modifications", async () => {
+  const { e } = monterAg({ chemin: PROJET });
+  fauxFichiers({ "src/main.rs": "disque\nb\nc\n" });
+  e.ouvrirAgent();
+  e.ouvrir({ chemin: "src/main.rs", contenu: "disque\nb\nc\n", version: "1" });
+  const vue = e.code.querySelector(".zone-code").vue;
+  vue.dispatch({ changes: { from: 0, insert: "brouillon " } });
+  e.ouvrirAgent();
+  fetch.mockClear();
+  await faux.ag[1].ouvrirReference({ chemin: "src/main.rs", ligne: 2 }, lienFichier());
+  expect(fetch).not.toHaveBeenCalled();
+  expect(nomsOnglets().filter((n) => n === "main.rs")).toHaveLength(1);
+  expect(actifNom()).toBe("main.rs");
+  expect(vue.state.doc.toString()).toBe("brouillon disque\nb\nc\n");
+  expect(vue.state.doc.lineAt(vue.state.selection.main.head).number).toBe(2);
+});
+
+test("REQ087_AC4_chemin_absolu_dans_un_worktree_ouvre_l_onglet_relatif_au_projet", async () => {
+  const { e } = monterAg({ chemin: PROJET });
+  fauxFichiers({ "../essai/src/main.rs": "w\n" });
+  e.ouvrirAgent();
+  await faux.ag[0].ouvrirReference({ chemin: "/home/u/code/essai/src/main.rs", ligne: 1 }, lienFichier());
+  expect(String(fetch.mock.calls[0][0])).toContain(encodeURIComponent("../essai/src/main.rs"));
+  expect(actifNom()).toBe("main.rs");
+  expect(onglet("main.rs").title).toBe("../essai/src/main.rs");
+  expect(choisi()).toBe("");
+});
+
+test("REQ087_AC5_AC11_chaque_refus_dit_son_texte_un_seul_message_focus_sur_le_lien", async () => {
+  const { e, dire } = monterAg({ chemin: PROJET });
+  const retire = vi.fn();
+  dire.mockImplementation(() => ({ remove: retire }));
+  fauxFichiers({
+    "web/src": { cause: "invalide", message: "C'est un dossier." },
+    "img/logo.png": { cause: "binaire", message: "C'est un fichier binaire." },
+    "logs/gros.log": { cause: "trop-gros", message: "Trop gros." },
+    "../../../../etc/hosts": { cause: "interdit", message: "Ce chemin sort du projet." },
+    "src/lourd.rs": { cause: "erreur", message: "Lecture impossible." },
+    "../autre/x.rs": { cause: "interdit", message: "Ce chemin sort du projet." },
+    "src/rien.rs": "coupure",
+  });
+  e.ouvrirAgent();
+  const attendus = [
+    ["src/absent.rs", "src/absent.rs n'existe pas."],
+    ["web/src", "web/src est un dossier. Yaide ne l'ouvre pas."],
+    ["img/logo.png", "img/logo.png est un fichier binaire. Yaide ne l'ouvre pas."],
+    ["logs/gros.log", "logs/gros.log dépasse 5 Mo. Yaide ne l'ouvre pas."],
+    ["/etc/hosts", "/etc/hosts est hors du projet et de ses worktrees. Yaide ne l'ouvre pas."],
+    ["src/lourd.rs", "Impossible d'ouvrir src/lourd.rs : Lecture impossible."],
+    ["../autre/x.rs", "../autre/x.rs est hors du projet et de ses worktrees. Yaide ne l'ouvre pas."],
+    ["src/rien.rs", "Connexion perdue. Réessayez au retour."],
+  ];
+  for (const [i, [ecrit, texte]] of attendus.entries()) {
+    const lien = lienFichier();
+    await faux.ag[0].ouvrirReference({ chemin: ecrit }, lien);
+    expect(dire).toHaveBeenLastCalledWith({ texte, variante: "alerte", fermable: true });
+    expect(retire).toHaveBeenCalledTimes(i); // le message précédent part
+    expect(document.activeElement).toBe(lien);
+  }
+  expect(nomsOnglets()).toEqual(["Agent 1"]);
+});
+
+test("REQ087_AC7_session_opencode_et_sous_agent_ouvrent_dans_leur_groupe_et_gardent_leur_fil", async () => {
+  const { e } = monterAg({ chemin: PROJET });
+  fauxFichiers({ "src/main.rs": "a\nb\n" });
+  e.ouvrirOpencode({ sessionId: "s1" });
+  faux.oc[0].surOuvrir({ id: "sa1", agent: "explore", titre: "T" });
+  await faux.oc[1].ouvrirReference({ chemin: "src/main.rs", ligne: 2 }, lienFichier());
+  expect(nomsOnglets()).toEqual(["opencode 1", "explore", "main.rs"]);
+  expect(actifNom()).toBe("main.rs");
+  await faux.oc[0].ouvrirReference({ chemin: "src/main.rs" }, lienFichier());
+  expect(nomsOnglets().filter((n) => n === "main.rs")).toHaveLength(1);
+  expect(faux.oc[0].detruire).not.toHaveBeenCalled();
+});
+
+test("REQ087_AC1_le_fichier_s_ouvre_dans_le_groupe_de_la_conversation_pas_dans_le_groupe_courant", async () => {
+  let c = null;
+  const { e } = monterAg({ chemin: PROJET, surGroupes: (arbre, courant) => c?.definirGroupes(arbre, courant) });
+  c = cadre({ principal: { groupes: e.groupes() } });
+  document.body.append(c);
+  fauxFichiers({ "src/main.rs": "a\nb\n" });
+  e.ouvrir({ chemin: "autre.txt", contenu: "x", version: "1" });
+  e.ouvrirAgent();
+  e.deplacer("autre.txt", "g1", "droite"); // g2 : autre.txt, courant
+  await Promise.resolve();
+  const noms = () => [...document.querySelectorAll("[role=tablist]")].map((b) => [...b.querySelectorAll("[role=tab] .onglet-nom")].map((t) => t.textContent));
+  expect(noms()).toEqual([["Agent 1"], ["autre.txt"]]);
+  await faux.ag[0].ouvrirReference({ chemin: "src/main.rs", ligne: 1 }, lienFichier());
+  expect(noms()).toEqual([["Agent 1", "main.rs"], ["autre.txt"]]);
 });

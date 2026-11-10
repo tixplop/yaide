@@ -13,6 +13,7 @@ import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { zoneCode } from "../ui/zone-code.js";
 import { vueAgent } from "./agent.js";
+import { depuisProjet } from "../references.js";
 import { depotOnglets } from "./depot-onglets.js";
 import { vueClaude } from "./claude.js";
 import { vueOpencode } from "./opencode.js";
@@ -561,10 +562,44 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   // ---- Onglets Agent (REQ-078) ----
 
+  /** Ouvre le fichier cité par une réponse, dans le groupe de la conversation `o` ; un refus est dit, le focus reste sur `lien`. */
+  let alerteReference = null;
+  async function ouvrirReference(o, { chemin: ecrit, ligne }, lien) {
+    alerteReference?.remove();
+    alerteReference = null;
+    const refuser = (texte) => {
+      alerteReference = dire({ texte, variante: "alerte", fermable: true });
+      if (lien?.isConnected) lien.focus();
+    };
+    const chemin = depuisProjet(ecrit, cheminProjet);
+    if (chemin === undefined) return refuser(`${ecrit} est un dossier. Yaide ne l'ouvre pas.`);
+    const ouvert = trouver(chemin);
+    let lecture = {};
+    if (!ouvert || !estFichier(ouvert)) {
+      lecture = await lireFichier(chemin);
+      if (lecture.coupure) return refuser(TEXTE_COUPURE);
+      if (lecture.cause) {
+        const refus = {
+          introuvable: `${ecrit} n'existe pas.`,
+          invalide: lecture.message === "C'est un dossier." ? `${ecrit} est un dossier. Yaide ne l'ouvre pas.` : undefined,
+          binaire: `${ecrit} est un fichier binaire. Yaide ne l'ouvre pas.`,
+          "non-utf8": `${ecrit} est un fichier binaire. Yaide ne l'ouvre pas.`,
+          "trop-gros": `${ecrit} dépasse 5 Mo. Yaide ne l'ouvre pas.`,
+          interdit: `${ecrit} est hors du projet et de ses worktrees. Yaide ne l'ouvre pas.`,
+        };
+        return refuser(refus[lecture.cause] ?? `Impossible d'ouvrir ${ecrit} : ${(lecture.message ?? "erreur").replace(/\.$/, "")}.`);
+      }
+    }
+    if (!liste.includes(o)) return; // l'onglet a été fermé pendant la lecture
+    passerA(o.groupe);
+    ouvrir({ chemin, contenu: lecture.contenu, version: lecture.version, ligne });
+  }
+
   function creerAgent({ numero, conversation, equipe }) {
     const o = { conversationAgent: true, numero, conversation: conversation ?? null, groupe: courant, chemin: AGENT + numero, modifie: false };
     o.vue = vueAgent({
       ...(o.conversation ? { conversation: o.conversation } : { equipe }),
+      ouvrirReference: (ref, lien) => ouvrirReference(o, ref, lien),
       surConversation: (id) => {
         o.conversation = id;
         garderListe();
@@ -620,6 +655,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       sessionId: id,
       sousAgent: agent !== undefined,
       surOuvrir: ouvrirSousAgent,
+      ouvrirReference: (ref, lien) => ouvrirReference(o, ref, lien),
       surQuestion: (oui) => {
         if (o.marque === oui) return;
         o.marque = oui; // la vue peut le dire avant que l'onglet ne soit dans la liste
