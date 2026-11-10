@@ -173,13 +173,13 @@ test("REQ058_AC7_aria_pressed_propre_a_chaque_onglet_sur_html", () => {
   const { e } = monter();
   e.ouvrir({ chemin: "a.html", contenu: "x", version: "1" });
   e.ouvrir({ chemin: "b.html", contenu: "y", version: "1" });
-  expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
   boutonApercu().click();
-  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
-  e.ouvrir({ chemin: "a.html", contenu: "x", version: "1" });
   expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
-  e.ouvrir({ chemin: "b.html", contenu: "y", version: "1" });
+  e.ouvrir({ chemin: "a.html", contenu: "x", version: "1" });
   expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+  e.ouvrir({ chemin: "b.html", contenu: "y", version: "1" });
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
 });
 
 test("REQ039_AC7_le_chemin_de_l_onglet_actif_est_donne_pour_l_arbre", () => {
@@ -498,18 +498,18 @@ test("REQ062_AC12_aria_pressed_propre_a_chaque_onglet_focus_conserve", () => {
   const { e } = monter();
   e.ouvrir({ chemin: "a.md", contenu: "# x", version: "1" });
   e.ouvrir({ chemin: "b.md", contenu: "# y", version: "1" });
-  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
   boutonHybride().focus();
   boutonHybride().click();
-  expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
   expect(document.activeElement).toBe(boutonHybride());
-  expect(e.code.querySelector(".zone-code:not([hidden])").vue.dom.classList.contains("cm-hybride")).toBe(true);
+  expect(e.code.querySelector(".zone-code:not([hidden])").vue.dom.classList.contains("cm-hybride")).toBe(false);
   e.ouvrir({ chemin: "a.md", contenu: "# x", version: "1" });
-  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
-  e.ouvrir({ chemin: "b.md", contenu: "# y", version: "1" });
   expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
-  boutonHybride().click();
+  e.ouvrir({ chemin: "b.md", contenu: "# y", version: "1" });
   expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
+  boutonHybride().click();
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
 });
 
 test("REQ062_AC10_liste_gardee_relue_avec_le_mode_hybride", async () => {
@@ -543,12 +543,81 @@ test("REQ062_AC10_le_mode_reste_apres_un_changement_sur_le_disque", async () => 
   const { e } = monter();
   await e.restaurer();
   e.ouvrir({ chemin: "README.md", contenu: "# ancien", version: "1" });
-  boutonHybride().click();
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
   await e.relireDisque();
   const vue = e.code.querySelector(".zone-code").vue;
   await vi.waitFor(() => expect(vue.state.doc.toString()).toBe("# nouveau"));
   expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
   expect(vue.dom.classList.contains("cm-hybride")).toBe(true);
+});
+
+const e_actif = () => document.querySelector(".zone-code:not([hidden])");
+
+test("REQ083_AC1_markdown_ouvert_en_mode_hybride", () => {
+  const { e } = monter();
+  for (const chemin of ["README.md", "notes.markdown"]) {
+    e.ouvrir({ chemin, contenu: "# t", version: "1" });
+    expect(e_actif().vue.dom.classList.contains("cm-hybride"), chemin).toBe(true);
+    expect(boutonHybride().getAttribute("aria-pressed"), chemin).toBe("true");
+    expect(boutonApercu().getAttribute("aria-pressed"), chemin).toBe("false");
+  }
+});
+
+test("REQ083_AC2_html_ouvert_avec_l_apercu", () => {
+  const { e } = monter();
+  for (const chemin of ["index.html", "page.htm"]) {
+    e.ouvrir({ chemin, contenu: "<p>x</p>", version: "1" });
+    expect(boutonApercu().getAttribute("aria-pressed"), chemin).toBe("true");
+    expect(document.querySelector('iframe[title="Aperçu"]'), chemin).not.toBeNull();
+  }
+});
+
+test("REQ083_AC3_autres_fichiers_inchanges", () => {
+  const { e } = monter();
+  for (const chemin of ["main.rs", "style.css"]) {
+    e.ouvrir({ chemin, contenu: "x", version: "1" });
+    expect(e_actif().vue.dom.classList.contains("cm-hybride"), chemin).toBe(false);
+    expect(boutonHybride(), chemin).toBeNull();
+    expect(boutonApercu(), chemin).toBeNull();
+    expect(document.querySelector('iframe[title="Aperçu"]'), chemin).toBeNull();
+  }
+});
+
+test("REQ083_AC4_ferme_puis_rouvert_reprend_le_defaut", () => {
+  const { e } = monter();
+  e.ouvrir({ chemin: "README.md", contenu: "# t", version: "1" });
+  boutonHybride().click();
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
+  croix("README.md").click();
+  e.ouvrir({ chemin: "README.md", contenu: "# t", version: "1" });
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
+  e.ouvrir({ chemin: "notes.md", contenu: "# n", version: "1" });
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
+  e.ouvrir({ chemin: "index.html", contenu: "x", version: "1" });
+  boutonApercu().click();
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
+  croix("index.html").click();
+  e.ouvrir({ chemin: "index.html", contenu: "x", version: "1" });
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+});
+
+test("REQ083_AC5_restaure_et_deja_ouvert_gardent_leur_etat", async () => {
+  vi.resetModules();
+  const gardee = [{ chemin: "README.md", hybride: false }, { chemin: "index.html", apercu: false }];
+  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder: vi.fn(), retrouver: async () => ({ liste: gardee, actif: "README.md", disposition: { arbre: { id: "g1", actif: "README.md" }, courant: "g1" } }) }));
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => "# t" })));
+  const { vueEditeur: neuf } = await import("./editeur.js");
+  const e = neuf({ dire: vi.fn() });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  await e.restaurer();
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
+  e.ouvrir({ chemin: "README.md", contenu: "# t", version: "1" });
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
+  e.ouvrir({ chemin: "index.html", contenu: "# t", version: "1" });
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
+  vi.doUnmock("../onglets-fichiers.js");
+  vi.resetModules();
 });
 
 // ---- Onglets Claude (REQ-068) ----

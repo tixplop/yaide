@@ -303,7 +303,6 @@ test("REQ079_AC16_AC32_glisse_au_dessus_d_un_apercu_html_et_d_un_terminal", asyn
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await ouvrirFichiers(page, "page.html", "README.md");
   await onglet(page, /^page\.html/).click();
-  await page.getByRole("button", { name: "Aperçu", exact: true }).click();
   await expect(page.locator("iframe:visible")).toHaveCount(1);
   await deposer(page, onglet(page, /^README\.md/), groupeDe(page, /^page\.html/), "droite");
   await ouvrirFichiers(page, "src");
@@ -624,7 +623,6 @@ test("REQ080_AC1_glisse_au_dessus_d_un_apercu_html", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await ouvrirFichiers(page, "page.html", "README.md");
   await onglet(page, /^page\.html/).click();
-  await page.getByRole("button", { name: "Aperçu", exact: true }).click();
   await expect(page.locator("iframe:visible")).toHaveCount(1);
   await deposer(page, onglet(page, /^README\.md/), groupeDe(page, /^page\.html/), "droite");
   const [g1, g2] = await boites(page);

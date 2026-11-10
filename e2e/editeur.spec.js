@@ -157,11 +157,11 @@ test("REQ058_AC1_parcours_P022", async ({ page }) => {
     const bouton = page.getByRole("button", { name: "Aperçu", exact: true });
     const titre = page.locator('iframe[title="Aperçu"]:visible').contentFrame().getByRole("heading", { name: "Titre" });
     await ligne(page, "index.html").click();
-    await bouton.click();
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
     await taper(page, "index.html", "<h1>Titre</h1>");
     await expect(titre).toBeVisible();
     await ligne(page, "page.htm").click();
-    await bouton.click();
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
     await taper(page, "page.htm", "<h1>Titre</h1>");
     await expect(titre).toBeVisible();
     await ligne(page, "style.css").click();
@@ -650,6 +650,8 @@ test("REQ062_parcours_P025_P026", async ({ page, browserName }) => {
 
     // P-025
     await ligne(page, "README.md").click();
+    await expect(hybride).toHaveAttribute("aria-pressed", "true");
+    await hybride.click();
     await expect(hybride).toHaveAttribute("aria-pressed", "false");
     await hybride.click();
     await expect(hybride).toHaveAttribute("aria-pressed", "true");
@@ -693,8 +695,6 @@ test("REQ062_parcours_P025_P026", async ({ page, browserName }) => {
     await page.getByLabel("Chemin").fill("notes.md");
     await page.keyboard.press("Enter");
     await expect(editeur(page, "notes.md")).toBeFocused();
-    await expect(hybride).toHaveAttribute("aria-pressed", "false");
-    await hybride.click();
     await expect(hybride).toHaveAttribute("aria-pressed", "true");
     relais.couper();
     await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." })).toBeVisible({ timeout: 300 }));
@@ -744,7 +744,7 @@ test("REQ063_parcours_P027", async ({ page, browserName }) => {
     const tableau = page.locator(".cm-hy-tableau:visible");
     const pied = page.locator("footer");
     await ligne(page, "README.md").click();
-    await page.getByRole("button", { name: "Mode hybride", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Mode hybride", exact: true })).toHaveAttribute("aria-pressed", "true");
     // Étape 1 : clôtures vides, tableau rendu à la place des lignes 23 à 27.
     await expect(lignes.nth(0)).toHaveText("# projet");
     await expect(lignes.nth(7)).toHaveText("");

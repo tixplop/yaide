@@ -471,7 +471,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   /** `geste` : valeur rendue par `lecture(true)`. Sans valeur, l'ouverture est elle-même un geste. */
   function ouvrir({ chemin, contenu, version, ligne, geste = ++dernierGeste }) {
-    if (!trouver(chemin)) creer({ chemin, contenu, version });
+    if (!trouver(chemin)) creer({ chemin, contenu, version, hybride: avecHybride(chemin), apercu: /\.html?$/i.test(chemin) });
     if (geste !== dernierGeste && (actif === DIFF || trouver(actif))) {
       // Un geste plus récent a choisi un autre onglet : le fichier s'ouvre en arrière-plan.
       afficher();
