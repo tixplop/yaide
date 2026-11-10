@@ -126,17 +126,35 @@ test("REQ015_AC3_apres_le_retour_sans_recharger_ctrl_s_ecrit_et_retire_le_point"
   expect(await page.evaluate(() => window.__sans_rechargement)).toBe(true);
 });
 
-test("REQ016_AC3_apres_une_sauvegarde_recharger_affiche_le_disque_sans_point", async ({ page }) => {
-  await ouvrirMain(page);
-  await taper(page, "// sauvé\n");
-  await page.keyboard.press("Control+s");
-  await expect(onglet(page, "main.rs, non sauvegardé")).toHaveCount(0);
-  await expect.poll(() => fs.readFileSync(main(), "utf8")).toContain("// sauvé");
-  await page.reload();
-  await expect(onglet(page, "main.rs")).toBeVisible();
-  await expect(page.getByText("a changé sur le disque")).toHaveCount(0);
-  await expect(onglet(page, "main.rs, non sauvegardé")).toHaveCount(0);
-  await expect(editeur(page)).toContainText("// sauvé");
+test("REQ016_AC2_AC3_page_fermee_puis_sauvegarde_et_rechargement", async ({ page, browser }) => {
+  await test.step("REQ016_AC2_texte_tape_puis_page_fermee_sans_sauvegarder_revient_avec_son_point", async () => {
+    const contexte = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await contexte.newPage();
+    await ouvrirMain(page1);
+    await taper(page1, "// fermé\n");
+    await gardeContient(page1, "// fermé");
+    const etat = await contexte.storageState({ indexedDB: true });
+    await contexte.close();
+    const retour = await browser.newContext({ ignoreHTTPSErrors: true, storageState: etat });
+    const page2 = await retour.newPage();
+    await page2.goto(relais.origine + "/");
+    await expect(onglet(page2, "main.rs, non sauvegardé")).toBeVisible();
+    await expect(editeur(page2)).toContainText("// fermé");
+    expect(fs.readFileSync(main(), "utf8")).toBe(ORIGINE);
+    await retour.close();
+  });
+  await test.step("REQ016_AC3_apres_une_sauvegarde_recharger_affiche_le_disque_sans_point", async () => {
+    await ouvrirMain(page);
+    await taper(page, "// sauvé\n");
+    await page.keyboard.press("Control+s");
+    await expect(onglet(page, "main.rs, non sauvegardé")).toHaveCount(0);
+    await expect.poll(() => fs.readFileSync(main(), "utf8")).toContain("// sauvé");
+    await page.reload();
+    await expect(onglet(page, "main.rs")).toBeVisible();
+    await expect(page.getByText("a changé sur le disque")).toHaveCount(0);
+    await expect(onglet(page, "main.rs, non sauvegardé")).toHaveCount(0);
+    await expect(editeur(page)).toContainText("// sauvé");
+  });
 });
 
 test("REQ015_AC8_pendant_la_coupure_deplier_un_dossier_est_refuse", async ({ page }) => {
@@ -200,23 +218,6 @@ test("REQ016_AC1_coupure_puis_retour_puis_rechargement_le_texte_est_la_et_ctrl_s
   await page.keyboard.press("Control+s");
   await expect.poll(() => fs.readFileSync(main(), "utf8")).toContain("// gardé");
   await expect(onglet(page, "main.rs, non sauvegardé")).toHaveCount(0);
-});
-
-test("REQ016_AC2_texte_tape_puis_page_fermee_sans_sauvegarder_revient_avec_son_point", async ({ browser }) => {
-  const contexte = await browser.newContext({ ignoreHTTPSErrors: true });
-  const page = await contexte.newPage();
-  await ouvrirMain(page);
-  await taper(page, "// fermé\n");
-  await gardeContient(page, "// fermé");
-  const etat = await contexte.storageState({ indexedDB: true });
-  await contexte.close();
-  const retour = await browser.newContext({ ignoreHTTPSErrors: true, storageState: etat });
-  const page2 = await retour.newPage();
-  await page2.goto(relais.origine + "/");
-  await expect(onglet(page2, "main.rs, non sauvegardé")).toBeVisible();
-  await expect(editeur(page2)).toContainText("// fermé");
-  expect(fs.readFileSync(main(), "utf8")).toBe(ORIGINE);
-  await retour.close();
 });
 
 test("REQ005_AC8_deconnexion_avec_du_texte_non_sauvegarde_sans_question_puis_le_texte_revient", async ({ page }) => {

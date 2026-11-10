@@ -18,12 +18,6 @@ async function seConnecter(page, mdp = "mdp") {
   await page.keyboard.press("Enter");
 }
 
-test("REQ004_AC1_bon_mot_de_passe_affiche_la_vue_principale", async ({ page }) => {
-  await seConnecter(page);
-  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
-  await expect(page.getByRole("tablist").first()).toBeVisible();
-});
-
 test("REQ004_AC3_cinq_echecs_demandent_d_attendre_une_minute", async ({ page }) => {
   await ouvrir(page);
   for (let i = 0; i < 5; i++) {
@@ -36,25 +30,10 @@ test("REQ004_AC3_cinq_echecs_demandent_d_attendre_une_minute", async ({ page }) 
   await expect(page.getByRole("alert")).toHaveText("Trop d'essais. Attendez une minute.");
 });
 
-test("REQ004_AC5_ecran_de_connexion_nom_chemin_et_chemin_long_coupe_au_debut", async ({ page }) => {
-  await ouvrir(page);
-  await test.step("REQ004_AC5_ecran_de_connexion_affiche_le_nom_et_le_chemin", async () => {
-    await expect(page.getByRole("heading", { name: "yaide", exact: true })).toBeVisible();
-    await expect(page.locator(".connexion-chemin")).toHaveText(yaide.dossier);
-  });
-  await test.step("REQ004_AC5_chemin_long_coupe_au_debut_avec_info_bulle", async () => {
-    await page.setViewportSize({ width: 800, height: 480 });
-    await page.evaluate(() => {
-      const p = document.querySelector(".connexion-chemin");
-      p.title = "/" + "tres-long-dossier/".repeat(10) + "projet";
-      p.firstChild.textContent = p.title;
-    });
-    const p = page.locator(".connexion-chemin");
-    expect(await p.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
-    expect(await p.evaluate((e) => getComputedStyle(e).textOverflow)).toBe("ellipsis");
-    expect(await p.evaluate((e) => getComputedStyle(e).direction)).toBe("rtl");
-    await expect(p).toHaveAttribute("title", /projet$/);
-  });
+test("REQ004_AC1_bon_mot_de_passe_affiche_la_vue_principale", async ({ page }) => {
+  await seConnecter(page);
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  await expect(page.getByRole("tablist").first()).toBeVisible();
 });
 
 test("REQ004_AC6_focus_dans_le_champ_et_Entree_envoie", async ({ page }) => {
@@ -66,6 +45,100 @@ test("REQ004_AC6_focus_dans_le_champ_et_Entree_envoie", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
 });
+
+test("REQ005_AC4_la_session_reste_valide_au_rechargement", async ({ page }) => {
+  await seConnecter(page);
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+});
+
+test("REQ004_AC5_REQ028_AC9_ecran_de_connexion_puis_mises_en_page_de_la_vue_principale", async ({ page }) => {
+  await ouvrir(page);
+  await test.step("REQ004_AC5_ecran_de_connexion_nom_chemin_et_chemin_long_coupe_au_debut", async () => {
+    await test.step("REQ004_AC5_ecran_de_connexion_affiche_le_nom_et_le_chemin", async () => {
+      await expect(page.getByRole("heading", { name: "yaide", exact: true })).toBeVisible();
+      await expect(page.locator(".connexion-chemin")).toHaveText(yaide.dossier);
+    });
+    await test.step("REQ004_AC5_chemin_long_coupe_au_debut_avec_info_bulle", async () => {
+      await page.setViewportSize({ width: 800, height: 480 });
+      await page.evaluate(() => {
+        const p = document.querySelector(".connexion-chemin");
+        p.title = "/" + "tres-long-dossier/".repeat(10) + "projet";
+        p.firstChild.textContent = p.title;
+      });
+      const p = page.locator(".connexion-chemin");
+      expect(await p.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
+      expect(await p.evaluate((e) => getComputedStyle(e).textOverflow)).toBe("ellipsis");
+      expect(await p.evaluate((e) => getComputedStyle(e).direction)).toBe("rtl");
+      await expect(p).toHaveAttribute("title", /projet$/);
+    });
+  });  await test.step("REQ028_AC9_connexion_pour_les_mises_en_page", async () => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await ouvrir(page);
+    await page.getByLabel("Mot de passe").fill("mdp");
+    await page.keyboard.press("Enter");
+  });
+  await test.step("REQ028_AC9_un_nom_de_projet_long_ne_deborde_pas_de_la_barre_de_titre", async () => {
+    await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+    await page.setViewportSize({ width: 800, height: 480 });
+    await page.evaluate(() => {
+      document.querySelector(".ya-command-nom").textContent = "tres-long-dossier-".repeat(20) + "projet";
+    });
+    await expect(async () => {
+      const commande = await page.locator(".ya-command").boundingBox();
+      const theme = await page.getByRole("button", { name: "Thème clair" }).boundingBox();
+      const sortir = await page.getByRole("button", { name: "Déconnexion" }).boundingBox();
+      expect(commande.x + commande.width).toBeLessThanOrEqual(theme.x);
+      const rail = await page.locator(".cadre-rail").boundingBox();
+      expect(commande.y).toBeGreaterThanOrEqual(0);
+      expect(commande.y + commande.height).toBeLessThanOrEqual(rail.y);
+      expect(sortir.x + sortir.width).toBeLessThanOrEqual(800);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }).toPass({ timeout: 10000 });
+  });  await test.step("REQ028_AC9_retour_a_la_vue_normale", async () => {
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  });
+  await test.step("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", async () => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const boites = async () => {
+      const r = (s) => page.locator(s).first().boundingBox();
+      return { barre: await r("header"), rail: await r(".cadre-rail"), panneau: await r("aside.cadre-panneau"), principal: await r("main") };
+    };
+    await expect(async () => {
+      const b = await boites();
+      expect(b.rail.x + b.rail.width).toBeLessThanOrEqual(b.panneau.x);
+      expect(b.panneau.x + b.panneau.width).toBeLessThanOrEqual(b.principal.x);
+      expect(b.barre.y + b.barre.height).toBeLessThanOrEqual(b.rail.y);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }).toPass({ timeout: 10000 });
+    // AC-028-14 : trois onglets et quatre boutons de 48 px, entiers, sans défilement du rail ; « Agent » et « Agents » entiers en haut du rail droit.
+    const rail = await page.locator(".cadre-rail").boundingBox();
+    const elements = page.locator(".cadre-rail [role=tab], .cadre-rail-commandes button");
+    await expect(elements).toHaveCount(7);
+    for (const e of await elements.all()) {
+      const m = await e.boundingBox();
+      expect([m.width, m.height]).toEqual([48, 48]);
+      expect(m.x).toBeGreaterThanOrEqual(rail.x);
+      expect(m.x + m.width).toBeLessThanOrEqual(rail.x + rail.width);
+      expect(m.y).toBeGreaterThanOrEqual(rail.y);
+      expect(m.y + m.height).toBeLessThanOrEqual(rail.y + rail.height);
+      expect(m.y + m.height).toBeLessThanOrEqual(480);
+    }
+    for (const nom of ["Agent", "Agents"]) {
+      const agent = await page.getByRole("button", { name: nom, exact: true }).boundingBox();
+      expect([agent.width, agent.height]).toEqual([48, 48]);
+      expect(agent.x).toBeGreaterThanOrEqual(0);
+      expect(agent.x + agent.width).toBeLessThanOrEqual(800);
+      expect(agent.y).toBeGreaterThanOrEqual(0);
+      expect(agent.y + agent.height).toBeLessThanOrEqual(480);
+    }
+    await page.setViewportSize({ width: 600, height: 400 });
+    await expect(async () => {
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(true);
+    }).toPass({ timeout: 10000 });
+  });});
 
 test("REQ004_AC7_apres_un_echec_alerte_aria_et_texte_selectionne", async ({ page }) => {
   await seConnecter(page, "faux");
@@ -105,13 +178,6 @@ test("REQ005_AC3_deconnexion_ramene_a_la_connexion_et_le_cookie_n_est_plus_valid
   expect(await context.cookies()).toEqual([]);
   await page.reload();
   await expect(page.getByLabel("Mot de passe")).toBeVisible();
-});
-
-test("REQ005_AC4_la_session_reste_valide_au_rechargement", async ({ page }) => {
-  await seConnecter(page);
-  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
-  await page.reload();
-  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
 });
 
 test("REQ028_AC1_AC2_AC3_AC4_AC5_AC6_AC7_AC8_apres_connexion_titre_theme_rail_touches_focus_et_tab", async ({ page }) => {
@@ -186,63 +252,3 @@ test("REQ028_AC1_AC2_AC3_AC4_AC5_AC6_AC7_AC8_apres_connexion_titre_theme_rail_to
   });
 });
 
-test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", async ({ page }) => {
-  await seConnecter(page);
-  await page.setViewportSize({ width: 800, height: 480 });
-  const boites = async () => {
-    const r = (s) => page.locator(s).first().boundingBox();
-    return { barre: await r("header"), rail: await r(".cadre-rail"), panneau: await r("aside.cadre-panneau"), principal: await r("main") };
-  };
-  await expect(async () => {
-    const b = await boites();
-    expect(b.rail.x + b.rail.width).toBeLessThanOrEqual(b.panneau.x);
-    expect(b.panneau.x + b.panneau.width).toBeLessThanOrEqual(b.principal.x);
-    expect(b.barre.y + b.barre.height).toBeLessThanOrEqual(b.rail.y);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  }).toPass({ timeout: 10000 });
-  // AC-028-14 : trois onglets et quatre boutons de 48 px, entiers, sans défilement du rail ; « Agent » et « Agents » entiers en haut du rail droit.
-  const rail = await page.locator(".cadre-rail").boundingBox();
-  const elements = page.locator(".cadre-rail [role=tab], .cadre-rail-commandes button");
-  await expect(elements).toHaveCount(7);
-  for (const e of await elements.all()) {
-    const m = await e.boundingBox();
-    expect([m.width, m.height]).toEqual([48, 48]);
-    expect(m.x).toBeGreaterThanOrEqual(rail.x);
-    expect(m.x + m.width).toBeLessThanOrEqual(rail.x + rail.width);
-    expect(m.y).toBeGreaterThanOrEqual(rail.y);
-    expect(m.y + m.height).toBeLessThanOrEqual(rail.y + rail.height);
-    expect(m.y + m.height).toBeLessThanOrEqual(480);
-  }
-  for (const nom of ["Agent", "Agents"]) {
-    const agent = await page.getByRole("button", { name: nom, exact: true }).boundingBox();
-    expect([agent.width, agent.height]).toEqual([48, 48]);
-    expect(agent.x).toBeGreaterThanOrEqual(0);
-    expect(agent.x + agent.width).toBeLessThanOrEqual(800);
-    expect(agent.y).toBeGreaterThanOrEqual(0);
-    expect(agent.y + agent.height).toBeLessThanOrEqual(480);
-  }
-  await page.setViewportSize({ width: 600, height: 400 });
-  await expect(async () => {
-    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(true);
-  }).toPass({ timeout: 10000 });
-});
-
-test("REQ028_AC9_un_nom_de_projet_long_ne_deborde_pas_de_la_barre_de_titre", async ({ page }) => {
-  await seConnecter(page);
-  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
-  await page.setViewportSize({ width: 800, height: 480 });
-  await page.evaluate(() => {
-    document.querySelector(".ya-command-nom").textContent = "tres-long-dossier-".repeat(20) + "projet";
-  });
-  await expect(async () => {
-    const commande = await page.locator(".ya-command").boundingBox();
-    const theme = await page.getByRole("button", { name: "Thème clair" }).boundingBox();
-    const sortir = await page.getByRole("button", { name: "Déconnexion" }).boundingBox();
-    expect(commande.x + commande.width).toBeLessThanOrEqual(theme.x);
-    const rail = await page.locator(".cadre-rail").boundingBox();
-    expect(commande.y).toBeGreaterThanOrEqual(0);
-    expect(commande.y + commande.height).toBeLessThanOrEqual(rail.y);
-    expect(sortir.x + sortir.width).toBeLessThanOrEqual(800);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  }).toPass({ timeout: 10000 });
-});

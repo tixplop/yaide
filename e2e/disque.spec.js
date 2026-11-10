@@ -79,6 +79,18 @@ test("REQ017_AC10_le_focus_reste_dans_le_terminal_quand_la_question_apparait", a
   await expect(onglet(page, "main.rs, non sauvegardé, question en attente")).toContainText("!");
 });
 
+test("REQ017_AC2_AC10_AC11_fichier_modifie_change_sur_le_disque_pose_la_question_sans_prendre_le_focus", async ({ page }) => {
+  await ouvrirMain(page);
+  await taper(page, "// moi\n");
+  fs.writeFileSync(main(), DISQUE);
+  await avancer(page, () => expect(question(page)).toBeVisible({ timeout: 300 }));
+  await expect(garderMa(page)).toBeVisible();
+  await expect(prendre(page)).toBeVisible();
+  await expect(editeur(page)).toBeFocused();
+  await expect(onglet(page, "main.rs, non sauvegardé, question en attente")).toBeVisible();
+  await expect(onglet(page, "main.rs, non sauvegardé, question en attente")).toContainText("!");
+});
+
 test("REQ017_AC1_un_changement_de_date_seule_ne_change_rien", async ({ page }) => {
   await ouvrirMain(page);
   await taper(page, "// moi\n");
@@ -91,18 +103,6 @@ test("REQ017_AC1_un_changement_de_date_seule_ne_change_rien", async ({ page }) =
   }
   await expect(question(page)).toHaveCount(0);
   await expect(editeur(page)).toContainText("// moi");
-});
-
-test("REQ017_AC2_AC10_AC11_fichier_modifie_change_sur_le_disque_pose_la_question_sans_prendre_le_focus", async ({ page }) => {
-  await ouvrirMain(page);
-  await taper(page, "// moi\n");
-  fs.writeFileSync(main(), DISQUE);
-  await avancer(page, () => expect(question(page)).toBeVisible({ timeout: 300 }));
-  await expect(garderMa(page)).toBeVisible();
-  await expect(prendre(page)).toBeVisible();
-  await expect(editeur(page)).toBeFocused();
-  await expect(onglet(page, "main.rs, non sauvegardé, question en attente")).toBeVisible();
-  await expect(onglet(page, "main.rs, non sauvegardé, question en attente")).toContainText("!");
 });
 
 test("REQ017_AC3_garder_sa_version_garde_le_texte_et_ctrl_s_ecrase_sans_redemander", async ({ page }) => {
@@ -129,6 +129,21 @@ test("REQ017_AC4_prendre_celle_du_disque_affiche_le_disque_sans_point", async ({
   await expect(editeur(page)).toContainText("// du disque");
   await expect(editeur(page)).not.toContainText("// moi");
   await expect(onglet(page, "main.rs")).toBeVisible();
+  await expect(onglet(page, "main.rs, non sauvegardé")).toHaveCount(0);
+});
+
+test("REQ017_AC9_AC13_fichier_supprime_hors_de_yaide_garde_l_onglet_et_ctrl_s_le_recree", async ({ page }) => {
+  await ouvrirMain(page);
+  await taper(page, "// reste\n");
+  fs.rmSync(main());
+  const msg = page.getByRole("alert").filter({ hasText: "Fichier supprimé du disque. Ctrl+S le recrée." });
+  await avancer(page, () => expect(msg).toBeVisible({ timeout: 300 }));
+  await expect(editeur(page)).toContainText("// reste");
+  await editeur(page).click();
+  await page.keyboard.press("Control+s");
+  await expect.poll(() => fs.existsSync(main())).toBe(true);
+  expect(fs.readFileSync(main(), "utf8")).toContain("// reste");
+  await expect(msg).toHaveCount(0);
   await expect(onglet(page, "main.rs, non sauvegardé")).toHaveCount(0);
 });
 
@@ -191,21 +206,6 @@ test("REQ017_AC8_deux_onglets_du_navigateur_modifies_l_autre_demande_quelle_vers
   await avancer(page2, () => expect(question(page2)).toBeVisible({ timeout: 300 }));
   await expect(editeur(page2)).toContainText("// autre");
   await expect(question(page)).toHaveCount(0);
-});
-
-test("REQ017_AC9_AC13_fichier_supprime_hors_de_yaide_garde_l_onglet_et_ctrl_s_le_recree", async ({ page }) => {
-  await ouvrirMain(page);
-  await taper(page, "// reste\n");
-  fs.rmSync(main());
-  const msg = page.getByRole("alert").filter({ hasText: "Fichier supprimé du disque. Ctrl+S le recrée." });
-  await avancer(page, () => expect(msg).toBeVisible({ timeout: 300 }));
-  await expect(editeur(page)).toContainText("// reste");
-  await editeur(page).click();
-  await page.keyboard.press("Control+s");
-  await expect.poll(() => fs.existsSync(main())).toBe(true);
-  expect(fs.readFileSync(main(), "utf8")).toContain("// reste");
-  await expect(msg).toHaveCount(0);
-  await expect(onglet(page, "main.rs, non sauvegardé")).toHaveCount(0);
 });
 
 test("REQ017_AC12_question_en_attente_ctrl_s_et_fermeture_n_ecrivent_ni_ne_ferment", async ({ page }) => {
