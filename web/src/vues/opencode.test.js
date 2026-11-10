@@ -105,7 +105,33 @@ const taper = (texte) => {
 };
 const entree = (options = {}) => champ().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, ...options }));
 
+const raison = (cle, markdown) => ({ cle, id: cle, type: "raisonnement", markdown });
+
 describe("vue opencode", () => {
+  it("REQ084_AC1_AC6_raisonnement_replie_une_etape_ne_change_ni_etat_ni_focus", async () => {
+    const { etat } = await monter({ modele: { entrees: [user("u", "Salut"), raison("rsn:m:0", "Je lis"), agent("txt:m:0", "Bonjour")] } });
+    const fil = document.querySelector("[role=log]");
+    const b = fil.querySelector(".ya-raison");
+    expect(b.textContent).toContain("Raisonnement");
+    expect(b.getAttribute("aria-expanded")).toBe("false");
+    expect(b.compareDocumentPosition(fil.querySelector(".ya-chat-agent:not(.ya-raison-zone)")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    b.click();
+    expect(b.getAttribute("aria-expanded")).toBe("true");
+    expect(document.getElementById(b.getAttribute("aria-controls")).textContent).toContain("Je lis");
+    b.focus();
+    // Une étape arrive : le raisonnement s'allonge, rien ne se replie, le focus reste.
+    etat.modele = { ...etat.modele, entrees: [user("u", "Salut"), raison("rsn:m:0", "Je lis le fichier."), agent("txt:m:0", "Bonjour"), { cle: "outil:o", type: "outil", id: "o", nom: "read", argument: "a", etat: "enCours", resultat: "" }] };
+    etat.changer();
+    expect(fil.querySelector(".ya-raison").getAttribute("aria-expanded")).toBe("true");
+    expect(document.getElementById(b.getAttribute("aria-controls")).textContent).toContain("Je lis le fichier.");
+    expect(document.activeElement).toBe(b);
+  });
+
+  it("REQ084_AC4_raisonnement_vide_n_affiche_rien", async () => {
+    await monter({ modele: { entrees: [user("u", "Salut"), raison("rsn:m:0", ""), agent("txt:m:0", "Bonjour")] } });
+    expect(document.querySelector(".ya-raison")).toBeNull();
+  });
+
   it("REQ072_AC20_vide_texte_indicatif_maj_entree", async () => {
     const { api } = await monter();
     expect(document.body.textContent).toContain("Écrivez un message pour commencer.");
@@ -764,13 +790,15 @@ describe("vue opencode sur les captures", () => {
     rejouer(texte.evenements.slice(0, delta + 1));
     const fil = document.querySelector("[role=log]");
     expect(fil.textContent).toContain("Dis bonjour.");
-    expect(fil.querySelector(".ya-chat-agent").textContent).toContain("Voici une réponse en plusieurs");
-    const partiel = fil.querySelector(".ya-chat-agent").textContent;
+    expect(fil.querySelector(".ya-chat-agent:not(.ya-raison-zone)").textContent).toContain("Voici une réponse en plusieurs");
+    const partiel = fil.querySelector(".ya-chat-agent:not(.ya-raison-zone)").textContent;
     expect(btn("Envoyer").disabled).toBe(true);
     rejouer(texte.evenements.slice(delta + 1));
     expect(fil.querySelector(".ya-chat-agent strong").textContent).toBe("réponse");
-    expect(fil.querySelector(".ya-chat-agent").textContent.length).toBeGreaterThan(partiel.length);
-    expect(fil.textContent).not.toContain("réfléchis");
+    expect(fil.querySelector(".ya-chat-agent:not(.ya-raison-zone)").textContent.length).toBeGreaterThan(partiel.length);
+    // Le raisonnement est là, replié : sa zone est cachée.
+    expect(fil.querySelector(".ya-raison").getAttribute("aria-expanded")).toBe("false");
+    expect(fil.querySelector(".ya-raison-zone").hidden).toBe(true);
   });
 
   it("REQ072_AC6_arreter_puis_arrete_captures", async () => {

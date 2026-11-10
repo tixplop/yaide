@@ -834,3 +834,106 @@ test("REQ078_AC22_choisir_la_conversation_de_l_onglet_ne_change_rien", async () 
   expect(surConversation).not.toHaveBeenCalled();
   expect(document.activeElement).toBe(champ(vue));
 });
+
+const boutonsRaison = (vue) => [...fil(vue).querySelectorAll(".ya-raison")];
+
+test("REQ085_AC1_AC8_raisonnement_replie_avant_l_appel_puis_la_reponse_etape_sans_focus", async () => {
+  const { vue } = await monter({
+    lectures: [
+      {
+        entrees: [
+          { type: "utilisateur", texte: "Lis" },
+          { type: "agent", texte: "", raisonnement: "Je lis README.md." },
+          { type: "outil", id: "o1", nom: "read", argument: "README.md", etat: "reussi", resultat: "x" },
+          { type: "agent", texte: "fini" },
+        ],
+        enCours: false,
+        total: 4,
+        tokens: 0,
+      },
+    ],
+  });
+  taper(vue, "Lis");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  await tick(500);
+  const b = boutonsRaison(vue);
+  expect(b).toHaveLength(1);
+  expect(b[0].getAttribute("aria-expanded")).toBe("false");
+  // Ordre : raisonnement, appel, réponse ; la réponse vide de l'étape n'est pas montrée.
+  const ordre = [...fil(vue).querySelectorAll(".ya-raison, .ya-step, .ya-chat-agent:not(.ya-raison-zone)")].map((n) => n.className.split(" ")[0]);
+  expect(ordre).toEqual(["ya-raison", "ya-step", "ya-chat-agent"]);
+  expect(fil(vue).textContent).toContain("fini");
+  expect(document.activeElement).toBe(champ(vue));
+  b[0].click();
+  expect(document.getElementById(b[0].getAttribute("aria-controls")).textContent).toContain("Je lis README.md.");
+});
+
+test("REQ085_AC1_raisonnement_et_texte_d_une_meme_etape", async () => {
+  const { vue } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "agent", texte: "Voilà", raisonnement: "Hum" }], enCours: false, total: 1, tokens: 0 }] });
+  await tick(0);
+  const noeuds = [...fil(vue).querySelectorAll(".ya-raison, .ya-chat-agent:not(.ya-raison-zone)")];
+  expect(noeuds.map((n) => n.className.split(" ")[0])).toEqual(["ya-raison", "ya-chat-agent"]);
+});
+
+test("REQ085_AC6_sans_raisonnement_ou_raisonnement_vide_rien_de_plus", async () => {
+  const { vue } = await monter({
+    conversation: "c1",
+    lectures: [{ entrees: [{ type: "agent", texte: "Voilà" }, { type: "agent", texte: "Encore", raisonnement: "  " }], enCours: false, total: 2, tokens: 0 }],
+  });
+  await tick(0);
+  expect(boutonsRaison(vue)).toHaveLength(0);
+  expect(fil(vue).textContent).toContain("Voilà");
+  expect(fil(vue).textContent).toContain("Encore");
+});
+
+test("REQ085_AC7_AC8_raisonnement_dans_le_groupe_de_relecteur_le_long_de_son_filet", async () => {
+  const { vue } = await monter({
+    equipe: AGENTS(),
+    conversation: "c1",
+    lectures: [
+      {
+        agents: AGENTS(),
+        actif: null,
+        entrees: [
+          { type: "utilisateur", texte: "Relisez" },
+          { type: "agent", texte: "Bien.", raisonnement: "Je relis.", auteur: "relecteur" },
+          { type: "agent", texte: "Ok.", auteur: "testeur" },
+        ],
+        enCours: false,
+        total: 3,
+        tokens: 0,
+      },
+    ],
+  });
+  await tick(0);
+  const groupes = [...fil(vue).querySelectorAll("[role=group]")];
+  expect(groupes.map((g) => g.getAttribute("aria-label"))).toEqual(["Relecteur", "Testeur"]);
+  expect(groupes[0].querySelectorAll(".ya-raison")).toHaveLength(1);
+  expect(groupes[1].querySelectorAll(".ya-raison")).toHaveLength(0);
+  expect(groupes[0].querySelector(".ya-tour-corps").style.getPropertyValue("--c")).toBe("var(--agent-vert)");
+  expect(groupes[0].querySelector(".ya-tour-corps").contains(groupes[0].querySelector(".ya-raison"))).toBe(true);
+});
+
+test("REQ085_AC8_etape_qui_arrive_ne_replie_rien_et_laisse_le_focus_sur_le_raisonnement", async () => {
+  const debut = [{ type: "utilisateur", texte: "Lis" }, { type: "agent", texte: "", raisonnement: "Je lis README.md." }];
+  const { vue } = await monter({
+    lectures: [
+      { entrees: debut, enCours: true, total: 2, tokens: 0 },
+      { entrees: [...debut, { type: "outil", id: "o1", nom: "read", argument: "README.md", etat: "enCours", resultat: "" }], enCours: true, total: 3, tokens: 0 },
+    ],
+  });
+  taper(vue, "Lis");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  await tick(500);
+  const b = boutonsRaison(vue)[0];
+  b.click();
+  b.focus();
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  await tick(500);
+  expect(fil(vue).querySelector(".ya-step")).not.toBeNull();
+  expect(boutonsRaison(vue)[0]).toBe(b);
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement).toBe(b);
+});

@@ -102,19 +102,84 @@ describe("modèle d'une session opencode", () => {
     rejouer(es, evenementsDe(texte, premier + 1));
     // Un texte partiel est visible avant la fin du tour, après le message de l'utilisateur.
     let m = oc.modeleSession(id);
-    expect(m.entrees.map((e) => e.type)).toEqual(["utilisateur", "agent"]);
+    expect(m.entrees.map((e) => e.type)).toEqual(["utilisateur", "raisonnement", "agent"]);
     expect(m.entrees[0].texte).toContain("Dis bonjour.");
-    expect(m.entrees[1].markdown).toBe("Voici une **réponse** en plusieurs ");
+    expect(m.entrees[2].markdown).toBe("Voici une **réponse** en plusieurs ");
     expect(m.enCours).toBe(true);
     expect(rappel).toHaveBeenCalled();
-    // La suite complète le texte ; le raisonnement n'apparaît pas.
+    // La suite complète le texte ; le raisonnement est avant la réponse.
     rejouer(es, texte.evenements.slice(premier + 1));
     m = oc.modeleSession(id);
     const final = texte.messages[id].data.find((x) => x.type === "assistant").content.find((c) => c.type === "text").text;
-    expect(m.entrees.map((e) => e.type)).toEqual(["utilisateur", "agent"]);
-    expect(m.entrees[1].markdown).toBe(final);
-    expect(JSON.stringify(m.entrees)).not.toContain("réfléchis");
+    expect(m.entrees.map((e) => e.type)).toEqual(["utilisateur", "raisonnement", "agent"]);
+    expect(m.entrees[2].markdown).toBe(final);
     expect(m.enCours).toBe(false);
+  });
+
+  it("REQ084_AC1_AC2_raisonnement_avant_la_reponse_deltas_decoupes_puis_texte_final", async () => {
+    const id = texte.racine;
+    monde(texte, { historique: { [id]: [] } });
+    const { es } = await suivre(id);
+    const debut = indexDe(texte, "session.reasoning.started");
+    const delta = indexDe(texte, "session.reasoning.delta");
+    const fin = indexDe(texte, "session.reasoning.ended");
+    const morceaux = texte.evenements[delta].data.delta.split(/(?<= )/);
+    expect(morceaux.length).toBeGreaterThan(1);
+    rejouer(es, evenementsDe(texte, debut + 1));
+    const cle = `rsn:${texte.evenements[debut].data.assistantMessageID}:0`;
+    expect(oc.modeleSession(id).entrees.find((e) => e.type === "raisonnement")).toMatchObject({ cle, markdown: "" });
+    let cumul = "";
+    for (const morceau of morceaux) {
+      es.emettre({ ...texte.evenements[delta], data: { ...texte.evenements[delta].data, delta: morceau } });
+      cumul += morceau;
+      expect(oc.modeleSession(id).entrees.find((e) => e.type === "raisonnement").markdown).toBe(cumul);
+    }
+    // Le texte final remplace ce qui a été reçu.
+    es.emettre({ ...texte.evenements[fin], data: { ...texte.evenements[fin].data, text: "Texte final." } });
+    expect(oc.modeleSession(id).entrees.find((e) => e.type === "raisonnement").markdown).toBe("Texte final.");
+    // Il précède la réponse.
+    rejouer(es, texte.evenements.slice(fin + 1));
+    expect(oc.modeleSession(id).entrees.map((e) => e.type)).toEqual(["utilisateur", "raisonnement", "agent"]);
+  });
+
+  it("REQ084_AC2_ordinal_des_raisonnements_distinct_de_celui_des_textes", async () => {
+    const id = texte.racine;
+    monde(texte, { historique: { [id]: [] } });
+    const { es } = await suivre(id);
+    const d = (type, extra) => ({ type, data: { sessionID: id, assistantMessageID: "msg_a", ordinal: 0, ...extra } });
+    rejouer(es, [d("session.reasoning.started"), d("session.reasoning.delta", { delta: "a" }), d("session.text.delta", { delta: "b" }), d("session.reasoning.ended", { text: "A" })]);
+    expect(oc.modeleSession(id).entrees.map((e) => [e.cle, e.markdown])).toEqual([["rsn:msg_a:0", "A"], ["txt:msg_a:0", "b"]]);
+  });
+
+  it("REQ084_AC3_historique_donne_le_raisonnement_a_sa_place", async () => {
+    const id = texte.racine;
+    monde(texte);
+    await suivre(id);
+    const m = oc.modeleSession(id);
+    expect(m.entrees.map((e) => e.type)).toEqual(["utilisateur", "raisonnement", "agent"]);
+    expect(m.entrees[1]).toMatchObject({ type: "raisonnement", markdown: "Je réfléchis à la réponse." });
+    expect(m.entrees[1].cle).toMatch(/^rsn:msg_.*:0$/);
+  });
+
+  it("REQ084_AC4_raisonnement_vide_reste_vide", async () => {
+    const id = texte.racine;
+    monde(texte, { historique: { [id]: [] } });
+    const { es } = await suivre(id);
+    const d = (type, extra) => ({ type, data: { sessionID: id, assistantMessageID: "msg_v", ordinal: 0, ...extra } });
+    rejouer(es, [d("session.reasoning.started"), d("session.reasoning.ended", { text: "" })]);
+    expect(oc.modeleSession(id).entrees.find((e) => e.type === "raisonnement").markdown).toBe("");
+  });
+
+  it("REQ084_AC5_raisonnement_d_un_sous_agent_dans_son_modele", async () => {
+    const id = sousagent.racine;
+    const enfant = sousagent.sessionsFilles[0].id;
+    monde(sousagent, { historique: { [id]: [], [enfant]: [] } });
+    const { es } = await suivre(id);
+    await suivre(enfant);
+    const d = (type, extra) => ({ type, data: { sessionID: enfant, assistantMessageID: "msg_e", ordinal: 0, ...extra } });
+    rejouer(es, [d("session.reasoning.started"), d("session.reasoning.ended", { text: "Je cherche." })]);
+    expect(oc.modeleSession(enfant).entrees.map((e) => e.markdown)).toEqual(["Je cherche."]);
+    expect(oc.modeleSession(id).entrees.some((e) => e.type === "raisonnement")).toBe(false);
   });
 
   it("REQ072_AC4_deltas_sans_fin_s_ajoutent_sans_doublon", async () => {
@@ -375,7 +440,7 @@ describe("modèle d'une session opencode", () => {
     rejouer(es, evenementsDe(texte, debut + 1));
     // L'historique, relu au retour, contient déjà le premier morceau et le deuxième.
     const assistant = texte.messages[id].data.find((m) => m.type === "assistant");
-    const partiel = { ...assistant, time: { created: 1 }, content: [{ type: "text", text: deltas[0].data.delta + deltas[1].data.delta }] };
+    const partiel = { ...assistant, time: { created: 1 }, content: [assistant.content.find((c) => c.type === "reasoning"), { type: "text", text: deltas[0].data.delta + deltas[1].data.delta }] };
     etat.historique[id] = [texte.messages[id].data[0], partiel];
     es.ouvrir();
     rejouer(es, [deltas[0], deltas[1]]); // arrivent pendant la relecture, déjà comptés dans l'historique
@@ -398,6 +463,22 @@ describe("modèle d'une session opencode", () => {
     expect(oc.modeleSession(id).entrees.at(-1).markdown).toBe("la la ");
     rejouer(es, [delta("la ")]); // nouveau, après la relecture : il s'ajoute même s'il répète la fin
     expect(oc.modeleSession(id).entrees.at(-1).markdown).toBe("la la la ");
+  });
+
+  it("REQ084_AC2_AC3_raisonnement_en_cours_relu_sans_doublon", async () => {
+    const id = texte.racine;
+    const etat = monde(texte, { historique: { [id]: [] } });
+    const { es } = await suivre(id);
+    const d = (type, extra) => ({ type, data: { sessionID: id, assistantMessageID: "msg_a", ordinal: 0, ...extra } });
+    const delta = (t) => d("session.reasoning.delta", { delta: t });
+    rejouer(es, [d("session.reasoning.started"), delta("Je "), delta("lis ")]);
+    etat.historique[id] = [{ id: "msg_a", type: "assistant", time: { created: 1 }, content: [{ type: "reasoning", text: "Je lis " }] }];
+    es.ouvrir();
+    rejouer(es, [delta("Je "), delta("lis ")]); // déjà dans l'historique
+    await oc.pret(id);
+    expect(oc.modeleSession(id).entrees.at(-1).markdown).toBe("Je lis ");
+    rejouer(es, [delta("le "), d("session.reasoning.ended", { text: "Je lis le fichier." })]);
+    expect(oc.modeleSession(id).entrees.at(-1).markdown).toBe("Je lis le fichier.");
   });
 
   it("REQ072_AC10_un_seul_flux_partage_par_les_onglets", async () => {

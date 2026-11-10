@@ -29,8 +29,22 @@ export function quand(ms, maintenant = new Date()) {
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 
-/** Le serveur donne le texte de l'agent en `texte` ; le fil le rend en markdown. */
-const pourLeFil = (e) => (e.type === "agent" && e.markdown === undefined ? { ...e, markdown: e.texte ?? "" } : e);
+/**
+ * Le serveur donne le texte de l'agent en `texte` ; le fil le rend en markdown. Le raisonnement d'une étape
+ * (`raisonnement`, non vide) devient une entrée avant la réponse, du même auteur ; la réponse vide n'est pas montrée.
+ */
+function pourLeFil(e, rang) {
+  if (e.type !== "agent") return [e];
+  const liste = [];
+  if (typeof e.raisonnement === "string" && e.raisonnement.trim()) {
+    liste.push({ type: "raisonnement", id: `rsn:${rang}`, markdown: e.raisonnement, ...(e.auteur ? { auteur: e.auteur } : {}) });
+  }
+  const reste = { ...e };
+  delete reste.raisonnement;
+  const reponse = e.markdown === undefined ? { ...reste, markdown: e.texte ?? "" } : reste;
+  if (!liste.length || String(reponse.markdown).trim()) liste.push(reponse);
+  return liste;
+}
 
 function texteRefus(r) {
   if (r.coupure) return "Connexion perdue. Réessayez au retour.";
@@ -88,6 +102,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
   let titre = null;
   let tokens = 0;
   let entrees = [];
+  let entreesBrutes = [];
   let enCours = false;
   let envoi = false; // un envoi attend la réponse du serveur
   let chargements = 0; // change à chaque ouverture de conversation demandée
@@ -126,9 +141,14 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
   };
   /** Chaque entrée d'un agent reçoit son auteur ; le dernier agent à répondre est retenu. */
   function pourLeFilAgents(e) {
-    if (typeof e.auteur !== "string") return pourLeFil(e);
+    if (typeof e.auteur !== "string") return e;
     if (e.type === "agent") dernierDossier = e.auteur;
-    return pourLeFil({ ...e, auteur: auteurDe(e.auteur) });
+    return { ...e, auteur: auteurDe(e.auteur) };
+  }
+  // `brutes` : les entrées du serveur (la relecture compte en elles) ; `entrees` : ce que le fil montre.
+  function fixerEntrees(brutes) {
+    entreesBrutes = brutes;
+    entrees = brutes.flatMap((e, i) => pourLeFil(e, i));
   }
   function fixerEquipe(agents) {
     equipe = Array.isArray(agents) && agents.length ? agents.map((a) => ({ ...a })) : null;
@@ -284,7 +304,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     minuteur = setTimeout(() => relire(gen), INTERVALLE);
   }
   async function relire(gen) {
-    const depuis = Math.max(entrees.length - 1, 0);
+    const depuis = Math.max(entreesBrutes.length - 1, 0);
     const r = await api.lireConversation(convId, depuis);
     if (detruite || gen !== generation) return;
     if (!Array.isArray(r?.entrees)) {
@@ -295,7 +315,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     }
     if (Array.isArray(r.agents) && r.agents.length && !equipe) fixerEquipe(r.agents);
     actif = r.actif ?? null;
-    entrees = [...entrees.slice(0, depuis), ...r.entrees.map(pourLeFilAgents)];
+    fixerEntrees([...entreesBrutes.slice(0, depuis), ...r.entrees.map(pourLeFilAgents)]);
     titre = r.titre ?? titre;
     tokens = r.tokens ?? tokens;
     enCours = Boolean(r.enCours);
@@ -334,7 +354,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
       surConversation(convId);
     }
     liste.disabled = false;
-    entrees = [...entrees, { type: "utilisateur", texte }];
+    fixerEntrees([...entreesBrutes, { type: "utilisateur", texte }]);
     texteSaisi.value = "";
     enCours = true;
     if (equipe) actif = equipe[0].dossier;
@@ -376,7 +396,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     dernierDossier = null;
     fixerEquipe(r.agents);
     actif = r.actif ?? null;
-    entrees = r.entrees.map(pourLeFilAgents);
+    fixerEntrees(r.entrees.map(pourLeFilAgents));
     enCours = Boolean(r.enCours);
     profilId = r.profil ?? null;
     effacerRefus();
@@ -435,7 +455,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     surConversation(null);
     titre = null;
     tokens = 0;
-    entrees = [];
+    fixerEntrees([]);
     enCours = false;
     actif = null;
     dernierDossier = null;

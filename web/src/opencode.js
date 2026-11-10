@@ -131,6 +131,11 @@ function ajouterFin(s) {
   ajouter(s, { cle: `fin:${s.dernierMsg}`, type: "fin" });
 }
 
+function raisonnement(s, d) {
+  const cle = `rsn:${d.assistantMessageID}:${d.ordinal}`;
+  return ajouter(s, { cle, id: cle, type: "raisonnement", markdown: "", complet: false });
+}
+
 function outil(s, id, nom) {
   const item = ajouter(s, { cle: `outil:${id}`, type: "outil", id, nom: nom ?? "", entree: null, etat: "enCours", resultat: "", enfant: null });
   if (nom && !item.nom) item.nom = nom;
@@ -200,6 +205,20 @@ function appliquerEvenement(s, ev) {
       s.flux.delete(item.cle);
       break;
     }
+    case "session.reasoning.started":
+      raisonnement(s, d);
+      break;
+    case "session.reasoning.delta": {
+      const item = raisonnement(s, d);
+      if (!item.complet) item.markdown += d.delta;
+      break;
+    }
+    case "session.reasoning.ended": {
+      const item = raisonnement(s, d);
+      item.markdown = d.text;
+      item.complet = true;
+      break;
+    }
     case "session.tool.input.started":
       outil(s, d.id, d.name);
       break;
@@ -221,7 +240,7 @@ function appliquerEvenement(s, ev) {
       terminer(outil(s, d.id), "echec", d.error?.message ?? "");
       break;
     default:
-      // Raisonnement, usage, instructions, etc. : ignorés.
+      // Usage, instructions, etc. : ignorés.
       return false;
   }
   return true;
@@ -293,8 +312,12 @@ function itemsDeLHistorique(donnees) {
       dernier = m.id;
       relevant = m;
       let n = 0;
+      let r = 0;
       for (const p of m.content ?? []) {
-        if (p.type === "text") {
+        if (p.type === "reasoning") {
+          const cle = `rsn:${m.id}:${r++}`;
+          liste.push({ cle, id: cle, type: "raisonnement", markdown: p.text ?? "", complet: Boolean(m.time?.completed), depuisHistorique: true });
+        } else if (p.type === "text") {
           liste.push({ cle: `txt:${m.id}:${n++}`, type: "agent", markdown: p.text ?? "", complet: Boolean(m.time?.completed), depuisHistorique: true });
         } else if (p.type === "tool") {
           const st = p.state ?? {};
@@ -326,7 +349,7 @@ function fusionner(connu, historique) {
     if (connu.etat !== "enCours") return { ...historique, ...connu, enfant: connu.enfant ?? historique.enfant };
     return { ...connu, ...historique, entree: historique.entree ?? connu.entree, enfant: historique.enfant ?? connu.enfant };
   }
-  if (connu.type === "agent") {
+  if (connu.type === "agent" || connu.type === "raisonnement") {
     if (historique.complet) return historique;
     if (connu.complet) return connu;
     return historique.markdown.length >= connu.markdown.length ? historique : connu;
@@ -409,7 +432,8 @@ function rejeter(s, tampon) {
   const suites = new Map();
   const reste = [];
   for (const ev of tampon) {
-    const item = ev.type === "session.text.delta" ? s.cles.get(`txt:${ev.data.assistantMessageID}:${ev.data.ordinal}`) : null;
+    const prefixe = { "session.text.delta": "txt", "session.reasoning.delta": "rsn" }[ev.type];
+    const item = prefixe ? s.cles.get(`${prefixe}:${ev.data.assistantMessageID}:${ev.data.ordinal}`) : null;
     if (item?.depuisHistorique && !item.complet) suites.set(item, (suites.get(item) ?? "") + ev.data.delta);
     else reste.push(ev);
   }
@@ -596,6 +620,8 @@ export function modeleSession(sessionId) {
       premier = false;
     } else if (it.type === "agent") {
       entrees.push({ cle: it.cle, type: "agent", markdown: it.markdown });
+    } else if (it.type === "raisonnement") {
+      entrees.push({ cle: it.cle, id: it.id, type: "raisonnement", markdown: it.markdown });
     } else if (it.type === "outil" && OUTILS_SOUS_AGENT.has(it.nom)) {
       const e = infos.get(it.enfant) ?? {};
       entrees.push({ cle: it.cle, type: "sousAgent", id: it.enfant, agent: e.agent ?? it.entree?.agent ?? "", titre: e.titre ?? it.entree?.description ?? "", etat: etatSousAgent(it) });
