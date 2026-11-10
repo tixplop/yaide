@@ -500,6 +500,7 @@ test("REQ028_AC20_AC21_seul_le_fil_defile_la_page_ne_defile_jamais", async ({ pa
   await expect(profil(page)).toHaveValue(/sonnet/);
   for (let i = 1; i <= 3; i++) {
     await champMessage(page).fill(`Message ${i}`);
+    await expect(envoyer(page)).toBeEnabled(); // Entrée n'envoie rien tant que le bouton est inactif
     await page.keyboard.press("Enter");
     await patienter(page, () => expect(fil(page)).toContainText(`Réponse ${i}, paragraphe 40.`, { timeout: 300 }));
     await expect(arreter(page)).toBeHidden();
