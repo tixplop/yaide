@@ -251,62 +251,6 @@ test("REQ009_AC2_renommer_et_AC3_deplacer", async ({ page }) => {
   expect(fs.existsSync(path.join(dossier, "c.txt"))).toBe(false);
 });
 
-test("REQ009_AC4_et_AC7_nom_deja_pris_le_dialogue_reste_ouvert", async ({ page }) => {
-  const dossier = await ouvrir(page);
-  await ligne(page, "a.txt").focus();
-  await page.keyboard.press("F2");
-  const champ = page.getByLabel("Nouveau chemin");
-  await champ.fill("b.txt");
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("dialog", { name: "Renommer ou déplacer" })).toBeVisible();
-  await expect(page.getByRole("alert").filter({ hasText: "Ce nom est déjà pris. Choisissez-en un autre." })).toBeVisible();
-  await expect(champ).toBeFocused();
-  expect(fs.readFileSync(path.join(dossier, "b.txt"), "utf8")).toBe("b");
-  expect(fs.existsSync(path.join(dossier, "a.txt"))).toBe(true);
-
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Nouveau fichier" }).click();
-  await page.getByLabel("Chemin").fill("notes.txt");
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("alert").filter({ hasText: "Ce nom est déjà pris." })).toBeVisible();
-  expect(fs.readFileSync(path.join(dossier, "notes.txt"), "utf8")).toBe("notes");
-});
-
-test("REQ009_AC6_F2_champ_rempli_Echap_rend_le_focus_a_la_ligne", async ({ page }) => {
-  await ouvrir(page);
-  await ligne(page, "notes.txt").focus();
-  await page.keyboard.press("F2");
-  const champ = page.getByLabel("Nouveau chemin");
-  await expect(champ).toHaveValue("notes.txt");
-  await expect(champ).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(ligne(page, "notes.txt")).toBeFocused();
-});
-
-test("REQ009_erreurs_du_champ_vide_et_chemin_hors_projet", async ({ page }) => {
-  await ouvrir(page);
-  await page.getByRole("button", { name: "Nouveau fichier" }).click();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("alert").filter({ hasText: "Indiquez un chemin." })).toBeVisible();
-  await page.getByLabel("Chemin").fill("../dehors.txt");
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("alert").filter({ hasText: "Ce chemin sort du projet." })).toBeVisible();
-});
-
-test("REQ010_AC1_et_AC4_supprimer_un_fichier_apres_confirmation", async ({ page }) => {
-  const dossier = await ouvrir(page);
-  await ligne(page, "notes.txt").focus();
-  await page.keyboard.press("Delete");
-  const dlg = page.getByRole("dialog", { name: "Supprimer notes.txt ?" });
-  await expect(dlg.getByText("Cette action est définitive.")).toBeVisible();
-  await expect(dlg.getByRole("button", { name: "Annuler" })).toBeFocused();
-  await dlg.getByRole("button", { name: "Supprimer" }).click();
-  await expect(ligne(page, "notes.txt")).toHaveCount(0);
-  expect(fs.existsSync(path.join(dossier, "notes.txt"))).toBe(false);
-  await expect(arbre(page).locator("[role=treeitem][tabindex='0']")).toBeFocused();
-});
-
 test("REQ010_apres_la_derniere_suppression_le_focus_va_sur_Fichier", async ({ page }) => {
   const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "seul-"));
   fs.mkdirSync(path.join(dossier, "projet"));
@@ -320,28 +264,80 @@ test("REQ010_apres_la_derniere_suppression_le_focus_va_sur_Fichier", async ({ pa
   await expect(page.locator(".fichiers-entete").getByRole("button", { name: "Nouveau fichier" })).toBeFocused();
 });
 
-test("REQ010_AC2_et_AC4_annuler_et_Echap_ne_changent_rien", async ({ page }) => {
+test("REQ009_AC4_AC6_AC7_REQ010_AC1_AC2_AC4_AC5_dialogues_de_nom_et_de_suppression", async ({ page }) => {
   const dossier = await ouvrir(page);
-  await ligne(page, "notes.txt").click();
-  await page.getByRole("button", { name: "Supprimer" }).click();
-  await page.getByRole("button", { name: "Annuler" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("button", { name: "Supprimer" }).click();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(ligne(page, "notes.txt")).toBeVisible();
-  expect(fs.existsSync(path.join(dossier, "notes.txt"))).toBe(true);
-});
+  await test.step("REQ009_AC4_et_AC7_nom_deja_pris_le_dialogue_reste_ouvert", async () => {
+    await ligne(page, "a.txt").focus();
+    await page.keyboard.press("F2");
+    const champ = page.getByLabel("Nouveau chemin");
+    await champ.fill("b.txt");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog", { name: "Renommer ou déplacer" })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "Ce nom est déjà pris. Choisissez-en un autre." })).toBeVisible();
+    await expect(champ).toBeFocused();
+    expect(fs.readFileSync(path.join(dossier, "b.txt"), "utf8")).toBe("b");
+    expect(fs.existsSync(path.join(dossier, "a.txt"))).toBe(true);
 
-test("REQ010_AC5_supprimer_un_dossier_et_son_contenu", async ({ page }) => {
-  const dossier = await ouvrir(page);
-  await ligne(page, "src").click();
-  await page.getByRole("button", { name: "Supprimer" }).click();
-  const dlg = page.getByRole("dialog", { name: "Supprimer le dossier src/ ?" });
-  await expect(dlg.getByText("Le dossier et tout son contenu seront effacés. Cette action est définitive.")).toBeVisible();
-  await dlg.getByRole("button", { name: "Supprimer" }).click();
-  await expect(ligne(page, "src")).toHaveCount(0);
-  expect(fs.existsSync(path.join(dossier, "src"))).toBe(false);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Nouveau fichier" }).click();
+    await page.getByLabel("Chemin").fill("notes.txt");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("alert").filter({ hasText: "Ce nom est déjà pris." })).toBeVisible();
+    expect(fs.readFileSync(path.join(dossier, "notes.txt"), "utf8")).toBe("notes");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+  await test.step("REQ009_AC6_F2_champ_rempli_Echap_rend_le_focus_a_la_ligne", async () => {
+    await ligne(page, "notes.txt").focus();
+    await page.keyboard.press("F2");
+    const champ = page.getByLabel("Nouveau chemin");
+    await expect(champ).toHaveValue("notes.txt");
+    await expect(champ).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(ligne(page, "notes.txt")).toBeFocused();
+  });
+  await test.step("REQ009_erreurs_du_champ_vide_et_chemin_hors_projet", async () => {
+    await page.getByRole("button", { name: "Nouveau fichier" }).click();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("alert").filter({ hasText: "Indiquez un chemin." })).toBeVisible();
+    await page.getByLabel("Chemin").fill("../dehors.txt");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("alert").filter({ hasText: "Ce chemin sort du projet." })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+  await test.step("REQ010_AC2_et_AC4_annuler_et_Echap_ne_changent_rien", async () => {
+    await ligne(page, "notes.txt").click();
+    await page.getByRole("button", { name: "Supprimer" }).click();
+    await page.getByRole("button", { name: "Annuler" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.getByRole("button", { name: "Supprimer" }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(ligne(page, "notes.txt")).toBeVisible();
+    expect(fs.existsSync(path.join(dossier, "notes.txt"))).toBe(true);
+  });
+  await test.step("REQ010_AC1_et_AC4_supprimer_un_fichier_apres_confirmation", async () => {
+    await ligne(page, "notes.txt").focus();
+    await page.keyboard.press("Delete");
+    const dlg = page.getByRole("dialog", { name: "Supprimer notes.txt ?" });
+    await expect(dlg.getByText("Cette action est définitive.")).toBeVisible();
+    await expect(dlg.getByRole("button", { name: "Annuler" })).toBeFocused();
+    await dlg.getByRole("button", { name: "Supprimer" }).click();
+    await expect(ligne(page, "notes.txt")).toHaveCount(0);
+    expect(fs.existsSync(path.join(dossier, "notes.txt"))).toBe(false);
+    await expect(arbre(page).locator("[role=treeitem][tabindex='0']")).toBeFocused();
+  });
+  await test.step("REQ010_AC5_supprimer_un_dossier_et_son_contenu", async () => {
+    await ligne(page, "src").click();
+    await page.getByRole("button", { name: "Supprimer" }).click();
+    const dlg = page.getByRole("dialog", { name: "Supprimer le dossier src/ ?" });
+    await expect(dlg.getByText("Le dossier et tout son contenu seront effacés. Cette action est définitive.")).toBeVisible();
+    await dlg.getByRole("button", { name: "Supprimer" }).click();
+    await expect(ligne(page, "src")).toHaveCount(0);
+    expect(fs.existsSync(path.join(dossier, "src"))).toBe(false);
+  });
 });
 
 // ---- REQ-034 : menu de l'arborescence ----
