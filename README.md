@@ -114,6 +114,16 @@ Si la commande `opencode` (version 2) est dans le `PATH` du serveur au moment o�
 - Après une mise à jour d'opencode, `node e2e/capturer-opencode.js` relève de nouveau le contrat de son API (dans `web/src/opencode-captures/`).
 - **Raisonnement.** Quand le modèle rend son raisonnement, il s'affiche replié sous « Raisonnement » ; un clic ou Entrée le déplie.
 
+## Worktrees
+
+Quand le dépôt du projet a au moins deux worktrees (`git worktree list`), les vues Fichiers et Git ont une ligne « Worktree », sous leur titre. Chaque option donne le nom du dossier du worktree puis sa branche : « essai (essai) ».
+
+- Choisir un worktree fait travailler les deux vues sur son dossier : arborescence, ouvrir, créer, renommer, supprimer, changements, diff, commit, branche, pull et push. Le choix est commun : changer l'une des listes change l'autre. La barre d'état affiche la branche du worktree choisi.
+- Un fichier d'un autre worktree s'ouvre dans un onglet comme les autres ; son info-bulle donne son chemin depuis le projet, par exemple `../essai/src/main.rs`. Les onglets restent ouverts quand le choix change.
+- Le choix n'est pas gardé : à chaque chargement de la page, c'est le projet. Si le worktree choisi disparaît, Yaide revient au projet et le dit.
+- Restent sur le projet : la recherche, l'ouverture rapide, les shells, l'agent, Claude et opencode.
+- Créer ou supprimer un worktree se fait dans un shell (`git worktree add ../essai -b essai`, `git worktree remove ../essai`) : la liste est relue toutes les 3 s et suit d'elle-même.
+
 ## Réglages de l'interface
 
 Le fichier `.yaide/interface.json` du projet règle l'interface. Écrivez-le vous-même, dans l'éditeur de Yaide ou ailleurs, ou réglez-le par le dialogue « Préférences d'interface » (voir plus bas). Yaide ne l'écrit que par « Enregistrer » de ce dialogue. Il a deux parties, toutes deux facultatives, comme chacune de leurs clés.
