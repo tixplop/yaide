@@ -98,6 +98,8 @@ pub enum Message {
     Agent {
         texte: String,
         appels: Vec<Appel>,
+        /// Blocs Anthropic `thinking` et `redacted_thinking`, renvoyés tels quels.
+        blocs: Vec<Value>,
     },
     Resultat {
         id: String,
@@ -124,6 +126,8 @@ pub struct Reglage {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Reponse {
     pub texte: String,
+    pub raisonnement: String,
+    pub blocs: Vec<Value>,
     pub appels: Vec<Appel>,
     pub tokens: u64,
 }
@@ -236,7 +240,7 @@ fn corps_openai(
     for m in messages {
         liste.push(match m {
             Message::Utilisateur(t) => json!({"role": "user", "content": t}),
-            Message::Agent { texte, appels } => {
+            Message::Agent { texte, appels, .. } => {
                 let mut o = Map::new();
                 o.insert("role".into(), "assistant".into());
                 o.insert("content".into(), texte.clone().into());
@@ -309,8 +313,12 @@ fn corps_anthropic(
         }
         liste.push(match m {
             Message::Utilisateur(t) => json!({"role": "user", "content": t}),
-            Message::Agent { texte, appels } => {
-                let mut blocs = Vec::new();
+            Message::Agent {
+                texte,
+                appels,
+                blocs: precedents,
+            } => {
+                let mut blocs = precedents.clone();
                 if !texte.is_empty() {
                     blocs.push(json!({"type": "text", "text": texte}));
                 }
@@ -351,9 +359,13 @@ fn corps_anthropic(
     if let Some(e) = reglage.effort {
         c.insert("output_config".into(), json!({"effort": e.texte()}));
     }
-    if let Some(t) = reglage.temperature {
-        c.insert("temperature".into(), t.into());
-    }
+    match reglage.temperature {
+        Some(t) => c.insert("temperature".into(), t.into()),
+        None => c.insert(
+            "thinking".into(),
+            json!({"type": "adaptive", "display": "summarized"}),
+        ),
+    };
     Value::Object(c)
 }
 
@@ -381,6 +393,11 @@ fn lire_openai(v: &Value) -> Option<Reponse> {
                 .collect()
         })
         .unwrap_or_default();
+    let raisonnement = match message["reasoning_content"].as_str() {
+        Some(r) => r,
+        None => message["reasoning"].as_str().unwrap_or(""),
+    }
+    .to_string();
     let tokens = v
         .pointer("/usage/prompt_tokens")
         .and_then(Value::as_u64)
@@ -390,6 +407,8 @@ fn lire_openai(v: &Value) -> Option<Reponse> {
             .unwrap_or(0);
     Some(Reponse {
         texte,
+        raisonnement,
+        blocs: Vec::new(),
         appels,
         tokens,
     })
@@ -399,8 +418,15 @@ fn lire_anthropic(v: &Value) -> Option<Reponse> {
     let blocs = v["content"].as_array()?;
     let mut texte = String::new();
     let mut appels = Vec::new();
+    let mut pensees: Vec<&str> = Vec::new();
+    let mut gardes = Vec::new();
     for b in blocs {
         match b["type"].as_str() {
+            Some("thinking") => {
+                pensees.push(b["thinking"].as_str().unwrap_or(""));
+                gardes.push(b.clone());
+            }
+            Some("redacted_thinking") => gardes.push(b.clone()),
             Some("text") => texte.push_str(b["text"].as_str().unwrap_or("")),
             Some("tool_use") => appels.push(Appel {
                 id: b["id"].as_str().unwrap_or("").to_string(),
@@ -419,6 +445,8 @@ fn lire_anthropic(v: &Value) -> Option<Reponse> {
             .unwrap_or(0);
     Some(Reponse {
         texte,
+        raisonnement: pensees.join("\n\n"),
+        blocs: gardes,
         appels,
         tokens,
     })
@@ -679,6 +707,7 @@ mod tests {
             Message::Agent {
                 texte: "je lis".into(),
                 appels: vec![a("a"), a("b")],
+                blocs: Vec::new(),
             },
             Message::Resultat {
                 id: "a".into(),
@@ -880,5 +909,118 @@ mod tests {
         assert!(Provider::Google.cle_obligatoire() && !Provider::LiteLLM.cle_obligatoire());
         assert_eq!(Provider::Anthropic.format(), Format::Anthropic);
         assert_eq!(Provider::Google.format(), Format::OpenAI);
+    }
+
+    #[tokio::test]
+    async fn REQ085_AC1_AC2_AC6_openai_lit_reasoning_content_puis_reasoning_et_ne_le_renvoie_pas() {
+        let rep = |champ: &str, valeur: Value| {
+            let mut m = json!({"content": "fini"});
+            m[champ] = valeur;
+            json!({"choices": [{"message": m}]})
+        };
+        let (a, recues) = faux(200, rep("reasoning_content", json!("Je lis README.md."))).await;
+        let r = appeler(Provider::OpenAI, &a, Some("k"), &reglage(), &bonjour(), &[])
+            .await
+            .unwrap();
+        assert_eq!(r.raisonnement, "Je lis README.md.");
+        assert!(r.blocs.is_empty());
+        let (b, _) = faux(200, rep("reasoning", json!("Autre champ."))).await;
+        let r2 = appeler(Provider::OpenAI, &b, Some("k"), &reglage(), &bonjour(), &[])
+            .await
+            .unwrap();
+        assert_eq!(r2.raisonnement, "Autre champ.");
+        // reasoning non chaîne : ignoré
+        let (c, _) = faux(200, rep("reasoning", json!({"x": 1}))).await;
+        let r3 = appeler(Provider::OpenAI, &c, Some("k"), &reglage(), &bonjour(), &[])
+            .await
+            .unwrap();
+        assert_eq!(r3.raisonnement, "");
+        // la requête suivante ne contient pas le raisonnement
+        appeler(
+            Provider::OpenAI,
+            &a,
+            Some("k"),
+            &reglage(),
+            &historique(),
+            &[outil()],
+        )
+        .await
+        .unwrap();
+        let texte = recues.lock().unwrap()[1].corps.to_string();
+        assert!(!texte.contains("reasoning_content") && !texte.contains("\"reasoning\""));
+    }
+
+    #[tokio::test]
+    async fn REQ085_AC3_anthropic_demande_le_resume_sauf_avec_temperature() {
+        let (a, recues) = faux(200, ok_anthropic()).await;
+        appeler(
+            Provider::Anthropic,
+            &a,
+            Some("k"),
+            &reglage(),
+            &bonjour(),
+            &[],
+        )
+        .await
+        .unwrap();
+        let avec = Reglage {
+            temperature: Some(0.5),
+            ..reglage()
+        };
+        appeler(Provider::Anthropic, &a, Some("k"), &avec, &bonjour(), &[])
+            .await
+            .unwrap();
+        let recues = recues.lock().unwrap();
+        assert_eq!(
+            recues[0].corps["thinking"],
+            json!({"type": "adaptive", "display": "summarized"})
+        );
+        assert!(recues[1].corps.get("thinking").is_none());
+    }
+
+    #[tokio::test]
+    async fn REQ085_AC4_AC6_anthropic_garde_les_blocs_et_les_renvoie_avant_tool_use() {
+        let pense =
+            json!({"type": "thinking", "thinking": "Je lis README.md.", "signature": "sig-1"});
+        let rouge = json!({"type": "redacted_thinking", "data": "xyz"});
+        let rep = json!({"content": [
+            pense, rouge,
+            {"type": "tool_use", "id": "t1", "name": "lire", "input": {"chemin": "README.md"}}
+        ]});
+        let (a, recues) = faux(200, rep).await;
+        let r = appeler(
+            Provider::Anthropic,
+            &a,
+            Some("k"),
+            &reglage(),
+            &bonjour(),
+            &[],
+        )
+        .await
+        .unwrap();
+        assert_eq!(r.raisonnement, "Je lis README.md.");
+        assert_eq!(r.blocs, vec![pense.clone(), rouge.clone()]);
+        let mut h = bonjour();
+        h.push(Message::Agent {
+            texte: "ok".into(),
+            appels: r.appels,
+            blocs: r.blocs,
+        });
+        appeler(Provider::Anthropic, &a, Some("k"), &reglage(), &h, &[])
+            .await
+            .unwrap();
+        let c = recues.lock().unwrap()[1].corps["messages"][1]["content"].clone();
+        assert_eq!(c[0], pense);
+        assert_eq!(c[1], rouge);
+        assert_eq!(c[2]["type"], "text");
+        assert_eq!(c[3]["type"], "tool_use");
+        // plusieurs blocs thinking : réunis par une ligne vide
+        let deux = json!({"content": [
+            {"type": "thinking", "thinking": "a", "signature": "1"},
+            {"type": "thinking", "thinking": "b", "signature": "2"}]});
+        assert_eq!(lire_anthropic(&deux).unwrap().raisonnement, "a\n\nb");
+        // sans raisonnement
+        let r = lire_anthropic(&json!({"content": [{"type": "text", "text": "x"}]})).unwrap();
+        assert!(r.raisonnement.is_empty() && r.blocs.is_empty());
     }
 }

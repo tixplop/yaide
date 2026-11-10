@@ -24,6 +24,10 @@ pub enum Entree {
         texte: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         auteur: Option<String>,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        raisonnement: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        blocs: Vec<Value>,
     },
     Outil {
         id: String,
@@ -186,7 +190,7 @@ fn messages_pour(entrees: &[Entree], moi: Option<&str>, noms: &[(String, String)
                 ajouter_utilisateur(&mut sortie, texte.clone(), moi.is_some());
                 i += 1;
             }
-            Entree::Agent { texte, auteur } if !mien(auteur) => {
+            Entree::Agent { texte, auteur, .. } if !mien(auteur) => {
                 if !texte.is_empty() {
                     let d = auteur.as_deref().unwrap_or("");
                     let nom = noms.iter().find(|(x, _)| x == d).map_or(d, |(_, n)| n);
@@ -196,12 +200,12 @@ fn messages_pour(entrees: &[Entree], moi: Option<&str>, noms: &[(String, String)
             }
             Entree::Outil { auteur, .. } if !mien(auteur) => i += 1,
             Entree::Agent { .. } | Entree::Outil { .. } => {
-                let texte = match &entrees[i] {
-                    Entree::Agent { texte, .. } => {
+                let (texte, blocs) = match &entrees[i] {
+                    Entree::Agent { texte, blocs, .. } => {
                         i += 1;
-                        texte.clone()
+                        (texte.clone(), blocs.clone())
                     }
-                    _ => String::new(),
+                    _ => (String::new(), Vec::new()),
                 };
                 let mut appels = Vec::new();
                 let mut resultats = Vec::new();
@@ -230,7 +234,13 @@ fn messages_pour(entrees: &[Entree], moi: Option<&str>, noms: &[(String, String)
                     });
                     i += 1;
                 }
-                sortie.push(Message::Agent { texte, appels });
+                if !texte.is_empty() || !appels.is_empty() || !blocs.is_empty() {
+                    sortie.push(Message::Agent {
+                        texte,
+                        appels,
+                        blocs,
+                    });
+                }
                 sortie.extend(resultats);
             }
             Entree::Fin { .. } | Entree::Message { .. } => i += 1,
@@ -701,9 +711,15 @@ Always give file paths relative to the project root.",
                 {
                     a.tokens = rep.tokens;
                 }
-                if !rep.texte.is_empty() || !rep.appels.is_empty() {
+                if !rep.texte.is_empty()
+                    || !rep.appels.is_empty()
+                    || !rep.raisonnement.is_empty()
+                    || !rep.blocs.is_empty()
+                {
                     c.entrees.push(Entree::Agent {
                         texte: rep.texte,
+                        raisonnement: rep.raisonnement,
+                        blocs: rep.blocs,
                         auteur: agent.clone(),
                     });
                 }
@@ -1228,6 +1244,8 @@ mod tests {
                 Entree::Agent {
                     texte: String::new(),
                     auteur: None,
+                    raisonnement: String::new(),
+                    blocs: Vec::new(),
                 },
                 Entree::Outil {
                     id: "x".into(),
@@ -1661,6 +1679,8 @@ mod tests {
         let a = |t: &str, d: &str| Entree::Agent {
             texte: t.into(),
             auteur: Some(d.into()),
+            raisonnement: String::new(),
+            blocs: Vec::new(),
         };
         let entrees = vec![u("un"), u("deux"), a("rep", "a"), a("", "a"), u("trois")];
         let noms = vec![("a".to_string(), "Alice".to_string())];
@@ -1673,8 +1693,9 @@ mod tests {
         let sans = messages(&[u("a"), u("b")]);
         assert_eq!(sans.len(), 2);
         // pour Alice : ses réponses restent les siennes
+        // (une réponse vide ne donne plus de message vide)
         let m = messages_pour(&entrees, Some("a"), &noms);
-        assert_eq!(m.len(), 4);
+        assert_eq!(m.len(), 3);
     }
 
     #[test]
@@ -1684,5 +1705,62 @@ mod tests {
         let cinquante = "é".repeat(50);
         assert_eq!(titre(&cinquante), cinquante);
         assert_eq!(titre(&format!("{cinquante}x")), format!("{cinquante}…"));
+    }
+
+    #[test]
+    fn REQ085_AC7_les_blocs_et_le_raisonnement_d_un_autre_agent_ne_partent_pas() {
+        let bloc = json!({"type": "thinking", "thinking": "secret", "signature": "s"});
+        let entrees = vec![
+            Entree::Utilisateur { texte: "q".into() },
+            Entree::Agent {
+                texte: "avis".into(),
+                auteur: Some("r".into()),
+                raisonnement: "secret".into(),
+                blocs: vec![bloc.clone()],
+            },
+        ];
+        let noms = vec![("r".to_string(), "Relecteur".to_string())];
+        let pour_testeur = messages_pour(&entrees, Some("t"), &noms);
+        assert_eq!(pour_testeur.len(), 1);
+        assert!(
+            matches!(&pour_testeur[0], Message::Utilisateur(t) if t == "q\n\n[Relecteur] avis")
+        );
+        let pour_relecteur = messages_pour(&entrees, Some("r"), &noms);
+        assert!(matches!(&pour_relecteur[1],
+            Message::Agent { blocs, .. } if *blocs == vec![bloc]));
+    }
+
+    #[test]
+    fn REQ085_AC6_entree_agent_ancienne_se_lit_et_s_ecrit_comme_avant() {
+        let e: Entree = serde_json::from_str(r#"{"type":"agent","texte":"salut"}"#).unwrap();
+        assert_eq!(
+            e,
+            Entree::Agent {
+                texte: "salut".into(),
+                auteur: None,
+                raisonnement: String::new(),
+                blocs: Vec::new()
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&e).unwrap(),
+            json!({"type": "agent", "texte": "salut"})
+        );
+    }
+
+    #[test]
+    fn REQ085_AC6_une_entree_avec_seulement_du_raisonnement_ne_donne_aucun_message() {
+        let entrees = vec![
+            Entree::Utilisateur { texte: "q".into() },
+            Entree::Agent {
+                texte: String::new(),
+                auteur: None,
+                raisonnement: "je pense".into(),
+                blocs: Vec::new(),
+            },
+        ];
+        let m = messages_pour(&entrees, None, &[]);
+        assert_eq!(m.len(), 1);
+        assert!(matches!(&m[0], Message::Utilisateur(_)));
     }
 }

@@ -921,3 +921,112 @@ fn REQ081_AC5_copie_impossible_ne_bloque_pas() {
     assert!(v["erreur"].is_null());
     assert!(!s.cfg().join("config.json").exists());
 }
+
+#[test]
+fn REQ085_AC1_AC4_AC5_raisonnement_dans_le_journal_et_blocs_renvoyes_apres_redemarrage() {
+    let pense = json!({"type": "thinking", "thinking": "Je lis README.md.", "signature": "sig-1"});
+    let rouge = json!({"type": "redacted_thinking", "data": "xyz"});
+    let (adresse, recues) = faux_provider(vec![
+        (
+            200,
+            json!({"content": [pense, rouge,
+                {"type": "tool_use", "id": "t1", "name": "read", "input": {"path": "README.md"}}],
+                "usage": {"input_tokens": 3, "output_tokens": 1}}),
+            0,
+        ),
+        (
+            200,
+            json!({"content": [{"type": "text", "text": "fini"}],
+                   "usage": {"input_tokens": 4, "output_tokens": 1}}),
+            0,
+        ),
+        (
+            200,
+            json!({"content": [{"type": "text", "text": "encore"}],
+                   "usage": {"input_tokens": 4, "output_tokens": 1}}),
+            0,
+        ),
+    ]);
+    let s = lancer("raisonnement");
+    std::fs::write(s.projet.join("README.md"), "bonjour").unwrap();
+    let profil = configurer(&s, "anthropic", &adresse);
+    let id = message(&s, &profil, "lis le README");
+    let v = attendre_fin(&s, &id);
+    let agent = v["entrees"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["type"] == "agent")
+        .unwrap()
+        .clone();
+    assert_eq!(agent["raisonnement"], "Je lis README.md.");
+    // la requête de l'étape suivante renvoie les blocs, avant le tool_use
+    let c = recues.lock().unwrap()[1]["corps"]["messages"][1]["content"].clone();
+    assert_eq!(c[0], pense);
+    assert_eq!(c[1], rouge);
+    assert_eq!(c[2]["type"], "tool_use");
+
+    // après redémarrage : le raisonnement est relu, et un second message renvoie les blocs
+    let s = redemarrer(s);
+    let r = s.appel(
+        "GET",
+        &format!("/api/agent/conversations/{id}"),
+        &Value::Null,
+    );
+    let relu = r.json()["entrees"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["type"] == "agent")
+        .unwrap()["raisonnement"]
+        .clone();
+    assert_eq!(relu, "Je lis README.md.");
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({"profil": profil, "conversation": id, "texte": "et ensuite ?"}),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    attendre_fin(&s, &id);
+    let c = recues.lock().unwrap()[2]["corps"]["messages"][1]["content"].clone();
+    assert_eq!(c[0], pense);
+    assert_eq!(c[1], rouge);
+}
+
+#[test]
+fn REQ085_AC6_raisonnement_seul_est_garde_au_journal_sans_message_vide_ensuite() {
+    let (adresse, recues) = faux_provider(vec![
+        (
+            200,
+            json!({"choices": [{"message": {"content": "", "reasoning": "Je pense."}}],
+                   "usage": {"prompt_tokens": 1, "completion_tokens": 1}}),
+            0,
+        ),
+        rep_texte("suite"),
+    ]);
+    let s = lancer("raisonnement-seul");
+    let profil = configurer(&s, "openai", &adresse);
+    let id = message(&s, &profil, "bonjour");
+    let v = attendre_fin(&s, &id);
+    let entree = v["entrees"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["type"] == "agent")
+        .unwrap()
+        .clone();
+    assert_eq!(entree["raisonnement"], "Je pense.");
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({"profil": profil, "conversation": id, "texte": "et puis ?"}),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    attendre_fin(&s, &id);
+    let m = recues.lock().unwrap()[1]["corps"]["messages"].clone();
+    assert!(m
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|x| x["role"] != "assistant"));
+}
