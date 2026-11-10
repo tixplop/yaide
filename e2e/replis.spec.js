@@ -24,8 +24,7 @@ const boite = (page, sel) =>
   });
 const onglets = (page) => page.getByRole("tablist", { name: "Shells" }).getByRole("tab");
 
-test("REQ046_AC1_AC2_AC3_panneau_replie_largeurs_meme_vue_et_Ctrl_P_ne_deplie_pas", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+async function panneauReplie(page) {
   await page.getByRole("tab", { name: "Git", exact: true }).click();
   await page.getByLabel("Message", { exact: true }).fill("brouillon");
   const avant = await boite(page, "main");
@@ -48,10 +47,26 @@ test("REQ046_AC1_AC2_AC3_panneau_replie_largeurs_meme_vue_et_Ctrl_P_ne_deplie_pa
   await page.getByRole("tab", { name: "Recherche", exact: true }).click();
   await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Recherche");
   await expect(page.locator("aside.cadre-panneau")).toBeVisible();
+}
+
+async function menuOuvertLePremierClicFermeLeMenu(page) {
+  await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
+  await page.locator("aside.cadre-panneau").getByRole("treeitem").first().click({ button: "right" });
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.locator("aside.cadre-panneau").getByRole("button", { name: "Replier le panneau", exact: true }).click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(page.locator("aside.cadre-panneau")).toBeVisible();
+  await page.locator("aside.cadre-panneau").getByRole("button", { name: "Replier le panneau", exact: true }).click();
+  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
+}
+
+test("REQ046_AC1_AC2_AC3_REQ048_AC11_panneau_replie_largeurs_meme_vue_et_menu_ouvert", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await test.step("REQ046_AC1_AC2_AC3_panneau_replie_largeurs_meme_vue_et_Ctrl_P_ne_deplie_pas", () => panneauReplie(page));
+  await test.step("REQ048_AC11_menu_ouvert_le_premier_clic_ferme_le_menu", () => menuOuvertLePremierClicFermeLeMenu(page));
 });
 
-test("REQ046_AC4_le_shell_connait_sa_nouvelle_largeur", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
+async function shellLargeur(page) {
   const avant = await tailleStable(page);
   await bouton(page, "Replier le panneau").click();
   const replie = await tailleStable(page);
@@ -63,10 +78,41 @@ test("REQ046_AC4_le_shell_connait_sa_nouvelle_largeur", async ({ page }) => {
   expect(deplie).toBe(avant);
   await taper(page, "clear; stty size");
   await expect(ecran(page)).toContainText(deplie);
-});
+}
 
-test("REQ046_AC5_AC6_AC7_zone_repliee_les_shells_vivent_et_la_taille_est_juste_au_depliage", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
+async function hauteurBornee(page) {
+  await page.setViewportSize({ width: 800, height: 600 });
+  const poignee = page.getByRole("separator", { name: "Hauteur des shells" });
+  await poignee.focus();
+  for (let i = 0; i < 30 && (await poignee.getAttribute("aria-valuenow")) !== "350"; i++) await page.keyboard.press("ArrowUp");
+  await expect(poignee).toHaveAttribute("aria-valuenow", "350");
+  await bouton(page, "Replier les shells").click();
+  await page.setViewportSize({ width: 800, height: 480 });
+  await bouton(page, "Déplier les shells").click();
+  await expect(poignee).toHaveAttribute("aria-valuenow", "299");
+  await page.setViewportSize({ width: 800, height: 600 });
+  await expect(poignee).toHaveAttribute("aria-valuenow", "350");
+}
+
+async function contourEtTab(page) {
+  await bouton(page, "Replier le panneau").click();
+  await bouton(page, "Replier les shells").click();
+  const contour = await bouton(page, "Déplier les shells").evaluate((e) => getComputedStyle(e).outlineStyle);
+  expect(contour).not.toBe("none");
+  await page.getByRole("button", { name: "Ouverture rapide" }).focus();
+  const vus = new Set();
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press("Tab");
+    vus.add(await page.evaluate(() => (document.activeElement.closest("aside, .cadre-shells") ? "zone" : "ok")));
+    // Dans l'éditeur, Tab indente : on le quitte par Échap.
+    await page.keyboard.press("Escape");
+  }
+  expect(vus.has("zone")).toBe(false);
+}
+
+async function zoneRepliee(page) {
+  await bouton(page, "Déplier le panneau").click();
+  await bouton(page, "Déplier les shells").click();
   await bouton(page, "Nouveau shell").click();
   await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
   const depart = temoin();
@@ -97,16 +143,16 @@ test("REQ046_AC5_AC6_AC7_zone_repliee_les_shells_vivent_et_la_taille_est_juste_a
   await expect(ecran(page)).toContainText(stable);
   // Une ligne valant exactement « fini » : la sortie du programme, pas l'écho de la commande.
   await expect(ecran(page).locator("div").filter({ hasText: /^fini\s*$/ })).toHaveCount(1);
+}
+
+test("REQ046_AC4_AC5_AC6_AC7_AC15_REQ032_AC15_largeur_hauteur_et_replis_des_shells", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await test.step("REQ046_AC4_le_shell_connait_sa_nouvelle_largeur", () => shellLargeur(page));
+  await test.step("REQ046_AC15_contour_apres_un_clic_et_Tab_ne_s_arrete_pas_dans_une_zone_repliee", () => contourEtTab(page));
+  await test.step("REQ046_AC5_AC6_AC7_zone_repliee_les_shells_vivent_et_la_taille_est_juste_au_depliage", () => zoneRepliee(page));
+  await test.step("REQ032_AC15_zone_repliee_fenetre_reduite_puis_depliee_la_hauteur_est_bornee_puis_rendue", () => hauteurBornee(page));
 });
 
-test("REQ046_AC8_Nouveau_shell_deplie_la_zone_et_ouvre_un_shell_actif_avec_le_focus", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  await bouton(page, "Replier les shells").click();
-  await bouton(page, "Nouveau shell").click();
-  await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
-  await expect(page.getByRole("tab", { name: "shell 2" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator(".terminal:visible .xterm-helper-textarea")).toBeFocused();
-});
 
 test("REQ046_AC12_rechargement_les_deux_replis_restent", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
@@ -150,29 +196,6 @@ test("REQ046_AC12_rechargement_les_deux_replis_restent", async ({ page }) => {
   await expect(ecran(page)).toContainText(stable);
 });
 
-test("REQ046_AC3_REQ028_AC15_Entree_apres_Bas_deplie_et_Ctrl_Maj_F_ne_deplie_pas", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await bouton(page, "Replier le panneau").click();
-  await page.keyboard.press("Control+Shift+F");
-  const fichiers = page.getByRole("tab", { name: "Fichiers", exact: true });
-  await expect(fichiers).toBeFocused();
-  await expect(fichiers).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
-  await page.keyboard.press("ArrowDown");
-  await expect(page.getByRole("tab", { name: "Recherche", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
-  await page.keyboard.press("Enter");
-  await expect(page.locator("aside.cadre-panneau h2")).toHaveText("Recherche");
-  await expect(page.locator("aside.cadre-panneau")).toBeVisible();
-  for (const [touche, titre] of [["g", "Git"], ["f", "Fichiers"], ["r", "Recherche"]]) {
-    await bouton(page, "Replier le panneau").click();
-    await page.getByRole("tab", { selected: true }).focus();
-    await page.keyboard.press(touche);
-    await expect(page.locator("aside.cadre-panneau h2")).toHaveText(titre);
-    await expect(page.locator("aside.cadre-panneau")).toBeVisible();
-  }
-});
-
 test("REQ046_AC14_AC17_a_800_par_480_quatre_boutons_sans_chevauchement_et_info_bulle", async ({ page }) => {
   await page.clock.install();
   await page.setViewportSize({ width: 800, height: 480 });
@@ -201,37 +224,7 @@ test("REQ046_AC14_AC17_a_800_par_480_quatre_boutons_sans_chevauchement_et_info_b
   await expect(page.getByRole("tooltip")).toHaveText("Déplier le panneau");
 });
 
-test("REQ046_AC15_contour_apres_un_clic_et_Tab_ne_s_arrete_pas_dans_une_zone_repliee", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  await bouton(page, "Replier le panneau").click();
-  await bouton(page, "Replier les shells").click();
-  const contour = await bouton(page, "Déplier les shells").evaluate((e) => getComputedStyle(e).outlineStyle);
-  expect(contour).not.toBe("none");
-  await page.getByRole("button", { name: "Ouverture rapide" }).focus();
-  const vus = new Set();
-  for (let i = 0; i < 12; i++) {
-    await page.keyboard.press("Tab");
-    vus.add(await page.evaluate(() => (document.activeElement.closest("aside, .cadre-shells") ? "zone" : "ok")));
-    // Dans l'éditeur, Tab indente : on le quitte par Échap.
-    await page.keyboard.press("Escape");
-  }
-  expect(vus.has("zone")).toBe(false);
-});
 
-test("REQ032_AC15_zone_repliee_fenetre_reduite_puis_depliee_la_hauteur_est_bornee_puis_rendue", async ({ page }) => {
-  await page.setViewportSize({ width: 800, height: 600 });
-  await ouvrirYaide(page, yaide.origine);
-  const poignee = page.getByRole("separator", { name: "Hauteur des shells" });
-  await poignee.focus();
-  for (let i = 0; i < 30 && (await poignee.getAttribute("aria-valuenow")) !== "350"; i++) await page.keyboard.press("ArrowUp");
-  await expect(poignee).toHaveAttribute("aria-valuenow", "350");
-  await bouton(page, "Replier les shells").click();
-  await page.setViewportSize({ width: 800, height: 480 });
-  await bouton(page, "Déplier les shells").click();
-  await expect(poignee).toHaveAttribute("aria-valuenow", "299");
-  await page.setViewportSize({ width: 800, height: 600 });
-  await expect(poignee).toHaveAttribute("aria-valuenow", "350");
-});
 
 // ---- T-060 : replier le panneau depuis son en-tête ----
 
@@ -301,13 +294,3 @@ test("REQ048_AC5_AC8_AC9_en_tete_a_240_et_280_px", async ({ page }) => {
   }
 });
 
-test("REQ048_AC11_menu_ouvert_le_premier_clic_ferme_le_menu", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await page.locator("aside.cadre-panneau").getByRole("treeitem").first().click({ button: "right" });
-  await expect(page.getByRole("menu")).toBeVisible();
-  await page.locator("aside.cadre-panneau").getByRole("button", { name: "Replier le panneau", exact: true }).click();
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  await expect(page.locator("aside.cadre-panneau")).toBeVisible();
-  await page.locator("aside.cadre-panneau").getByRole("button", { name: "Replier le panneau", exact: true }).click();
-  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
-});

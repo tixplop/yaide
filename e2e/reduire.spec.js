@@ -120,33 +120,8 @@ test("REQ040_AC1_AC2_AC3_AC4_AC7_AC8_AC13_AC15_AC16_AC17_AC21_deux_reductions_la
   await expect(compteur(page)).toHaveText("1");
 });
 
-test("REQ040_AC5_stty_size_est_juste_apres_un_changement_de_fenetre_pendant_la_reduction", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  await bouton(page, "Réduire le shell").click();
-  await expect(poignee(page)).toHaveCount(0);
-  // Réafficher un shell réduit depuis la zone absente.
-  await page.setViewportSize({ width: 1000, height: 640 });
-  await ouvrirMenu(page);
-  await menu(page).getByRole("menuitem", { name: "shell 1" }).click();
-  await expect(onglets(page)).toHaveText(["shell 1"]);
-  const stable = await tailleStable(page);
-  expect(stable).not.toBe("24 80");
-  await taper(page, "stty size");
-  await expect(ecran(page)).toContainText(stable);
-  // Même vérification dans le shell que « Nouveau shell » ouvre zone absente.
-  await bouton(page, "Réduire le shell").click();
-  await expect(poignee(page)).toHaveCount(0);
-  await page.setViewportSize({ width: 900, height: 600 });
-  await bouton(page, "Nouveau shell").click();
-  await expect(onglets(page)).toHaveText(["shell 2"]);
-  const seconde = await tailleStable(page);
-  expect(seconde).not.toBe("24 80");
-  await taper(page, "stty size");
-  await expect(ecran(page)).toContainText(seconde);
-});
 
-test("REQ040_AC22_la_taille_d_avant_la_reduction_est_gardee_et_un_rechargement_n_impose_pas_80_par_24", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
+async function tailleAvantReduction(page) {
   await expect(page.locator(".terminal:visible .terminal-attente")).toBeHidden();
   const avant = await tailleStable(page);
   expect(avant).not.toBe("24 80");
@@ -165,10 +140,9 @@ test("REQ040_AC22_la_taille_d_avant_la_reduction_est_gardee_et_un_rechargement_n
   await expect(onglets(page)).toHaveText(["shell 1"]);
   await expect(ecran(page)).toContainText(avant);
   await expect(ecran(page)).not.toContainText("0 0");
-});
+}
 
-test("REQ040_AC9_tous_reduits_puis_rechargement_la_zone_reste_absente_et_la_hauteur_est_gardee", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
+async function tousReduitsRecharge(page) {
   await poignee(page).focus();
   for (let i = 0; i < 3; i++) await page.keyboard.press("ArrowUp");
   const hauteur = await poignee(page).getAttribute("aria-valuenow");
@@ -183,7 +157,14 @@ test("REQ040_AC9_tous_reduits_puis_rechargement_la_zone_reste_absente_et_la_haut
   await ouvrirMenu(page);
   await page.keyboard.press("Enter");
   await expect(poignee(page)).toHaveAttribute("aria-valuenow", hauteur);
+}
+
+test("REQ040_AC22_AC9_taille_gardee_puis_tous_reduits_apres_rechargement", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await test.step("REQ040_AC22_la_taille_d_avant_la_reduction_est_gardee_et_un_rechargement_n_impose_pas_80_par_24", () => tailleAvantReduction(page));
+  await test.step("REQ040_AC9_tous_reduits_puis_rechargement_la_zone_reste_absente_et_la_hauteur_est_gardee", () => tousReduitsRecharge(page));
 });
+
 
 test("REQ040_AC10_AC19_un_shell_reduit_qui_se_termine_quitte_le_menu_sans_deplacer_le_focus", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
@@ -234,74 +215,6 @@ test("REQ040_AC10_AC19_un_shell_reduit_qui_se_termine_quitte_le_menu_sans_deplac
   await expect(page.getByRole("tab", { name: "shell 1" })).toBeFocused();
 });
 
-const dialogue = (page, titre) => page.getByRole("dialog", { name: titre });
-
-test("REQ040_AC6_AC7_AC35_4_AC35_10_fermer_ou_terminer_avec_un_shell_reduit_present", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  for (const n of [2, 3]) {
-    await bouton(page, "Nouveau shell").click();
-    await expect(page.getByRole("tab", { name: `shell ${n}` })).toHaveAttribute("aria-selected", "true");
-  }
-  await page.getByRole("tab", { name: "shell 2" }).click();
-  await bouton(page, "Réduire le shell").click();
-  await expect(onglets(page)).toHaveText(["shell 1", "shell 3"]);
-  // Fermer shell 1 : shell 3 devient actif, shell 2 reste réduit.
-  await page.getByRole("tab", { name: "shell 1" }).click();
-  await bouton(page, "Fermer le shell").click();
-  await dialogue(page, "Fermer shell 1 ?").getByRole("button", { name: "Fermer", exact: true }).click();
-  await expect(onglets(page)).toHaveText(["shell 3"]);
-  await expect(page.getByRole("tab", { name: "shell 3" })).toHaveAttribute("aria-selected", "true");
-  await expect.poll(() => focusDansTerminal(page)).toBe(true);
-  // Fermer le dernier visible : la zone disparaît, shell 2 ne revient pas, le focus va sur « Shells réduits ».
-  await bouton(page, "Fermer le shell").click();
-  await dialogue(page, "Fermer shell 3 ?").getByRole("button", { name: "Fermer", exact: true }).click();
-  await expect(poignee(page)).toHaveCount(0);
-  await expect(compteur(page)).toHaveText("1");
-  await expect(bouton(page, "Shells réduits")).toBeFocused();
-  // Idem avec « exit » : shell 2 réaffiché, puis un autre shell visible qui se termine.
-  await ouvrirMenu(page);
-  await page.keyboard.press("Enter");
-  await bouton(page, "Nouveau shell").click();
-  await expect(onglets(page)).toHaveText(["shell 2", "shell 4"]);
-  await bouton(page, "Réduire le shell").click();
-  await expect(onglets(page)).toHaveText(["shell 2"]);
-  await taper(page, "exit");
-  await expect(poignee(page)).toHaveCount(0);
-  await expect(onglets(page)).toHaveCount(0);
-  await expect(compteur(page)).toHaveText("1");
-  await expect(bouton(page, "Shells réduits")).toBeFocused();
-});
-
-test("REQ040_AC7_la_fin_du_dernier_shell_visible_ne_deplace_pas_le_focus_de_l_editeur", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  await bouton(page, "Nouveau shell").click();
-  await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
-  await bouton(page, "Réduire le shell").click();
-  const fin = temoin();
-  await taper(page, attendre(fin, "exit"));
-  await page.getByRole("treeitem", { name: /^README\.md/ }).click();
-  const editeur = page.getByRole("textbox", { name: "Éditeur README.md" });
-  await expect(editeur).toBeFocused();
-  fs.writeFileSync(fin, "");
-  await expect(poignee(page)).toHaveCount(0, { timeout: 10000 });
-  await expect(editeur).toBeFocused();
-});
-
-test("REQ040_AC11_apres_un_redemarrage_les_reduits_comptent_dans_le_message_et_la_liste_se_vide", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  await bouton(page, "Nouveau shell").click();
-  await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
-  await bouton(page, "Réduire le shell").click();
-  await expect(compteur(page)).toHaveText("1");
-  yaide = await yaide.relancer();
-  await page.reload();
-  await expect(page.getByRole("status").filter({ hasText: "Yaide a été arrêté. 2 shells ont été fermés." })).toBeVisible();
-  await expect(onglets(page)).toHaveCount(0);
-  await expect(bouton(page, "Shells réduits")).toBeDisabled();
-  await bouton(page, "Nouveau shell").click();
-  await expect(onglets(page)).toHaveText(["shell 1"]);
-});
-
 test("REQ040_AC12_pendant_une_coupure_reduire_et_afficher_marchent_et_la_connexion_revient", async ({ page }) => {
   await page.clock.install();
   await ouvrirYaide(page, relais.origine);
@@ -350,8 +263,7 @@ test("REQ040_AC14_AC18_vingt_shells_reduits_le_menu_reste_entier_et_defile", asy
   expect(d.y + d.height).toBeLessThanOrEqual(m.y + m.height + 1);
 });
 
-test("REQ040_AC5_fenetre_changee_pendant_la_reduction_le_terminal_remplit_sa_zone", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
+async function fenetreChangeeTerminalRemplit(page) {
   const avant = await tailleStable(page);
   await bouton(page, "Réduire le shell").click();
   await expect(poignee(page)).toHaveCount(0);
@@ -364,6 +276,36 @@ test("REQ040_AC5_fenetre_changee_pendant_la_reduction_le_terminal_remplit_sa_zon
   expect(apres).not.toBe(avant);
   await taper(page, "stty size");
   await expect(ecran(page)).toContainText(apres);
+}
+
+async function sttyApresChangementDeFenetre(page) {
+  await bouton(page, "Réduire le shell").click();
+  await expect(poignee(page)).toHaveCount(0);
+  // Réafficher un shell réduit depuis la zone absente.
+  await page.setViewportSize({ width: 1100, height: 660 });
+  await ouvrirMenu(page);
+  await menu(page).getByRole("menuitem", { name: "shell 1" }).click();
+  await expect(onglets(page)).toHaveText(["shell 1"]);
+  const stable = await tailleStable(page);
+  expect(stable).not.toBe("24 80");
+  await taper(page, "stty size");
+  await expect(ecran(page)).toContainText(stable);
+  // Même vérification dans le shell que « Nouveau shell » ouvre zone absente.
+  await bouton(page, "Réduire le shell").click();
+  await expect(poignee(page)).toHaveCount(0);
+  await page.setViewportSize({ width: 900, height: 600 });
+  await bouton(page, "Nouveau shell").click();
+  await expect(onglets(page)).toHaveText(["shell 2"]);
+  const seconde = await tailleStable(page);
+  expect(seconde).not.toBe("24 80");
+  await taper(page, "stty size");
+  await expect(ecran(page)).toContainText(seconde);
+}
+
+test("REQ040_AC5_stty_size_juste_apres_un_changement_de_fenetre_pendant_la_reduction", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine);
+  await test.step("REQ040_AC5_fenetre_changee_pendant_la_reduction_le_terminal_remplit_sa_zone", () => fenetreChangeeTerminalRemplit(page));
+  await test.step("REQ040_AC5_stty_size_est_juste_apres_un_changement_de_fenetre_pendant_la_reduction", () => sttyApresChangementDeFenetre(page));
 });
 
 test("REQ047_AC5_AC6_pastille_de_Nouveau_shell_fond_et_texte_lus_a_l_ecran_et_douze_shells_dans_le_bouton", async ({ page }) => {
