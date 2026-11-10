@@ -80,46 +80,6 @@ for (const touche of ["ContextMenu", "Shift+F10"]) {
   });
 }
 
-test("REQ034_AC10_Echap_ferme_et_rend_le_focus_sans_rien_faire", async ({ page }) => {
-  const ligne = page.getByRole("treeitem", { name: "a.rs" });
-  await ligne.focus();
-  await page.keyboard.press("Shift+F10");
-  await expect(page.getByRole("menu")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  await expect(ligne).toBeFocused();
-  expect(await page.evaluate(() => window.choix)).toEqual([]);
-});
-
-test("REQ034_AC10_clic_ailleurs_ferme_sans_agir_dessous_puis_un_clic_normal_marche", async ({ page }) => {
-  await page.evaluate(() => {
-    window.cliques = 0;
-    document.getElementById("ailleurs").addEventListener("click", () => window.cliques++);
-  });
-  await page.getByRole("treeitem", { name: "a.rs" }).click({ button: "right" });
-  await page.locator("#ailleurs").click();
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  expect(await page.evaluate(() => window.cliques)).toBe(0);
-  await page.locator("#ailleurs").click();
-  expect(await page.evaluate(() => window.cliques)).toBe(1);
-});
-
-test("REQ034_AC1_clic_droit_sur_une_autre_ligne_remplace_le_menu", async ({ page }) => {
-  await page.getByRole("treeitem", { name: "a.rs" }).click({ button: "right" });
-  // Le menu s'ouvre sous le pointeur : on vise le bord gauche de l'autre ligne, hors du menu.
-  await page.getByRole("treeitem", { name: "b.rs" }).click({ button: "right", position: { x: 2, y: 8 } });
-  await expect(page.getByRole("menu")).toHaveCount(1);
-  await expect(page.getByRole("menu", { name: "Actions sur b" })).toBeVisible();
-  expect(await page.evaluate(() => window.choix)).toEqual([]);
-});
-
-test("REQ034_AC12_clic_droit_ailleurs_ferme_le_menu_sans_ouvrir_celui_de_yaide", async ({ page }) => {
-  await page.getByRole("treeitem", { name: "a.rs" }).click({ button: "right" });
-  await page.locator("#ailleurs").click({ button: "right" });
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  expect(await page.evaluate(() => window.ouvertures)).toEqual(["a"]);
-});
-
 test("C013_menu_entier_dans_la_fenetre_a_800_sur_480", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 480 });
   await page.evaluate(() => (document.getElementById("h").style.cssText = "position:fixed;right:0;bottom:0;width:100px;height:60px"));

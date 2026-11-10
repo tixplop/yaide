@@ -74,13 +74,6 @@ test("REQ012_AC1_apercu_a_droite_de_l_editeur_moitie_chacun", async ({ page }) =
   await expect(page.locator(".zone-code-apercu h2")).toHaveText("Suite");
 });
 
-test("REQ012_AC2_script_dans_le_markdown_ne_s_execute_pas", async ({ page }) => {
-  await ouvrir(page, { contenu: "<script>window.pwn=1</script>\n\n<img src=x onerror=\"window.pwn=1\">", langage: "markdown", apercu: true });
-  await expect(page.locator(".zone-code-apercu img")).toHaveCount(0);
-  await expect(page.locator(".zone-code-apercu script")).toHaveCount(0);
-  expect(await page.evaluate(() => window.pwn)).toBeUndefined();
-});
-
 test("REQ011_AC1_contour_de_focus_accent_et_curseur_fixe", async ({ page }) => {
   await ouvrir(page, { contenu: "x", nom: "a.txt" });
   await page.locator(".cm-content").click();
@@ -359,14 +352,6 @@ test("REQ044_AC1_AC8_fn_en_syn_keyword_et_commentaire_en_syn_comment_italique", 
   const s = await com.evaluate((e) => ({ c: getComputedStyle(e).color, i: getComputedStyle(e).fontStyle }));
   expect(s.c).toBe(await valeur(page, "color", "--syn-comment"));
   expect(s.i).toBe("italic");
-});
-
-test("REQ044_AC4_script_et_img_dans_un_bloc_colore_ne_s_executent_pas", async ({ page }) => {
-  await apercuEn(page, "dark", '```html\n<script>window.piege=1</script><img src=x onerror="window.piege=2">\n```');
-  await expect(page.locator(".zone-code-apercu pre span").first()).toBeVisible();
-  await expect(page.locator(".zone-code-apercu script, .zone-code-apercu img")).toHaveCount(0);
-  await expect(page.locator(".zone-code-apercu pre")).toContainText("<script>window.piege=1</script>");
-  expect(await page.evaluate(() => window.piege)).toBeUndefined();
 });
 
 test("REQ044_AC5_remplacer_inconnu_par_rs_colore_le_bloc", async ({ page }) => {

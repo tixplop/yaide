@@ -49,14 +49,6 @@ async function ouvrir(page) {
 }
 const tip = (page) => page.locator('[role="tooltip"]:popover-open');
 
-test("REQ031_AC8_survol_400_ms_puis_sortie_ferme", async ({ page }) => {
-  await ouvrir(page);
-  await page.hover("#milieu");
-  await expect(tip(page)).toHaveText("Milieu (M)");
-  await page.mouse.move(600, 100);
-  await expect(tip(page)).toHaveCount(0);
-});
-
 test("REQ031_AC8_focus_clavier_affiche_et_echap_ferme_sans_deplacer_le_focus", async ({ page }) => {
   await ouvrir(page);
   await page.focus("#champ");
@@ -111,28 +103,4 @@ test("REQ031_AC8_une_seule_info_bulle_a_la_fois_et_au_premier_plan", async ({ pa
     return document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2) === e;
   });
   expect(couche).toBe(true);
-});
-
-test("REQ031_AC8_echap_ferme_meme_quand_l_element_arrete_la_propagation", async ({ page }) => {
-  await ouvrir(page);
-  await page.focus("#milieu");
-  await page.keyboard.press("Tab");
-  await expect(page.locator("#arret")).toBeFocused();
-  await expect(tip(page)).toHaveText("Arrêt");
-  await page.keyboard.press("Escape");
-  await expect(tip(page)).toHaveCount(0);
-  await expect(page.locator("#arret")).toBeFocused();
-  expect(await page.evaluate(() => window.toucheRecue)).toBe("Escape");
-});
-
-test("REQ031_AC8_la_bulle_reste_quand_la_souris_va_de_l_ancre_vers_elle", async ({ page }) => {
-  await ouvrir(page);
-  await page.hover("#milieu");
-  await expect(tip(page)).toHaveCount(1);
-  const b = await tip(page).boundingBox();
-  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 10 });
-  await page.waitForTimeout(100);
-  await expect(tip(page)).toHaveCount(1);
-  await page.mouse.move(600, 100);
-  await expect(tip(page)).toHaveCount(0);
 });

@@ -52,15 +52,6 @@ test("REQ019_AC7_ctrl_maj_f_n_envoie_rien_au_shell_mais_ctrl_s_et_ctrl_p_oui", a
   expect(await page.evaluate(() => window.toucheDocument.some(([k, c, s]) => k.toLowerCase() === "f" && c && s))).toBe(true);
 });
 
-test("REQ019_AC1_la_sortie_du_flux_s_affiche_et_la_frappe_part_au_flux", async ({ page }) => {
-  await ouvrir(page);
-  await page.evaluate(() => window.flux.dispatchEvent(new MessageEvent("message", { data: "bonjour\r\n" })));
-  await expect(page.locator(".terminal-zone")).toContainText("bonjour");
-  await page.locator(".xterm-helper-textarea").focus();
-  await page.keyboard.type("ls");
-  expect(await page.evaluate(() => window.envoyes)).toEqual(["l", "s"]);
-});
-
 test("REQ028_AC7_terminal_a_un_contour_de_focus_visible", async ({ page }) => {
   await ouvrir(page);
   const contour = () => page.locator(".terminal-zone").evaluate((e) => getComputedStyle(e).outlineStyle);

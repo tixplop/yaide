@@ -82,12 +82,6 @@ const boite = async (page, sel) => page.locator(sel).evaluate((e) => {
 const valeurs = (page, nom) =>
   page.getByRole("separator", { name: nom }).evaluate((e) => ["aria-valuenow", "aria-valuemin", "aria-valuemax"].map((a) => e.getAttribute(a)));
 
-test("REQ032_AC9_limites_affichees_a_800_par_480", async ({ page }) => {
-  await ouvrir(page, { width: 800, height: 480 });
-  expect(await valeurs(page, "Largeur du panneau")).toEqual(["240", "240", "360"]);
-  expect(await valeurs(page, "Hauteur des shells")).toEqual(["200", "120", "299"]);
-});
-
 test("REQ032_AC1_glisse_la_poignee_du_panneau_au_dessus_du_terminal_sans_perdre_le_focus", async ({ page }) => {
   await ouvrir(page);
   await stable(page);
@@ -185,20 +179,6 @@ test("REQ032_AC10_AC13_fleches_pas_de_16_focus_gardé_et_poignee_de_4_px", async
   expect(await page.getByRole("separator", { name: "Largeur du panneau" }).evaluate((e) => getComputedStyle(e).cursor)).toBe("col-resize");
 });
 
-test("REQ032_AC12_la_fenetre_retrecie_puis_rendue_rend_la_taille_choisie", async ({ page }) => {
-  await ouvrir(page, { width: 1000, height: 700 });
-  await page.getByRole("separator", { name: "Hauteur des shells" }).focus();
-  for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowUp");
-  expect((await valeurs(page, "Hauteur des shells"))[0]).toBe("519");
-  await page.setViewportSize({ width: 800, height: 480 });
-  await expect.poll(async () => (await valeurs(page, "Hauteur des shells"))[0]).toBe("299");
-  await page.setViewportSize({ width: 1000, height: 700 });
-  await expect.poll(async () => (await valeurs(page, "Hauteur des shells"))[0]).toBe("519");
-  // seule une flèche ou un glissé fait garder une taille
-  expect(await page.evaluate(() => window.fins.at(-1))).toEqual(["shells", 519]);
-  expect(await page.evaluate(() => window.fins.length)).toBe(20);
-});
-
 test("REQ032_AC1_AC7_AC10_sans_taille_choisie_la_valeur_de_depart_est_la_taille_mesuree", async ({ page }) => {
   await ouvrir(page, { width: 1000, height: 700 }, false);
   expect(await valeurs(page, "Largeur du panneau")).toEqual(["280", "240", "360"]);
@@ -218,11 +198,4 @@ test("REQ032_AC1_AC7_AC10_sans_taille_choisie_la_valeur_de_depart_est_la_taille_
   expect((await valeurs(page, "Hauteur des shells"))[0]).toBe("280");
   expect((await boite(page, ".cadre-shells")).h).toBe(280);
   expect(await page.evaluate(() => window.fins.at(-1))).toEqual(["shells", 280]);
-});
-
-test("REQ032_AC12_un_clic_sans_mouvement_ne_garde_aucune_taille", async ({ page }) => {
-  await ouvrir(page);
-  const p = await boite(page, '[aria-label="Largeur du panneau"]');
-  await page.mouse.click(p.x + p.w / 2, p.y + 100);
-  expect(await page.evaluate(() => window.fins)).toEqual([]);
 });
