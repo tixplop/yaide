@@ -1171,7 +1171,12 @@ pub async fn servir(
         .route("/api/git/push", post(git_push))
         .layer(middleware::from_fn_with_state(etat.clone(), garde))
         .with_state(etat);
-    let serveur = axum_server::from_tcp_rustls(listener, tls).serve(app.into_make_service());
+    let serveur = axum_server::from_tcp(listener)
+        .acceptor(
+            axum_server::tls_rustls::RustlsAcceptor::new(tls)
+                .acceptor(axum_server::accept::NoDelayAcceptor::new()),
+        )
+        .serve(app.into_make_service());
     tokio::select! {
         r = serveur => r.map_err(|e| format!("le serveur s'est arrêté : {e}")),
         _ = arret() => {
