@@ -46,7 +46,7 @@ test("REQ087_parcours_59_60_liens_fichiers", async ({ page, context }) => {
     // args.rs est déjà ouvert ; l'onglet Agent s'ouvre à côté.
     await page.getByRole("treeitem", { name: nomLigne("src") }).click();
     await page.getByRole("treeitem", { name: nomLigne("args.rs") }).click();
-    const ongletArgs = page.getByRole("tab", { name: "args.rs", exact: true });
+    const ongletArgs = page.getByRole("tab", { name: nomLigne("args.rs") });
     await expect(ongletArgs).toHaveAttribute("aria-selected", "true");
     await page.getByRole("button", { name: "Agent", exact: true }).click();
     const ongletAgent = page.getByRole("tab", { name: "Agent 1", exact: true });
@@ -106,7 +106,7 @@ test("REQ087_parcours_59_60_liens_fichiers", async ({ page, context }) => {
     const dansEssai = page.getByRole("link", { name: `${essai}/src/main.rs:12` });
     await expect(dansEssai).toBeVisible({ timeout: 15000 });
     await dansEssai.click();
-    const ongletEssai = page.getByRole("tab", { name: "main.rs", exact: true });
+    const ongletEssai = page.getByRole("tab", { name: nomLigne("main.rs") });
     await expect(ongletEssai).toHaveAttribute("aria-selected", "true");
     await expect(ongletEssai).toHaveAttribute("title", /^\.\.\/essai\/src\/main\.rs/);
     await expect(page.getByLabel("Éditeur main.rs").locator(".cm-activeLine")).toHaveText("// essai ligne 12");

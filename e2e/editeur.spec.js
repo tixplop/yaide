@@ -26,9 +26,17 @@ const ligne = (page, nom) => arbre(page).getByRole("treeitem", { name: nomLigne(
 const onglet = (page, nom) => page.getByRole("tab", { name: nom });
 const editeur = (page, nom) => page.getByRole("textbox", { name: `Éditeur ${nom}` });
 const ouvrirMain = async (page) => {
-  await ligne(page, "src").click();
+  if ((await ligne(page, "src").getAttribute("aria-expanded")) !== "true") await ligne(page, "src").click();
   await ligne(page, "main.rs").click();
   await expect(editeur(page, "main.rs")).toBeFocused();
+};
+/** Ferme les onglets de fichiers ouverts (aucun n'est modifié), pour qu'une étape reparte sans onglet. */
+const fermerTout = async (page) => {
+  const onglets = page.getByRole("tablist", { name: "Fichiers ouverts" }).getByRole("tab");
+  while ((await onglets.count()) > 0) {
+    await onglets.first().focus();
+    await page.keyboard.press("Delete");
+  }
 };
 /** Liste des onglets gardée dans IndexedDB par le navigateur. */
 const gardes = (page) =>
@@ -63,18 +71,67 @@ test("REQ008_AC1_et_AC2_et_AC6_ouvrir_un_fichier_sans_doublon_focus_dans_l_edite
   await expect(page.getByRole("tab")).toHaveCount(2 + 3 + 1); // fichiers + rail gauche (l'agent est dans le rail droit) + shell 1
 });
 
-test("REQ011_AC1_et_AC3_coloration_rust_et_texte_simple_sans_erreur", async ({ page }) => {
-  await ouvrir(page);
-  await ouvrirMain(page);
-  const couleur = (txt) => page.locator(".cm-line span", { hasText: txt }).first().evaluate((e) => getComputedStyle(e).color);
-  const base = await page.locator(".cm-line").first().evaluate((e) => getComputedStyle(e).color);
-  expect(await couleur("fn")).not.toBe(base);
-  const erreurs = [];
-  page.on("pageerror", (e) => erreurs.push(e));
-  await ligne(page, "x.zzz").click();
-  await expect(editeur(page, "x.zzz")).toBeFocused();
-  await expect(page.locator(".cm-content:visible")).toContainText("inconnu");
-  expect(erreurs).toEqual([]);
+test("REQ011_AC1_AC3_AC7_AC8_REQ012_AC1_AC3_AC4_groupe_apercu_coloration_homonymes_et_tabulation", async ({ page }) => {
+  await ouvrir(page, (d) => fs.writeFileSync(path.join(d, "notes.md"), "# Notes\n"));
+  await test.step("REQ012_AC1_et_AC3_et_AC4_apercu_markdown_propre_a_chaque_onglet", async () => {
+    await ligne(page, "README.md").click();
+    const bouton = page.getByRole("button", { name: "Aperçu", exact: true });
+    await expect(bouton).toHaveAttribute("aria-pressed", "false");
+    await bouton.click();
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    await taper(page, "README.md", "\n# Mon titre");
+    await expect(page.getByRole("region", { name: "Aperçu" }).getByRole("heading", { name: "Mon titre" })).toBeVisible();
+    await ligne(page, "notes.md").click();
+    await expect(bouton).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByRole("region", { name: "Aperçu" })).toHaveCount(0);
+    await ligne(page, "a.txt").click();
+    await expect(bouton).toHaveCount(0);
+    await ouvrirMain(page);
+    await expect(bouton).toHaveCount(0);
+    await onglet(page, /^README\.md/).click();
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    // L'onglet README.md est modifié : on l'écrit pour que l'étape suivante puisse fermer les onglets sans question.
+    await editeur(page, "README.md").click();
+    await page.keyboard.press("Control+s");
+    await expect(onglet(page, /non sauvegardé/)).toHaveCount(0);
+  });
+  await test.step("REQ011_AC1_et_AC3_coloration_rust_et_texte_simple_sans_erreur", async () => {
+    await fermerTout(page);
+    await ouvrirMain(page);
+    const couleur = (txt) => page.locator(".cm-line span", { hasText: txt }).first().evaluate((e) => getComputedStyle(e).color);
+    const base = await page.locator(".cm-line").first().evaluate((e) => getComputedStyle(e).color);
+    expect(await couleur("fn")).not.toBe(base);
+    const erreurs = [];
+    page.on("pageerror", (e) => erreurs.push(e));
+    await ligne(page, "x.zzz").click();
+    await expect(editeur(page, "x.zzz")).toBeFocused();
+    await expect(page.locator(".cm-content:visible")).toContainText("inconnu");
+    expect(erreurs).toEqual([]);
+  });
+  await test.step("REQ011_AC8_deux_main_rs_le_dossier_parent_suit_le_nom", async () => {
+    await fermerTout(page);
+    await ouvrirMain(page);
+    await ligne(page, "tests").click();
+    await expect(ligne(page, "main.rs")).toHaveCount(2);
+    await arbre(page).getByRole("treeitem", { name: nomLigne("main.rs") }).last().click();
+    await expect(onglet(page, "main.rs · src")).toHaveAttribute("title", "src/main.rs");
+    await expect(onglet(page, "main.rs · tests")).toHaveAttribute("title", "tests/main.rs");
+    const attendu = await page.evaluate(() => {
+      const i = document.createElement("i");
+      i.style.color = "var(--ink-muted)";
+      document.body.append(i);
+      return getComputedStyle(i).color;
+    });
+    expect(await couleurDe(page, ".onglet-detail")).toBe(attendu);
+  });
+  await test.step("REQ011_AC7_tab_indente_dans_l_editeur", async () => {
+    await fermerTout(page);
+    await ligne(page, "x.zzz").click();
+    await expect(editeur(page, "x.zzz")).toBeFocused();
+    await page.keyboard.press("Control+Home");
+    await page.keyboard.press("Tab");
+    await expect.poll(() => page.locator(".cm-content:visible .cm-line").first().evaluate((e) => e.textContent)).toMatch(/^\s+inconnu$/);
+  });
 });
 
 test("REQ011_AC4_et_AC5_et_AC6_onglets_texte_non_sauvegarde_vide_et_clavier", async ({ page }) => {
@@ -101,44 +158,6 @@ test("REQ011_AC4_et_AC5_et_AC6_onglets_texte_non_sauvegarde_vide_et_clavier", as
   await onglet(page, "a.txt").focus();
   await page.keyboard.press("Delete");
   await expect(onglet(page, "a.txt")).toHaveCount(0);
-});
-
-test("REQ011_AC8_deux_main_rs_le_dossier_parent_suit_le_nom", async ({ page }) => {
-  await ouvrir(page);
-  await ouvrirMain(page);
-  await ligne(page, "tests").click();
-  await expect(ligne(page, "main.rs")).toHaveCount(2);
-  await arbre(page).getByRole("treeitem", { name: nomLigne("main.rs") }).last().click();
-  await expect(onglet(page, "main.rs · src")).toHaveAttribute("title", "src/main.rs");
-  await expect(onglet(page, "main.rs · tests")).toHaveAttribute("title", "tests/main.rs");
-  const attendu = await page.evaluate(() => {
-    const i = document.createElement("i");
-    i.style.color = "var(--ink-muted)";
-    document.body.append(i);
-    return getComputedStyle(i).color;
-  });
-  expect(await couleurDe(page, ".onglet-detail")).toBe(attendu);
-});
-
-test("REQ012_AC1_et_AC3_et_AC4_apercu_markdown_propre_a_chaque_onglet", async ({ page }) => {
-  await ouvrir(page, (d) => fs.writeFileSync(path.join(d, "notes.md"), "# Notes\n"));
-  await ligne(page, "README.md").click();
-  const bouton = page.getByRole("button", { name: "Aperçu", exact: true });
-  await expect(bouton).toHaveAttribute("aria-pressed", "false");
-  await bouton.click();
-  await expect(bouton).toHaveAttribute("aria-pressed", "true");
-  await taper(page, "README.md", "\n# Mon titre");
-  await expect(page.getByRole("region", { name: "Aperçu" }).getByRole("heading", { name: "Mon titre" })).toBeVisible();
-  await ligne(page, "notes.md").click();
-  await expect(bouton).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("region", { name: "Aperçu" })).toHaveCount(0);
-  await ligne(page, "a.txt").click();
-  await expect(bouton).toHaveCount(0);
-  await ligne(page, "src").click();
-  await ligne(page, "main.rs").click();
-  await expect(bouton).toHaveCount(0);
-  await onglet(page, /^README\.md/).click();
-  await expect(bouton).toHaveAttribute("aria-pressed", "true");
 });
 
 test("REQ058_AC1_parcours_P022", async ({ page }) => {
@@ -404,15 +423,6 @@ test("REQ009_AC8_un_fichier_cree_depuis_le_panneau_s_ouvre_dans_un_onglet", asyn
   await page.keyboard.press("Enter");
   await expect(onglet(page, "neuf.txt")).toHaveAttribute("aria-selected", "true");
   await expect(editeur(page, "neuf.txt")).toBeFocused();
-});
-
-test("REQ011_AC7_tab_indente_dans_l_editeur", async ({ page }) => {
-  await ouvrir(page);
-  await ligne(page, "x.zzz").click();
-  await expect(editeur(page, "x.zzz")).toBeFocused();
-  await page.keyboard.press("Control+Home");
-  await page.keyboard.press("Tab");
-  await expect.poll(() => page.locator(".cm-content:visible .cm-line").first().evaluate((e) => e.textContent)).toMatch(/^\s+inconnu$/);
 });
 
 test("REQ018_AC1_les_onglets_et_l_onglet_actif_reviennent_apres_rechargement", async ({ page }) => {

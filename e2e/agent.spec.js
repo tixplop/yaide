@@ -173,7 +173,7 @@ test("REQ056_parcours_19_regler_l_agent_et_corriger_un_fichier", async ({ page }
 
   // AC-056-9 : l'éditeur montre ce que l'agent a écrit, sans question.
   expect(fs.readFileSync(path.join(dossier, "src", "args.rs"), "utf8")).toBe(ARGS_APRES);
-  await page.getByRole("tab", { name: "args.rs", exact: true }).click();
+  await page.getByRole("tab", { name: nomLigne("args.rs") }).click();
   await expect(editeur).toContainText("i += 1", { timeout: 8000 });
   await expect(editeur).not.toContainText("--sortie\" => i += 2");
 
