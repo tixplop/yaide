@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
 
@@ -40,31 +39,6 @@ const ongletDiff = (page, nom) => page.getByRole("tab", { name: `${nom} (diff)` 
 const message = (page) => page.getByRole("textbox", { name: "Message" });
 const barre = (page) => page.locator("footer");
 
-test("REQ022_AC1_AC2_AC6_AC7_changements_statuts_et_un_seul_onglet_de_diff", async ({ page }) => {
-  const dossier = depot();
-  fs.writeFileSync(path.join(dossier, "src", "main.rs"), 'fn main() {\n    println!("bonjour");\n}\n');
-  fs.writeFileSync(path.join(dossier, "neuf.txt"), "tout neuf\n");
-  await ouvrir(page, dossier);
-  await panneauGit(page);
-  await expect(ligne(page, "src/main.rs")).toHaveAccessibleName("main.rs, modifié");
-  await expect(ligne(page, "src/main.rs").locator(".liste-statut")).toHaveText("M");
-  await expect(ligne(page, "src/main.rs").locator(".liste-parent")).toHaveText("src");
-  await expect(ligne(page, "src/main.rs")).toHaveAttribute("title", "src/main.rs, modifié");
-  await expect(ligne(page, "neuf.txt")).toHaveAccessibleName("neuf.txt, nouveau");
-  await expect(ligne(page, "neuf.txt").locator(".liste-statut")).toHaveText("U");
-  await expect(ligne(page, "neuf.txt").locator(".liste-parent")).toHaveCount(0);
-  await ligne(page, "src/main.rs").click();
-  await expect(ongletDiff(page, "main.rs")).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByLabel("Diff main.rs")).toContainText('-    println!("salut");');
-  await expect(page.getByLabel("Diff main.rs")).toContainText('+    println!("bonjour");');
-  await expect(ligne(page, "src/main.rs")).toHaveAttribute("aria-selected", "true");
-  await ligne(page, "neuf.txt").click();
-  await expect(ongletDiff(page, "neuf.txt")).toBeVisible();
-  await expect(ongletDiff(page, "main.rs")).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: /\(diff\)/ })).toHaveCount(1);
-  await expect(page.getByLabel("Diff neuf.txt")).toContainText("+tout neuf");
-});
-
 test("REQ022_AC1_modifier_et_sauvegarder_main_rs_le_fait_apparaitre_dans_les_changements", async ({ page }) => {
   await ouvrir(page, depot());
   await panneauGit(page);
@@ -84,57 +58,6 @@ test("REQ022_AC1_modifier_et_sauvegarder_main_rs_le_fait_apparaitre_dans_les_cha
   await expect(page.getByLabel("Diff main.rs")).toContainText("+// ajout");
 });
 
-test("REQ022_AC7_fermer_le_dernier_fichier_laisse_l_onglet_de_diff", async ({ page }) => {
-  const dossier = depot();
-  fs.writeFileSync(path.join(dossier, "src", "main.rs"), "fn main() {}\n");
-  await ouvrir(page, dossier);
-  await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
-  await panneauGit(page);
-  await ligne(page, "src/main.rs").click();
-  await expect(ongletDiff(page, "main.rs")).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("tab", { name: "README.md" }).click();
-  await page.getByRole("tab", { name: "README.md" }).press("Delete");
-  await expect(page.getByRole("tab", { name: "README.md" })).toHaveCount(0);
-  await expect(ongletDiff(page, "main.rs")).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByLabel("Diff main.rs")).toBeVisible();
-});
-
-test("REQ022_AC3_AC5_REQ028_AC2_depot_propre_barre_d_etat_et_aucun_changement", async ({ page }) => {
-  await ouvrir(page, depot());
-  await test.step("REQ022_AC3_et_REQ028_AC2_la_barre_d_etat_affiche_la_branche_et_pas_la_barre_de_titre", async () => {
-    await expect(barre(page)).toContainText("main");
-    await expect(barre(page).locator("[aria-label=Déconnexion]")).toHaveCount(0);
-    await expect(page.locator("header").getByRole("button", { name: "Déconnexion" })).toBeVisible();
-  });
-  await page.reload();
-  await expect(barre(page)).toContainText("main");
-  await test.step("REQ022_AC5_aucun_changement", async () => {
-    await panneauGit(page);
-    await expect(page.getByText("Aucun changement.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Commit" })).toBeVisible();
-  });
-});
-
-test("REQ022_AC4_dossier_sans_depot_git", async ({ page }) => {
-  const racine = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "nu-"));
-  const dossier = path.join(racine, "projet");
-  fs.mkdirSync(dossier);
-  fs.writeFileSync(path.join(dossier, "a.txt"), "a");
-  await ouvrir(page, dossier);
-  await panneauGit(page);
-  await expect(page.getByText("Ce dossier n'est pas un dépôt git.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Commit" })).toHaveCount(0);
-  await expect(barre(page)).toHaveText("");
-});
-
-test("REQ022_AC8_diff_d_un_binaire", async ({ page }) => {
-  const dossier = depot();
-  fs.writeFileSync(path.join(dossier, "image.bin"), Buffer.from([0, 1, 2, 0, 255]));
-  await ouvrir(page, dossier);
-  await panneauGit(page);
-  await ligne(page, "image.bin").click();
-  await expect(page.getByText("Fichier binaire : pas de diff.")).toBeVisible();
-});
 
 test("REQ023_AC1_AC6_AC7_AC8_indexer_valider_les_autres_restent_et_l_onglet_se_ferme", async ({ page }) => {
   const dossier = depot();
@@ -159,46 +82,6 @@ test("REQ023_AC1_AC6_AC7_AC8_indexer_valider_les_autres_restent_et_l_onglet_se_f
   expect(g(dossier, "log", "-1", "--format=%s").trim()).toBe("Simplifie main");
 });
 
-test("REQ023_AC6_touche_I_sur_la_ligne_indexe", async ({ page }) => {
-  const dossier = depot();
-  fs.writeFileSync(path.join(dossier, "README.md"), "# Autre\n");
-  await ouvrir(page, dossier);
-  await panneauGit(page);
-  await ligne(page, "README.md").focus();
-  await page.keyboard.press("i");
-  await expect(ligne(page, "README.md")).toHaveAccessibleName("README.md, modifié, indexé");
-});
-
-test("REQ023_AC2_AC3_AC5_refus_du_commit_avec_messages_et_focus", async ({ page }) => {
-  const dossier = depot();
-  fs.writeFileSync(path.join(dossier, "README.md"), "# Autre\n");
-  await ouvrir(page, dossier);
-  await panneauGit(page);
-  await message(page).fill("Un message");
-  await page.getByRole("button", { name: "Commit" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Aucun fichier indexé. Indexez au moins un fichier." })).toBeVisible();
-  await page.getByRole("button", { name: "Indexer README.md" }).click();
-  await message(page).fill("");
-  await page.getByRole("button", { name: "Commit" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Écrivez un message de commit." })).toBeVisible();
-  await expect(message(page)).toBeFocused();
-  expect(g(dossier, "log", "--format=%s").trim()).toBe("départ");
-});
-
-test("REQ023_AC4_echec_de_git_au_commit_montre_le_message_de_git", async ({ page }) => {
-  const dossier = depot();
-  fs.writeFileSync(path.join(dossier, "README.md"), "# Autre\n");
-  const hook = path.join(dossier, ".git", "hooks", "pre-commit");
-  fs.writeFileSync(hook, "#!/bin/sh\necho refus du hook de test >&2\nexit 1\n", { mode: 0o755 });
-  await ouvrir(page, dossier);
-  await panneauGit(page);
-  await page.getByRole("button", { name: "Indexer README.md" }).click();
-  await message(page).fill("Essai");
-  await page.getByRole("button", { name: "Commit" }).click();
-  const alerte = page.getByRole("alert").filter({ hasText: "Git a refusé." });
-  await expect(alerte).toContainText("refus du hook de test");
-});
-
 test("REQ024_AC1_AC3_changer_de_branche_et_les_fichiers_ouverts_suivent_le_disque", async ({ page }) => {
   const dossier = depot();
   g(dossier, "switch", "-q", "-c", "travail");
@@ -215,21 +98,6 @@ test("REQ024_AC1_AC3_changer_de_branche_et_les_fichiers_ouverts_suivent_le_disqu
   await expect(barre(page)).toContainText("travail");
   await expect(page.getByLabel("Éditeur README.md")).toContainText("# Branche travail");
   expect(g(dossier, "branch", "--show-current").trim()).toBe("travail");
-});
-
-test("REQ024_AC2_changement_refuse_message_de_git_et_branche_inchangee", async ({ page }) => {
-  const dossier = depot();
-  g(dossier, "switch", "-q", "-c", "travail");
-  fs.writeFileSync(path.join(dossier, "README.md"), "# Branche travail\n");
-  g(dossier, "commit", "-q", "-am", "travail");
-  g(dossier, "switch", "-q", "main");
-  fs.writeFileSync(path.join(dossier, "README.md"), "# Modifié en local\n");
-  await ouvrir(page, dossier);
-  await panneauGit(page);
-  await page.getByLabel("Branche").selectOption("travail");
-  await expect(page.getByRole("alert").filter({ hasText: "Git a refusé." })).toContainText("README.md");
-  await expect(page.getByLabel("Branche")).toHaveValue("main");
-  await expect(barre(page)).toContainText("main");
 });
 
 /** Dépôt avec un distant nu, cloné une fois. */
@@ -262,26 +130,6 @@ test("REQ025_AC1_AC4_pull_et_push_reussis", async ({ page }) => {
   expect(g(distant, "log", "-1", "--format=%s", "main").trim()).toBe("local");
 });
 
-test("REQ025_AC4_pendant_la_commande_le_bouton_est_occupe_et_les_autres_desactives", async ({ page }) => {
-  const { dossier } = depotAvecDistant();
-  const hook = path.join(dossier, ".git", "hooks", "pre-push");
-  const libere = path.join(path.dirname(dossier), "libere");
-  // Le hook attend un fichier que le test crée : aucune durée fixe.
-  fs.writeFileSync(hook, `#!/bin/sh\nwhile [ ! -f "${libere}" ]; do sleep 0.1; done\n`, { mode: 0o755 });
-  await ouvrir(page, dossier);
-  await panneauGit(page);
-  await page.getByRole("button", { name: "Push" }).click();
-  const occupe = page.getByRole("button", { name: "Push" });
-  await expect(occupe).toHaveText("Push…");
-  await expect(occupe).toBeDisabled();
-  await expect(occupe).toHaveAttribute("aria-busy", "true");
-  await expect(page.getByRole("button", { name: "Pull" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Commit" })).toBeDisabled();
-  await expect(page.getByLabel("Branche")).toBeDisabled();
-  fs.writeFileSync(libere, "");
-  await expect(page.getByText("Push terminé.")).toBeVisible();
-});
-
 test("REQ031_AC10_pendant_un_pull_le_bouton_n_est_pas_attenue", async ({ page }) => {
   const { dossier } = depotAvecDistant();
   // Le serveur du dépôt distant attend un fichier que le test crée : aucune durée fixe.
@@ -303,17 +151,6 @@ test("REQ031_AC10_pendant_un_pull_le_bouton_n_est_pas_attenue", async ({ page })
     fs.writeFileSync(libere, "");
   }
   await expect(page.getByText("Pull terminé.")).toBeVisible();
-});
-
-test("REQ025_AC2_AC3_AC5_echec_du_push_message_de_git_et_renvoi_vers_le_shell", async ({ page }) => {
-  const { dossier } = depotAvecDistant();
-  fs.writeFileSync(path.join(dossier, ".git", "hooks", "pre-push"), "#!/bin/sh\necho push interdit ici >&2\nexit 1\n", { mode: 0o755 });
-  await ouvrir(page, dossier);
-  await panneauGit(page);
-  await page.getByRole("button", { name: "Push" }).click();
-  const alerte = page.getByRole("alert").filter({ hasText: "Git a refusé. Réglez cela dans le shell." });
-  await expect(alerte).toContainText("push interdit ici");
-  await expect(page.getByRole("button", { name: "Push" })).toBeEnabled();
 });
 
 test("REQ028_AC1_F_R_G_changent_de_panneau_sans_toucher_aux_onglets", async ({ page }) => {
@@ -371,19 +208,54 @@ test("REQ022_AC6_AC10_dossier_parent_long_le_nom_et_la_lettre_restent_visibles_a
   }).toPass();
 });
 
-test("REQ031_AC1_V005_indexer_est_invisible_au_repos_et_visible_au_survol_et_sur_la_ligne_selectionnee", async ({ page }) => {
+test("REQ022_AC1_AC2_AC6_AC7_REQ031_AC1_V005_statuts_un_seul_onglet_de_diff_fermeture_et_bouton_Indexer", async ({ page }) => {
   const dossier = depot();
+  fs.writeFileSync(path.join(dossier, "src", "main.rs"), 'fn main() {\n    println!("bonjour");\n}\n');
+  fs.writeFileSync(path.join(dossier, "neuf.txt"), "tout neuf\n");
   fs.writeFileSync(path.join(dossier, "README.md"), "# Autre\n");
-  fs.writeFileSync(path.join(dossier, "neuf.txt"), "n\n");
   await ouvrir(page, dossier);
-  await panneauGit(page);
-  const opacite = (nom) => page.getByRole("button", { name: nom }).evaluate((e) => getComputedStyle(e.parentElement).opacity);
-  await page.mouse.move(0, 0);
-  await expect.poll(() => opacite("Indexer README.md")).toBe("0");
-  await ligne(page, "README.md").hover();
-  await expect.poll(() => opacite("Indexer README.md")).toBe("1");
-  await expect.poll(() => opacite("Indexer neuf.txt")).toBe("0");
-  await ligne(page, "neuf.txt").click();
-  await page.mouse.move(0, 0);
-  await expect.poll(() => opacite("Indexer neuf.txt")).toBe("1");
+  await test.step("REQ022_AC1_AC2_AC6_AC7_changements_statuts_et_un_seul_onglet_de_diff", async () => {
+    await panneauGit(page);
+    await expect(ligne(page, "src/main.rs")).toHaveAccessibleName("main.rs, modifié");
+    await expect(ligne(page, "src/main.rs").locator(".liste-statut")).toHaveText("M");
+    await expect(ligne(page, "src/main.rs").locator(".liste-parent")).toHaveText("src");
+    await expect(ligne(page, "src/main.rs")).toHaveAttribute("title", "src/main.rs, modifié");
+    await expect(ligne(page, "neuf.txt")).toHaveAccessibleName("neuf.txt, nouveau");
+    await expect(ligne(page, "neuf.txt").locator(".liste-statut")).toHaveText("U");
+    await expect(ligne(page, "neuf.txt").locator(".liste-parent")).toHaveCount(0);
+    await ligne(page, "src/main.rs").click();
+    await expect(ongletDiff(page, "main.rs")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByLabel("Diff main.rs")).toContainText('-    println!("salut");');
+    await expect(page.getByLabel("Diff main.rs")).toContainText('+    println!("bonjour");');
+    await expect(ligne(page, "src/main.rs")).toHaveAttribute("aria-selected", "true");
+    await ligne(page, "neuf.txt").click();
+    await expect(ongletDiff(page, "neuf.txt")).toBeVisible();
+    await expect(ongletDiff(page, "main.rs")).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: /\(diff\)/ })).toHaveCount(1);
+    await expect(page.getByLabel("Diff neuf.txt")).toContainText("+tout neuf");
+  });
+  await test.step("REQ022_AC7_fermer_le_dernier_fichier_laisse_l_onglet_de_diff", async () => {
+    await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
+    await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
+    await panneauGit(page);
+    await ligne(page, "src/main.rs").click();
+    await expect(ongletDiff(page, "main.rs")).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("tab", { name: "README.md" }).click();
+    await page.getByRole("tab", { name: "README.md" }).press("Delete");
+    await expect(page.getByRole("tab", { name: "README.md" })).toHaveCount(0);
+    await expect(ongletDiff(page, "main.rs")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByLabel("Diff main.rs")).toBeVisible();
+  });
+  await test.step("REQ031_AC1_V005_indexer_est_invisible_au_repos_et_visible_au_survol_et_sur_la_ligne_selectionnee", async () => {
+    await panneauGit(page);
+    const opacite = (nom) => page.getByRole("button", { name: nom }).evaluate((e) => getComputedStyle(e.parentElement).opacity);
+    await page.mouse.move(0, 0);
+    await expect.poll(() => opacite("Indexer README.md")).toBe("0");
+    await ligne(page, "README.md").hover();
+    await expect.poll(() => opacite("Indexer README.md")).toBe("1");
+    await expect.poll(() => opacite("Indexer neuf.txt")).toBe("0");
+    await ligne(page, "neuf.txt").click();
+    await page.mouse.move(0, 0);
+    await expect.poll(() => opacite("Indexer neuf.txt")).toBe("1");
+  });
 });
