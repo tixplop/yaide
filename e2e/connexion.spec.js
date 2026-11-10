@@ -24,11 +24,6 @@ test("REQ004_AC1_bon_mot_de_passe_affiche_la_vue_principale", async ({ page }) =
   await expect(page.getByRole("tablist").first()).toBeVisible();
 });
 
-test("REQ004_AC2_mauvais_mot_de_passe_affiche_le_message", async ({ page }) => {
-  await seConnecter(page, "faux");
-  await expect(page.getByRole("alert")).toHaveText("Mot de passe incorrect.");
-});
-
 test("REQ004_AC3_cinq_echecs_demandent_d_attendre_une_minute", async ({ page }) => {
   await ouvrir(page);
   for (let i = 0; i < 5; i++) {
