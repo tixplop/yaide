@@ -76,6 +76,51 @@ function majOutil(racine, e) {
   texteZone(racine.querySelector(".ya-step-res"), e);
 }
 
+function rendreRaison(e, surDeplier, nom) {
+  const racine = document.createElement("div");
+  majRaison(racine, e, surDeplier, nom);
+  return racine;
+}
+
+// La ligne n'existe qu'à partir du premier caractère qui n'est pas un espace.
+function majRaison(racine, e, surDeplier, nom) {
+  if (!String(e.markdown ?? "").trim()) {
+    const avaitFocus = racine.contains(document.activeElement);
+    racine.textContent = "";
+    racine.hidden = true;
+    racine.classList.remove("ya-steps"); // sort des règles d'adjacence
+    if (avaitFocus) racine.closest(".ya-chat")?.focus({ preventScroll: true });
+    return;
+  }
+  racine.hidden = false;
+  racine.classList.add("ya-steps");
+  let zone = racine.querySelector(".ya-raison-zone");
+  if (!zone) {
+    zone = document.createElement("div");
+    zone.id = `ya-conv-${++compteur}`;
+    zone.className = "ya-raison-zone ya-chat-agent";
+    zone.hidden = true;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ya-raison";
+    b.setAttribute("aria-expanded", "false");
+    b.setAttribute("aria-controls", zone.id);
+    const t = document.createElement("span");
+    t.className = "ya-raison-nom";
+    t.textContent = "Raisonnement";
+    b.append(icone("brain", 14), t, icone("chevron", 14));
+    b.lastElementChild.classList.add("ya-step-chev");
+    b.addEventListener("click", () => {
+      const ouvert = b.getAttribute("aria-expanded") !== "true";
+      b.setAttribute("aria-expanded", String(ouvert));
+      zone.hidden = !ouvert;
+      surDeplier?.(e.id);
+    });
+    racine.append(b, zone);
+  }
+  majAgent(zone, e, nom, true);
+}
+
 function rendreSousAgent(e, surOuvrir) {
   const ligne = document.createElement("div");
   ligne.className = "ya-sous";
@@ -126,6 +171,8 @@ function rendreEntree(e, surDeplier, surOuvrir, nom) {
       return rendreSousAgent(e, surOuvrir);
     case "outil":
       return rendreOutil(e, surDeplier);
+    case "raisonnement":
+      return rendreRaison(e, surDeplier, nom);
     case "fin":
       n = document.createElement("div");
       n.className = "ya-fin";
@@ -148,13 +195,13 @@ function sr(texte) {
   return s;
 }
 
-function majAgent(n, e, nom) {
+function majAgent(n, e, nom, sansNom = false) {
   const actif = document.activeElement;
   const liens = [...n.querySelectorAll("a")];
   const rang = actif ? liens.indexOf(actif) : -1;
   const avant = rang >= 0 ? { href: actif.getAttribute("href"), texte: actif.textContent } : null;
   n.innerHTML = rendreReponse(e.markdown);
-  n.prepend(sr(`${e.auteur?.nom ?? nom} : `));
+  if (!sansNom) n.prepend(sr(`${e.auteur?.nom ?? nom} : `));
   if (!avant) return;
   const lien = n.querySelectorAll("a")[rang];
   if (lien && lien.getAttribute("href") === avant.href && lien.textContent === avant.texte) lien.focus({ preventScroll: true });
@@ -206,6 +253,8 @@ export function conversation({ entrees = [], enAttente = false, vide, surDeplier
         if (e.etat !== entree.etat || e.resultat !== entree.resultat || e.argument !== entree.argument) majOutil(noeud, e);
       } else if (e.type === "agent" && entree.type === "agent" && e.markdown !== entree.markdown) {
         majAgent(noeud, e, nom);
+      } else if (e.type === "raisonnement" && entree.type === "raisonnement" && e.markdown !== entree.markdown) {
+        majRaison(noeud, e, surDeplier, nom);
       } else if (e.type === "sousAgent" && entree.type === "sousAgent" && JSON.stringify(e) !== JSON.stringify(entree)) {
         majSousAgent(noeud, e);
       }

@@ -180,3 +180,13 @@ test("zones_de_depot_cinq_icones_uniques", () => {
   }
   expect(new Set(zones.map((n) => icone(n).innerHTML)).size).toBe(5);
 });
+
+test("REQ084_icone_brain_au_trait_lucide_et_sans_doublon", () => {
+  expect(NOMS).toContain("brain");
+  const s = icone("brain", 14);
+  expect(s.getAttribute("stroke-width")).toBe("1.6");
+  expect(s.innerHTML).toContain('d="M12 18V5"');
+  expect(s.innerHTML).toContain('d="M6.003 5.125a4 4 0 0 0-2.526 5.77"');
+  expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("brain");
+  expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
+});

@@ -562,3 +562,21 @@ test("REQ080_contrastes_de_la_poignee_entre_les_groupes_dans_les_deux_themes", (
     if (k === 0) exact("--bg-000", "--apercu-page", 17.7);
   });
 });
+
+// Contrastes du raisonnement (C-015 `raisonnement`, design-system.md) : [texte, fond, [sombre, clair]].
+test("REQ084_AC6_contrastes_du_raisonnement_dans_les_deux_themes", () => {
+  const paires = [
+    ["--ink-muted", "--bg-200", 4.5, [6.3, 6.6]],
+    ["--ink-muted", "--hover", 4.5, [5.3, 5.8]],
+    ["--accent-fg", "--bg-200", 4.5, [6.6, 6.3]],
+    ["--line-strong", "--bg-200", 3, [3.4, 3.4]],
+  ];
+  for (const [texte, fond, seuil, mesures] of paires) {
+    THEMES.forEach((theme, i) => {
+      const r = ratio(theme, texte, fond);
+      const nom = `${texte} sur ${fond} (${theme})`;
+      expect(r, nom).toBeGreaterThanOrEqual(seuil);
+      egalA(r, mesures[i], nom);
+    });
+  }
+});

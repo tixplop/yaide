@@ -534,8 +534,15 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-chat-agent pre code { padding: 0; background: none; font: inherit; }
 .ya-chat-agent a { color: var(--info); text-decoration: underline; }
 .ya-steps { display: flex; flex-direction: column; gap: 2px; }
+.ya-steps[hidden] { display: none; }
 .ya-step { font: 12px var(--font-mono); height: var(--size-row); width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 var(--space-1); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
-.ya-step:hover { background: var(--hover); }
+.ya-raison { font: 12px var(--font-sans); height: var(--size-row); width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 var(--space-1); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-muted); text-align: left; cursor: pointer; }
+.ya-raison-nom { flex: 1; min-width: 0; }
+.ya-raison svg { flex: none; }
+.ya-raison-zone { margin: 0 0 0 20px; border-left: 2px solid var(--line-strong); padding-left: 10px; color: var(--ink-muted); }
+.ya-raison-zone[hidden] { display: none; }
+.ya-step:hover, .ya-raison:hover { background: var(--hover); }
+.ya-raison:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
 .ya-step:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
 .ya-step svg { flex: none; }
 .ya-step-etat.encours { color: var(--ink-muted); }
@@ -544,7 +551,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-step-nom { font-weight: 600; flex: none; color: var(--ink); }
 .ya-step-arg { color: var(--ink-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ya-step-chev { color: var(--ink-muted); transition: transform 120ms; }
-.ya-step[aria-expanded="true"] .ya-step-chev { transform: rotate(90deg); }
+.ya-step[aria-expanded="true"] .ya-step-chev, .ya-raison[aria-expanded="true"] .ya-step-chev { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .ya-step-chev { transition: none; } }
 .ya-step-res { margin: 0 0 0 20px; background: var(--apercu-fond); border-radius: var(--radius-sm); padding: 6px var(--space-2); font: 12px/18px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; color: var(--ink); }
 .ya-step-res[hidden] { display: none; }

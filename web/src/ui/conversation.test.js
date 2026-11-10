@@ -463,3 +463,104 @@ test("REQ077_AC20_elements_natifs_sans_role_ni_tabindex", () => {
     expect(el.hasAttribute("tabindex"), s).toBe(false);
   }
 });
+
+const raison = (o = {}) => ({ type: "raisonnement", id: "r1", markdown: "Je lis **README**.", ...o });
+const bRaison = (c) => c.querySelector("button.ya-raison");
+
+test("REQ084_AC6_REQ085_AC8_raisonnement_replie_deplie_au_clic_entree_espace_focus_gardé", () => {
+  const surDeplier = vi.fn();
+  const c = conversation({ entrees: [raison()], surDeplier });
+  document.body.append(c);
+  const b = bRaison(c);
+  const zone = c.querySelector(".ya-raison-zone");
+  expect(b.textContent).toBe("Raisonnement");
+  expect(b.querySelector("svg").getAttribute("data-icone")).toBe("brain");
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  expect(b.getAttribute("aria-controls")).toBe(zone.id);
+  expect(zone.hidden).toBe(true);
+  expect(zone.classList.contains("ya-chat-agent")).toBe(true);
+  expect(zone.querySelector("strong").textContent).toBe("README");
+  b.focus();
+  b.click();
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(zone.hidden).toBe(false);
+  expect(surDeplier).toHaveBeenCalledWith("r1");
+  expect(document.activeElement).toBe(b);
+  b.click();
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  expect(zone.hidden).toBe(true);
+  expect(document.activeElement).toBe(b);
+  // Entrée et Espace sur un <button> natif produisent un clic : le bouton est natif et de type button.
+  expect(b.tagName).toBe("BUTTON");
+  expect(b.type).toBe("button");
+});
+
+test("REQ084_AC7_nouveau_rendu_garde_l_etat_deplie_le_focus_et_celui_d_un_lien", () => {
+  const c = conversation({ entrees: [raison({ markdown: "voir [a](https://x.test/a)" })] });
+  document.body.append(c);
+  let b = bRaison(c);
+  b.click();
+  c.mettreAJour([raison({ markdown: "voir [a](https://x.test/a) puis plus" })]);
+  expect(bRaison(c)).toBe(b);
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(c.querySelector(".ya-raison-zone").textContent).toContain("puis plus");
+  b.focus();
+  c.mettreAJour([raison({ markdown: "voir [a](https://x.test/a) puis plus encore" })]);
+  expect(document.activeElement).toBe(b);
+  c.querySelector(".ya-raison-zone a").focus();
+  c.mettreAJour([raison({ markdown: "voir [a](https://x.test/a) puis plus encore et encore" })]);
+  expect(document.activeElement).toBe(c.querySelector(".ya-raison-zone a"));
+});
+
+test("REQ084_AC7_une_etape_qui_arrive_ne_change_ni_l_etat_ni_le_focus_du_raisonnement", () => {
+  const c = conversation({ entrees: [raison()] });
+  document.body.append(c);
+  const b = bRaison(c);
+  b.click();
+  b.focus();
+  c.mettreAJour([raison(), outil()]);
+  expect(bRaison(c)).toBe(b);
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement).toBe(b);
+  expect(c.querySelector(".ya-raison-zone").textContent.startsWith("Agent")).toBe(false);
+});
+
+test("REQ084_AC6_raisonnement_vide_n_affiche_rien_et_le_focus_va_sur_la_conversation", () => {
+  const c = conversation({ entrees: [raison({ markdown: " \n " }), { type: "agent", markdown: "fin" }] });
+  document.body.append(c);
+  expect(bRaison(c)).toBeNull();
+  expect(c.querySelector(".ya-raison-zone")).toBeNull();
+  const vide = c.firstElementChild;
+  expect(vide.hidden).toBe(true);
+  expect(vide.classList.contains("ya-steps")).toBe(false);
+  expect(readFileSync("web/src/ui/composants.css", "utf8")).toMatch(/\.ya-steps\[hidden\] \{ display: none; \}/);
+  c.mettreAJour([raison({ markdown: "idée" }), { type: "agent", markdown: "fin" }]);
+  expect(bRaison(c)).not.toBeNull();
+  bRaison(c).focus();
+  c.mettreAJour([raison({ markdown: "  " }), { type: "agent", markdown: "fin" }]);
+  expect(bRaison(c)).toBeNull();
+  expect(document.activeElement).toBe(c);
+});
+
+test("REQ085_AC8_ordre_de_tab_bouton_dans_le_fil_puis_liens_de_la_zone_depliee", () => {
+  const c = conversation({
+    entrees: [outil(), raison({ markdown: "[l1](https://x.test/1) [l2](https://x.test/2)" }), { type: "agent", markdown: "[l3](https://x.test/3)" }],
+  });
+  document.body.append(c);
+  bRaison(c).click();
+  const noeuds = [...c.querySelectorAll("button, a[href]")];
+  expect(noeuds.map((n) => n.tagName + n.textContent.slice(0, 5))).toEqual(["BUTTONbashc", "BUTTONRaiso", "Al1", "Al2", "Al3"]);
+  expect(noeuds.every((n) => n.tabIndex >= 0)).toBe(true);
+});
+
+test("REQ085_AC8_dans_un_groupe_d_agent_le_raisonnement_longe_le_filet_de_2px", () => {
+  const c = conversation({ entrees: [raison({ auteur: rel }), outil({ auteur: rel }), { type: "agent", markdown: "x", auteur: rel }] });
+  const corps = c.querySelector("[role=group] .ya-tour-corps");
+  expect(corps.firstElementChild.querySelector("button.ya-raison")).not.toBeNull();
+  expect(c.querySelectorAll("[role=group]").length).toBe(1);
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  expect(css).toMatch(/\.ya-tour-corps \{[^}]*border-left: 2px solid var\(--c\)/);
+  expect(css).toMatch(/\.ya-tour-corps > \.ya-steps \+ \.ya-steps \{ margin-top: -10px; \}/);
+  expect(corps.children[0].className).toBe("ya-steps");
+  expect(corps.children[1].className).toBe("ya-steps");
+});
