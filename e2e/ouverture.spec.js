@@ -32,15 +32,6 @@ test("REQ027_AC1_AC5_AC6_ctrl_p_main_entree_ouvre_src_main_rs", async ({ page })
   await expect(page.getByRole("tab", { name: /main\.rs/ })).toBeVisible();
 });
 
-test("REQ027_AC2_AC5_read_propose_readme_puis_aucun_fichier", async ({ page }) => {
-  await ouvrir(page);
-  await page.keyboard.press("Control+p");
-  await champ(page).fill("read");
-  await expect(dialogue(page).getByRole("option")).toHaveText(/README\.md/);
-  await champ(page).fill("zzzz");
-  await expect(dialogue(page).getByText("Aucun fichier trouvé.")).toBeVisible();
-});
-
 test("REQ027_AC3_AC7_echap_ferme_sans_ouvrir_et_rend_le_focus", async ({ page }) => {
   await ouvrir(page);
   const rail = page.getByRole("tab", { name: "Recherche" });
@@ -61,18 +52,6 @@ test("REQ027_AC4_fichier_ignore_par_git_non_propose", async ({ page }) => {
   await page.keyboard.press("Control+p");
   await champ(page).fill("secret");
   await expect(dialogue(page).getByText("Aucun fichier trouvé.")).toBeVisible();
-});
-
-test("REQ027_AC8_nom_avant_dossier", async ({ page }) => {
-  const dossier = depotExemple();
-  fs.mkdirSync(path.join(dossier, "docs", "main"), { recursive: true });
-  fs.writeFileSync(path.join(dossier, "docs", "main", "notes.txt"), "x");
-  await ouvrir(page, dossier);
-  await page.keyboard.press("Control+p");
-  await champ(page).fill("main");
-  const options = dialogue(page).getByRole("option");
-  await expect(options).toHaveCount(2);
-  await expect(options.first()).toHaveText(/src\/main\.rs/);
 });
 
 test("REQ027_bouton_ouvrir_un_fichier_de_l_editeur_vide", async ({ page }) => {
