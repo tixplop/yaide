@@ -1,6 +1,7 @@
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
+import * as worktree from "../worktree.js";
 import { ecrire, lire } from "../stockage.js";
-import { monter, attendre, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne } from "./principale.aides.js";
+import { monter, attendre, avecHorloge, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne } from "./principale.aides.js";
 
 vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
@@ -599,4 +600,67 @@ test("REQ078_AC9_agents_desactives_onglet_garde_non_affiche", async () => {
   for (const [cle, valeur] of vi.mocked(ecrire).mock.calls) {
     if (cle === "onglets") expect(valeur.liste).toContainEqual({ conversationAgent: true, numero: 1, conversation: "c1" });
   }
+});
+
+// ---- REQ-086 : worktree choisi, barre d'état, rail et bandeau ----
+
+afterEach(() => {
+  worktree.choisir("");
+  worktree.occuper();
+  worktree.mettreAJour([]);
+});
+
+test("REQ086_AC2_AC3_AC7_barre_d_etat_et_rail_suivent_le_worktree_choisi_puis_bandeau_a_la_disparition", () =>
+  avecHorloge(async () => {
+  const W = [
+    { chemin: "", nom: "projet", branche: "main", detachee: false },
+    { chemin: "../essai", nom: "essai", branche: "essai", detachee: false },
+  ];
+  let disparu = false;
+  const urls = [];
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const u = String(url);
+    urls.push(u);
+    if (u === "/api/session") return { status: 204 };
+    if (u.startsWith("/api/git/etat")) {
+      if (u.includes("worktree=")) {
+        if (disparu) return { ok: false, status: 400, json: async () => ({ cause: "worktree", message: "Ce worktree n'existe plus." }) };
+        return jsonOk({ branche: "essai", detachee: false, branches: ["main", "essai"], changements: [{ chemin: "../essai/a.rs", statut: "modifié", indexe: false, lettre: "M" }, { chemin: "../essai/b.rs", statut: "modifié", indexe: false, lettre: "M" }], worktrees: W });
+      }
+      return jsonOk({ branche: "main", detachee: false, branches: ["main"], changements: [], worktrees: disparu ? [W[0]] : W });
+    }
+    return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
+  }));
+  const { vue } = monter();
+  const attendre = () => vi.advanceTimersByTimeAsync(10);
+  await attendre();
+  const select = () => [...vue.querySelectorAll("aside select")].find((s) => s.labels[0]?.textContent === "Worktree");
+  expect(vue.querySelector("footer").textContent).toBe("main");
+  select().value = "../essai";
+  select().dispatchEvent(new Event("change", { bubbles: true }));
+  await attendre();
+  await attendre();
+  expect(vue.querySelector("footer").textContent).toBe("essai");
+  expect(vue.querySelector("[role=tab][aria-label=Git] .ya-badge").textContent).toBe("2");
+  disparu = true;
+  // relecture des 3 s : l'état demandé est refusé, le choix revient au projet.
+  await vi.advanceTimersByTimeAsync(3000);
+  await attendre();
+  const bandeau = [...vue.querySelectorAll("[role=status]")].find((m) => m.textContent.includes("a disparu"));
+  expect(bandeau.textContent).toContain("Le worktree essai a disparu : retour au projet.");
+  expect(bandeau.querySelector("button")).not.toBeNull();
+  expect(vue.querySelector("footer").textContent).toBe("main");
+  expect(select()).toBeFalsy();
+  }));
+
+test("REQ086_AC8_git_desactive_aucune_requete_git_ni_ligne_worktree", async () => {
+  const appels = [];
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    appels.push(String(url));
+    return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
+  }));
+  const { vue } = monter({ reglages: { fonctions: { git: false } } });
+  await attendre();
+  expect(appels.some((u) => u.startsWith("/api/git/"))).toBe(false);
+  expect(vue.querySelector("aside select")).toBeNull();
 });

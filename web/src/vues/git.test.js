@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { vueGit } from "./git.js";
+import * as worktree from "../worktree.js";
 
 let vues = [];
 afterEach(() => {
@@ -8,6 +9,9 @@ afterEach(() => {
   vues = [];
   vi.unstubAllGlobals();
   document.body.replaceChildren();
+  worktree.choisir("");
+  worktree.occuper();
+  worktree.mettreAJour([]);
 });
 
 const json = (corps, status = 200) => ({ ok: status < 400, status, json: async () => corps });
@@ -568,4 +572,176 @@ test("REQ045_AC10_apres_un_refus_la_relecture_suivante_met_l_affichage_a_jour", 
   reponse = ETAT2;
   await vue.relire();
   expect(vue.corps.querySelectorAll("[role=option]")).toHaveLength(3);
+});
+
+// ---- REQ-086 : worktree choisi ----
+
+const W = [
+  { chemin: "", nom: "yaide", branche: "main", detachee: false },
+  { chemin: "../essai", nom: "essai", branche: "essai", detachee: false },
+];
+const ETAT_ESSAI = { worktrees: W, branche: "essai", detachee: false, branches: ["main", "essai"], changements: [{ chemin: "../essai/src/main.rs", statut: "modifié", indexe: false, lettre: "M" }] };
+const selecteur = (vue) => [...vue.corps.querySelectorAll("select")].find((x) => x.labels[0]?.textContent === "Worktree");
+
+test("REQ086_AC1_AC13_deux_options_projet_choisi_nom_accessible_Worktree", async () => {
+  const { vue } = await monter({ "/api/git/etat": { ...ETAT, worktrees: W } });
+  const s = selecteur(vue);
+  expect([...s.options].map((o) => [o.value, o.textContent])).toEqual([["", "yaide (main)"], ["../essai", "essai (essai)"]]);
+  expect(s.value).toBe("");
+  const ordre = [...vue.corps.querySelectorAll("select, button, textarea")].map((e) => e.labels?.[0]?.textContent ?? e.getAttribute("aria-label") ?? e.textContent);
+  expect(ordre.slice(0, 3)).toEqual(["Worktree", "Branche", "Pull"]);
+});
+
+test("REQ086_AC2_AC3_AC13_choisir_relit_avec_worktree_vide_selection_ferme_diff_garde_message_et_focus", async () => {
+  const base = await monter({
+    "/api/git/etat": () => (worktree.choisi() ? ETAT_ESSAI : { ...ETAT, worktrees: W }),
+    "/api/git/diff": { binaire: false, trop_gros: false, diff: "x" },
+  });
+  const { vue } = base;
+  vue.corps.querySelector("[role=option]").click();
+  await attendre();
+  expect(base.surDiff).toHaveBeenCalled();
+  vue.corps.querySelector("textarea").value = "mon message";
+  const s = selecteur(vue);
+  s.focus();
+  s.value = "../essai";
+  s.dispatchEvent(new Event("change", { bubbles: true }));
+  await attendre();
+  await attendre();
+  expect(base.appels.at(-1).url).toBe("/api/git/etat?worktree=..%2Fessai");
+  expect(base.surBranche).toHaveBeenLastCalledWith({ branche: "essai", detachee: false });
+  expect([...vue.corps.querySelectorAll("[role=option]")].map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["main.rs"]);
+  expect(vue.corps.querySelector("[role=option] .liste-parent").textContent).toBe("src");
+  expect(vue.corps.querySelector("[role=option]").title).toBe("src/main.rs, modifié");
+  expect(vue.corps.querySelector("[role=option]").dataset.chemin).toBe("../essai/src/main.rs");
+  expect(vue.corps.querySelector("textarea").value).toBe("mon message");
+  expect(vue.corps.querySelector("[aria-selected=true]")).toBeNull();
+  expect(document.activeElement).toBe(selecteur(vue));
+  expect(selecteur(vue).value).toBe("../essai");
+  // retour au projet depuis l'autre vue : relecture sans paramètre.
+  worktree.choisir("");
+  await attendre();
+  await attendre();
+  expect(base.appels.at(-1).url).toBe("/api/git/etat");
+  expect(base.surBranche).toHaveBeenLastCalledWith({ branche: "main", detachee: false });
+});
+
+test("REQ086_AC2_choisir_ferme_l_onglet_de_diff_ouvert", async () => {
+  const fermerDiff = vi.fn();
+  const { vue } = await monter({ "/api/git/etat": { ...ETAT, worktrees: W } }, { diffOuvert: () => "notes.md", fermerDiff });
+  worktree.choisir("../essai");
+  await attendre();
+  expect(fermerDiff).toHaveBeenCalled();
+  expect(selecteur(vue).value).toBe("../essai");
+});
+
+test("REQ086_AC5_branche_indexer_commit_pull_push_envoient_worktree", async () => {
+  worktree.mettreAJour(W);
+  worktree.choisir("../essai");
+  const { vue, appels } = await monter({ "/api/git/etat": { ...ETAT_ESSAI, worktrees: W } });
+  const clic = async (nom) => {
+    bouton(vue, nom).click();
+    await attendre();
+    await attendre();
+  };
+  await clic("Pull");
+  await clic("Push");
+  vue.corps.querySelector("textarea").value = "m";
+  await clic("Commit");
+  const select = vue.corps.querySelector(".git-branche select");
+  select.value = "main";
+  select.dispatchEvent(new Event("change"));
+  await attendre();
+  vue.corps.querySelector("[role=option] button").click();
+  await attendre();
+  const posts = appels.filter((a) => a.methode === "POST").map((a) => a.url);
+  expect(posts).toEqual([
+    "/api/git/pull?worktree=..%2Fessai",
+    "/api/git/push?worktree=..%2Fessai",
+    "/api/git/commit?worktree=..%2Fessai",
+    "/api/git/branche?nom=main&worktree=..%2Fessai",
+    "/api/git/indexer?chemin=..%2Fessai%2Fsrc%2Fmain.rs&worktree=..%2Fessai",
+  ]);
+});
+
+test("REQ086_AC5_liste_desactivee_pendant_le_push_avec_son_title", async () => {
+  let fin;
+  const { vue } = await monter({ "/api/git/etat": { ...ETAT, worktrees: W }, "/api/git/push": () => new Promise((r) => (fin = r)) });
+  bouton(vue, "Push").click();
+  await attendre();
+  expect(selecteur(vue).disabled).toBe(true);
+  expect(selecteur(vue).title).toBe("Attendez la fin du push.");
+  expect(worktree.occupe()).toBe("Attendez la fin du push.");
+  fin({});
+  await attendre();
+  await attendre();
+  expect(selecteur(vue).disabled).toBe(false);
+  expect(worktree.occupe()).toBeUndefined();
+});
+
+test("REQ086_AC5_title_du_pull", async () => {
+  let fin;
+  const { vue } = await monter({ "/api/git/etat": { ...ETAT, worktrees: W }, "/api/git/pull": () => new Promise((r) => (fin = r)) });
+  bouton(vue, "Pull").click();
+  await attendre();
+  expect(selecteur(vue).title).toBe("Attendez la fin du pull.");
+  fin({});
+  await attendre();
+});
+
+test("REQ086_AC7_un_deuxieme_worktree_fait_apparaitre_la_ligne_sans_message_puis_la_disparition_revient_au_projet", async () => {
+  let reponse = { ...ETAT, worktrees: [W[0]] };
+  const { vue, dire } = await monter({ "/api/git/etat": () => reponse });
+  expect(selecteur(vue)).toBeFalsy();
+  expect(vue.corps.querySelector(".ya-ligne")).toBeNull();
+  reponse = { ...ETAT, worktrees: W };
+  await vue.relire();
+  await attendre();
+  expect(selecteur(vue)).toBeTruthy();
+  expect(dire).not.toHaveBeenCalled();
+  // choisir essai, puis il disparaît : l'état demandé est refusé.
+  const evenements = [];
+  worktree.abonner((e) => evenements.push(e));
+  worktree.choisir("../essai");
+  reponse = { status: 400, corps: { cause: "worktree", message: "Ce worktree n'existe plus." } };
+  await attendre();
+  reponse = { ...ETAT, worktrees: [W[0]] };
+  await vue.relire();
+  await attendre();
+  await attendre();
+  expect(worktree.choisi()).toBe("");
+  expect(evenements.some((e) => e.disparu === "essai")).toBe(true);
+  expect(selecteur(vue)).toBeFalsy();
+  expect(vue.corps.querySelector("[role=option]")).toBeTruthy();
+});
+
+test("REQ086_AC7_AC13_focus_sur_la_liste_d_un_worktree_disparu_va_sur_la_premiere_ligne", async () => {
+  worktree.mettreAJour(W);
+  worktree.choisir("../essai");
+  let reponse = { ...ETAT_ESSAI, worktrees: W };
+  const { vue } = await monter({ "/api/git/etat": () => reponse });
+  selecteur(vue).focus();
+  reponse = { ...ETAT, worktrees: [W[0]] };
+  await vue.relire();
+  await attendre();
+  await attendre();
+  expect(worktree.choisi()).toBe("");
+  expect(document.activeElement).toBe(vue.corps.querySelector("[role=option]"));
+});
+
+test("REQ086_AC7_refus_worktree_traite_comme_une_disparition", async () => {
+  worktree.mettreAJour(W);
+  worktree.choisir("../essai");
+  const evenements = [];
+  worktree.abonner((e) => evenements.push(e));
+  await monter({ "/api/git/etat": { status: 400, corps: { cause: "worktree", message: "Ce worktree n'existe plus." } } });
+  expect(worktree.choisi()).toBe("");
+  expect(evenements.some((e) => e.disparu === "essai")).toBe(true);
+});
+
+test("REQ086_AC8_aucune_ligne_avec_un_seul_worktree_ni_hors_depot", async () => {
+  const seul = await monter({ "/api/git/etat": { ...ETAT, worktrees: [W[0]] } });
+  expect(selecteur(seul.vue)).toBeFalsy();
+  const hors = await monter({ "/api/git/etat": { status: 409, corps: { cause: "pas-depot", message: "x" } } });
+  expect(selecteur(hors.vue)).toBeFalsy();
 });

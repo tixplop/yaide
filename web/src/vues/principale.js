@@ -18,6 +18,7 @@ import { ouvrirProfils } from "./profils.js";
 import { ouvrirProviders } from "./providers.js";
 import { vueRecherche } from "./recherche.js";
 import { statutsDe } from "../statuts.js";
+import { abonner as abonnerWorktree } from "../worktree.js";
 import { vueShells } from "./shells.js";
 
 const PANNEAUX = [
@@ -275,6 +276,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     fermerDiff: editeur.fermerDiff,
     surDisque: editeur.relireDisque,
   }) : { corps: null, estDepot: () => false, rafraichir() {}, relire() {}, montrer() {}, focuserMessage() {}, detruire() {} };
+  // Worktree choisi disparu (REQ-086) : le choix est déjà revenu au projet.
+  const desabonnerWorktree = abonnerWorktree(({ disparu }) => {
+    if (disparu) dire({ texte: `Le worktree ${disparu} a disparu : retour au projet.`, variante: "info", fermable: true });
+  });
   const agents = avec.agents ? vueAgents({ surFichier, surDemarrer }) : null;
   const restauration = editeur.restaurer();
 
@@ -469,6 +474,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
 
   racine.detruire = () => {
     clearTimeout(minuteurRelecture);
+    desabonnerWorktree();
     arreter();
     detruite = true;
     window.removeEventListener("resize", recalculer);

@@ -5,6 +5,7 @@ import { icone } from "../ui/icones.js";
 import { indication } from "../ui/indication.js";
 import { iconeDe, liste, STATUTS } from "../ui/liste.js";
 import { message } from "../ui/message.js";
+import * as worktree from "../worktree.js";
 
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const nomDe = (chemin) => chemin.split("/").pop();
@@ -44,9 +45,14 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
   const zoneMessage = document.createElement("div");
   const zoneListe = document.createElement("div");
   zoneListe.className = "git-liste";
+  const zoneWorktree = document.createElement("div"); // ligne « Worktree » (REQ-086), seulement avec deux worktrees ou plus
+  zoneWorktree.hidden = true;
+  let cleWorktree = null;
+  let choixVu = worktree.choisi();
+  let focusPremiere = false; // le worktree choisi a disparu avec le focus dessus : il va sur la première ligne
   let champMessage = nouveauChamp("");
   formulaire.append(ligneBranche, champMessage, zoneCommit, zoneMessage);
-  corps.append(formulaire, zoneListe);
+  corps.append(zoneWorktree, formulaire, zoneListe);
 
   const saisie = () => champMessage.querySelector("textarea");
 
@@ -84,12 +90,22 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
     if (occupe) return;
     const n = sequence;
     const r = await gitEtat();
-    if (detruit || occupe || n !== sequence || r.coupure || (r.cause && r.cause !== "pas-depot")) return;
+    if (detruit || occupe || n !== sequence || r.coupure || (r.cause && r.cause !== "pas-depot" && r.cause !== "worktree")) return;
     if (JSON.stringify(r) === derniere) return;
     appliquer(r);
   }
 
+  /** Vrai si la liste a fait revenir le choix au projet : la relecture est déjà repartie. */
+  function majWorktrees(liste) {
+    const avant = worktree.choisi();
+    worktree.mettreAJour(liste);
+    return worktree.choisi() !== avant;
+  }
+
   function appliquer(r) {
+    // Worktree refusé : il a disparu entre deux relectures.
+    if (r.cause === "worktree" && worktree.choisi() !== "") return void majWorktrees(worktree.lister().filter((w) => w.chemin !== worktree.choisi()));
+    if (r.cause === "pas-depot" ? majWorktrees([]) : !r.cause && majWorktrees(r.worktrees ?? [])) return;
     derniere = JSON.stringify(r);
     if (r.cause === "pas-depot") {
       etat = null;
@@ -115,23 +131,64 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
 
   function ligneChangement(c) {
     const nom = nomDe(c.chemin);
+    const rel = worktree.dansWorktree(c.chemin);
     const type = iconeDe(nom);
     const mot = `${STATUTS[c.lettre]}${c.indexe ? ", indexé" : ""}`;
     return {
       id: c.chemin,
       libelle: nom,
-      dossier: dossierDe(c.chemin) || undefined,
+      dossier: dossierDe(rel) || undefined,
       icone: type.icone,
       couleurIcone: type.couleur,
       statut: c.lettre,
       indexe: c.indexe,
-      infoBulle: `${c.chemin}, ${mot}`,
+      infoBulle: `${rel}, ${mot}`,
       actionLigne: c.indexe ? undefined : { icone: "plus", nomAccessible: `Indexer ${nom}`, infoBulle: "Indexer", touche: "I", surClic: indexer },
     };
   }
 
+  function afficherWorktree() {
+    const liste = etat ? worktree.lister() : [];
+    const raison = worktree.occupe();
+    zoneWorktree.hidden = liste.length < 2;
+    const cle = JSON.stringify([liste, worktree.choisi(), occupe, raison]);
+    if (cle === cleWorktree) return;
+    cleWorktree = cle;
+    if (liste.length < 2) return zoneWorktree.replaceChildren();
+    const avait = zoneWorktree.contains(document.activeElement);
+    const c = champ({
+      libelle: "Worktree",
+      type: "liste",
+      presentation: "barre",
+      ligne: true,
+      options: liste.map((w) => ({ valeur: w.chemin, texte: worktree.texte(w) })),
+      valeur: worktree.choisi(),
+      desactive: occupe || Boolean(raison),
+      raison,
+    });
+    const select = c.querySelector("select");
+    select.addEventListener("change", () => worktree.choisir(select.value));
+    zoneWorktree.replaceChildren(c);
+    if (avait) select.focus({ preventScroll: true });
+  }
+
+  const desabonner = worktree.abonner(({ disparu }) => {
+    if (detruit) return;
+    if (worktree.choisi() !== choixVu) {
+      choixVu = worktree.choisi();
+      const f = document.activeElement;
+      if (disparu && (zoneWorktree.contains(f) || zoneListe.contains(f))) focusPremiere = true;
+      selection = null;
+      if (diffOuvert()) fermerDiff();
+      zoneMessage.replaceChildren();
+      rafraichir();
+    }
+    afficherWorktree();
+  });
+
   function afficher() {
     if (detruit) return;
+    afficherWorktree();
     const f = document.activeElement;
     const listeAvant = zoneListe.querySelector("[role=listbox]");
     const avait = listeAvant?.contains(f);
@@ -195,6 +252,11 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
     }
     zoneListe.replaceChildren(contenu);
     zoneListe.scrollTop = defilement;
+    if (focusPremiere) {
+      focusPremiere = false;
+      (zoneListe.querySelector("[role=option]") ?? saisie()).focus({ preventScroll: true });
+      return;
+    }
     if (avait) {
       const cible = (focusChemin !== null && ligneDe(focusChemin)) || (ligneFocus && voisine !== undefined ? ligneDe(voisine) : null);
       if (cible) cible.focus({ preventScroll: true });
@@ -299,7 +361,13 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
 
   function synchroniser(nom, appel) {
     return avec(nom, async () => {
-      const r = await appel();
+      worktree.occuper(`Attendez la fin du ${nom === "Pull" ? "pull" : "push"}.`);
+      let r;
+      try {
+        r = await appel();
+      } finally {
+        worktree.occuper();
+      }
       if (r.cause || r.coupure) zoneMessage.replaceChildren(echec(r, "Git a refusé. Réglez cela dans le shell."));
       else zoneMessage.replaceChildren(message({ texte: `${nom} terminé.`, variante: "succes" }));
       surDisque();
@@ -331,6 +399,7 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
     },
     detruire() {
       detruit = true;
+      desabonner();
     },
   };
 }
