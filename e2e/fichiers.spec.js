@@ -163,207 +163,186 @@ test("REQ007_AC1_AC2_AC3_AC5_AC6_AC8_REQ008_AC5_REQ009_AC5_REQ034_AC1_AC4_AC14_A
   });
 });
 
-test("REQ007_AC4_REQ008_REQ034_AC9_REQ039_AC4_hors_depot_git_rien_n_est_grise_ni_indexe_ni_commit_et_nom_a_tilde", async ({ page }) => {
+test("REQ007_AC4_hors_depot_git_rien_n_est_grise", async ({ page }) => {
   const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "plat-"));
   fs.mkdirSync(path.join(dossier, "projet"));
   fs.writeFileSync(path.join(dossier, "projet", "target"), "x");
   fs.writeFileSync(path.join(dossier, "projet", ".gitignore"), "target\n");
-  fs.writeFileSync(path.join(dossier, "projet", "a.txt"), "a");
-  fs.writeFileSync(path.join(dossier, "projet", "~x"), "texte");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "projet") });
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await test.step("REQ007_AC4_hors_depot_git_rien_n_est_grise", async () => {
-    await expect(ligne(page, "target")).toBeVisible();
-    await expect(arbre(page).locator(".liste-attenuee")).toHaveCount(0);
-  });
-  await test.step("REQ039_AC4_hors_depot_aucune_lettre_ni_nombre_sur_le_rail", async () => {
-    await expect(ligne(page, "a.txt")).toBeVisible();
-    await expect(page.locator(".fichiers .liste-statut, .fichiers .liste-point")).toHaveCount(0);
-    await expect(page.getByRole("tab", { name: "Git", exact: true }).locator(".ya-badge")).toHaveCount(0);
-  });
-  await test.step("REQ034_AC9_hors_depot_ni_indexer_ni_commit", async () => {
-    await ligne(page, "a.txt").click({ button: "right" });
-    const m = menu(page, "Actions sur a.txt");
-    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr"]);
-    await expect(m.getByRole("separator")).toHaveCount(1);
-    await page.keyboard.press("Escape");
-    await clicVide(page);
-    await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier"]);
-  });
-  await test.step("REQ008_un_fichier_dont_le_nom_commence_par_tilde_s_ouvre_et_se_selectionne", async () => {
-    await page.keyboard.press("Escape");
-    const requete = page.waitForRequest((r) => r.method() === "GET" && r.url().includes("/api/fichier?chemin=~x"));
-    await ligne(page, "~x").click();
-    await requete;
-    await expect(ligne(page, "~x")).toHaveAttribute("aria-selected", "true");
-  });
+  await expect(ligne(page, "target")).toBeVisible();
+  await expect(arbre(page).locator(".liste-attenuee")).toHaveCount(0);
 });
 
+test("REQ008_un_fichier_dont_le_nom_commence_par_tilde_s_ouvre_et_se_selectionne", async ({ page }) => {
+  const dossier = depotExemple();
+  fs.writeFileSync(path.join(dossier, "~x"), "texte");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  const requete = page.waitForRequest((r) => r.method() === "GET" && r.url().includes("/api/fichier?chemin=~x"));
+  await ligne(page, "~x").click();
+  await requete;
+  await expect(ligne(page, "~x")).toHaveAttribute("aria-selected", "true");
+});
 
-test("REQ007_AC7_REQ010_REQ034_AC2_projet_vide_dernier_fichier_supprime_dialogue_et_menu_sur_Dossier_vide", async ({ page }) => {
+test("REQ007_AC7_projet_vide", async ({ page }) => {
+  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "vide-"));
+  fs.mkdirSync(path.join(dossier, "projet"));
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "projet") });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await expect(page.getByText("Dossier vide.")).toBeVisible();
+  await page.locator(".fichiers-arbre").getByRole("button", { name: "Nouveau fichier" }).click();
+  await expect(page.getByRole("dialog", { name: "Nouveau fichier" })).toBeVisible();
+});
+
+test("REQ007_la_relecture_au_clic_montre_ce_qui_est_cree_hors_de_yaide", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await ligne(page, "src").click();
+  fs.writeFileSync(path.join(dossier, "src", "venu_du_shell.rs"), "");
+  await ligne(page, "src").click();
+  await ligne(page, "src").click();
+  await expect(ligne(page, "venu_du_shell.rs")).toBeVisible();
+});
+
+test("REQ009_AC1_creer_un_fichier_et_un_dossier_chemin_prérempli_avec_le_dossier_selectionne", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await ligne(page, "src").click();
+  await page.getByRole("button", { name: "Nouveau fichier" }).click();
+  const dlg = page.getByRole("dialog", { name: "Nouveau fichier" });
+  await expect(dlg.getByLabel("Chemin")).toHaveValue("src/");
+  await expect(dlg.getByLabel("Chemin")).toBeFocused();
+  await page.keyboard.type("neuf.rs");
+  const lecture = page.waitForRequest((r) => r.method() === "GET" && decodeURIComponent(r.url()).endsWith("/api/fichier?chemin=src/neuf.rs"));
+  await page.keyboard.press("Enter");
+  await lecture;
+  await expect(dlg).toHaveCount(0);
+  await expect(ligne(page, "neuf.rs")).toBeVisible();
+  expect(fs.existsSync(path.join(dossier, "src", "neuf.rs"))).toBe(true);
+
+  await ligne(page, "a.txt").click();
+  await page.getByRole("button", { name: "Nouveau dossier" }).click();
+  const dlg2 = page.getByRole("dialog", { name: "Nouveau dossier" });
+  await expect(dlg2.getByLabel("Chemin")).toHaveValue("");
+  await page.keyboard.type("outils");
+  await dlg2.getByRole("button", { name: "Créer" }).click();
+  await expect(ligne(page, "outils")).toBeVisible();
+  expect(fs.statSync(path.join(dossier, "outils")).isDirectory()).toBe(true);
+});
+
+test("REQ009_AC2_renommer_et_AC3_deplacer", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await ligne(page, "a.txt").click();
+  await page.getByRole("button", { name: "Renommer" }).click();
+  const dlg = page.getByRole("dialog", { name: "Renommer ou déplacer" });
+  await dlg.getByLabel("Nouveau chemin").fill("c.txt");
+  await dlg.getByRole("button", { name: "Valider" }).click();
+  await expect(ligne(page, "c.txt")).toBeVisible();
+  await expect(ligne(page, "a.txt")).toHaveCount(0);
+  expect(fs.existsSync(path.join(dossier, "a.txt"))).toBe(false);
+  expect(fs.existsSync(path.join(dossier, "c.txt"))).toBe(true);
+
+  await ligne(page, "c.txt").focus();
+  await page.keyboard.press("F2");
+  await page.getByLabel("Nouveau chemin").fill("src/c.txt");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(ligne(page, "c.txt")).toBeVisible();
+  expect(fs.existsSync(path.join(dossier, "src", "c.txt"))).toBe(true);
+  expect(fs.existsSync(path.join(dossier, "c.txt"))).toBe(false);
+});
+
+test("REQ009_AC4_et_AC7_nom_deja_pris_le_dialogue_reste_ouvert", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await ligne(page, "a.txt").focus();
+  await page.keyboard.press("F2");
+  const champ = page.getByLabel("Nouveau chemin");
+  await champ.fill("b.txt");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Renommer ou déplacer" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Ce nom est déjà pris. Choisissez-en un autre." })).toBeVisible();
+  await expect(champ).toBeFocused();
+  expect(fs.readFileSync(path.join(dossier, "b.txt"), "utf8")).toBe("b");
+  expect(fs.existsSync(path.join(dossier, "a.txt"))).toBe(true);
+
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Nouveau fichier" }).click();
+  await page.getByLabel("Chemin").fill("notes.txt");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("alert").filter({ hasText: "Ce nom est déjà pris." })).toBeVisible();
+  expect(fs.readFileSync(path.join(dossier, "notes.txt"), "utf8")).toBe("notes");
+});
+
+test("REQ009_AC6_F2_champ_rempli_Echap_rend_le_focus_a_la_ligne", async ({ page }) => {
+  await ouvrir(page);
+  await ligne(page, "notes.txt").focus();
+  await page.keyboard.press("F2");
+  const champ = page.getByLabel("Nouveau chemin");
+  await expect(champ).toHaveValue("notes.txt");
+  await expect(champ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(ligne(page, "notes.txt")).toBeFocused();
+});
+
+test("REQ009_erreurs_du_champ_vide_et_chemin_hors_projet", async ({ page }) => {
+  await ouvrir(page);
+  await page.getByRole("button", { name: "Nouveau fichier" }).click();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("alert").filter({ hasText: "Indiquez un chemin." })).toBeVisible();
+  await page.getByLabel("Chemin").fill("../dehors.txt");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("alert").filter({ hasText: "Ce chemin sort du projet." })).toBeVisible();
+});
+
+test("REQ010_AC1_et_AC4_supprimer_un_fichier_apres_confirmation", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await ligne(page, "notes.txt").focus();
+  await page.keyboard.press("Delete");
+  const dlg = page.getByRole("dialog", { name: "Supprimer notes.txt ?" });
+  await expect(dlg.getByText("Cette action est définitive.")).toBeVisible();
+  await expect(dlg.getByRole("button", { name: "Annuler" })).toBeFocused();
+  await dlg.getByRole("button", { name: "Supprimer" }).click();
+  await expect(ligne(page, "notes.txt")).toHaveCount(0);
+  expect(fs.existsSync(path.join(dossier, "notes.txt"))).toBe(false);
+  await expect(arbre(page).locator("[role=treeitem][tabindex='0']")).toBeFocused();
+});
+
+test("REQ010_apres_la_derniere_suppression_le_focus_va_sur_Fichier", async ({ page }) => {
   const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "seul-"));
   fs.mkdirSync(path.join(dossier, "projet"));
   fs.writeFileSync(path.join(dossier, "projet", "seul.txt"), "x");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "projet") });
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await test.step("REQ010_apres_la_derniere_suppression_le_focus_va_sur_Fichier", async () => {
-    await ligne(page, "seul.txt").click();
-    await page.getByRole("button", { name: "Supprimer" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
-    await expect(page.getByText("Dossier vide.")).toBeVisible();
-    await expect(page.locator(".fichiers-entete").getByRole("button", { name: "Nouveau fichier" })).toBeFocused();
-  });
-  await test.step("REQ007_AC7_projet_vide", async () => {
-    await expect(page.getByText("Dossier vide.")).toBeVisible();
-    await page.locator(".fichiers-arbre").getByRole("button", { name: "Nouveau fichier" }).click();
-    await expect(page.getByRole("dialog", { name: "Nouveau fichier" })).toBeVisible();
-  });
-  await test.step("REQ034_AC2_projet_vide_le_menu_s_ouvre_sur_Dossier_vide", async () => {
-    await page.keyboard.press("Escape");
-    await expect(page.getByText("Dossier vide.")).toBeVisible();
-    await page.getByText("Dossier vide.").click({ button: "right" });
-    await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier"]);
-  });
+  await ligne(page, "seul.txt").click();
+  await page.getByRole("button", { name: "Supprimer" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+  await expect(page.getByText("Dossier vide.")).toBeVisible();
+  await expect(page.locator(".fichiers-entete").getByRole("button", { name: "Nouveau fichier" })).toBeFocused();
 });
 
-test("REQ007_REQ009_AC4_AC6_AC7_REQ010_AC2_AC4_dialogues_nom_deja_pris_champ_vide_et_annuler", async ({ page }) => {
+test("REQ010_AC2_et_AC4_annuler_et_Echap_ne_changent_rien", async ({ page }) => {
   const dossier = await ouvrir(page);
-  await test.step("REQ009_AC6_F2_champ_rempli_Echap_rend_le_focus_a_la_ligne", async () => {
-    await ligne(page, "notes.txt").focus();
-    await page.keyboard.press("F2");
-    const champ = page.getByLabel("Nouveau chemin");
-    await expect(champ).toHaveValue("notes.txt");
-    await expect(champ).toBeFocused();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(ligne(page, "notes.txt")).toBeFocused();
-  });
-  await test.step("REQ009_AC4_et_AC7_nom_deja_pris_le_dialogue_reste_ouvert", async () => {
-    await page.keyboard.press("Escape");
-    await ligne(page, "a.txt").focus();
-    await page.keyboard.press("F2");
-    const champ = page.getByLabel("Nouveau chemin");
-    await champ.fill("b.txt");
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("dialog", { name: "Renommer ou déplacer" })).toBeVisible();
-    await expect(page.getByRole("alert").filter({ hasText: "Ce nom est déjà pris. Choisissez-en un autre." })).toBeVisible();
-    await expect(champ).toBeFocused();
-    expect(fs.readFileSync(path.join(dossier, "b.txt"), "utf8")).toBe("b");
-    expect(fs.existsSync(path.join(dossier, "a.txt"))).toBe(true);
-
-    await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Nouveau fichier" }).click();
-    await page.getByLabel("Chemin").fill("notes.txt");
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("alert").filter({ hasText: "Ce nom est déjà pris." })).toBeVisible();
-    expect(fs.readFileSync(path.join(dossier, "notes.txt"), "utf8")).toBe("notes");
-  });
-  await test.step("REQ009_erreurs_du_champ_vide_et_chemin_hors_projet", async () => {
-    await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Nouveau fichier" }).click();
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("alert").filter({ hasText: "Indiquez un chemin." })).toBeVisible();
-    await page.getByLabel("Chemin").fill("../dehors.txt");
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("alert").filter({ hasText: "Ce chemin sort du projet." })).toBeVisible();
-  });
-  await test.step("REQ010_AC2_et_AC4_annuler_et_Echap_ne_changent_rien", async () => {
-    await page.keyboard.press("Escape");
-    await ligne(page, "notes.txt").click();
-    await page.getByRole("button", { name: "Supprimer" }).click();
-    await page.getByRole("button", { name: "Annuler" }).click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page.getByRole("button", { name: "Supprimer" }).click();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(ligne(page, "notes.txt")).toBeVisible();
-    expect(fs.existsSync(path.join(dossier, "notes.txt"))).toBe(true);
-  });
+  await ligne(page, "notes.txt").click();
+  await page.getByRole("button", { name: "Supprimer" }).click();
+  await page.getByRole("button", { name: "Annuler" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Supprimer" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(ligne(page, "notes.txt")).toBeVisible();
+  expect(fs.existsSync(path.join(dossier, "notes.txt"))).toBe(true);
 });
-test("REQ007_REQ009_AC1_AC2_AC3_REQ010_AC1_AC4_AC5_creer_renommer_supprimer_et_relecture", async ({ page }) => {
+
+test("REQ010_AC5_supprimer_un_dossier_et_son_contenu", async ({ page }) => {
   const dossier = await ouvrir(page);
-  await test.step("REQ010_AC1_et_AC4_supprimer_un_fichier_apres_confirmation", async () => {
-    await ligne(page, "notes.txt").focus();
-    await page.keyboard.press("Delete");
-    const dlg = page.getByRole("dialog", { name: "Supprimer notes.txt ?" });
-    await expect(dlg.getByText("Cette action est définitive.")).toBeVisible();
-    await expect(dlg.getByRole("button", { name: "Annuler" })).toBeFocused();
-    await dlg.getByRole("button", { name: "Supprimer" }).click();
-    await expect(ligne(page, "notes.txt")).toHaveCount(0);
-    expect(fs.existsSync(path.join(dossier, "notes.txt"))).toBe(false);
-    await expect(arbre(page).locator("[role=treeitem][tabindex='0']")).toBeFocused();
-  });
-  await test.step("REQ009_AC1_creer_un_fichier_et_un_dossier_chemin_prérempli_avec_le_dossier_selectionne", async () => {
-    await page.keyboard.press("Escape");
-    await ligne(page, "src").click();
-    await page.getByRole("button", { name: "Nouveau fichier" }).click();
-    const dlg = page.getByRole("dialog", { name: "Nouveau fichier" });
-    await expect(dlg.getByLabel("Chemin")).toHaveValue("src/");
-    await expect(dlg.getByLabel("Chemin")).toBeFocused();
-    await page.keyboard.type("neuf.rs");
-    const lecture = page.waitForRequest((r) => r.method() === "GET" && decodeURIComponent(r.url()).endsWith("/api/fichier?chemin=src/neuf.rs"));
-    await page.keyboard.press("Enter");
-    await lecture;
-    await expect(dlg).toHaveCount(0);
-    await expect(ligne(page, "neuf.rs")).toBeVisible();
-    expect(fs.existsSync(path.join(dossier, "src", "neuf.rs"))).toBe(true);
-
-    await ligne(page, "a.txt").click();
-    await page.getByRole("button", { name: "Nouveau dossier" }).click();
-    const dlg2 = page.getByRole("dialog", { name: "Nouveau dossier" });
-    await expect(dlg2.getByLabel("Chemin")).toHaveValue("");
-    await page.keyboard.type("outils");
-    await dlg2.getByRole("button", { name: "Créer" }).click();
-    await expect(ligne(page, "outils")).toBeVisible();
-    expect(fs.statSync(path.join(dossier, "outils")).isDirectory()).toBe(true);
-  });
-  await test.step("REQ007_la_relecture_au_clic_montre_ce_qui_est_cree_hors_de_yaide", async () => {
-    if ((await ligne(page, "src").getAttribute("aria-expanded")) === "true") await ligne(page, "src").click();
-    await ligne(page, "src").click();
-    fs.writeFileSync(path.join(dossier, "src", "venu_du_shell.rs"), "");
-    await ligne(page, "src").click();
-    await ligne(page, "src").click();
-    await expect(ligne(page, "venu_du_shell.rs")).toBeVisible();
-  });
-  await test.step("REQ009_AC2_renommer_et_AC3_deplacer", async () => {
-    await ligne(page, "a.txt").click();
-    await page.getByRole("button", { name: "Renommer" }).click();
-    const dlg = page.getByRole("dialog", { name: "Renommer ou déplacer" });
-    await dlg.getByLabel("Nouveau chemin").fill("c.txt");
-    await dlg.getByRole("button", { name: "Valider" }).click();
-    await expect(ligne(page, "c.txt")).toBeVisible();
-    await expect(ligne(page, "a.txt")).toHaveCount(0);
-    expect(fs.existsSync(path.join(dossier, "a.txt"))).toBe(false);
-    expect(fs.existsSync(path.join(dossier, "c.txt"))).toBe(true);
-
-    await ligne(page, "c.txt").focus();
-    await page.keyboard.press("F2");
-    await page.getByLabel("Nouveau chemin").fill("src/c.txt");
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(ligne(page, "c.txt")).toBeVisible();
-    expect(fs.existsSync(path.join(dossier, "src", "c.txt"))).toBe(true);
-    expect(fs.existsSync(path.join(dossier, "c.txt"))).toBe(false);
-  });
-  await test.step("REQ010_AC5_supprimer_un_dossier_et_son_contenu", async () => {
-    await ligne(page, "src").click();
-    await page.getByRole("button", { name: "Supprimer" }).click();
-    const dlg = page.getByRole("dialog", { name: "Supprimer le dossier src/ ?" });
-    await expect(dlg.getByText("Le dossier et tout son contenu seront effacés. Cette action est définitive.")).toBeVisible();
-    await dlg.getByRole("button", { name: "Supprimer" }).click();
-    await expect(ligne(page, "src")).toHaveCount(0);
-    expect(fs.existsSync(path.join(dossier, "src"))).toBe(false);
-  });
+  await ligne(page, "src").click();
+  await page.getByRole("button", { name: "Supprimer" }).click();
+  const dlg = page.getByRole("dialog", { name: "Supprimer le dossier src/ ?" });
+  await expect(dlg.getByText("Le dossier et tout son contenu seront effacés. Cette action est définitive.")).toBeVisible();
+  await dlg.getByRole("button", { name: "Supprimer" }).click();
+  await expect(ligne(page, "src")).toHaveCount(0);
+  expect(fs.existsSync(path.join(dossier, "src"))).toBe(false);
 });
-
-
-
-
-
-
-
-
-
 
 // ---- REQ-034 : menu de l'arborescence ----
 
@@ -439,6 +418,15 @@ test("REQ034_AC2_AC3_AC16_AC19_REQ049_AC2_AC9_AC12_menu_du_projet_nouveau_depuis
   });
 });
 
+test("REQ034_AC2_projet_vide_le_menu_s_ouvre_sur_Dossier_vide", async ({ page }) => {
+  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "vide-"));
+  fs.mkdirSync(path.join(dossier, "p"));
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "p") });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await expect(page.getByText("Dossier vide.")).toBeVisible();
+  await page.getByText("Dossier vide.").click({ button: "right" });
+  await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier"]);
+});
 
 test("REQ034_AC2_projet_vide_dans_un_depot_propose_aussi_commit", async ({ page }) => {
   const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "vide-"));
@@ -480,42 +468,49 @@ test("REQ034_AC16_clic_droit_sur_une_ligne_d_erreur_est_la_partie_vide_et_ne_pre
   }
 });
 
-test("REQ034_AC5_AC6_AC7_AC18_REQ039_AC1_indexer_fichier_dossier_ignore_et_passage_de_U_a_A", async ({ page }) => {
+test("REQ034_AC5_AC6_AC18_indexer_un_fichier_puis_un_dossier_avec_message_et_focus", async ({ page }) => {
   const dossier = await ouvrir(page);
-  await test.step("REQ034_AC5_AC6_AC18_indexer_un_fichier_puis_un_dossier_avec_message_et_focus", async () => {
-    await ligne(page, "a.txt").click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Indexer" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "a.txt est indexé." })).toBeVisible();
-    await expect(page.getByRole("status").getByRole("button", { name: "Fermer" })).toBeVisible();
-    await expect(ligne(page, "a.txt")).toBeFocused();
-    expect(indexe(dossier)).toEqual(["a.txt"]);
-    await ligne(page, "Zeta").click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Indexer" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Zeta/ est indexé." })).toBeVisible();
-    await expect(ligne(page, "Zeta")).toBeFocused();
-    expect(indexe(dossier)).toEqual(["Zeta/z.txt", "a.txt"]);
-  });
-  await test.step("REQ034_AC7_AC18_indexer_un_fichier_ignore_montre_le_refus_de_git_et_l_index_reste", async () => {
-    await page.keyboard.press("Escape");
-    const indexeAvant = indexe(dossier);
-    await page.getByRole("treeitem", { name: "target, ignoré par git" }).click();
-    await page.getByRole("treeitem", { name: "out.txt, ignoré par git" }).click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Indexer" }).click();
-    const alerte = page.getByRole("alert").filter({ hasText: "Git a refusé." });
-    await expect(alerte).toBeVisible();
-    await expect(alerte).toContainText("ignor");
-    await expect(page.getByRole("treeitem", { name: "out.txt, ignoré par git" })).toBeFocused();
-    expect(indexe(dossier)).toEqual(indexeAvant);
-  });
-  await test.step("REQ039_AC1_indexer_depuis_le_menu_fait_passer_la_lettre_de_U_a_A", async () => {
-    const avant = arbre(page).getByRole("treeitem", { name: "notes.txt, nouveau", exact: true });
-    await expect(avant.locator(".liste-statut")).toHaveText("U");
-    await avant.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Indexer" }).click();
-    const apres = arbre(page).getByRole("treeitem", { name: "notes.txt, ajouté", exact: true });
-    await expect(apres.locator(".liste-statut")).toHaveText("A");
-  });
+  await ligne(page, "a.txt").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Indexer" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "a.txt est indexé." })).toBeVisible();
+  await expect(page.getByRole("status").getByRole("button", { name: "Fermer" })).toBeVisible();
+  await expect(ligne(page, "a.txt")).toBeFocused();
+  expect(indexe(dossier)).toEqual(["a.txt"]);
+  await ligne(page, "Zeta").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Indexer" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Zeta/ est indexé." })).toBeVisible();
+  await expect(ligne(page, "Zeta")).toBeFocused();
+  expect(indexe(dossier)).toEqual(["Zeta/z.txt", "a.txt"]);
 });
+
+test("REQ034_AC6_indexer_un_dossier_laisse_de_cote_ce_que_git_ignore", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  fs.writeFileSync(path.join(dossier, "Zeta", "x.log"), "x");
+  fs.writeFileSync(path.join(dossier, ".gitignore"), "target/\n*.log\n");
+  await page.reload();
+  // L'état git arrive après le rechargement : tant qu'il manque, le menu n'a pas « Indexer ». On rouvre le menu jusqu'à l'avoir.
+  await expect(async () => {
+    await page.keyboard.press("Escape");
+    await ligne(page, "Zeta").click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Indexer" })).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 15000 });
+  await page.getByRole("menuitem", { name: "Indexer" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Zeta/ est indexé." })).toBeVisible();
+  expect(indexe(dossier)).toEqual(["Zeta/z.txt"]);
+});
+
+test("REQ034_AC7_AC18_indexer_un_fichier_ignore_montre_le_refus_de_git_et_l_index_reste", async ({ page }) => {
+  const dossier = await ouvrir(page);
+  await page.getByRole("treeitem", { name: "target, ignoré par git" }).click();
+  await page.getByRole("treeitem", { name: "out.txt, ignoré par git" }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Indexer" }).click();
+  const alerte = page.getByRole("alert").filter({ hasText: "Git a refusé." });
+  await expect(alerte).toBeVisible();
+  await expect(alerte).toContainText("ignor");
+  await expect(page.getByRole("treeitem", { name: "out.txt, ignoré par git" })).toBeFocused();
+  expect(indexe(dossier)).toEqual([]);
+});
+
 test("REQ034_P008_indexer_main_rs_modifie_refus_sur_target_puis_commit_depuis_le_vide", async ({ page }) => {
   const dossier = await ouvrir(page);
   fs.writeFileSync(path.join(dossier, "src", "main.rs"), "fn main() {}\n");
@@ -539,87 +534,34 @@ test("REQ034_P008_indexer_main_rs_modifie_refus_sur_target_puis_commit_depuis_le
   expect(indexe(dossier)).toEqual(["src/main.rs"]);
 });
 
-test("REQ034_AC6_indexer_un_dossier_laisse_de_cote_ce_que_git_ignore", async ({ page }) => {
-  const dossier = await ouvrir(page);
-  fs.writeFileSync(path.join(dossier, "Zeta", "x.log"), "x");
-  fs.writeFileSync(path.join(dossier, ".gitignore"), "target/\n*.log\n");
-  await page.reload();
-  // L'état git arrive après le rechargement : tant qu'il manque, le menu n'a pas « Indexer ». On rouvre le menu jusqu'à l'avoir.
-  await expect(async () => {
-    await page.keyboard.press("Escape");
-    await ligne(page, "Zeta").click({ button: "right" });
-    await expect(page.getByRole("menuitem", { name: "Indexer" })).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 15000 });
-  await page.getByRole("menuitem", { name: "Indexer" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Zeta/ est indexé." })).toBeVisible();
-  expect(indexe(dossier)).toEqual(["Zeta/z.txt"]);
+test("REQ034_AC9_hors_depot_ni_indexer_ni_commit", async ({ page }) => {
+  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "plat-"));
+  fs.mkdirSync(path.join(dossier, "p"));
+  fs.writeFileSync(path.join(dossier, "p", "a.txt"), "a");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "p") });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await ligne(page, "a.txt").click({ button: "right" });
+  const m = menu(page, "Actions sur a.txt");
+  await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr"]);
+  await expect(m.getByRole("separator")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await clicVide(page);
+  await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier"]);
 });
 
-
-
-
-test("REQ009_AC9_AC10_REQ034_AC12_REQ050_AC12_en_tete_partie_vide_menu_de_l_editeur_et_depot_sur_editeur_et_shell", async ({ page }) => {
-  const dossier = await ouvrir(page, true);
-  await test.step("REQ034_la_partie_vide_remplit_la_hauteur_du_panneau", async () => {
-    const r = await page.evaluate(() => {
-      const f = document.querySelector(".fichiers-arbre").getBoundingClientRect();
-      const p = document.querySelector("aside.cadre-panneau .cadre-panneau-corps").getBoundingClientRect();
-      return { bas: f.bottom, basCorps: p.bottom };
+test("REQ034_AC12_clic_droit_dans_l_editeur_et_le_shell_n_ouvre_pas_le_menu_de_Yaide", async ({ page }) => {
+  await ouvrir(page, true);
+  await ligne(page, "a.txt").click();
+  await expect(page.locator(".cm-content")).toBeVisible();
+  for (const cible of [page.locator(".cm-content"), page.locator(".terminal:visible .xterm-screen")]) {
+    const annule = await cible.evaluate((e) => {
+      const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+      e.dispatchEvent(ev);
+      return ev.defaultPrevented;
     });
-    expect(r.bas).toBeGreaterThanOrEqual(r.basCorps - 1);
-  });
-  await test.step("REQ009_AC9_AC10_en_tete_du_projet_a_240_px_26_px_une_ligne_et_ordre_de_tabulation", async () => {
-    const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
-    await poignee.focus();
-    for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
-    await expect(poignee).toHaveAttribute("aria-valuenow", "240");
-    const entete = page.locator(".fichiers-entete");
-    expect((await entete.boundingBox()).height).toBe(26);
-    const boites = await entete.locator("button").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
-    expect(boites).toHaveLength(4);
-    expect(new Set(boites.map((b) => Math.round(b.top))).size).toBe(1);
-    // Tab : les boutons actifs de l'en-tête (Renommer et Supprimer sont désactivés), puis l'arbre.
-    await page.getByRole("button", { name: "Nouveau fichier" }).focus();
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("button", { name: "Nouveau dossier" })).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(arbre(page).locator("[tabindex='0']")).toBeFocused();
-    // AC-009-10 : Maj+Tab depuis « Nouveau fichier » arrive sur le bouton de repli de l'en-tête du panneau.
-    await page.getByRole("button", { name: "Nouveau fichier" }).focus();
-    await page.keyboard.press("Shift+Tab");
-    await expect(page.locator("aside.cadre-panneau").getByRole("button", { name: "Replier le panneau", exact: true })).toBeFocused();
-  });
-  await test.step("REQ034_AC12_clic_droit_dans_l_editeur_et_le_shell_n_ouvre_pas_le_menu_de_Yaide", async () => {
-    await ligne(page, "a.txt").click();
-    await expect(page.locator(".cm-content")).toBeVisible();
-    for (const cible of [page.locator(".cm-content"), page.locator(".terminal:visible .xterm-screen")]) {
-      const annule = await cible.evaluate((e) => {
-        const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
-        e.dispatchEvent(ev);
-        return ev.defaultPrevented;
-      });
-      expect(annule).toBe(false);
-      await expect(page.getByRole("menu")).toHaveCount(0);
-    }
-  });
-  await test.step("REQ050_AC12_depot_sur_editeur_et_shell_n_insere_rien", async () => {
-    await ligne(page, "a.txt").click();
-    const editeur = page.getByRole("textbox", { name: "Éditeur a.txt" });
-    await expect(editeur).toBeFocused();
-    await saisir(page, ligne(page, "b.txt"));
-    await survoler(page, editeur);
-    await expect(arbre(page)).not.toHaveAttribute("data-depot", "");
-    await lacher(page);
-    await expect(editeur).toHaveText("a");
-    const shell = page.locator(".terminal.xterm:visible");
-    await saisir(page, ligne(page, "b.txt"));
-    await survoler(page, shell);
-    await lacher(page);
-    await expect(page.locator(".terminal:visible .xterm-rows")).not.toContainText("b.txt");
-    await expect(editeur).toHaveText("a");
-    expect(fs.existsSync(path.join(dossier, "b.txt"))).toBe(true);
-    await expect(ligne(page, "b.txt")).toBeVisible();
-  });
+    expect(annule).toBe(false);
+    await expect(page.getByRole("menu")).toHaveCount(0);
+  }
 });
 
 test("REQ034_AC13_indexer_pendant_une_coupure_dit_connexion_perdue_et_rien_ne_change", async ({ page }) => {
@@ -641,70 +583,48 @@ test("REQ034_AC13_indexer_pendant_une_coupure_dit_connexion_perdue_et_rien_ne_ch
 });
 
 test("REQ034_AC17_a_800_x_480_le_menu_reste_entier_sur_la_derniere_ligne_visible_et_s_ouvre_sous_la_ligne_au_clavier", async ({ page }) => {
-  let dossier;
-  await test.step("REQ034_AC17_a_800_x_480_le_menu_reste_entier_sur_la_derniere_ligne_visible_et_s_ouvre_sous_la_ligne_au_clavier", async () => {
-    await page.setViewportSize({ width: 800, height: 480 });
-    dossier = await demarrer();
-    for (let i = 0; i < 40; i++) fs.writeFileSync(path.join(dossier, `f${String(i).padStart(2, "0")}.txt`), "x");
-    await ouvrirYaide(page, yaide.origine);
-    await expect(ligne(page, "f39.txt")).toBeAttached();
-    const entier = async () => {
-      const b = await page.getByRole("menu").boundingBox();
-      expect(b.x).toBeGreaterThanOrEqual(0);
-      expect(b.y).toBeGreaterThanOrEqual(0);
-      expect(b.x + b.width).toBeLessThanOrEqual(800);
-      expect(b.y + b.height).toBeLessThanOrEqual(480);
-      return b;
-    };
-    const lignes = arbre(page).getByRole("treeitem");
-    const zone = await page.locator("aside.cadre-panneau .cadre-panneau-corps").boundingBox();
-    const visibles = [];
-    for (let i = 0; i < (await lignes.count()); i++) {
-      const b = await lignes.nth(i).boundingBox();
-      if (b && b.y >= zone.y && b.y + b.height <= zone.y + zone.height + 1) visibles.push({ i, b });
-    }
-    const derniere = lignes.nth(visibles.at(-1).i);
-    await derniere.click({ button: "right" });
-    const bas = await entier();
-    // Il ne tient pas sous la ligne : il est retourné au-dessus du point.
-    expect(bas.y).toBeLessThan(visibles.at(-1).b.y);
-    await page.keyboard.press("Escape");
-    const haute = visibles[2];
-    await lignes.nth(haute.i).focus();
-    await page.keyboard.press("ContextMenu");
-    const m = await entier();
-    expect(Math.abs(m.y - (haute.b.y + haute.b.height))).toBeLessThanOrEqual(2);
-  });
-});
-
-test("REQ050_AC4_partie_vide_reste_atteignable_a_800x480", async ({ page }) => {
-  const dossier = depotExemple();
-  fs.mkdirSync(path.join(dossier, "lot"));
-  for (let i = 10; i < 50; i++) fs.writeFileSync(path.join(dossier, "lot", `f${i}.txt`), "x");
-  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
   await page.setViewportSize({ width: 800, height: 480 });
+  const dossier = await demarrer();
+  for (let i = 0; i < 40; i++) fs.writeFileSync(path.join(dossier, `f${String(i).padStart(2, "0")}.txt`), "x");
   await ouvrirYaide(page, yaide.origine);
-  {
-    await parChemin(page, "lot").click();
-    await expect(parChemin(page, "lot/f49.txt")).toBeAttached();
-    const defile = page.locator("aside.cadre-panneau .cadre-panneau-corps");
-    await defile.evaluate((e) => (e.scrollTop = e.scrollHeight));
-    const derniere = arbre(page).getByRole("treeitem").last();
-    await expect(derniere).toBeInViewport();
-    const source = parChemin(page, "lot/f49.txt");
-    await saisir(page, source);
-    // Sous la dernière ligne, il reste au moins une ligne de partie vide, même défilé au bout.
-    const b = await derniere.boundingBox();
-    const zone = await defile.boundingBox();
-    expect(zone.y + zone.height - (b.y + b.height)).toBeGreaterThanOrEqual(b.height);
-    await page.mouse.move(b.x + b.width / 2, b.y + b.height + 10, { steps: 6 });
-    await expect(arbre(page)).toHaveAttribute("data-depot", "");
-    await lacher(page);
-    await expect.poll(() => fs.existsSync(path.join(dossier, "f49.txt"))).toBe(true);
-    expect(fs.existsSync(path.join(dossier, "lot", "f49.txt"))).toBe(false);
+  await expect(ligne(page, "f39.txt")).toBeAttached();
+  const entier = async () => {
+    const b = await page.getByRole("menu").boundingBox();
+    expect(b.x).toBeGreaterThanOrEqual(0);
+    expect(b.y).toBeGreaterThanOrEqual(0);
+    expect(b.x + b.width).toBeLessThanOrEqual(800);
+    expect(b.y + b.height).toBeLessThanOrEqual(480);
+    return b;
+  };
+  const lignes = arbre(page).getByRole("treeitem");
+  const zone = await page.locator("aside.cadre-panneau .cadre-panneau-corps").boundingBox();
+  const visibles = [];
+  for (let i = 0; i < (await lignes.count()); i++) {
+    const b = await lignes.nth(i).boundingBox();
+    if (b && b.y >= zone.y && b.y + b.height <= zone.y + zone.height + 1) visibles.push({ i, b });
   }
+  const derniere = lignes.nth(visibles.at(-1).i);
+  await derniere.click({ button: "right" });
+  const bas = await entier();
+  // Il ne tient pas sous la ligne : il est retourné au-dessus du point.
+  expect(bas.y).toBeLessThan(visibles.at(-1).b.y);
+  await page.keyboard.press("Escape");
+  const haute = visibles[2];
+  await lignes.nth(haute.i).focus();
+  await page.keyboard.press("ContextMenu");
+  const m = await entier();
+  expect(Math.abs(m.y - (haute.b.y + haute.b.height))).toBeLessThanOrEqual(2);
 });
 
+test("REQ034_la_partie_vide_remplit_la_hauteur_du_panneau", async ({ page }) => {
+  await ouvrir(page, true);
+  const r = await page.evaluate(() => {
+    const f = document.querySelector(".fichiers-arbre").getBoundingClientRect();
+    const p = document.querySelector("aside.cadre-panneau .cadre-panneau-corps").getBoundingClientRect();
+    return { bas: f.bottom, basCorps: p.bottom };
+  });
+  expect(r.bas).toBeGreaterThanOrEqual(r.basCorps - 1);
+});
 
 // ---- T-037 : statut git dans l'arborescence et les onglets (REQ-039) ----
 
@@ -767,8 +687,48 @@ test("REQ039_AC1_AC2_AC3_AC5_AC6_AC7_AC8_lettres_couleurs_points_et_mots_dans_l_
   await expect(page.getByRole("tab", { name: "Git", exact: true }).locator(".ya-badge")).toHaveText("3");
 });
 
+test("REQ039_AC4_hors_depot_aucune_lettre_ni_nombre_sur_le_rail", async ({ page }) => {
+  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "horsdepot-"));
+  fs.writeFileSync(path.join(dossier, "a.txt"), "a");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await expect(ligne(page, "a.txt")).toBeVisible();
+  await expect(page.locator(".fichiers .liste-statut, .fichiers .liste-point")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Git", exact: true }).locator(".ya-badge")).toHaveCount(0);
+});
 
+test("REQ009_AC9_AC10_en_tete_du_projet_a_240_px_26_px_une_ligne_et_ordre_de_tabulation", async ({ page }) => {
+  await ouvrir(page, true);
+  const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+  await poignee.focus();
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
+  await expect(poignee).toHaveAttribute("aria-valuenow", "240");
+  const entete = page.locator(".fichiers-entete");
+  expect((await entete.boundingBox()).height).toBe(26);
+  const boites = await entete.locator("button").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
+  expect(boites).toHaveLength(4);
+  expect(new Set(boites.map((b) => Math.round(b.top))).size).toBe(1);
+  // Tab : les boutons actifs de l'en-tête (Renommer et Supprimer sont désactivés), puis l'arbre.
+  await page.getByRole("button", { name: "Nouveau fichier" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Nouveau dossier" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(arbre(page).locator("[tabindex='0']")).toBeFocused();
+  // AC-009-10 : Maj+Tab depuis « Nouveau fichier » arrive sur le bouton de repli de l'en-tête du panneau.
+  await page.getByRole("button", { name: "Nouveau fichier" }).focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.locator("aside.cadre-panneau").getByRole("button", { name: "Replier le panneau", exact: true })).toBeFocused();
+});
 
+test("REQ039_AC1_indexer_depuis_le_menu_fait_passer_la_lettre_de_U_a_A", async ({ page }) => {
+  await ouvrir(page);
+  const avant = arbre(page).getByRole("treeitem", { name: "notes.txt, nouveau", exact: true });
+  await expect(avant.locator(".liste-statut")).toHaveText("U");
+  await avant.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Indexer" }).click();
+  const apres = arbre(page).getByRole("treeitem", { name: "notes.txt, ajouté", exact: true });
+  await expect(apres.locator(".liste-statut")).toHaveText("A");
+});
 
 test("REQ039_AC1_AC5_AC037_7_ctrl_s_met_a_jour_la_lettre_l_onglet_et_le_compteur_sans_changer_de_panneau", async ({ page }) => {
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: depotExemple() });
@@ -803,7 +763,51 @@ test("REQ009_AC9_l_en_tete_du_projet_ne_defile_pas_avec_l_arbre", async ({ page 
 
 const parChemin = (page, chemin) => arbre(page).locator(`[data-chemin="${chemin}"]`);
 
+test("REQ050_AC4_partie_vide_reste_atteignable_a_800x480", async ({ page }) => {
+  const dossier = depotExemple();
+  fs.mkdirSync(path.join(dossier, "lot"));
+  for (let i = 10; i < 50; i++) fs.writeFileSync(path.join(dossier, "lot", `f${i}.txt`), "x");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await page.setViewportSize({ width: 800, height: 480 });
+  await ouvrirYaide(page, yaide.origine);
+  await parChemin(page, "lot").click();
+  await expect(parChemin(page, "lot/f49.txt")).toBeAttached();
+  const defile = page.locator("aside.cadre-panneau .cadre-panneau-corps");
+  await defile.evaluate((e) => (e.scrollTop = e.scrollHeight));
+  const derniere = arbre(page).getByRole("treeitem").last();
+  await expect(derniere).toBeInViewport();
+  const source = parChemin(page, "lot/f49.txt");
+  await saisir(page, source);
+  // Sous la dernière ligne, il reste au moins une ligne de partie vide, même défilé au bout.
+  const b = await derniere.boundingBox();
+  const zone = await defile.boundingBox();
+  expect(zone.y + zone.height - (b.y + b.height)).toBeGreaterThanOrEqual(b.height);
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height + 10, { steps: 6 });
+  await expect(arbre(page)).toHaveAttribute("data-depot", "");
+  await lacher(page);
+  await expect.poll(() => fs.existsSync(path.join(dossier, "f49.txt"))).toBe(true);
+  expect(fs.existsSync(path.join(dossier, "lot", "f49.txt"))).toBe(false);
+});
 
+test("REQ050_AC12_depot_sur_editeur_et_shell_n_insere_rien", async ({ page }) => {
+  const dossier = await ouvrir(page, true);
+  await ligne(page, "a.txt").click();
+  const editeur = page.getByRole("textbox", { name: "Éditeur a.txt" });
+  await expect(editeur).toBeFocused();
+  await saisir(page, ligne(page, "b.txt"));
+  await survoler(page, editeur);
+  await expect(arbre(page)).not.toHaveAttribute("data-depot", "");
+  await lacher(page);
+  await expect(editeur).toHaveText("a");
+  const shell = page.locator(".terminal.xterm:visible");
+  await saisir(page, ligne(page, "b.txt"));
+  await survoler(page, shell);
+  await lacher(page);
+  await expect(page.locator(".terminal:visible .xterm-rows")).not.toContainText("b.txt");
+  await expect(editeur).toHaveText("a");
+  expect(fs.existsSync(path.join(dossier, "b.txt"))).toBe(true);
+  await expect(ligne(page, "b.txt")).toBeVisible();
+});
 
 test("REQ050_AC13_relecture_pendant_un_vrai_glisse", async ({ page }) => {
   await page.clock.install();

@@ -18,17 +18,10 @@ async function seConnecter(page, mdp = "mdp") {
   await page.keyboard.press("Enter");
 }
 
-test("REQ004_AC1_REQ005_AC4_bon_mot_de_passe_puis_la_session_reste_valide_au_rechargement", async ({ page }) => {
+test("REQ004_AC1_bon_mot_de_passe_affiche_la_vue_principale", async ({ page }) => {
   await seConnecter(page);
-  await test.step("REQ004_AC1_bon_mot_de_passe_affiche_la_vue_principale", async () => {
-    await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
-    await expect(page.getByRole("tablist").first()).toBeVisible();
-  });
-  await test.step("REQ005_AC4_la_session_reste_valide_au_rechargement", async () => {
-    await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
-    await page.reload();
-    await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
-  });
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  await expect(page.getByRole("tablist").first()).toBeVisible();
 });
 
 test("REQ004_AC2_mauvais_mot_de_passe_affiche_le_message", async ({ page }) => {
@@ -119,6 +112,12 @@ test("REQ005_AC3_deconnexion_ramene_a_la_connexion_et_le_cookie_n_est_plus_valid
   await expect(page.getByLabel("Mot de passe")).toBeVisible();
 });
 
+test("REQ005_AC4_la_session_reste_valide_au_rechargement", async ({ page }) => {
+  await seConnecter(page);
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+});
 
 test("REQ028_AC1_AC2_AC3_AC4_AC5_AC6_AC7_AC8_apres_connexion_titre_theme_rail_touches_focus_et_tab", async ({ page }) => {
   await seConnecter(page);
@@ -192,64 +191,63 @@ test("REQ028_AC1_AC2_AC3_AC4_AC5_AC6_AC7_AC8_apres_connexion_titre_theme_rail_to
   });
 });
 
-test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_et_un_nom_de_projet_long_ne_deborde_pas", async ({ page }) => {
+test("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", async ({ page }) => {
   await seConnecter(page);
-  await test.step("REQ028_AC9_a_800_sur_480_rien_ne_se_superpose_en_dessous_la_page_defile", async () => {
-    await page.setViewportSize({ width: 800, height: 480 });
-    const boites = async () => {
-      const r = (s) => page.locator(s).first().boundingBox();
-      return { barre: await r("header"), rail: await r(".cadre-rail"), panneau: await r("aside.cadre-panneau"), principal: await r("main") };
-    };
-    await expect(async () => {
-      const b = await boites();
-      expect(b.rail.x + b.rail.width).toBeLessThanOrEqual(b.panneau.x);
-      expect(b.panneau.x + b.panneau.width).toBeLessThanOrEqual(b.principal.x);
-      expect(b.barre.y + b.barre.height).toBeLessThanOrEqual(b.rail.y);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    }).toPass({ timeout: 10000 });
-    // AC-028-14 : trois onglets et quatre boutons de 48 px, entiers, sans défilement du rail ; « Agent » et « Agents » entiers en haut du rail droit.
-    const rail = await page.locator(".cadre-rail").boundingBox();
-    const elements = page.locator(".cadre-rail [role=tab], .cadre-rail-commandes button");
-    await expect(elements).toHaveCount(7);
-    for (const e of await elements.all()) {
-      const m = await e.boundingBox();
-      expect([m.width, m.height]).toEqual([48, 48]);
-      expect(m.x).toBeGreaterThanOrEqual(rail.x);
-      expect(m.x + m.width).toBeLessThanOrEqual(rail.x + rail.width);
-      expect(m.y).toBeGreaterThanOrEqual(rail.y);
-      expect(m.y + m.height).toBeLessThanOrEqual(rail.y + rail.height);
-      expect(m.y + m.height).toBeLessThanOrEqual(480);
-    }
-    for (const nom of ["Agent", "Agents"]) {
-      const agent = await page.getByRole("button", { name: nom, exact: true }).boundingBox();
-      expect([agent.width, agent.height]).toEqual([48, 48]);
-      expect(agent.x).toBeGreaterThanOrEqual(0);
-      expect(agent.x + agent.width).toBeLessThanOrEqual(800);
-      expect(agent.y).toBeGreaterThanOrEqual(0);
-      expect(agent.y + agent.height).toBeLessThanOrEqual(480);
-    }
-    await page.setViewportSize({ width: 600, height: 400 });
-    await expect(async () => {
-      expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(true);
-    }).toPass({ timeout: 10000 });
-  });
-  await test.step("REQ028_AC9_un_nom_de_projet_long_ne_deborde_pas_de_la_barre_de_titre", async () => {
-    await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
-    await page.setViewportSize({ width: 800, height: 480 });
-    await page.evaluate(() => {
-      document.querySelector(".ya-command-nom").textContent = "tres-long-dossier-".repeat(20) + "projet";
-    });
-    await expect(async () => {
-      const commande = await page.locator(".ya-command").boundingBox();
-      const theme = await page.getByRole("button", { name: "Thème clair" }).boundingBox();
-      const sortir = await page.getByRole("button", { name: "Déconnexion" }).boundingBox();
-      expect(commande.x + commande.width).toBeLessThanOrEqual(theme.x);
-      const rail = await page.locator(".cadre-rail").boundingBox();
-      expect(commande.y).toBeGreaterThanOrEqual(0);
-      expect(commande.y + commande.height).toBeLessThanOrEqual(rail.y);
-      expect(sortir.x + sortir.width).toBeLessThanOrEqual(800);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    }).toPass({ timeout: 10000 });
-  });
+  await page.setViewportSize({ width: 800, height: 480 });
+  const boites = async () => {
+    const r = (s) => page.locator(s).first().boundingBox();
+    return { barre: await r("header"), rail: await r(".cadre-rail"), panneau: await r("aside.cadre-panneau"), principal: await r("main") };
+  };
+  await expect(async () => {
+    const b = await boites();
+    expect(b.rail.x + b.rail.width).toBeLessThanOrEqual(b.panneau.x);
+    expect(b.panneau.x + b.panneau.width).toBeLessThanOrEqual(b.principal.x);
+    expect(b.barre.y + b.barre.height).toBeLessThanOrEqual(b.rail.y);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }).toPass({ timeout: 10000 });
+  // AC-028-14 : trois onglets et quatre boutons de 48 px, entiers, sans défilement du rail ; « Agent » et « Agents » entiers en haut du rail droit.
+  const rail = await page.locator(".cadre-rail").boundingBox();
+  const elements = page.locator(".cadre-rail [role=tab], .cadre-rail-commandes button");
+  await expect(elements).toHaveCount(7);
+  for (const e of await elements.all()) {
+    const m = await e.boundingBox();
+    expect([m.width, m.height]).toEqual([48, 48]);
+    expect(m.x).toBeGreaterThanOrEqual(rail.x);
+    expect(m.x + m.width).toBeLessThanOrEqual(rail.x + rail.width);
+    expect(m.y).toBeGreaterThanOrEqual(rail.y);
+    expect(m.y + m.height).toBeLessThanOrEqual(rail.y + rail.height);
+    expect(m.y + m.height).toBeLessThanOrEqual(480);
+  }
+  for (const nom of ["Agent", "Agents"]) {
+    const agent = await page.getByRole("button", { name: nom, exact: true }).boundingBox();
+    expect([agent.width, agent.height]).toEqual([48, 48]);
+    expect(agent.x).toBeGreaterThanOrEqual(0);
+    expect(agent.x + agent.width).toBeLessThanOrEqual(800);
+    expect(agent.y).toBeGreaterThanOrEqual(0);
+    expect(agent.y + agent.height).toBeLessThanOrEqual(480);
+  }
+  await page.setViewportSize({ width: 600, height: 400 });
+  await expect(async () => {
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(true);
+  }).toPass({ timeout: 10000 });
 });
 
+test("REQ028_AC9_un_nom_de_projet_long_ne_deborde_pas_de_la_barre_de_titre", async ({ page }) => {
+  await seConnecter(page);
+  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+  await page.setViewportSize({ width: 800, height: 480 });
+  await page.evaluate(() => {
+    document.querySelector(".ya-command-nom").textContent = "tres-long-dossier-".repeat(20) + "projet";
+  });
+  await expect(async () => {
+    const commande = await page.locator(".ya-command").boundingBox();
+    const theme = await page.getByRole("button", { name: "Thème clair" }).boundingBox();
+    const sortir = await page.getByRole("button", { name: "Déconnexion" }).boundingBox();
+    expect(commande.x + commande.width).toBeLessThanOrEqual(theme.x);
+    const rail = await page.locator(".cadre-rail").boundingBox();
+    expect(commande.y).toBeGreaterThanOrEqual(0);
+    expect(commande.y + commande.height).toBeLessThanOrEqual(rail.y);
+    expect(sortir.x + sortir.width).toBeLessThanOrEqual(800);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }).toPass({ timeout: 10000 });
+});

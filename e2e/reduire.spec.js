@@ -18,7 +18,7 @@ const ecran = (page) => page.locator(".terminal:visible .xterm-rows");
 const taper = async (page, commande) => {
   await expect(page.locator(".terminal:visible .terminal-attente")).toBeHidden();
   await page.locator(".terminal:visible .xterm-helper-textarea").focus();
-  await page.keyboard.insertText(commande);
+  await page.keyboard.type(commande);
   await page.keyboard.press("Enter");
 };
 const onglets = (page) => page.getByRole("tablist", { name: "Shells" }).getByRole("tab");

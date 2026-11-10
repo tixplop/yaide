@@ -139,71 +139,53 @@ test("REQ016_AC3_apres_une_sauvegarde_recharger_affiche_le_disque_sans_point", a
   await expect(editeur(page)).toContainText("// sauvé");
 });
 
-test("REQ015_AC8_REQ044_AC5_pendant_la_coupure_deplier_creer_renommer_supprimer_changer_de_panneau_et_apercu", async ({ page }) => {
-  fs.writeFileSync(path.join(dossier, "README.md"), "```inconnu\nfn main() {}\n```\n");
+test("REQ015_AC8_pendant_la_coupure_deplier_un_dossier_est_refuse", async ({ page }) => {
   await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   await expect(arbre(page)).toBeVisible();
   await expect(page.locator(".ya-status-branche")).toBeVisible();
-  await test.step("REQ015_AC8_pendant_la_coupure_deplier_un_dossier_est_refuse", async () => {
-    await couper(page);
-    await ligne(page, "src").click();
-    await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." })).toBeVisible();
-    await expect(ligne(page, "main.rs")).toHaveCount(0);
-    await retablir(page);
-    await avancer(page, () => expect(page.getByText("Connexion perdue. Réessayez au retour.")).toHaveCount(0, { timeout: 300 }));
-  });
-  await test.step("REQ015_AC8_pendant_la_coupure_changer_de_panneau_garde_l_arbre", async () => {
-    await couper(page);
-    await page.getByRole("tab", { name: "Recherche" }).click();
-    await page.getByRole("tab", { name: "Fichiers" }).click();
-    await expect(ligne(page, "README.md")).toBeVisible();
-    await expect(page.getByText("Impossible de lire ce dossier")).toHaveCount(0);
-  });
-  await test.step("REQ015_AC8_pendant_la_coupure_creer_renommer_supprimer_disent_de_reessayer", async () => {
-    await retablir(page);
-    await ligne(page, "README.md").click();
-    await couper(page);
-    await page.getByRole("button", { name: "Nouveau fichier" }).click();
-    const dlg = page.getByRole("dialog", { name: "Nouveau fichier" });
-    await dlg.getByLabel("Chemin").fill("neuf.txt");
-    await page.keyboard.press("Enter");
-    await expect(dlg.getByRole("alert").filter({ hasText: REFUS })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Renommer" }).click();
-    const ren = page.getByRole("dialog", { name: "Renommer ou déplacer" });
-    await ren.getByLabel("Nouveau chemin").fill("autre.md");
-    await page.keyboard.press("Enter");
-    await expect(ren.getByRole("alert").filter({ hasText: REFUS })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Supprimer" }).click();
-    const sup = page.getByRole("dialog", { name: "Supprimer README.md ?" });
-    await sup.getByRole("button", { name: "Supprimer" }).click();
-    await expect(sup.getByRole("alert").filter({ hasText: REFUS })).toBeVisible();
-    expect(fs.existsSync(path.join(dossier, "README.md"))).toBe(true);
-    expect(fs.existsSync(path.join(dossier, "neuf.txt"))).toBe(false);
-  });
-  await test.step("REQ044_AC5_pendant_la_coupure_le_bloc_se_colore_a_la_frappe", async () => {
-    await page.keyboard.press("Escape");
-    await retablir(page);
-    await ligne(page, "README.md").click();
-    await page.getByRole("button", { name: "Aperçu", exact: true }).click();
-    const apercu = page.getByRole("region", { name: "Aperçu" });
-    await expect(apercu.locator("pre")).toContainText("fn main() {}");
-    await expect(apercu.locator("pre span")).toHaveCount(0);
-    await couper(page);
-    await page.getByLabel("Éditeur README.md").click();
-    await page.keyboard.press("Control+Home");
-    await page.keyboard.press("End");
-    for (let i = 0; i < 7; i++) await page.keyboard.press("Backspace");
-    await page.keyboard.type("rs");
-    await expect(apercu.locator("pre span", { hasText: /^fn$/ })).toHaveCount(1);
-    await expect(bandeau(page)).toBeVisible();
-  });
+  await couper(page);
+  await ligne(page, "src").click();
+  await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." })).toBeVisible();
+  await expect(ligne(page, "main.rs")).toHaveCount(0);
+  await retablir(page);
+  await avancer(page, () => expect(page.getByText("Connexion perdue. Réessayez au retour.")).toHaveCount(0, { timeout: 300 }));
 });
 
 const REFUS = "Connexion perdue. Réessayez au retour.";
 
+test("REQ015_AC8_pendant_la_coupure_creer_renommer_supprimer_disent_de_reessayer", async ({ page }) => {
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
+  await ligne(page, "README.md").click();
+  await couper(page);
+  await page.getByRole("button", { name: "Nouveau fichier" }).click();
+  const dlg = page.getByRole("dialog", { name: "Nouveau fichier" });
+  await dlg.getByLabel("Chemin").fill("neuf.txt");
+  await page.keyboard.press("Enter");
+  await expect(dlg.getByRole("alert").filter({ hasText: REFUS })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Renommer" }).click();
+  const ren = page.getByRole("dialog", { name: "Renommer ou déplacer" });
+  await ren.getByLabel("Nouveau chemin").fill("autre.md");
+  await page.keyboard.press("Enter");
+  await expect(ren.getByRole("alert").filter({ hasText: REFUS })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Supprimer" }).click();
+  const sup = page.getByRole("dialog", { name: "Supprimer README.md ?" });
+  await sup.getByRole("button", { name: "Supprimer" }).click();
+  await expect(sup.getByRole("alert").filter({ hasText: REFUS })).toBeVisible();
+  expect(fs.existsSync(path.join(dossier, "README.md"))).toBe(true);
+  expect(fs.existsSync(path.join(dossier, "neuf.txt"))).toBe(false);
+});
 
+test("REQ015_AC8_pendant_la_coupure_changer_de_panneau_garde_l_arbre", async ({ page }) => {
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
+  await expect(ligne(page, "README.md")).toBeVisible();
+  await couper(page);
+  await page.getByRole("tab", { name: "Recherche" }).click();
+  await page.getByRole("tab", { name: "Fichiers" }).click();
+  await expect(ligne(page, "README.md")).toBeVisible();
+  await expect(page.getByText("Impossible de lire ce dossier")).toHaveCount(0);
+});
 
 test("REQ016_AC1_coupure_puis_retour_puis_rechargement_le_texte_est_la_et_ctrl_s_l_ecrit", async ({ page }) => {
   await ouvrirMain(page);
@@ -249,3 +231,20 @@ test("REQ005_AC8_deconnexion_avec_du_texte_non_sauvegarde_sans_question_puis_le_
   expect(fs.readFileSync(main(), "utf8")).toBe(ORIGINE);
 });
 
+test("REQ044_AC5_pendant_la_coupure_le_bloc_se_colore_a_la_frappe", async ({ page }) => {
+  fs.writeFileSync(path.join(dossier, "README.md"), "```inconnu\nfn main() {}\n```\n");
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
+  await ligne(page, "README.md").click();
+  await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+  const apercu = page.getByRole("region", { name: "Aperçu" });
+  await expect(apercu.locator("pre")).toContainText("fn main() {}");
+  await expect(apercu.locator("pre span")).toHaveCount(0);
+  await couper(page);
+  await page.getByLabel("Éditeur README.md").click();
+  await page.keyboard.press("Control+Home");
+  await page.keyboard.press("End");
+  for (let i = 0; i < 7; i++) await page.keyboard.press("Backspace");
+  await page.keyboard.type("rs");
+  await expect(apercu.locator("pre span", { hasText: /^fn$/ })).toHaveCount(1);
+  await expect(bandeau(page)).toBeVisible();
+});

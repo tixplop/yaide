@@ -20,13 +20,6 @@ const chercher = async (page, texte) => {
   await champ(page).press("Enter");
 };
 
-/** Ferme les onglets de fichiers ouverts (aucun n'a de modification). */
-const fermerOnglets = async (page) => {
-  const croix = page.getByRole("tablist", { name: "Fichiers ouverts" }).getByRole("button", { name: /^Fermer / });
-  while (await croix.count()) await croix.first().click();
-  await expect(page.getByText("Aucun fichier ouvert.")).toBeVisible();
-};
-
 /** Dépôt d'exemple avec un fichier `lib.rs` de 40 lignes dont la 30e contient `fn main`. */
 function depot() {
   const dossier = depotExemple();
@@ -109,92 +102,87 @@ test("REQ026_AC1_AC4_AC6_AC9_REQ037_AC8_AC13_recherche_aide_resultats_groupes_re
   });
 });
 
-test("REQ008_AC7_REQ026_AC2_AC3_AC5_AC7_AC8_recherche_ignores_500_resultats_clavier_ouverture_a_la_ligne_et_lecture_tardive", async ({ page }) => {
+test("REQ026_AC2_clic_sur_un_resultat_ouvre_le_fichier_a_la_ligne_et_focus_dans_l_editeur", async ({ page }) => {
+  await ouvrir(page, depot());
+  await rail(page).click();
+  await chercher(page, "fn main_lib");
+  await resultats(page).getByRole("option").first().click();
+  await expect(page.getByRole("tab", { name: "lib.rs" })).toHaveAttribute("aria-selected", "true");
+  const editeur = page.getByLabel("Éditeur lib.rs");
+  await expect(editeur).toBeFocused();
+  await expect(editeur.locator(".cm-activeLine")).toHaveText("fn main_lib() {}");
+});
+
+test("REQ026_AC3_fichier_ignore_par_git_absent", async ({ page }) => {
   const dossier = depot();
   fs.writeFileSync(path.join(dossier, ".gitignore"), "secret.txt\n");
   fs.writeFileSync(path.join(dossier, "secret.txt"), "fn main secret\n");
-  fs.writeFileSync(path.join(dossier, "gros.txt"), "motrare\n".repeat(501));
   await ouvrir(page, dossier);
-  await test.step("REQ026_AC3_fichier_ignore_par_git_absent", async () => {
-    await rail(page).click();
-    await chercher(page, "fn main");
-    await expect(resultats(page).getByRole("option")).toHaveCount(2);
-    await expect(resultats(page)).not.toContainText("secret.txt");
-  });
-  await test.step("REQ026_AC5_AC7_plus_de_500_resultats_gardent_500_et_le_disent", async () => {
-    await chercher(page, "motrare");
-    await expect(page.getByText("500 premiers résultats. Précisez votre recherche.")).toBeVisible();
-    await expect(resultats(page).getByRole("option")).toHaveCount(500);
-  });
-  await test.step("REQ026_AC8_clavier_champ_liste_et_ouverture", async () => {
-    await fermerOnglets(page);
-    await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
-    await rail(page).click();
-    await chercher(page, "fn main");
-    const options = resultats(page).getByRole("option");
-    await expect(options).toHaveCount(2);
-    await champ(page).press("ArrowDown");
-    await expect(options.nth(0)).toBeFocused();
-    await page.keyboard.press("ArrowDown");
-    await expect(options.nth(1)).toBeFocused();
-    await expect(options.nth(1)).toHaveAttribute("aria-selected", "true");
-    await page.keyboard.press("ArrowUp");
-    await expect(options.nth(0)).toBeFocused();
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("tab", { name: "lib.rs" })).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByLabel("Éditeur lib.rs")).toBeFocused();
-    await expect(page.getByLabel("Éditeur lib.rs").locator(".cm-activeLine")).toHaveText("fn main_lib() {}");
-  });
-  await test.step("REQ026_AC2_clic_sur_un_resultat_ouvre_le_fichier_a_la_ligne_et_focus_dans_l_editeur", async () => {
-    await fermerOnglets(page);
-    await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
-    await rail(page).click();
-    await chercher(page, "fn main_lib");
-    await resultats(page).getByRole("option").first().click();
-    await expect(page.getByRole("tab", { name: "lib.rs" })).toHaveAttribute("aria-selected", "true");
-    const editeur = page.getByLabel("Éditeur lib.rs");
-    await expect(editeur).toBeFocused();
-    await expect(editeur.locator(".cm-activeLine")).toHaveText("fn main_lib() {}");
-  });
-  await test.step("REQ026_AC2_fichier_deja_ouvert_va_a_la_ligne", async () => {
-    await fermerOnglets(page);
-    await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
-    { const s = page.getByRole("treeitem", { name: nomLigne("src") }); if ((await s.getAttribute("aria-expanded")) === "true") await s.click(); }
-    await page.getByRole("tree").getByText("src").first().click();
-    await page.getByRole("treeitem", { name: /lib\.rs/ }).click();
-    await expect(page.getByLabel("Éditeur lib.rs")).toBeFocused();
-    await rail(page).click();
-    await chercher(page, "fn main_lib");
-    await resultats(page).getByRole("option").first().click();
-    await expect(page.getByLabel("Éditeur lib.rs").locator(".cm-activeLine")).toHaveText("fn main_lib() {}");
-    await expect(page.getByRole("tab", { name: /lib\.rs/ })).toHaveCount(1);
-  });
-  await test.step("REQ008_AC7_lecture_tardive_depuis_la_recherche_ne_reprend_pas_l_onglet_actif", async () => {
-    await fermerOnglets(page);
-    await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
-    { const s = page.getByRole("treeitem", { name: nomLigne("src") }); if ((await s.getAttribute("aria-expanded")) === "true") await s.click(); }
-    await page.getByRole("tree").getByText("src").first().click();
-    await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
-    await expect(page.getByRole("tab", { name: "main.rs" })).toHaveAttribute("aria-selected", "true");
-    let liberer;
-    const porte = new Promise((r) => (liberer = r));
-    await page.route("**/api/fichier?*", async (route) => {
-      if (new URL(route.request().url()).searchParams.get("chemin") === "src/lib.rs") await porte;
-      await route.continue();
-    });
-    await rail(page).click();
-    await chercher(page, "fn main_lib");
-    await resultats(page).getByRole("option").first().click();
-    await page.getByRole("tab", { name: "main.rs" }).click();
-    await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
-    liberer();
-    await expect(page.getByRole("tab", { name: "lib.rs" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "main.rs" })).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
-  });
+  await rail(page).click();
+  await chercher(page, "fn main");
+  await expect(resultats(page).getByRole("option")).toHaveCount(2);
+  await expect(resultats(page)).not.toContainText("secret.txt");
 });
 
+test("REQ026_AC5_AC7_plus_de_500_resultats_gardent_500_et_le_disent", async ({ page }) => {
+  const dossier = depot();
+  fs.writeFileSync(path.join(dossier, "gros.txt"), "motrare\n".repeat(501));
+  await ouvrir(page, dossier);
+  await rail(page).click();
+  await chercher(page, "motrare");
+  await expect(page.getByText("500 premiers résultats. Précisez votre recherche.")).toBeVisible();
+  await expect(resultats(page).getByRole("option")).toHaveCount(500);
+});
 
+test("REQ026_AC8_clavier_champ_liste_et_ouverture", async ({ page }) => {
+  await ouvrir(page, depot());
+  await rail(page).click();
+  await chercher(page, "fn main");
+  const options = resultats(page).getByRole("option");
+  await expect(options).toHaveCount(2);
+  await champ(page).press("ArrowDown");
+  await expect(options.nth(0)).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(options.nth(1)).toBeFocused();
+  await expect(options.nth(1)).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ArrowUp");
+  await expect(options.nth(0)).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("tab", { name: "lib.rs" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Éditeur lib.rs")).toBeFocused();
+  await expect(page.getByLabel("Éditeur lib.rs").locator(".cm-activeLine")).toHaveText("fn main_lib() {}");
+});
 
+test("REQ026_AC2_fichier_deja_ouvert_va_a_la_ligne", async ({ page }) => {
+  await ouvrir(page, depot());
+  await page.getByRole("tree").getByText("src").first().click();
+  await page.getByRole("treeitem", { name: /lib\.rs/ }).click();
+  await expect(page.getByLabel("Éditeur lib.rs")).toBeFocused();
+  await rail(page).click();
+  await chercher(page, "fn main_lib");
+  await resultats(page).getByRole("option").first().click();
+  await expect(page.getByLabel("Éditeur lib.rs").locator(".cm-activeLine")).toHaveText("fn main_lib() {}");
+  await expect(page.getByRole("tab", { name: /lib\.rs/ })).toHaveCount(1);
+});
 
-
+test("REQ008_AC7_lecture_tardive_depuis_la_recherche_ne_reprend_pas_l_onglet_actif", async ({ page }) => {
+  await ouvrir(page, depot());
+  await page.getByRole("tree").getByText("src").first().click();
+  await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
+  await expect(page.getByRole("tab", { name: "main.rs" })).toHaveAttribute("aria-selected", "true");
+  let liberer;
+  const porte = new Promise((r) => (liberer = r));
+  await page.route("**/api/fichier?*", async (route) => {
+    if (new URL(route.request().url()).searchParams.get("chemin") === "src/lib.rs") await porte;
+    await route.continue();
+  });
+  await rail(page).click();
+  await chercher(page, "fn main_lib");
+  await resultats(page).getByRole("option").first().click();
+  await page.getByRole("tab", { name: "main.rs" }).click();
+  await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+  liberer();
+  await expect(page.getByRole("tab", { name: "lib.rs" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "main.rs" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+});
