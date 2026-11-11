@@ -25,6 +25,9 @@ pub struct Resultat {
 pub struct Limites {
     pub bash: Duration,
     pub web: Duration,
+    /// `initialize` d'un serveur MCP, et appel d'un outil MCP.
+    pub mcp_init: Duration,
+    pub mcp_appel: Duration,
     pub recherche: String,
 }
 
@@ -33,6 +36,8 @@ impl Default for Limites {
         Limites {
             bash: Duration::from_secs(120),
             web: Duration::from_secs(30),
+            mcp_init: Duration::from_secs(30),
+            mcp_appel: Duration::from_secs(120),
             recherche: "https://html.duckduckgo.com/html/".into(),
         }
     }

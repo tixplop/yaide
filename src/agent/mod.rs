@@ -1,5 +1,6 @@
 pub mod agents;
 pub mod conversation;
+pub mod mcp;
 pub mod outils;
 pub mod provider;
 pub mod reglages;
