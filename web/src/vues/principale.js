@@ -19,6 +19,7 @@ import { ouvrirProfils } from "./profils.js";
 import { ouvrirProviders } from "./providers.js";
 import { vueRecherche } from "./recherche.js";
 import { statutsDe } from "../statuts.js";
+import { suivreVersion } from "../version.js";
 import { abonner as abonnerWorktree } from "../worktree.js";
 import { vueShells } from "./shells.js";
 
@@ -182,6 +183,17 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   let racine = null;
   const barre = {};
   const majEtat = () => racine?.definirEtat(barre);
+  // Version lancée et mise à jour (REQ-092, REQ-093) : si le focus était sur « Mettre à jour » et qu'il disparaît, il passe sur le message.
+  barre.surMaj = () => suiviVersion?.installer();
+  const suiviVersion = suivreVersion({
+    surChangement: ({ version, maj }) => {
+      const surBouton = Boolean(racine && document.activeElement?.closest(".ya-status-maj button"));
+      barre.version = version;
+      barre.maj = maj;
+      majEtat();
+      if (surBouton && maj.etat === "installee") racine.querySelector(".ya-status-maj .message-succes")?.focus();
+    },
+  });
 
   // Bandeaux : la coupure d'abord, puis un seul message à la fois.
   const bandeaux = document.createElement("div");
@@ -486,6 +498,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
 
   racine.detruire = () => {
     clearTimeout(minuteurRelecture);
+    suiviVersion.detruire();
     desabonnerWorktree();
     arreter();
     detruite = true;

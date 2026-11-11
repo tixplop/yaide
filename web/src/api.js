@@ -366,3 +366,22 @@ export const modeleParDefaut = () => appelOpencode("/model/default");
 /** `variant` n'est envoyé que s'il a une valeur. */
 export const choisirModele = (sessionId, { id, providerID, variant }) =>
   appelOpencode(`/session/${q(sessionId)}/model`, json("POST", { model: { id, providerID, ...(variant ? { variant } : {}) } }));
+
+/** `{ version, derniere, maj, installee }`, ou null sans réponse valide. */
+export async function lireVersion() {
+  const r = await appeler("/api/version");
+  if (!r || !r.ok) return null;
+  try {
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
+/** Installe la dernière release : `{ ok: true }`, `{ echec: raison }` ou `{ coupure: true }`. */
+export async function installerVersion() {
+  const r = await appeler("/api/version/maj", { method: "POST" });
+  if (!r) return { coupure: true };
+  if (r.ok) return { ok: true };
+  return { echec: (await r.text()).trim() || `erreur ${r.status}` };
+}

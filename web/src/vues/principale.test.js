@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import * as oc from "../opencode.js";
 import * as worktree from "../worktree.js";
 import { ecrire, lire } from "../stockage.js";
-import { monter, attendre, avecHorloge, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne, simulerOpencode, boutonClaudeDe, ongletsOc, nomDuChamp, nomsRailDroit } from "./principale.aides.js";
+import { monter, attendre, avecHorloge, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne, simulerOpencode, boutonClaudeDe, ongletsOc, nomDuChamp, nomsRailDroit, boutonOcDe, ongletsClaude, ligne } from "./principale.aides.js";
 
 vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
@@ -719,4 +719,245 @@ test("REQ088_AC4_AC12_choix_ouvre_un_onglet_sans_creer_de_session_ni_choisir_de_
   expect(appels.filter((a) => a.startsWith("POST /api/opencode/api/session"))).toEqual([]);
   expect(appels.some((a) => a.includes("/model"))).toBe(false);
   expect(reprise).not.toHaveBeenCalled();
+});
+
+// ---- T-186 : version et mise à jour dans la barre d'état ----
+
+function fauxVersion(initial) {
+  const s = { lecture: { version: "0.9.1", derniere: null, maj: "aucune", installee: null, ...initial }, lectures: 0, posts: 0, post: { ok: true, status: 200, text: async () => "{}" }, retenir: null };
+  vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+    if (url === "/api/version") {
+      s.lectures++;
+      return s.lecture === null ? null : jsonOk(s.lecture);
+    }
+    if (url === "/api/version/maj" && opts.method === "POST") {
+      s.posts++;
+      if (s.retenir) await s.retenir;
+      return s.post;
+    }
+    if (url === "/api/git/etat") return { ok: false, status: 409, json: async () => ({ cause: "pas-depot", message: "pas un dépôt" }) };
+    return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
+  }));
+  return s;
+}
+const barreEtat = (vue) => vue.querySelector("footer");
+const boutonMaj = (vue) => [...barreEtat(vue).querySelectorAll("button")].find((b) => b.textContent === "Mettre à jour" || b.textContent === "Mise à jour…");
+const zoneStatus = (vue) => barreEtat(vue).querySelector("[role=status]");
+const zoneAlert = (vue) => barreEtat(vue).querySelector("[role=alert]");
+
+test("REQ092_AC1_la_version_s_affiche_tout_a_droite_avec_ou_sans_onglet", async () => {
+  fauxVersion({});
+  const { vue } = monter();
+  await attendre();
+  const v = barreEtat(vue).lastElementChild;
+  expect(v.textContent).toBe("Yaide v0.9.1");
+  expect(v.hidden).toBe(false);
+  expect(boutonMaj(vue)).toBeUndefined();
+  expect(zoneStatus(vue).textContent).toBe("");
+});
+
+test("REQ092_AC1_la_version_reste_tout_a_droite_avec_un_onglet_fichier_Agent_Claude_opencode", async () => {
+  simulerOpencode();
+  const fetchOc = fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url, opts) => (url === "/api/version" ? jsonOk({ version: "0.9.1", derniere: null, maj: "aucune", installee: null }) : url === "/api/claude" && opts?.method === "POST" ? { ok: true, status: 201, json: async () => ({ id: 7 }) } : fetchOc(url, opts))));
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  const version = () => barreEtat(vue).lastElementChild.textContent;
+  expect(version()).toBe("Yaide v0.9.1");
+  ligne(vue, "main.rs").click();
+  await vi.waitFor(() => expect(vue.querySelector("[role=tab][aria-selected=true]")).not.toBeNull());
+  expect(version()).toBe("Yaide v0.9.1");
+  boutonAgentDe(vue).click();
+  await vi.waitFor(() => expect(champAgent(vue)).not.toBeNull());
+  expect(version()).toBe("Yaide v0.9.1");
+  boutonClaudeDe(vue).click();
+  await vi.waitFor(() => expect(ongletsClaude(vue).length).toBe(1));
+  expect(version()).toBe("Yaide v0.9.1");
+  boutonOcDe(vue).click();
+  await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(1));
+  expect(version()).toBe("Yaide v0.9.1");
+});
+
+test("REQ092_AC2_lecture_au_chargement_puis_chaque_minute", () =>
+  avecHorloge(async () => {
+    const s = fauxVersion({});
+    monter();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.lectures).toBe(1);
+    await vi.advanceTimersByTimeAsync(59000);
+    expect(s.lectures).toBe(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.lectures).toBe(2);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(s.lectures).toBe(3);
+  }));
+
+test("REQ092_AC2_la_relecture_s_arrete_a_la_deconnexion", () =>
+  avecHorloge(async () => {
+    const s = fauxVersion({});
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(0);
+    vue.detruire();
+    await vi.advanceTimersByTimeAsync(180000);
+    expect(s.lectures).toBe(1);
+  }));
+
+test("REQ092_AC3_notification_et_bouton_quand_la_release_est_plus_recente", async () => {
+  fauxVersion({ derniere: "0.9.2" });
+  const { vue } = monter();
+  await attendre();
+  expect(zoneStatus(vue).textContent).toBe("v0.9.2 disponible");
+  expect(boutonMaj(vue).textContent).toBe("Mettre à jour");
+  expect(barreEtat(vue).lastElementChild.textContent).toBe("Yaide v0.9.1");
+});
+
+test("REQ092_AC3_la_notification_parait_a_une_relecture_sans_rechargement_ni_focus", () =>
+  avecHorloge(async () => {
+    const s = fauxVersion({});
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(boutonMaj(vue)).toBeUndefined();
+    const avant = document.activeElement;
+    s.lecture = { ...s.lecture, derniere: "0.9.2" };
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(zoneStatus(vue).textContent).toBe("v0.9.2 disponible");
+    expect(boutonMaj(vue)).toBeDefined();
+    expect(document.activeElement).toBe(avant);
+  }));
+
+test("REQ092_AC4_derniere_nulle_egale_ou_plus_ancienne_ou_illisible_version_seule", () =>
+  avecHorloge(async () => {
+    const s = fauxVersion({ derniere: null });
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(0);
+    for (const derniere of [null, "0.9.1", "0.8.0"]) {
+      s.lecture = { ...s.lecture, derniere };
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(zoneStatus(vue).textContent).toBe("");
+      expect(zoneAlert(vue).textContent).toBe("");
+      expect(boutonMaj(vue)).toBeUndefined();
+      expect(barreEtat(vue).lastElementChild.textContent).toBe("Yaide v0.9.1");
+    }
+    s.lecture = { ...s.lecture, derniere: "0.9.2" };
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(zoneStatus(vue).textContent).toBe("v0.9.2 disponible");
+  }));
+
+test("REQ092_AC4_une_coupure_ne_change_rien_a_la_barre", () =>
+  avecHorloge(async () => {
+    const s = fauxVersion({ derniere: "0.9.2" });
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(0);
+    s.lecture = null;
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(zoneStatus(vue).textContent).toBe("v0.9.2 disponible");
+    expect(barreEtat(vue).lastElementChild.textContent).toBe("Yaide v0.9.1");
+  }));
+
+test("REQ093_AC1_AC6_installation_reussie_message_sans_bouton_et_focus_sur_le_message", async () => {
+  const s = fauxVersion({ derniere: "0.9.2" });
+  let fin;
+  s.retenir = new Promise((r) => (fin = r));
+  const { vue } = monter();
+  await attendre();
+  const b = boutonMaj(vue);
+  b.focus();
+  b.click();
+  await attendre();
+  expect(b.textContent).toBe("Mise à jour…");
+  expect(b.getAttribute("aria-busy")).toBe("true");
+  expect(b.getAttribute("aria-disabled")).toBe("true");
+  expect(document.activeElement).toBe(b);
+  fin();
+  await attendre();
+  expect(zoneStatus(vue).textContent).toBe("v0.9.2 installée. Redémarrez Yaide pour l'utiliser.");
+  expect(boutonMaj(vue)).toBeUndefined();
+  expect(barreEtat(vue).lastElementChild.textContent).toBe("Yaide v0.9.1");
+  const m = zoneStatus(vue).firstElementChild;
+  expect(document.activeElement).toBe(m);
+  expect(m.getAttribute("tabindex")).toBe("-1");
+});
+
+test("REQ093_AC6_le_focus_ne_bouge_pas_s_il_n_etait_pas_sur_le_bouton", async () => {
+  fauxVersion({ derniere: "0.9.2" });
+  const { vue } = monter();
+  await attendre();
+  const ailleurs = barreTitre(vue, "Thème clair");
+  ailleurs.focus();
+  boutonMaj(vue).click();
+  await attendre();
+  await attendre();
+  expect(zoneStatus(vue).textContent).toContain("installée");
+  expect(document.activeElement).toBe(ailleurs);
+});
+
+test("REQ093_AC2_installee_au_chargement_meme_message_sans_bouton", async () => {
+  fauxVersion({ derniere: "0.9.2", maj: "installee", installee: "0.9.2" });
+  const { vue } = monter();
+  await attendre();
+  expect(zoneStatus(vue).textContent).toBe("v0.9.2 installée. Redémarrez Yaide pour l'utiliser.");
+  expect(boutonMaj(vue)).toBeUndefined();
+  expect(barreEtat(vue).lastElementChild.textContent).toBe("Yaide v0.9.1");
+});
+
+test("REQ093_AC3_AC6_echec_raison_bouton_rendu_nouveau_clic_reessaie", async () => {
+  const s = fauxVersion({ derniere: "0.9.2" });
+  s.post = { ok: false, status: 500, text: async () => "« sha256sum » est introuvable" };
+  const { vue } = monter();
+  await attendre();
+  const b = boutonMaj(vue);
+  b.focus();
+  b.click();
+  await attendre();
+  await attendre();
+  expect(zoneAlert(vue).textContent).toBe("La mise à jour a échoué : « sha256sum » est introuvable.");
+  expect(zoneStatus(vue).textContent).toBe("");
+  expect(boutonMaj(vue)).toBe(b);
+  expect(b.textContent).toBe("Mettre à jour");
+  expect(document.activeElement).toBe(b);
+  s.post = { ok: true, status: 200, text: async () => "{}" };
+  b.click();
+  await attendre();
+  await attendre();
+  expect(s.posts).toBe(2);
+  expect(zoneStatus(vue).textContent).toContain("installée");
+  expect(zoneAlert(vue).textContent).toBe("");
+});
+
+test("REQ093_AC3_un_autre_onglet_revient_a_disponible_apres_l_echec", () =>
+  avecHorloge(async () => {
+    const s = fauxVersion({ derniere: "0.9.2", maj: "encours" });
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(boutonMaj(vue).textContent).toBe("Mise à jour…");
+    s.lecture = { ...s.lecture, maj: "aucune" };
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(boutonMaj(vue).textContent).toBe("Mettre à jour");
+    expect(zoneStatus(vue).textContent).toBe("v0.9.2 disponible");
+    expect(zoneAlert(vue).textContent).toBe("");
+  }));
+
+test("REQ093_AC4_un_second_clic_ne_lance_rien_et_encours_lu_d_un_autre_onglet", async () => {
+  const s = fauxVersion({ derniere: "0.9.2" });
+  s.retenir = new Promise(() => {});
+  const { vue } = monter();
+  await attendre();
+  const b = boutonMaj(vue);
+  b.click();
+  await attendre();
+  b.click();
+  await attendre();
+  expect(s.posts).toBe(1);
+  expect(zoneStatus(vue).textContent).toBe("v0.9.2 disponible");
+});
+
+test("REQ093_AC4_maj_encours_lu_du_serveur_clic_sans_effet", async () => {
+  const s = fauxVersion({ derniere: "0.9.2", maj: "encours" });
+  const { vue } = monter();
+  await attendre();
+  const b = boutonMaj(vue);
+  expect(b.textContent).toBe("Mise à jour…");
+  b.click();
+  await attendre();
+  expect(s.posts).toBe(0);
 });
