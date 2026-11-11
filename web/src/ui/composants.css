@@ -378,6 +378,9 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 /* « opencode » suit « Claude », collé ; sans « Claude », il est le troisième et prend les 8 px. */
 .cadre-rail-droit .bouton-enveloppe:nth-child(n+4) { margin-top: 0; }
 .cadre-rail-droit .ya-icon-btn svg { width: var(--taille-icone-rail); height: var(--taille-icone-rail); }
+/* « Serveurs MCP » au pied du rail droit : son bas est celui du rail ; ouvert, fond `--bg-400` et icône `--ink`. */
+.cadre-rail-droit .cadre-rail-pied { margin-top: auto; display: flex; flex-direction: column; }
+.cadre-rail-droit .ya-icon-btn[aria-expanded="true"], .cadre-rail-droit .ya-icon-btn[aria-expanded="true"]:hover { background: var(--bg-400); color: var(--ink); }
 .cadre-panneau, .cadre-agent { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg-100); }
 .ya-panel-head { flex: none; box-sizing: border-box; height: var(--size-tab); display: flex; align-items: center; padding: 0 var(--space-1) 0 var(--space-3); }
 .ya-panel-title { margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 16px; font-weight: var(--graisse-forte); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); }
@@ -491,6 +494,21 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-reglages .ya-row { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); margin: 2px 0; background: transparent; }
 .ya-reglages .ya-row .liste-libelle { min-width: 84px; font-size: 12.5px; }
 .ya-reglages .ya-row .liste-parent { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* C-006 `objets` (V-012) : liste d'objets à modifier ou supprimer, chacun avec ses boutons. */
+.ya-objets { list-style: none; margin: 2px 0; padding: 0; min-height: 86px; overflow-y: auto; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-sizing: border-box; }
+.ya-objet { box-sizing: border-box; height: 28px; display: flex; align-items: center; gap: 12px; padding: 0 4px 0 8px; border-radius: var(--radius-xs); font: 12.5px var(--font-sans); color: var(--ink); }
+.ya-objet:hover { background: var(--bg-400); }
+.ya-objet-nom { flex: 0 1 35%; min-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ya-objet-texte { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-muted); }
+.ya-objet-actions { flex: none; margin-left: auto; display: flex; gap: 2px; }
+
+/* C-007 `reglages`, « Liste et fiche » : le résultat est hors de la partie qui défile ; la fiche en grille 1fr 2fr. */
+.ya-reglages .dialogue-resultat { flex: none; margin-top: var(--space-2); }
+.ya-fiche { display: flex; flex-direction: column; gap: 12px; }
+.ya-fiche-titre { margin: 0; font: 600 13px/20px var(--font-sans); color: var(--ink); }
+.ya-fiche-champs { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; }
+.ya-fiche-large { grid-column: 1 / -1; }
 
 /* C-007 `reglages` : le contenu défile seul entre le titre et les actions. */
 .ya-reglages { display: flex; flex-direction: column; margin: auto; max-height: calc(100vh - 2 * var(--space-4)); width: var(--largeur-palette); }

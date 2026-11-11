@@ -7,13 +7,14 @@ const NOMS_COULEURS = { violet: "Violet", vert: "Vert", orange: "Orange", rose: 
 const CLAVIERS = { numerique: "numeric", decimal: "decimal" };
 let compteur = 0;
 
-export function champ({ libelle, type = "texte", valeur = "", options = [], indication, aide, erreur, libelleMasque = false, desactive = false, clavier, presentation = "normale", avant, action, ligne = false, raison }) {
+export function champ({ libelle, type = "texte", valeur = "", options = [], indication, aide, erreur, libelleMasque = false, desactive = false, clavier, presentation = "normale", avant, action, ligne = false, raison, sansRetour = false }) {
   if (!libelle) throw new Error("champ : libelle requis");
   if (!TYPES.includes(type)) throw new Error(`champ : type inconnu « ${type} »`);
   if (clavier !== undefined && !(clavier in CLAVIERS)) throw new Error(`champ : clavier inconnu « ${clavier} »`);
   if (!PRESENTATIONS.includes(presentation)) throw new Error(`champ : presentation inconnue « ${presentation} »`);
   if (presentation === "barre" && type !== "liste") throw new Error("champ : la presentation « barre » n'existe que pour une liste");
   if (ligne && presentation !== "barre") throw new Error("champ : « ligne » n'existe que pour la presentation « barre »");
+  if (sansRetour && type !== "multiligne") throw new Error("champ : sansRetour demande le type « multiligne »");
   const n = ++compteur;
   if (type === "couleur") return champCouleur(libelle, valeur || "violet", n, desactive);
   if (type === "case" && presentation === "ligne") return caseEnLigne({ libelle, valeur, avant, action, desactive, n });
@@ -28,7 +29,9 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
   let saisie;
   if (type === "multiligne") {
     saisie = document.createElement("textarea");
-    saisie.rows = 2;
+    saisie.rows = sansRetour ? 3 : 2;
+    // Une valeur par ligne : une ligne trop longue défile en largeur au lieu de passer à la ligne.
+    if (sansRetour) saisie.wrap = "off";
     saisie.value = valeur;
   } else if (type === "liste") {
     saisie = document.createElement("select");

@@ -20,6 +20,7 @@ export function bouton({
   submit = false,
   taille = "normale",
   ouvreMenu = false,
+  ouvreDialogue = false,
   compteur,
   actif,
 }) {
@@ -49,6 +50,8 @@ export function bouton({
     b.setAttribute("aria-haspopup", "menu");
     b.setAttribute("aria-expanded", "false");
   }
+  // Commande qui ouvre un dialogue : `definirOuvert` suit son état (fond `--bg-400`, icône `--ink`).
+  if (ouvreDialogue) b.setAttribute("aria-haspopup", "dialog");
   // Commande du rail droit : `data-actif` porte le filet ; ni aria-pressed ni aria-expanded.
   b.definirActif = (oui) => b.toggleAttribute("data-actif", Boolean(oui));
   if (actif !== undefined) b.definirActif(actif);

@@ -1154,3 +1154,26 @@ test("REQ094_AC3_serveur_pour_lecteurs_d_ecran_pastille_masquee_sans_role_ni_foc
   expect(css).not.toMatch(/\.ya-connexion[^{]*\{[^}]*transition/);
   c.remove();
 });
+
+test("REQ096_AC12_pied_du_rail_droit_en_bas_et_commandes_ajoutees_au_dessus", () => {
+  const pied = bouton({ icone: "server", nomAccessible: "Serveurs MCP", positionInfoBulle: "gauche" }).enveloppe;
+  const c = monterFonctions({}, { railDroit: { commandes: [p("rd")], pied: [pied] } });
+  const rd = c.querySelector(".cadre-rail-droit");
+  expect(rd.lastElementChild.className).toBe("cadre-rail-pied");
+  expect(rd.lastElementChild.firstChild).toBe(pied);
+  expect(regle(".cadre-rail-droit .cadre-rail-pied")).toContain("margin-top: auto");
+  const claude = p("Claude");
+  c.ajouterCommandeDroite(claude);
+  expect([...rd.children].map((e) => e.textContent || e.className)).toEqual(["rd", "Claude", "cadre-rail-pied"]);
+  expect(claude.nextElementSibling).toBe(rd.lastElementChild);
+});
+
+test("REQ096_AC12_pied_vide_par_defaut_et_rail_absent_sans_commande_ni_pied", () => {
+  const sans = monterFonctions({ agents: false }, { railDroit: { commandes: [] } });
+  expect(sans.querySelector(".cadre-rail-droit")).toBeNull();
+  const vide = monterFonctions({}, { railDroit: { commandes: [p("rd")] } });
+  expect(vide.querySelector(".cadre-rail-pied")).toBeNull();
+  const seul = monterFonctions({ agents: false }, { railDroit: { commandes: [], pied: [p("pied")] } });
+  expect(seul.querySelector(".cadre-rail-droit .cadre-rail-pied").textContent).toBe("pied");
+  expect(seul.classList.contains("cadre-sans-rail-droit")).toBe(false);
+});

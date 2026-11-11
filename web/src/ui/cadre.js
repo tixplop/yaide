@@ -33,7 +33,7 @@ export function symbole(taille) {
 /**
  * C-010. `barreTitre` : { projet, chemin, surOuvrir, actions } ; `rail` : { onglets, commandes } ;
  * `panneau` : { titre, repli (bouton de repli, après le titre), entete (élément fixe sous le titre), corps } ;
- * `barreEtat` : { branche, position, langage, version, connexion (`connecte` par défaut, ou `deconnecte`), maj: { etat, derniere, raison }, surMaj } (textes, ou rien ; `etat` : aucune, disponible, encours, echec, installee ; `surMaj` : clic sur « Mettre à jour ») ; `agent` : { titre, repli, corps } (colonne à droite) ; `railDroit` : { commandes } (liste de boutons, dans l'ordre) ;
+ * `barreEtat` : { branche, position, langage, version, connexion (`connecte` par défaut, ou `deconnecte`), maj: { etat, derniere, raison }, surMaj } (textes, ou rien ; `etat` : aucune, disponible, encours, echec, installee ; `surMaj` : clic sur « Mettre à jour ») ; `agent` : { titre, repli, corps } (colonne à droite) ; `railDroit` : { commandes, pied } (listes de boutons, dans l'ordre ; `pied`, vide par défaut, au bas du rail après les commandes) ;
  * `tailles` : { panneau, agent, shells } en pixels ; `replis` : { panneau, agent, shells } (faux par défaut, vrai pour l'agent) ;
  * `fonctions` : { recherche, git, shells, agents, claude } (vrais par défaut) : `shells` et `agents` faux ne créent ni zone, ni poignée, ni commandes ; `racine.ajouterCommandeDroite(el)` crée le rail droit au besoin.
  * `surChangement(zone, taille)` et `surFin(zone, taille)` viennent des poignées.
@@ -41,7 +41,7 @@ export function symbole(taille) {
 export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, railDroit = {}, principal = {}, barreEtat = {}, tailles = {}, replis = {}, fonctions, surChangement, surFin } = {}) {
   const avec = { shells: fonctions?.shells !== false, agents: fonctions?.agents !== false };
   // Sans `fonctions`, le rail droit existe toujours ; avec, il n'est créé que s'il porte une commande.
-  const avecRailDroit = fonctions === undefined || Boolean(railDroit.commandes?.length);
+  const avecRailDroit = fonctions === undefined || Boolean(railDroit.commandes?.length || railDroit.pied?.length);
   const racine = zone("div", "cadre");
 
   const haut = zone("header", "cadre-barre ya-titlebar");
@@ -87,6 +87,7 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   } else colonneAgent.setAttribute("aria-label", "Agent");
   colonneAgent?.append(zone("div", "cadre-panneau-corps", agent.corps));
   const rd = avecRailDroit ? zone("div", "cadre-rail-droit", railDroit.commandes) : null;
+  if (rd && railDroit.pied?.length) rd.append(zone("div", "cadre-rail-pied", railDroit.pied));
 
   const main = zone("main", "cadre-principal");
   const lim = limites({ L: window.innerWidth, H: window.innerHeight });
@@ -298,7 +299,10 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
       etat.before(rail);
       racine.classList.remove("cadre-sans-rail-droit");
     }
-    rail.append(el);
+    // Au-dessus du pied, qui reste au bas du rail.
+    const pied = rail.querySelector(":scope > .cadre-rail-pied");
+    if (pied) pied.before(el);
+    else rail.append(el);
   };
 
   // Pose la taille affichée ; sans taille choisie, les tokens `--largeur-panneau` et `--part-shells` s'appliquent.

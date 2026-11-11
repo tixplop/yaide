@@ -453,3 +453,30 @@ test("REQ093_AC6_bouton_barre_exige_un_libelle_et_le_css_suit_le_design_system",
   expect(r).toContain("white-space: nowrap");
   expect(r).not.toMatch(/#[0-9a-f]{3,6}\b/i);
 });
+
+test("REQ096_AC12_commande_serveurs_mcp_dialogue_info_bulle_gauche_sans_raccourci_ni_filet", () => {
+  vi.useFakeTimers();
+  try {
+  const b = bouton({ icone: "server", nomAccessible: "Serveurs MCP", positionInfoBulle: "gauche", ouvreDialogue: true });
+  expect(b.querySelector('[data-icone="server"]')).not.toBeNull();
+  expect(b.getAttribute("aria-label")).toBe("Serveurs MCP");
+  expect(b.getAttribute("aria-haspopup")).toBe("dialog");
+  expect(b.hasAttribute("aria-keyshortcuts")).toBe(false);
+  expect(b.hasAttribute("data-actif")).toBe(false);
+  expect(b.hasAttribute("aria-pressed")).toBe(false);
+  b.definirOuvert(true);
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  document.body.append(b.enveloppe);
+  b.enveloppe.getBoundingClientRect = () => ({ left: window.innerWidth - 48, right: window.innerWidth, top: 300, bottom: 348, width: 48, height: 48 });
+  b.enveloppe.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  const t = document.querySelector("[role=tooltip]");
+  expect(t.textContent).toBe("Serveurs MCP");
+  expect(parseFloat(t.style.left)).toBe(window.innerWidth - 48);
+  b.enveloppe.dispatchEvent(new Event("pointerleave"));
+  } finally {
+    vi.useRealTimers();
+  }
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  expect(css).toMatch(/\.cadre-rail-droit \.ya-icon-btn\[aria-expanded="true"\][^{]*\{[^}]*background: var\(--bg-400\);\s*color: var\(--ink\)/);
+});

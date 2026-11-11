@@ -212,3 +212,13 @@ test("REQ092_AC1_icone_circle_arrow_up_au_trait_lucide", () => {
   expect(s.innerHTML).toContain("m16 12-4-4-4 4");
   expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("circle-arrow-up");
 });
+
+test("REQ096_AC12_icone_server_deux_serveurs_empiles_au_trait_lucide", () => {
+  expect(NOMS.filter((n) => n === "server")).toHaveLength(1);
+  const s = icone("server");
+  expect(s.getAttribute("stroke-width")).toBe("1.6");
+  expect(s.querySelectorAll("rect")).toHaveLength(2);
+  expect(s.innerHTML).toContain('width="20" height="8" rx="2"');
+  expect(s.innerHTML).toContain("M6 6h.01");
+  expect(s.innerHTML).toContain("M6 18h.01");
+});

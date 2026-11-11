@@ -1165,3 +1165,93 @@ test("REQ091_AC7_description_sur_une_ligne_entiere_en_title_libelle_a_moitie_au_
   expect(regle(".ya-flottante .liste-parent")).toContain("margin-left: 12px");
   expect(regle(".ya-flottante .liste-parent")).toContain("color: var(--ink-muted)");
 });
+
+const actionsMcp = (surClic) => (nom) => [
+  { icone: "sliders-horizontal", nomAccessible: `Modifier ${nom}`, infoBulle: `Modifier ${nom}`, surClic },
+  { icone: "trash", nomAccessible: `Supprimer ${nom}`, infoBulle: `Supprimer ${nom}`, surClic },
+];
+
+test("REQ096_AC17_objets_ul_nomme_une_li_par_ligne_deux_boutons_arrets_de_tab_coupes_en_title", () => {
+  const surClic = vi.fn();
+  const longue = "mcp-documentation-interne-de-l-equipe";
+  const l = liste({
+    variante: "objets",
+    nom: "Serveurs MCP",
+    lignes: [
+      { id: "docs", libelle: "docs", dossier: "mcp-docs --port 0", policeCode: true, actions: actionsMcp(surClic)("docs") },
+      { id: "long", libelle: longue, dossier: "/home/marie/outils/serveurs-mcp/documentation/serveur.js", policeCode: true, actions: actionsMcp(surClic)("long") },
+    ],
+  });
+  document.body.append(l);
+  expect(l.tagName).toBe("UL");
+  expect(l.getAttribute("aria-label")).toBe("Serveurs MCP");
+  expect(l.hasAttribute("role")).toBe(false);
+  const lis = [...l.children];
+  expect(lis.map((x) => x.tagName)).toEqual(["LI", "LI"]);
+  expect(lis[0].textContent).toBe("docsmcp-docs --port 0");
+  expect(lis[0].querySelector(".ya-objet-texte").classList.contains("liste-code")).toBe(true);
+  expect(lis[1].querySelector(".ya-objet-nom").title).toBe(longue);
+  expect(lis[1].querySelector(".ya-objet-texte").title).toContain("/home/marie");
+  const boutons = [...lis[0].querySelectorAll("button")];
+  expect(boutons.map((b) => b.getAttribute("aria-label"))).toEqual(["Modifier docs", "Supprimer docs"]);
+  expect(boutons.map((b) => b.tabIndex)).toEqual([0, 0]);
+  expect(l.querySelectorAll("button")).toHaveLength(4);
+  boutons[1].click();
+  expect(surClic).toHaveBeenCalledWith("docs");
+  // CSS : contour de la liste, défilement propre, coupure par « … », ligne de 28 px au survol --bg-400.
+  expect(regle(".ya-objets")).toContain("border: 1px solid var(--line-strong)");
+  expect(regle(".ya-objets")).toContain("overflow-y: auto");
+  expect(regle(".ya-objets")).toContain("min-height: 86px");
+  expect(regle(".ya-objet")).toContain("height: 28px");
+  expect(regle(".ya-objet:hover")).toContain("background: var(--bg-400)");
+  expect(regle(".ya-objet-nom")).toContain("flex: 0 1 35%");
+  expect(regle(".ya-objet-nom")).toContain("min-width: 96px");
+  expect(regle(".ya-objet-nom")).toContain("text-overflow: ellipsis");
+  expect(regle(".ya-objet-texte")).toContain("text-overflow: ellipsis");
+  expect(regle(".ya-objet-actions")).toContain("gap: 2px");
+});
+
+test("REQ096_AC17_objets_le_bouton_qui_prend_le_focus_est_amene_dans_la_vue", () => {
+  const l = liste({ variante: "objets", nom: "Serveurs MCP", lignes: [{ id: "a", libelle: "a", actions: actionsMcp(() => {})("a") }] });
+  document.body.append(l);
+  const b = l.querySelector("button");
+  b.scrollIntoView = vi.fn();
+  b.focus();
+  expect(b.scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+  expect(() => liste({ variante: "objets", lignes: [] })).toThrow(/nom/);
+});
+
+test("REQ096_AC17_contrastes_de_la_liste_objets_et_de_la_commande_du_rail", () => {
+  const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
+  const jetonsDe = (theme) => {
+    const t = {};
+    for (const m of tokens.replace(/\/\*[^]*?\*\//g, "").matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      if (!m[1].split(",").map((s) => s.trim()).some((s) => s === ":root" || s === `[data-theme="${theme}"]`)) continue;
+      for (const d of m[2].matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) t[d[1]] = d[2].trim();
+    }
+    return t;
+  };
+  const lum = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const attendus = [
+    ["--ink", "--bg-300", [8.92, 16.48]],
+    ["--ink-muted", "--bg-300", [5.48, 6.68]],
+    ["--ink-muted", "--bg-400", [4.52, 5.37]],
+    ["--line-strong", "--bg-300", [3.02, 3.45]],
+    ["--accent-fg", "--bg-300", [5.78, 6.3]],
+    ["--accent-fg", "--bg-400", [4.76, 5.07]],
+    ["--ink-faint", "--bg-000", [5.21, 4.47]],
+    ["--ink", "--bg-400", [7.36, 13.25]],
+    ["--accent-fg", "--bg-000", [7.16, 5.53]],
+  ];
+  ["dark", "light"].forEach((theme, k) => {
+    const t = jetonsDe(theme);
+    for (const [texte, fond, ratios] of attendus) {
+      const [x, y] = [lum(t[texte]), lum(t[fond])].sort((a, b) => b - a);
+      const r = (x + 0.05) / (y + 0.05);
+      expect(Math.abs(r - ratios[k]), `${texte} sur ${fond} (${theme}) : ${r}`).toBeLessThan(0.02);
+    }
+  });
+});

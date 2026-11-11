@@ -3,7 +3,7 @@ import { compteur as compteurDe } from "./compteur.js";
 import { icone } from "./icones.js";
 import { fermerInfoBulleDans } from "./info-bulle.js";
 
-const VARIANTES = ["plate", "arbre"];
+const VARIANTES = ["plate", "arbre", "objets"];
 let compteur = 0;
 
 // Mot dit par le nom accessible pour chaque statut git d'une ligne.
@@ -36,6 +36,44 @@ function decouper(texte, [debut, fin]) {
   return [c.slice(0, debut).join(""), c.slice(debut, fin).join(""), c.slice(fin).join("")];
 }
 
+// Variante `objets` (C-006, V-012) : `<ul>` nommé, une `<li>` par ligne, deux boutons à icône par ligne,
+// chacun un arrêt de Tab. `lignes` : { id, libelle, dossier, policeCode, actions: [{ icone, nomAccessible, infoBulle, surClic }] }.
+function listeObjets({ lignes, nom }) {
+  if (!nom) throw new Error("liste : nom requis avec objets");
+  const ul = document.createElement("ul");
+  ul.className = "liste ya-objets";
+  ul.setAttribute("aria-label", nom);
+  for (const l of lignes) {
+    if (!l.libelle) throw new Error("liste : libelle requis");
+    const li = document.createElement("li");
+    li.className = "ya-objet";
+    const t = document.createElement("span");
+    t.className = "ya-objet-nom";
+    t.textContent = l.libelle;
+    t.title = l.libelle;
+    li.append(t);
+    if (l.dossier) {
+      const d = document.createElement("span");
+      d.className = l.policeCode ? "ya-objet-texte liste-code" : "ya-objet-texte";
+      d.textContent = l.dossier;
+      d.title = l.dossier;
+      li.append(d);
+    }
+    const boutons = document.createElement("span");
+    boutons.className = "ya-objet-actions";
+    for (const a of l.actions ?? []) {
+      const b = bouton({ icone: a.icone, nomAccessible: a.nomAccessible, infoBulle: a.infoBulle, positionInfoBulle: "gauche" });
+      b.addEventListener("click", () => a.surClic?.(l.id));
+      boutons.append(b.enveloppe);
+    }
+    li.append(boutons);
+    ul.append(li);
+  }
+  // Un bouton qui prend le focus est amené dans la vue de la liste, qui défile seule.
+  ul.addEventListener("focusin", (ev) => ev.target.scrollIntoView?.({ block: "nearest" }));
+  return ul;
+}
+
 export function liste({ variante = "plate", lignes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, flottante = false, message, nom, focusSurListe = false, surActiver, surBasculer, surMenu, surDepot }) {
   if (!VARIANTES.includes(variante)) throw new Error(`liste : variante inconnue « ${variante} »`);
   if (flottante && (variante !== "plate" || pilotage !== "champ")) throw new Error("liste : flottante demande la variante « plate » et le pilotage « champ »");
@@ -43,6 +81,7 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
   if (message !== undefined && !flottante) throw new Error("liste : message demande flottante");
   if (focusSurListe && (variante !== "plate" || pilotage === "champ")) throw new Error("liste : focusSurListe demande la variante « plate » et le pilotage « focus »");
   if (pilotage === "champ" && !champ) throw new Error("liste : champ requis avec pilotage « champ »");
+  if (variante === "objets") return listeObjets({ lignes, nom });
   for (const l of lignes) {
     if (!l.libelle) throw new Error("liste : libelle requis");
     if (l.statut !== undefined && !(l.statut in STATUTS)) throw new Error(`liste : statut inconnu « ${l.statut} »`);

@@ -257,3 +257,46 @@ test("REQ088_AC13_sans_champ_reserve_a_la_palette_et_focus_initial_requis_ailleu
   expect(() => dialogue({ titre: "x", sansChamp: true, surAnnuler: () => {} })).toThrow(/palette/);
   expect(() => dialogue({ titre: "x", surAnnuler: () => {} })).toThrow(/focusInitial/);
 });
+
+test("REQ096_C007_liste_et_fiche_aide_reliee_resultat_hors_du_defilement_et_grille", async () => {
+  const { champ } = await import("./champ.js");
+  const { fiche } = await import("./dialogue.js");
+  const aide = Object.assign(document.createElement("p"), { textContent: "Aide du dialogue." });
+  const fermer = bouton({ libelle: "Fermer" });
+  const d = dialogue({ titre: "Serveurs MCP", position: "reglages", aide, contenu: [Object.assign(document.createElement("ul"), { textContent: "liste" })], actions: [fermer], focusInitial: fermer, surAnnuler: vi.fn() });
+  d.ouvrir();
+  const el = d.element;
+  expect(el.getAttribute("aria-describedby")).toBe(aide.id);
+  expect(el.querySelector(".dialogue-contenu").textContent).toBe("liste");
+  // Le résultat est un frère de la partie qui défile, avant les actions.
+  const message = Object.assign(document.createElement("div"), { textContent: "Serveur docs enregistré." });
+  message.scrollIntoView = vi.fn();
+  const avant = document.activeElement;
+  d.definirResultat(message);
+  expect(document.activeElement).toBe(avant);
+  const resultat = el.querySelector(".dialogue-resultat");
+  expect(resultat.hidden).toBe(false);
+  expect(resultat.contains(message)).toBe(true);
+  expect(el.querySelector(".dialogue-contenu").contains(resultat)).toBe(false);
+  expect(resultat.nextElementSibling).toBe(el.querySelector(".dialogue-actions"));
+  expect(message.scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+  d.definirResultat(null);
+  expect(resultat.hidden).toBe(true);
+  // La fiche remplace la liste ; le titre du dialogue ne change pas ; le focus va au champ demandé.
+  const nom = champ({ libelle: "Nom" });
+  const commande = champ({ libelle: "Commande" });
+  const args = champ({ libelle: "Arguments", type: "multiligne", sansRetour: true });
+  const info = Object.assign(document.createElement("div"), { textContent: "info" });
+  const f = fiche({ titre: "Nouveau serveur", message: info, champs: [nom, commande, args] });
+  d.remplacer([f], nom.querySelector("input"));
+  expect(el.querySelector("h2.dialogue-titre").textContent).toBe("Serveurs MCP");
+  expect(f.querySelector("h2").textContent).toBe("Nouveau serveur");
+  expect(document.activeElement).toBe(nom.querySelector("input"));
+  expect(args.classList.contains("ya-fiche-large")).toBe(true);
+  expect(nom.classList.contains("ya-fiche-large")).toBe(false);
+  expect(regle(".ya-fiche-champs")).toContain("grid-template-columns: 1fr 2fr");
+  expect(regle(".ya-fiche-champs")).toContain("gap: 12px");
+  expect(regle(".ya-fiche-large")).toContain("grid-column: 1 / -1");
+  expect(regle(".ya-reglages .dialogue-contenu")).toContain("overflow-y: auto");
+  expect(regle(".ya-reglages .dialogue-resultat")).toContain("flex: none");
+});

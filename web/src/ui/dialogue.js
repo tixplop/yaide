@@ -31,6 +31,8 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
   corps.className = "dialogue-contenu";
   corps.append(...contenu);
   el.append(corps);
+  // « Liste et fiche » : le C-003 de résultat est hors de la partie qui défile, entre elle et les actions.
+  let resultat = null;
   if (actions.length) {
     const pied = document.createElement("div");
     pied.className = "dialogue-actions";
@@ -69,6 +71,18 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
       corps.replaceChildren(...noeuds);
       if (el.open) (focus ?? el).focus();
     },
+    // Pose (ou retire, sans argument) le C-003 de résultat, hors de la partie qui défile.
+    definirResultat(message) {
+      if (!resultat) {
+        if (!message) return;
+        resultat = document.createElement("div");
+        resultat.className = "dialogue-resultat";
+        el.insertBefore(resultat, el.querySelector(":scope > .dialogue-actions"));
+      }
+      resultat.replaceChildren(...(message ? [message] : []));
+      resultat.hidden = !message;
+      if (message) amenerDansLaVue(message);
+    },
     enCours(oui) {
       for (const b of actions) b.disabled = oui;
     },
@@ -96,4 +110,22 @@ export function groupe({ legende, champs, aide, enLigne = false }) {
 // Règle C-007 : un message apparu dans le contenu qui défile est amené dans la vue, sans déplacer le focus.
 export function amenerDansLaVue(element) {
   element.scrollIntoView?.({ block: "nearest" });
+}
+
+// Fiche d'un objet (C-007 « Liste et fiche ») : son titre `<h2>`, un C-003 éventuel, puis les champs sur une grille
+// de deux colonnes (1fr 2fr) ; les `multiligne` prennent toute la largeur.
+export function fiche({ titre, message, champs }) {
+  const f = document.createElement("div");
+  f.className = "ya-fiche";
+  const h = document.createElement("h2");
+  h.className = "ya-fiche-titre";
+  h.textContent = titre;
+  const grille = document.createElement("div");
+  grille.className = "ya-fiche-champs";
+  for (const c of champs) {
+    if (c.querySelector("textarea")) c.classList.add("ya-fiche-large");
+    grille.append(c);
+  }
+  f.append(h, ...(message ? [message] : []), grille);
+  return f;
 }

@@ -267,3 +267,29 @@ test("REQ086_AC13_ligne_focus_accent_et_select_natif_sans_clavier_maison", () =>
   const src = readFileSync("web/src/ui/champ.js", "utf8");
   expect(src).not.toMatch(/keydown|keyup|keypress/);
 });
+
+test("REQ096_AC15_multiligne_sans_retour_une_valeur_par_ligne_aide_et_erreur_reliees", () => {
+  const c = champ({ libelle: "Arguments", type: "multiligne", sansRetour: true, valeur: "-y\npaquet", aide: "Un argument par ligne.", erreur: "Refusé" });
+  const t = c.querySelector("textarea");
+  expect(t.getAttribute("wrap")).toBe("off");
+  expect(t.rows).toBe(3);
+  expect(t.spellcheck).toBe(false);
+  expect(t.value.split("\n")).toEqual(["-y", "paquet"]);
+  expect(t.getAttribute("aria-invalid")).toBe("true");
+  const ids = t.getAttribute("aria-describedby").split(" ");
+  expect(ids.map((i) => c.querySelector(`#${i}`).textContent)).toEqual(["Un argument par ligne.", "Refusé"]);
+  expect(c.querySelector(".champ-erreur").getAttribute("role")).toBe("alert");
+  // Entrée ajoute une ligne : dans un dialogue, la touche n'est ni interceptée ni détournée (pas de validation).
+  const dlg = document.createElement("dialog");
+  dlg.append(c);
+  document.body.append(dlg);
+  t.focus();
+  const ev = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+  t.dispatchEvent(ev);
+  expect(ev.defaultPrevented).toBe(false);
+  dlg.remove();
+  expect(regle(".ya-textarea")).toContain("resize: vertical");
+  // Sans `sansRetour`, le champ garde son aspect et ne coupe pas son wrap.
+  expect(champ({ libelle: "Notes", type: "multiligne" }).querySelector("textarea").hasAttribute("wrap")).toBe(false);
+  expect(() => champ({ libelle: "Nom", sansRetour: true })).toThrow(/multiligne/);
+});
