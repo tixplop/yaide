@@ -64,43 +64,43 @@ test("REQ031_AC8_focus_clavier_affiche_et_echap_ferme_sans_deplacer_le_focus", a
   await expect(page.locator("#milieu")).toBeFocused();
 });
 
-test("REQ031_AC8_reste_entiere_dans_la_fenetre_aux_deux_coins", async ({ page }) => {
+test("REQ031_AC8_AC9_groupe_coins_bouton_desactive_et_une_seule_info_bulle", async ({ page }) => {
   await ouvrir(page);
-  for (const id of ["#haut", "#bas"]) {
-    await page.hover(id);
-    await expect(tip(page)).toHaveCount(1);
-    const r = await tip(page).evaluate((e) => {
-      const b = e.getBoundingClientRect();
-      return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: innerWidth, h: innerHeight };
-    });
-    expect(r.l).toBeGreaterThanOrEqual(0);
-    expect(r.t).toBeGreaterThanOrEqual(0);
-    expect(r.r).toBeLessThanOrEqual(r.w);
-    expect(r.b).toBeLessThanOrEqual(r.h);
-    await page.mouse.move(600, 100);
-  }
-});
-
-test("REQ031_AC9_bouton_desactive_affiche_son_info_bulle_au_survol", async ({ page }) => {
-  await ouvrir(page);
-  await page.hover("#env");
-  await expect(tip(page)).toHaveText("Désactivé (F2)");
-});
-
-test("REQ031_AC8_une_seule_info_bulle_a_la_fois_et_au_premier_plan", async ({ page }) => {
-  await ouvrir(page);
-  await page.focus("#champ");
-  await page.keyboard.press("Shift+Tab");
-  await page.focus("#milieu");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Shift+Tab");
-  await expect(tip(page)).toHaveCount(1);
-  await page.hover("#env");
-  await expect(tip(page)).toHaveCount(1);
-  await expect(tip(page)).toHaveText("Désactivé (F2)");
-  const couche = await tip(page).evaluate((e) => {
-    const b = e.getBoundingClientRect();
-    return document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2) === e;
+  await test.step("REQ031_AC8_reste_entiere_dans_la_fenetre_aux_deux_coins", async () => {
+    for (const id of ["#haut", "#bas"]) {
+      await page.hover(id);
+      await expect(tip(page)).toHaveCount(1);
+      const r = await tip(page).evaluate((e) => {
+        const b = e.getBoundingClientRect();
+        return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: innerWidth, h: innerHeight };
+      });
+      expect(r.l).toBeGreaterThanOrEqual(0);
+      expect(r.t).toBeGreaterThanOrEqual(0);
+      expect(r.r).toBeLessThanOrEqual(r.w);
+      expect(r.b).toBeLessThanOrEqual(r.h);
+      await page.mouse.move(600, 100);
+    }
   });
-  expect(couche).toBe(true);
+  await test.step("REQ031_AC9_bouton_desactive_affiche_son_info_bulle_au_survol", async () => {
+    await page.hover("#env");
+    await expect(tip(page)).toHaveText("Désactivé (F2)");
+    await page.mouse.move(600, 100);
+    await expect(tip(page)).toHaveCount(0);
+  });
+  await test.step("REQ031_AC8_une_seule_info_bulle_a_la_fois_et_au_premier_plan", async () => {
+    await page.focus("#champ");
+    await page.keyboard.press("Shift+Tab");
+    await page.focus("#milieu");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(tip(page)).toHaveCount(1);
+    await page.hover("#env");
+    await expect(tip(page)).toHaveCount(1);
+    await expect(tip(page)).toHaveText("Désactivé (F2)");
+    const couche = await tip(page).evaluate((e) => {
+      const b = e.getBoundingClientRect();
+      return document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2) === e;
+    });
+    expect(couche).toBe(true);
+  });
 });
