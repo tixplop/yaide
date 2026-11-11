@@ -409,12 +409,15 @@ fn req020_ac3_tampon_limite_a_1_mo_et_le_shell_continue() {
     let s = lancer("v3", Some("/bin/sh"));
     let id = ouvrir(&s);
     let mut w = ws(&s, id);
+    let a = temoin("a");
     taper(
         &mut w,
-        "head -c 3000000 /dev/zero | tr '\\0' 'x'; echo FIN_$((1+1))\n",
+        &format!("head -c 3000000 /dev/zero | tr '\\0' 'x'; echo FIN_$((1+1)); touch {a}\n"),
     );
-    lire_jusque(&mut w, "FIN_2\r\n", 30);
+    // Fermer avec de la sortie non lue enverrait un RST et perdrait la commande.
+    lire_jusque(&mut w, &format!("touch {a}\r\n"), 10);
     drop(w);
+    assert!(attendre(30, || std::path::Path::new(&a).exists()));
     // Sans client, encore 2 Mo de sortie.
     let mut w = ws(&s, id);
     taper(&mut w, "echo sans_client\n");
