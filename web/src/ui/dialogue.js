@@ -23,10 +23,14 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
     el.setAttribute("aria-labelledby", h.id);
     el.append(h);
   }
-  if (aide) {
-    el.setAttribute("aria-describedby", aide.id || (aide.id = `dialogue-${compteur}-aide`));
-    el.append(aide);
-  }
+  const idAide = `dialogue-${compteur}-aide`;
+  const poserAide = (a) => {
+    el.setAttribute("aria-describedby", a.id || (a.id = idAide));
+    const c = el.querySelector(":scope > .dialogue-contenu");
+    if (c) c.before(a);
+    else el.append(a);
+  };
+  if (aide) poserAide(aide);
   const corps = document.createElement("div");
   corps.className = "dialogue-contenu";
   corps.append(...contenu);
@@ -65,6 +69,12 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
       el.close();
       el.remove();
       if (rendreFocus) origine?.focus?.();
+    },
+    // Pose l'aide sous le titre, après coup (texte connu après le chargement), reliée par aria-describedby.
+    definirAide(a) {
+      el.querySelector(":scope > .ya-aide-dialogue")?.remove();
+      a.classList.add("ya-aide-dialogue");
+      poserAide(a);
     },
     // Remplace le contenu (la liste arrive) et y porte le focus.
     remplacer(noeuds, focus) {

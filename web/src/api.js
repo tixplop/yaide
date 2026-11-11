@@ -387,8 +387,8 @@ export async function installerVersion() {
 }
 
 /**
- * Appel des routes des serveurs MCP (`.yaide/mcp.json`). Rend `{ serveurs: [{ nom, command, url, args, env: [[nom, valeur]] }] }`,
- * `{ erreurs: { nom?, command?, env? } }` (refus de la saisie, 422), `{ cause, message, detail? }` ou `{ coupure: true }`.
+ * Appel des routes des serveurs MCP (`mcp.json` du dossier de configuration de l'utilisateur). Toute réponse porte `fichier`, son chemin complet. Rend `{ fichier, serveurs: [{ nom, command, url, args, env: [[nom, valeur]] }] }`,
+ * `{ fichier, erreurs: { nom?, command?, env? } }` (refus de la saisie, 422), `{ fichier, cause, message, detail? }` ou `{ coupure: true }`.
  */
 async function appelMcp(chemin, options) {
   const r = await appeler(chemin, options);
@@ -400,8 +400,8 @@ async function appelMcp(chemin, options) {
     return { cause: "erreur", message: `erreur ${r.status}` };
   }
   if (r.ok) return corps;
-  if (r.status === 422) return { erreurs: corps.erreurs ?? {} };
-  return { cause: corps.cause, message: corps.message, detail: corps.detail };
+  if (r.status === 422) return { fichier: corps.fichier, erreurs: corps.erreurs ?? {} };
+  return { fichier: corps.fichier, cause: corps.cause, message: corps.message, detail: corps.detail };
 }
 
 export const lireServeursMcp = () => appelMcp("/api/agent/mcp");

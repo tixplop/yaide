@@ -42,7 +42,8 @@ function monter(initial, reponses = []) {
   const v = vueServeursMcp({ surEtat: (o) => etats.push(o) });
   return { v, appels, ouvreur, etats };
 }
-const liste = (...s) => rep({ serveurs: s });
+const FICHIER = "/home/marie/.config/yaide/mcp.json";
+const liste = (...s) => rep({ fichier: FICHIER, serveurs: s });
 const dlg = () => [...document.querySelectorAll("dialog")].at(-1);
 const bouts = (racine = document) => [...racine.querySelectorAll("button")];
 const parNom = (nom) => bouts().find((b) => b.getAttribute("aria-label") === nom || b.textContent === nom);
@@ -62,7 +63,7 @@ test("REQ096_AC2_AC18_AC19_AC14_liste_dans_l_ordre_focus_et_dialogue", async () 
   expect(d.getAttribute("aria-labelledby")).toBeTruthy();
   expect(document.getElementById(d.getAttribute("aria-labelledby")).textContent).toBe("Serveurs MCP");
   expect(document.getElementById(d.getAttribute("aria-describedby")).textContent).toBe(
-    "Dans .yaide/mcp.json, pour les agents de Yaide. Claude Code et opencode ont leur propre configuration.",
+    "Dans /home/marie/.config/yaide/mcp.json, pour les agents de Yaide dans tous vos projets. Claude Code et opencode ont leur propre configuration.",
   );
   const ul = d.querySelector("ul");
   expect(ul.getAttribute("aria-label")).toBe("Serveurs MCP");
@@ -116,7 +117,7 @@ test("REQ096_AC4_AC5_AC20_AC16_fiche_remplie_corps_du_put_et_retour_a_la_liste",
   expect(champDe("Arguments").wrap).toBe("off");
   expect(champDe("Variables").wrap).toBe("off");
   expect(document.getElementById(champDe("Arguments").getAttribute("aria-describedby")).textContent).toBe("Un argument par ligne.");
-  expect(document.getElementById(champDe("Variables").getAttribute("aria-describedby")).textContent).toBe("Une par ligne : NOM=valeur. Elles sont écrites en clair dans .yaide/mcp.json.");
+  expect(document.getElementById(champDe("Variables").getAttribute("aria-describedby")).textContent).toBe("Une par ligne : NOM=valeur. Elles sont écrites en clair dans /home/marie/.config/yaide/mcp.json.");
   expect(document.activeElement).toBe(champDe("Nom"));
   expect(bouts(dlg()).map((b) => b.textContent)).toEqual(["Annuler", "Enregistrer"]);
   champDe("Nom").value = "notes";
@@ -259,25 +260,26 @@ test("REQ096_AC7_focus_dans_le_premier_champ_refuse_quand_ce_n_est_pas_le_nom", 
 });
 
 test("REQ096_AC9_illisible_a_l_ouverture_seul_fermer_avec_le_focus", async () => {
-  const m = monter(rep({ cause: "illisible", message: "x", detail: "expected value at line 1 column 2" }, 409));
+  const m = monter(rep({ fichier: FICHIER, cause: "illisible", message: "x", detail: "expected value at line 1 column 2" }, 409));
   await ouvrir(m);
   const a = dlg().querySelector("[role=alert]");
-  expect(a.querySelector(".message-texte").textContent).toBe(".yaide/mcp.json est illisible. Corrigez-le dans l'éditeur, puis rouvrez Serveurs MCP.");
+  expect(a.querySelector(".message-texte").textContent).toBe(FICHIER + " est illisible. Corrigez-le, puis rouvrez Serveurs MCP.");
   expect(a.querySelector(".message-detail").textContent).toBe("expected value at line 1 column 2");
+  expect(document.getElementById(dlg().getAttribute("aria-describedby")).textContent).toBe("Dans "+FICHIER+", pour les agents de Yaide dans tous vos projets. Claude Code et opencode ont leur propre configuration.");
   expect(bouts(dlg()).map((b) => b.textContent)).toEqual(["Fermer"]);
   expect(document.activeElement).toBe(parNom("Fermer"));
   expect(dlg().querySelector("ul")).toBeNull();
 });
 
 test("REQ096_AC9_illisible_a_l_enregistrement_garde_la_saisie", async () => {
-  const m = monter(liste(), [rep({ cause: "illisible", message: "x", detail: "boum" }, 409)]);
+  const m = monter(liste(), [rep({ fichier: FICHIER, cause: "illisible", message: "x", detail: "boum" }, 409)]);
   await ouvrir(m);
   parNom("Ajouter un serveur").click();
   champDe("Nom").value = "a";
   champDe("Commande").value = "b";
   parNom("Enregistrer").click();
   await vi.waitFor(() => expect(dlg().querySelector(".dialogue-resultat [role=alert]")).not.toBeNull());
-  expect(dlg().querySelector(".dialogue-resultat .message-texte").textContent).toContain("est illisible");
+  expect(dlg().querySelector(".dialogue-resultat .message-texte").textContent).toBe(FICHIER + " est illisible. Corrigez-le, puis rouvrez Serveurs MCP.");
   expect(dlg().querySelector(".dialogue-resultat .message-detail").textContent).toBe("boum");
   expect(champDe("Nom").value).toBe("a");
   expect(champDe("Commande").value).toBe("b");
@@ -338,10 +340,13 @@ test("REQ096_etats_chargement_apres_200_ms_et_lecture_impossible", async () => {
   const a = monter("coupure");
   await ouvrir(a);
   expect(dlg().querySelector("[role=alert]").textContent).toBe("Connexion perdue. Réessayez au retour.");
+  expect(dlg().querySelector(".ya-aide-liste")).toBeNull();
+  expect(dlg().hasAttribute("aria-describedby")).toBe(false);
   expect(bouts(dlg()).map((b) => b.textContent)).toEqual(["Fermer"]);
   document.body.replaceChildren();
-  const b = monter(rep({ cause: "lecture", message: "Permission denied." }, 500));
+  const b = monter(rep({ fichier: FICHIER, cause: "lecture", message: "Permission denied." }, 500));
   await ouvrir(b);
-  expect(dlg().querySelector("[role=alert]").textContent).toBe("Impossible de lire .yaide/mcp.json : Permission denied.");
+  expect(dlg().querySelector("[role=alert]").textContent).toBe("Impossible de lire " + FICHIER + " : Permission denied.");
+  expect(document.getElementById(dlg().getAttribute("aria-describedby")).textContent).toBe("Dans "+FICHIER+", pour les agents de Yaide dans tous vos projets. Claude Code et opencode ont leur propre configuration.");
   expect(document.activeElement).toBe(parNom("Fermer"));
 });

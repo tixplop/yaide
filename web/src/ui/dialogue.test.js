@@ -300,3 +300,19 @@ test("REQ096_C007_liste_et_fiche_aide_reliee_resultat_hors_du_defilement_et_gril
   expect(regle(".ya-reglages .dialogue-contenu")).toContain("overflow-y: auto");
   expect(regle(".ya-reglages .dialogue-resultat")).toContain("flex: none");
 });
+
+test("REQ096_AC18_definir_aide_apres_coup_sous_le_titre_reliee_au_dialogue", () => {
+  const f = document.createElement("button");
+  const d = dialogue({ titre: "T", contenu: [], actions: [f], focusInitial: f, surAnnuler: () => {} });
+  d.ouvrir();
+  expect(d.element.hasAttribute("aria-describedby")).toBe(false);
+  const a = document.createElement("p");
+  a.textContent = "Première";
+  d.definirAide(a);
+  const b = document.createElement("p");
+  b.textContent = "Seconde";
+  d.definirAide(b);
+  expect(d.element.querySelectorAll(".ya-aide-dialogue").length).toBe(1);
+  expect(d.element.children[1]).toBe(b);
+  expect(document.getElementById(d.element.getAttribute("aria-describedby")).textContent).toBe("Seconde");
+});

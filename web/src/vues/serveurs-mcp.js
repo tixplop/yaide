@@ -7,13 +7,13 @@ import { liste } from "../ui/liste.js";
 import { message } from "../ui/message.js";
 
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
-const TEXTE_ILLISIBLE = ".yaide/mcp.json est illisible. Corrigez-le dans l'éditeur, puis rouvrez Serveurs MCP.";
-const AIDE = "Dans .yaide/mcp.json, pour les agents de Yaide. Claude Code et opencode ont leur propre configuration.";
+const texteIllisible = (f) => `${f} est illisible. Corrigez-le, puis rouvrez Serveurs MCP.`;
+const texteAide = (f) => `Dans ${f}, pour les agents de Yaide dans tous vos projets. Claude Code et opencode ont leur propre configuration.`;
 const sansPoint = (t) => String(t ?? "erreur").replace(/\.$/, "");
 const lignes = (texte) => texte.split(/\r?\n/).filter((l) => l.trim() !== "");
 
 /**
- * REQ-096, V-012. Dialogue « Serveurs MCP » : `ouvrir()` relit `.yaide/mcp.json` et montre la liste ; ajouter,
+ * REQ-096, V-012. Dialogue « Serveurs MCP » : `ouvrir()` relit le `mcp.json` de l'utilisateur (chemin donné par `fichier` dans les réponses) et montre la liste ; ajouter,
  * modifier ou supprimer un serveur écrit aussitôt le fichier. `surEtat(ouvert)` suit l'ouverture du dialogue.
  * Rien n'est validé ici : les refus viennent du serveur.
  */
@@ -22,6 +22,7 @@ export function vueServeursMcp({ surEtat = () => {} } = {}) {
   let generation = 0;
   let serveurs = [];
   let enregistrement = false;
+  let fichier = null;
 
   function fermer(rendreFocus = true) {
     if (!dlg) return;
@@ -33,18 +34,29 @@ export function vueServeursMcp({ surEtat = () => {} } = {}) {
 
   const poserActions = (...b) => dlg.element.querySelector(".dialogue-actions").replaceChildren(...b);
   const boutonDe = (nomAccessible) => [...dlg.element.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === nomAccessible);
+  // Le chemin vient des réponses du serveur ; tant qu'aucune ne l'a donné, rien ne le nomme.
+  const retenirFichier = (r) => {
+    if (typeof r.fichier === "string") fichier = r.fichier;
+  };
+  const poserAide = () => {
+    if (!fichier) return;
+    const aide = document.createElement("p");
+    aide.className = "ya-groupe-aide ya-aide-liste";
+    aide.textContent = texteAide(fichier);
+    dlg.definirAide(aide);
+  };
   const messageEchec = (r, perdu) =>
     r.coupure
       ? message({ texte: TEXTE_COUPURE, variante: "erreur" })
       : r.cause === "illisible"
-        ? message({ texte: TEXTE_ILLISIBLE, variante: "erreur", detail: r.detail })
+        ? message({ texte: texteIllisible(fichier), variante: "erreur", detail: r.detail })
         : message({ texte: `${perdu} : ${sansPoint(r.message)}.`, variante: "erreur" });
 
   // Lecture impossible ou fichier illisible : ni liste ni ajout, seul « Fermer » avec le focus.
   function afficherEchecLecture(r) {
     const f = bouton({ libelle: "Fermer" });
     f.addEventListener("click", () => fermer());
-    dlg.remplacer([messageEchec(r, "Impossible de lire .yaide/mcp.json")]);
+    dlg.remplacer([messageEchec(r, `Impossible de lire ${fichier}`)]);
     dlg.definirResultat();
     poserActions(f);
     f.focus();
@@ -100,7 +112,7 @@ export function vueServeursMcp({ surEtat = () => {} } = {}) {
     const cNom = champ({ libelle: "Nom", valeur: valeurs.nom, erreur: erreurs.nom });
     const cCommande = champ({ libelle: "Commande", valeur: valeurs.command, erreur: erreurs.command });
     const cArgs = champ({ libelle: "Arguments", type: "multiligne", sansRetour: true, valeur: valeurs.args, aide: "Un argument par ligne." });
-    const cEnv = champ({ libelle: "Variables", type: "multiligne", sansRetour: true, valeur: valeurs.env, aide: "Une par ligne : NOM=valeur. Elles sont écrites en clair dans .yaide/mcp.json.", erreur: erreurs.env });
+    const cEnv = champ({ libelle: "Variables", type: "multiligne", sansRetour: true, valeur: valeurs.env, aide: `Une par ligne : NOM=valeur. Elles sont écrites en clair dans ${fichier}.`, erreur: erreurs.env });
     const saisies = { nom: cNom.querySelector("input"), command: cCommande.querySelector("input"), args: cArgs.querySelector("textarea"), env: cEnv.querySelector("textarea") };
     const info = url
       ? message({ texte: `Yaide ne prend pas en charge l'adresse ${url}. Utilisez la commande npx, avec les arguments mcp-remote et cette adresse.`, variante: "info" })
@@ -128,6 +140,7 @@ export function vueServeursMcp({ surEtat = () => {} } = {}) {
       });
       enregistrement = false;
       if (!dlg || mienne !== generation) return;
+      retenirFichier(r);
       if (Array.isArray(r.serveurs)) {
         serveurs = r.serveurs;
         const nom = saisie.nom.trim();
@@ -180,6 +193,7 @@ export function vueServeursMcp({ surEtat = () => {} } = {}) {
       const r = await supprimerServeurMcp(nom);
       conf.fermer({ rendreFocus: false });
       if (!dlg || mienne !== generation) return;
+      retenirFichier(r);
       if (Array.isArray(r.serveurs)) {
         const rang = serveurs.findIndex((s) => s.nom === nom);
         const voisin = serveurs[rang + 1] ?? serveurs[rang - 1];
@@ -194,14 +208,11 @@ export function vueServeursMcp({ surEtat = () => {} } = {}) {
   async function ouvrir() {
     if (dlg) return;
     const mienne = ++generation;
-    const aide = document.createElement("p");
-    aide.className = "ya-groupe-aide ya-aide-liste";
-    aide.textContent = AIDE;
+    fichier = null;
     const f = bouton({ libelle: "Fermer" });
     f.addEventListener("click", () => fermer());
     dlg = dialogue({
       titre: "Serveurs MCP",
-      aide,
       position: "reglages",
       contenu: [indication({ texte: "Chargement…", variante: "chargement" })],
       actions: [f, bouton({ libelle: "Ajouter un serveur", variante: "principal", desactive: true })],
@@ -215,6 +226,8 @@ export function vueServeursMcp({ surEtat = () => {} } = {}) {
     dlg.element.focus();
     const r = await lireServeursMcp();
     if (!dlg || mienne !== generation) return;
+    retenirFichier(r);
+    poserAide();
     if (Array.isArray(r.serveurs)) {
       serveurs = r.serveurs;
       return afficherListe();

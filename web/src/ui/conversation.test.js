@@ -667,6 +667,15 @@ test("REQ095_AC14_alerte_sans_croix_role_alert_detail_sans_focus", () => {
   expect(c.contains(document.activeElement) && document.activeElement !== document.body).toBe(false);
 });
 
+test("REQ095_AC15_message_illisible_avec_le_chemin_complet", () => {
+  const texte = "/home/marie/.config/yaide/mcp.json est illisible. Corrigez-le pour utiliser ses serveurs.";
+  const c = conversation({ entrees: [{ type: "message", variante: "alerte", texte, detail: "expected value at line 1 column 2" }] });
+  document.body.append(c);
+  const m = c.querySelector(".message-alerte");
+  expect(m.getAttribute("role")).toBe("alert");
+  expect(m.querySelector(".message-texte").textContent).toBe(texte);
+});
+
 test("REQ095_AC13_outil_mcp_en_cours_puis_reussi", () => {
   const e = { serveur: "echo", nom: "dire", argument: '{"a":1}', id: "m2" };
   const c = conversation({ entrees: [outil({ ...e, etat: "enCours", resultat: "" })] });
