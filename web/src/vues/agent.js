@@ -65,9 +65,9 @@ function texteReglagesIllisibles(erreur) {
 
 /**
  * Zone de saisie commune aux vues Agent et opencode : champ multiligne (Entrée envoie, Maj+Entrée ajoute une ligne),
- * « Arrêter » (masqué) et « Envoyer » (désactivé). Rend `{ champMessage, texteSaisi, barre, arreter, envoyer }`.
+ * « Arrêter » (masqué) et « Envoyer » (désactivé). `retenirEntree()` vrai : Entrée n'envoie pas (une liste de suggestions la prend). Rend `{ champMessage, texteSaisi, barre, arreter, envoyer }`.
  */
-export function saisieMessage({ libelle, surEnvoi }) {
+export function saisieMessage({ libelle, surEnvoi, retenirEntree }) {
   const champMessage = champ({ libelle, type: "multiligne", indication: "Message (Entrée pour envoyer)", libelleMasque: true });
   const texteSaisi = champMessage.querySelector("textarea");
   const barre = document.createElement("div");
@@ -78,6 +78,7 @@ export function saisieMessage({ libelle, surEnvoi }) {
   barre.append(arreter.enveloppe, envoyer.enveloppe);
   texteSaisi.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
+    if (retenirEntree?.()) return;
     e.preventDefault();
     surEnvoi();
   });
