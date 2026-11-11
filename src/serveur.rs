@@ -31,7 +31,7 @@ struct Etat {
     shells: Arc<shells::Registre>,
     reglages: Arc<Reglages>,
     agent: Arc<Gestionnaire>,
-    agents: Agents,
+    agents: Arc<Agents>,
     opencode: opencode::Opencode,
     client_opencode: reqwest::Client,
     version: version::Version,
@@ -1317,9 +1317,11 @@ pub async fn servir(
     let reglages = Arc::new(Reglages::new(config.to_path_buf(), config.to_path_buf()));
     reglages.reprendre_du_projet(&projet.join(".yaide"));
     mcp::reprendre_du_projet(&config.join("mcp.json"), &projet.join(".yaide/mcp.json"));
+    let agents = Arc::new(Agents::new(projet.join(".yaide"), reglages.clone()));
     let agent = Arc::new(Gestionnaire::new(
         projet.to_path_buf(),
         reglages.clone(),
+        agents.clone(),
         Limites::default(),
     ));
     let agent_arret = agent.clone();
@@ -1330,7 +1332,7 @@ pub async fn servir(
         projet_dir: projet.to_path_buf(),
         instance: identifiant_instance(),
         shells: Default::default(),
-        agents: Agents::new(projet.join(".yaide"), reglages.clone()),
+        agents,
         opencode: Default::default(),
         client_opencode: reqwest::Client::builder()
             .no_proxy()

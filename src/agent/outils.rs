@@ -1,7 +1,9 @@
-//! Les sept outils de l'agent (REQ-057). Une erreur d'outil n'est pas une erreur Rust :
+//! Les neuf outils de l'agent (REQ-057). Une erreur d'outil n'est pas une erreur Rust :
 //! elle part au modèle comme résultat (`echec`), en une phrase courte en anglais.
 
+use super::agents::{Agents, COULEURS};
 use super::provider::DefOutil;
+use super::reglages::{Erreur, Reglages};
 use super::web;
 use crate::{fichiers, recherche};
 use serde_json::{json, Value};
@@ -47,6 +49,8 @@ pub struct Contexte {
     pub projet: PathBuf,
     pub client: reqwest::Client,
     pub limites: Limites,
+    pub agents: Arc<Agents>,
+    pub reglages: Arc<Reglages>,
 }
 
 fn ok(contenu: String) -> Resultat {
@@ -117,6 +121,26 @@ pub fn definitions() -> Vec<DefOutil> {
             json!({"url": texte("Page address")}),
             &["url"],
         ),
+        def(
+            "list_agents",
+            "List the custom agents of the project (folder, name, avatar, color, profile, paths of the persona and instructions files), the available colors and the model profiles (id, name, model, default). Read those files with read.",
+            json!({}),
+            &[],
+        ),
+        def(
+            "save_agent",
+            "Create a custom agent (without folder; name is required) or modify the agent of folder (an omitted argument keeps its value). persona and instructions replace the whole persona and instructions files.",
+            json!({
+                "folder": texte("Folder of the agent to modify, as given by list_agents; omit to create"),
+                "name": texte("Agent name, unique whatever the case"),
+                "avatar": texte("At most two characters, an emoji counts for one"),
+                "color": texte("One of the colors given by list_agents; violet by default"),
+                "profile": texte("Id of a model profile; empty for the default profile"),
+                "persona": texte("Whole text of the persona file"),
+                "instructions": texte("Whole text of the instructions file"),
+            }),
+            &[],
+        ),
     ]
 }
 
@@ -136,6 +160,14 @@ pub fn argument_principal(nom: &str, arguments: &Value) -> String {
         "glob" => "pattern",
         "websearch" => "query",
         "webfetch" => "url",
+        "save_agent" => {
+            let c = if arguments["name"].is_string() {
+                "name"
+            } else {
+                "folder"
+            };
+            return arguments[c].as_str().unwrap_or("").to_string();
+        }
         _ => return String::new(),
     };
     arguments[cle].as_str().unwrap_or("").to_string()
@@ -202,8 +234,161 @@ async fn lancer(nom: &str, a: &Value, ctx: &Contexte) -> Result<Resultat, String
         "webfetch" => web::recuperer(&ctx.client, requis(a, "url")?, ctx.limites.web)
             .await
             .map(ok),
+        "list_agents" => Ok(ok(lister_agents(ctx))),
+        "save_agent" => sauver_agent(a, ctx).map(ok),
         _ => Err(format!("Unknown tool: {nom}.")),
     }
+}
+
+fn chemin_md(dossier: &str, md: &str) -> String {
+    format!(".yaide/agents/{dossier}/{md}")
+}
+
+fn lister_agents(ctx: &Contexte) -> String {
+    let liste = ctx.agents.lister();
+    let agents: Vec<Value> = liste
+        .agents
+        .iter()
+        .map(|a| {
+            json!({
+                "folder": a.dossier, "name": a.nom, "avatar": a.avatar, "color": a.couleur,
+                "profile": a.profil.clone().unwrap_or_default(),
+                "persona": chemin_md(&a.dossier, "PERSONA.md"),
+                "instructions": chemin_md(&a.dossier, "AGENTS.md"),
+            })
+        })
+        .collect();
+    let profils: Vec<Value> = ctx.reglages.vue()["profils"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|p| {
+            json!({
+                "id": p["id"], "name": p["nom"], "model": p["modele"],
+                "default": p["defaut"].as_bool().unwrap_or(false),
+            })
+        })
+        .collect();
+    json!({"agents": agents, "unreadable": liste.erreurs, "colors": COULEURS, "profiles": profils})
+        .to_string()
+}
+
+/// Nombre de graphèmes d'un avatar, sans dépendance : voir DEC-067.
+fn graphemes(texte: &str) -> usize {
+    let mut n = 0;
+    let mut apres_zwj = false;
+    let mut indicateur_seul = false;
+    for c in texte.chars() {
+        let u = c as u32;
+        let colle = matches!(u, 0x200D | 0xFE0E | 0xFE0F | 0x1F3FB..=0x1F3FF)
+            || matches!(u, 0x300..=0x36F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF | 0xFE20..=0xFE2F);
+        if colle {
+            apres_zwj = u == 0x200D;
+            continue;
+        }
+        if apres_zwj {
+            apres_zwj = false;
+            continue;
+        }
+        if (0x1F1E6..=0x1F1FF).contains(&u) {
+            if indicateur_seul {
+                indicateur_seul = false;
+                continue;
+            }
+            indicateur_seul = true;
+        } else {
+            indicateur_seul = false;
+        }
+        n += 1;
+    }
+    n
+}
+
+fn facultatif<'a>(a: &'a Value, cle: &str) -> Result<Option<&'a str>, String> {
+    match &a[cle] {
+        Value::Null => Ok(None),
+        Value::String(s) => Ok(Some(s)),
+        _ => Err(format!("Invalid argument: {cle}.")),
+    }
+}
+
+fn sauver_agent(a: &Value, ctx: &Contexte) -> Result<String, String> {
+    let dossier = facultatif(a, "folder")?;
+    let (nom, avatar, couleur, profil) = (
+        facultatif(a, "name")?,
+        facultatif(a, "avatar")?,
+        facultatif(a, "color")?,
+        facultatif(a, "profile")?,
+    );
+    let (persona, instructions) = (facultatif(a, "persona")?, facultatif(a, "instructions")?);
+    let existant = match dossier {
+        None => None,
+        Some(d) => Some(
+            ctx.agents
+                .lire(d)
+                .ok_or_else(|| format!("Unknown agent folder: {d}."))?,
+        ),
+    };
+    if existant.is_none() && nom.is_none_or(|n| n.trim().is_empty()) {
+        return Err("The name is required to create an agent.".into());
+    }
+    if avatar.is_some_and(|v| graphemes(v.trim()) > 2) {
+        return Err("The avatar must be at most two characters.".into());
+    }
+    if couleur.is_some_and(|c| !COULEURS.contains(&c)) {
+        return Err(format!(
+            "Unknown color; allowed colors: {}.",
+            COULEURS.join(", ")
+        ));
+    }
+    let ids = ctx.reglages.ids_profils();
+    if profil.is_some_and(|p| !p.is_empty() && !ids.iter().any(|i| i == p)) {
+        return Err(format!(
+            "Unknown profile; allowed profile ids: {}.",
+            if ids.is_empty() {
+                "none (use an empty string)".to_string()
+            } else {
+                ids.join(", ")
+            }
+        ));
+    }
+    let (e_nom, e_avatar, e_couleur, e_profil) = match &existant {
+        Some(e) => (
+            Some(e.nom.clone()),
+            Some(e.avatar.clone()),
+            Some(e.couleur.clone()),
+            e.profil.clone(),
+        ),
+        None => (None, None, None, None),
+    };
+    let mut saisie = json!({
+        "nom": nom.map(String::from).or(e_nom).unwrap_or_default(),
+        "avatar": avatar.map(String::from).or(e_avatar).unwrap_or_default(),
+        "couleur": couleur.map(String::from).or(e_couleur).unwrap_or("violet".into()),
+        "profil": profil.map(String::from).or(e_profil).unwrap_or_default(),
+    });
+    if let Some(e) = &existant {
+        saisie["dossier"] = e.dossier.clone().into();
+    }
+    let agent = ctx.agents.enregistrer(&saisie).map_err(|e| match e {
+        Erreur::Champs(c) if c.contains(&"nom") => {
+            "The name is empty or already used by another agent.".to_string()
+        }
+        Erreur::Champs(c) => format!("Invalid value for: {}.", c.join(", ")),
+        Erreur::Inconnu => "Unknown agent folder.".into(),
+        Erreur::Systeme(m) => m,
+    })?;
+    for (md, texte) in [("PERSONA.md", persona), ("AGENTS.md", instructions)] {
+        if let Some(t) = texte {
+            let f = ctx.projet.join(chemin_md(&agent.dossier, md));
+            crate::config::ecrire_atomique(&f, t.as_bytes())?;
+        }
+    }
+    Ok(json!({
+        "folder": agent.dossier, "name": agent.nom, "avatar": agent.avatar,
+        "color": agent.couleur, "profile": agent.profil.unwrap_or_default(),
+    })
+    .to_string())
 }
 
 fn phrase(e: fichiers::Erreur) -> String {
@@ -397,10 +582,20 @@ mod tests {
 
     fn ctx(projet: &Path) -> Contexte {
         let _ = rustls::crypto::ring::default_provider().install_default();
+        let reglages = Arc::new(Reglages::new(
+            projet.join(".yaide"),
+            projet.parent().unwrap().join(format!(
+                "cfg-{}",
+                projet.file_name().unwrap().to_string_lossy()
+            )),
+        ));
+        let agents = Arc::new(Agents::new(projet.join(".yaide"), reglages.clone()));
         Contexte {
             projet: projet.to_path_buf(),
             client: reqwest::Client::new(),
             limites: Limites::default(),
+            agents: agents.clone(),
+            reglages,
         }
     }
 
@@ -425,7 +620,9 @@ mod tests {
                 "bash",
                 "glob",
                 "websearch",
-                "webfetch"
+                "webfetch",
+                "list_agents",
+                "save_agent"
             ]
         );
         assert_eq!(argument_principal("bash", &json!({"command": "ls"})), "ls");
@@ -440,6 +637,14 @@ mod tests {
             "http://x"
         );
         assert_eq!(argument_principal("inconnu", &json!({})), "");
+        // AC-097-6
+        let a = |n: &str, v: Value| argument_principal(n, &v);
+        assert_eq!(
+            a("save_agent", json!({"name": "Relecteur", "folder": "x"})),
+            "Relecteur"
+        );
+        assert_eq!(a("save_agent", json!({"folder": "relecteur"})), "relecteur");
+        assert_eq!(a("list_agents", json!({})), "");
     }
 
     #[tokio::test]
@@ -713,5 +918,228 @@ mod tests {
         assert!(r.echec);
         let r = lancer_outil(&c, "websearch", json!({"query": "x"})).await;
         assert!(r.echec && r.contenu.starts_with("Request failed"), "{r:?}");
+    }
+
+    fn agent_json(d: &Path, dossier: &str) -> Value {
+        let o = fs::read(d.join(".yaide/agents").join(dossier).join("agent.json")).unwrap();
+        serde_json::from_slice(&o).unwrap()
+    }
+
+    fn md(d: &Path, dossier: &str, f: &str) -> String {
+        fs::read_to_string(d.join(".yaide/agents").join(dossier).join(f)).unwrap()
+    }
+
+    #[tokio::test]
+    async fn REQ097_AC2_list_agents() {
+        let d = dossier("list-agents");
+        let c = ctx(&d);
+        let r = lancer_outil(&c, "list_agents", json!({})).await;
+        let v: Value = serde_json::from_str(&r.contenu).unwrap();
+        assert!(!r.echec);
+        assert_eq!(v["agents"], json!([]));
+        assert_eq!(
+            v["colors"],
+            json!(["violet", "vert", "orange", "rose", "sarcelle", "gris"])
+        );
+        assert!(!d.join(".yaide").exists());
+        c.reglages
+            .enregistrer_profil(
+                &json!({"nom": "Rapide", "provider": "openai", "modele": "m1", "defaut": true}),
+            )
+            .unwrap();
+        for (n, couleur) in [("Zèbre", "vert"), ("alpha", "rose")] {
+            let r = lancer_outil(
+                &c,
+                "save_agent",
+                json!({"name": n, "color": couleur, "avatar": "🦉"}),
+            )
+            .await;
+            assert!(!r.echec, "{r:?}");
+        }
+        fs::create_dir_all(d.join(".yaide/agents/casse")).unwrap();
+        fs::write(d.join(".yaide/agents/casse/agent.json"), "{").unwrap();
+        let r = lancer_outil(&c, "list_agents", json!({})).await;
+        let v: Value = serde_json::from_str(&r.contenu).unwrap();
+        let a = v["agents"].as_array().unwrap();
+        assert_eq!(a.len(), 2);
+        assert_eq!(
+            a[0],
+            json!({"folder": "alpha", "name": "alpha", "avatar": "🦉", "color": "rose", "profile": "",
+                "persona": ".yaide/agents/alpha/PERSONA.md", "instructions": ".yaide/agents/alpha/AGENTS.md"})
+        );
+        assert_eq!(a[1]["name"], "Zèbre");
+        assert_eq!(v["unreadable"], json!([".yaide/agents/casse/agent.json"]));
+        let p = &v["profiles"][0];
+        assert_eq!(
+            (p["name"].as_str(), p["model"].as_str()),
+            (Some("Rapide"), Some("m1"))
+        );
+        assert_eq!(p["default"], true);
+        assert!(p["id"].is_string());
+        assert!(!r.contenu.contains("cle") && !r.contenu.contains("key"));
+    }
+
+    #[tokio::test]
+    async fn REQ097_AC3_creation() {
+        let d = dossier("save-creation");
+        let c = ctx(&d);
+        let r = lancer_outil(
+            &c,
+            "save_agent",
+            json!({"name": "Relecteur", "persona": "persona-1", "instructions": "memoire-2"}),
+        )
+        .await;
+        assert!(!r.echec, "{r:?}");
+        let v: Value = serde_json::from_str(&r.contenu).unwrap();
+        assert_eq!(v["folder"], "relecteur");
+        let j = agent_json(&d, "relecteur");
+        assert_eq!(
+            (j["nom"].as_str(), j["couleur"].as_str()),
+            (Some("Relecteur"), Some("violet"))
+        );
+        assert_eq!(j["avatar"], "");
+        assert!(j.get("profil").is_none());
+        assert_eq!(md(&d, "relecteur", "PERSONA.md"), "persona-1");
+        assert_eq!(md(&d, "relecteur", "AGENTS.md"), "memoire-2");
+        let r = lancer_outil(&c, "save_agent", json!({"name": "Autre"})).await;
+        assert!(!r.echec, "{r:?}");
+        assert_eq!(md(&d, "autre", "PERSONA.md"), "");
+        assert_eq!(md(&d, "autre", "AGENTS.md"), "");
+    }
+
+    #[tokio::test]
+    async fn REQ097_AC4_modification() {
+        let d = dossier("save-modif");
+        let c = ctx(&d);
+        c.reglages
+            .enregistrer_profil(&json!({"nom": "P", "provider": "openai", "modele": "m"}))
+            .unwrap();
+        let pid = c.reglages.ids_profils().remove(0);
+        lancer_outil(
+            &c,
+            "save_agent",
+            json!({"name": "Relecteur", "avatar": "QA", "profile": pid, "persona": "p", "instructions": "i"}),
+        )
+        .await;
+        let avant = agent_json(&d, "relecteur");
+        let r = lancer_outil(
+            &c,
+            "save_agent",
+            json!({"folder": "relecteur", "color": "vert"}),
+        )
+        .await;
+        assert!(!r.echec, "{r:?}");
+        let mut attendu = avant.clone();
+        attendu["couleur"] = "vert".into();
+        assert_eq!(agent_json(&d, "relecteur"), attendu);
+        assert_eq!(md(&d, "relecteur", "PERSONA.md"), "p");
+        assert_eq!(md(&d, "relecteur", "AGENTS.md"), "i");
+        let r = lancer_outil(
+            &c,
+            "save_agent",
+            json!({"folder": "relecteur", "name": "Correcteur"}),
+        )
+        .await;
+        assert!(!r.echec, "{r:?}");
+        assert!(d.join(".yaide/agents/relecteur").is_dir());
+        assert!(!d.join(".yaide/agents/correcteur").exists());
+        assert_eq!(agent_json(&d, "relecteur")["nom"], "Correcteur");
+        lancer_outil(
+            &c,
+            "save_agent",
+            json!({"folder": "relecteur", "persona": "neuf"}),
+        )
+        .await;
+        assert_eq!(md(&d, "relecteur", "PERSONA.md"), "neuf");
+        assert_eq!(md(&d, "relecteur", "AGENTS.md"), "i");
+        let r = lancer_outil(
+            &c,
+            "save_agent",
+            json!({"folder": "relecteur", "profile": ""}),
+        )
+        .await;
+        assert!(!r.echec, "{r:?}");
+        assert!(agent_json(&d, "relecteur").get("profil").is_none());
+    }
+
+    #[tokio::test]
+    async fn REQ097_AC5_refus_sans_rien_ecrire() {
+        let d = dossier("save-refus");
+        let c = ctx(&d);
+        let r = lancer_outil(&c, "save_agent", json!({"name": "Relecteur"})).await;
+        assert!(!r.echec);
+        let instantane = |d: &Path| {
+            let mut v = Vec::new();
+            for e in walk(&d.join(".yaide")) {
+                v.push((e.clone(), fs::read(&e).unwrap_or_default()));
+            }
+            v.sort();
+            v
+        };
+        let avant = instantane(&d);
+        let refus = [
+            (json!({"persona": "x"}), "required"),
+            (json!({"name": "  "}), "required"),
+            (json!({"name": "RELECTEUR", "persona": "x"}), "already used"),
+            (
+                json!({"name": "N", "avatar": "ABC", "persona": "x"}),
+                "avatar",
+            ),
+            (
+                json!({"name": "N", "color": "bleu", "persona": "x"}),
+                "violet, vert, orange, rose, sarcelle, gris",
+            ),
+            (
+                json!({"name": "N", "profile": "zzz", "persona": "x"}),
+                "Unknown profile",
+            ),
+            (
+                json!({"folder": "inconnu", "persona": "x"}),
+                "Unknown agent folder",
+            ),
+            (
+                json!({"folder": "../x", "persona": "x"}),
+                "Unknown agent folder",
+            ),
+            (
+                json!({"folder": "relecteur", "name": 3}),
+                "Invalid argument",
+            ),
+            (
+                json!({"folder": "relecteur", "avatar": "ABC", "persona": "x"}),
+                "avatar",
+            ),
+        ];
+        for (a, mot) in refus {
+            let r = lancer_outil(&c, "save_agent", a.clone()).await;
+            assert!(r.echec && r.contenu.contains(mot), "{a} : {r:?}");
+        }
+        assert_eq!(instantane(&d), avant);
+        assert!(!d.join(".yaide/agents/n").exists());
+        for av in ["🦉", "QA", "👨‍👩‍👧", "🇫🇷", "👍🏽", "é"] {
+            let r = lancer_outil(
+                &c,
+                "save_agent",
+                json!({"name": format!("a{av}"), "avatar": av}),
+            )
+            .await;
+            assert!(!r.echec, "{av} : {r:?}");
+        }
+        for av in ["🇫🇷🇫🇷🇫", "🦉🦉🦉", "ABC"] {
+            let r = lancer_outil(&c, "save_agent", json!({"name": "z", "avatar": av})).await;
+            assert!(r.echec, "{av}");
+        }
+    }
+
+    fn walk(d: &Path) -> Vec<PathBuf> {
+        let mut v = Vec::new();
+        for e in fs::read_dir(d).into_iter().flatten().flatten() {
+            if e.path().is_dir() {
+                v.extend(walk(&e.path()));
+            } else {
+                v.push(e.path());
+            }
+        }
+        v
     }
 }

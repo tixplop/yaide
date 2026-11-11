@@ -1,7 +1,7 @@
 //! Conversations de l'agent : journal, boucle, arrêt (DEC-035, DEC-036).
 //! Le fichier `.yaide/conversations/<id>.json` est la seule source de l'historique.
 
-use super::agents::Agent;
+use super::agents::{Agent, Agents};
 use super::mcp::Mcp;
 use super::outils::{self, Contexte, Limites};
 use super::provider::{self, Appel, Effort, ErreurProvider, Message, Reglage};
@@ -119,6 +119,7 @@ pub struct Gestionnaire {
     dossier: PathBuf,
     projet: PathBuf,
     reglages: Arc<Reglages>,
+    agents: Arc<Agents>,
     client: reqwest::Client,
     limites: Limites,
     registre: Mutex<HashMap<String, Tour>>,
@@ -306,12 +307,18 @@ fn message_erreur(texte: String, detail: String) -> Entree {
 
 impl Gestionnaire {
     /// Un fournisseur TLS rustls doit déjà être installé.
-    pub fn new(projet: PathBuf, reglages: Arc<Reglages>, limites: Limites) -> Self {
+    pub fn new(
+        projet: PathBuf,
+        reglages: Arc<Reglages>,
+        agents: Arc<Agents>,
+        limites: Limites,
+    ) -> Self {
         Gestionnaire {
             dossier: projet.join(".yaide").join("conversations"),
             mcp: Mcp::new(projet.clone(), reglages.dossier().join("mcp.json")),
             projet,
             reglages,
+            agents,
             client: provider::client(),
             limites,
             registre: Mutex::new(HashMap::new()),
@@ -659,6 +666,8 @@ Always give file paths relative to the project root.",
             projet: self.projet.clone(),
             client: self.client.clone(),
             limites: self.limites.clone(),
+            agents: self.agents.clone(),
+            reglages: self.reglages.clone(),
         };
         loop {
             let (profil_trouve, instructions, historique) = {
@@ -959,9 +968,11 @@ mod tests {
 
     fn gestionnaire(dir: &Path, reglages: &Arc<Reglages>) -> Arc<Gestionnaire> {
         let _ = rustls::crypto::ring::default_provider().install_default();
+        let agents = Arc::new(Agents::new(dir.join(".yaide"), reglages.clone()));
         Arc::new(Gestionnaire::new(
             dir.to_path_buf(),
             reglages.clone(),
+            agents,
             Limites::default(),
         ))
     }
@@ -1863,6 +1874,35 @@ mod tests {
             .iter()
             .map(|t| t["function"]["name"].as_str().unwrap().to_string())
             .collect()
+    }
+
+    #[tokio::test]
+    async fn REQ097_AC1_list_agents_et_save_agent_offerts_avec_ou_sans_agent() {
+        let b = banc("a097-ac1", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        b.scenario(vec![texte("a", 1), texte("b", 1)]);
+        let id = b.envoyer(None, "un").unwrap();
+        b.fini(&id).await;
+        let id2 = b
+            .envoyer_a(None, std::slice::from_ref(&rel), "deux")
+            .unwrap();
+        b.fini(&id2).await;
+        for i in 0..2 {
+            let corps: Value = serde_json::from_str(&b.requete(i)).unwrap();
+            let noms = noms_outils(&corps);
+            let attendus: Vec<String> = outils::definitions().into_iter().map(|d| d.nom).collect();
+            assert_eq!(noms, attendus, "requête {i}");
+            for n in ["list_agents", "save_agent"] {
+                let t = corps["tools"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|t| t["function"]["name"] == n)
+                    .unwrap_or_else(|| panic!("{n} absent de la requête {i}"));
+                assert!(!t["function"]["description"].as_str().unwrap().is_empty());
+                assert_eq!(t["function"]["parameters"]["type"], "object");
+            }
+        }
     }
 
     #[tokio::test]

@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-const COULEURS: [&str; 6] = ["violet", "vert", "orange", "rose", "sarcelle", "gris"];
+pub const COULEURS: [&str; 6] = ["violet", "vert", "orange", "rose", "sarcelle", "gris"];
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
