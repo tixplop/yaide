@@ -295,6 +295,8 @@ test("REQ009_AC4_AC6_AC7_REQ010_AC1_AC2_AC4_AC5_groupe_noms_pris_F2_erreurs_et_s
   });
   await test.step("REQ009_AC6_F2_champ_rempli_Echap_rend_le_focus_a_la_ligne", async () => {
     await ligne(page, "notes.txt").click();
+    // Le clic ouvre le fichier : l'éditeur prend le focus à la fin de la lecture. Le rendre à la ligne avant, il le reprendrait.
+    await expect(page.getByRole("textbox", { name: "Éditeur notes.txt" })).toBeFocused();
     await ligne(page, "notes.txt").focus();
     await page.keyboard.press("F2");
     const champ = page.getByLabel("Nouveau chemin");
