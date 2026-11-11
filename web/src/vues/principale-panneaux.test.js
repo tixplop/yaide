@@ -471,7 +471,7 @@ test("REQ028_AC8_ordre_de_tab_avec_agents", async () => {
   expect(i).toBeGreaterThan(-1);
   expect(liste[i + 1]).toBe(vue.querySelector("[aria-label=\"Replier l'agent\"]"));
   const apres = liste.slice(i + 1);
-  expect(apres.slice(-2)).toEqual([boutonAgentDe(vue), boutonAgentsDe(vue)]);
+  expect(apres.slice(-3)).toEqual([boutonAgentDe(vue), boutonAgentsDe(vue), vue.querySelector(".cadre-rail-droit [aria-label='Serveurs MCP']")]);
   // Entre la poignée et les deux boutons : la vue affichée seule.
   expect(apres.some((e) => e.closest(".agent-corps"))).toBe(false);
   expect(apres.some((e) => e.closest(".agents-corps"))).toBe(true);
@@ -557,7 +557,7 @@ test("REQ070_AC6_claude_desactive_sans_detection", async () => {
   await attendre();
   expect(sans(appels, "/api/claude")).toEqual([]);
   expect(boutonClaudeDe(vue)).toBeNull();
-  expect([...vue.querySelectorAll(".cadre-rail-droit button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents"]);
+  expect([...vue.querySelectorAll(".cadre-rail-droit button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents", "Serveurs MCP"]);
 });
 
 test("REQ070_AC7_rail_droit_absent_sans_commande_meme_sans_claude", async () => {
@@ -610,13 +610,13 @@ test("REQ072_AC1_bouton_selon_la_detection", async () => {
   simulerOpencode();
   const a = monter().vue;
   await vi.waitFor(() => expect(boutonOcDe(a)).not.toBeNull());
-  expect(nomsRailDroit(a)).toEqual(["Agent", "Agents", "Claude", "opencode", "Sessions opencode"]);
+  expect(nomsRailDroit(a)).toEqual(["Agent", "Agents", "Claude", "opencode", "Sessions opencode", "Serveurs MCP"]);
   expect(icone(boutonOcDe(a))).toBe("code-xml");
   simulerOpencode({ opencode: false });
   const b = monter().vue;
   await vi.waitFor(() => expect(boutonClaudeDe(b)).not.toBeNull());
   expect(boutonOcDe(b)).toBeNull();
-  expect(nomsRailDroit(b)).toEqual(["Agent", "Agents", "Claude"]);
+  expect(nomsRailDroit(b)).toEqual(["Agent", "Agents", "Claude", "Serveurs MCP"]);
 });
 
 test("REQ072_AC3_clic_ouvre_un_onglet", async () => {
@@ -735,7 +735,7 @@ test("REQ028_AC8_ordre_de_tab_avec_opencode", async () => {
   simulerOpencode();
   const { vue } = monter();
   await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
-  expect(nomsRailDroit(vue)).toEqual(["Agent", "Agents", "Claude", "opencode", "Sessions opencode"]);
+  expect(nomsRailDroit(vue)).toEqual(["Agent", "Agents", "Claude", "opencode", "Sessions opencode", "Serveurs MCP"]);
   const rail = [...vue.querySelectorAll(".cadre-rail-droit button")];
   expect(rail.every((e) => e.tabIndex >= 0)).toBe(true);
   // Dans le document, « opencode » suit « Claude ».
@@ -759,7 +759,7 @@ test("REQ070_AC20_agents_ou_claude_desactives_avec_opencode", async () => {
   simulerOpencode();
   const a = monter({ reglages: { fonctions: { claude: false } } }).vue;
   await vi.waitFor(() => expect(boutonOcDe(a)).not.toBeNull());
-  expect(nomsRailDroit(a)).toEqual(["Agent", "Agents", "opencode", "Sessions opencode"]);
+  expect(nomsRailDroit(a)).toEqual(["Agent", "Agents", "opencode", "Sessions opencode", "Serveurs MCP"]);
   const b = monter({ reglages: { fonctions: { agents: false, claude: false } } }).vue;
   await vi.waitFor(() => expect(boutonOcDe(b)).not.toBeNull());
   expect(nomsRailDroit(b)).toEqual(["opencode", "Sessions opencode"]);

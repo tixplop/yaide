@@ -6,6 +6,7 @@ import { ecrire, lire } from "../stockage.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { reprendreDernierChoix } from "../opencode.js";
+import { vueServeursMcp } from "./serveurs-mcp.js";
 import { vueSessionsOpencode } from "./sessions-opencode.js";
 import { surveiller } from "../connexion.js";
 import { changerTheme, themeCourant } from "../ui/theme.js";
@@ -92,6 +93,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     surChoix: ({ id, titre }) => editeur.ouvrirOpencode({ sessionId: id, titre }),
   });
   boutonSessions.addEventListener("click", () => sessions.ouvrir());
+  const boutonMcp = avec.agents ? bouton({ icone: "server", nomAccessible: "Serveurs MCP", positionInfoBulle: "gauche", ouvreDialogue: true }) : null;
+  const serveursMcp = avec.agents ? vueServeursMcp({ surEtat: (ouvert) => boutonMcp.definirOuvert(ouvert) }) : null;
+  boutonMcp?.addEventListener("click", () => serveursMcp.ouvrir());
   boutonAgent.addEventListener("click", () => ouvrirConversation());
   boutonAgents.addEventListener("click", entrerDansAgents);
   repliAgent.addEventListener("click", () => {
@@ -320,7 +324,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     rail: { onglets: rail, commandes: shells.commandes },
     panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche?.corps, git.corps].filter(Boolean) },
     agent: { titre: "Agents", repli: repliAgent.enveloppe, corps: avec.agents ? [agents.corps] : [] },
-    railDroit: { commandes: avec.agents ? [boutonAgent.enveloppe, boutonAgents.enveloppe] : [] },
+    railDroit: { commandes: avec.agents ? [boutonAgent.enveloppe, boutonAgents.enveloppe] : [], pied: boutonMcp ? [boutonMcp.enveloppe] : [] },
     fonctions: avec,
     principal: { bandeaux, groupes: editeur.groupes(), shells },
     barreEtat: barre,

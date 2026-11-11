@@ -496,10 +496,10 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-reglages .ya-row .liste-parent { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* C-006 `objets` (V-012) : liste d'objets à modifier ou supprimer, chacun avec ses boutons. */
-.ya-objets { list-style: none; margin: 2px 0; padding: 0; min-height: 86px; overflow-y: auto; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-sizing: border-box; }
+.ya-objets { list-style: none; margin: 0; padding: 2px; min-height: 92px; overflow-y: auto; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-sizing: border-box; }
 .ya-objet { box-sizing: border-box; height: 28px; display: flex; align-items: center; gap: 12px; padding: 0 4px 0 8px; border-radius: var(--radius-xs); font: 12.5px var(--font-sans); color: var(--ink); }
 .ya-objet:hover { background: var(--bg-400); }
-.ya-objet-nom { flex: 0 1 35%; min-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ya-objet-nom { flex: 0 0 auto; min-width: 96px; max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ya-objet-texte { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-muted); }
 .ya-objet-actions { flex: none; margin-left: auto; display: flex; gap: 2px; }
 
@@ -522,6 +522,8 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-reglages .ya-groupe-ligne { flex-direction: row; flex-wrap: wrap; column-gap: var(--space-6); }
 .ya-reglages .ya-groupe-ligne legend { flex: 0 0 100%; }
 .ya-reglages .ya-groupe-aide { margin: 0; flex: 0 0 100%; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+/* V-012 : l'aide du dialogue est à 12 px du titre et de la liste (le titre laisse 16 px). */
+.ya-reglages > .ya-aide-liste { margin: -4px 0 12px; }
 
 /* C-013 : bouton d'en-tête dont le menu est ouvert. */
 .ya-icon-btn[aria-expanded="true"] { background: var(--bg-400); color: var(--ink); }
@@ -832,3 +834,7 @@ body { margin: 0; }
 .cm-gutterElement.cm-hy-numero-titre1 { font: var(--texte-titre) var(--font-mono); font-size: inherit; }
 .cm-editor .cm-lineNumbers .cm-gutterElement.cm-hy-numero-tableau { padding-top: var(--space-2); }
 .cm-gutterElement.cm-hy-numero-titre2 { font: var(--texte-sous-titre) var(--font-mono); font-size: inherit; }
+
+/* V-012 : dans une fiche, le refus d'un champ est juste sous lui, avant son aide. */
+.ya-fiche .champ-erreur { order: 1; }
+.ya-fiche .champ-aide { order: 2; }

@@ -223,10 +223,26 @@ test("REQ072_parcours_37_question_erreur_coupure_a_800_par_480", async ({ page }
   await page.setViewportSize({ width: 800, height: 480 });
   await ouvrirYaide(page, relais.origine);
 
-  // 1. Le rail droit à quatre boutons sans défilement ; l'info-bulle de « opencode » entière, à gauche du bouton.
+  // 1. Le rail droit à six boutons sans défilement ; l'info-bulle de « opencode » entière, à gauche du bouton.
   const rail = page.locator(".cadre-rail-droit");
-  for (const nom of ["Agent", "Agents", "Claude", "opencode"]) await expect(rail.getByRole("button", { name: nom, exact: true })).toBeVisible();
+  for (const nom of ["Agent", "Agents", "Claude", "opencode", "Sessions opencode", "Serveurs MCP"]) await expect(rail.getByRole("button", { name: nom, exact: true })).toBeVisible();
   expect(await rail.evaluate((e) => e.scrollHeight <= e.clientHeight)).toBe(true);
+  // REQ096_AC12 : six boutons entiers qui ne se touchent pas ; « Serveurs MCP » au bas du rail, son info-bulle entière à gauche.
+  const boites = await rail.getByRole("button").evaluateAll((l) => l.map((b) => b.getBoundingClientRect().toJSON()));
+  expect(boites).toHaveLength(6);
+  for (let k = 1; k < boites.length; k++) expect(boites[k].y).toBeGreaterThanOrEqual(boites[k - 1].y + boites[k - 1].height);
+  const rb = await rail.boundingBox();
+  const mcp = rail.getByRole("button", { name: "Serveurs MCP", exact: true });
+  const mb = await mcp.boundingBox();
+  expect(mb.height).toBe(48);
+  expect(Math.abs(mb.y + mb.height - (rb.y + rb.height))).toBeLessThanOrEqual(1);
+  await survoler(page, mcp);
+  const infoMcp = page.getByRole("tooltip", { name: "Serveurs MCP" });
+  await expect(infoMcp).toBeVisible();
+  const im = await infoMcp.boundingBox();
+  expect(im.x).toBeGreaterThanOrEqual(0);
+  expect(im.x + im.width).toBeLessThanOrEqual(mb.x + 1);
+  await page.mouse.move(0, 0);
   await boutonOpencode(page).click();
   await expect(onglet(page, "opencode 1")).toHaveAttribute("aria-selected", "true");
   await expect(champ(page)).toBeFocused();

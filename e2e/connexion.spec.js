@@ -126,7 +126,7 @@ test("REQ004_AC5_REQ028_AC9_ecran_de_connexion_puis_mises_en_page_de_la_vue_prin
       expect(m.y + m.height).toBeLessThanOrEqual(rail.y + rail.height);
       expect(m.y + m.height).toBeLessThanOrEqual(480);
     }
-    for (const nom of ["Agent", "Agents"]) {
+    for (const nom of ["Agent", "Agents", "Serveurs MCP"]) {
       const agent = await page.getByRole("button", { name: nom, exact: true }).boundingBox();
       expect([agent.width, agent.height]).toEqual([48, 48]);
       expect(agent.x).toBeGreaterThanOrEqual(0);

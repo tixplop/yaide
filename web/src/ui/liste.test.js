@@ -1201,10 +1201,10 @@ test("REQ096_AC17_objets_ul_nomme_une_li_par_ligne_deux_boutons_arrets_de_tab_co
   // CSS : contour de la liste, défilement propre, coupure par « … », ligne de 28 px au survol --bg-400.
   expect(regle(".ya-objets")).toContain("border: 1px solid var(--line-strong)");
   expect(regle(".ya-objets")).toContain("overflow-y: auto");
-  expect(regle(".ya-objets")).toContain("min-height: 86px");
+  expect(regle(".ya-objets")).toContain("min-height: 92px");
   expect(regle(".ya-objet")).toContain("height: 28px");
   expect(regle(".ya-objet:hover")).toContain("background: var(--bg-400)");
-  expect(regle(".ya-objet-nom")).toContain("flex: 0 1 35%");
+  expect(regle(".ya-objet-nom")).toContain("max-width: 35%");
   expect(regle(".ya-objet-nom")).toContain("min-width: 96px");
   expect(regle(".ya-objet-nom")).toContain("text-overflow: ellipsis");
   expect(regle(".ya-objet-texte")).toContain("text-overflow: ellipsis");

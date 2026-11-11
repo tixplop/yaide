@@ -195,7 +195,7 @@ export function vueServeursMcp({ surEtat = () => {} } = {}) {
     if (dlg) return;
     const mienne = ++generation;
     const aide = document.createElement("p");
-    aide.className = "ya-groupe-aide";
+    aide.className = "ya-groupe-aide ya-aide-liste";
     aide.textContent = AIDE;
     const f = bouton({ libelle: "Fermer" });
     f.addEventListener("click", () => fermer());

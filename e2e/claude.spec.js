@@ -39,7 +39,7 @@ test("REQ068_parcours_30_session_a_cote_du_code", async ({ page }) => {
   await expect(page.getByRole("textbox", { name: "Éditeur args.rs" })).toBeFocused();
 
   // 1. Le bouton et son info-bulle.
-  await expect(page.locator(".cadre-rail-droit").getByRole("button")).toHaveCount(3);
+  await expect(page.locator(".cadre-rail-droit").getByRole("button")).toHaveCount(4);
   const bulle = page.getByRole("tooltip");
   await boutonClaude(page).hover();
   await avancer(page, () => expect(bulle).toHaveText("Nouvelle session Claude", { timeout: 300 }));

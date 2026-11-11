@@ -323,7 +323,7 @@ test("REQ028_AC17_REQ059_AC1_AC10_rail_droit_avec_le_bouton_Agent", async () => 
   const { vue } = monter();
   const rd = vue.querySelector(".cadre-rail-droit");
   const b = boutonAgentDe(vue);
-  expect([...rd.querySelectorAll("button")]).toEqual([b, boutonAgentsDe(vue)]);
+  expect([...rd.querySelectorAll("button")]).toEqual([b, boutonAgentsDe(vue), boutonMcpDe(vue)]);
   expect(b.getAttribute("aria-keyshortcuts")).toBe("A");
   expect(b.querySelector("svg[data-icone=bot]")).not.toBeNull();
   expect(b.textContent).toBe("");
@@ -516,7 +516,7 @@ test("REQ028_AC8_ordre_de_Tab_de_la_page_avec_l_agent_a_droite", async () => {
   const terminaux = vue.querySelector(".cadre-shells");
   // Replié : aucun arrêt dans la colonne, le bouton « Agents » est le dernier.
   expect(tabbables().some((e) => agentCol(vue).contains(e) || e === poignee)).toBe(false);
-  expect(tabbables().slice(-2)).toEqual([bouton, boutonAgentsDe(vue)]);
+  expect(tabbables().slice(-3)).toEqual([bouton, boutonAgentsDe(vue), boutonMcpDe(vue)]);
   boutonAgentsDe(vue).click();
   await vi.waitFor(() => expect(corpsAgents(vue).querySelector("input, button")).not.toBeNull());
   const liste = tabbables();
@@ -671,6 +671,7 @@ test("REQ086_AC8_git_desactive_aucune_requete_git_ni_ligne_worktree", async () =
 
 // ---- REQ-088 : « Sessions opencode » ----
 
+const boutonMcpDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label='Serveurs MCP']");
 const boutonSessionsDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label='Sessions opencode']");
 
 test("REQ088_AC1_AC12_bouton_sous_opencode_seulement_si_detecte", async () => {
@@ -678,7 +679,7 @@ test("REQ088_AC1_AC12_bouton_sous_opencode_seulement_si_detecte", async () => {
   const a = monter().vue;
   await vi.waitFor(() => expect(boutonSessionsDe(a)).not.toBeNull());
   const noms = nomsRailDroit(a);
-  expect(noms.slice(-2)).toEqual(["opencode", "Sessions opencode"]);
+  expect(noms.slice(-3)).toEqual(["opencode", "Sessions opencode", "Serveurs MCP"]);
   const b = boutonSessionsDe(a);
   expect(b.getAttribute("aria-haspopup")).toBe("dialog");
   expect(b.querySelector("svg")).not.toBeNull();
@@ -1037,3 +1038,47 @@ test("REQ094_AC1_AC2_le_badge_reste_en_place_quel_que_soit_l_onglet_actif", () =
     expect(ongletsClaude(vue).length).toBe(1);
     expect(ongletsOc(vue).length).toBe(1);
   }));
+
+// ---- REQ-096 : « Serveurs MCP » ----
+
+test("REQ096_AC1_bouton_au_pied_du_rail_droit_seulement_avec_agents", async () => {
+  simulerOpencode();
+  const a = monter().vue;
+  await vi.waitFor(() => expect(boutonSessionsDe(a)).not.toBeNull());
+  expect(nomsRailDroit(a).slice(-3)).toEqual(["opencode", "Sessions opencode", "Serveurs MCP"]);
+  expect(boutonMcpDe(a).closest(".cadre-rail-pied")).not.toBeNull();
+  simulerOpencode({ opencode: false, claude: false });
+  const b = monter({ reglages: { fonctions: { agents: false } } }).vue;
+  await attendre();
+  expect(boutonMcpDe(b)).toBeNull();
+  expect(b.querySelector(".cadre-rail-droit")).toBeNull();
+});
+
+test("REQ096_AC13_dernier_arret_du_rail_droit_touches_et_dialogue", async () => {
+  simulerOpencode();
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonSessionsDe(vue)).not.toBeNull());
+  const b = boutonMcpDe(vue);
+  expect(b.getAttribute("aria-haspopup")).toBe("dialog");
+  expect(b.querySelector("svg")).not.toBeNull();
+  const rail = [...vue.querySelectorAll(".cadre-rail-droit button")];
+  expect(rail.at(-1)).toBe(b);
+  b.focus();
+  for (const k of ["f", "r", "g"]) clavier(b, k);
+  expect(vue.querySelector("[role=tab][aria-label=Fichiers]").getAttribute("aria-selected")).toBe("true");
+  expect(vue.querySelector("[role=tab][aria-label=Recherche]").getAttribute("aria-selected")).toBe("false");
+  expect(document.activeElement).toBe(b);
+  expect(document.querySelector("dialog")).toBeNull();
+  clavier(b, "a");
+  await vi.waitFor(() => expect(document.activeElement).toBe(champAgent(vue)));
+  b.focus();
+  b.click();
+  await vi.waitFor(() => expect(document.querySelector("dialog")).not.toBeNull());
+  expect(document.querySelector("dialog").getAttribute("aria-label") ?? document.querySelector("dialog").textContent).toContain("Serveurs MCP");
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  document.querySelector("dialog").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  document.querySelector("dialog").dispatchEvent(new Event("cancel", { cancelable: true }));
+  await vi.waitFor(() => expect(document.querySelector("dialog")).toBeNull());
+  expect(document.activeElement).toBe(b);
+  expect(b.getAttribute("aria-expanded")).not.toBe("true");
+});

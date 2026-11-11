@@ -107,7 +107,7 @@ Chaque conversation avec l'agent s'ouvre dans un onglet de l'éditeur, à côté
   }
   ```
 
-  Un outil s'appelle `mcp__<serveur>__<outil>` pour le modèle ; la conversation affiche « serveur › outil ». Un serveur qui ne démarre pas est signalé au début du tour, sans empêcher les autres. Les jetons de `env` sont en clair dans le fichier : ne le poussez pas s'il en contient. Claude Code et opencode gardent leur propre configuration.
+  Un outil s'appelle `mcp__<serveur>__<outil>` pour le modèle ; la conversation affiche « serveur › outil ». Un serveur qui ne démarre pas est signalé au début du tour, sans empêcher les autres. Les jetons de `env` sont en clair dans le fichier : ne le poussez pas s'il en contient. Le bouton « Serveurs MCP », au pied du rail droit, ouvre un dialogue qui liste, ajoute, modifie et supprime ces serveurs en écrivant `.yaide/mcp.json` ; les variables y sont affichées en clair. Claude Code et opencode gardent leur propre configuration.
 
 ## Session Claude
 
