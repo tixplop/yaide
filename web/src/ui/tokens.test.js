@@ -604,3 +604,23 @@ test("REQ087_AC8_contraste_du_code_dans_un_lien_de_fichier", () => {
     expect(r).toBeGreaterThanOrEqual(4.5);
   });
 });
+
+// design-system.md, « Compléter la saisie d'un message » (REQ-089 à REQ-091) : contrastes sur --bg-300, --list-focus et --bg-400.
+test("REQ089_AC11_contrastes_de_la_liste_de_suggestions_dans_les_deux_themes", () => {
+  const paires = [
+    ["--ink-muted", "--bg-300", 4.5, [5.4, 6.6]],
+    ["--ink-muted", "--list-focus", 4.5, [4.5, 5.5]],
+    ["--ink-muted", "--bg-400", 4.5, [4.5, 5.3]],
+    ["--ink", "--bg-300", 4.5, [8.9, 16.4]],
+    ["--ink", "--list-focus", 4.5, [7.4, 13.5]],
+    ["--accent-fg", "--list-focus", 3, [4.8, 5.1]],
+  ];
+  for (const [texte, fond, seuil, mesures] of paires) {
+    THEMES.forEach((theme, i) => {
+      const r = ratio(theme, texte, fond);
+      const nom = `${texte} sur ${fond} (${theme})`;
+      expect(r, nom).toBeGreaterThanOrEqual(seuil);
+      egalA(r, mesures[i], nom);
+    });
+  }
+});

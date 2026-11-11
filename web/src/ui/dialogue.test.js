@@ -212,3 +212,48 @@ test("REQ071_message_amene_dans_la_vue_sans_bouger_le_focus", () => {
   expect(faux).toHaveBeenCalledWith({ block: "nearest" });
   expect(document.activeElement).toBe(annuler);
 });
+
+test("REQ088_AC13_palette_sans_champ_focus_sur_la_liste_puis_remplacement_et_clic_dehors", () => {
+  const liste = document.createElement("div");
+  liste.tabIndex = 0;
+  const surAnnuler = vi.fn();
+  const d = dialogue({ titre: "Sessions opencode", position: "palette", sansChamp: true, contenu: [liste], focusInitial: liste, surAnnuler });
+  expect(d.element.className).toContain("ya-palette-sans-champ");
+  d.ouvrir();
+  expect(document.activeElement).toBe(liste);
+  expect(regle(".ya-palette-sans-champ .liste")).toContain("max-height: 288px");
+  d.fermer();
+
+  // Sans liste (chargement, vide, erreur) : le focus est sur le dialogue, puis passe à la liste.
+  const attente = document.createElement("p");
+  attente.textContent = "Chargement…";
+  const d2 = dialogue({ titre: "Sessions opencode", position: "palette", sansChamp: true, contenu: [attente], surAnnuler });
+  expect(d2.element.getAttribute("tabindex")).toBe("-1");
+  d2.ouvrir();
+  expect(document.activeElement).toBe(d2.element);
+  const arrivee = document.createElement("div");
+  arrivee.tabIndex = 0;
+  d2.remplacer([arrivee], arrivee);
+  expect(d2.element.querySelector("p")).toBeNull();
+  expect(document.activeElement).toBe(arrivee);
+  // Une erreur ou un vide qui remplace : le focus revient sur le dialogue.
+  const erreur = document.createElement("p");
+  d2.remplacer([erreur]);
+  expect(d2.element.contains(erreur)).toBe(true);
+  expect(document.activeElement).toBe(d2.element);
+  d2.remplacer([arrivee], arrivee);
+
+  // Clic hors du dialogue = Échap ; clic dedans : rien.
+  d2.element.getBoundingClientRect = () => ({ left: 100, right: 700, top: 40, bottom: 300 });
+  d2.element.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 50, clientY: 100 }));
+  expect(surAnnuler).toHaveBeenCalledTimes(1);
+  d2.element.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 105, clientY: 100 }));
+  arrivee.click();
+  expect(surAnnuler).toHaveBeenCalledTimes(1);
+  d2.fermer();
+});
+
+test("REQ088_AC13_sans_champ_reserve_a_la_palette_et_focus_initial_requis_ailleurs", () => {
+  expect(() => dialogue({ titre: "x", sansChamp: true, surAnnuler: () => {} })).toThrow(/palette/);
+  expect(() => dialogue({ titre: "x", surAnnuler: () => {} })).toThrow(/focusInitial/);
+});

@@ -994,3 +994,174 @@ test("REQ052_AC1_fin_calee_et_non_coupee", () => {
   expect(regle(".ya-reglages .ya-row .liste-libelle")).toContain("min-width: 84px");
   expect(regle(".ya-reglages .ya-row .liste-parent")).toContain("text-overflow: ellipsis");
 });
+
+// --- Ligne avec date, liste de suggestions flottante (REQ-088 à REQ-091) ---
+const dix = Array.from({ length: 12 }, (_, i) => ({ id: `l${i}`, libelle: `ligne ${i}` }));
+const unChamp = (rect = { left: 40, right: 340, top: 400, bottom: 430, width: 300, height: 30 }) => {
+  const c = document.createElement("textarea");
+  c.getBoundingClientRect = () => rect;
+  document.body.append(c);
+  return c;
+};
+const flottante = (champ, opts = {}) => liste({ lignes: dix, pilotage: "champ", champ, flottante: true, nom: "Commandes", ...opts });
+
+test("REQ088_AC13_ligne_avec_date_libelle_coupe_entier_en_title_fin_jamais_coupee", () => {
+  const l = liste({ lignes: [{ id: "s", libelle: "Un titre de session beaucoup trop long pour la ligne", fin: "14:32" }] });
+  const ligne = items(l)[0];
+  const lib = ligne.querySelector(".liste-libelle");
+  expect(lib.textContent).toBe("Un titre de session beaucoup trop long pour la ligne");
+  expect(lib.title).toBe("Un titre de session beaucoup trop long pour la ligne");
+  expect(ligne.querySelector(".liste-fin").textContent).toBe("14:32");
+  expect([...ligne.children].map((c) => c.className.split(" ")[0])).toEqual(["liste-libelle", "liste-fin"]);
+  expect(regle(".liste-libelle")).toContain("text-overflow: ellipsis");
+  expect(regle(".ya-palette-sans-champ .liste-libelle")).toContain("min-width: 0");
+  expect(regle(".ya-palette-sans-champ .ya-fin")).toContain("padding-left: 16px");
+  expect(regle(".ya-palette-sans-champ .ya-fin")).toContain("flex: none");
+  expect(regle(".ya-palette-sans-champ .ya-fin")).toContain("white-space: nowrap");
+  expect(regle(".ya-palette-sans-champ .liste-ligne")).toContain("font-size: 13px");
+});
+
+test("REQ088_AC14_focus_sur_la_liste_debut_fin_et_clic", () => {
+  const surActiver = vi.fn();
+  const l = liste({ lignes: dix, focusSurListe: true, nom: "Sessions opencode", surActiver });
+  document.body.append(l);
+  expect(l.tabIndex).toBe(0);
+  expect(l.getAttribute("aria-label")).toBe("Sessions opencode");
+  expect(l.getAttribute("aria-activedescendant")).toBe(items(l)[0].id);
+  touche(l, "End");
+  expect(l.getAttribute("aria-activedescendant")).toBe(items(l)[11].id);
+  expect(items(l)[11].classList.contains("liste-courante")).toBe(true);
+  touche(l, "Home");
+  expect(l.getAttribute("aria-activedescendant")).toBe(items(l)[0].id);
+  touche(l, "ArrowDown");
+  touche(l, "Enter");
+  expect(surActiver).toHaveBeenLastCalledWith("l1");
+  const down = new MouseEvent("pointerdown", { bubbles: true, cancelable: true });
+  items(l)[3].dispatchEvent(down);
+  expect(down.defaultPrevented).toBe(true);
+  items(l)[3].click();
+  expect(surActiver).toHaveBeenLastCalledWith("l3");
+  expect(items(l).map((x) => x.tabIndex)).toEqual(Array(12).fill(-1));
+  expect(() => liste({ lignes: dix, focusSurListe: true, variante: "arbre" })).toThrow(/focusSurListe/);
+  l.remove();
+});
+
+test("REQ089_AC11_hote_popover_nomme_huit_lignes_visibles_et_courante_visible", () => {
+  const champ = unChamp();
+  const h = flottante(champ);
+  expect(h.tagName).toBe("DIV");
+  expect(h.getAttribute("popover")).toBe("manual");
+  const lb = h.querySelector('[role="listbox"]');
+  expect(lb.getAttribute("aria-label")).toBe("Commandes");
+  expect(lb.id).not.toBe("");
+  expect(items(h)).toHaveLength(12);
+  expect(regle(".ya-flottante .liste")).toContain("max-height: 200px");
+  expect(regle(".ya-flottante .liste")).toContain("overflow-y: auto");
+  expect(regle(".ya-flottante .liste-ligne")).toContain("height: 24px");
+  expect(regle(".ya-flottante")).toContain("padding: var(--space-1)");
+  expect(regle(".ya-flottante")).toContain("background: var(--bg-300)");
+  expect(regle(".ya-flottante")).toContain("max-width: var(--largeur-palette)");
+  // La courante reste visible.
+  const defile = vi.fn();
+  for (const o of items(h)) o.scrollIntoView = defile;
+  h.afficher();
+  touche(champ, "ArrowDown");
+  expect(defile).toHaveBeenCalledWith({ block: "nearest" });
+  // Au-dessus du champ, à 4 px.
+  expect(h.style.left).toBe("40px");
+  expect(h.style.width).toBe("300px");
+  expect(h.style.bottom).toBe(`${innerHeight - 400 + 4}px`);
+  h.masquer();
+  expect(h.isConnected).toBe(false);
+  // Pas la place de 3 lignes au-dessus : dessous, à 4 px.
+  const bas = flottante(unChamp({ left: 10, right: 110, top: 50, bottom: 80, width: 100, height: 30 }));
+  bas.afficher();
+  expect(bas.style.top).toBe("84px");
+  bas.masquer();
+  expect(() => liste({ lignes: dix, flottante: true, nom: "x" })).toThrow(/champ/);
+  expect(() => liste({ lignes: dix, flottante: true, nom: "x", pilotage: "champ", champ, variante: "arbre" })).toThrow(/flottante/);
+  expect(() => liste({ lignes: dix, flottante: true, pilotage: "champ", champ })).toThrow(/nom/);
+});
+
+test("REQ089_AC12_premiere_courante_haut_et_bas_sans_boucler", () => {
+  const champ = unChamp();
+  const h = flottante(champ);
+  document.body.append(h);
+  expect(champ.getAttribute("aria-activedescendant")).toBe(items(h)[0].id);
+  touche(champ, "ArrowUp");
+  expect(champ.getAttribute("aria-activedescendant")).toBe(items(h)[0].id);
+  for (let i = 0; i < 20; i++) touche(champ, "ArrowDown");
+  expect(champ.getAttribute("aria-activedescendant")).toBe(items(h)[11].id);
+  // Home et Fin restent au champ de texte.
+  touche(champ, "Home");
+  expect(champ.getAttribute("aria-activedescendant")).toBe(items(h)[11].id);
+  // Une nouvelle liste rend la première courante.
+  const h2 = flottante(champ, { lignes: dix.slice(2) });
+  document.body.append(h2);
+  expect(champ.getAttribute("aria-activedescendant")).toBe(items(h2)[0].id);
+  expect(items(h2)[0].classList.contains("liste-courante")).toBe(true);
+  h.remove();
+  h2.remove();
+});
+
+test("REQ089_AC14_message_en_role_status_a_la_place_des_lignes", () => {
+  const champ = unChamp();
+  const h = flottante(champ, { lignes: [], message: "Chargement…" });
+  const m = h.querySelector('[role="status"]');
+  expect(m.textContent).toBe("Chargement…");
+  expect(h.querySelector('[role="listbox"]')).toBeNull();
+  expect(champ.hasAttribute("aria-activedescendant")).toBe(false);
+  expect(regle(".ya-liste-message")).toContain("height: 24px");
+  expect(regle(".ya-liste-message")).toContain("color: var(--ink-muted)");
+  // Des lignes l'emportent sur le message.
+  expect(flottante(champ, { message: "x" }).querySelector('[role="status"]')).toBeNull();
+  expect(() => liste({ lignes: [], message: "x" })).toThrow(/message/);
+});
+
+test("REQ089_AC15_pointerdown_choisit_sans_voler_le_focus", () => {
+  const champ = unChamp();
+  const surActiver = vi.fn();
+  const h = flottante(champ, { surActiver });
+  document.body.append(h);
+  champ.focus();
+  const down = new MouseEvent("pointerdown", { bubbles: true, cancelable: true });
+  items(h)[2].dispatchEvent(down);
+  expect(down.defaultPrevented).toBe(true);
+  expect(surActiver).toHaveBeenCalledTimes(1);
+  expect(surActiver).toHaveBeenCalledWith("l2");
+  items(h)[2].click();
+  expect(surActiver).toHaveBeenCalledTimes(1);
+  expect(document.activeElement).toBe(champ);
+  h.remove();
+});
+
+test("REQ090_AC10_icone_du_type_et_dossier_dans_la_liste_flottante", () => {
+  const champ = unChamp();
+  const h = flottante(champ, { lignes: [
+    { id: "d", libelle: "src/", icone: "folder", couleurIcone: "ink-muted" },
+    { id: "f", libelle: "main.rs", icone: iconeDe("main.rs").icone, couleurIcone: iconeDe("main.rs").couleur },
+  ] });
+  const [d, f] = items(h);
+  expect(d.querySelector(".liste-icone svg").getAttribute("data-icone")).toBe("folder");
+  expect(f.querySelector(".liste-icone svg").getAttribute("data-icone")).toBe("file-code");
+  expect(f.querySelector(".liste-icone").style.getPropertyValue("--couleur-icone")).toBe("var(--ink-muted)");
+  expect(regle(".ya-flottante .liste-icone svg")).toContain("width: 15px");
+  expect(regle(".ya-flottante .liste-icone")).toContain("margin-right: 6px");
+});
+
+test("REQ091_AC7_description_sur_une_ligne_entiere_en_title_libelle_a_moitie_au_plus", () => {
+  const champ = unChamp();
+  const h = flottante(champ, { lignes: [{ id: "s", libelle: "revue-code", dossier: "Relire un diff\nen détail" }, { id: "t", libelle: "seul" }] });
+  const [s, t] = items(h);
+  const d = s.querySelector(".liste-parent");
+  expect(d.textContent).toBe("Relire un diff\nen détail");
+  expect(d.title).toBe("Relire un diff\nen détail");
+  expect(s.querySelector(".liste-libelle").title).toBe("revue-code");
+  expect(s.classList.contains("liste-decrite")).toBe(true);
+  expect(t.classList.contains("liste-decrite")).toBe(false);
+  expect(regle(".ya-flottante .liste-decrite .liste-libelle")).toContain("max-width: 50%");
+  expect(regle(".ya-flottante .liste-parent")).toContain("text-overflow: ellipsis");
+  expect(regle(".ya-flottante .liste-parent")).toContain("white-space: nowrap");
+  expect(regle(".ya-flottante .liste-parent")).toContain("margin-left: 12px");
+  expect(regle(".ya-flottante .liste-parent")).toContain("color: var(--ink-muted)");
+});

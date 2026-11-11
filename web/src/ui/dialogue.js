@@ -1,13 +1,19 @@
 const POSITIONS = ["centre", "palette", "reglages"];
 let compteur = 0;
 
-export function dialogue({ titre, contenu = [], actions = [], focusInitial, position = "centre", aide, surAnnuler }) {
+export function dialogue({ titre, contenu = [], actions = [], focusInitial, position = "centre", sansChamp = false, aide, surAnnuler }) {
   if (!titre) throw new Error("dialogue : titre requis");
-  if (!focusInitial) throw new Error("dialogue : focusInitial requis");
+  if (sansChamp && position !== "palette") throw new Error("dialogue : sansChamp demande la position « palette »");
+  if (!focusInitial && !sansChamp) throw new Error("dialogue : focusInitial requis");
   if (!surAnnuler) throw new Error("dialogue : surAnnuler requis");
   if (!POSITIONS.includes(position)) throw new Error(`dialogue : position inconnue « ${position} »`);
   const el = document.createElement("dialog");
   el.className = { centre: "dialogue", palette: "dialogue ya-palette", reglages: "dialogue ya-reglages" }[position];
+  if (sansChamp) {
+    el.classList.add("ya-palette-sans-champ");
+    el.tabIndex = -1;
+    focusInitial ??= el;
+  }
   if (position === "palette") el.setAttribute("aria-label", titre);
   else {
     const h = document.createElement("h2");
@@ -35,6 +41,14 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
     e.preventDefault();
     surAnnuler();
   });
+  // Palette sans champ : un clic sur le fond (hors du dialogue) vaut Échap.
+  if (sansChamp) {
+    el.addEventListener("click", (e) => {
+      if (e.target !== el) return;
+      const r = el.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) surAnnuler();
+    });
+  }
 
   let origine = null;
   return {
@@ -49,6 +63,11 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
       el.close();
       el.remove();
       if (rendreFocus) origine?.focus?.();
+    },
+    // Remplace le contenu (la liste arrive) et y porte le focus.
+    remplacer(noeuds, focus) {
+      corps.replaceChildren(...noeuds);
+      if (el.open) (focus ?? el).focus();
     },
     enCours(oui) {
       for (const b of actions) b.disabled = oui;

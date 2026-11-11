@@ -644,6 +644,26 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tache input { appearance: none; box-sizing: border-box; position: relative; width: 14px; height: 14px; margin: 0 6px 0 -20px; vertical-align: -2px; border: var(--trait) solid var(--ink-muted); border-radius: var(--radius-xs); opacity: 1; }
 .ya-tache input:checked::before { content: ""; position: absolute; left: 2px; top: 2px; width: 8px; height: 4px; border: solid var(--ink); border-width: 0 0 2px 2px; transform: rotate(-45deg); }
 
+/* C-006 : liste de suggestions flottante (REQ-089 à REQ-091). */
+.ya-flottante { position: fixed; inset: auto; margin: 0; box-sizing: border-box; padding: var(--space-1); border: 0; overflow: visible; max-width: var(--largeur-palette); background: var(--bg-300); color: var(--ink); border-radius: var(--radius-md); box-shadow: var(--shadow-popover); }
+.ya-flottante .liste { max-height: 200px; overflow-y: auto; }
+.ya-flottante .liste-ligne { height: 24px; gap: 0; border-radius: var(--radius-xs); font-size: 13px; }
+.ya-flottante .liste-ligne:hover:not(.liste-courante) { background: var(--bg-400); }
+.ya-flottante .liste-icone { margin-right: 6px; }
+.ya-flottante .liste-icone svg { width: 15px; height: 15px; }
+.ya-flottante .liste-libelle { flex: 0 1 auto; min-width: 0; }
+.ya-flottante .liste-decrite .liste-libelle { max-width: 50%; }
+.ya-flottante .liste-parent { flex: 1 1 0; min-width: 0; margin-left: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/16px var(--font-sans); color: var(--ink-muted); }
+.ya-liste-message { box-sizing: border-box; height: 24px; padding: 0 var(--space-2); font-size: 13px; line-height: 24px; color: var(--ink-muted); white-space: nowrap; }
+
+/* C-007 : palette sans champ, lignes avec date (REQ-088). */
+.ya-palette-sans-champ { outline: none; }
+.ya-palette-sans-champ .liste { max-height: 288px; overflow-y: auto; }
+.ya-palette-sans-champ .liste-ligne { font-size: 13px; }
+.ya-palette-sans-champ .liste-ligne:hover:not(.liste-courante) { background: var(--bg-400); }
+.ya-palette-sans-champ .liste-libelle { flex: 1 1 0; min-width: 0; }
+.ya-palette-sans-champ .ya-fin { flex: none; padding-left: 16px; white-space: nowrap; font: 12px/16px var(--font-sans); color: var(--ink-muted); }
+
 .zone-code {
   display: flex;
   height: 100%;

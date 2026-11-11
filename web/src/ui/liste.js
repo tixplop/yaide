@@ -36,8 +36,12 @@ function decouper(texte, [debut, fin]) {
   return [c.slice(0, debut).join(""), c.slice(debut, fin).join(""), c.slice(fin).join("")];
 }
 
-export function liste({ variante = "plate", lignes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, surActiver, surBasculer, surMenu, surDepot }) {
+export function liste({ variante = "plate", lignes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, flottante = false, message, nom, focusSurListe = false, surActiver, surBasculer, surMenu, surDepot }) {
   if (!VARIANTES.includes(variante)) throw new Error(`liste : variante inconnue « ${variante} »`);
+  if (flottante && (variante !== "plate" || pilotage !== "champ")) throw new Error("liste : flottante demande la variante « plate » et le pilotage « champ »");
+  if (flottante && !nom) throw new Error("liste : nom requis avec flottante");
+  if (message !== undefined && !flottante) throw new Error("liste : message demande flottante");
+  if (focusSurListe && (variante !== "plate" || pilotage === "champ")) throw new Error("liste : focusSurListe demande la variante « plate » et le pilotage « focus »");
   if (pilotage === "champ" && !champ) throw new Error("liste : champ requis avec pilotage « champ »");
   for (const l of lignes) {
     if (!l.libelle) throw new Error("liste : libelle requis");
@@ -52,6 +56,15 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
   const racine = document.createElement("div");
   racine.className = arbre ? "liste ya-tree" : "liste ya-row";
   racine.setAttribute("role", arbre ? "tree" : "listbox");
+  if (nom) racine.setAttribute("aria-label", nom);
+  // Le focus reste sur la liste elle-même : elle joue le rôle du champ relié.
+  if (focusSurListe) {
+    pilotage = "champ";
+    champ = racine;
+    racine.tabIndex = 0;
+    racine.addEventListener("pointerdown", (ev) => ev.preventDefault());
+  }
+  if (flottante) racine.id = `liste-${n}`;
   if (multiple) racine.setAttribute("aria-multiselectable", "true");
 
   const donnees = lignes.filter((l) => !l.groupe);
@@ -187,11 +200,16 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
       b.textContent = trouve;
       t.append(avant, b, apres);
     } else t.textContent = l.libelle;
+    if (flottante || l.fin) t.title = l.libelle;
     e.append(t);
     if (l.dossier) {
       const d = document.createElement("span");
       d.className = "liste-parent";
       d.textContent = l.dossier;
+      if (flottante) {
+        d.title = l.dossier;
+        e.classList.add("liste-decrite");
+      }
       e.append(d);
     }
     if (l.fin) {
@@ -212,7 +230,17 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
       m.setAttribute("aria-hidden", "true");
       e.append(m);
     }
+    if (flottante) {
+      // Le champ garde le focus : on agit au pointerdown, jamais au click.
+      e.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        if (ev.button !== 0) return;
+        marquer(l.id);
+        surActiver?.(l.id);
+      });
+    }
     e.addEventListener("click", (ev) => {
+      if (flottante) return;
       // Un clic sur une action désactivée (pointer-events: none) retombe sur la ligne : il ne l'active pas.
       if (ev.target.closest?.(".bouton-enveloppe")) return;
       if (multiple) {
@@ -426,6 +454,8 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
   function touche(e, id) {
     const i = ids.indexOf(id);
     let cible;
+    // Dans une liste flottante, Début et Fin appartiennent au champ de texte.
+    if (flottante && (e.key === "Home" || e.key === "End")) return;
     if (e.key === "ArrowDown") cible = ids[Math.min(i + 1, ids.length - 1)];
     else if (e.key === "ArrowUp") cible = ids[Math.max(i - 1, 0)];
     else if (e.key === "Home") cible = ids[0];
@@ -501,5 +531,36 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
     choisie = initiale;
     if (!initiale) for (const e of elements.values()) e.setAttribute("aria-selected", "false");
   }
-  return racine;
+  if (!flottante) return racine;
+  const hote = document.createElement("div");
+  hote.className = "ya-flottante";
+  hote.setAttribute("popover", "manual");
+  if (donnees.length) hote.append(racine);
+  else if (message) {
+    const m = document.createElement("div");
+    m.className = "ya-liste-message";
+    m.setAttribute("role", "status");
+    m.textContent = message;
+    hote.append(m);
+  }
+  // Pose la liste au-dessus du champ, à 4 px ; dessous s'il manque la place de 3 lignes.
+  hote.afficher = () => {
+    if (!hote.isConnected) document.body.append(hote);
+    hote.showPopover?.();
+    const r = champ.getBoundingClientRect();
+    hote.style.left = `${r.left}px`;
+    hote.style.width = `${r.width}px`;
+    if (r.top >= 3 * 24 + 8 + 4) {
+      hote.style.top = "auto";
+      hote.style.bottom = `${window.innerHeight - r.top + 4}px`;
+    } else {
+      hote.style.bottom = "auto";
+      hote.style.top = `${r.bottom + 4}px`;
+    }
+  };
+  hote.masquer = () => {
+    hote.hidePopover?.();
+    hote.remove();
+  };
+  return hote;
 }

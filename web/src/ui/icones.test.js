@@ -190,3 +190,16 @@ test("REQ084_icone_brain_au_trait_lucide_et_sans_doublon", () => {
   expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("brain");
   expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
 });
+
+test("REQ088_AC12_messages_square_au_trait_lucide_et_distincte_des_autres", () => {
+  expect(NOMS).toContain("messages-square");
+  const s = icone("messages-square", 20);
+  expect(s.getAttribute("viewBox")).toBe("0 0 24 24");
+  expect(s.getAttribute("stroke-width")).toBe("1.6");
+  expect(s.getAttribute("aria-hidden")).toBe("true");
+  expect(s.innerHTML).toContain('d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"');
+  expect(s.innerHTML).toContain('d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"');
+  expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("messages-square");
+  expect(icone("messages-square").innerHTML).not.toBe(icone("history").innerHTML);
+  expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
+});
