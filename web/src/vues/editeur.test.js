@@ -1355,6 +1355,41 @@ test("REQ078_sous_agent_opencode_reste_un_onglet_opencode", async () => {
   expect(g.liste).toEqual([ocGarde("s", 1), saGarde("sa", "explore", "Chercher"), agGarde(1), agGarde(2)]);
 });
 
+test("REQ088_AC4_AC5_session_rouverte_onglet_titre_puis_meme_onglet", () => {
+  const { e } = monterOc();
+  e.ouvrirOpencode({ sessionId: "s1", titre: "Corriger parse_args" });
+  e.ouvrirOpencode({ sessionId: "s2" });
+  expect(nomsOnglets()).toEqual(["opencode 1", "opencode 2"]);
+  expect(onglet("opencode 1").title).toBe("Corriger parse_args");
+  expect(onglet("opencode 2").title).toBe("opencode dans ~/code/projet");
+  e.ouvrirOpencode({ sessionId: "s1", titre: "Autre" });
+  expect(nomsOnglets()).toEqual(["opencode 1", "opencode 2"]);
+  expect(actifNom()).toBe("opencode 1");
+  expect(onglet("opencode 1").title).toBe("Corriger parse_args");
+  expect(document.activeElement).toBe(faux.oc[0].cible);
+  expect(faux.oc).toHaveLength(2);
+});
+
+test("REQ088_AC7_titre_garde_restaure_et_fermeture_sans_requete", async () => {
+  gardes([], null);
+  const { e } = monterOc({}, true);
+  await e.restaurer();
+  const { ecrire } = await import("../stockage.js");
+  ecrire.mockClear();
+  e.ouvrirOpencode({ sessionId: "s1", titre: "Corriger parse_args" });
+  const g = await derniereGarde();
+  expect(g.liste).toEqual([{ ...ocGarde("s1", 1), titre: "Corriger parse_args" }]);
+  fetch.mockClear();
+  croix("opencode 1").click();
+  expect(fetch).not.toHaveBeenCalled();
+  e.detruire();
+  document.body.replaceChildren();
+  gardes([{ ...ocGarde("s1", 1), titre: "Corriger parse_args" }], "\0oc:s1");
+  const { e: e2 } = monterOc({}, true);
+  await e2.restaurer();
+  expect(onglet("opencode 1").title).toBe("Corriger parse_args");
+});
+
 // ---- REQ-086 : fichier d'un autre worktree ----
 
 test("REQ086_AC4_onglet_d_un_autre_worktree_fil_sans_points_info_bulle_lettre_et_ecriture", async () => {

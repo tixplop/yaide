@@ -816,6 +816,38 @@ describe("vue opencode sur les captures", () => {
     expect(fil.querySelector(".ya-raison-zone").hidden).toBe(true);
   });
 
+  it("REQ088_AC6_session_rouverte_avec_un_tour_en_cours_suite_en_direct", async () => {
+    FauxEventSource.instances = [];
+    vi.stubGlobal("EventSource", FauxEventSource);
+    monde(texte);
+    const id = texte.racine;
+    const base = globalThis.fetch;
+    const user = texte.messages[id].data[0];
+    const assistant = texte.messages[id].data[1];
+    const enCours = { ...assistant, time: { created: assistant.time.created }, content: [{ type: "text", text: "Voici une " }] };
+    vi.stubGlobal("fetch", vi.fn(async (url, options) => (/^\/api\/opencode\/api\/session\/[^/?]+\/message/.test(url) ? reponseHttp(200, { data: [user, enCours], cursor: {} }) : base(url, options))));
+    const vue = vueOpencode({ sessionId: id, titre: "Session lancée ailleurs" });
+    vues.push(vue);
+    document.body.append(vue.corps);
+    FauxEventSource.instances.at(-1).ouvrir();
+    await oc.pret(id);
+    await vi.advanceTimersByTimeAsync(0);
+    const fil = document.querySelector("[role=log]");
+    expect(fil.textContent).toContain("Voici une");
+    expect(btn("Arrêter").closest("[hidden]")).toBeNull();
+    taper("suite");
+    expect(btn("Envoyer").disabled).toBe(true);
+    const d = { sessionID: id, assistantMessageID: assistant.id, ordinal: 0 };
+    const flux = FauxEventSource.instances.at(-1);
+    flux.emettre({ type: "session.text.delta", data: { ...d, delta: "**réponse** en direct" } });
+    expect(fil.querySelector(".ya-chat-agent strong").textContent).toBe("réponse");
+    expect(fil.textContent).toContain("en direct");
+    expect(btn("Arrêter").closest("[hidden]")).toBeNull();
+    flux.emettre({ type: "session.execution.succeeded", data: { sessionID: id } });
+    expect(btn("Arrêter").closest("[hidden]")).not.toBeNull();
+    expect(btn("Envoyer").disabled).toBe(false);
+  });
+
   it("REQ072_AC6_arreter_puis_arrete_captures", async () => {
     const { id, ecritures } = await monterCapture(interruption);
     const fin = indexDe(interruption, "session.execution.interrupted");

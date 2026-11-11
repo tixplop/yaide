@@ -1,7 +1,8 @@
 import { afterEach, expect, test, vi } from "vitest";
+import * as oc from "../opencode.js";
 import * as worktree from "../worktree.js";
 import { ecrire, lire } from "../stockage.js";
-import { monter, attendre, avecHorloge, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne } from "./principale.aides.js";
+import { monter, attendre, avecHorloge, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne, simulerOpencode, boutonClaudeDe, ongletsOc, nomDuChamp, nomsRailDroit } from "./principale.aides.js";
 
 vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
@@ -663,4 +664,59 @@ test("REQ086_AC8_git_desactive_aucune_requete_git_ni_ligne_worktree", async () =
   await attendre();
   expect(appels.some((u) => u.startsWith("/api/git/"))).toBe(false);
   expect(vue.querySelector("aside select")).toBeNull();
+});
+
+// ---- REQ-088 : « Sessions opencode » ----
+
+const boutonSessionsDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label='Sessions opencode']");
+
+test("REQ088_AC1_AC12_bouton_sous_opencode_seulement_si_detecte", async () => {
+  simulerOpencode();
+  const a = monter().vue;
+  await vi.waitFor(() => expect(boutonSessionsDe(a)).not.toBeNull());
+  const noms = nomsRailDroit(a);
+  expect(noms.slice(-2)).toEqual(["opencode", "Sessions opencode"]);
+  const b = boutonSessionsDe(a);
+  expect(b.getAttribute("aria-haspopup")).toBe("dialog");
+  expect(b.querySelector("svg")).not.toBeNull();
+  b.parentElement.dispatchEvent(new Event("pointerenter"));
+  await vi.waitFor(() => expect(document.querySelector("[role=tooltip]").textContent).toBe("Sessions opencode"));
+  expect(b.hasAttribute("aria-keyshortcuts")).toBe(false);
+  expect(b.hasAttribute("data-actif")).toBe(false);
+  const ordre = [...a.querySelectorAll("button")].filter((x) => x.tabIndex >= 0).map((x) => x.getAttribute("aria-label"));
+  expect(ordre[ordre.indexOf("opencode") + 1]).toBe("Sessions opencode");
+  simulerOpencode({ opencode: false });
+  const c = monter().vue;
+  await vi.waitFor(() => expect(boutonClaudeDe(c)).not.toBeNull());
+  expect(boutonSessionsDe(c)).toBeNull();
+});
+
+test("REQ088_AC4_AC12_choix_ouvre_un_onglet_sans_creer_de_session_ni_choisir_de_modele", async () => {
+  const appels = simulerOpencode();
+  const base = globalThis.fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url, opts) => {
+    if (String(url).startsWith("/api/opencode/api/session?")) {
+      appels.push(`GET ${url}`);
+      return { ok: true, status: 200, text: async () => JSON.stringify({ data: [{ id: "ses_a", title: "Corriger parse_args", time: { updated: 5, busy: 5 } }] }) };
+    }
+    return base(url, opts);
+  }));
+  const reprise = vi.spyOn(oc, "reprendreDernierChoix");
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonSessionsDe(vue)).not.toBeNull());
+  const b = boutonSessionsDe(vue);
+  b.focus();
+  b.click();
+  await vi.waitFor(() => expect(document.querySelector("dialog [role=option]")).not.toBeNull());
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  document.querySelector("dialog [role=listbox]").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(ongletsOc(vue)).toHaveLength(1));
+  expect(ongletsOc(vue)[0].getAttribute("aria-selected")).toBe("true");
+  expect(ongletsOc(vue)[0].title).toBe("Corriger parse_args");
+  expect(nomDuChamp(document.activeElement)).toBe("Message à opencode");
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  expect(appels.filter((a) => a.startsWith("POST /api/opencode/api/session"))).toEqual([]);
+  expect(appels.some((a) => a.includes("/model"))).toBe(false);
+  expect(reprise).not.toHaveBeenCalled();
 });

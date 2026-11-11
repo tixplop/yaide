@@ -19,14 +19,15 @@ export function formaterTokens(n) {
   return `${String(Math.floor(n / 100_000) / 10).replace(".", ",")} M`;
 }
 
-/** Heure d'une conversation (aujourd'hui), « hier » ou la date courte (« 4 nov. »). */
-export function quand(ms, maintenant = new Date()) {
+/** Heure d'une conversation (aujourd'hui), « hier » ou la date courte (« 4 nov. ») ; `avecAnnee` : « 12 déc. 2025 » hors de l'année en cours. */
+export function quand(ms, maintenant = new Date(), avecAnnee = false) {
   const d = new Date(ms);
   const jour = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const ecart = Math.round((jour(maintenant) - jour(d)) / 86_400_000);
   if (ecart === 0) return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
   if (ecart === 1) return "hier";
-  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  const autreAnnee = avecAnnee && d.getFullYear() !== maintenant.getFullYear();
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", ...(autreAnnee ? { year: "numeric" } : {}) });
 }
 
 /**

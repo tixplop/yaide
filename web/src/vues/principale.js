@@ -6,6 +6,7 @@ import { ecrire, lire } from "../stockage.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { reprendreDernierChoix } from "../opencode.js";
+import { vueSessionsOpencode } from "./sessions-opencode.js";
 import { surveiller } from "../connexion.js";
 import { changerTheme, themeCourant } from "../ui/theme.js";
 import { vueAgents } from "./agents.js";
@@ -82,6 +83,14 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (r.erreur !== undefined || id === undefined) return dire({ texte: `Impossible d'ouvrir une session opencode : ${String(r.erreur ?? "réponse illisible").replace(/\.$/, "")}.`, variante: "alerte", fermable: true });
     editeur.ouvrirOpencode({ sessionId: id });
   });
+  const boutonSessions = bouton({ icone: "messages-square", nomAccessible: "Sessions opencode", positionInfoBulle: "gauche" });
+  boutonSessions.setAttribute("aria-haspopup", "dialog");
+  const sessions = vueSessionsOpencode({
+    chemin,
+    surEtat: (ouvert) => boutonSessions.definirOuvert(ouvert),
+    surChoix: ({ id, titre }) => editeur.ouvrirOpencode({ sessionId: id, titre }),
+  });
+  boutonSessions.addEventListener("click", () => sessions.ouvrir());
   boutonAgent.addEventListener("click", () => ouvrirConversation());
   boutonAgents.addEventListener("click", entrerDansAgents);
   repliAgent.addEventListener("click", () => {
@@ -315,7 +324,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   Promise.all([avec.claude ? claudeDisponible() : false, opencodeDisponible()]).then(([claude, opencode]) => {
     if (detruite) return;
     if (claude) racine.ajouterCommandeDroite(boutonClaude.enveloppe);
-    if (opencode) racine.ajouterCommandeDroite(boutonOpencode.enveloppe);
+    if (opencode) {
+      racine.ajouterCommandeDroite(boutonOpencode.enveloppe);
+      racine.ajouterCommandeDroite(boutonSessions.enveloppe);
+    }
   });
 
   // Sans shell à l'arrivée : la zone reste hors page le temps de lire la liste.
@@ -477,6 +489,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     desabonnerWorktree();
     arreter();
     detruite = true;
+    sessions.detruire();
     window.removeEventListener("resize", recalculer);
     observateur?.disconnect();
     document.removeEventListener("keydown", surTouche);

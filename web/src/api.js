@@ -341,6 +341,8 @@ export const session = (id) => appelOpencode(`/session/${q(id)}`);
 /** Une page de l'historique, du plus ancien au plus récent ; `curseur` : `cursor.next` de la page précédente. */
 export const messages = (id, curseur) => appelOpencode(`/session/${q(id)}/message?limit=200&${curseur ? `cursor=${q(curseur)}` : "order=asc"}`);
 export const sessionsFilles = (id) => appelOpencode(`/session?parentID=${q(id)}`);
+/** Sessions racines du dossier du projet, la plus récente d'abord (50 par défaut) : `{ donnees: { data: [...] } }`. */
+export const sessionsOpencode = (dossier) => appelOpencode(`/session?directory=${q(dossier)}&parentID=null&order=desc`);
 const pieces = ({ files, skills } = {}) => ({ ...(files?.length ? { files } : {}), ...(skills?.length ? { skills } : {}) });
 export const envoyer = (id, texte, joints) => appelOpencode(`/session/${q(id)}/prompt`, json("POST", { text: texte, ...pieces(joints) }));
 const lieu = (dossier) => `location%5Bdirectory%5D=${q(dossier)}`;

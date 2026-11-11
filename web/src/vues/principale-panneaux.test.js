@@ -610,7 +610,7 @@ test("REQ072_AC1_bouton_selon_la_detection", async () => {
   simulerOpencode();
   const a = monter().vue;
   await vi.waitFor(() => expect(boutonOcDe(a)).not.toBeNull());
-  expect(nomsRailDroit(a)).toEqual(["Agent", "Agents", "Claude", "opencode"]);
+  expect(nomsRailDroit(a)).toEqual(["Agent", "Agents", "Claude", "opencode", "Sessions opencode"]);
   expect(icone(boutonOcDe(a))).toBe("code-xml");
   simulerOpencode({ opencode: false });
   const b = monter().vue;
@@ -735,7 +735,7 @@ test("REQ028_AC8_ordre_de_tab_avec_opencode", async () => {
   simulerOpencode();
   const { vue } = monter();
   await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
-  expect(nomsRailDroit(vue)).toEqual(["Agent", "Agents", "Claude", "opencode"]);
+  expect(nomsRailDroit(vue)).toEqual(["Agent", "Agents", "Claude", "opencode", "Sessions opencode"]);
   const rail = [...vue.querySelectorAll(".cadre-rail-droit button")];
   expect(rail.every((e) => e.tabIndex >= 0)).toBe(true);
   // Dans le document, « opencode » suit « Claude ».
@@ -759,14 +759,14 @@ test("REQ070_AC20_agents_ou_claude_desactives_avec_opencode", async () => {
   simulerOpencode();
   const a = monter({ reglages: { fonctions: { claude: false } } }).vue;
   await vi.waitFor(() => expect(boutonOcDe(a)).not.toBeNull());
-  expect(nomsRailDroit(a)).toEqual(["Agent", "Agents", "opencode"]);
+  expect(nomsRailDroit(a)).toEqual(["Agent", "Agents", "opencode", "Sessions opencode"]);
   const b = monter({ reglages: { fonctions: { agents: false, claude: false } } }).vue;
   await vi.waitFor(() => expect(boutonOcDe(b)).not.toBeNull());
-  expect(nomsRailDroit(b)).toEqual(["opencode"]);
+  expect(nomsRailDroit(b)).toEqual(["opencode", "Sessions opencode"]);
   expect(b.querySelector(".cadre-rail-droit")).not.toBeNull();
   const c = monter({ reglages: { fonctions: { agents: false } } }).vue;
   await vi.waitFor(() => expect(boutonOcDe(c)).not.toBeNull());
-  expect(nomsRailDroit(c)).toEqual(["Claude", "opencode"]);
+  expect(nomsRailDroit(c)).toEqual(["Claude", "opencode", "Sessions opencode"]);
 });
 
 test("REQ078_AC16_demarrer_en_coupure_bandeau_sans_onglet", async () => {

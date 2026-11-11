@@ -46,7 +46,7 @@ const avecApercu = (chemin) => /\.(md|markdown|html|htm)$/i.test(chemin);
  * Un onglet Agent (REQ-078) l'est aussi : `{ conversationAgent: true, numero, conversation }` (`conversation` : `null` tant que rien n'est écrit).
  * Le champ `agent` d'un onglet désigne un sous-agent opencode : l'onglet Agent a son propre drapeau.
  * Chaque onglet a un `groupe` ; `barre`, `fil`, `code` et `question` sont ceux du premier groupe, `groupes()` rend l'arbre de tous.
- * Rend `{ definirStatuts(statuts), barre, fil, code, groupes(), questions(), deplacer(id, groupe, zone), lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirAgent({ equipe }), relireReglagesAgents(), ouvrirOpencode({ sessionId }), renomme(…), supprime(…), restaurer(), detruire() }`.
+ * Rend `{ definirStatuts(statuts), barre, fil, code, groupes(), questions(), deplacer(id, groupe, zone), lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirAgent({ equipe }), relireReglagesAgents(), ouvrirOpencode({ sessionId, titre }), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
 export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {}, surGroupes = () => {}, claude = true, agents = true }) {
   const liste = []; // { chemin, groupe, zone, disque (texte de base), version (de base), apercu, hybride, modifie, question, supprime, avis }
@@ -253,7 +253,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   function garde(o) {
     if (o.claude) return { groupe: o.groupe, claude: true, id: o.id, numero: o.numero, instance: o.instance };
     if (o.conversationAgent) return { groupe: o.groupe, conversationAgent: true, numero: o.numero, conversation: o.conversation };
-    if (o.opencode) return o.agent === undefined ? { groupe: o.groupe, opencode: true, id: o.id, numero: o.numero } : { groupe: o.groupe, opencode: true, id: o.id, agent: o.agent, titre: o.titre };
+    if (o.opencode) return o.agent === undefined ? { groupe: o.groupe, opencode: true, id: o.id, numero: o.numero, ...(o.titre === undefined ? {} : { titre: o.titre }) } : { groupe: o.groupe, opencode: true, id: o.id, agent: o.agent, titre: o.titre };
     return { groupe: o.groupe, chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) };
   }
 
@@ -427,7 +427,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   /** Entrée de la barre d'un onglet opencode : icône, `title` et nom accessible (le sous-agent dit son titre). */
   function ongletOpencode(x, libelle) {
     const sous = x.agent === undefined ? {} : { nomAccessible: `${libelle}, sous-agent : ${x.titre}` };
-    const titre = x.agent === undefined ? `opencode dans ${cheminProjet}` : x.titre;
+    const titre = x.agent === undefined ? x.titre ?? `opencode dans ${cheminProjet}` : x.titre;
     return { id: x.chemin, libelle, icone: "code-xml", titre, question: x.marque, fermable: true, ...sous };
   }
 
@@ -649,8 +649,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   function creerOpencode({ id, numero, agent, titre }, apres) {
     const o = { opencode: true, id, groupe: courant, chemin: OPENCODE + id, modifie: false, marque: false };
-    if (agent === undefined) o.numero = numero;
-    else Object.assign(o, { agent, titre });
+    if (agent === undefined) {
+      o.numero = numero;
+      if (typeof titre === "string" && titre) o.titre = titre; // session rouverte par « Sessions opencode »
+    } else Object.assign(o, { agent, titre });
     o.vue = vueOpencode({
       sessionId: id,
       cheminProjet,
@@ -672,9 +674,9 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   }
 
   /** Ouvre « opencode <n> » (plus petit numéro libre) à droite des onglets, actif, le focus dans « Message à opencode ». */
-  function ouvrirOpencode({ sessionId }) {
+  function ouvrirOpencode({ sessionId, titre }) {
     dernierGeste++;
-    const o = trouver(OPENCODE + sessionId) ?? creerOpencode({ id: sessionId, numero: plusPetitNumeroLibre(liste.filter((x) => x.numero !== undefined && x.opencode).map((x) => x.numero)) });
+    const o = trouver(OPENCODE + sessionId) ?? creerOpencode({ id: sessionId, titre, numero: plusPetitNumeroLibre(liste.filter((x) => x.numero !== undefined && x.opencode).map((x) => x.numero)) });
     activerOpencode(o);
   }
 
