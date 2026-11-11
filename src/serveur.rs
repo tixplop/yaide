@@ -1,5 +1,6 @@
 use crate::agent::agents::Agents;
 use crate::agent::conversation::{ErreurEnvoi, Gestionnaire};
+use crate::agent::mcp;
 use crate::agent::outils::Limites;
 use crate::agent::reglages::{Erreur, Reglages};
 use crate::{
@@ -1115,6 +1116,89 @@ async fn agent_supprimer_profil(
     reponse_reglages(&etat, etat.reglages.supprimer_profil(&id))
 }
 
+fn reponse_mcp(r: Result<Vec<mcp::Serveur>, mcp::ErreurMcp>) -> Response {
+    use mcp::ErreurMcp;
+    match r {
+        Ok(l) => json_rep(
+            StatusCode::OK,
+            serde_json::json!({ "serveurs": l.iter().map(mcp::Serveur::json).collect::<Vec<_>>() }),
+        ),
+        Err(ErreurMcp::Refus(r)) => {
+            let erreurs: serde_json::Map<String, serde_json::Value> = r
+                .iter()
+                .map(|r| (r.champ.to_string(), r.message.into()))
+                .collect();
+            json_rep(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                serde_json::json!({ "erreurs": erreurs }),
+            )
+        }
+        Err(ErreurMcp::Illisible(p)) => json_rep(
+            StatusCode::CONFLICT,
+            serde_json::json!({ "cause": "illisible", "message": p.message, "detail": p.detail }),
+        ),
+        Err(ErreurMcp::Inconnu) => json_rep(
+            StatusCode::NOT_FOUND,
+            serde_json::json!({ "cause": "inconnu", "message": "Ce serveur n'est plus dans .yaide/mcp.json." }),
+        ),
+        Err(ErreurMcp::Systeme(m)) => json_rep(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "cause": "ecriture", "message": m }),
+        ),
+    }
+}
+
+/// Relit `.yaide/mcp.json` ; ne crée rien.
+async fn mcp_liste(State(etat): State<Partage>) -> Response {
+    reponse_mcp(mcp::lister_serveurs(&etat.projet_dir).map_err(mcp::ErreurMcp::Illisible))
+}
+
+/// `{ ancien?, nom, command, args: [ligne], env: [ligne NOM=valeur] }`.
+async fn mcp_enregistrer(State(etat): State<Partage>, corps: Bytes) -> Response {
+    let Some(v) = corps_json(&corps) else {
+        return corps_invalide();
+    };
+    let lignes = |k: &str| -> Option<Vec<String>> {
+        match &v[k] {
+            serde_json::Value::Null => Some(Vec::new()),
+            serde_json::Value::Array(a) => {
+                a.iter().map(|x| x.as_str().map(str::to_string)).collect()
+            }
+            _ => None,
+        }
+    };
+    let (Some(nom), Some(command), Some(args), Some(env)) = (
+        v["nom"].as_str(),
+        v["command"].as_str(),
+        lignes("args"),
+        lignes("env"),
+    ) else {
+        return corps_invalide();
+    };
+    let saisie = mcp::Saisie {
+        nom: nom.to_string(),
+        command: command.to_string(),
+        args,
+        env,
+    };
+    let dossier = etat.projet_dir.clone();
+    let ancien = v["ancien"].as_str().map(str::to_string);
+    let r = tokio::task::spawn_blocking(move || {
+        mcp::enregistrer_serveur(&dossier, ancien.as_deref(), &saisie)
+    })
+    .await
+    .unwrap_or_else(|e| Err(mcp::ErreurMcp::Systeme(e.to_string())));
+    reponse_mcp(r)
+}
+
+async fn mcp_supprimer(State(etat): State<Partage>, CheminUrl(nom): CheminUrl<String>) -> Response {
+    let dossier = etat.projet_dir.clone();
+    let r = tokio::task::spawn_blocking(move || mcp::supprimer_serveur(&dossier, &nom))
+        .await
+        .unwrap_or_else(|e| Err(mcp::ErreurMcp::Systeme(e.to_string())));
+    reponse_mcp(r)
+}
+
 async fn agents_liste(State(etat): State<Partage>) -> Response {
     json_rep(
         StatusCode::OK,
@@ -1314,6 +1398,9 @@ pub async fn servir(
             "/api/agent/agents",
             get(agents_liste).put(agents_enregistrer),
         )
+        .route("/api/agent/mcp", get(mcp_liste))
+        .route("/api/agent/mcp/serveurs", put(mcp_enregistrer))
+        .route("/api/agent/mcp/serveurs/{nom}", delete(mcp_supprimer))
         .route("/api/agent/messages", post(agent_message))
         .route("/api/agent/conversations", get(agent_conversations))
         .route("/api/agent/conversations/{id}", get(agent_conversation))

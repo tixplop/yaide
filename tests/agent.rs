@@ -1117,3 +1117,105 @@ fn signal_arrete_le_serveur_mcp(signal: &str) {
         );
     }
 }
+
+#[test]
+fn REQ096_routes_lire_ecrire_refuser_supprimer_et_fichier_illisible() {
+    let s = lancer("mcp-routes");
+    let fichier = s.projet.join(".yaide/mcp.json");
+    // Absent : liste vide, rien créé.
+    let r = s.appel("GET", "/api/agent/mcp", &Value::Null);
+    assert_eq!((r.code, r.json()["serveurs"].clone()), (200, json!([])));
+    assert!(!s.projet.join(".yaide/mcp.json").exists());
+
+    // Ajout puis lecture.
+    let r = s.appel(
+        "PUT",
+        "/api/agent/mcp/serveurs",
+        &json!({"nom": "docs", "command": "mcp-docs", "args": ["--port", "0"], "env": ["A=1"]}),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let r = s.appel("GET", "/api/agent/mcp", &Value::Null);
+    let l = r.json()["serveurs"].clone();
+    assert_eq!(l[0]["nom"], "docs");
+    assert_eq!(l[0]["command"], "mcp-docs");
+    assert_eq!(l[0]["args"], json!(["--port", "0"]));
+    assert_eq!(l[0]["env"], json!([["A", "1"]]));
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(&fichier).unwrap()).unwrap();
+    assert_eq!(v["mcpServers"]["docs"]["env"]["A"], "1");
+
+    // Modification (renommage), refus 422 avec tous les motifs, serveur inconnu.
+    let r = s.appel(
+        "PUT",
+        "/api/agent/mcp/serveurs",
+        &json!({"ancien": "docs", "nom": "docs2", "command": "x"}),
+    );
+    assert_eq!(r.code, 200);
+    assert_eq!(r.json()["serveurs"][0]["nom"], "docs2");
+    let avant = std::fs::read_to_string(&fichier).unwrap();
+    let r = s.appel(
+        "PUT",
+        "/api/agent/mcp/serveurs",
+        &json!({"nom": "", "command": "", "env": ["x"]}),
+    );
+    assert_eq!(r.code, 422);
+    assert_eq!(
+        r.json(),
+        json!({"erreurs": {
+            "nom": "Donnez un nom au serveur.",
+            "command": "Donnez la commande qui lance le serveur.",
+            "env": "Variables : une par ligne, sous la forme NOM=valeur."
+        }})
+    );
+    let r = s.appel(
+        "PUT",
+        "/api/agent/mcp/serveurs",
+        &json!({"nom": "DOCS2", "command": "x"}),
+    );
+    assert_eq!(r.code, 422);
+    let r = s.appel(
+        "PUT",
+        "/api/agent/mcp/serveurs",
+        &json!({"ancien": "absent", "nom": "n", "command": "x"}),
+    );
+    assert_eq!((r.code, r.json()["cause"].clone()), (404, json!("inconnu")));
+    assert_eq!(
+        s.appel("PUT", "/api/agent/mcp/serveurs", &json!({"nom": 3}))
+            .code,
+        400
+    );
+    assert_eq!(std::fs::read_to_string(&fichier).unwrap(), avant);
+
+    // Suppression.
+    assert_eq!(
+        s.appel("DELETE", "/api/agent/mcp/serveurs/absent", &Value::Null)
+            .code,
+        404
+    );
+    let r = s.appel("DELETE", "/api/agent/mcp/serveurs/docs2", &Value::Null);
+    assert_eq!((r.code, r.json()["serveurs"].clone()), (200, json!([])));
+
+    // Illisible : 409 avec le message de l'analyseur, fichier intact.
+    std::fs::write(&fichier, "{\"mcpServers\": ").unwrap();
+    for (m, c, corps) in [
+        ("GET", "/api/agent/mcp", Value::Null),
+        (
+            "PUT",
+            "/api/agent/mcp/serveurs",
+            json!({"nom": "a", "command": "b"}),
+        ),
+        ("DELETE", "/api/agent/mcp/serveurs/a", Value::Null),
+    ] {
+        let r = s.appel(m, c, &corps);
+        assert_eq!(r.code, 409, "{m}");
+        assert_eq!(r.json()["cause"], "illisible");
+        assert_eq!(
+            r.json()["message"],
+            ".yaide/mcp.json est illisible. Corrigez-le dans l'éditeur, puis rouvrez Serveurs MCP."
+        );
+        assert!(r.json()["detail"].as_str().unwrap().contains("EOF"));
+    }
+    assert_eq!(
+        std::fs::read_to_string(&fichier).unwrap(),
+        "{\"mcpServers\": "
+    );
+}
