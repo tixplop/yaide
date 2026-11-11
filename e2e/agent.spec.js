@@ -182,7 +182,7 @@ test("REQ056_parcours_19_regler_l_agent_et_corriger_un_fichier", async ({ page }
   expect(premiere.chemin).toBe("/v1/messages");
   expect(premiere.entetes["x-api-key"]).toBe("sk-test");
   expect(JSON.stringify(premiere.corps)).toContain("regle-maison-42");
-  expect(premiere.corps.tools.map((t) => t.name).sort()).toEqual(["bash", "edit", "glob", "read", "webfetch", "websearch", "write"]);
+  expect(premiere.corps.tools.map((t) => t.name).sort()).toEqual(["bash", "edit", "glob", "list_agents", "read", "save_agent", "webfetch", "websearch", "write"]);
   expect(JSON.stringify(faux.recues[1].corps.messages)).toContain("Exit code: 101");
   expect(faux.recues).toHaveLength(4);
 });

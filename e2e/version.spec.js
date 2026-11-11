@@ -90,8 +90,9 @@ cp "$f" "$out"
         const coupes = [".ya-status-maj .message", ".ya-status-maj button", ".ya-status-version"].filter(coupe);
         return { n: enfants.length, superpose, hors, lignes, coupes, defile: document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight };
       });
+    // La mise en page de l'application peut encore se stabiliser juste après le chargement : on attend le résultat attendu.
+    await expect.poll(mise_en_page, { timeout: 5000 }).toMatchObject({ superpose: false, hors: false, lignes: 1, coupes: [], defile: false });
     const m1 = await mise_en_page();
-    expect(m1).toMatchObject({ superpose: false, hors: false, lignes: 1, coupes: [], defile: false });
     expect(m1.n).toBeGreaterThanOrEqual(3);
     await page.screenshot({ path: path.join(racine, "etape1.png") });
 
