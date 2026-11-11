@@ -9,6 +9,10 @@
 // (`[scenario:xxx]` dans le message l'emporte), FAUX_OPENCODE_PAS (ms) espace les événements.
 // FAUX_OPENCODE_RETENIR=<type d'événement> : au premier tour, après le premier événement de ce type, attend que
 // le fichier `<FAUX_OPENCODE_ETAT sans extension>.suite` existe.
+// Sessions du projet (REQ-088) : une session de l'état peut avoir `updated` et `busy` (absent : jamais de tour) ;
+// `GET /api/session` filtre par `directory` et `parentID` (`null` : racines) et trie par `order`. Commandes, skills et
+// `fs/find` (REQ-089 à REQ-091) ont des données fixes. Les corps reçus de `prompt` et de `command` sont notés, un par
+// ligne `{ chemin, corps }`, dans `<FAUX_OPENCODE_ETAT>.corps`.
 // Une autorisation ou une question en attente bloque la suite jusqu'à sa réponse, « interrupt » arrête un tour
 // interrompu dans le relevé, et l'outil `write` écrit son fichier dans le dossier du projet.
 import http from "node:http";
@@ -55,10 +59,36 @@ const donneesSession = (s) => ({
   projectID: "global",
   ...(s.parentID ? { parentID: s.parentID, agent: s.agent } : {}),
   title: s.title ?? "",
-  time: { created: 1, updated: 1 },
+  time: { created: 1, updated: s.updated ?? 1, ...(s.busy ? { busy: s.busy } : {}) },
   location: { directory: s.directory },
   ...(s.model ? { model: s.model } : {}),
 });
+
+const COMMANDES = [
+  { name: "init", description: "Créer ou mettre à jour AGENTS.md" },
+  { name: "review", description: "Relire les changements" },
+  { name: "goal", description: "Fixer un objectif" },
+  { name: "release", description: "Préparer une version" },
+];
+const SKILLS = [
+  { id: "opencode", name: "OpenCode", description: "Configurer opencode.\nCe skill décrit les fichiers de configuration, les agents, les commandes, les modèles et les fournisseurs, avec des exemples complets pour chaque clé et chaque option disponible." },
+  { id: "openapi-client", name: "OpenAPI client", description: "Générer un client." },
+];
+
+/** Fichiers et dossiers du dossier (deux niveaux, sans `.git`) dont le chemin contient `query` ; le projet lui-même d'abord. */
+function trouver(dossier, query, limite) {
+  const trouves = [{ path: "/", type: "directory" }];
+  const parcourir = (rel, niveau) => {
+    for (const e of fs.readdirSync(path.join(dossier, rel), { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (e.name === ".git") continue;
+      const chemin = rel + e.name + (e.isDirectory() ? "/" : "");
+      if (chemin.includes(query)) trouves.push({ path: chemin, type: e.isDirectory() ? "directory" : "file" });
+      if (e.isDirectory() && niveau < 2) parcourir(chemin, niveau + 1);
+    }
+  };
+  parcourir("", 1);
+  return trouves.slice(0, limite + 1);
+}
 
 // Modèles de P-038 (REQ-074), plus un modèle inactif.
 const MODELES = [
@@ -251,7 +281,16 @@ function gerer(req, res, chemin, url) {
       json(res, 200, { data: donneesSession(sessions[id]) });
     } else if (req.method === "GET" && chemin === "/api/session") {
       const parent = url.searchParams.get("parentID");
-      json(res, 200, { data: Object.values(sessions).filter((s) => !parent || s.parentID === parent).map(donneesSession) });
+      const dossier = url.searchParams.get("directory");
+      const liste = Object.values(sessions).filter((s) => (!dossier || s.directory === dossier) && (!parent || (parent === "null" ? !s.parentID : s.parentID === parent)));
+      if (url.searchParams.get("order") === "desc") liste.sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0));
+      json(res, 200, { data: liste.map(donneesSession) });
+    } else if (req.method === "GET" && chemin === "/api/command") {
+      json(res, 200, { data: COMMANDES });
+    } else if (req.method === "GET" && chemin === "/api/skill") {
+      json(res, 200, { data: SKILLS });
+    } else if (req.method === "GET" && chemin === "/api/fs/find") {
+      json(res, 200, { data: trouver(url.searchParams.get("location[directory]") ?? process.cwd(), url.searchParams.get("query") ?? "", Number(url.searchParams.get("limit") ?? 20)) });
     } else if ((m = /^\/api\/session\/([^/]+)(\/.*)?$/.exec(chemin))) {
       const s = sessions[decodeURIComponent(m[1])];
       const suite = m[2] ?? "";
@@ -266,7 +305,9 @@ function gerer(req, res, chemin, url) {
         garder();
         diffuser({ type: "session.model.selected", data: { sessionID: s.id, model: s.model } });
         res.writeHead(204).end();
-      } else if (req.method === "POST" && suite === "/prompt") {
+      } else if (req.method === "POST" && (suite === "/prompt" || suite === "/command")) {
+        fs.appendFileSync(`${ETAT}.corps`, JSON.stringify({ chemin: suite.slice(1), corps }) + "\n");
+        if (suite === "/command") corps.text = `/${corps.name} ${corps.text ?? ""}`.trim();
         const marque = /\[scenario:(\w+)\]/.exec(corps.text ?? "");
         const nom = marque?.[1] ?? process.env.FAUX_OPENCODE_SCENARIO ?? "texte";
         chaines.set(s.id, (chaines.get(s.id) ?? Promise.resolve()).then(() => rejouer(s.id, nom, (corps.text ?? "").replace(/\[scenario:\w+\]\s*/, ""))).catch((e) => console.error(e)));

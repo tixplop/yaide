@@ -738,3 +738,107 @@ test("REQ084_parcours_55_raisonnement_opencode", async ({ page }) => {
   await expect(raisons.nth(1)).toHaveAttribute("aria-expanded", "false");
   await expect(conversation.locator(".ya-raison-zone").first()).toBeHidden();
 });
+
+test("REQ088_REQ091_parcours_61_63_sessions_et_suggestions", async ({ page }) => {
+  // P-061 : AC-088-3, AC-088-4. P-063 : AC-089-5, AC-089-11, AC-090-4, AC-091-3, AC-091-7.
+  const dossier = depotExemple();
+  const projet = fs.realpathSync(dossier);
+  const opencode = fauxOpencode("texte");
+  const session = (id, titre, updated, extra = {}) => ({ id, title: titre, directory: projet, messages: [], permissions: [], forms: [], updated, ...extra });
+  const maintenant = Date.now();
+  const ancienne = session("ses_ancienne", "Ancienne session", maintenant - 3 * 86400000, { busy: maintenant - 3 * 86400000 });
+  ancienne.messages = [
+    { id: "msg_u1", time: { created: 1 }, text: "Question d'hier.", type: "user" },
+    { id: "msg_a1", time: { created: 2, completed: 3 }, type: "assistant", agent: "build", model: { id: "faux-1", providerID: "faux" }, content: [{ type: "text", text: "Réponse d'hier." }], finish: "stop", cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } } },
+    { id: "msg_i1", time: { created: 4 }, type: "idle", outcome: "succeeded" },
+  ];
+  const sessions = {
+    ses_ancienne: ancienne,
+    ses_recente: session("ses_recente", "Plus récente", maintenant - 3600000, { busy: maintenant - 3600000 }),
+    ses_vide: session("ses_vide", "Sans tour", maintenant),
+    ses_fille: session("ses_fille", "Sous-agent", maintenant, { busy: maintenant, parentID: "ses_recente" }),
+    ses_ailleurs: { ...session("ses_ailleurs", "Autre dossier", maintenant, { busy: maintenant }), directory: "/ailleurs" },
+  };
+  fs.writeFileSync(path.join(opencode, "etat.json"), JSON.stringify({ sessions, tours: 0 }));
+  const corps = () => {
+    const f = path.join(opencode, "etat.json.corps");
+    return fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim().split("\n").map((l) => JSON.parse(l)) : [];
+  };
+
+  yaide = await lancerYaide({ opencode, claude: fauxClaude(), dossier });
+  relais = await lancerRelais(yaide.port);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await ouvrirYaide(page, relais.origine);
+  const temoin = path.join(opencode, "temoin");
+  expect(fs.existsSync(temoin)).toBe(false);
+
+  // AC-088-3 : le clic lance le serveur, puis la liste s'affiche (sans session vide, fille ni autre dossier).
+  await page.getByRole("button", { name: "Sessions opencode", exact: true }).click();
+  const options = page.getByRole("dialog", { name: "Sessions opencode" }).getByRole("option");
+  await expect(options).toHaveCount(2, { timeout: 20000 });
+  expect(fs.readFileSync(temoin, "utf8").trim().split("\n")).toHaveLength(1);
+  await expect(options.nth(0)).toContainText("Plus récente");
+  await expect(options.nth(1)).toContainText("Ancienne session");
+
+  // AC-088-4 : Bas, Entrée ouvrent « opencode 1 » avec l'historique ; le message continue cette session.
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(onglet(page, "opencode 1")).toBeVisible();
+  const conversation = page.getByRole("log", { name: "Conversation" });
+  await expect(conversation).toContainText("Réponse d'hier.");
+  await expect(champ(page)).toBeFocused();
+  await envoyer(page, "Bonjour.");
+  await expect.poll(() => corps().length, { timeout: 20000 }).toBe(1);
+  expect(corps()[0]).toMatchObject({ chemin: "prompt", corps: { text: "Bonjour." } });
+  await expect(conversation).toContainText("deux", { timeout: 20000 });
+  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0, { timeout: 20000 });
+  const apresTour = JSON.parse(fs.readFileSync(path.join(opencode, "etat.json"), "utf8")).sessions;
+  expect(apresTour.ses_ancienne.messages.some((m) => m.text === "Bonjour.")).toBe(true);
+  expect(Object.keys(apresTour).filter((k) => k.startsWith("ses_n"))).toEqual([]);
+
+  // AC-089-11 : `/re` ouvre « Commandes » au-dessus du champ, bord gauche aligné, au plus 600 px de large.
+  await champ(page).click();
+  await champ(page).pressSequentially("/re");
+  const commandes = page.getByRole("listbox", { name: "Commandes" });
+  await expect(commandes.getByRole("option")).toHaveCount(2);
+  const bc = await champ(page).boundingBox();
+  const bl = await commandes.locator("xpath=..").boundingBox(); // la fenêtre flottante, qui porte le remplissage
+  expect(bl.y + bl.height).toBeLessThanOrEqual(bc.y);
+  expect(Math.abs(bl.x - bc.x)).toBeLessThan(2);
+  expect(bl.width).toBeLessThanOrEqual(600.5);
+  expect(Math.abs(bl.width - Math.min(bc.width, 600))).toBeLessThan(1);
+  await page.keyboard.press("Enter");
+  await expect(champ(page)).toHaveValue("/review ");
+
+  // AC-090-4, AC-089-5 : `@ma`, Tab, envoi → `command` avec `files`.
+  await champ(page).pressSequentially("@ma");
+  await expect(page.getByRole("listbox", { name: "Fichiers et dossiers" }).getByRole("option")).toHaveCount(1);
+  await page.keyboard.press("Tab");
+  await expect(champ(page)).toHaveValue("/review @src/main.rs ");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => corps().length, { timeout: 20000 }).toBe(2);
+  await expect(conversation.getByText("deux")).toHaveCount(2, { timeout: 20000 });
+  const cmd = corps()[1];
+  expect(cmd.chemin).toBe("command");
+  expect(cmd.corps).toMatchObject({ name: "review", files: [{ uri: `file://${projet}/src/main.rs`, mention: { start: 8, end: 20, text: "@src/main.rs" } }] });
+  expect(cmd.corps.text.trim()).toBe("@src/main.rs");
+  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0, { timeout: 20000 });
+
+  // AC-091-3, AC-091-7 : `$open`, Entrée, envoi → `prompt` avec `skills` ; description sur une ligne, coupée.
+  await champ(page).click();
+  await champ(page).pressSequentially("$open");
+  const skills = page.getByRole("listbox", { name: "Skills" });
+  await expect(skills.getByRole("option")).toHaveCount(2);
+  // La liste peut être refaite par une réponse tardive : on mesure tant que la ligne est la bonne.
+  await expect
+    .poll(() =>
+      skills.getByRole("option").first().locator(".liste-parent").evaluate((e) => ({ titre: e.title, coupee: e.scrollWidth > e.clientWidth, points: getComputedStyle(e).textOverflow })),
+    )
+    .toMatchObject({ titre: expect.stringMatching(/^Configurer opencode\. Ce skill décrit/), coupee: true, points: "ellipsis" });
+  await page.keyboard.press("Enter");
+  await expect(champ(page)).toHaveValue("$opencode ");
+  await champ(page).pressSequentially("comment configurer ?");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => corps().length, { timeout: 20000 }).toBe(3);
+  expect(corps()[2]).toMatchObject({ chemin: "prompt", corps: { text: "$opencode comment configurer ?", skills: [{ id: "opencode", mention: { start: 0, end: 9, text: "$opencode" } }] } });
+});
