@@ -5,6 +5,7 @@ import texte from "../opencode-captures/texte.json";
 import interruption from "../opencode-captures/interruption.json";
 import refus from "../opencode-captures/refus.json";
 import sousagent from "../opencode-captures/sousagent.json";
+import * as apiReelle from "../api.js";
 import { vueOpencode } from "./opencode.js";
 
 const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
@@ -868,5 +869,291 @@ describe("vue opencode sur les captures", () => {
     expect(document.querySelector(".ya-attentes")).toBeNull();
     expect(surQuestion).toHaveBeenLastCalledWith(false);
     expect(document.activeElement).toBe(champ());
+  });
+});
+
+// ---- Suggestions « / », « @ », « $ » (REQ-089 à REQ-091) ----
+
+const COMMANDES = [
+  { name: "init", description: "Crée AGENTS.md" },
+  { name: "preview", description: "Aperçu" },
+  { name: "review", description: "Relit les changements" },
+];
+const SKILLS = [
+  { id: "opencode", name: "OpenCode", description: "Première ligne\nseconde ligne" },
+  { id: "deploy", name: "Déploiement", description: "Publier" },
+];
+const FICHIERS = [
+  { path: "src/main.rs", type: "file" },
+  { path: "src/macros/", type: "directory" },
+  { path: "/", type: "directory" },
+];
+const ok = (data) => ({ donnees: { data } });
+
+function apiSuggestions(sur = {}) {
+  return {
+    envoyer: vi.fn(async () => ({ donnees: null })),
+    interrompre: vi.fn(),
+    executerCommande: vi.fn(async () => ({ donnees: null })),
+    commandesOpencode: vi.fn(async () => ok(COMMANDES)),
+    skillsOpencode: vi.fn(async () => ok(SKILLS)),
+    chercherFichiersOpencode: vi.fn(async () => ok(FICHIERS)),
+    ...sur,
+  };
+}
+async function monterSuggestions(sur) {
+  const api = apiSuggestions(sur);
+  const { oc } = fauxOc();
+  const vue = vueOpencode({ sessionId: "s1", cheminProjet: "/home/p", oc, api });
+  vues.push(vue);
+  document.body.append(vue.corps);
+  await vi.advanceTimersByTimeAsync(0);
+  return api;
+}
+const saisir = async (texte) => {
+  taper(texte);
+  await vi.advanceTimersByTimeAsync(0);
+};
+const options = () => [...document.querySelectorAll('.ya-flottante [role="option"]')];
+const touche = (key, extra = {}) => champ().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...extra }));
+const statut = () => document.querySelector('.ya-flottante [role="status"]')?.textContent;
+
+describe("suggestions d'une session opencode", () => {
+  it("REQ089_AC1_commandes_filtrees_commencant_par_d_abord", async () => {
+    const api = await monterSuggestions();
+    await saisir("/");
+    expect(options().map((o) => o.textContent)).toEqual(["/initCrée AGENTS.md", "/previewAperçu", "/reviewRelit les changements"]);
+    expect(document.querySelector('.ya-flottante [role="listbox"]').getAttribute("aria-label")).toBe("Commandes");
+    expect(api.commandesOpencode).toHaveBeenCalledWith("/home/p");
+    await saisir("/RE");
+    expect(options().map((o) => o.querySelector(".liste-libelle").textContent)).toEqual(["/review", "/preview"]);
+  });
+
+  it("REQ089_AC5_commande_envoyee_avec_name_et_text_champ_vide", async () => {
+    const api = await monterSuggestions();
+    await saisir("/");
+    await saisir("/review HEAD~1");
+    entree();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.executerCommande).toHaveBeenCalledWith("s1", { name: "review", text: "HEAD~1", files: [], skills: [] });
+    expect(api.envoyer).not.toHaveBeenCalled();
+    expect(champ().value).toBe("");
+    await saisir("/review");
+    touche("Escape");
+    entree();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.executerCommande).toHaveBeenLastCalledWith("s1", { name: "review", text: "", files: [], skills: [] });
+  });
+
+  it("REQ089_AC6_commande_inconnue_part_comme_message", async () => {
+    const api = await monterSuggestions();
+    await saisir("/");
+    await saisir("/inconnu x");
+    entree();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.envoyer).toHaveBeenCalledWith("s1", "/inconnu x");
+    expect(api.executerCommande).not.toHaveBeenCalled();
+  });
+
+  it("REQ089_AC7_commande_refusee_garde_le_texte", async () => {
+    const api = await monterSuggestions({ executerCommande: vi.fn(async () => ({ erreur: "introuvable" })) });
+    await saisir("/");
+    await saisir("/review x");
+    entree();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector(".session-bas [role=alert]").textContent).toContain("opencode ne répond pas : introuvable. Réessayez.");
+    expect(champ().value).toBe("/review x");
+    expect(api.executerCommande).toHaveBeenCalledTimes(1);
+  });
+
+  it("REQ089_AC8_messages_sans_suggestion_et_entree_envoie", async () => {
+    const api = await monterSuggestions({ commandesOpencode: vi.fn(async () => ok([])) });
+    await saisir("/");
+    expect(statut()).toBe("Aucune commande.");
+    entree();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.envoyer).toHaveBeenCalledWith("s1", "/");
+
+    document.body.replaceChildren();
+    const api2 = await monterSuggestions();
+    await saisir("/zzz");
+    expect(statut()).toBe("Aucune commande ne correspond.");
+    entree();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api2.envoyer).toHaveBeenCalledWith("s1", "/zzz");
+  });
+
+  it("REQ089_AC8_liste_illisible_ou_coupure_dit_indisponible_et_entree_envoie", async () => {
+    for (const reponse of [{ coupure: true }, { erreur: "boom" }]) {
+      document.body.replaceChildren();
+      const api = await monterSuggestions({ commandesOpencode: vi.fn(async () => reponse) });
+      await saisir("/");
+      expect(statut()).toBe("Liste indisponible pour l'instant.");
+      entree();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.envoyer).toHaveBeenCalledWith("s1", "/");
+    }
+  });
+
+  it("REQ089_AC9_commandes_relues_a_chaque_ouverture", async () => {
+    const api = await monterSuggestions();
+    await saisir("/");
+    expect(options()).toHaveLength(3);
+    touche("Escape");
+    await saisir("");
+    api.commandesOpencode.mockResolvedValueOnce(ok([...COMMANDES, { name: "goal", description: "But" }]));
+    await saisir("/");
+    expect(options()).toHaveLength(4);
+    expect(api.commandesOpencode).toHaveBeenCalledTimes(2);
+  });
+
+  it("REQ090_AC2_AC10_recherche_par_query_sans_la_racine_dossier_distinct", async () => {
+    const api = await monterSuggestions();
+    await saisir("@ma");
+    expect(api.chercherFichiersOpencode).toHaveBeenCalledWith("/home/p", "ma");
+    expect(options().map((o) => o.querySelector(".liste-libelle").textContent)).toEqual(["src/main.rs", "src/macros/"]);
+    expect(document.querySelector('.ya-flottante [role="listbox"]').getAttribute("aria-label")).toBe("Fichiers et dossiers");
+    expect(options().map((o) => o.querySelector("[data-icone]").getAttribute("data-icone"))).toEqual(["file-code", "folder"]);
+  });
+
+  it("REQ090_AC3_AC4_choix_puis_envoi_avec_files_et_mention", async () => {
+    const api = await monterSuggestions();
+    await saisir("@ma");
+    touche("Tab");
+    expect(champ().value).toBe("@src/main.rs ");
+    await saisir("@src/main.rs @s");
+    touche("ArrowDown");
+    touche("Tab");
+    expect(champ().value).toBe("@src/main.rs @src/macros/ ");
+    await saisir("Lis @src/main.rs et @src/macros/");
+    touche("Escape");
+    entree();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.envoyer).toHaveBeenCalledWith("s1", "Lis @src/main.rs et @src/macros/", {
+      files: [
+        { uri: "file:///home/p/src/main.rs", mention: { start: 4, end: 16, text: "@src/main.rs" } },
+        { uri: "file:///home/p/src/macros/", mention: { start: 20, end: 32, text: "@src/macros/" } },
+      ],
+      skills: [],
+    });
+  });
+
+  it("REQ090_AC6_commande_avec_fichier_joint", async () => {
+    const api = await monterSuggestions();
+    await saisir("/");
+    await saisir("/review @ma");
+    touche("Tab");
+    await saisir("/review @src/main.rs ");
+    entree();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.executerCommande).toHaveBeenCalledWith("s1", {
+      name: "review",
+      text: "@src/main.rs ",
+      files: [{ uri: "file:///home/p/src/main.rs", mention: { start: 8, end: 20, text: "@src/main.rs" } }],
+      skills: [],
+    });
+  });
+
+  it("REQ090_AC8_aucun_fichier_et_liste_indisponible", async () => {
+    await monterSuggestions({ chercherFichiersOpencode: vi.fn(async () => ok([{ path: "/", type: "directory" }])) });
+    await saisir("@zz");
+    expect(statut()).toBe("Aucun fichier ne correspond.");
+    document.body.replaceChildren();
+    await monterSuggestions({ chercherFichiersOpencode: vi.fn(async () => ({ coupure: true })) });
+    await saisir("@zz");
+    expect(statut()).toBe("Liste indisponible pour l'instant.");
+  });
+
+  it("REQ090_AC9_message_affiche_tel_que_tape", async () => {
+    const { oc, etat } = fauxOc();
+    const api = apiSuggestions({
+      envoyer: vi.fn(async (_id, t) => {
+        etat.modele.entrees.push({ cle: "u", type: "utilisateur", texte: t });
+        etat.changer();
+        return { donnees: null };
+      }),
+    });
+    const vue = vueOpencode({ sessionId: "s1", cheminProjet: "/home/p", oc, api });
+    vues.push(vue);
+    document.body.append(vue.corps);
+    await vi.advanceTimersByTimeAsync(0);
+    await saisir("@ma");
+    touche("Tab");
+    await saisir("Lis @src/main.rs");
+    touche("Escape");
+    entree();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector("[role=log]").textContent).toContain("Lis @src/main.rs");
+  });
+
+  it("REQ091_AC2_filtre_sur_id_ou_nom", async () => {
+    await monterSuggestions();
+    await saisir("$DEPLO");
+    expect(options()).toHaveLength(1);
+    await saisir("$open");
+    expect(options()).toHaveLength(1);
+    expect(options()[0].querySelector(".liste-libelle").textContent).toBe("OpenCode");
+    expect(options()[0].querySelector(".liste-parent").textContent).toBe("Première ligne seconde ligne");
+  });
+
+  it("REQ091_AC3_skill_choisi_puis_envoye_avec_skills", async () => {
+    const api = await monterSuggestions();
+    await saisir("$open");
+    touche("Tab");
+    expect(champ().value).toBe("$opencode ");
+    await saisir("$opencode comment configurer ?");
+    entree();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.envoyer).toHaveBeenCalledWith("s1", "$opencode comment configurer ?", { files: [], skills: [{ id: "opencode", mention: { start: 0, end: 9, text: "$opencode" } }] });
+  });
+
+  it("REQ091_AC5_aucun_skill_aucun_ne_correspond_indisponible", async () => {
+    await monterSuggestions();
+    await saisir("$zzz");
+    expect(statut()).toBe("Aucun skill ne correspond.");
+    document.body.replaceChildren();
+    await monterSuggestions({ skillsOpencode: vi.fn(async () => ok([])) });
+    await saisir("$");
+    expect(statut()).toBe("Aucun skill.");
+    document.body.replaceChildren();
+    await monterSuggestions({ skillsOpencode: vi.fn(async () => ({ erreur: "x" })) });
+    await saisir("$");
+    expect(statut()).toBe("Liste indisponible pour l'instant.");
+  });
+
+  it("REQ091_AC6_skills_relus_a_chaque_ouverture", async () => {
+    const api = await monterSuggestions();
+    await saisir("$");
+    expect(options()).toHaveLength(2);
+    touche("Escape");
+    await saisir("");
+    api.skillsOpencode.mockResolvedValueOnce(ok([...SKILLS, { id: "nouveau", name: "Nouveau", description: "" }]));
+    await saisir("$");
+    expect(options()).toHaveLength(3);
+  });
+});
+
+describe("api d'opencode : suggestions et pièces jointes", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("REQ089_AC5_REQ090_AC2_REQ091_AC3_requetes_du_relais", async () => {
+    const f = vi.fn(async () => new Response("null"));
+    vi.stubGlobal("fetch", f);
+    await apiReelle.commandesOpencode("/home/p");
+    await apiReelle.skillsOpencode("/home/p");
+    await apiReelle.chercherFichiersOpencode("/home/p", "ma");
+    expect(f.mock.calls.map((c) => c[0])).toEqual([
+      "/api/opencode/api/command?location%5Bdirectory%5D=%2Fhome%2Fp",
+      "/api/opencode/api/skill?location%5Bdirectory%5D=%2Fhome%2Fp",
+      "/api/opencode/api/fs/find?location%5Bdirectory%5D=%2Fhome%2Fp&query=ma&limit=20",
+    ]);
+    f.mockClear();
+    await apiReelle.envoyer("s1", "x");
+    await apiReelle.envoyer("s1", "x", { files: [], skills: [{ id: "a", mention: {} }] });
+    await apiReelle.executerCommande("s1", { name: "review", text: "", files: [{ uri: "u" }], skills: [] });
+    expect(f.mock.calls.map((c) => [c[0], JSON.parse(c[1].body)])).toEqual([
+      ["/api/opencode/api/session/s1/prompt", { text: "x" }],
+      ["/api/opencode/api/session/s1/prompt", { text: "x", skills: [{ id: "a", mention: {} }] }],
+      ["/api/opencode/api/session/s1/command", { name: "review", text: "", files: [{ uri: "u" }] }],
+    ]);
   });
 });

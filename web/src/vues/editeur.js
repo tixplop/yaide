@@ -653,6 +653,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     else Object.assign(o, { agent, titre });
     o.vue = vueOpencode({
       sessionId: id,
+      cheminProjet,
       sousAgent: agent !== undefined,
       surOuvrir: ouvrirSousAgent,
       ouvrirReference: (ref, lien) => ouvrirReference(o, ref, lien),

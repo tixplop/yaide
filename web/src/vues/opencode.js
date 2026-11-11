@@ -1,8 +1,10 @@
 import * as apiReelle from "../api.js";
 import * as ocReel from "../opencode.js";
 import { champ as champUi } from "../ui/champ.js";
+import { completion } from "../ui/completion.js";
 import { conversation, attentes } from "../ui/conversation.js";
 import { indication } from "../ui/indication.js";
+import { iconeDe } from "../ui/liste.js";
 import { message } from "../ui/message.js";
 import { formaterTokens, saisieMessage } from "./agent.js";
 
@@ -22,12 +24,22 @@ const SANS_MODELE = { chargement: "Chargement…", illisible: "Indisponible", au
 
 const reussie = (r) => !r?.coupure && !r?.erreur;
 
+/** Les données d'une liste d'opencode, ou une erreur (la liste dit alors « indisponible »). */
+function donneesDe(r) {
+  const d = r?.donnees?.data;
+  if (!Array.isArray(d)) throw new Error("liste illisible");
+  return d;
+}
+
+const sansRetours = (t) => (t ?? "").replace(/\s+/g, " ").trim();
+
 /**
  * V-002, session opencode (C-015, C-003). `oc` : le modèle de `opencode.js` ; `api` : `envoyer`, `interrompre`.
  * `surOuvrir({ id, agent, titre })` ouvre l'onglet d'un sous-agent ; `surQuestion(vrai|faux)` dit si une demande attend.
+ * `cheminProjet` : le chemin absolu du projet, dossier des commandes, fichiers et skills.
  * Rend `{ corps, focus(), detruire() }`.
  */
-export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuestion, ouvrirReference, oc = ocReel, api = apiReelle }) {
+export function vueOpencode({ sessionId, cheminProjet = "", sousAgent = false, surOuvrir, surQuestion, ouvrirReference, oc = ocReel, api = apiReelle }) {
   const corps = document.createElement("div");
   corps.className = "session";
 
@@ -65,6 +77,8 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
 
   let saisie = null;
   let champ = null;
+  let suggestions = null;
+  let commandes = []; // noms de la dernière liste de commandes lue
   let listeModele = null; // { enveloppe, select, signature }
   let listeEffort = null;
   let compteur = null;
@@ -74,8 +88,9 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
     note.append(message({ texte: TEXTE_NOTE, variante: "info" }));
     bas.append(note);
   } else {
-    saisie = saisieMessage({ libelle: "Message à opencode", surEnvoi: () => envoyerMessage() });
+    saisie = saisieMessage({ libelle: "Message à opencode", surEnvoi: () => envoyerMessage(), retenirEntree: () => suggestions?.retenirEntree() });
     champ = saisie.texteSaisi;
+    suggestions = completion({ champ, sources: sourcesSuggestions() });
     const zone = document.createElement("div");
     zone.className = "session-contenu session-saisie";
     zone.append(saisie.champMessage, saisie.barre);
@@ -97,6 +112,59 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
   });
 
   const focus = () => (sousAgent ? fil : champ)?.focus();
+
+  function sourcesSuggestions() {
+    return {
+      "/": {
+        nom: "Commandes",
+        async suggestions(texte) {
+          const toutes = donneesDe(await api.commandesOpencode(cheminProjet));
+          commandes = toutes.map((c) => c.name);
+          if (toutes.length === 0) return { message: "Aucune commande." };
+          const t = texte.toLowerCase();
+          const contient = toutes.filter((c) => c.name.toLowerCase().includes(t));
+          const debut = contient.filter((c) => c.name.toLowerCase().startsWith(t));
+          const lignes = [...debut, ...contient.filter((c) => !debut.includes(c))].map((c) => ({
+            id: `/${c.name}`,
+            libelle: `/${c.name}`,
+            dossier: sansRetours(c.description),
+            valeur: `/${c.name}`,
+          }));
+          return lignes.length ? lignes : { message: "Aucune commande ne correspond." };
+        },
+      },
+      "@": {
+        nom: "Fichiers et dossiers",
+        async suggestions(texte) {
+          const trouves = donneesDe(await api.chercherFichiersOpencode(cheminProjet, texte)).filter((f) => f.path !== "/");
+          const lignes = trouves.map((f) => {
+            const type = f.type === "directory" ? { icone: "folder", couleur: "ink-muted" } : iconeDe(f.path.slice(f.path.lastIndexOf("/") + 1));
+            return {
+              id: `@${f.path}`,
+              libelle: f.path,
+              icone: type.icone,
+              couleurIcone: type.couleur,
+              valeur: `@${f.path}`,
+              donnee: { uri: `file://${cheminProjet.replace(/\/$/, "")}/${f.path}` },
+            };
+          });
+          return lignes.length ? lignes : { message: "Aucun fichier ne correspond." };
+        },
+      },
+      $: {
+        nom: "Skills",
+        async suggestions(texte) {
+          const tous = donneesDe(await api.skillsOpencode(cheminProjet));
+          if (tous.length === 0) return { message: "Aucun skill." };
+          const t = texte.toLowerCase();
+          const lignes = tous
+            .filter((s) => s.id.toLowerCase().includes(t) || (s.name ?? "").toLowerCase().includes(t))
+            .map((s) => ({ id: `$${s.id}`, libelle: s.name || s.id, dossier: sansRetours(s.description), valeur: `$${s.id}`, donnee: { id: s.id } }));
+          return lignes.length ? lignes : { message: "Aucun skill ne correspond." };
+        },
+      },
+    };
+  }
 
   function majBoutons() {
     if (!saisie) return;
@@ -189,7 +257,14 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
     if (saisie.envoyer.disabled || !texte.trim()) return;
     envoi = true;
     majBoutons();
-    const r = await api.envoyer(sessionId, texte);
+    const joints = suggestions.joints();
+    const mention = (j) => ({ start: j.start, end: j.end, text: j.text });
+    const files = joints.filter((j) => j.declencheur === "@").map((j) => ({ uri: j.donnee.uri, mention: mention(j) }));
+    const skills = joints.filter((j) => j.declencheur === "$").map((j) => ({ id: j.donnee.id, mention: mention(j) }));
+    const commande = /^\/(\S+)(?:\s([\s\S]*))?$/.exec(texte);
+    let r;
+    if (commande && commandes.includes(commande[1])) r = await api.executerCommande(sessionId, { name: commande[1], text: commande[2] ?? "", files, skills });
+    else r = await (files.length || skills.length ? api.envoyer(sessionId, texte, { files, skills }) : api.envoyer(sessionId, texte));
     envoi = false;
     if (detruite) return;
     if (r.disparue) {
@@ -281,6 +356,7 @@ export function vueOpencode({ sessionId, sousAgent = false, surOuvrir, surQuesti
     focus,
     detruire() {
       detruite = true;
+      suggestions?.detruire();
       desabonner();
     },
   };

@@ -341,7 +341,15 @@ export const session = (id) => appelOpencode(`/session/${q(id)}`);
 /** Une page de l'historique, du plus ancien au plus récent ; `curseur` : `cursor.next` de la page précédente. */
 export const messages = (id, curseur) => appelOpencode(`/session/${q(id)}/message?limit=200&${curseur ? `cursor=${q(curseur)}` : "order=asc"}`);
 export const sessionsFilles = (id) => appelOpencode(`/session?parentID=${q(id)}`);
-export const envoyer = (id, texte) => appelOpencode(`/session/${q(id)}/prompt`, json("POST", { text: texte }));
+const pieces = ({ files, skills } = {}) => ({ ...(files?.length ? { files } : {}), ...(skills?.length ? { skills } : {}) });
+export const envoyer = (id, texte, joints) => appelOpencode(`/session/${q(id)}/prompt`, json("POST", { text: texte, ...pieces(joints) }));
+const lieu = (dossier) => `location%5Bdirectory%5D=${q(dossier)}`;
+/** Commandes, skills et fichiers d'opencode pour le dossier du projet : `{ donnees: { data: [...] } }`. */
+export const commandesOpencode = (dossier) => appelOpencode(`/command?${lieu(dossier)}`);
+export const skillsOpencode = (dossier) => appelOpencode(`/skill?${lieu(dossier)}`);
+export const chercherFichiersOpencode = (dossier, texte) => appelOpencode(`/fs/find?${lieu(dossier)}&query=${q(texte)}&limit=20`);
+/** `POST /session/{id}/command` : `name`, `text`, et `files` et `skills` s'ils ne sont pas vides. */
+export const executerCommande = (id, { name, text, files, skills }) => appelOpencode(`/session/${q(id)}/command`, json("POST", { name, text, ...pieces({ files, skills }) }));
 export const interrompre = (id) => appelOpencode(`/session/${q(id)}/interrupt`, { method: "POST" });
 export const autorisations = (sessionId) => appelOpencode(`/session/${q(sessionId)}/permission`);
 /** `decision` : "once", "always" ou "reject". */
