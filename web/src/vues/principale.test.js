@@ -117,7 +117,7 @@ test("REQ022_AC3_et_REQ037_AC4_la_barre_d_etat_affiche_la_branche_et_pas_la_barr
   const { vue } = monter();
   await new Promise((r) => setTimeout(r, 0));
   const etat = vue.querySelector("footer");
-  expect(etat.textContent).toBe("main");
+  expect(etat.textContent).toBe("mainServeur : Connecté");
   expect(etat.querySelector("svg[data-icone=branch]")).not.toBeNull();
   expect(vue.querySelector("header").textContent).not.toContain("main");
 });
@@ -129,7 +129,7 @@ test("REQ037_AC4_HEAD_detachee_affiche_detachee_seul", async () => {
   }));
   const { vue } = monter();
   await new Promise((r) => setTimeout(r, 0));
-  expect(vue.querySelector("footer").textContent).toBe("détachée");
+  expect(vue.querySelector("footer").textContent).toBe("détachéeServeur : Connecté");
 });
 
 test("REQ022_AC4_et_REQ037_AC4_hors_depot_rien_dans_la_barre_d_etat", async () => {
@@ -139,7 +139,7 @@ test("REQ022_AC4_et_REQ037_AC4_hors_depot_rien_dans_la_barre_d_etat", async () =
   }));
   const { vue } = monter();
   await new Promise((r) => setTimeout(r, 0));
-  expect(vue.querySelector("footer").textContent).toBe("");
+  expect(vue.querySelector("footer").textContent).toBe("Serveur : Connecté");
 });
 
 test("REQ037_AC10_la_barre_d_etat_et_le_fil_n_ont_ni_bouton_ni_lien_ni_arret_de_tabulation", () => {
@@ -636,12 +636,12 @@ test("REQ086_AC2_AC3_AC7_barre_d_etat_et_rail_suivent_le_worktree_choisi_puis_ba
   const attendre = () => vi.advanceTimersByTimeAsync(10);
   await attendre();
   const select = () => [...vue.querySelectorAll("aside select")].find((s) => s.labels[0]?.textContent === "Worktree");
-  expect(vue.querySelector("footer").textContent).toBe("main");
+  expect(vue.querySelector("footer").textContent).toBe("mainServeur : Connecté");
   select().value = "../essai";
   select().dispatchEvent(new Event("change", { bubbles: true }));
   await attendre();
   await attendre();
-  expect(vue.querySelector("footer").textContent).toBe("essai");
+  expect(vue.querySelector("footer").textContent).toBe("essaiServeur : Connecté");
   expect(vue.querySelector("[role=tab][aria-label=Git] .ya-badge").textContent).toBe("2");
   disparu = true;
   // relecture des 3 s : l'état demandé est refusé, le choix revient au projet.
@@ -650,7 +650,7 @@ test("REQ086_AC2_AC3_AC7_barre_d_etat_et_rail_suivent_le_worktree_choisi_puis_ba
   const bandeau = [...vue.querySelectorAll("[role=status]")].find((m) => m.textContent.includes("a disparu"));
   expect(bandeau.textContent).toContain("Le worktree essai a disparu : retour au projet.");
   expect(bandeau.querySelector("button")).not.toBeNull();
-  expect(vue.querySelector("footer").textContent).toBe("main");
+  expect(vue.querySelector("footer").textContent).toBe("mainServeur : Connecté");
   expect(select()).toBeFalsy();
   }));
 

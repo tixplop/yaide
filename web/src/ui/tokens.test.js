@@ -649,3 +649,20 @@ test("REQ092_AC1_AC6_contrastes_de_la_barre_d_etat_et_de_la_notification", () =>
     });
   }
 });
+
+// design-system.md, « Barre d'état, version et mise à jour » : connexion (REQ-094).
+test("REQ094_AC3_contrastes_de_la_connexion", () => {
+  const paires = [
+    ["--ink-muted", "--bg-000", 4.5, [6.7, 5.8]],
+    ["--git-added", "--bg-000", 3, [7.7, 5.3]],
+    ["--danger", "--bg-000", 3, [6.5, 5.8]],
+  ];
+  for (const [texte, fond, seuil, mesures] of paires) {
+    THEMES.forEach((theme, i) => {
+      const r = ratio(theme, texte, fond);
+      const nom = `${texte} sur ${fond} (${theme})`;
+      expect(r, nom).toBeGreaterThanOrEqual(seuil);
+      egalA(r, mesures[i], nom);
+    });
+  }
+});

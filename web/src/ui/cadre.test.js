@@ -32,7 +32,7 @@ function monter() {
 test("REQ028_AC4_zones_semantiques_header_nav_aside_main", () => {
   const c = monter();
   expect(c.querySelector("header").textContent).toBe("projetactions");
-  expect(c.querySelector("footer").textContent).toBe("mainLn 6, Col 31Rust");
+  expect(c.querySelector("footer").textContent).toBe("mainLn 6, Col 31RustServeur : Connecté");
   expect(c.querySelector('nav[aria-label="Panneaux"]').textContent).toBe("rail");
   expect(c.querySelector(".cadre-rail").tagName).toBe("DIV");
   expect(c.querySelector("aside").textContent).toContain("corps");
@@ -162,11 +162,11 @@ test("REQ037_AC2_AC3_barre_de_titre_symbole_bouton_central_et_actions", () => {
 test("REQ037_AC4_AC10_barre_d_etat_texte_sans_action_et_parties_absentes_masquees", () => {
   const c = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") }, barreEtat: { branche: "main" } });
   const f = c.querySelector("footer");
-  expect(f.textContent).toBe("main");
+  expect(f.textContent).toBe("mainServeur : Connecté");
   expect(f.querySelector("svg").getAttribute("data-icone")).toBe("branch");
   expect([...f.querySelectorAll("span[hidden]")].map((e) => e.className)).toEqual(["ya-status-position", "ya-status-langage", "ya-status-version"]);
   c.definirEtat({ position: "Ln 1, Col 1", langage: "Texte" });
-  expect(f.textContent).toBe("Ln 1, Col 1Texte");
+  expect(f.textContent).toBe("Ln 1, Col 1TexteServeur : Connecté");
   expect(f.querySelector(".ya-status-branche").hidden).toBe(true);
   expect(f.querySelector("button, a, [tabindex]")).toBeNull();
   expect(regle(".ya-status")).toContain("border-top: var(--trait) solid var(--line)");
@@ -1098,4 +1098,59 @@ test("REQ092_AC6_surMaj_appele_au_clic_et_branche_coupee_a_40_pour_cent_seul_le_
   }
   expect(regle(".ya-status-maj")).toContain("min-width: 0");
   expect(regle(".ya-status-zone")).toContain("min-width: 0");
+});
+
+test("REQ094_AC1_zone_connexion_toujours_presente_entre_la_notification_et_la_version_connecte_par_defaut", () => {
+  const f = etat(montrerMaj({ etat: "disponible", derniere: "v0.9.2" }));
+  const zones = [...f.children];
+  const i = zones.findIndex((e) => e.classList.contains("ya-connexion"));
+  expect(i).toBeGreaterThan(-1);
+  expect(zones[i - 1].className).toContain("ya-status-maj");
+  expect(zones[i + 1].className).toContain("ya-status-version");
+  expect(zones[i].hidden).toBe(false);
+  expect(zones[i].dataset.connexion).toBe("connecte");
+  expect(zones[i].textContent).toBe("Serveur : Connecté");
+  expect(zones[i].querySelector(".ya-connexion-pastille")).not.toBeNull();
+  const nue = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") } });
+  expect(etat(nue).querySelector(".ya-connexion").textContent).toBe("Serveur : Connecté");
+  expect(regle(".ya-connexion-pastille")).toContain("background: var(--git-added)");
+  expect(regle(".ya-connexion-pastille")).toContain("border-radius: 50%");
+  expect(regle(".ya-connexion-pastille")).toContain("width: 8px");
+  expect(regle(".ya-status > .ya-connexion")).toContain("gap: 6px");
+});
+
+test("REQ094_AC2_deconnecte_puis_retour_a_connecte_sans_recreer_la_barre", () => {
+  const c = montrerMaj({ etat: "aucune" });
+  const f = etat(c);
+  const z = f.querySelector(".ya-connexion");
+  const pastille = z.querySelector(".ya-connexion-pastille");
+  c.definirEtat({ branche: "main", version: "v0.9.1", connexion: "deconnecte" });
+  expect(f).toBe(etat(c));
+  expect(f.querySelector(".ya-connexion")).toBe(z);
+  expect(z.dataset.connexion).toBe("deconnecte");
+  expect(z.textContent).toBe("Serveur : Déconnecté");
+  expect(regle('.ya-connexion[data-connexion="deconnecte"] .ya-connexion-pastille')).toContain("background: var(--danger)");
+  c.definirEtat({ branche: "main", version: "v0.9.1", connexion: "connecte" });
+  expect(z.dataset.connexion).toBe("connecte");
+  expect(z.textContent).toBe("Serveur : Connecté");
+  expect(z.querySelector(".ya-connexion-pastille")).toBe(pastille);
+});
+
+test("REQ094_AC3_serveur_pour_lecteurs_d_ecran_pastille_masquee_sans_role_ni_focus", () => {
+  const c = montrerMaj({ etat: "aucune" });
+  document.body.append(c);
+  const z = etat(c).querySelector(".ya-connexion");
+  expect(z.querySelector(".ya-sr").textContent).toBe("Serveur : ");
+  expect(z.querySelector(".ya-connexion-pastille").getAttribute("aria-hidden")).toBe("true");
+  for (const e of [z, ...z.querySelectorAll("*")]) {
+    expect(e.hasAttribute("role")).toBe(false);
+    expect(e.hasAttribute("aria-live")).toBe(false);
+    expect(e.hasAttribute("tabindex")).toBe(false);
+  }
+  const avant = document.activeElement;
+  c.definirEtat({ branche: "main", connexion: "deconnecte" });
+  expect(document.activeElement).toBe(avant);
+  expect(regle(".ya-status > .ya-connexion")).toContain("flex: none");
+  expect(css).not.toMatch(/\.ya-connexion[^{]*\{[^}]*transition/);
+  c.remove();
 });

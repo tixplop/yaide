@@ -459,6 +459,9 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-status-zone { display: flex; min-width: 0; }
 .ya-status-maj > button { margin-left: var(--space-2); }
 .ya-status-version { line-height: 16px; }
+.ya-status > .ya-connexion { flex: none; gap: 6px; }
+.ya-connexion-pastille { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--git-added); }
+.ya-connexion[data-connexion="deconnecte"] .ya-connexion-pastille { background: var(--danger); }
 
 /* V-005 : panneau Git */
 .git-corps { display: flex; flex-direction: column; box-sizing: border-box; height: 100%; min-height: 0; }
