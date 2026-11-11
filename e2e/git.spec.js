@@ -58,7 +58,6 @@ test("REQ022_AC1_modifier_et_sauvegarder_main_rs_le_fait_apparaitre_dans_les_cha
   await expect(page.getByLabel("Diff main.rs")).toContainText("+// ajout");
 });
 
-
 test("REQ023_AC1_AC6_AC7_AC8_indexer_valider_les_autres_restent_et_l_onglet_se_ferme", async ({ page }) => {
   const dossier = depot();
   fs.writeFileSync(path.join(dossier, "src", "main.rs"), "fn main() {}\n");
@@ -153,62 +152,45 @@ test("REQ031_AC10_pendant_un_pull_le_bouton_n_est_pas_attenue", async ({ page })
   await expect(page.getByText("Pull terminé.")).toBeVisible();
 });
 
-test("REQ028_AC1_F_R_G_changent_de_panneau_sans_toucher_aux_onglets", async ({ page }) => {
-  await ouvrir(page, depot(), true);
-  await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
-  await expect(page.getByRole("tab", { name: "README.md" })).toBeVisible();
-  await page.getByRole("tab", { name: "Fichiers" }).focus();
-  await page.keyboard.press("g");
-  await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
-  await expect(page.getByLabel("Branche")).toBeVisible();
-  await page.getByRole("tab", { name: "Fichiers" }).click();
-  await expect(page.getByRole("heading", { name: "Fichiers" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "README.md" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "shell 1" })).toBeVisible();
-});
-
-test("REQ034_AC8_commit_du_menu_montre_le_panneau_git_avec_le_focus_dans_message_sans_rien_valider", async ({ page }) => {
-  const dossier = depot();
-  fs.writeFileSync(path.join(dossier, "neuf.txt"), "neuf\n");
-  await ouvrir(page, dossier);
-  await panneauGit(page);
-  await message(page).fill("déjà écrit");
-  await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
-  await page.getByRole("treeitem", { name: nomLigne("neuf.txt") }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Commit" }).click();
-  await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
-  await expect(message(page)).toBeFocused();
-  await expect(message(page)).toHaveValue("déjà écrit");
-  await expect(page.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
-  expect(g(dossier, "log", "--oneline").trim().split("\n")).toHaveLength(1);
-  expect(g(dossier, "diff", "--cached", "--name-only")).toBe("");
-});
-
-test("REQ022_AC6_AC10_dossier_parent_long_le_nom_et_la_lettre_restent_visibles_a_240_px", async ({ page }) => {
+test("REQ028_AC1_REQ022_AC6_AC10_F_R_G_sans_toucher_aux_onglets_puis_dossier_parent_long_a_240_px", async ({ page }) => {
   const dossier = depot();
   const long = path.join("dossier-parent-tres-long-pour-la-coupure", "autre-niveau-encore-plus-long-que-le-precedent");
   fs.mkdirSync(path.join(dossier, long), { recursive: true });
   fs.writeFileSync(path.join(dossier, long, "fichier.txt"), "x\n");
   await ouvrir(page, dossier, true);
-  const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
-  await poignee.focus();
-  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
-  await expect(poignee).toHaveAttribute("aria-valuenow", "240");
-  await panneauGit(page);
-  const l = ligne(page, "fichier.txt");
-  await expect(l).toBeVisible();
-  await expect(async () => {
-    const m = await l.evaluate((e) => {
-      const r = (s) => e.querySelector(s).getBoundingClientRect().toJSON();
-      return { ligne: e.getBoundingClientRect().toJSON(), nom: r(".liste-libelle"), parent: r(".liste-parent"), lettre: r(".liste-statut") };
-    });
-    expect(m.nom.width).toBeGreaterThan(40);
-    expect(m.lettre.right).toBeLessThanOrEqual(m.ligne.right);
-    expect(m.parent.right).toBeLessThanOrEqual(m.lettre.left + 1);
-  }).toPass();
+  await test.step("REQ028_AC1_F_R_G_changent_de_panneau_sans_toucher_aux_onglets", async () => {
+    await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
+    await expect(page.getByRole("tab", { name: "README.md" })).toBeVisible();
+    await page.getByRole("tab", { name: "Fichiers" }).focus();
+    await page.keyboard.press("g");
+    await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
+    await expect(page.getByLabel("Branche")).toBeVisible();
+    await page.getByRole("tab", { name: "Fichiers" }).click();
+    await expect(page.getByRole("heading", { name: "Fichiers" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "README.md" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "shell 1" })).toBeVisible();
+  });
+  await test.step("REQ022_AC6_AC10_dossier_parent_long_le_nom_et_la_lettre_restent_visibles_a_240_px", async () => {
+    const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+    await poignee.focus();
+    for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
+    await expect(poignee).toHaveAttribute("aria-valuenow", "240");
+    await panneauGit(page);
+    const l = ligne(page, "fichier.txt");
+    await expect(l).toBeVisible();
+    await expect(async () => {
+      const m = await l.evaluate((e) => {
+        const r = (s) => e.querySelector(s).getBoundingClientRect().toJSON();
+        return { ligne: e.getBoundingClientRect().toJSON(), nom: r(".liste-libelle"), parent: r(".liste-parent"), lettre: r(".liste-statut") };
+      });
+      expect(m.nom.width).toBeGreaterThan(40);
+      expect(m.lettre.right).toBeLessThanOrEqual(m.ligne.right);
+      expect(m.parent.right).toBeLessThanOrEqual(m.lettre.left + 1);
+    }).toPass();
+  });
 });
 
-test("REQ022_AC1_AC2_AC6_AC7_REQ031_AC1_V005_statuts_un_seul_onglet_de_diff_fermeture_et_bouton_Indexer", async ({ page }) => {
+test("REQ022_AC1_AC2_AC6_AC7_REQ031_AC1_V005_REQ034_AC8_statuts_un_seul_onglet_de_diff_fermeture_bouton_Indexer_et_commit_du_menu", async ({ page }) => {
   const dossier = depot();
   fs.writeFileSync(path.join(dossier, "src", "main.rs"), 'fn main() {\n    println!("bonjour");\n}\n');
   fs.writeFileSync(path.join(dossier, "neuf.txt"), "tout neuf\n");
@@ -257,5 +239,18 @@ test("REQ022_AC1_AC2_AC6_AC7_REQ031_AC1_V005_statuts_un_seul_onglet_de_diff_ferm
     await ligne(page, "neuf.txt").click();
     await page.mouse.move(0, 0);
     await expect.poll(() => opacite("Indexer neuf.txt")).toBe("1");
+  });
+  await test.step("REQ034_AC8_commit_du_menu_montre_le_panneau_git_avec_le_focus_dans_message_sans_rien_valider", async () => {
+    await panneauGit(page);
+    await message(page).fill("déjà écrit");
+    await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
+    await page.getByRole("treeitem", { name: nomLigne("neuf.txt") }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Commit" }).click();
+    await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
+    await expect(message(page)).toBeFocused();
+    await expect(message(page)).toHaveValue("déjà écrit");
+    await expect(page.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
+    expect(g(dossier, "log", "--oneline").trim().split("\n")).toHaveLength(1);
+    expect(g(dossier, "diff", "--cached", "--name-only")).toBe("");
   });
 });
