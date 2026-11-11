@@ -475,21 +475,6 @@ test("REQ034_AC16_clic_droit_sur_une_ligne_d_erreur_est_la_partie_vide_et_ne_pre
   }
 });
 
-test("REQ034_AC5_AC6_AC18_indexer_un_fichier_puis_un_dossier_avec_message_et_focus", async ({ page }) => {
-  const dossier = await ouvrir(page);
-  await ligne(page, "a.txt").click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Indexer" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "a.txt est indexé." })).toBeVisible();
-  await expect(page.getByRole("status").getByRole("button", { name: "Fermer" })).toBeVisible();
-  await expect(ligne(page, "a.txt")).toBeFocused();
-  expect(indexe(dossier)).toEqual(["a.txt"]);
-  await ligne(page, "Zeta").click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Indexer" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Zeta/ est indexé." })).toBeVisible();
-  await expect(ligne(page, "Zeta")).toBeFocused();
-  expect(indexe(dossier)).toEqual(["Zeta/z.txt", "a.txt"]);
-});
-
 test("REQ034_AC6_indexer_un_dossier_laisse_de_cote_ce_que_git_ignore", async ({ page }) => {
   const dossier = await ouvrir(page);
   fs.writeFileSync(path.join(dossier, "Zeta", "x.log"), "x");
@@ -506,16 +491,39 @@ test("REQ034_AC6_indexer_un_dossier_laisse_de_cote_ce_que_git_ignore", async ({ 
   expect(indexe(dossier)).toEqual(["Zeta/z.txt"]);
 });
 
-test("REQ034_AC7_AC18_indexer_un_fichier_ignore_montre_le_refus_de_git_et_l_index_reste", async ({ page }) => {
+test("REQ034_AC5_AC6_AC7_AC18_REQ039_AC1_groupe_indexer_refus_de_git_dossier_et_lettre", async ({ page }) => {
   const dossier = await ouvrir(page);
-  await page.getByRole("treeitem", { name: "target, ignoré par git" }).click();
-  await page.getByRole("treeitem", { name: "out.txt, ignoré par git" }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Indexer" }).click();
-  const alerte = page.getByRole("alert").filter({ hasText: "Git a refusé." });
-  await expect(alerte).toBeVisible();
-  await expect(alerte).toContainText("ignor");
-  await expect(page.getByRole("treeitem", { name: "out.txt, ignoré par git" })).toBeFocused();
-  expect(indexe(dossier)).toEqual([]);
+  await test.step("REQ034_AC7_AC18_indexer_un_fichier_ignore_montre_le_refus_de_git_et_l_index_reste", async () => {
+    await page.getByRole("treeitem", { name: "target, ignoré par git" }).click();
+    await page.getByRole("treeitem", { name: "out.txt, ignoré par git" }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Indexer" }).click();
+    const alerte = page.getByRole("alert").filter({ hasText: "Git a refusé." });
+    await expect(alerte).toBeVisible();
+    await expect(alerte).toContainText("ignor");
+    await expect(page.getByRole("treeitem", { name: "out.txt, ignoré par git" })).toBeFocused();
+    expect(indexe(dossier)).toEqual([]);
+  });
+  await test.step("REQ034_AC5_AC6_AC18_indexer_un_fichier_puis_un_dossier_avec_message_et_focus", async () => {
+    await ligne(page, "a.txt").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Indexer" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "a.txt est indexé." })).toBeVisible();
+    await expect(page.getByRole("status").getByRole("button", { name: "Fermer" })).toBeVisible();
+    await expect(ligne(page, "a.txt")).toBeFocused();
+    expect(indexe(dossier)).toEqual(["a.txt"]);
+    await ligne(page, "Zeta").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Indexer" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Zeta/ est indexé." })).toBeVisible();
+    await expect(ligne(page, "Zeta")).toBeFocused();
+    expect(indexe(dossier)).toEqual(["Zeta/z.txt", "a.txt"]);
+  });
+  await test.step("REQ039_AC1_indexer_depuis_le_menu_fait_passer_la_lettre_de_U_a_A", async () => {
+    const avant = arbre(page).getByRole("treeitem", { name: "notes.txt, nouveau", exact: true });
+    await expect(avant.locator(".liste-statut")).toHaveText("U");
+    await avant.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Indexer" }).click();
+    const apres = arbre(page).getByRole("treeitem", { name: "notes.txt, ajouté", exact: true });
+    await expect(apres.locator(".liste-statut")).toHaveText("A");
+  });
 });
 
 test("REQ034_P008_indexer_main_rs_modifie_refus_sur_target_puis_commit_depuis_le_vide", async ({ page }) => {
@@ -716,16 +724,6 @@ test("REQ039_AC1_AC2_AC3_AC5_AC6_AC7_AC8_lettres_couleurs_points_et_mots_dans_l_
   await expect(arbre(page).getByRole("treeitem", { name: nomLigne("nouveau.txt, nouveau") })).not.toHaveAttribute("aria-current", "true");
   // Le nombre de changements est sur le rail, hors du nom accessible.
   await expect(page.getByRole("tab", { name: "Git", exact: true }).locator(".ya-badge")).toHaveText("3");
-});
-
-test("REQ039_AC1_indexer_depuis_le_menu_fait_passer_la_lettre_de_U_a_A", async ({ page }) => {
-  await ouvrir(page);
-  const avant = arbre(page).getByRole("treeitem", { name: "notes.txt, nouveau", exact: true });
-  await expect(avant.locator(".liste-statut")).toHaveText("U");
-  await avant.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Indexer" }).click();
-  const apres = arbre(page).getByRole("treeitem", { name: "notes.txt, ajouté", exact: true });
-  await expect(apres.locator(".liste-statut")).toHaveText("A");
 });
 
 test("REQ039_AC1_AC5_AC037_7_ctrl_s_met_a_jour_la_lettre_l_onglet_et_le_compteur_sans_changer_de_panneau", async ({ page }) => {
