@@ -1051,7 +1051,15 @@ fn attendre_jusqu_a(mut condition: impl FnMut() -> bool, secondes: u64) -> bool 
 
 #[test]
 fn REQ095_AC11_les_signaux_arretent_le_serveur_mcp_et_son_enfant() {
-    for signal in ["TERM", "INT", "HUP"] {
+    std::thread::scope(|sc| {
+        for signal in ["TERM", "INT", "HUP"] {
+            sc.spawn(move || signal_arrete_le_serveur_mcp(signal));
+        }
+    });
+}
+
+fn signal_arrete_le_serveur_mcp(signal: &str) {
+    {
         let racine = preparer(&format!("mcp-{signal}"));
         let mut s = demarrer(&racine, "projet");
         let (adresse, _) = faux_provider(vec![rep_texte("ok")]);
