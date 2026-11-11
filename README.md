@@ -14,6 +14,8 @@ La même commande installe la dernière release, ou met à jour une installation
 
 Pour une installation existante, `yaide update` fait la même chose : il installe la dernière release et remplace le binaire lancé, dans son propre dossier. Il faut `curl` ou `wget`, `tar` et `sha256sum`. Il ne prend aucun argument.
 
+La barre d'état affiche, tout à droite, la version lancée (« v0.9.1 »). Le serveur cherche la dernière release de Yaide au lancement, puis toutes les 10 minutes ; c'est la seule demande que Yaide fait à GitHub, et elle part du serveur, jamais du navigateur. Si une version plus récente existe, la barre d'état l'annonce, avec un bouton « Mettre à jour » : il fait ce que fait `yaide update`, sans redémarrer Yaide, donc sans couper les shells ni les sessions en cours. Relancez Yaide ensuite pour utiliser la nouvelle version.
+
 ## Compiler
 
 Il faut Rust, Node.js, npm et gcc.
