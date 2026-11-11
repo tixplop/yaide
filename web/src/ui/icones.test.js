@@ -203,3 +203,12 @@ test("REQ088_AC12_messages_square_au_trait_lucide_et_distincte_des_autres", () =
   expect(icone("messages-square").innerHTML).not.toBe(icone("history").innerHTML);
   expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
 });
+
+test("REQ092_AC1_icone_circle_arrow_up_au_trait_lucide", () => {
+  expect(NOMS).toContain("circle-arrow-up");
+  const s = icone("circle-arrow-up", 13);
+  expect(s.getAttribute("stroke-width")).toBe("1.6");
+  expect(s.getAttribute("width")).toBe("13");
+  expect(s.innerHTML).toContain("m16 12-4-4-4 4");
+  expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("circle-arrow-up");
+});

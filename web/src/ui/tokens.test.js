@@ -624,3 +624,28 @@ test("REQ089_AC11_contrastes_de_la_liste_de_suggestions_dans_les_deux_themes", (
     });
   }
 });
+
+// design-system.md, « Barre d'état, version et mise à jour » (REQ-092, REQ-093).
+test("REQ092_AC1_AC6_contrastes_de_la_barre_d_etat_et_de_la_notification", () => {
+  const paires = [
+    ["--ink", "--bg-000", 4.5, [11, 14.4]],
+    ["--ink-muted", "--bg-000", 4.5, [6.7, 5.8]],
+    ["--info", "--bg-000", 3, [7.1, 5.5]],
+    ["--danger", "--bg-000", 3, [6.5, 5.8]],
+    ["--git-added", "--bg-000", 3, [7.7, 5.3]],
+    ["--ink", "--bg-300", 4.5, [8.9, 16.4]],
+    ["--ink", "--bg-400", 4.5, [7.3, 13.2]],
+    ["--ink-muted", "--bg-300", 4.5, [5.4, 6.6]],
+    ["--line-strong", "--bg-000", 3, [3.7, 3]],
+    ["--accent-fg", "--bg-000", 3, [7.1, 5.5]],
+    ["--accent-fg", "--bg-300", 3, [5.7, 6.3]],
+  ];
+  for (const [texte, fond, seuil, mesures] of paires) {
+    THEMES.forEach((theme, i) => {
+      const r = ratio(theme, texte, fond);
+      const nom = `${texte} sur ${fond} (${theme})`;
+      expect(r, nom).toBeGreaterThanOrEqual(seuil);
+      egalA(r, mesures[i], nom);
+    });
+  }
+});

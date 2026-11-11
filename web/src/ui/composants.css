@@ -24,6 +24,8 @@
 .ya-icon-btn[aria-busy="true"] { opacity: 1; cursor: progress; }
 .ya-icon-btn:has(.bouton-en-cours) { width: auto; padding: 0 6px; display: inline-flex; align-items: center; gap: 4px; }
 .bouton-en-cours { color: var(--ink-muted); }
+.ya-btn-barre { font-size: 11.5px; line-height: 16px; font-weight: 400; height: 20px; padding: 0 var(--space-2); flex: none; white-space: nowrap; }
+.ya-btn-barre.bouton-en-cours { color: var(--ink-muted); }
 /* Écart à C-001 : un principal en cours garde son fond d'accent (sans atténuation), le texte en --ink-muted y serait illisible. */
 .ya-btn-primary .bouton-en-cours { color: var(--on-accent); }
 
@@ -68,6 +70,16 @@
 .message-erreur { background: var(--msg-erreur); border-left-color: var(--danger); }
 .message-fort { background: var(--warning); color: var(--bg-000); font-weight: 600; border-left-color: var(--warning); }
 .message-texte { flex: 1; }
+/* C-003, présentation « barre » : en ligne dans la barre d'état, sans fond ni filet. */
+.ya-message-barre { flex-wrap: nowrap; gap: 6px; height: 18px; padding: 0 var(--space-1); margin: 0 calc(-1 * var(--space-1)); background: none; border-left: 0; border-radius: var(--radius-sm); font: inherit; min-width: 0; }
+.ya-message-barre svg { flex: none; width: 13px; height: 13px; }
+.ya-message-barre.message-info svg { color: var(--info); }
+.ya-message-barre.message-erreur svg { color: var(--danger); }
+.ya-message-barre.message-succes svg { color: var(--git-added); }
+.ya-message-barre .message-texte { flex: none; }
+.ya-message-barre.message-info .message-texte, .ya-message-barre.message-succes .message-texte { white-space: nowrap; }
+.ya-message-barre.message-erreur .message-texte { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ya-message-barre:focus { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
 .message-actions { display: flex; gap: var(--space-2); }
 .message-detail { flex-basis: 100%; margin: 0; max-height: var(--hauteur-detail); overflow: auto; font: var(--texte-petit) var(--font-mono); white-space: pre-wrap; }
 /* C-003 avec `champs` (REQ-072) : sans fond propre, filet --info, champs en grille de deux colonnes (une sous 30rem = 480 px). */
@@ -439,6 +451,14 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-status > span[hidden] { display: none; }
 .ya-status svg { width: 13px; height: 13px; }
 .ya-status > .ya-status-espace { flex: 1; padding: 0; }
+.ya-status-branche { min-width: 0; max-width: 40%; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.ya-status-nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ya-status-position, .ya-status-langage, .ya-status-version, .ya-status-maj > button { flex: none; }
+.ya-status-maj { display: flex; align-items: center; min-width: 0; flex: 0 1 auto; padding: 0; font-size: 11.5px; line-height: 16px; }
+.ya-status-maj:has(.ya-message-barre) { padding: 0 6px; }
+.ya-status-zone { display: flex; min-width: 0; }
+.ya-status-maj > button { margin-left: var(--space-2); }
+.ya-status-version { line-height: 16px; }
 
 /* V-005 : panneau Git */
 .git-corps { display: flex; flex-direction: column; box-sizing: border-box; height: 100%; min-height: 0; }

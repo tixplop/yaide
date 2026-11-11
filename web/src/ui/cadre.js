@@ -1,4 +1,6 @@
 import { icone } from "./icones.js";
+import { bouton } from "./bouton.js";
+import { message } from "./message.js";
 import { fermerInfoBulleDans, infoBulle } from "./info-bulle.js";
 import { appliquer as borneMouvement, bornesAria, limitesPoignee, partDe, partDepuis } from "../disposition.js";
 import { limites, poignee } from "./poignee.js";
@@ -31,7 +33,7 @@ export function symbole(taille) {
 /**
  * C-010. `barreTitre` : { projet, chemin, surOuvrir, actions } ; `rail` : { onglets, commandes } ;
  * `panneau` : { titre, repli (bouton de repli, après le titre), entete (élément fixe sous le titre), corps } ;
- * `barreEtat` : { branche, position, langage } (textes, ou rien) ; `agent` : { titre, repli, corps } (colonne à droite) ; `railDroit` : { commandes } (liste de boutons, dans l'ordre) ;
+ * `barreEtat` : { branche, position, langage, version, maj: { etat, derniere, raison }, surMaj } (textes, ou rien ; `etat` : aucune, disponible, encours, echec, installee ; `surMaj` : clic sur « Mettre à jour ») ; `agent` : { titre, repli, corps } (colonne à droite) ; `railDroit` : { commandes } (liste de boutons, dans l'ordre) ;
  * `tailles` : { panneau, agent, shells } en pixels ; `replis` : { panneau, agent, shells } (faux par défaut, vrai pour l'agent) ;
  * `fonctions` : { recherche, git, shells, agents, claude } (vrais par défaut) : `shells` et `agents` faux ne créent ni zone, ni poignée, ni commandes ; `racine.ajouterCommandeDroite(el)` crée le rail droit au besoin.
  * `surChangement(zone, taille)` et `surFin(zone, taille)` viennent des poignées.
@@ -230,15 +232,50 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   const espace = zone("span", "ya-status-espace");
   const position = zone("span", "ya-status-position");
   const langage = zone("span", "ya-status-langage");
-  const etat = zone("footer", "cadre-etat ya-status", [branche, espace, position, langage]);
-  // Texte sans action : ni bouton, ni arrêt de tabulation. Une partie sans texte est masquée.
-  racine.definirEtat = ({ branche: b, position: p, langage: l } = {}) => {
-    branche.replaceChildren(...(b ? [icone("branch", 13), document.createTextNode(b)] : []));
+  // Notification de mise à jour : deux zones vivantes présentes dès le chargement, le texte y est posé ; le bouton reste hors d'elles.
+  const zoneStatus = zone("span", "ya-status-zone");
+  zoneStatus.setAttribute("role", "status");
+  const zoneAlert = zone("span", "ya-status-zone");
+  zoneAlert.setAttribute("role", "alert");
+  const maj = zone("div", "ya-status-maj", [zoneStatus, zoneAlert]);
+  const version = zone("span", "ya-status-version");
+  const sr = zone("span", "ya-sr");
+  sr.textContent = "Yaide ";
+  const numero = document.createTextNode("");
+  const etat = zone("footer", "cadre-etat ya-status", [branche, espace, position, langage, maj, version]);
+  let boutonMaj = null;
+  let surMaj = () => {};
+  // Texte sans action, sauf « Mettre à jour » : ni bouton, ni arrêt de tabulation ailleurs. Une partie sans texte est masquée.
+  racine.definirEtat = ({ branche: b, position: p, langage: l, version: v, maj: m, surMaj: clic } = {}) => {
+    branche.replaceChildren(...(b ? [icone("branch", 13), zone("span", "ya-status-nom", [document.createTextNode(b)])] : []));
+    branche.title = b ?? "";
     position.textContent = p ?? "";
     langage.textContent = l ?? "";
     branche.hidden = !b;
     position.hidden = !p;
     langage.hidden = !l;
+    numero.data = v ?? "";
+    version.replaceChildren(...(v ? [sr, numero] : []));
+    version.hidden = !v;
+    if (clic) surMaj = clic;
+    const e = m?.etat ?? "aucune";
+    const texte = { disponible: `${m?.derniere} disponible`, encours: `${m?.derniere} disponible`, echec: `La mise à jour a échoué : ${m?.raison}.`, installee: `${m?.derniere} installée. Redémarrez Yaide pour l'utiliser.` }[e];
+    const variante = { echec: "erreur", installee: "succes" }[e] ?? "info";
+    const cible = variante === "erreur" ? zoneAlert : zoneStatus;
+    const autre = cible === zoneAlert ? zoneStatus : zoneAlert;
+    autre.replaceChildren();
+    // Le texte ne change pas d'un état à l'autre : on ne le repose que s'il diffère, pour ne pas le relire.
+    const present = cible.firstElementChild;
+    if (!texte) cible.replaceChildren();
+    else if (!present || present.textContent !== texte || !present.classList.contains(`message-${variante}`)) cible.replaceChildren(message({ texte, variante, presentation: "barre" }));
+    if (e === "disponible" || e === "encours" || e === "echec") {
+      if (!boutonMaj) {
+        boutonMaj = bouton({ libelle: "Mettre à jour", taille: "barre", libelleEnCours: "Mise à jour…" });
+        boutonMaj.addEventListener("click", () => surMaj());
+      }
+      boutonMaj.definirEnCours(e === "encours");
+      if (!boutonMaj.isConnected) maj.append(boutonMaj);
+    } else if (boutonMaj?.isConnected) boutonMaj.remove();
   };
   racine.definirEtat(barreEtat);
 

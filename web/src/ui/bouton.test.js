@@ -415,3 +415,41 @@ test("REQ072_AC30_commande_occupee_aria_busy", () => {
   expect(b.hasAttribute("aria-busy")).toBe(false);
   expect(document.activeElement).toBe(b);
 });
+
+test("REQ093_AC6_bouton_barre_en_cours_occupe_sans_disabled_garde_le_focus_et_ignore_le_clic", () => {
+  const b = bouton({ libelle: "Mettre à jour", taille: "barre", libelleEnCours: "Mise à jour…" });
+  const clic = vi.fn();
+  b.addEventListener("click", clic);
+  document.body.append(b);
+  b.focus();
+  expect(b.classList.contains("ya-btn-barre")).toBe(true);
+  expect(b.textContent).toBe("Mise à jour…");
+  expect(b.getAttribute("aria-busy")).toBe("true");
+  expect(b.getAttribute("aria-disabled")).toBe("true");
+  expect(b.disabled).toBe(false);
+  expect(document.activeElement).toBe(b);
+  b.click();
+  expect(clic).not.toHaveBeenCalled();
+  b.definirEnCours(false);
+  expect(b.textContent).toBe("Mettre à jour");
+  expect(b.hasAttribute("aria-busy")).toBe(false);
+  expect(b.hasAttribute("aria-disabled")).toBe(false);
+  b.click();
+  expect(clic).toHaveBeenCalledTimes(1);
+  b.definirEnCours(true);
+  expect(b.textContent).toBe("Mise à jour…");
+  expect(document.activeElement).toBe(b);
+  b.click();
+  expect(clic).toHaveBeenCalledTimes(1);
+  b.remove();
+});
+
+test("REQ093_AC6_bouton_barre_exige_un_libelle_et_le_css_suit_le_design_system", () => {
+  expect(() => bouton({ icone: "x", nomAccessible: "x", taille: "barre" })).toThrow(/barre/);
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  const r = css.match(/\.ya-btn-barre\s*\{([^}]*)\}/)[1].replace(/\s+/g, " ");
+  expect(r).toContain("height: 20px");
+  expect(r).toContain("padding: 0 var(--space-2)");
+  expect(r).toContain("white-space: nowrap");
+  expect(r).not.toMatch(/#[0-9a-f]{3,6}\b/i);
+});

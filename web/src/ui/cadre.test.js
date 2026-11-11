@@ -164,7 +164,7 @@ test("REQ037_AC4_AC10_barre_d_etat_texte_sans_action_et_parties_absentes_masquee
   const f = c.querySelector("footer");
   expect(f.textContent).toBe("main");
   expect(f.querySelector("svg").getAttribute("data-icone")).toBe("branch");
-  expect([...f.querySelectorAll("span[hidden]")].map((e) => e.className)).toEqual(["ya-status-position", "ya-status-langage"]);
+  expect([...f.querySelectorAll("span[hidden]")].map((e) => e.className)).toEqual(["ya-status-position", "ya-status-langage", "ya-status-version"]);
   c.definirEtat({ position: "Ln 1, Col 1", langage: "Texte" });
   expect(f.textContent).toBe("Ln 1, Col 1Texte");
   expect(f.querySelector(".ya-status-branche").hidden).toBe(true);
@@ -1022,4 +1022,80 @@ test("REQ080_AC15_AC16_css_de_la_poignee_groupe", () => {
   expect(css).not.toContain(':nth-child(2) { border');
   expect(regle(".poignee-vertical")).toContain("col-resize");
   expect(regle(".poignee-horizontal")).toContain("row-resize");
+});
+
+const etat = (c) => c.querySelector("footer");
+const montrerMaj = (maj, extra = {}) => cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") }, barreEtat: { branche: "main", position: "Ln 1, Col 1", langage: "Rust", version: "v0.9.1", maj, ...extra } });
+
+test("REQ092_AC1_version_tout_a_droite_precedee_de_Yaide_pour_les_lecteurs_d_ecran", () => {
+  const c = montrerMaj({ etat: "aucune" });
+  const f = etat(c);
+  const v = f.lastElementChild;
+  expect(v.className).toContain("ya-status-version");
+  expect(v.textContent).toBe("Yaide v0.9.1");
+  expect(v.querySelector(".ya-sr").textContent).toBe("Yaide ");
+  expect(v.hidden).toBe(false);
+  const sans = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") }, barreEtat: { branche: "main" } });
+  expect(etat(sans).querySelector(".ya-status-version").hidden).toBe(true);
+  expect(f.querySelector("button, a, [tabindex]")).toBeNull();
+  const r = regle(".ya-status-version");
+  expect(r).toContain("flex: none");
+});
+
+test("REQ092_AC6_zones_status_et_alert_des_le_chargement_notification_sans_focus", () => {
+  const c = montrerMaj({ etat: "aucune" });
+  const f = etat(c);
+  const st = f.querySelector('[role="status"]');
+  const al = f.querySelector('[role="alert"]');
+  expect(st.textContent).toBe("");
+  expect(al.textContent).toBe("");
+  expect(st.closest("[hidden]")).toBeNull();
+  expect(al.closest("[hidden]")).toBeNull();
+  expect(f.querySelector("button")).toBeNull();
+  document.body.append(c);
+  const avant = document.activeElement;
+  c.definirEtat({ branche: "main", version: "v0.9.1", maj: { etat: "disponible", derniere: "v0.9.2" } });
+  expect(st.textContent).toBe("v0.9.2 disponible");
+  expect(f.querySelector("svg[data-icone='circle-arrow-up']")).not.toBeNull();
+  const bouton1 = f.querySelector("button");
+  expect(bouton1.textContent).toBe("Mettre à jour");
+  expect(bouton1.className).toContain("ya-btn-barre");
+  expect(bouton1.closest('[role="status"], [role="alert"]')).toBeNull();
+  expect(document.activeElement).toBe(avant);
+  c.definirEtat({ branche: "main", version: "v0.9.1", maj: { etat: "encours", derniere: "v0.9.2" } });
+  expect(f.querySelector("button")).toBe(bouton1);
+  expect(bouton1.textContent).toBe("Mise à jour…");
+  expect(bouton1.getAttribute("aria-busy")).toBe("true");
+  expect(st.textContent).toBe("v0.9.2 disponible");
+  c.definirEtat({ branche: "main", version: "v0.9.1", maj: { etat: "echec", derniere: "v0.9.2", raison: "« sha256sum » est introuvable" } });
+  expect(f.querySelector("button")).toBe(bouton1);
+  expect(bouton1.textContent).toBe("Mettre à jour");
+  expect(bouton1.hasAttribute("aria-busy")).toBe(false);
+  expect(st.textContent).toBe("");
+  expect(al.textContent).toBe("La mise à jour a échoué : « sha256sum » est introuvable.");
+  expect(f.querySelectorAll('[role="alert"]')).toHaveLength(1);
+  expect(f.querySelectorAll('[role="status"]')).toHaveLength(1);
+  expect(al.querySelector(".message-erreur").getAttribute("title")).toBe(al.textContent);
+  c.definirEtat({ branche: "main", version: "v0.9.1", maj: { etat: "installee", derniere: "v0.9.2" } });
+  expect(f.querySelector("button")).toBeNull();
+  expect(al.textContent).toBe("");
+  expect(st.textContent).toBe("v0.9.2 installée. Redémarrez Yaide pour l'utiliser.");
+  c.definirEtat({ branche: "main", version: "v0.9.1", maj: { etat: "aucune" } });
+  expect(st.textContent).toBe("");
+  expect(f.querySelector("button")).toBeNull();
+  c.remove();
+});
+
+test("REQ092_AC6_surMaj_appele_au_clic_et_branche_coupee_a_40_pour_cent_seul_le_message_d_echec_retrecit", () => {
+  const surMaj = vi.fn();
+  const c = montrerMaj({ etat: "disponible", derniere: "v0.9.2" }, { surMaj });
+  etat(c).querySelector("button").click();
+  expect(surMaj).toHaveBeenCalledTimes(1);
+  expect(regle(".ya-status-branche")).toContain("max-width: 40%");
+  expect(regle(".ya-status-branche")).toContain("text-overflow: ellipsis");
+  for (const s of [".ya-status-position", ".ya-status-langage", ".ya-status-version", ".ya-status-maj > button"]) {
+    expect(`${s}: ${css.includes(s) ? regle(s) : ""}`, s).toContain("flex: none");
+  }
+  expect(regle(".ya-status-maj")).toContain("min-width: 0");
+  expect(regle(".ya-status-zone")).toContain("min-width: 0");
 });

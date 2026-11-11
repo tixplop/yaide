@@ -3,7 +3,7 @@ import { compteur as creerCompteur } from "./compteur.js";
 import { infoBulle as creerInfoBulle } from "./info-bulle.js";
 
 const VARIANTES = ["principal", "secondaire", "discret", "danger"];
-const TAILLES = ["normale", "ligne", "onglet"];
+const TAILLES = ["normale", "ligne", "onglet", "barre"];
 
 export function bouton({
   libelle,
@@ -28,6 +28,7 @@ export function bouton({
   if (!TAILLES.includes(taille)) throw new Error(`bouton : taille inconnue « ${taille} »`);
   if (!libelle && !nomAccessible) throw new Error("bouton : nomAccessible requis sans libelle");
   if (libelle && !/[\p{L}\p{N}]/u.test(libelle) && !nomAccessible) throw new Error("bouton : nomAccessible requis pour un libellé qui n'est qu'un signe");
+  if (taille === "barre" && (!libelle || icone || variante !== "secondaire")) throw new Error("bouton : la taille barre demande un libellé secondaire, sans icône");
   const b = document.createElement("button");
   b.type = submit ? "submit" : "button";
   // `bouton` et `bouton-*` sont des repères ; le style vient des classes `ya-`.
@@ -37,6 +38,7 @@ export function bouton({
   else b.classList.add("ya-btn");
   if (variante === "principal") b.classList.add("ya-btn-primary");
   if (variante === "danger") b.classList.add("ya-btn-danger");
+  if (taille === "barre") b.classList.add("ya-btn-barre");
   if (aIcone && taille !== "normale") b.classList.add(`ya-icon-btn-${taille}`);
   if (nomAccessible) b.setAttribute("aria-label", nomAccessible);
   if (touche) b.setAttribute("aria-keyshortcuts", touche);
@@ -76,8 +78,25 @@ export function bouton({
     b.classList.add("bouton-icone");
     b.append(dessiner(icone));
   }
-  if (libelle && !libelleEnCours) b.append(libelle);
-  if (libelleEnCours) {
+  if (taille === "barre") {
+    // Taille « barre » : le bouton reste actif pour garder le focus ; en cours, `aria-disabled` et un clic sans effet.
+    b.addEventListener("click", (ev) => {
+      if (b.getAttribute("aria-disabled") === "true") ev.stopImmediatePropagation();
+    });
+    b.definirEnCours = (oui) => {
+      b.textContent = oui && libelleEnCours ? libelleEnCours : libelle;
+      b.classList.toggle("bouton-en-cours", Boolean(oui));
+      if (oui) {
+        b.setAttribute("aria-busy", "true");
+        b.setAttribute("aria-disabled", "true");
+      } else {
+        b.removeAttribute("aria-busy");
+        b.removeAttribute("aria-disabled");
+      }
+    };
+    b.definirEnCours(Boolean(libelleEnCours));
+  } else if (libelle && !libelleEnCours) b.append(libelle);
+  if (libelleEnCours && taille !== "barre") {
     const t = document.createElement("span");
     t.className = "bouton-en-cours";
     t.textContent = libelleEnCours;

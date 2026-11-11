@@ -1,10 +1,17 @@
 import { bouton } from "./bouton.js";
+import { icone } from "./icones.js";
 
 const VARIANTES = ["info", "succes", "alerte", "erreur"];
 
-export function message({ texte, variante = "info", detail, champs, actions = [], fermable = false, fort = false }) {
+const ICONES_BARRE = { info: "circle-arrow-up", erreur: "circle-x", succes: "circle-check" };
+
+export function message({ texte, variante = "info", detail, champs, actions = [], fermable = false, fort = false, presentation = "normale" }) {
   if (!texte) throw new Error("message : texte requis");
   if (!VARIANTES.includes(variante)) throw new Error(`message : variante inconnue « ${variante} »`);
+  if (presentation !== "normale" && presentation !== "barre") throw new Error(`message : presentation inconnue « ${presentation} »`);
+  if (presentation === "barre" && (!ICONES_BARRE[variante] || detail || champs?.length || fermable || fort)) {
+    throw new Error("message : la présentation barre n'accepte que info, succes et erreur, sans detail, champs, fermable ni fort");
+  }
   if (champs?.length && (variante !== "info" || fort)) throw new Error("message : champs réservés à la variante info");
   const m = document.createElement(champs?.length ? "form" : "div");
   m.className = `message message-${variante}${fort ? " message-fort" : ""}`;
@@ -18,10 +25,18 @@ export function message({ texte, variante = "info", detail, champs, actions = []
     m.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter" && ev.target instanceof HTMLInputElement) ev.preventDefault();
     });
-  } else {
+  } else if (presentation !== "barre") {
+    // En barre, le rôle vient de la zone vivante qui porte le message.
     m.setAttribute("role", variante === "alerte" || variante === "erreur" ? "alert" : "status");
   }
 
+  if (presentation === "barre") {
+    m.classList.add("ya-message-barre");
+    m.prepend(icone(ICONES_BARRE[variante], 13));
+    // Le texte entier d'un échec reste lisible quand la barre le coupe ; un succès reçoit le focus par code.
+    if (variante === "erreur") m.title = texte;
+    if (variante === "succes") m.tabIndex = -1;
+  }
   const t = document.createElement("span");
   t.className = "message-texte";
   t.textContent = texte;
