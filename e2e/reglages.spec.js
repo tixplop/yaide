@@ -130,7 +130,7 @@ test("REQ070_parcours_32_alleger_avec_faute_de_frappe", async ({ page }) => {
   await expect(bandeau).toBeVisible();
   await expect(bandeau.getByRole("button", { name: "Fermer", exact: true })).toBeVisible();
   for (const nom of ["Fichiers", "Recherche", "Git"]) await expect(page.getByRole("tab", { name: nom, exact: true })).toBeVisible();
-  await expect(page.locator(".cadre-rail-droit").getByRole("button")).toHaveCount(3);
+  await expect(page.locator(".cadre-rail-droit").getByRole("button")).toHaveCount(4);
   await expect(page.getByRole("textbox", { name: "Éditeur interface.json" })).toBeFocused();
 
   // 3. Corrigé et enregistré : rien ne change avant le rechargement.

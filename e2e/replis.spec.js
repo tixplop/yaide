@@ -83,6 +83,7 @@ async function shellLargeur(page) {
 async function hauteurBornee(page) {
   await page.setViewportSize({ width: 800, height: 600 });
   const poignee = page.getByRole("separator", { name: "Hauteur des shells" });
+  await expect(poignee).toHaveAttribute("aria-valuemax", "419");
   await poignee.focus();
   for (let i = 0; i < 30 && (await poignee.getAttribute("aria-valuenow")) !== "350"; i++) await page.keyboard.press("ArrowUp");
   await expect(poignee).toHaveAttribute("aria-valuenow", "350");
