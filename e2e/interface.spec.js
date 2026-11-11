@@ -64,60 +64,6 @@ test("REQ028_AC8_AC7_ordre_de_Tab_complet_et_contour_de_focus_a_chaque_arret", a
   expect(contourTerminal).not.toBe("none");
 });
 
-test("REQ028_AC10_dialogue_ouvert_les_raccourcis_sont_sans_effet_et_le_focus_revient", async ({ page }) => {
-  const avant = fs.readFileSync(main(), "utf8");
-  await ouvrirMain(page, false);
-  await page.keyboard.type("// brouillon\n");
-  await expect(page.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
-  await page.keyboard.press("Control+p");
-  const dialogue = page.getByRole("dialog", { name: "Ouvrir un fichier" });
-  await expect(dialogue).toBeVisible();
-  await page.keyboard.press("Control+s");
-  await page.keyboard.press("Control+p");
-  await page.keyboard.press("Control+Shift+F");
-  await expect(page.getByRole("dialog")).toHaveCount(1);
-  await expect(dialogue).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Chemin du fichier" })).toBeFocused();
-  expect(fs.readFileSync(main(), "utf8")).toBe(avant);
-  await expect(page.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
-  await page.waitForTimeout(300);
-  expect(fs.readFileSync(main(), "utf8")).toBe(avant);
-});
-
-test("REQ032_AC6_800_par_480_avec_les_tailles_extremes_rien_ne_se_superpose", async ({ page }) => {
-  await page.setViewportSize({ width: 1400, height: 900 });
-  await ouvrirMain(page);
-  await page.getByRole("separator", { name: "Largeur du panneau" }).focus();
-  for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowRight");
-  await page.getByRole("separator", { name: "Hauteur des shells" }).focus();
-  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowUp");
-  await page.setViewportSize({ width: 800, height: 480 });
-  await expect.poll(() => page.getByRole("separator", { name: "Largeur du panneau" }).getAttribute("aria-valuenow")).toBe("360");
-  await expect.poll(() => page.getByRole("separator", { name: "Hauteur des shells" }).getAttribute("aria-valuenow")).toBe("299");
-  const zones = await page.evaluate(() =>
-    [".cadre-barre", ".cadre-rail", ".cadre-panneau", ".cadre-code", ".cadre-shells", ".cadre-etat"].map((s) => {
-      const r = document.querySelector(s).getBoundingClientRect();
-      return { s, x: r.x, y: r.y, w: r.width, h: r.height };
-    }),
-  );
-  const code = zones.find((z) => z.s === ".cadre-code");
-  const shells = zones.find((z) => z.s === ".cadre-shells");
-  expect(code.w).toBeGreaterThanOrEqual(320 - 1);
-  const haut = await page.evaluate(() => document.querySelector(".cadre-onglets").getBoundingClientRect().y);
-  expect(code.y + code.h - haut).toBeGreaterThanOrEqual(120 - 1);
-  expect(shells.h).toBeGreaterThanOrEqual(120 - 1);
-  for (let i = 0; i < zones.length; i++)
-    for (let j = i + 1; j < zones.length; j++) {
-      const a = zones[i];
-      const b = zones[j];
-      expect(a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5, `${a.s} / ${b.s}`).toBe(false);
-    }
-  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
-});
-
 /** Valeur calculée de chaque token de couleur (ou d'une autre propriété), telle que le navigateur la rend. */
 const resoudre = (page, noms, propriete = "color") =>
   page.evaluate(
@@ -195,47 +141,6 @@ const commandes = (page) =>
         return { nom: e.getAttribute("aria-label"), icone: e.querySelector("svg").dataset.icone, texte: [...e.childNodes].filter((n) => !n.classList?.contains("ya-badge")).map((n) => n.textContent).join("").trim(), l: r.width, h: r.height, titre: e.hasAttribute("title") };
       }),
   );
-
-test("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_sans_title", async ({ page }) => {
-  fs.writeFileSync(path.join(yaide.dossier, "nouveau.txt"), "x");
-  fs.writeFileSync(path.join(yaide.dossier, "notes.bin"), Buffer.from([0, 1, 2, 0]));
-  await ouvrirYaide(page, yaide.origine);
-  await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
-  await expect(page.getByRole("button", { name: "Aperçu", exact: true })).toBeVisible();
-  // Un message fermable : le bandeau d'un fichier binaire.
-  await page.getByRole("treeitem", { name: nomLigne("notes.bin") }).click();
-  await expect(page.getByRole("alert").getByRole("button", { name: "Fermer", exact: true })).toBeVisible();
-  const toutes = [];
-  for (const panneau of ["Fichiers", "Git"]) {
-    await page.getByRole("tab", { name: panneau, exact: true }).click();
-    if (panneau === "Git") await expect(page.getByRole("button", { name: "Indexer nouveau.txt" })).toBeVisible();
-    toutes.push(...(await commandes(page)));
-  }
-  const noms = new Set(toutes.map((c) => c.nom));
-  for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Ouverture rapide", "Thème clair", "Replier le panneau", "Replier les shells", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Réduire le shell", "Fermer le shell", "Fermer shell 1", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Pull", "Push"]) {
-    expect(noms.has(attendu), attendu).toBe(true);
-  }
-  // AC-031-6 : 24 × 24 px, sauf une action de ligne (20 × 20) et la fermeture d'un onglet (18 × 18).
-  const minimum = (nom) => (nom.startsWith("Indexer ") ? 20 : nom.startsWith("Fermer ") && nom !== "Fermer le shell" ? 18 : 24);
-  for (const c of toutes) {
-    // « Ouverture rapide » garde le nom du projet : texte voulu par le design (C-010), hors d'AC-031-1.
-    if (c.nom !== "Ouverture rapide") expect(c.texte, c.nom).toBe("");
-    expect(c.l, c.nom).toBeGreaterThanOrEqual(minimum(c.nom));
-    expect(c.h, c.nom).toBeGreaterThanOrEqual(minimum(c.nom));
-    expect(c.titre, c.nom).toBe(false);
-  }
-  // Deux commandes différentes n'ont pas la même icône, sauf les deux « Fermer ».
-  const parIcone = new Map();
-  // Exception explicite (DEC-026, AC-031-2) : la loupe sert à « Recherche » et à « Ouverture rapide ».
-  const groupe = (nom) => (nom.startsWith("Fermer") ? "Fermer" : nom.startsWith("Indexer") ? "Indexer" : nom === "Ouverture rapide" ? "Recherche" : nom);
-  for (const c of toutes) parIcone.set(c.icone, new Set([...(parIcone.get(c.icone) ?? []), groupe(c.nom)]));
-  for (const [icone, ensemble] of parIcone) expect(ensemble.size, `icône ${icone} : ${[...ensemble]}`).toBe(1);
-  // « Fermer le shell » n'a pas l'icône de la fermeture d'un onglet.
-  const icone = (nom) => toutes.find((c) => c.nom === nom).icone;
-  expect(icone("Fermer le shell")).not.toBe(icone("Fermer README.md"));
-  expect(icone("Nouveau shell")).not.toBe(icone("Fermer le shell"));
-  expect(icone("Réduire le shell")).not.toBe(icone("Fermer le shell"));
-});
 
 test("REQ035_AC11_info_bulles_a_droite_et_bouton_desactive_sans_arret_de_Tab", async ({ page }) => {
   await page.clock.install();
@@ -476,216 +381,317 @@ test("REQ038_AC5_les_champs_et_la_liste_Branche_suivent_le_theme_de_la_page", as
   await expect.poll(() => schema(message)).toBe("light");
 });
 
-test("REQ036_AC3_tailles_du_cadre_barre_onglets_ligne_etat_et_rail", async ({ page }) => {
-  await page.setViewportSize({ width: 1000, height: 700 });
+test("REQ036_AC3_REQ028_AC9_REQ037_AC4_AC10_AC11_AC12_REQ032_AC6_REQ038_AC2_AC4_tailles_du_cadre_800_par_480_tailles_extremes_et_theme_clair", async ({ page }) => {
   await ouvrirMain(page);
-  const boite = (loc) => loc.first().evaluate((e) => {
-    const r = e.getBoundingClientRect();
-    return [Math.round(r.width), Math.round(r.height)];
-  });
-  expect((await boite(page.locator("header")))[1]).toBe(35);
-  expect((await boite(page.locator("footer")))[1]).toBe(22);
-  expect((await boite(page.getByRole("tablist", { name: "Fichiers ouverts" })))[1]).toBe(35);
-  expect((await boite(page.getByRole("treeitem", { name: nomLigne("src") })))[1]).toBe(22);
-  expect((await boite(page.locator(".cadre-rail")))[0]).toBe(48);
-  for (const nom of ["Fichiers", "Recherche", "Git"]) expect(await boite(page.getByRole("tab", { name: nom, exact: true }))).toEqual([48, 48]);
-  for (const nom of ["Nouveau shell", "Réduire le shell", "Fermer le shell"]) expect(await boite(page.getByRole("button", { name: nom }))).toEqual([48, 48]);
-});
-
-test("REQ038_AC2_AC4_le_bouton_Theme_clair_change_tout_sans_recharger_et_revient", async ({ page }) => {
-  await ouvrirMain(page);
-  await page.keyboard.type("// garde");
-  const b = page.getByRole("button", { name: "Thème clair" });
-  await expect(b).toHaveAttribute("aria-pressed", "false");
-  await b.click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect(b).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByLabel("Éditeur main.rs")).toContainText("// garde");
-  await b.click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await expect(b).toHaveAttribute("aria-pressed", "false");
-});
-
-test("REQ031_AC10_barre_de_titre_info_bulles_sous_le_bouton_et_dans_la_fenetre", async ({ page }) => {
-  await page.setViewportSize({ width: 800, height: 480 });
-  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  for (const nom of ["Replier le panneau", "Thème clair", "Déconnexion"]) {
-    const b = page.locator("header").getByRole("button", { name: nom, exact: true });
-    await b.focus();
-    const bulle = page.getByRole("tooltip");
-    await expect(bulle).toHaveText(nom);
-    const a = await b.boundingBox();
-    const t = await bulle.boundingBox();
-    expect(t.y, nom).toBeGreaterThanOrEqual(a.y + a.height - 1);
-    expect(t.x + t.width, nom).toBeLessThanOrEqual(800);
-    expect(t.x, nom).toBeGreaterThanOrEqual(0);
-  }
-});
-
-test("REQ031_AC9_REQ037_AC3_REQ036_AC13_Renommer_desactive_bouton_central_et_chevron", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await test.step("REQ031_AC9_Renommer_desactive_montre_son_info_bulle", async () => {
-    await expect(page.locator('.fichiers-entete [aria-label="Renommer"]')).toBeDisabled();
-    const t = await resoudre(page, ["--ink-muted"]);
-    // AC-033-11 : un bouton à icône désactivé est atténué (opacité .45), pas recoloré.
-    for (const nom of ["Renommer", "Supprimer"]) {
-      const bouton = page.locator(`.fichiers-entete [aria-label="${nom}"]`);
-      expect(await lire(bouton), nom).toBe(t["--ink-muted"]);
-      expect(await lire(bouton, "opacity"), nom).toBe("0.45");
-    }
-    await page.locator(".fichiers-entete .bouton-enveloppe").nth(2).hover();
-    await expect(page.getByRole("tooltip")).toHaveText("Renommer ou déplacer (F2)");
-  });
-  await test.step("REQ037_AC3_bouton_central_ouvre_l_ouverture_rapide_avec_son_info_bulle", async () => {
-  await page.mouse.move(0, 0);
-    const b = page.getByRole("button", { name: "Ouverture rapide" });
-    await b.focus();
-    await expect(page.getByRole("tooltip")).toHaveText(`${yaide.dossier} · Ouverture rapide (Ctrl+P)`);
-    await b.click();
-    await expect(page.getByRole("dialog", { name: "Ouvrir un fichier" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  });
-  await test.step("REQ036_AC13_le_chevron_d_un_dossier_charge_a_une_transition_de_transform_a_l_ouverture_et_a_la_fermeture", async () => {
-    const src = page.getByRole("treeitem", { name: nomLigne("src") });
-    await src.click();
-    await expect(page.getByRole("treeitem", { name: nomLigne("main.rs") })).toBeVisible();
-    // Le dossier est chargé : les clics suivants ne passent plus par le serveur. On lit les animations de la ligne recréée.
-    const bascule = () =>
-      page.evaluate(async () => {
-        const attendu = document.querySelector('[data-chemin="src"]').getAttribute("aria-expanded") === "true" ? "false" : "true";
-        document.querySelector('[data-chemin="src"]').click();
-        for (let i = 0; i < 200 && document.querySelector('[data-chemin="src"]').getAttribute("aria-expanded") !== attendu; i++) await new Promise((r) => setTimeout(r, 0));
-        const svg = document.querySelector('[data-chemin="src"] .liste-chevron svg');
-        return { ouvert: document.querySelector('[data-chemin="src"]').getAttribute("aria-expanded"), proprietes: svg.getAnimations().map((a) => a.transitionProperty) };
-      });
-    const ferme = await bascule();
-    expect(ferme.ouvert).toBe("false");
-    expect(ferme.proprietes).toContain("transform");
-    const ouvert = await bascule();
-    expect(ouvert.ouvert).toBe("true");
-    expect(ouvert.proprietes).toContain("transform");
-  });
-});
-
-test("REQ032_AC13_REQ031_AC6_REQ040_AC13_AC15_AC28_8_AC28_9_AC31_1_poignee_entete_du_projet_et_shells_reduits", async ({ page }) => {
-  await ouvrirYaide(page, yaide.origine);
-  await test.step("REQ032_AC13_poignee_au_repos_un_filet_de_1_px_et_au_survol_toute_l_epaisseur_en_accent", async () => {
-    const sep = page.getByRole("separator", { name: "Largeur du panneau" });
-    const filet = () => sep.evaluate((e) => {
-      const s = getComputedStyle(e, "::after");
-      return { fond: s.backgroundColor, largeur: s.width };
+  await test.step("REQ036_AC3_tailles_du_cadre_barre_onglets_ligne_etat_et_rail", async () => {
+    await page.setViewportSize({ width: 1000, height: 700 });
+    const boite = (loc) => loc.first().evaluate((e) => {
+      const r = e.getBoundingClientRect();
+      return [Math.round(r.width), Math.round(r.height)];
     });
-    const fond = () => sep.evaluate((e) => getComputedStyle(e).backgroundColor);
-    const t = await page.evaluate(() => {
-      const lire = (n) => {
-        const e = document.createElement("span");
-        e.style.color = `var(${n})`;
-        document.body.append(e);
-        const v = getComputedStyle(e).color;
-        e.remove();
-        return v;
-      };
-      return { ligne: lire("--line"), accent: lire("--accent-fg") };
-    });
-    expect(await filet()).toEqual({ fond: t.ligne, largeur: "1px" });
-    expect(await fond()).not.toBe(t.accent);
-    await sep.hover();
-    expect(await fond()).toBe(t.accent);
-    expect((await filet()).fond).toBe(t.accent);
+    expect((await boite(page.locator("header")))[1]).toBe(35);
+    expect((await boite(page.locator("footer")))[1]).toBe(22);
+    expect((await boite(page.getByRole("tablist", { name: "Fichiers ouverts" })))[1]).toBe(35);
+    expect((await boite(page.getByRole("treeitem", { name: nomLigne("src") })))[1]).toBe(22);
+    expect((await boite(page.locator(".cadre-rail")))[0]).toBe(48);
+    for (const nom of ["Fichiers", "Recherche", "Git"]) expect(await boite(page.getByRole("tab", { name: nom, exact: true }))).toEqual([48, 48]);
+    for (const nom of ["Nouveau shell", "Réduire le shell", "Fermer le shell"]) expect(await boite(page.getByRole("button", { name: nom }))).toEqual([48, 48]);
   });
-  await test.step("REQ031_AC6_panneau_de_240_px_les_quatre_boutons_restent_dans_l_entete_du_projet_sur_une_ligne", async () => {
-    const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
-    await poignee.focus();
-    for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
-    await expect(poignee).toHaveAttribute("aria-valuenow", "240");
-    const boites = await page.locator(".fichiers-entete .bouton").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
-    const pied = await page.locator(".fichiers-entete").evaluate((e) => e.getBoundingClientRect().toJSON());
-    expect(boites).toHaveLength(4);
-    expect(new Set(boites.map((b) => Math.round(b.top))).size).toBe(1);
-    expect(boites.at(-1).right).toBeLessThanOrEqual(pied.right);
-    expect(boites[0].left).toBeGreaterThanOrEqual(pied.left);
-  });
-  await test.step("REQ040_AC13_AC15_AC28_8_AC28_9_AC31_1_Shells_reduits_arret_de_Tab_taille_info_bulle_compteur_et_rail_a_800_par_480", async () => {
-    await page.getByRole("button", { name: "Nouveau shell" }).click();
-    await expect(page.getByRole("tab", { name: "shell 2" })).toBeVisible();
-    await page.getByRole("button", { name: "Réduire le shell", exact: true }).click();
-    const reduits = page.getByRole("button", { name: "Shells réduits", exact: true });
-    await expect(reduits).toBeEnabled();
-    // Arrêt de Tab entre « Réduire le shell » et « Fermer le shell ».
-    await page.getByRole("button", { name: "Réduire le shell", exact: true }).focus();
-    const nomFocus = () => page.evaluate(() => document.activeElement.getAttribute("aria-label"));
-    await page.keyboard.press("Tab");
-    expect(await nomFocus()).toBe("Shells réduits");
-    await page.keyboard.press("Tab");
-    expect(await nomFocus()).toBe("Fermer le shell");
-    // Icône sans texte, 48 × 48, info-bulle à droite.
-    expect(await reduits.evaluate((e) => [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(""))).toBe("");
-    expect(await reduits.locator(".ya-badge").getAttribute("aria-hidden")).toBe("true");
-    const a = await reduits.boundingBox();
-    expect([Math.round(a.width), Math.round(a.height)]).toEqual([48, 48]);
-    await reduits.hover();
-    const info = page.getByRole("tooltip", { name: "Shells réduits" });
-    await expect(info).toBeVisible();
-    expect((await info.boundingBox()).x).toBeGreaterThanOrEqual(a.x + a.width - 1);
-    // Compteur : fond --bg-400, texte --ink ; celui de Git reste sur --accent.
-    const t = await resoudre(page, ["--bg-400", "--ink"]);
-    const badge = reduits.locator(".ya-badge");
-    expect(await lire(badge, "backgroundColor")).toBe(t["--bg-400"]);
-    expect(await lire(badge)).toBe(t["--ink"]);
-    // 800 × 480 : les onglets du rail et les quatre commandes ne se recouvrent pas.
+  await test.step("REQ028_AC9_REQ037_AC4_AC10_AC11_AC12_800_par_480_sans_superposition_et_barre_d_etat", async () => {
     await page.setViewportSize({ width: 800, height: 480 });
-    const [nav, groupe] = await Promise.all([page.locator(".cadre-rail-onglets").boundingBox(), page.locator(".cadre-rail-commandes").boundingBox()]);
-    expect(nav.y + nav.height).toBeLessThanOrEqual(groupe.y + 1);
-    expect(groupe.height).toBe(192);
-    expect(groupe.y + groupe.height).toBeLessThanOrEqual(480);
+    await test.step("REQ028_AC9_800_par_480_avec_fichier_et_deux_shells_rien_ne_se_superpose", async () => {
+      await page.getByRole("button", { name: "Nouveau shell" }).click();
+      await expect(page.getByRole("tab", { name: "shell 2" })).toBeVisible();
+      const zones = await page.evaluate(() =>
+        [".cadre-barre", ".cadre-rail", ".cadre-panneau", ".cadre-onglets", ".cadre-fil", ".cadre-code", ".cadre-shells", ".cadre-etat"].map((s) => {
+          const r = document.querySelector(s).getBoundingClientRect();
+          return { s, x: r.x, y: r.y, w: r.width, h: r.height };
+        }),
+      );
+      for (const z of zones) expect(z.w * z.h, z.s).toBeGreaterThan(0);
+      for (let i = 0; i < zones.length; i++)
+        for (let j = i + 1; j < zones.length; j++) {
+          const a = zones[i];
+          const b = zones[j];
+          const recouvre = a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5;
+          expect(recouvre, `${a.s} / ${b.s}`).toBe(false);
+        }
+      const debord = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+      expect(debord).toBeLessThanOrEqual(0);
+    });
+    await test.step("REQ037_AC4_AC10_AC11_AC12_barre_d_etat_et_fil_d_Ariane", async () => {
+      await page.getByLabel("Éditeur main.rs").focus();
+      const etat = page.locator("footer");
+      await expect(etat).toContainText("Ln 1, Col 1");
+      await expect(etat).toContainText("Rust");
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("End");
+      await expect(etat).toContainText(/Ln 2, Col \d+/);
+      const fil = page.locator(".ya-crumbs");
+      await expect(fil).toHaveText("srcmain.rs");
+      for (const z of [etat, fil]) {
+        expect(await z.evaluate((e) => getComputedStyle(e).cursor)).toBe("default");
+        await expect(z.locator("button, a, [tabindex]")).toHaveCount(0);
+      }
+      // Chemin trop long : les premiers segments sont coupés, le nom reste entier.
+      await fil.evaluate((e) => {
+        e.querySelector(".ya-crumbs-segment").textContent = "un-dossier-au-nom-vraiment-tres-long-".repeat(30);
+      });
+      const nom = await fil.locator(".ya-crumbs-nom").evaluate((e) => [e.scrollWidth, e.clientWidth]);
+      expect(nom[0]).toBe(nom[1]);
+      const segment = await fil.locator(".ya-crumbs-segment").evaluate((e) => e.scrollWidth > e.clientWidth);
+      expect(segment).toBe(true);
+    });
   });
-});
-
-test("REQ028_AC9_REQ037_AC4_AC10_AC11_AC12_800_par_480_sans_superposition_et_barre_d_etat", async ({ page }) => {
-  await page.setViewportSize({ width: 800, height: 480 });
-  await ouvrirMain(page);
-  await test.step("REQ028_AC9_800_par_480_avec_fichier_et_deux_shells_rien_ne_se_superpose", async () => {
-    await page.getByRole("button", { name: "Nouveau shell" }).click();
-    await expect(page.getByRole("tab", { name: "shell 2" })).toBeVisible();
+  await test.step("REQ032_AC6_800_par_480_avec_les_tailles_extremes_rien_ne_se_superpose", async () => {
+    // Départ : fenêtre 800 × 480, deux shells ; on l'agrandit puis on la réduit pour exercer les tailles extrêmes.
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.getByRole("separator", { name: "Largeur du panneau" }).focus();
+    for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowRight");
+    await page.getByRole("separator", { name: "Hauteur des shells" }).focus();
+    for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowUp");
+    await page.setViewportSize({ width: 800, height: 480 });
+    await expect.poll(() => page.getByRole("separator", { name: "Largeur du panneau" }).getAttribute("aria-valuenow")).toBe("360");
+    await expect.poll(() => page.getByRole("separator", { name: "Hauteur des shells" }).getAttribute("aria-valuenow")).toBe("299");
     const zones = await page.evaluate(() =>
-      [".cadre-barre", ".cadre-rail", ".cadre-panneau", ".cadre-onglets", ".cadre-fil", ".cadre-code", ".cadre-shells", ".cadre-etat"].map((s) => {
+      [".cadre-barre", ".cadre-rail", ".cadre-panneau", ".cadre-code", ".cadre-shells", ".cadre-etat"].map((s) => {
         const r = document.querySelector(s).getBoundingClientRect();
         return { s, x: r.x, y: r.y, w: r.width, h: r.height };
       }),
     );
-    for (const z of zones) expect(z.w * z.h, z.s).toBeGreaterThan(0);
+    const code = zones.find((z) => z.s === ".cadre-code");
+    const shells = zones.find((z) => z.s === ".cadre-shells");
+    expect(code.w).toBeGreaterThanOrEqual(320 - 1);
+    const haut = await page.evaluate(() => document.querySelector(".cadre-onglets").getBoundingClientRect().y);
+    expect(code.y + code.h - haut).toBeGreaterThanOrEqual(120 - 1);
+    expect(shells.h).toBeGreaterThanOrEqual(120 - 1);
     for (let i = 0; i < zones.length; i++)
       for (let j = i + 1; j < zones.length; j++) {
         const a = zones[i];
         const b = zones[j];
-        const recouvre = a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5;
-        expect(recouvre, `${a.s} / ${b.s}`).toBe(false);
+        expect(a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5, `${a.s} / ${b.s}`).toBe(false);
       }
-    const debord = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-    expect(debord).toBeLessThanOrEqual(0);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
   });
-  await test.step("REQ037_AC4_AC10_AC11_AC12_barre_d_etat_et_fil_d_Ariane", async () => {
-  await page.getByLabel("Éditeur main.rs").focus();
-    const etat = page.locator("footer");
-    await expect(etat).toContainText("Ln 1, Col 1");
-    await expect(etat).toContainText("Rust");
-    await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("End");
-    await expect(etat).toContainText(/Ln 2, Col \d+/);
-    const fil = page.locator(".ya-crumbs");
-    await expect(fil).toHaveText("srcmain.rs");
-    for (const z of [etat, fil]) {
-      expect(await z.evaluate((e) => getComputedStyle(e).cursor)).toBe("default");
-      await expect(z.locator("button, a, [tabindex]")).toHaveCount(0);
-    }
-    // Chemin trop long : les premiers segments sont coupés, le nom reste entier.
-    await fil.evaluate((e) => {
-      e.querySelector(".ya-crumbs-segment").textContent = "un-dossier-au-nom-vraiment-tres-long-".repeat(30);
+  await test.step("REQ038_AC2_AC4_le_bouton_Theme_clair_change_tout_sans_recharger_et_revient", async () => {
+    await page.getByLabel("Éditeur main.rs").focus();
+    await page.keyboard.type("// garde");
+    const b = page.getByRole("button", { name: "Thème clair" });
+    await expect(b).toHaveAttribute("aria-pressed", "false");
+    await b.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(b).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByLabel("Éditeur main.rs")).toContainText("// garde");
+    await b.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(b).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+test("REQ031_AC9_REQ037_AC3_REQ036_AC13_REQ031_AC10_REQ028_AC10_Renommer_info_bulles_de_la_barre_de_titre_et_dialogue_ouvert", async ({ page }) => {
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await test.step("REQ031_AC9_REQ037_AC3_REQ036_AC13_Renommer_desactive_bouton_central_et_chevron", async () => {
+    await test.step("REQ031_AC9_Renommer_desactive_montre_son_info_bulle", async () => {
+      await expect(page.locator('.fichiers-entete [aria-label="Renommer"]')).toBeDisabled();
+      const t = await resoudre(page, ["--ink-muted"]);
+      // AC-033-11 : un bouton à icône désactivé est atténué (opacité .45), pas recoloré.
+      for (const nom of ["Renommer", "Supprimer"]) {
+        const bouton = page.locator(`.fichiers-entete [aria-label="${nom}"]`);
+        expect(await lire(bouton), nom).toBe(t["--ink-muted"]);
+        expect(await lire(bouton, "opacity"), nom).toBe("0.45");
+      }
+      await page.locator(".fichiers-entete .bouton-enveloppe").nth(2).hover();
+      await expect(page.getByRole("tooltip")).toHaveText("Renommer ou déplacer (F2)");
     });
-    const nom = await fil.locator(".ya-crumbs-nom").evaluate((e) => [e.scrollWidth, e.clientWidth]);
-    expect(nom[0]).toBe(nom[1]);
-    const segment = await fil.locator(".ya-crumbs-segment").evaluate((e) => e.scrollWidth > e.clientWidth);
-    expect(segment).toBe(true);
+    await test.step("REQ037_AC3_bouton_central_ouvre_l_ouverture_rapide_avec_son_info_bulle", async () => {
+      await page.mouse.move(0, 0);
+      const b = page.getByRole("button", { name: "Ouverture rapide" });
+      await b.focus();
+      await expect(page.getByRole("tooltip")).toHaveText(`${yaide.dossier} · Ouverture rapide (Ctrl+P)`);
+      await b.click();
+      await expect(page.getByRole("dialog", { name: "Ouvrir un fichier" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+    });
+    await test.step("REQ036_AC13_le_chevron_d_un_dossier_charge_a_une_transition_de_transform_a_l_ouverture_et_a_la_fermeture", async () => {
+      const src = page.getByRole("treeitem", { name: nomLigne("src") });
+      await src.click();
+      await expect(page.getByRole("treeitem", { name: nomLigne("main.rs") })).toBeVisible();
+      // Le dossier est chargé : les clics suivants ne passent plus par le serveur. On lit les animations de la ligne recréée.
+      const bascule = () =>
+        page.evaluate(async () => {
+          const attendu = document.querySelector('[data-chemin="src"]').getAttribute("aria-expanded") === "true" ? "false" : "true";
+          document.querySelector('[data-chemin="src"]').click();
+          for (let i = 0; i < 200 && document.querySelector('[data-chemin="src"]').getAttribute("aria-expanded") !== attendu; i++) await new Promise((r) => setTimeout(r, 0));
+          const svg = document.querySelector('[data-chemin="src"] .liste-chevron svg');
+          return { ouvert: document.querySelector('[data-chemin="src"]').getAttribute("aria-expanded"), proprietes: svg.getAnimations().map((a) => a.transitionProperty) };
+        });
+      const ferme = await bascule();
+      expect(ferme.ouvert).toBe("false");
+      expect(ferme.proprietes).toContain("transform");
+      const ouvert = await bascule();
+      expect(ouvert.ouvert).toBe("true");
+      expect(ouvert.proprietes).toContain("transform");
+    });
+  });
+  await test.step("REQ031_AC10_barre_de_titre_info_bulles_sous_le_bouton_et_dans_la_fenetre", async () => {
+    await page.keyboard.press("Shift"); // la info-bulle au focus suit le clavier : après des clics, il faut un appui
+    await page.setViewportSize({ width: 800, height: 480 });
+    for (const nom of ["Replier le panneau", "Thème clair", "Déconnexion"]) {
+      const b = page.locator("header").getByRole("button", { name: nom, exact: true });
+      await b.focus();
+      const bulle = page.getByRole("tooltip");
+      await expect(bulle).toHaveText(nom);
+      const a = await b.boundingBox();
+      const t = await bulle.boundingBox();
+      expect(t.y, nom).toBeGreaterThanOrEqual(a.y + a.height - 1);
+      expect(t.x + t.width, nom).toBeLessThanOrEqual(800);
+      expect(t.x, nom).toBeGreaterThanOrEqual(0);
+    }
+  });
+  await test.step("REQ028_AC10_dialogue_ouvert_les_raccourcis_sont_sans_effet_et_le_focus_revient", async () => {
+    // Le dossier src est resté ouvert à l'étape précédente.
+    await page.getByRole("treeitem", { name: nomLigne("main.rs") }).click();
+    await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+    const avant = fs.readFileSync(main(), "utf8");
+    await page.keyboard.type("// brouillon\n");
+    await expect(page.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
+    await page.keyboard.press("Control+p");
+    const dialogue = page.getByRole("dialog", { name: "Ouvrir un fichier" });
+    await expect(dialogue).toBeVisible();
+    await page.keyboard.press("Control+s");
+    await page.keyboard.press("Control+p");
+    await page.keyboard.press("Control+Shift+F");
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await expect(dialogue).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Chemin du fichier" })).toBeFocused();
+    expect(fs.readFileSync(main(), "utf8")).toBe(avant);
+    await expect(page.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+    await page.waitForTimeout(300);
+    expect(fs.readFileSync(main(), "utf8")).toBe(avant);
+  });
+});
+
+test("REQ031_AC1_AC2_AC6_AC8_REQ032_AC13_REQ040_AC13_AC15_AC28_8_AC28_9_AC31_1_commandes_a_icone_poignee_et_shells_reduits", async ({ page }) => {
+  fs.writeFileSync(path.join(yaide.dossier, "nouveau.txt"), "x");
+  fs.writeFileSync(path.join(yaide.dossier, "notes.bin"), Buffer.from([0, 1, 2, 0]));
+  await ouvrirYaide(page, yaide.origine);
+  await test.step("REQ031_AC1_AC2_AC6_AC8_commandes_sans_texte_24_px_icones_distinctes_et_sans_title", async () => {
+    await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
+    await expect(page.getByRole("button", { name: "Aperçu", exact: true })).toBeVisible();
+    // Un message fermable : le bandeau d'un fichier binaire.
+    await page.getByRole("treeitem", { name: nomLigne("notes.bin") }).click();
+    await expect(page.getByRole("alert").getByRole("button", { name: "Fermer", exact: true })).toBeVisible();
+    const toutes = [];
+    for (const panneau of ["Fichiers", "Git"]) {
+      await page.getByRole("tab", { name: panneau, exact: true }).click();
+      if (panneau === "Git") await expect(page.getByRole("button", { name: "Indexer nouveau.txt" })).toBeVisible();
+      toutes.push(...(await commandes(page)));
+    }
+    const noms = new Set(toutes.map((c) => c.nom));
+    for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Ouverture rapide", "Thème clair", "Replier le panneau", "Replier les shells", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Réduire le shell", "Fermer le shell", "Fermer shell 1", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Pull", "Push"]) {
+      expect(noms.has(attendu), attendu).toBe(true);
+    }
+    // AC-031-6 : 24 × 24 px, sauf une action de ligne (20 × 20) et la fermeture d'un onglet (18 × 18).
+    const minimum = (nom) => (nom.startsWith("Indexer ") ? 20 : nom.startsWith("Fermer ") && nom !== "Fermer le shell" ? 18 : 24);
+    for (const c of toutes) {
+      // « Ouverture rapide » garde le nom du projet : texte voulu par le design (C-010), hors d'AC-031-1.
+      if (c.nom !== "Ouverture rapide") expect(c.texte, c.nom).toBe("");
+      expect(c.l, c.nom).toBeGreaterThanOrEqual(minimum(c.nom));
+      expect(c.h, c.nom).toBeGreaterThanOrEqual(minimum(c.nom));
+      expect(c.titre, c.nom).toBe(false);
+    }
+    // Deux commandes différentes n'ont pas la même icône, sauf les deux « Fermer ».
+    const parIcone = new Map();
+    // Exception explicite (DEC-026, AC-031-2) : la loupe sert à « Recherche » et à « Ouverture rapide ».
+    const groupe = (nom) => (nom.startsWith("Fermer") ? "Fermer" : nom.startsWith("Indexer") ? "Indexer" : nom === "Ouverture rapide" ? "Recherche" : nom);
+    for (const c of toutes) parIcone.set(c.icone, new Set([...(parIcone.get(c.icone) ?? []), groupe(c.nom)]));
+    for (const [icone, ensemble] of parIcone) expect(ensemble.size, `icône ${icone} : ${[...ensemble]}`).toBe(1);
+    // « Fermer le shell » n'a pas l'icône de la fermeture d'un onglet.
+    const icone = (nom) => toutes.find((c) => c.nom === nom).icone;
+    expect(icone("Fermer le shell")).not.toBe(icone("Fermer README.md"));
+    expect(icone("Nouveau shell")).not.toBe(icone("Fermer le shell"));
+    expect(icone("Réduire le shell")).not.toBe(icone("Fermer le shell"));
+    // L'étape suivante part de la zone des fichiers, sans onglet ni bandeau ouverts.
+    await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
+    await page.getByRole("button", { name: "Fermer README.md" }).click();
+    await page.getByRole("alert").getByRole("button", { name: "Fermer", exact: true }).click();
+    await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
+    await expect(page.getByRole("tablist", { name: "Fichiers ouverts" }).getByRole("tab")).toHaveCount(0);
+  });
+  await test.step("REQ032_AC13_REQ031_AC6_REQ040_AC13_AC15_AC28_8_AC28_9_AC31_1_poignee_entete_du_projet_et_shells_reduits", async () => {
+    await test.step("REQ032_AC13_poignee_au_repos_un_filet_de_1_px_et_au_survol_toute_l_epaisseur_en_accent", async () => {
+      const sep = page.getByRole("separator", { name: "Largeur du panneau" });
+      const filet = () => sep.evaluate((e) => {
+        const s = getComputedStyle(e, "::after");
+        return { fond: s.backgroundColor, largeur: s.width };
+      });
+      const fond = () => sep.evaluate((e) => getComputedStyle(e).backgroundColor);
+      const t = await page.evaluate(() => {
+        const lire = (n) => {
+          const e = document.createElement("span");
+          e.style.color = `var(${n})`;
+          document.body.append(e);
+          const v = getComputedStyle(e).color;
+          e.remove();
+          return v;
+        };
+        return { ligne: lire("--line"), accent: lire("--accent-fg") };
+      });
+      expect(await filet()).toEqual({ fond: t.ligne, largeur: "1px" });
+      expect(await fond()).not.toBe(t.accent);
+      await sep.hover();
+      expect(await fond()).toBe(t.accent);
+      expect((await filet()).fond).toBe(t.accent);
+    });
+    await test.step("REQ031_AC6_panneau_de_240_px_les_quatre_boutons_restent_dans_l_entete_du_projet_sur_une_ligne", async () => {
+      const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+      await poignee.focus();
+      for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
+      await expect(poignee).toHaveAttribute("aria-valuenow", "240");
+      const boites = await page.locator(".fichiers-entete .bouton").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
+      const pied = await page.locator(".fichiers-entete").evaluate((e) => e.getBoundingClientRect().toJSON());
+      expect(boites).toHaveLength(4);
+      expect(new Set(boites.map((b) => Math.round(b.top))).size).toBe(1);
+      expect(boites.at(-1).right).toBeLessThanOrEqual(pied.right);
+      expect(boites[0].left).toBeGreaterThanOrEqual(pied.left);
+    });
+    await test.step("REQ040_AC13_AC15_AC28_8_AC28_9_AC31_1_Shells_reduits_arret_de_Tab_taille_info_bulle_compteur_et_rail_a_800_par_480", async () => {
+      await page.getByRole("button", { name: "Nouveau shell" }).click();
+      await expect(page.getByRole("tab", { name: "shell 2" })).toBeVisible();
+      await page.getByRole("button", { name: "Réduire le shell", exact: true }).click();
+      const reduits = page.getByRole("button", { name: "Shells réduits", exact: true });
+      await expect(reduits).toBeEnabled();
+      // Arrêt de Tab entre « Réduire le shell » et « Fermer le shell ».
+      await page.getByRole("button", { name: "Réduire le shell", exact: true }).focus();
+      const nomFocus = () => page.evaluate(() => document.activeElement.getAttribute("aria-label"));
+      await page.keyboard.press("Tab");
+      expect(await nomFocus()).toBe("Shells réduits");
+      await page.keyboard.press("Tab");
+      expect(await nomFocus()).toBe("Fermer le shell");
+      // Icône sans texte, 48 × 48, info-bulle à droite.
+      expect(await reduits.evaluate((e) => [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(""))).toBe("");
+      expect(await reduits.locator(".ya-badge").getAttribute("aria-hidden")).toBe("true");
+      const a = await reduits.boundingBox();
+      expect([Math.round(a.width), Math.round(a.height)]).toEqual([48, 48]);
+      await reduits.hover();
+      const info = page.getByRole("tooltip", { name: "Shells réduits" });
+      await expect(info).toBeVisible();
+      expect((await info.boundingBox()).x).toBeGreaterThanOrEqual(a.x + a.width - 1);
+      // Compteur : fond --bg-400, texte --ink ; celui de Git reste sur --accent.
+      const t = await resoudre(page, ["--bg-400", "--ink"]);
+      const badge = reduits.locator(".ya-badge");
+      expect(await lire(badge, "backgroundColor")).toBe(t["--bg-400"]);
+      expect(await lire(badge)).toBe(t["--ink"]);
+      // 800 × 480 : les onglets du rail et les quatre commandes ne se recouvrent pas.
+      await page.setViewportSize({ width: 800, height: 480 });
+      const [nav, groupe] = await Promise.all([page.locator(".cadre-rail-onglets").boundingBox(), page.locator(".cadre-rail-commandes").boundingBox()]);
+      expect(nav.y + nav.height).toBeLessThanOrEqual(groupe.y + 1);
+      expect(groupe.height).toBe(192);
+      expect(groupe.y + groupe.height).toBeLessThanOrEqual(480);
+    });
   });
 });
