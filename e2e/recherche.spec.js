@@ -102,15 +102,34 @@ test("REQ026_AC1_AC4_AC6_AC9_REQ037_AC8_AC13_recherche_aide_resultats_groupes_re
   });
 });
 
-test("REQ026_AC2_clic_sur_un_resultat_ouvre_le_fichier_a_la_ligne_et_focus_dans_l_editeur", async ({ page }) => {
+test("REQ026_AC2_AC8_clic_puis_clavier_ouvrent_le_fichier_a_la_ligne_et_focus_dans_l_editeur", async ({ page }) => {
   await ouvrir(page, depot());
   await rail(page).click();
-  await chercher(page, "fn main_lib");
-  await resultats(page).getByRole("option").first().click();
-  await expect(page.getByRole("tab", { name: "lib.rs" })).toHaveAttribute("aria-selected", "true");
-  const editeur = page.getByLabel("Éditeur lib.rs");
-  await expect(editeur).toBeFocused();
-  await expect(editeur.locator(".cm-activeLine")).toHaveText("fn main_lib() {}");
+  await test.step("REQ026_AC2_clic_sur_un_resultat", async () => {
+    await chercher(page, "fn main_lib");
+    await resultats(page).getByRole("option").first().click();
+    await expect(page.getByRole("tab", { name: "lib.rs" })).toHaveAttribute("aria-selected", "true");
+    const editeur = page.getByLabel("Éditeur lib.rs");
+    await expect(editeur).toBeFocused();
+    await expect(editeur.locator(".cm-activeLine")).toHaveText("fn main_lib() {}");
+  });
+  await test.step("REQ026_AC8_clavier_champ_liste_et_ouverture", async () => {
+    await rail(page).click();
+    await chercher(page, "fn main");
+    const options = resultats(page).getByRole("option");
+    await expect(options).toHaveCount(2);
+    await champ(page).press("ArrowDown");
+    await expect(options.nth(0)).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(options.nth(1)).toBeFocused();
+    await expect(options.nth(1)).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("ArrowUp");
+    await expect(options.nth(0)).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("tab", { name: "lib.rs" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByLabel("Éditeur lib.rs")).toBeFocused();
+    await expect(page.getByLabel("Éditeur lib.rs").locator(".cm-activeLine")).toHaveText("fn main_lib() {}");
+  });
 });
 
 test("REQ026_AC5_AC7_plus_de_500_resultats_gardent_500_et_le_disent", async ({ page }) => {
@@ -121,25 +140,6 @@ test("REQ026_AC5_AC7_plus_de_500_resultats_gardent_500_et_le_disent", async ({ p
   await chercher(page, "motrare");
   await expect(page.getByText("500 premiers résultats. Précisez votre recherche.")).toBeVisible();
   await expect(resultats(page).getByRole("option")).toHaveCount(500);
-});
-
-test("REQ026_AC8_clavier_champ_liste_et_ouverture", async ({ page }) => {
-  await ouvrir(page, depot());
-  await rail(page).click();
-  await chercher(page, "fn main");
-  const options = resultats(page).getByRole("option");
-  await expect(options).toHaveCount(2);
-  await champ(page).press("ArrowDown");
-  await expect(options.nth(0)).toBeFocused();
-  await page.keyboard.press("ArrowDown");
-  await expect(options.nth(1)).toBeFocused();
-  await expect(options.nth(1)).toHaveAttribute("aria-selected", "true");
-  await page.keyboard.press("ArrowUp");
-  await expect(options.nth(0)).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("tab", { name: "lib.rs" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByLabel("Éditeur lib.rs")).toBeFocused();
-  await expect(page.getByLabel("Éditeur lib.rs").locator(".cm-activeLine")).toHaveText("fn main_lib() {}");
 });
 
 test("REQ026_AC2_fichier_deja_ouvert_va_a_la_ligne", async ({ page }) => {
