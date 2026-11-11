@@ -619,3 +619,65 @@ test("REQ087_AC9_focus_garde_sur_un_lien_fichier_pendant_l_arrivee", () => {
   expect(document.activeElement.classList.contains("ya-fichier")).toBe(true);
   expect(document.activeElement.textContent).toBe("le code");
 });
+
+test("REQ095_AC13_outil_mcp_serveur_nom_arguments_et_zone", () => {
+  const c = conversation({
+    entrees: [outil({ id: "m1", serveur: "echo", nom: "dire", argument: '{"texte":"bonjour"}', etat: "reussi", resultat: "bonjour" })],
+  });
+  document.body.append(c);
+  const b = bouton(c);
+  expect(b.querySelector(".ya-step-serveur").textContent).toBe("echo");
+  expect(b.querySelector(".ya-step-sep").textContent).toBe("›");
+  expect(b.querySelector(".ya-step-outil").textContent).toBe("dire");
+  expect(b.querySelector(".ya-step-arg").textContent).toBe('{"texte":"bonjour"}');
+  expect(b.getAttribute("aria-label")).toBe('echo dire {"texte":"bonjour"}, réussi');
+  expect(b.title).toBe('echo › dire {"texte":"bonjour"}');
+  expect(b.querySelector(".ya-step-arg").title).toBe("");
+  expect(b.querySelectorAll("svg").length).toBe(2);
+  expect(b.querySelector("svg").getAttribute("class")).toContain("ok");
+  const zone = document.getElementById(b.getAttribute("aria-controls"));
+  expect(zone.hidden).toBe(true);
+  expect(zone.textContent).toBe('{\n  "texte": "bonjour"\n}bonjour');
+  expect(zone.querySelector(".ya-step-mcp-res").textContent).toBe("bonjour");
+  b.focus();
+  b.click();
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(zone.hidden).toBe(false);
+  expect(document.activeElement).toBe(b);
+  expect(c.textContent).not.toContain("mcp__");
+});
+
+test("REQ095_AC13_arguments_vides_et_echec", () => {
+  const c = conversation({ entrees: [outil({ serveur: "echo", nom: "dire", argument: "{}", etat: "echec", resultat: "boum" })] });
+  const b = bouton(c);
+  expect(b.querySelector(".ya-step-arg").textContent).toBe("");
+  expect(b.getAttribute("aria-label")).toBe("echo dire, échec");
+  expect(b.querySelector("svg").getAttribute("class")).toContain("ko");
+});
+
+test("REQ095_AC14_alerte_sans_croix_role_alert_detail_sans_focus", () => {
+  const c = conversation({
+    entrees: [{ type: "message", variante: "alerte", texte: "Le serveur MCP docs n'a pas démarré : la commande mcp-docs est introuvable.", detail: "/p/.yaide/mcp.json" }],
+  });
+  document.body.append(c);
+  const m = c.querySelector(".message-alerte");
+  expect(m.getAttribute("role")).toBe("alert");
+  expect(m.querySelector("button")).toBeNull();
+  expect(m.querySelector(".message-detail").textContent).toBe("/p/.yaide/mcp.json");
+  expect(c.contains(document.activeElement) && document.activeElement !== document.body).toBe(false);
+});
+
+test("REQ095_AC13_outil_mcp_en_cours_puis_reussi", () => {
+  const e = { serveur: "echo", nom: "dire", argument: '{"a":1}', id: "m2" };
+  const c = conversation({ entrees: [outil({ ...e, etat: "enCours", resultat: "" })] });
+  document.body.append(c);
+  const b = bouton(c);
+  expect(b.querySelector("svg").getAttribute("data-icone")).toBe("circle-dashed");
+  expect(b.getAttribute("aria-label")).toBe('echo dire {"a":1}, en cours');
+  const zone = document.getElementById(b.getAttribute("aria-controls"));
+  expect(zone.querySelector(".ya-step-mcp-res").textContent).toBe("En cours…");
+  c.mettreAJour([outil({ ...e, etat: "reussi", resultat: "fait" })]);
+  expect(b.querySelector("svg").getAttribute("class")).toContain("ok");
+  expect(b.getAttribute("aria-label")).toBe('echo dire {"a":1}, réussi');
+  expect(zone.querySelector(".ya-step-mcp-res").textContent).toBe("fait");
+});

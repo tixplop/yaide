@@ -576,6 +576,12 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-step-etat.ok { color: var(--git-added); }
 .ya-step-etat.ko { color: var(--danger); }
 .ya-step-nom { font-weight: 600; flex: none; color: var(--ink); }
+.ya-step-mcp { display: flex; gap: 6px; max-width: 50%; min-width: 0; flex: none; }
+.ya-step-serveur { font-weight: 400; color: var(--ink); flex: none; }
+.ya-step-sep { color: var(--ink-muted); flex: none; }
+.ya-step-outil { font-weight: 600; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ya-step-mcp-args { display: block; }
+.ya-step-mcp-res { display: block; margin-top: 6px; color: var(--ink); }
 .ya-step-arg { color: var(--ink-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ya-step-chev { color: var(--ink-muted); transition: transform 120ms; }
 .ya-step[aria-expanded="true"] .ya-step-chev, .ya-raison[aria-expanded="true"] .ya-step-chev { transform: rotate(90deg); }

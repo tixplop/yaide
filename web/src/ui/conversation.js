@@ -23,6 +23,22 @@ let compteur = 0;
 
 function texteZone(zone, e) {
   zone.textContent = "";
+  if (e.serveur) {
+    let args = String(e.argument ?? "");
+    try {
+      args = JSON.stringify(JSON.parse(args), null, 2);
+    } catch {
+      // arguments qui ne sont pas du JSON : montrés tels quels
+    }
+    const a = document.createElement("span");
+    a.className = "ya-step-cmd ya-step-mcp-args";
+    a.textContent = args;
+    const r = document.createElement("span");
+    r.className = "ya-step-mcp-res";
+    r.textContent = e.etat === "enCours" ? "En cours…" : (e.resultat ?? "");
+    zone.append(a, r);
+    return;
+  }
   const arg = document.createElement("span");
   arg.className = "ya-step-cmd";
   arg.textContent = e.nom === "bash" ? `$ ${e.argument}` : String(e.argument ?? "");
@@ -46,9 +62,23 @@ function rendreOutil(e, surDeplier) {
   const nom = document.createElement("span");
   nom.className = "ya-step-nom";
   nom.textContent = e.nom;
+  if (e.serveur) {
+    const srv = document.createElement("span");
+    srv.className = "ya-step-serveur";
+    srv.textContent = e.serveur;
+    const sep = document.createElement("span");
+    sep.className = "ya-step-sep";
+    sep.textContent = "›";
+    nom.className = "ya-step-outil";
+    const bloc = document.createElement("span");
+    bloc.className = "ya-step-mcp";
+    bloc.append(srv, sep, nom);
+    b.append(icone(ETATS[e.etat]?.icone ?? "circle-dashed", 14), bloc);
+  }
   const arg = document.createElement("span");
   arg.className = "ya-step-arg";
-  b.append(icone(etat.icone, 14), nom, arg, icone("chevron", 14));
+  if (e.serveur) b.append(arg, icone("chevron", 14));
+  else b.append(icone(etat.icone, 14), nom, arg, icone("chevron", 14));
   b.lastElementChild.classList.add("ya-step-chev");
   b.addEventListener("click", () => {
     const ouvert = b.getAttribute("aria-expanded") !== "true";
@@ -65,14 +95,18 @@ function majOutil(racine, e) {
   const etat = ETATS[e.etat];
   if (!etat) throw new Error(`conversation : état inconnu « ${e.etat} »`);
   const b = racine.querySelector("button");
-  const arg = String(e.argument ?? "");
+  let arg = String(e.argument ?? "");
+  if (e.serveur && arg === "{}") arg = "";
   const ancienne = b.firstElementChild;
   if (ancienne.getAttribute("data-icone") !== etat.icone) ancienne.replaceWith(icone(etat.icone, 14));
   b.firstElementChild.setAttribute("class", `ya-step-etat ${etat.classe}`);
   const a = b.querySelector(".ya-step-arg");
   a.textContent = arg;
-  a.title = arg;
-  b.setAttribute("aria-label", `${e.nom} ${arg}, ${etat.nom}`);
+  if (!e.serveur) a.title = arg;
+  if (e.serveur) {
+    b.title = `${e.serveur} › ${e.nom}${arg ? ` ${arg}` : ""}`;
+    b.setAttribute("aria-label", `${e.serveur} ${e.nom}${arg ? ` ${arg}` : ""}, ${etat.nom}`);
+  } else b.setAttribute("aria-label", `${e.nom} ${arg}, ${etat.nom}`);
   texteZone(racine.querySelector(".ya-step-res"), e);
 }
 
