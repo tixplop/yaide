@@ -525,10 +525,15 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     let saisie = nouveauChamp();
     const annuler = bouton({ libelle: "Annuler" });
     const ok = bouton({ libelle: libelleBouton, variante: "principal" });
-    const dlg = dialogue({ titre, contenu: [zone], actions: [annuler, ok], focusInitial: saisie, surAnnuler: () => dlg.fermer() });
-    annuler.addEventListener("click", () => dlg.fermer());
+    const dlg = dialogue({ titre, contenu: [zone], actions: [annuler, ok], focusInitial: saisie, surAnnuler: abandonner });
+    annuler.addEventListener("click", abandonner);
     ok.addEventListener("click", valider);
 
+    // La ligne d'origine a pu être redessinée pendant le dialogue : le focus revient par l'arbre.
+    function abandonner() {
+      dlg.fermer({ rendreFocus: !origineArbre });
+      if (origineArbre) afficher(true);
+    }
     function refuser(texte, v) {
       saisie = nouveauChamp({ texte, valeur: v });
       saisie.focus();
