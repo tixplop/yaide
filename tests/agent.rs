@@ -1030,3 +1030,82 @@ fn REQ085_AC6_raisonnement_seul_est_garde_au_journal_sans_message_vide_ensuite()
         .iter()
         .all(|x| x["role"] != "assistant"));
 }
+
+fn processus_vivant(pid: i64) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+        stat.rsplit_once(')')
+            .is_some_and(|(_, r)| !r.trim_start().starts_with('Z'))
+    })
+}
+
+fn attendre_jusqu_a(mut condition: impl FnMut() -> bool, secondes: u64) -> bool {
+    let fin = std::time::Instant::now() + Duration::from_secs(secondes);
+    while std::time::Instant::now() < fin {
+        if condition() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    false
+}
+
+#[test]
+fn REQ095_AC11_les_signaux_arretent_le_serveur_mcp_et_son_enfant() {
+    for signal in ["TERM", "INT", "HUP"] {
+        let racine = preparer(&format!("mcp-{signal}"));
+        let mut s = demarrer(&racine, "projet");
+        let (adresse, _) = faux_provider(vec![rep_texte("ok")]);
+        let profil = configurer(&s, "openai", &adresse);
+        let faux = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/faux-mcp.mjs");
+        let note = racine.join("note.jsonl");
+        let enfant = racine.join("enfant.pid");
+        std::fs::create_dir_all(s.projet.join(".yaide")).unwrap();
+        let config = json!({"mcpServers": {"echo": {"command": "node", "args": [
+            faux, format!("--note={}", note.display()), format!("--enfant={}", enfant.display()),
+            "--ignorer-term"]}}});
+        std::fs::write(s.projet.join(".yaide/mcp.json"), config.to_string()).unwrap();
+        let id = message(&s, &profil, "bonjour");
+        attendre_fin(&s, &id);
+        let pid: i64 = serde_json::from_str::<Value>(
+            std::fs::read_to_string(&note)
+                .unwrap()
+                .lines()
+                .next()
+                .unwrap(),
+        )
+        .unwrap()["pid"]
+            .as_i64()
+            .unwrap();
+        assert!(attendre_jusqu_a(|| enfant.exists(), 10), "{signal}");
+        let pid_enfant: i64 = attendre_jusqu_a(
+            || std::fs::read_to_string(&enfant).is_ok_and(|t| t.trim().parse::<i64>().is_ok()),
+            10,
+        )
+        .then(|| {
+            std::fs::read_to_string(&enfant)
+                .unwrap()
+                .trim()
+                .parse()
+                .unwrap()
+        })
+        .unwrap();
+        assert!(
+            processus_vivant(pid) && processus_vivant(pid_enfant),
+            "{signal}"
+        );
+        let _ = Command::new("kill")
+            .args([&format!("-{signal}"), &s.child.id().to_string()])
+            .output();
+        assert!(
+            attendre_jusqu_a(|| s.child.try_wait().unwrap().is_some(), 10),
+            "Yaide s'arrête ({signal})"
+        );
+        assert!(
+            attendre_jusqu_a(
+                || !processus_vivant(pid) && !processus_vivant(pid_enfant),
+                10
+            ),
+            "le serveur MCP et son enfant s'arrêtent ({signal})"
+        );
+    }
+}

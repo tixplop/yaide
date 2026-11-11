@@ -2,6 +2,7 @@
 //! Le fichier `.yaide/conversations/<id>.json` est la seule source de l'historique.
 
 use super::agents::Agent;
+use super::mcp::Mcp;
 use super::outils::{self, Contexte, Limites};
 use super::provider::{self, Appel, Effort, ErreurProvider, Message, Reglage};
 use super::reglages::{self, Profil, Reglages};
@@ -38,6 +39,11 @@ pub enum Entree {
         resultat: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         auteur: Option<String>,
+        /// Serveur MCP et outil d'origine d'un appel `mcp__…` (REQ-095).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        serveur: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        outil: Option<String>,
     },
     Fin {
         texte: String,
@@ -72,7 +78,7 @@ pub struct Conversation {
     pub actif: Option<String>,
     /// Appels demandés par le provider et pas encore commencés ; jamais écrits.
     #[serde(skip)]
-    restants: Vec<Appel>,
+    restants: Vec<(Appel, Option<String>, Option<String>)>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -116,6 +122,8 @@ pub struct Gestionnaire {
     client: reqwest::Client,
     limites: Limites,
     registre: Mutex<HashMap<String, Tour>>,
+    /// Les serveurs MCP de l'instance, partagés par toutes les conversations (REQ-095).
+    mcp: Mcp,
 }
 
 fn maintenant() -> u64 {
@@ -260,7 +268,7 @@ fn ranger(c: &mut Conversation, yaide_arrete: bool) {
             }
         }
     }
-    for a in std::mem::take(&mut c.restants) {
+    for (a, serveur, outil) in std::mem::take(&mut c.restants) {
         c.entrees.push(Entree::Outil {
             argument: outils::argument_principal(&a.nom, &a.arguments),
             id: a.id,
@@ -269,6 +277,8 @@ fn ranger(c: &mut Conversation, yaide_arrete: bool) {
             etat: "echec".into(),
             resultat: "Not run: stopped by the user.".into(),
             auteur: auteur.clone(),
+            serveur,
+            outil,
         });
     }
     c.entrees.push(if yaide_arrete {
@@ -299,6 +309,7 @@ impl Gestionnaire {
     pub fn new(projet: PathBuf, reglages: Arc<Reglages>, limites: Limites) -> Self {
         Gestionnaire {
             dossier: projet.join(".yaide").join("conversations"),
+            mcp: Mcp::new(projet.clone()),
             projet,
             reglages,
             client: provider::client(),
@@ -586,20 +597,40 @@ Always give file paths relative to the project root.",
         Ok(id)
     }
 
+    /// Arrêt de Yaide : arrête les serveurs MCP et ce qu'ils ont lancé.
+    pub async fn arreter_mcp(&self) {
+        self.mcp.arreter().await;
+    }
+
     async fn tour(self: Arc<Self>, conv: Arc<Mutex<Conversation>>) {
+        // Une fois par message de l'utilisateur : les problèmes des serveurs MCP, puis les outils.
+        let (defs, problemes) = self.mcp.preparer(&self.limites).await;
+        let mut outils_tour = outils::definitions();
+        outils_tour.extend(defs);
+        if !self.modifier(&conv, |c| {
+            for p in problemes {
+                c.entrees.push(Entree::Message {
+                    variante: "alerte".into(),
+                    texte: p.message,
+                    detail: p.detail.unwrap_or_default(),
+                });
+            }
+        }) {
+            return;
+        }
         let dossiers: Vec<String> = verrou(&conv)
             .agents
             .iter()
             .map(|a| a.dossier.clone())
             .collect();
         if dossiers.is_empty() {
-            self.boucle(&conv, None).await;
+            self.boucle(&conv, None, &outils_tour).await;
         } else {
             for d in dossiers {
                 if !self.modifier(&conv, |c| c.actif = Some(d.clone())) {
                     break;
                 }
-                if !self.boucle(&conv, Some(d)).await {
+                if !self.boucle(&conv, Some(d), &outils_tour).await {
                     break;
                 }
             }
@@ -618,7 +649,12 @@ Always give file paths relative to the project root.",
     }
 
     /// Faux si le tour entier doit finir (erreur, arrêt).
-    async fn boucle(&self, conv: &Mutex<Conversation>, agent: Option<String>) -> bool {
+    async fn boucle(
+        &self,
+        conv: &Mutex<Conversation>,
+        agent: Option<String>,
+        definitions: &[provider::DefOutil],
+    ) -> bool {
         let ctx = Contexte {
             projet: self.projet.clone(),
             client: self.client.clone(),
@@ -681,7 +717,7 @@ Always give file paths relative to the project root.",
                 &reglage,
                 &instructions,
                 &historique,
-                &outils::definitions(),
+                definitions,
             )
             .await;
             let rep = match res {
@@ -701,7 +737,16 @@ Always give file paths relative to the project root.",
                     return false;
                 }
             };
-            let appels = rep.appels.clone();
+            // Serveur et outil d'origine des appels MCP, pris une fois pour la boucle et `ranger`.
+            let mut appels: Vec<(Appel, Option<String>, Option<String>)> = Vec::new();
+            for a in &rep.appels {
+                let (serveur, outil) = match self.mcp.identite(&a.nom).await {
+                    Some((s, o)) if a.nom.starts_with("mcp__") => (Some(s), Some(o)),
+                    _ => (None, None),
+                };
+                appels.push((a.clone(), serveur, outil));
+            }
+            let restants = appels.clone();
             let continuer = self.modifier(conv, |c| {
                 c.tokens = rep.tokens;
                 if let Some(a) = c
@@ -723,7 +768,7 @@ Always give file paths relative to the project root.",
                         auteur: agent.clone(),
                     });
                 }
-                c.restants = rep.appels;
+                c.restants = restants;
             });
             if !continuer {
                 return false;
@@ -731,7 +776,7 @@ Always give file paths relative to the project root.",
             if appels.is_empty() {
                 return true;
             }
-            for appel in appels {
+            for (appel, serveur, outil) in appels {
                 let argument = outils::argument_principal(&appel.nom, &appel.arguments);
                 let commence = self.modifier(conv, |c| {
                     if !c.restants.is_empty() {
@@ -745,12 +790,20 @@ Always give file paths relative to the project root.",
                         etat: "enCours".into(),
                         resultat: String::new(),
                         auteur: agent.clone(),
+                        serveur,
+                        outil,
                     });
                 });
                 if !commence {
                     return false;
                 }
-                let r = outils::executer(&appel.nom, &appel.arguments, &ctx).await;
+                let r = if appel.nom.starts_with("mcp__") {
+                    self.mcp
+                        .appeler(&appel.nom, &appel.arguments, &self.limites)
+                        .await
+                } else {
+                    outils::executer(&appel.nom, &appel.arguments, &ctx).await
+                };
                 let fini = self.modifier(conv, |c| {
                     let entree = c.entrees.iter_mut().rev().find(
                         |e| matches!(e, Entree::Outil { id, etat, .. } if *id == appel.id && etat == "enCours"),
@@ -1255,6 +1308,8 @@ mod tests {
                     etat: "enCours".into(),
                     resultat: String::new(),
                     auteur: None,
+                    serveur: None,
+                    outil: None,
                 },
             ],
             agents: vec![],
@@ -1762,5 +1817,221 @@ mod tests {
         let m = messages_pour(&entrees, None, &[]);
         assert_eq!(m.len(), 1);
         assert!(matches!(&m[0], Message::Utilisateur(_)));
+    }
+
+    // --- serveurs MCP (REQ-095) ---
+
+    fn faux_mcp() -> String {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/faux-mcp.mjs")
+            .display()
+            .to_string()
+    }
+
+    impl Banc {
+        /// `.yaide/mcp.json` avec ces serveurs : (nom, options du faux serveur).
+        fn mcp(&self, serveurs: &[(&str, Vec<String>)]) {
+            let corps: Vec<String> = serveurs
+                .iter()
+                .map(|(n, o)| {
+                    let mut args = vec![faux_mcp()];
+                    args.extend(o.iter().cloned());
+                    format!("{}:{}", json!(n), json!({"command": "node", "args": args}))
+                })
+                .collect();
+            std::fs::create_dir_all(self.dir.join(".yaide")).unwrap();
+            std::fs::write(
+                self.dir.join(".yaide/mcp.json"),
+                format!("{{\"mcpServers\":{{{}}}}}", corps.join(",")),
+            )
+            .unwrap();
+        }
+    }
+
+    fn noms_outils(corps: &Value) -> Vec<String> {
+        corps["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["function"]["name"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn REQ095_AC1_AC2_outil_mcp_offert_appele_et_journalise() {
+        let b = banc("mcp-ac1", true, None).await;
+        b.mcp(&[("echo", vec![])]);
+        b.scenario(vec![
+            appels(&[("m1", "mcp__echo__dire", json!({"texte": "bonjour"}))]),
+            texte("fini", 3),
+        ]);
+        let id = b.envoyer(None, "dis").unwrap();
+        let v = b.fini(&id).await;
+        // AC-095-1
+        let outils = noms_outils(&serde_json::from_str(&b.requete(0)).unwrap());
+        let mut attendus: Vec<String> = outils::definitions().into_iter().map(|d| d.nom).collect();
+        attendus.push("mcp__echo__dire".into());
+        assert_eq!(outils, attendus);
+        let corps: Value = serde_json::from_str(&b.requete(0)).unwrap();
+        let def = corps["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["function"]["name"] == "mcp__echo__dire")
+            .unwrap();
+        assert_eq!(def["function"]["description"], "Outil dire du faux serveur");
+        assert_eq!(
+            def["function"]["parameters"]["properties"]["texte"]["type"],
+            "string"
+        );
+        // AC-095-2
+        assert!(b.requete(1).contains("dit: bonjour"));
+        assert_eq!(b.nb_requetes(), 2);
+        let e = v["entrees"].as_array().unwrap();
+        assert_eq!(e.len(), 4, "{e:?}");
+        assert_eq!(e[2]["nom"], "mcp__echo__dire");
+        assert_eq!(e[2]["serveur"], "echo");
+        assert_eq!(e[2]["outil"], "dire");
+        assert_eq!(e[2]["argument"], "{\"texte\":\"bonjour\"}");
+        assert_eq!(e[2]["etat"], "reussi");
+        assert_eq!(e[2]["resultat"], "dit: bonjour");
+        assert_eq!(e[3]["texte"], "fini");
+    }
+
+    #[tokio::test]
+    async fn REQ095_AC6_AC14_problemes_en_alertes_apres_le_message_a_chaque_tour() {
+        let b = banc("mcp-ac6", true, None).await;
+        std::fs::create_dir_all(b.dir.join(".yaide")).unwrap();
+        std::fs::write(
+            b.dir.join(".yaide/mcp.json"),
+            r#"{"mcpServers":{"un":{"url":"https://a.example/mcp"},"deux":{"args":[]},"ok":{"command":"node","args":["FAUX"]}}}"#
+                .replace("FAUX", &faux_mcp()),
+        )
+        .unwrap();
+        b.scenario(vec![texte("a", 1), texte("b", 1)]);
+        let id = b.envoyer(None, "un").unwrap();
+        let v = b.fini(&id).await;
+        let e = v["entrees"].as_array().unwrap();
+        assert_eq!(e[0]["type"], "utilisateur");
+        assert_eq!(e[1]["type"], "message");
+        assert_eq!(e[1]["variante"], "alerte");
+        assert!(e[1]["texte"]
+            .as_str()
+            .unwrap()
+            .contains("Le serveur MCP un n'a pas démarré"));
+        assert_eq!(e[2]["variante"], "alerte");
+        assert!(e[2]["texte"]
+            .as_str()
+            .unwrap()
+            .contains("Le serveur MCP deux n'a pas démarré"));
+        assert_eq!(e[3]["type"], "agent");
+        // le tour continue avec les outils de REQ-057 et celui du serveur sain
+        let outils = noms_outils(&serde_json::from_str(&b.requete(0)).unwrap());
+        assert!(outils.contains(&"read".to_string()) && outils.contains(&"mcp__ok__dire".into()));
+        // les problèmes reviennent au tour suivant
+        b.envoyer(Some(&id), "deux").unwrap();
+        let v = b.fini(&id).await;
+        let e = v["entrees"].as_array().unwrap();
+        assert_eq!(e.len(), 8, "{e:?}");
+        assert_eq!(e[5]["variante"], "alerte");
+        assert_eq!(e[6]["variante"], "alerte");
+        assert_eq!(e[7]["type"], "agent");
+        // JSON cassé
+        std::fs::write(b.dir.join(".yaide/mcp.json"), "{").unwrap();
+        b.scenario(vec![texte("c", 1)]);
+        b.envoyer(Some(&id), "trois").unwrap();
+        let v = b.fini(&id).await;
+        let e = v["entrees"].as_array().unwrap();
+        assert!(e[9]["texte"]
+            .as_str()
+            .unwrap()
+            .starts_with(".yaide/mcp.json est illisible."));
+        assert_ne!(e[9]["detail"], "");
+        assert_eq!(e[10]["texte"], "c");
+        let outils = noms_outils(&serde_json::from_str(&b.requete(b.nb_requetes() - 1)).unwrap());
+        assert_eq!(outils.len(), outils::definitions().len());
+    }
+
+    #[tokio::test]
+    async fn REQ095_AC9_arreter_pendant_un_appel_puis_le_serveur_repond() {
+        let b = banc("mcp-ac9", true, None).await;
+        let note = b.dir.join("note.jsonl");
+        b.mcp(&[(
+            "echo",
+            vec!["--delai=1500".into(), format!("--note={}", note.display())],
+        )]);
+        b.scenario(vec![appels(&[
+            ("m1", "mcp__echo__dire", json!({"texte": "x"})),
+            ("m0", "mcp__echo__dire", json!({"texte": "y"})),
+        ])]);
+        let id = b.envoyer(None, "un").unwrap();
+        b.attendre(&id, |v| {
+            v["entrees"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["type"] == "outil" && e["etat"] == "enCours")
+        })
+        .await;
+        assert!(b.g.arreter(&id));
+        let v = b.g.lire(&id, 0).unwrap();
+        let e = v["entrees"].as_array().unwrap();
+        let n = e.len();
+        assert_eq!(e[n - 3]["id"], "m1");
+        assert_eq!(e[n - 3]["etat"], "echec");
+        assert_eq!(e[n - 3]["serveur"], "echo");
+        assert_eq!(e[n - 2]["id"], "m0");
+        assert_eq!(e[n - 2]["resultat"], "Not run: stopped by the user.");
+        assert_eq!(e[n - 2]["serveur"], "echo");
+        assert_eq!(e[n - 2]["outil"], "dire");
+        assert_eq!(e[n - 1], json!({"type": "fin", "texte": "Arrêté."}));
+        b.scenario(vec![
+            appels(&[("m2", "mcp__echo__dire", json!({"texte": "encore"}))]),
+            texte("fini", 1),
+        ]);
+        b.envoyer(Some(&id), "deux").unwrap();
+        let v = b.fini(&id).await;
+        let e = v["entrees"].as_array().unwrap();
+        assert_eq!(e[e.len() - 2]["resultat"], "dit: encore");
+        assert_eq!(e[e.len() - 2]["etat"], "reussi");
+        // un seul processus pour les deux tours
+        assert_eq!(std::fs::read_to_string(&note).unwrap().lines().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn REQ095_AC10_deux_agents_recoivent_et_appellent_les_outils_mcp() {
+        let b = banc("mcp-ac10", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        let tes = b.agent("Testeur", None);
+        b.mcp(&[("echo", vec![]), ("cassé", vec!["--quitter=1".into()])]);
+        b.scenario(vec![
+            appels(&[("m1", "mcp__echo__dire", json!({"texte": "un"}))]),
+            texte("rel", 1),
+            appels(&[("m2", "mcp__echo__dire", json!({"texte": "deux"}))]),
+            texte("tes", 1),
+        ]);
+        let id = b.envoyer_a(None, &[rel, tes], "go").unwrap();
+        let v = b.fini(&id).await;
+        assert_eq!(b.nb_requetes(), 4);
+        for i in [0, 2] {
+            let outils = noms_outils(&b.corps(i));
+            assert!(outils.contains(&"mcp__echo__dire".to_string()), "{i}");
+        }
+        let e = v["entrees"].as_array().unwrap();
+        let alertes = e.iter().filter(|x| x["type"] == "message").count();
+        assert_eq!(alertes, 1, "une seule fois par message : {e:?}");
+        assert_eq!(e[1]["variante"], "alerte");
+        let appels_mcp: Vec<(&Value, &Value)> = e
+            .iter()
+            .filter(|x| x["type"] == "outil")
+            .map(|x| (&x["auteur"], &x["resultat"]))
+            .collect();
+        assert_eq!(
+            appels_mcp,
+            vec![
+                (&json!("relecteur"), &json!("dit: un")),
+                (&json!("testeur"), &json!("dit: deux"))
+            ]
+        );
     }
 }

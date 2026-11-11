@@ -1230,6 +1230,7 @@ pub async fn servir(
         reglages.clone(),
         Limites::default(),
     ));
+    let agent_arret = agent.clone();
     let etat: Partage = Arc::new(Etat {
         config: config.to_path_buf(),
         projet: projet.display().to_string(),
@@ -1337,6 +1338,7 @@ pub async fn servir(
         _ = arret() => {
             veille.abort();
             etat_arret.opencode.arreter().await;
+            agent_arret.arreter_mcp().await;
             registre.arreter().await;
             Ok(())
         }

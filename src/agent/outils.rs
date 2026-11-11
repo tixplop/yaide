@@ -122,6 +122,14 @@ pub fn definitions() -> Vec<DefOutil> {
 
 /// L'argument qui résume un appel, pour l'affichage : chemin, commande, motif, requête ou adresse.
 pub fn argument_principal(nom: &str, arguments: &Value) -> String {
+    if nom.starts_with("mcp__") {
+        // Les arguments en JSON compact, rien pour `{}`.
+        return match arguments {
+            Value::Null => String::new(),
+            Value::Object(o) if o.is_empty() => String::new(),
+            v => v.to_string(),
+        };
+    }
     let cle = match nom {
         "read" | "write" | "edit" => "path",
         "bash" => "command",
