@@ -35,6 +35,7 @@ export function quand(ms, maintenant = new Date(), avecAnnee = false) {
  * (`raisonnement`, non vide) devient une entrée avant la réponse, du même auteur ; la réponse vide n'est pas montrée.
  */
 function pourLeFil(e, rang) {
+  if (e.type === "outil" && e.serveur) return [{ ...e, nom: e.outil }];
   if (e.type !== "agent") return [e];
   const liste = [];
   if (typeof e.raisonnement === "string" && e.raisonnement.trim()) {

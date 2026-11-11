@@ -93,6 +93,21 @@ Chaque conversation avec l'agent s'ouvre dans un onglet de l'éditeur, à côté
 - **Conversation à plusieurs agents.** Cochez un ou plusieurs agents, puis « Démarrer une conversation » : à chaque message, les agents répondent chacun à son tour, dans l'ordre de la liste, chacun avec son profil et dans un groupe à sa couleur. « Arrêter » interrompt l'agent en cours, et les suivants ne répondent pas.
 - **Supprimer un agent.** Supprimez son dossier `.yaide/agents/<nom>/` (depuis l'arborescence, par exemple). Un `agent.json` illisible est signalé au-dessus de la liste, sans empêcher les autres agents.
 - **Raisonnement.** Quand le provider le rend, il s'affiche replié sous « Raisonnement ». Avec Anthropic, Yaide le demande sauf si le profil a une température. Claude 4.5 et les versions avant refusent ce réglage : donnez-leur une température.
+- **Serveurs MCP.** Le fichier `.yaide/mcp.json` du projet déclare des serveurs MCP dont les outils s'ajoutent à ceux de l'agent. Seul le transport stdio est pris en charge : Yaide lance la commande dans le dossier du projet. Pour un serveur HTTP, passez par `npx mcp-remote <url>`. Exemple :
+
+  ```json
+  {
+    "mcpServers": {
+      "docs": {
+        "command": "npx",
+        "args": ["-y", "mon-serveur-docs"],
+        "env": { "DOCS_TOKEN": "mon-jeton" }
+      }
+    }
+  }
+  ```
+
+  Un outil s'appelle `mcp__<serveur>__<outil>` pour le modèle ; la conversation affiche « serveur › outil ». Un serveur qui ne démarre pas est signalé au début du tour, sans empêcher les autres. Les jetons de `env` sont en clair dans le fichier : ne le poussez pas s'il en contient. Claude Code et opencode gardent leur propre configuration.
 
 ## Session Claude
 

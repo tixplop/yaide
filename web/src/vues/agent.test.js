@@ -951,3 +951,76 @@ test("REQ087_AC7_un_lien_fichier_de_l_onglet_Agent_sans_et_avec_agents_appelle_o
     document.body.replaceChildren();
   }
 });
+
+test("REQ095_AC12_AC13_outil_mcp_serveur_nom_et_dans_son_groupe", async () => {
+  const mcp = { type: "outil", id: "m1", nom: "mcp__echo__dire", serveur: "echo", outil: "dire", argument: '{"texte":"bonjour"}', etat: "reussi", resultat: "bonjour" };
+  const { vue } = await monter({ equipe: AGENTS(),
+    lectures: [
+      { agents: AGENTS(), actif: "relecteur", entrees: [{ type: "utilisateur", texte: "go" }, { ...mcp, auteur: "relecteur" }], enCours: true, total: 2, tokens: 0 },
+    ],
+  });
+  taper(vue, "go");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  await tick(500);
+  const groupe = fil(vue).querySelector("[role=group]");
+  const b = groupe.querySelector(".ya-step");
+  expect(b.querySelector(".ya-step-serveur").textContent).toBe("echo");
+  expect(b.querySelector(".ya-step-outil").textContent).toBe("dire");
+  expect(b.getAttribute("aria-label")).toBe('echo dire {"texte":"bonjour"}, réussi');
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  expect(fil(vue).textContent).not.toContain("mcp__echo__dire");
+  b.click();
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(fil(vue).textContent).toContain('"texte": "bonjour"');
+});
+
+test("REQ095_AC14_messages_des_serveurs_avant_le_travail_sans_prendre_le_focus", async () => {
+  const alerte = (texte) => ({ type: "message", variante: "alerte", texte });
+  const { vue } = await monter({
+    lectures: [
+      { entrees: [{ type: "utilisateur", texte: "go" }, alerte("Le serveur MCP docs n'a pas démarré : la commande mcp-docs est introuvable."), alerte("Le serveur MCP b n'a pas démarré : il s'est arrêté (code 1).")], enCours: true, total: 3, tokens: 0 },
+      { entrees: [{ type: "agent", markdown: "Fini." }], enCours: false, total: 4, tokens: 0 },
+    ],
+  });
+  taper(vue, "go");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  await tick(500);
+  const f = fil(vue);
+  const alertes = [...f.querySelectorAll("[role=alert]")];
+  expect(alertes.map((a) => a.textContent)).toEqual([
+    expect.stringContaining("Le serveur MCP docs n'a pas démarré : la commande mcp-docs est introuvable."),
+    expect.stringContaining("Le serveur MCP b n'a pas démarré : il s'est arrêté (code 1)."),
+  ]);
+  expect(f.querySelector("[role=alert] button")).toBeNull();
+  const texte = f.textContent;
+  expect(texte.indexOf("go")).toBeLessThan(texte.indexOf("docs"));
+  expect(texte.indexOf("docs")).toBeLessThan(texte.indexOf("L'agent travaille"));
+  expect(document.activeElement).toBe(champ(vue));
+  await tick(500);
+  expect(document.activeElement).toBe(champ(vue));
+  expect(f.querySelectorAll("[role=alert]").length).toBe(2);
+});
+
+test("REQ095_AC14_messages_avant_le_premier_groupe_d_agent", async () => {
+  const alerte = { type: "message", variante: "alerte", texte: "Le serveur MCP docs n'a pas démarré : la commande mcp-docs est introuvable." };
+  const { vue } = await monter({ equipe: AGENTS(),
+    lectures: [
+      { agents: AGENTS(), actif: "relecteur", entrees: [{ type: "utilisateur", texte: "go" }, alerte], enCours: true, total: 2, tokens: 0 },
+      { agents: AGENTS(), actif: "relecteur", entrees: [{ type: "agent", texte: "Ok.", auteur: "relecteur" }], enCours: true, total: 3, tokens: 0 },
+    ],
+  });
+  taper(vue, "go");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  await tick(500);
+  await tick(500);
+  const f = fil(vue);
+  const a = f.querySelector("[role=alert]");
+  const g = f.querySelector("[role=group]");
+  expect(a).not.toBeNull();
+  expect(g).not.toBeNull();
+  expect(a.compareDocumentPosition(g) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(document.activeElement).toBe(champ(vue));
+});
