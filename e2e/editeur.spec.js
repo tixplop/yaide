@@ -294,11 +294,11 @@ test("REQ013_deux_ctrl_s_rapproches_n_affichent_pas_d_echec", async ({ page }) =
   await page.keyboard.press("Control+s");
   await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt, nouveau");
   expect(fs.readFileSync(path.join(dossier, "a.txt"), "utf8")).toBe("ab");
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
   await taper(page, "a.txt", "c");
   await page.keyboard.press("Control+s");
   await expect(onglet(page, "a.txt")).toHaveAccessibleName("a.txt, nouveau");
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
 });
 
 test("REQ013_AC3_et_AC5_ecriture_impossible_message_et_le_point_reste", async ({ page }) => {

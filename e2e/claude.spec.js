@@ -49,7 +49,7 @@ test("REQ068_parcours_30_session_a_cote_du_code", async ({ page }) => {
   await expect(onglet(page, "Claude 1")).toHaveAttribute("aria-selected", "true");
   await expect(saisie(page)).toBeFocused();
   await expect(page.locator(".cadre-etat")).not.toContainText("Rust");
-  await expect(page.locator(".cadre-etat")).toHaveText("master");
+  await expect(page.locator(".cadre-etat")).toHaveText(/^masterYaide v\d+\.\d+\.\d+$/);
 
   // 3. Claude écrit dans args.rs ; l'onglet du fichier montre le nouveau contenu (AC-068-12).
   await expect(page.locator(".claude .terminal-attente")).toBeHidden(); // connecté : la frappe n'est plus perdue

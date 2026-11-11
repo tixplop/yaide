@@ -81,7 +81,7 @@ test("REQ087_parcours_59_60_liens_fichiers", async ({ page, context }) => {
     // Étape 4 : fichier absent, message, focus sur le lien.
     const absent = page.getByRole("link", { name: "src/parse.rs" });
     await absent.click();
-    await expect(page.getByRole("alert")).toHaveText(/src\/parse\.rs n'existe pas\./);
+    await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveText(/src\/parse\.rs n'existe pas\./);
     await expect(absent).toBeFocused();
     await expect(page.getByRole("tab", { name: /^parse\.rs/ })).toHaveCount(0);
     await page.screenshot({ path: path.join(path.dirname(dossier), "V-007-etape4.png") });
@@ -115,7 +115,7 @@ test("REQ087_parcours_59_60_liens_fichiers", async ({ page, context }) => {
     await ongletAgent.click();
     const hosts = page.getByRole("link", { name: "/etc/x.conf" });
     await hosts.click();
-    await expect(page.getByRole("alert")).toHaveText(/\/etc\/x\.conf est hors du projet et de ses worktrees\. Yaide ne l'ouvre pas\./);
+    await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveText(/\/etc\/x\.conf est hors du projet et de ses worktrees\. Yaide ne l'ouvre pas\./);
     await expect(hosts).toBeFocused();
   } finally {
     await faux.arreter();

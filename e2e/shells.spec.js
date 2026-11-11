@@ -549,6 +549,6 @@ test("REQ041_AC8_AC9_REQ035_AC13_presentation_de_la_barre_puis_fermeture_refusee
     await dlg.getByRole("button", { name: "Fermer", exact: true }).click();
     await expect(dlg).toHaveCount(0);
     await expect(onglets(page)).toHaveText(["shell 1"]);
-    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
   });
 });

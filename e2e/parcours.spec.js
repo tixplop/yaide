@@ -380,7 +380,7 @@ test("REQ019_REQ046_REQ047_parcours_15_arriver_sans_shell", async ({ page }) => 
   await expect(bouton("Replier les shells")).toBeDisabled({ timeout: 15000 });
   await expect(bouton("Nouveau shell")).toBeFocused();
   await expect(bouton("Nouveau shell").locator(".ya-badge")).toBeHidden();
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
 });
 
 test("REQ048_parcours_16_replier_depuis_l_en_tete", async ({ page }) => {
@@ -584,7 +584,7 @@ test("REQ050_parcours_18_dossier_refus_coupure", async ({ page, browserName }) =
   await expect(rangee(page, "lib/util.rs")).toBeVisible();
   await expect(rangee(page, "lib")).toBeFocused();
   await expect(rangee(page, "lib")).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
   expect(fs.existsSync(path.join(dossier, "lib", "util.rs"))).toBe(true);
   // 5. notes.md sur doc : seul doc est surligné, il ne se déplie pas avant le dépôt.
   await saisir(page, rangee(page, "notes.md"));

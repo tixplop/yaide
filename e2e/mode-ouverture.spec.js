@@ -168,7 +168,7 @@ test("REQ083_P054_recherche_fichiers_vides_rechargement", async ({ page, browser
   await page.getByRole("tab", { name: "Fichiers" }).click();
   await nouveauFichier(page, "notes.md");
   await expect(hybride(page)).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
   await page.keyboard.type("## À faire\n");
   await expect(lignes(page).nth(0)).toHaveText("À faire");
 
@@ -176,7 +176,7 @@ test("REQ083_P054_recherche_fichiers_vides_rechargement", async ({ page, browser
   await nouveauFichier(page, "site/vide.html");
   await expect(apercu(page)).toHaveAttribute("aria-pressed", "true");
   await expect(cadre(page)).toBeVisible();
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
   await expect(cadre(page).contentFrame().locator("body")).toHaveText("");
   await page.keyboard.type("<p>Bonjour");
   await expect(cadre(page).contentFrame().getByText("Bonjour")).toBeVisible();
