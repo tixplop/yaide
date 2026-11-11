@@ -186,18 +186,7 @@ test("REQ007_AC4_REQ034_AC9_groupe_hors_depot_git", async ({ page }) => {
   });
 });
 
-test("REQ008_un_fichier_dont_le_nom_commence_par_tilde_s_ouvre_et_se_selectionne", async ({ page }) => {
-  const dossier = depotExemple();
-  fs.writeFileSync(path.join(dossier, "~x"), "texte");
-  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  const requete = page.waitForRequest((r) => r.method() === "GET" && r.url().includes("/api/fichier?chemin=~x"));
-  await ligne(page, "~x").click();
-  await requete;
-  await expect(ligne(page, "~x")).toHaveAttribute("aria-selected", "true");
-});
-
-test("REQ007_AC7_REQ034_AC2_groupe_projet_vide", async ({ page }) => {
+test("REQ007_AC7_REQ010_REQ034_AC2_groupe_projet_vide_apres_la_derniere_suppression", async ({ page }) => {
   const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "vide-"));
   fs.mkdirSync(path.join(dossier, "projet"));
   yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "projet") });
@@ -211,6 +200,17 @@ test("REQ007_AC7_REQ034_AC2_groupe_projet_vide", async ({ page }) => {
   await test.step("REQ034_AC2_projet_vide_le_menu_s_ouvre_sur_Dossier_vide", async () => {
     await page.getByText("Dossier vide.").click({ button: "right" });
     await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier"]);
+    await page.keyboard.press("Escape");
+    await expect(menu(page, "Actions sur le projet")).toHaveCount(0);
+  });
+  await test.step("REQ010_apres_la_derniere_suppression_le_focus_va_sur_Fichier", async () => {
+    fs.writeFileSync(path.join(dossier, "projet", "seul.txt"), "x");
+    await expect(ligne(page, "seul.txt")).toBeVisible({ timeout: 15000 });
+    await ligne(page, "seul.txt").click();
+    await page.getByRole("button", { name: "Supprimer" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+    await expect(page.getByText("Dossier vide.")).toBeVisible();
+    await expect(page.locator(".fichiers-entete").getByRole("button", { name: "Nouveau fichier" })).toBeFocused();
   });
 });
 
@@ -346,19 +346,6 @@ test("REQ009_AC4_AC6_AC7_REQ010_AC1_AC2_AC4_AC5_groupe_noms_pris_F2_erreurs_et_s
     await expect(ligne(page, "src")).toHaveCount(0);
     expect(fs.existsSync(path.join(dossier, "src"))).toBe(false);
   });
-});
-
-test("REQ010_apres_la_derniere_suppression_le_focus_va_sur_Fichier", async ({ page }) => {
-  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "seul-"));
-  fs.mkdirSync(path.join(dossier, "projet"));
-  fs.writeFileSync(path.join(dossier, "projet", "seul.txt"), "x");
-  yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "projet") });
-  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await ligne(page, "seul.txt").click();
-  await page.getByRole("button", { name: "Supprimer" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
-  await expect(page.getByText("Dossier vide.")).toBeVisible();
-  await expect(page.locator(".fichiers-entete").getByRole("button", { name: "Nouveau fichier" })).toBeFocused();
 });
 
 // ---- REQ-034 : menu de l'arborescence ----
@@ -742,19 +729,29 @@ test("REQ039_AC1_AC5_AC037_7_ctrl_s_met_a_jour_la_lettre_l_onglet_et_le_compteur
   await expect(page.getByRole("tab", { name: "Git", exact: true }).locator(".ya-badge")).toHaveText("1");
 });
 
-test("REQ009_AC9_l_en_tete_du_projet_ne_defile_pas_avec_l_arbre", async ({ page }) => {
+test("REQ008_REQ009_AC9_en_tete_du_projet_fixe_et_nom_commencant_par_tilde", async ({ page }) => {
   const dossier = depotExemple();
   for (let i = 0; i < 80; i++) fs.writeFileSync(path.join(dossier, `f${String(i).padStart(2, "0")}.txt`), "x");
+  fs.writeFileSync(path.join(dossier, "~x"), "texte");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine);
-  const entete = page.locator(".fichiers-entete");
-  const avant = await entete.boundingBox();
-  await page.locator("aside.cadre-panneau .cadre-panneau-corps").evaluate((e) => {
-    e.scrollTop = e.scrollHeight;
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await test.step("REQ009_AC9_l_en_tete_du_projet_ne_defile_pas_avec_l_arbre", async () => {
+    await expect(ligne(page, "f79.txt")).toBeVisible();
+    const entete = page.locator(".fichiers-entete");
+    const avant = await entete.boundingBox();
+    await page.locator("aside.cadre-panneau .cadre-panneau-corps").evaluate((e) => {
+      e.scrollTop = e.scrollHeight;
+    });
+    expect(await page.locator("aside.cadre-panneau .cadre-panneau-corps").evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
+    expect(await entete.boundingBox()).toEqual(avant);
+    await expect(page.getByRole("button", { name: "Supprimer" })).toBeInViewport();
   });
-  expect(await page.locator("aside.cadre-panneau .cadre-panneau-corps").evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
-  expect(await entete.boundingBox()).toEqual(avant);
-  await expect(page.getByRole("button", { name: "Supprimer" })).toBeInViewport();
+  await test.step("REQ008_un_fichier_dont_le_nom_commence_par_tilde_s_ouvre_et_se_selectionne", async () => {
+    const requete = page.waitForRequest((r) => r.method() === "GET" && r.url().includes("/api/fichier?chemin=~x"));
+    await ligne(page, "~x").click();
+    await requete;
+    await expect(ligne(page, "~x")).toHaveAttribute("aria-selected", "true");
+  });
 });
 
 const parChemin = (page, chemin) => arbre(page).locator(`[data-chemin="${chemin}"]`);
