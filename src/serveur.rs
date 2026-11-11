@@ -1116,12 +1116,13 @@ async fn agent_supprimer_profil(
     reponse_reglages(&etat, etat.reglages.supprimer_profil(&id))
 }
 
-fn reponse_mcp(r: Result<Vec<mcp::Serveur>, mcp::ErreurMcp>) -> Response {
+fn reponse_mcp(fichier: &Path, r: Result<Vec<mcp::Serveur>, mcp::ErreurMcp>) -> Response {
     use mcp::ErreurMcp;
+    let fichier = fichier.display().to_string();
     match r {
         Ok(l) => json_rep(
             StatusCode::OK,
-            serde_json::json!({ "serveurs": l.iter().map(mcp::Serveur::json).collect::<Vec<_>>() }),
+            serde_json::json!({ "fichier": fichier, "serveurs": l.iter().map(mcp::Serveur::json).collect::<Vec<_>>() }),
         ),
         Err(ErreurMcp::Refus(r)) => {
             let erreurs: serde_json::Map<String, serde_json::Value> = r
@@ -1130,27 +1131,31 @@ fn reponse_mcp(r: Result<Vec<mcp::Serveur>, mcp::ErreurMcp>) -> Response {
                 .collect();
             json_rep(
                 StatusCode::UNPROCESSABLE_ENTITY,
-                serde_json::json!({ "erreurs": erreurs }),
+                serde_json::json!({ "fichier": fichier, "erreurs": erreurs }),
             )
         }
         Err(ErreurMcp::Illisible(p)) => json_rep(
             StatusCode::CONFLICT,
-            serde_json::json!({ "cause": "illisible", "message": p.message, "detail": p.detail }),
+            serde_json::json!({ "fichier": fichier, "cause": "illisible", "message": p.message, "detail": p.detail }),
         ),
         Err(ErreurMcp::Inconnu) => json_rep(
             StatusCode::NOT_FOUND,
-            serde_json::json!({ "cause": "inconnu", "message": "Ce serveur n'est plus dans .yaide/mcp.json." }),
+            serde_json::json!({ "fichier": fichier, "cause": "inconnu", "message": format!("Ce serveur n'est plus dans {fichier}.") }),
         ),
         Err(ErreurMcp::Systeme(m)) => json_rep(
             StatusCode::INTERNAL_SERVER_ERROR,
-            serde_json::json!({ "cause": "ecriture", "message": m }),
+            serde_json::json!({ "fichier": fichier, "cause": "ecriture", "message": m }),
         ),
     }
 }
 
-/// Relit `.yaide/mcp.json` ; ne crée rien.
+/// Relit le `mcp.json` de l'utilisateur ; ne crée rien.
 async fn mcp_liste(State(etat): State<Partage>) -> Response {
-    reponse_mcp(mcp::lister_serveurs(&etat.projet_dir).map_err(mcp::ErreurMcp::Illisible))
+    let fichier = etat.config.join("mcp.json");
+    reponse_mcp(
+        &fichier,
+        mcp::lister_serveurs(&fichier).map_err(mcp::ErreurMcp::Illisible),
+    )
 }
 
 /// `{ ancien?, nom, command, args: [ligne], env: [ligne NOM=valeur] }`.
@@ -1181,22 +1186,24 @@ async fn mcp_enregistrer(State(etat): State<Partage>, corps: Bytes) -> Response 
         args,
         env,
     };
-    let dossier = etat.projet_dir.clone();
+    let fichier = etat.config.join("mcp.json");
+    let f = fichier.clone();
     let ancien = v["ancien"].as_str().map(str::to_string);
     let r = tokio::task::spawn_blocking(move || {
-        mcp::enregistrer_serveur(&dossier, ancien.as_deref(), &saisie)
+        mcp::enregistrer_serveur(&f, ancien.as_deref(), &saisie)
     })
     .await
     .unwrap_or_else(|e| Err(mcp::ErreurMcp::Systeme(e.to_string())));
-    reponse_mcp(r)
+    reponse_mcp(&fichier, r)
 }
 
 async fn mcp_supprimer(State(etat): State<Partage>, CheminUrl(nom): CheminUrl<String>) -> Response {
-    let dossier = etat.projet_dir.clone();
-    let r = tokio::task::spawn_blocking(move || mcp::supprimer_serveur(&dossier, &nom))
+    let fichier = etat.config.join("mcp.json");
+    let f = fichier.clone();
+    let r = tokio::task::spawn_blocking(move || mcp::supprimer_serveur(&f, &nom))
         .await
         .unwrap_or_else(|e| Err(mcp::ErreurMcp::Systeme(e.to_string())));
-    reponse_mcp(r)
+    reponse_mcp(&fichier, r)
 }
 
 async fn agents_liste(State(etat): State<Partage>) -> Response {
@@ -1309,6 +1316,7 @@ pub async fn servir(
         .map_err(|e| format!("certificat illisible : {e}"))?;
     let reglages = Arc::new(Reglages::new(config.to_path_buf(), config.to_path_buf()));
     reglages.reprendre_du_projet(&projet.join(".yaide"));
+    mcp::reprendre_du_projet(&config.join("mcp.json"), &projet.join(".yaide/mcp.json"));
     let agent = Arc::new(Gestionnaire::new(
         projet.to_path_buf(),
         reglages.clone(),

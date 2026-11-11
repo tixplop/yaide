@@ -196,6 +196,11 @@ impl Reglages {
         }
     }
 
+    /// Dossier de configuration de l'utilisateur.
+    pub fn dossier(&self) -> &Path {
+        &self.yaide
+    }
+
     pub fn new(yaide: PathBuf, cfg: PathBuf) -> Self {
         Reglages {
             yaide,

@@ -1067,11 +1067,10 @@ fn signal_arrete_le_serveur_mcp(signal: &str) {
         let faux = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/faux-mcp.mjs");
         let note = racine.join("note.jsonl");
         let enfant = racine.join("enfant.pid");
-        std::fs::create_dir_all(s.projet.join(".yaide")).unwrap();
         let config = json!({"mcpServers": {"echo": {"command": "node", "args": [
             faux, format!("--note={}", note.display()), format!("--enfant={}", enfant.display()),
             "--ignorer-term"]}}});
-        std::fs::write(s.projet.join(".yaide/mcp.json"), config.to_string()).unwrap();
+        std::fs::write(s.cfg().join("mcp.json"), config.to_string()).unwrap();
         let id = message(&s, &profil, "bonjour");
         attendre_fin(&s, &id);
         let pid: i64 = serde_json::from_str::<Value>(
@@ -1121,11 +1120,13 @@ fn signal_arrete_le_serveur_mcp(signal: &str) {
 #[test]
 fn REQ096_routes_lire_ecrire_refuser_supprimer_et_fichier_illisible() {
     let s = lancer("mcp-routes");
-    let fichier = s.projet.join(".yaide/mcp.json");
-    // Absent : liste vide, rien créé.
+    let fichier = s.cfg().join("mcp.json");
+    let chemin = fichier.display().to_string();
+    // Absent : liste vide, rien créé, ni le fichier ni `.yaide/`.
     let r = s.appel("GET", "/api/agent/mcp", &Value::Null);
     assert_eq!((r.code, r.json()["serveurs"].clone()), (200, json!([])));
-    assert!(!s.projet.join(".yaide/mcp.json").exists());
+    assert_eq!(r.json()["fichier"], chemin.as_str());
+    assert!(!fichier.exists() && !s.yaide().exists());
 
     // Ajout puis lecture.
     let r = s.appel(
@@ -1134,6 +1135,12 @@ fn REQ096_routes_lire_ecrire_refuser_supprimer_et_fichier_illisible() {
         &json!({"nom": "docs", "command": "mcp-docs", "args": ["--port", "0"], "env": ["A=1"]}),
     );
     assert_eq!(r.code, 200, "{}", r.corps);
+    assert_eq!(r.json()["fichier"], chemin.as_str());
+    assert_eq!(
+        std::fs::metadata(&fichier).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert!(!s.yaide().exists());
     let r = s.appel("GET", "/api/agent/mcp", &Value::Null);
     let l = r.json()["serveurs"].clone();
     assert_eq!(l[0]["nom"], "docs");
@@ -1160,7 +1167,7 @@ fn REQ096_routes_lire_ecrire_refuser_supprimer_et_fichier_illisible() {
     assert_eq!(r.code, 422);
     assert_eq!(
         r.json(),
-        json!({"erreurs": {
+        json!({"fichier": chemin, "erreurs": {
             "nom": "Donnez un nom au serveur.",
             "command": "Donnez la commande qui lance le serveur.",
             "env": "Variables : une par ligne, sous la forme NOM=valeur."
@@ -1178,6 +1185,11 @@ fn REQ096_routes_lire_ecrire_refuser_supprimer_et_fichier_illisible() {
         &json!({"ancien": "absent", "nom": "n", "command": "x"}),
     );
     assert_eq!((r.code, r.json()["cause"].clone()), (404, json!("inconnu")));
+    assert_eq!(
+        r.json()["message"],
+        format!("Ce serveur n'est plus dans {chemin}.")
+    );
+    assert_eq!(r.json()["fichier"], chemin.as_str());
     assert_eq!(
         s.appel("PUT", "/api/agent/mcp/serveurs", &json!({"nom": 3}))
             .code,
@@ -1210,12 +1222,108 @@ fn REQ096_routes_lire_ecrire_refuser_supprimer_et_fichier_illisible() {
         assert_eq!(r.json()["cause"], "illisible");
         assert_eq!(
             r.json()["message"],
-            ".yaide/mcp.json est illisible. Corrigez-le dans l'éditeur, puis rouvrez Serveurs MCP."
+            format!("{chemin} est illisible. Corrigez-le, puis rouvrez Serveurs MCP.")
         );
+        assert_eq!(r.json()["fichier"], chemin.as_str());
         assert!(r.json()["detail"].as_str().unwrap().contains("EOF"));
     }
     assert_eq!(
         std::fs::read_to_string(&fichier).unwrap(),
         "{\"mcpServers\": "
     );
+}
+
+fn outils_du_dernier_tour(recues: &Recues) -> Vec<String> {
+    let r = recues.lock().unwrap();
+    r.last().unwrap()["corps"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["function"]["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn REQ095_AC18_AC19_AC20_REQ096_AC26_deux_instances_partagent_le_mcp_json_de_l_utilisateur() {
+    let racine = preparer("mcp-deux");
+    let faux = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/faux-mcp.mjs");
+    let note = racine.join("note.jsonl");
+    let config_a = json!({"mcpServers": {"echo": {"command": "node", "args": [
+        &faux, format!("--note={}", note.display())]}}})
+    .to_string();
+    let config_b =
+        json!({"mcpServers": {"autre": {"command": "node", "args": [&faux]}}}).to_string();
+    for (d, c) in [("a", &config_a), ("b", &config_b)] {
+        std::fs::create_dir_all(racine.join(d).join(".yaide")).unwrap();
+        std::fs::write(racine.join(d).join(".yaide/mcp.json"), c).unwrap();
+    }
+    let (adresse, recues) = faux_provider(vec![rep_texte("a"), rep_texte("b"), rep_texte("c")]);
+
+    // A copie le fichier du projet, octet pour octet, droits 600 ; B ne copie rien.
+    let a = demarrer(&racine, "a");
+    let fichier = a.cfg().join("mcp.json");
+    assert_eq!(std::fs::read_to_string(&fichier).unwrap(), config_a);
+    assert_eq!(
+        std::fs::metadata(&fichier).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let b = demarrer(&racine, "b");
+    assert_eq!(std::fs::read_to_string(&fichier).unwrap(), config_a);
+    assert_eq!(
+        std::fs::read_to_string(racine.join("b/.yaide/mcp.json")).unwrap(),
+        config_b
+    );
+    assert_eq!(
+        std::fs::read_to_string(racine.join("a/.yaide/mcp.json")).unwrap(),
+        config_a
+    );
+
+    // Les deux listent l'outil, chacun avec son processus dans son projet.
+    let profil = configurer(&a, "openai", &adresse);
+    attendre_fin(&a, &message(&a, &profil, "un"));
+    assert!(outils_du_dernier_tour(&recues).contains(&"mcp__echo__dire".to_string()));
+    attendre_fin(&b, &message(&b, &profil, "deux"));
+    let outils = outils_du_dernier_tour(&recues);
+    assert!(outils.contains(&"mcp__echo__dire".to_string()));
+    assert!(!outils.iter().any(|o| o.starts_with("mcp__autre")));
+    let cwds: Vec<String> = std::fs::read_to_string(&note)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap()["cwd"].to_string())
+        .collect();
+    assert_eq!(cwds.len(), 2, "{cwds:?}");
+    assert!(cwds.contains(&json!(a.projet.display().to_string()).to_string()));
+    assert!(cwds.contains(&json!(b.projet.display().to_string()).to_string()));
+
+    // Un enregistrement de A est vu par B, qui rend le chemin complet.
+    let r = a.appel(
+        "PUT",
+        "/api/agent/mcp/serveurs",
+        &json!({"nom": "docs", "command": "mcp-docs"}),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let r = b.appel("GET", "/api/agent/mcp", &Value::Null);
+    let v = r.json();
+    assert_eq!(v["fichier"], fichier.display().to_string());
+    let noms: Vec<&str> = v["serveurs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["nom"].as_str().unwrap())
+        .collect();
+    assert_eq!(noms, ["echo", "docs"]);
+
+    // `echo` supprimé par A : le tour suivant de B ne l'a plus.
+    for nom in ["docs", "echo"] {
+        let r = a.appel(
+            "DELETE",
+            &format!("/api/agent/mcp/serveurs/{nom}"),
+            &Value::Null,
+        );
+        assert_eq!(r.code, 200, "{}", r.corps);
+    }
+    attendre_fin(&b, &message(&b, &profil, "trois"));
+    assert!(!outils_du_dernier_tour(&recues)
+        .iter()
+        .any(|o| o.starts_with("mcp__")));
 }

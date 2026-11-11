@@ -309,7 +309,7 @@ impl Gestionnaire {
     pub fn new(projet: PathBuf, reglages: Arc<Reglages>, limites: Limites) -> Self {
         Gestionnaire {
             dossier: projet.join(".yaide").join("conversations"),
-            mcp: Mcp::new(projet.clone()),
+            mcp: Mcp::new(projet.clone(), reglages.dossier().join("mcp.json")),
             projet,
             reglages,
             client: provider::client(),
@@ -980,7 +980,7 @@ mod tests {
         let ecoute = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let adresse = format!("http://{}", ecoute.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(ecoute, app).await.unwrap() });
-        let reglages = Arc::new(Reglages::new(dir.join(".yaide"), dir.join("cfg")));
+        let reglages = Arc::new(Reglages::new(dir.join("config"), dir.join("cfg")));
         let mut corps = json!({"adresse": adresse});
         if cle {
             corps["cle"] = json!("sk-test");
@@ -1829,7 +1829,7 @@ mod tests {
     }
 
     impl Banc {
-        /// `.yaide/mcp.json` avec ces serveurs : (nom, options du faux serveur).
+        /// `mcp.json` de l'utilisateur avec ces serveurs : (nom, options du faux serveur).
         fn mcp(&self, serveurs: &[(&str, Vec<String>)]) {
             let corps: Vec<String> = serveurs
                 .iter()
@@ -1839,9 +1839,17 @@ mod tests {
                     format!("{}:{}", json!(n), json!({"command": "node", "args": args}))
                 })
                 .collect();
+            // Un `.yaide/mcp.json` du projet, sans effet : seul le fichier de l'utilisateur compte.
             std::fs::create_dir_all(self.dir.join(".yaide")).unwrap();
             std::fs::write(
                 self.dir.join(".yaide/mcp.json"),
+                r#"{"mcpServers":{"projet":{"command":"node","args":[]}}}"#,
+            )
+            .unwrap();
+            let fichier = self.reglages.dossier().join("mcp.json");
+            std::fs::create_dir_all(self.reglages.dossier()).unwrap();
+            std::fs::write(
+                fichier,
                 format!("{{\"mcpServers\":{{{}}}}}", corps.join(",")),
             )
             .unwrap();
@@ -1901,9 +1909,9 @@ mod tests {
     #[tokio::test]
     async fn REQ095_AC6_AC14_problemes_en_alertes_apres_le_message_a_chaque_tour() {
         let b = banc("mcp-ac6", true, None).await;
-        std::fs::create_dir_all(b.dir.join(".yaide")).unwrap();
+        std::fs::create_dir_all(b.reglages.dossier()).unwrap();
         std::fs::write(
-            b.dir.join(".yaide/mcp.json"),
+            b.reglages.dossier().join("mcp.json"),
             r#"{"mcpServers":{"un":{"url":"https://a.example/mcp"},"deux":{"args":[]},"ok":{"command":"node","args":["FAUX"]}}}"#
                 .replace("FAUX", &faux_mcp()),
         )
@@ -1937,15 +1945,15 @@ mod tests {
         assert_eq!(e[6]["variante"], "alerte");
         assert_eq!(e[7]["type"], "agent");
         // JSON cassé
-        std::fs::write(b.dir.join(".yaide/mcp.json"), "{").unwrap();
+        std::fs::write(b.reglages.dossier().join("mcp.json"), "{").unwrap();
         b.scenario(vec![texte("c", 1)]);
         b.envoyer(Some(&id), "trois").unwrap();
         let v = b.fini(&id).await;
         let e = v["entrees"].as_array().unwrap();
-        assert!(e[9]["texte"]
-            .as_str()
-            .unwrap()
-            .starts_with(".yaide/mcp.json est illisible."));
+        assert!(e[9]["texte"].as_str().unwrap().starts_with(&format!(
+            "{} est illisible. Corrigez-le pour utiliser ses serveurs.",
+            b.reglages.dossier().join("mcp.json").display()
+        )));
         assert_ne!(e[9]["detail"], "");
         assert_eq!(e[10]["texte"], "c");
         let outils = noms_outils(&serde_json::from_str(&b.requete(b.nb_requetes() - 1)).unwrap());

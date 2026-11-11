@@ -1,8 +1,9 @@
-//! Serveurs MCP des agents (REQ-095) : `.yaide/mcp.json`, serveurs lancés en stdio dans le dossier du
+//! Serveurs MCP des agents (REQ-095) : `mcp.json` du dossier de l'utilisateur, serveurs lancés en stdio dans le dossier du
 //! projet, outils vus du modèle sous `mcp__<serveur>__<outil>` (DEC-063, DEC-064).
 
 use super::outils::{Limites, Resultat};
 use super::provider::DefOutil;
+use crate::config;
 use rmcp::model::CallToolRequestParams;
 use rmcp::service::{RoleClient, RunningService};
 use rmcp::{ServiceError, ServiceExt};
@@ -62,6 +63,8 @@ struct Etat {
 /// Les serveurs MCP de l'instance, partagés par toutes les conversations.
 pub struct Mcp {
     projet: PathBuf,
+    /// `mcp.json` du dossier de configuration de l'utilisateur (DEC-066).
+    fichier: PathBuf,
     etat: Mutex<Etat>,
     /// Posé dès le début de l'arrêt de Yaide : plus aucun lancement.
     arret: AtomicBool,
@@ -75,9 +78,12 @@ struct Fichier {
     serveurs: Option<Ordonnes>,
 }
 
-fn lire(contenu: &str) -> Result<Vec<(String, Value)>, Probleme> {
+fn lire(contenu: &str, fichier: &Path) -> Result<Vec<(String, Value)>, Probleme> {
     let erreur = |detail: String| Probleme {
-        message: ".yaide/mcp.json est illisible. Corrigez-le pour utiliser ses serveurs.".into(),
+        message: format!(
+            "{} est illisible. Corrigez-le pour utiliser ses serveurs.",
+            fichier.display()
+        ),
         detail: Some(detail),
     };
     match serde_json::from_str::<Fichier>(contenu) {
@@ -386,29 +392,30 @@ fn texte_du_resultat(r: &Value) -> String {
 }
 
 impl Mcp {
-    pub fn new(projet: PathBuf) -> Self {
+    pub fn new(projet: PathBuf, fichier: PathBuf) -> Self {
         Mcp {
             projet,
+            fichier,
             etat: Mutex::new(Etat::default()),
             arret: AtomicBool::new(false),
             arret_tx: watch::channel(false).0,
         }
     }
 
-    /// Début d'un tour : relit `.yaide/mcp.json`, lance ou relance les serveurs au besoin, et rend
+    /// Début d'un tour : relit `mcp.json`, lance ou relance les serveurs au besoin, et rend
     /// les définitions des outils et les problèmes, dans l'ordre du fichier.
     pub async fn preparer(&self, limites: &Limites) -> (Vec<DefOutil>, Vec<Probleme>) {
         if self.arret.load(Ordering::SeqCst) {
             return (Vec::new(), Vec::new());
         }
         let mut etat = self.etat.lock().await;
-        let contenu = std::fs::read_to_string(self.projet.join(".yaide/mcp.json")).ok();
+        let contenu = std::fs::read_to_string(&self.fichier).ok();
         let mut anciennes = std::mem::take(&mut etat.entrees);
         if contenu != etat.fichier {
             tuer(std::mem::take(&mut anciennes)).await;
             etat.fichier = contenu.clone();
         }
-        let declares = match contenu.as_deref().map(lire) {
+        let declares = match contenu.as_deref().map(|c| lire(c, &self.fichier)) {
             None => Vec::new(),
             Some(Ok(d)) => d,
             Some(Err(p)) => {
@@ -681,27 +688,34 @@ pub enum ErreurMcp {
 /// Évite deux écritures qui se mêlent (lecture puis écriture du fichier entier).
 static ECRITURE: MutexStd<()> = MutexStd::new(());
 
-fn illisible(detail: String) -> Probleme {
+fn illisible(fichier: &Path, detail: String) -> Probleme {
     Probleme {
-        message:
-            ".yaide/mcp.json est illisible. Corrigez-le dans l'éditeur, puis rouvrez Serveurs MCP."
-                .into(),
+        message: format!(
+            "{} est illisible. Corrigez-le, puis rouvrez Serveurs MCP.",
+            fichier.display()
+        ),
         detail: Some(detail),
     }
 }
 
 /// Le fichier entier, clés dans l'ordre ; absent : objet vide. Ne crée rien.
-fn charger(projet: &Path) -> Result<Vec<(String, Ordonnes)>, ErreurMcp> {
-    let contenu = match std::fs::read_to_string(projet.join(".yaide/mcp.json")) {
+fn charger(fichier: &Path) -> Result<Vec<(String, Ordonnes)>, ErreurMcp> {
+    let contenu = match std::fs::read_to_string(fichier) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => return Err(ErreurMcp::Systeme(e.to_string())),
+        Err(e) => {
+            return Err(ErreurMcp::Systeme(format!(
+                "Impossible de lire {} : {e}.",
+                fichier.display()
+            )))
+        }
     };
     match serde_json::from_str::<Ordonnes>(&contenu) {
         Ok(Ordonnes::Objet(o)) => {
             if let Some((_, v)) = o.iter().find(|(k, _)| k == "mcpServers") {
                 if !matches!(v, Ordonnes::Objet(_) | Ordonnes::Sc(Value::Null)) {
                     return Err(ErreurMcp::Illisible(illisible(
+                        fichier,
                         "mcpServers doit être un objet".into(),
                     )));
                 }
@@ -709,9 +723,10 @@ fn charger(projet: &Path) -> Result<Vec<(String, Ordonnes)>, ErreurMcp> {
             Ok(o)
         }
         Ok(_) => Err(ErreurMcp::Illisible(illisible(
+            fichier,
             "le fichier doit contenir un objet".into(),
         ))),
-        Err(e) => Err(ErreurMcp::Illisible(illisible(e.to_string()))),
+        Err(e) => Err(ErreurMcp::Illisible(illisible(fichier, e.to_string()))),
     }
 }
 
@@ -755,20 +770,20 @@ fn serveurs_de(fichier: &[(String, Ordonnes)]) -> Vec<Serveur> {
 }
 
 /// Les serveurs du fichier, dans son ordre. Fichier absent : liste vide, sans rien créer.
-pub fn lister_serveurs(projet: &Path) -> Result<Vec<Serveur>, Probleme> {
-    match charger(projet) {
+pub fn lister_serveurs(fichier: &Path) -> Result<Vec<Serveur>, Probleme> {
+    match charger(fichier) {
         Ok(f) => Ok(serveurs_de(&f)),
         Err(ErreurMcp::Illisible(p)) => Err(p),
         Err(ErreurMcp::Systeme(m)) => Err(Probleme {
-            message: ".yaide/mcp.json n'a pas pu être lu.".into(),
-            detail: Some(m),
+            message: m,
+            detail: None,
         }),
         Err(_) => Ok(Vec::new()),
     }
 }
 
 fn ecrire_fichier(
-    projet: &Path,
+    chemin: &Path,
     mut fichier: Vec<(String, Ordonnes)>,
     serveurs: Vec<(String, Ordonnes)>,
 ) -> Result<(), ErreurMcp> {
@@ -779,16 +794,7 @@ fn ecrire_fichier(
     let mut texte = String::new();
     ecrire_ordonnes(&Ordonnes::Objet(fichier), 0, &mut texte);
     texte.push('\n');
-    let dossier = projet.join(".yaide");
-    // Écriture atomique : fichier temporaire dans `.yaide/`, puis renommage.
-    let temporaire = dossier.join(format!("mcp.json.tmp-{}", std::process::id()));
-    let ecrit = std::fs::create_dir_all(&dossier)
-        .and_then(|_| std::fs::write(&temporaire, texte))
-        .and_then(|_| std::fs::rename(&temporaire, dossier.join("mcp.json")));
-    ecrit.map_err(|e| {
-        let _ = std::fs::remove_file(&temporaire);
-        ErreurMcp::Systeme(e.to_string())
-    })
+    config::ecrire_atomique(chemin, texte.as_bytes()).map_err(ErreurMcp::Systeme)
 }
 
 fn entrees_de(fichier: &mut [(String, Ordonnes)]) -> Vec<(String, Ordonnes)> {
@@ -800,12 +806,12 @@ fn entrees_de(fichier: &mut [(String, Ordonnes)]) -> Vec<(String, Ordonnes)> {
 
 /// Enregistre `saisie` : relit le fichier, puis remplace `ancien` au même rang, ou ajoute à la fin.
 pub fn enregistrer_serveur(
-    projet: &Path,
+    fichier_mcp: &Path,
     ancien: Option<&str>,
     saisie: &Saisie,
 ) -> Result<Vec<Serveur>, ErreurMcp> {
     let _verrou = ECRITURE.lock().unwrap_or_else(|e| e.into_inner());
-    let mut fichier = charger(projet)?;
+    let mut fichier = charger(fichier_mcp)?;
     let mut entrees = entrees_de(&mut fichier);
     let place = match ancien {
         Some(a) => Some(
@@ -884,22 +890,37 @@ pub fn enregistrer_serveur(
         Some(i) => entrees[i] = paire,
         None => entrees.push(paire),
     }
-    ecrire_fichier(projet, fichier, entrees)?;
-    lister_serveurs(projet).map_err(ErreurMcp::Illisible)
+    ecrire_fichier(fichier_mcp, fichier, entrees)?;
+    lister_serveurs(fichier_mcp).map_err(ErreurMcp::Illisible)
 }
 
 /// Supprime le serveur `nom` ; absent : `Inconnu`, le fichier ne change pas.
-pub fn supprimer_serveur(projet: &Path, nom: &str) -> Result<Vec<Serveur>, ErreurMcp> {
+pub fn supprimer_serveur(fichier_mcp: &Path, nom: &str) -> Result<Vec<Serveur>, ErreurMcp> {
     let _verrou = ECRITURE.lock().unwrap_or_else(|e| e.into_inner());
-    let mut fichier = charger(projet)?;
+    let mut fichier = charger(fichier_mcp)?;
     let mut entrees = entrees_de(&mut fichier);
     let i = entrees
         .iter()
         .position(|(n, _)| n == nom)
         .ok_or(ErreurMcp::Inconnu)?;
     entrees.remove(i);
-    ecrire_fichier(projet, fichier, entrees)?;
-    lister_serveurs(projet).map_err(ErreurMcp::Illisible)
+    ecrire_fichier(fichier_mcp, fichier, entrees)?;
+    lister_serveurs(fichier_mcp).map_err(ErreurMcp::Illisible)
+}
+
+/// Au lancement : si l'utilisateur n'a pas encore de `mcp.json`, copie celui de l'ancien emplacement
+/// (`.yaide/mcp.json` du projet), octet pour octet, droits 600. N'écrit jamais dans le projet ; un
+/// échec est écrit sur la sortie d'erreur seulement.
+pub fn reprendre_du_projet(fichier: &Path, ancien: &Path) {
+    if fichier.exists() {
+        return;
+    }
+    let Ok(octets) = std::fs::read(ancien) else {
+        return;
+    };
+    if let Err(e) = config::ecrire_atomique(fichier, &octets) {
+        eprintln!("{e}");
+    }
 }
 
 #[cfg(test)]
@@ -911,8 +932,13 @@ mod tests {
     fn projet(test: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("yaide-mcp-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(d.join(".yaide")).unwrap();
+        std::fs::create_dir_all(d.join("cfg")).unwrap();
         d.canonicalize().unwrap()
+    }
+
+    /// `mcp.json` de l'utilisateur, dans un dossier de configuration propre au test.
+    fn fich(p: &Path) -> PathBuf {
+        p.join("cfg/mcp.json")
     }
 
     fn faux() -> String {
@@ -931,7 +957,7 @@ mod tests {
 
     fn ecrire(projet: &Path, serveurs: Value) {
         let f = json!({"mcpServers": serveurs});
-        std::fs::write(projet.join(".yaide/mcp.json"), f.to_string()).unwrap();
+        std::fs::write(fich(projet), f.to_string()).unwrap();
     }
 
     /// Comme `ecrire`, mais les serveurs restent dans l'ordre donné.
@@ -941,7 +967,7 @@ mod tests {
             .map(|(n, v)| format!("{}:{v}", json!(n)))
             .collect();
         let f = format!("{{\"mcpServers\":{{{}}}}}", corps.join(","));
-        std::fs::write(projet.join(".yaide/mcp.json"), f).unwrap();
+        std::fs::write(fich(projet), f).unwrap();
     }
 
     fn courtes() -> Limites {
@@ -987,7 +1013,7 @@ mod tests {
         ]);
         s["env"] = json!({"FAUX_VAR": "valeur"});
         ecrire(&p, json!({"echo": s}));
-        let mcp = Mcp::new(p.clone());
+        let mcp = Mcp::new(p.clone(), fich(&p));
         let (outils, problemes) = mcp.preparer(&courtes()).await;
         assert_eq!(problemes, vec![]);
         assert_eq!(noms(&outils), ["mcp__echo__dire"]);
@@ -1023,7 +1049,7 @@ mod tests {
         let note = p.join("note.jsonl");
         let n = format!("--note={}", note.display());
         ecrire(&p, json!({"echo": node(&[&n])}));
-        let mcp = Mcp::new(p.clone());
+        let mcp = Mcp::new(p.clone(), fich(&p));
         let l = courtes();
         let (o1, _) = mcp.preparer(&l).await;
         let (o2, _) = mcp.preparer(&l).await;
@@ -1058,7 +1084,7 @@ mod tests {
     #[tokio::test]
     async fn req095_ac5_sans_fichier_ou_sans_serveur_aucun_processus() {
         let p = projet("ac5");
-        let mcp = Mcp::new(p.clone());
+        let mcp = Mcp::new(p.clone(), fich(&p));
         let (o, pb) = mcp.preparer(&courtes()).await;
         assert!(o.is_empty() && pb.is_empty());
         assert!(mcp.etat.lock().await.entrees.is_empty());
@@ -1066,7 +1092,7 @@ mod tests {
         let (o, pb) = mcp.preparer(&courtes()).await;
         assert!(o.is_empty() && pb.is_empty());
         assert!(mcp.etat.lock().await.entrees.is_empty());
-        std::fs::write(p.join(".yaide/mcp.json"), "{}").unwrap();
+        std::fs::write(fich(&p), "{}").unwrap();
         let (o, pb) = mcp.preparer(&courtes()).await;
         assert!(o.is_empty() && pb.is_empty());
     }
@@ -1074,14 +1100,17 @@ mod tests {
     #[tokio::test]
     async fn req095_ac6_json_illisible() {
         let p = projet("ac6");
-        std::fs::write(p.join(".yaide/mcp.json"), "{\"mcpServers\": {").unwrap();
-        let mcp = Mcp::new(p);
+        std::fs::write(fich(&p), "{\"mcpServers\": {").unwrap();
+        let mcp = Mcp::new(p.clone(), fich(&p));
         let (o, pb) = mcp.preparer(&courtes()).await;
         assert!(o.is_empty());
         assert_eq!(pb.len(), 1);
         assert_eq!(
             pb[0].message,
-            ".yaide/mcp.json est illisible. Corrigez-le pour utiliser ses serveurs."
+            format!(
+                "{} est illisible. Corrigez-le pour utiliser ses serveurs.",
+                fich(&p).display()
+            )
         );
         assert!(pb[0].detail.as_deref().unwrap().contains("EOF"));
     }
@@ -1100,7 +1129,7 @@ mod tests {
                 ("vide", json!({})),
             ],
         );
-        let mcp = Mcp::new(p);
+        let mcp = Mcp::new(p.clone(), fich(&p));
         let (outils, pb) = mcp.preparer(&courtes()).await;
         assert_eq!(noms(&outils), ["mcp__bon__dire"]);
         let textes: Vec<&str> = pb.iter().map(|x| x.message.as_str()).collect();
@@ -1138,7 +1167,7 @@ mod tests {
                 "e8": node(&["--long=50000"]),
             }),
         );
-        let mcp = Mcp::new(p);
+        let mcp = Mcp::new(p.clone(), fich(&p));
         let l = courtes();
         let (_, pb) = mcp.preparer(&l).await;
         assert_eq!(pb, vec![]);
@@ -1190,7 +1219,7 @@ mod tests {
     async fn req095_ac11_arret_pendant_un_lancement_qui_attend() {
         let p = projet("ac11b");
         ecrire(&p, json!({"muet": node(&["--muet"])}));
-        let mcp = Arc::new(Mcp::new(p));
+        let mcp = Arc::new(Mcp::new(p.clone(), fich(&p)));
         let limites = Limites {
             mcp_init: Duration::from_secs(30),
             ..Limites::default()
@@ -1218,7 +1247,7 @@ mod tests {
                 &format!("--note={}", note.display()),
             ])}),
         );
-        let mcp = Mcp::new(p);
+        let mcp = Mcp::new(p.clone(), fich(&p));
         let (_, pb) = mcp.preparer(&courtes()).await;
         assert_eq!(pb, vec![]);
         let mut enfant = 0;
@@ -1249,7 +1278,7 @@ mod tests {
     const FICHIER_096: &str = "{\n  \"autre\": {\"x\": [3, 1, 2], \"a\": null},\n  \"mcpServers\": {\n    \"docs\": {\"command\": \"mcp-docs\", \"args\": [\"--port\", \"0\"], \"env\": {\"Z\": \"1\", \"A\": \"2\"}},\n    \"echo\": {\"command\": \"node\"}\n  },\n  \"zeta\": true\n}";
 
     fn fichier(p: &Path) -> String {
-        std::fs::read_to_string(p.join(".yaide/mcp.json")).unwrap()
+        std::fs::read_to_string(fich(p)).unwrap()
     }
 
     fn saisie(nom: &str, commande: &str, args: &[&str], vars: &[&str]) -> Saisie {
@@ -1268,8 +1297,8 @@ mod tests {
     #[test]
     fn req096_ac2_liste_dans_l_ordre_du_fichier() {
         let p = projet("096-ac2");
-        std::fs::write(p.join(".yaide/mcp.json"), FICHIER_096).unwrap();
-        let l = lister_serveurs(&p).unwrap();
+        std::fs::write(fich(&p), FICHIER_096).unwrap();
+        let l = lister_serveurs(&fich(&p)).unwrap();
         assert_eq!(noms_serveurs(&l), ["docs", "echo"]);
         assert_eq!(l[0].command.as_deref(), Some("mcp-docs"));
         assert_eq!(l[0].args, ["--port", "0"]);
@@ -1286,22 +1315,22 @@ mod tests {
     #[test]
     fn req096_ac3_absent_ou_vide_liste_vide_sans_creer_yaide() {
         let p = projet("096-ac3");
-        std::fs::remove_dir_all(p.join(".yaide")).unwrap();
-        assert_eq!(lister_serveurs(&p), Ok(vec![]));
-        assert!(!p.join(".yaide").exists());
-        std::fs::create_dir_all(p.join(".yaide")).unwrap();
-        std::fs::write(p.join(".yaide/mcp.json"), "{\"mcpServers\": {}}").unwrap();
-        assert_eq!(lister_serveurs(&p), Ok(vec![]));
-        std::fs::write(p.join(".yaide/mcp.json"), "{}").unwrap();
-        assert_eq!(lister_serveurs(&p), Ok(vec![]));
+        std::fs::remove_dir_all(p.join("cfg")).unwrap();
+        assert_eq!(lister_serveurs(&fich(&p)), Ok(vec![]));
+        assert!(!p.join(".yaide").exists() && !p.join("cfg").exists());
+        std::fs::create_dir_all(p.join("cfg")).unwrap();
+        std::fs::write(fich(&p), "{\"mcpServers\": {}}").unwrap();
+        assert_eq!(lister_serveurs(&fich(&p)), Ok(vec![]));
+        std::fs::write(fich(&p), "{}").unwrap();
+        assert_eq!(lister_serveurs(&fich(&p)), Ok(vec![]));
     }
 
     #[test]
     fn req096_ac4_ajout_a_la_fin_les_autres_valeurs_gardees_indentation() {
         let p = projet("096-ac4");
-        std::fs::write(p.join(".yaide/mcp.json"), FICHIER_096).unwrap();
+        std::fs::write(fich(&p), FICHIER_096).unwrap();
         let l = enregistrer_serveur(
-            &p,
+            &fich(&p),
             None,
             &saisie(
                 "notes",
@@ -1326,8 +1355,12 @@ mod tests {
     #[test]
     fn req096_ac4_premier_enregistrement_cree_le_fichier_et_omet_args_et_env_vides() {
         let p = projet("096-ac4b");
-        std::fs::remove_dir_all(p.join(".yaide")).unwrap();
-        enregistrer_serveur(&p, None, &saisie("a", "cmd", &[], &[])).unwrap();
+        std::fs::remove_dir_all(p.join("cfg")).unwrap();
+        enregistrer_serveur(&fich(&p), None, &saisie("a", "cmd", &[], &[])).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        let droits = std::fs::metadata(fich(&p)).unwrap().permissions().mode();
+        assert_eq!(droits & 0o777, 0o600);
+        assert!(!p.join(".yaide").exists());
         assert_eq!(
             fichier(&p),
             "{\n  \"mcpServers\": {\n    \"a\": {\n      \"command\": \"cmd\"\n    }\n  }\n}\n"
@@ -1337,33 +1370,41 @@ mod tests {
     #[test]
     fn req096_ac5_renomme_au_meme_rang() {
         let p = projet("096-ac5");
-        std::fs::write(p.join(".yaide/mcp.json"), FICHIER_096).unwrap();
-        let l =
-            enregistrer_serveur(&p, Some("docs"), &saisie("docs2", "mcp-docs2", &[], &[])).unwrap();
+        std::fs::write(fich(&p), FICHIER_096).unwrap();
+        let l = enregistrer_serveur(
+            &fich(&p),
+            Some("docs"),
+            &saisie("docs2", "mcp-docs2", &[], &[]),
+        )
+        .unwrap();
         assert_eq!(noms_serveurs(&l), ["docs2", "echo"]);
         assert_eq!(l[0].command.as_deref(), Some("mcp-docs2"));
         assert_eq!(l[0].args, Vec::<String>::new());
         // Garder son nom est permis, même en changeant la casse.
-        let l = enregistrer_serveur(&p, Some("echo"), &saisie("ECHO", "node", &[], &[])).unwrap();
+        let l = enregistrer_serveur(&fich(&p), Some("echo"), &saisie("ECHO", "node", &[], &[]))
+            .unwrap();
         assert_eq!(noms_serveurs(&l), ["docs2", "ECHO"]);
     }
 
     #[test]
     fn req096_ac6_suppression_et_serveur_absent() {
         let p = projet("096-ac6");
-        std::fs::write(p.join(".yaide/mcp.json"), FICHIER_096).unwrap();
-        let l = supprimer_serveur(&p, "docs").unwrap();
+        std::fs::write(fich(&p), FICHIER_096).unwrap();
+        let l = supprimer_serveur(&fich(&p), "docs").unwrap();
         assert_eq!(noms_serveurs(&l), ["echo"]);
         assert!(!fichier(&p).contains("docs"));
         assert!(fichier(&p).contains("\"zeta\": true"));
         let avant = fichier(&p);
-        assert_eq!(supprimer_serveur(&p, "docs"), Err(ErreurMcp::Inconnu));
         assert_eq!(
-            enregistrer_serveur(&p, Some("docs"), &saisie("x", "y", &[], &[])),
+            supprimer_serveur(&fich(&p), "docs"),
+            Err(ErreurMcp::Inconnu)
+        );
+        assert_eq!(
+            enregistrer_serveur(&fich(&p), Some("docs"), &saisie("x", "y", &[], &[])),
             Err(ErreurMcp::Inconnu)
         );
         assert_eq!(fichier(&p), avant);
-        let l = supprimer_serveur(&p, "echo").unwrap();
+        let l = supprimer_serveur(&fich(&p), "echo").unwrap();
         assert!(l.is_empty());
         assert!(fichier(&p).contains("\"mcpServers\": {}"));
     }
@@ -1371,11 +1412,14 @@ mod tests {
     #[test]
     fn req096_ac7_les_quatre_refus_fichier_inchange() {
         let p = projet("096-ac7");
-        std::fs::write(p.join(".yaide/mcp.json"), FICHIER_096).unwrap();
-        let refus = |s: Saisie, ancien: Option<&str>| match enregistrer_serveur(&p, ancien, &s) {
-            Err(ErreurMcp::Refus(r)) => r.iter().map(|r| (r.champ, r.message)).collect::<Vec<_>>(),
-            autre => panic!("refus attendu, obtenu {autre:?}"),
-        };
+        std::fs::write(fich(&p), FICHIER_096).unwrap();
+        let refus =
+            |s: Saisie, ancien: Option<&str>| match enregistrer_serveur(&fich(&p), ancien, &s) {
+                Err(ErreurMcp::Refus(r)) => {
+                    r.iter().map(|r| (r.champ, r.message)).collect::<Vec<_>>()
+                }
+                autre => panic!("refus attendu, obtenu {autre:?}"),
+            };
         assert_eq!(
             refus(saisie("  ", "x", &[], &[]), None),
             [("nom", "Donnez un nom au serveur.")]
@@ -1416,8 +1460,8 @@ mod tests {
     #[test]
     fn req096_ac8_fichier_change_entre_lecture_et_ecriture() {
         let p = projet("096-ac8");
-        std::fs::write(p.join(".yaide/mcp.json"), FICHIER_096).unwrap();
-        let avant = lister_serveurs(&p).unwrap();
+        std::fs::write(fich(&p), FICHIER_096).unwrap();
+        let avant = lister_serveurs(&fich(&p)).unwrap();
         assert_eq!(avant.len(), 2);
         ecrire_ordre(
             &p,
@@ -1426,7 +1470,7 @@ mod tests {
                 ("autre", json!({"command": "a"})),
             ],
         );
-        let l = enregistrer_serveur(&p, None, &saisie("notes", "npx", &[], &[])).unwrap();
+        let l = enregistrer_serveur(&fich(&p), None, &saisie("notes", "npx", &[], &[])).unwrap();
         assert_eq!(noms_serveurs(&l), ["docs", "autre", "notes"]);
         assert!(fichier(&p).contains("\"autre\""));
     }
@@ -1435,19 +1479,22 @@ mod tests {
     fn req096_ac9_json_casse_message_et_aucune_ecriture() {
         let p = projet("096-ac9");
         let casse = "{\"mcpServers\": {\"docs\": ";
-        std::fs::write(p.join(".yaide/mcp.json"), casse).unwrap();
-        let pb = lister_serveurs(&p).unwrap_err();
+        std::fs::write(fich(&p), casse).unwrap();
+        let pb = lister_serveurs(&fich(&p)).unwrap_err();
         assert_eq!(
             pb.message,
-            ".yaide/mcp.json est illisible. Corrigez-le dans l'éditeur, puis rouvrez Serveurs MCP."
+            format!(
+                "{} est illisible. Corrigez-le, puis rouvrez Serveurs MCP.",
+                fich(&p).display()
+            )
         );
         assert!(pb.detail.unwrap().contains("EOF"));
         assert!(matches!(
-            enregistrer_serveur(&p, None, &saisie("a", "b", &[], &[])),
+            enregistrer_serveur(&fich(&p), None, &saisie("a", "b", &[], &[])),
             Err(ErreurMcp::Illisible(_))
         ));
         assert!(matches!(
-            supprimer_serveur(&p, "docs"),
+            supprimer_serveur(&fich(&p), "docs"),
             Err(ErreurMcp::Illisible(_))
         ));
         assert_eq!(fichier(&p), casse);
@@ -1457,15 +1504,15 @@ mod tests {
     fn req096_ac10_url_lue_puis_remplacee_par_command() {
         let p = projet("096-ac10");
         std::fs::write(
-            p.join(".yaide/mcp.json"),
+            fich(&p),
             r#"{"mcpServers": {"notion": {"url": "https://mcp.notion.com/mcp"}}}"#,
         )
         .unwrap();
-        let l = lister_serveurs(&p).unwrap();
+        let l = lister_serveurs(&fich(&p)).unwrap();
         assert_eq!(l[0].url.as_deref(), Some("https://mcp.notion.com/mcp"));
         assert_eq!(l[0].command, None);
         enregistrer_serveur(
-            &p,
+            &fich(&p),
             Some("notion"),
             &saisie(
                 "notion",
@@ -1484,13 +1531,66 @@ mod tests {
     #[tokio::test]
     async fn req096_ac11_serveur_enregistre_vu_au_tour_suivant() {
         let p = projet("096-ac11");
-        let mcp = Mcp::new(p.clone());
+        let mcp = Mcp::new(p.clone(), fich(&p));
         let (o, _) = mcp.preparer(&courtes()).await;
         assert!(o.is_empty());
-        enregistrer_serveur(&p, None, &saisie("echo", "node", &[&faux()], &[])).unwrap();
+        enregistrer_serveur(&fich(&p), None, &saisie("echo", "node", &[&faux()], &[])).unwrap();
         let (o, pb) = mcp.preparer(&courtes()).await;
         assert_eq!(pb, vec![]);
         assert_eq!(noms(&o), ["mcp__echo__dire"]);
         mcp.arreter().await;
+    }
+
+    #[test]
+    fn req095_ac19_reprise_copie_octet_pour_octet_droits_600_projet_inchange() {
+        use std::os::unix::fs::PermissionsExt;
+        let p = projet("reprise");
+        let ancien = p.join(".yaide/mcp.json");
+        std::fs::create_dir_all(p.join(".yaide")).unwrap();
+        let octets = b"{ \"mcpServers\" :{\"a\":{\"command\":\"x\"}} }\r\n\xff";
+        std::fs::write(&ancien, octets).unwrap();
+        reprendre_du_projet(&fich(&p), &ancien);
+        assert_eq!(std::fs::read(fich(&p)).unwrap(), octets);
+        let droits = std::fs::metadata(fich(&p)).unwrap().permissions().mode();
+        assert_eq!(droits & 0o777, 0o600);
+        assert_eq!(std::fs::read(&ancien).unwrap(), octets);
+    }
+
+    #[test]
+    fn req095_ac20_reprise_fichier_de_l_utilisateur_present_rien_ne_change() {
+        let p = projet("reprise-presente");
+        let ancien = p.join(".yaide/mcp.json");
+        std::fs::create_dir_all(p.join(".yaide")).unwrap();
+        std::fs::write(&ancien, "projet").unwrap();
+        std::fs::write(fich(&p), "utilisateur").unwrap();
+        reprendre_du_projet(&fich(&p), &ancien);
+        assert_eq!(std::fs::read_to_string(fich(&p)).unwrap(), "utilisateur");
+        assert_eq!(std::fs::read_to_string(&ancien).unwrap(), "projet");
+    }
+
+    #[test]
+    fn req095_ac21_reprise_impossible_ne_cree_rien_et_ne_panique_pas() {
+        let p = projet("reprise-impossible");
+        // pas de fichier dans le projet
+        reprendre_du_projet(&fich(&p), &p.join(".yaide/mcp.json"));
+        assert!(!fich(&p).exists());
+        // copie impossible : le « dossier » de configuration est un fichier
+        let ancien = p.join("ancien.json");
+        std::fs::write(&ancien, "{}").unwrap();
+        std::fs::write(p.join("bloc"), "").unwrap();
+        reprendre_du_projet(&p.join("bloc/mcp.json"), &ancien);
+        assert!(!p.join("bloc/mcp.json").exists());
+        assert_eq!(std::fs::read_to_string(&ancien).unwrap(), "{}");
+    }
+
+    #[test]
+    fn req095_ac15_lecture_impossible_nomme_le_chemin_complet() {
+        let p = projet("illisible-systeme");
+        // un dossier à la place du fichier : la lecture échoue autrement que par « absent »
+        std::fs::create_dir_all(fich(&p)).unwrap();
+        let pb = lister_serveurs(&fich(&p)).unwrap_err();
+        assert!(pb
+            .message
+            .starts_with(&format!("Impossible de lire {} : ", fich(&p).display())));
     }
 }
