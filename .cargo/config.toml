@@ -1,3 +1,4 @@
 [env]
 CC_x86_64_unknown_linux_musl = "gcc"
 CFLAGS_x86_64_unknown_linux_musl = "-U_FORTIFY_SOURCE"
+YAIDE_URL_RELEASES = "http://127.0.0.1:9/"

@@ -12,6 +12,7 @@ mod recherche;
 mod serveur;
 mod shells;
 mod tls;
+mod version;
 
 use cli::Commande;
 
@@ -20,17 +21,22 @@ fn echec(code: i32, msg: &str) -> ! {
     std::process::exit(code);
 }
 
-/// Lance `install.sh` (embarqué) pour remplacer le binaire lancé, puis sort avec son code.
-fn mettre_a_jour() -> ! {
-    let exe = std::env::current_exe().unwrap_or_else(|e| echec(1, &e.to_string()));
-    let dossier = exe
-        .parent()
-        .unwrap_or_else(|| echec(1, "dossier du binaire introuvable"));
-    let statut = std::process::Command::new("sh")
-        .arg("-c")
+/// Commande qui lance `install.sh` (embarqué) pour remplacer le binaire lancé.
+fn commande_mise_a_jour() -> Result<std::process::Command, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let dossier = exe.parent().ok_or("dossier du binaire introuvable")?;
+    let mut cmd = std::process::Command::new("sh");
+    cmd.arg("-c")
         .arg(include_str!("../install.sh"))
         .arg("yaide-update")
-        .env("YAIDE_BIN_DIR", dossier)
+        .env("YAIDE_BIN_DIR", dossier);
+    Ok(cmd)
+}
+
+/// Lance `install.sh`, puis sort avec son code.
+fn mettre_a_jour() -> ! {
+    let statut = commande_mise_a_jour()
+        .unwrap_or_else(|e| echec(1, &e))
         .status()
         .unwrap_or_else(|e| echec(1, &format!("lancement de sh impossible : {e}")));
     std::process::exit(statut.code().unwrap_or(1));

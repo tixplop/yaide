@@ -2,7 +2,9 @@ use crate::agent::agents::Agents;
 use crate::agent::conversation::{ErreurEnvoi, Gestionnaire};
 use crate::agent::outils::Limites;
 use crate::agent::reglages::{Erreur, Reglages};
-use crate::{auth, config, depot, fichiers, git, opencode, recherche, shells};
+use crate::{
+    auth, commande_mise_a_jour, config, depot, fichiers, git, opencode, recherche, shells, version,
+};
 use axum::body::Bytes;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{DefaultBodyLimit, Path as CheminUrl, Query, Request, State};
@@ -31,6 +33,7 @@ struct Etat {
     agents: Agents,
     opencode: opencode::Opencode,
     client_opencode: reqwest::Client,
+    version: version::Version,
 }
 
 type Partage = Arc<Etat>;
@@ -845,6 +848,60 @@ async fn git_push(State(etat): State<Partage>, Query(q): Requete) -> Response {
     fait(avec_git(dossier, |p| git::synchroniser(p, "push").map(|_| ())).await)
 }
 
+async fn version_etat(State(etat): State<Partage>) -> Response {
+    let (maj, installee) = match etat.version.etat_maj() {
+        version::Maj::EnCours => ("encours", None),
+        version::Maj::Installee(v) => ("installee", Some(v)),
+        _ => ("aucune", None),
+    };
+    json_rep(
+        StatusCode::OK,
+        serde_json::json!({
+            "version": version::VERSION,
+            "derniere": etat.version.derniere(),
+            "maj": maj,
+            "installee": installee,
+        }),
+    )
+}
+
+/// Lance `install.sh` comme `yaide update`, une seule fois à la fois ; un second appel attend la même issue.
+async fn version_maj(State(etat): State<Partage>) -> Response {
+    let issue = if etat.version.demarrer_maj() {
+        let sortie = tokio::task::spawn_blocking(|| {
+            commande_mise_a_jour()?
+                .output()
+                .map_err(|e| format!("lancement de sh impossible : {e}"))
+        })
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r);
+        let issue = match sortie {
+            Ok(o) if o.status.success() => {
+                let v = version::version_installee()
+                    .or_else(|| etat.version.derniere())
+                    .unwrap_or_default();
+                version::Maj::Installee(v)
+            }
+            Ok(o) => version::Maj::Echec(version::raison(&String::from_utf8_lossy(&o.stderr))),
+            Err(e) => version::Maj::Echec(e),
+        };
+        etat.version.finir_maj(issue.clone());
+        issue
+    } else {
+        etat.version.attendre_maj().await
+    };
+    match issue {
+        version::Maj::Echec(raison) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            raison,
+        )
+            .into_response(),
+        _ => json_rep(StatusCode::OK, serde_json::json!({})),
+    }
+}
+
 const INDEX: &[u8] = include_bytes!("../web/dist/index.html");
 const MAIN_JS: &[u8] = include_bytes!("../web/dist/main.js");
 
@@ -1189,6 +1246,20 @@ pub async fn servir(
             .map_err(|e| e.to_string())?,
         reglages,
         agent,
+        version: version::Version::new(),
+    });
+    let suivi = etat.clone();
+    let veille = tokio::spawn(async move {
+        let Ok(client) = version::client() else {
+            return;
+        };
+        let url = version::url_releases();
+        version::repeter(version::PERIODE, || async {
+            if let Some(v) = version::lire_derniere(&client, &url).await {
+                suivi.version.garder(v);
+            }
+        })
+        .await;
     });
     let registre = etat.shells.clone();
     let etat_arret = etat.clone();
@@ -1209,6 +1280,8 @@ pub async fn servir(
         )
         .route("/polices/{nom}", get(police))
         .route("/api/info", get(info))
+        .route("/api/version", get(version_etat))
+        .route("/api/version/maj", post(version_maj))
         .route("/api/connexion", post(connexion))
         .route("/api/deconnexion", post(deconnexion))
         .route("/api/session", get(session))
@@ -1262,6 +1335,7 @@ pub async fn servir(
     tokio::select! {
         r = serveur => r.map_err(|e| format!("le serveur s'est arrêté : {e}")),
         _ = arret() => {
+            veille.abort();
             etat_arret.opencode.arreter().await;
             registre.arreter().await;
             Ok(())

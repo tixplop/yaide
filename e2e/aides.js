@@ -51,15 +51,16 @@ function copierMotDePasse(motDePasse, exe, env, cible) {
   fs.chmodSync(path.join(cible, "mot-de-passe"), fs.statSync(source).mode);
 }
 
-/** Lance Yaide sur un port libre (ou `port`). `claude`, `opencode` : dossier d'un faux `claude` ou `opencode`, sinon aucun dans le `PATH`. Rend `{ origine, port, dossier, arreter, relancer }`. */
-export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple(), port, shell = "/bin/sh", reprise = false, binaire, claude, opencode } = {}) {
+/** Lance Yaide sur un port libre (ou `port`). `releases` : adresse des dernières releases (par défaut une adresse locale fermée) ; `outils` : dossier mis en tête du `PATH` (faux `curl`). `claude`, `opencode` : dossier d'un faux `claude` ou `opencode`, sinon aucun dans le `PATH`. Rend `{ origine, port, dossier, arreter, relancer }`. */
+export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple(), port, shell = "/bin/sh", reprise = false, binaire, claude, opencode, releases = "http://127.0.0.1:9/", outils } = {}) {
   const imposé = port !== undefined;
   const racine = path.dirname(dossier);
   const home = path.join(racine, "home");
   fs.mkdirSync(home, { recursive: true });
   const cwd = binaire ? path.dirname(binaire) : undefined;
   const exe = binaire ?? "target/debug/yaide";
-  const env = { ...process.env, XDG_CONFIG_HOME: path.join(racine, "cfg"), HOME: home, PATH: pathSansAides(claude, opencode) };
+  const env = { ...process.env, XDG_CONFIG_HOME: path.join(racine, "cfg"), HOME: home, PATH: pathSansAides(claude, opencode), YAIDE_URL_RELEASES: releases };
+  if (outils) env.PATH = `${outils}${path.delimiter}${env.PATH}`;
   if (shell) env.SHELL = shell;
   if (!reprise) {
     if (binaire) spawnSync(exe, ["passwd"], { input: `${motDePasse}\n`, env, cwd });
@@ -104,7 +105,7 @@ export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple()
     /** Arrête Yaide et le relance sur le même port, avec la même configuration. */
     relancer: async function () {
       await this.arreter();
-      return lancerYaide({ motDePasse, dossier, port, shell, reprise: true, binaire, claude, opencode });
+      return lancerYaide({ motDePasse, dossier, port, shell, reprise: true, binaire, claude, opencode, releases, outils });
     },
   };
 }
