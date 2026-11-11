@@ -2,10 +2,9 @@ import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { lancerYaide, ouvrirYaide, depotExemple } from "./aides.js";
+import { lancerYaide, ouvrirYaide, depotExemple, fauxGithub } from "./aides.js";
 
 const NOM = "yaide-v0.9.2-x86_64-linux";
 
@@ -53,12 +52,8 @@ cp "$f" "$out"
   );
 
   // Faux GitHub : répond tout de suite v0.9.2.
-  const github = http.createServer((req, res) => {
-    res.writeHead(302, { Location: "https://github.com/tixplop/yaide/releases/tag/v0.9.2", "Content-Length": 0 });
-    res.end();
-  });
-  await new Promise((ok) => github.listen(0, "127.0.0.1", ok));
-  const urlReleases = `http://127.0.0.1:${github.address().port}/`;
+  const github = await fauxGithub();
+  const urlReleases = github.url;
 
   const yaide = await lancerYaide({ dossier: depotExemple(), binaire, releases: urlReleases, outils: faux });
   try {
@@ -147,6 +142,6 @@ cp "$f" "$out"
     expect(autres).toEqual([]);
   } finally {
     await yaide.arreter();
-    github.close();
+    github.fermer();
   }
 });

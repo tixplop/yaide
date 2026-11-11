@@ -111,6 +111,7 @@ test("REQ028_AC1_clic_sur_le_rail_change_de_panneau_et_le_focus_y_entre", () => 
 
 test("REQ022_AC3_et_REQ037_AC4_la_barre_d_etat_affiche_la_branche_et_pas_la_barre_de_titre", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (url === "/api/session") return { status: 204 };
     if (url === "/api/git/etat") return { ok: true, status: 200, json: async () => ({ branche: "main", detachee: false, branches: ["main"], changements: [] }) };
     return { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "erreur 500" }) };
   }));
@@ -124,6 +125,7 @@ test("REQ022_AC3_et_REQ037_AC4_la_barre_d_etat_affiche_la_branche_et_pas_la_barr
 
 test("REQ037_AC4_HEAD_detachee_affiche_detachee_seul", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (url === "/api/session") return { status: 204 };
     if (url === "/api/git/etat") return { ok: true, status: 200, json: async () => ({ branche: "a1b2c3d", detachee: true, branches: [], changements: [] }) };
     return { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "erreur 500" }) };
   }));
@@ -134,6 +136,7 @@ test("REQ037_AC4_HEAD_detachee_affiche_detachee_seul", async () => {
 
 test("REQ022_AC4_et_REQ037_AC4_hors_depot_rien_dans_la_barre_d_etat", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (url === "/api/session") return { status: 204 };
     if (url === "/api/git/etat") return { ok: false, status: 409, json: async () => ({ cause: "pas-depot", message: "Ce dossier n'est pas un dépôt git." }) };
     return { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "erreur 500" }) };
   }));
@@ -961,3 +964,76 @@ test("REQ093_AC4_maj_encours_lu_du_serveur_clic_sans_effet", async () => {
   await attendre();
   expect(s.posts).toBe(0);
 });
+
+// ---- T-189 : badge de connexion relié à la coupure (REQ-094) ----
+
+test("REQ094_AC1_AC2_le_badge_dit_Connecte_puis_Deconnecte_avec_le_bandeau_puis_Connecte_au_retour", () =>
+  avecHorloge(async () => {
+    let coupe = false;
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      const u = String(url);
+      if (u === "/api/session") {
+        if (coupe) throw new Error("coupé");
+        return { status: 204 };
+      }
+      if (u.startsWith("/api/git/etat")) return jsonOk({ branche: "main", detachee: false, branches: ["main"], changements: [] });
+      return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
+    }));
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(10);
+    const badge = () => vue.querySelector("footer .ya-connexion");
+    const bandeau = () => [...vue.querySelectorAll("[role=alert]")].find((m) => m.textContent.includes("Connexion perdue. Modifications gardées."));
+    expect(badge().textContent).toBe("Serveur : Connecté");
+    expect(badge().dataset.connexion).toBe("connecte");
+    expect(badge().nextElementSibling).toBe(vue.querySelector("footer").lastElementChild);
+    coupe = true;
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(bandeau()).toBeTruthy();
+    expect(badge().textContent).toBe("Serveur : Déconnecté");
+    expect(badge().dataset.connexion).toBe("deconnecte");
+    coupe = false;
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(bandeau()).toBeFalsy();
+    expect(badge().textContent).toBe("Serveur : Connecté");
+    expect(badge().dataset.connexion).toBe("connecte");
+  }));
+
+test("REQ094_AC1_AC2_le_badge_reste_en_place_quel_que_soit_l_onglet_actif", () =>
+  avecHorloge(async () => {
+    simulerOpencode();
+    const base = globalThis.fetch;
+    let coupe = false;
+    vi.stubGlobal("fetch", vi.fn(async (url, opts) => {
+      if (String(url) === "/api/session") {
+        if (coupe) throw new Error("coupé");
+        return { status: 204 };
+      }
+      if (String(url) === "/api/claude" && opts?.method === "POST") return { ok: true, status: 201, json: async () => ({ id: 7 }) };
+      return base(url, opts);
+    }));
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(200);
+    const badge = () => vue.querySelector("footer .ya-connexion");
+    const etats = (texte) => expect(badge().textContent).toBe(texte);
+    const ouvertures = {
+      aucun: () => {},
+      fichier: () => ligne(vue, "main.rs").click(),
+      Agent: () => boutonAgentDe(vue).click(),
+      Claude: () => boutonClaudeDe(vue).click(),
+      opencode: () => boutonOcDe(vue).click(),
+    };
+    for (const [nom, ouvrir] of Object.entries(ouvertures)) {
+      ouvrir();
+      await vi.advanceTimersByTimeAsync(200);
+      etats("Serveur : Connecté");
+      coupe = true;
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(badge().textContent, nom).toBe("Serveur : Déconnecté");
+      coupe = false;
+      await vi.advanceTimersByTimeAsync(2000);
+      etats("Serveur : Connecté");
+    }
+    expect(champAgent(vue)).not.toBeNull();
+    expect(ongletsClaude(vue).length).toBe(1);
+    expect(ongletsOc(vue).length).toBe(1);
+  }));

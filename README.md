@@ -16,6 +16,8 @@ Pour une installation existante, `yaide update` fait la même chose : il install
 
 La barre d'état affiche, tout à droite, la version lancée (« v0.9.1 »). Le serveur cherche la dernière release de Yaide au lancement, puis toutes les 10 minutes ; c'est la seule demande que Yaide fait à GitHub, et elle part du serveur, jamais du navigateur. Si une version plus récente existe, la barre d'état l'annonce, avec un bouton « Mettre à jour » : il fait ce que fait `yaide update`, sans redémarrer Yaide, donc sans couper les shells ni les sessions en cours. Relancez Yaide ensuite pour utiliser la nouvelle version.
 
+À gauche de la version, la barre d'état dit « Connecté » ou « Déconnecté » selon que le serveur répond : elle suit la même détection que le bandeau « Connexion perdue », sans requête de plus.
+
 ## Compiler
 
 Il faut Rust, Node.js, npm et gcc.

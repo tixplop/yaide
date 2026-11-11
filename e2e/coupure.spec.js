@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { lancerYaide, ouvrirYaide, nomLigne, avancer } from "./aides.js";
+import { lancerYaide, ouvrirYaide, nomLigne, avancer, depotExemple, fauxGithub } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -248,4 +249,79 @@ test("REQ044_AC5_pendant_la_coupure_le_bloc_se_colore_a_la_frappe", async ({ pag
   await page.keyboard.type("rs");
   await expect(apercu.locator("pre span", { hasText: /^fn$/ })).toHaveCount(1);
   await expect(bandeau(page)).toBeVisible();
+});
+
+test("REQ094_AC1_AC2_AC3_AC4_parcours_65_badge_de_connexion_a_800_x_480", async ({ page }) => {
+  await relais.fermer();
+  await yaide.arreter();
+  const BRANCHE = "feature/analyse-des-options-de-la-ligne-de-commande-et-des-variables-d-environnement";
+  const depot = depotExemple();
+  fs.writeFileSync(path.join(depot, "src", "args.rs"), `${"// ligne\n".repeat(7)}${"x".repeat(50)}\n`);
+  const git = (...a) => spawnSync("git", ["-c", "user.name=Test", "-c", "user.email=t@example.org", ...a], { cwd: depot });
+  git("checkout", "-q", "-b", BRANCHE);
+  git("add", "-A");
+  git("commit", "-q", "-m", "args");
+  const github = await fauxGithub();
+  yaide = await lancerYaide({ dossier: depot, releases: github.url, shell: false });
+  relais = await lancerRelais(yaide.port);
+  try {
+    await page.setViewportSize({ width: 800, height: 480 });
+    await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
+    await page.evaluate(() => (window.__sans_rechargement = true));
+    await ligne(page, "src").click();
+    await ligne(page, "args.rs").click();
+    const ed = page.getByRole("textbox", { name: "Éditeur args.rs" });
+    await expect(ed).toBeFocused();
+    await page.keyboard.press("Control+Home");
+    for (let i = 0; i < 7; i++) await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("End");
+    const etat = page.locator(".cadre-etat");
+    const badge = etat.locator(".ya-connexion");
+    await expect(etat.getByRole("status")).toHaveText("v0.9.2 disponible");
+    await expect(etat).toContainText("Ln 8, Col 51");
+    // Étape 1 : connecté (AC-094-1).
+    await expect(badge).toHaveText("Serveur : Connecté");
+    await expect(badge).toHaveAttribute("data-connexion", "connecte");
+
+    // Étape 2 : coupure, en moins de 5 s (AC-094-2) ; le focus reste dans l'éditeur (AC-094-3).
+    relais.couper();
+    await avancer(page, () => expect(badge).toHaveText("Serveur : Déconnecté", { timeout: 300 }), { limite: 5000 });
+    await expect(bandeau(page)).toBeVisible();
+    await expect(badge).toHaveAttribute("data-connexion", "deconnecte");
+    await expect(ed).toBeFocused();
+    // AC-094-4 : une ligne, tout entier, sans recouvrement, branche coupée par « … », pas de défilement.
+    const m = await page.evaluate(() => {
+      const e = document.querySelector(".cadre-etat");
+      const r = e.getBoundingClientRect();
+      const rects = [...e.children].filter((x) => x.offsetParent).map((x) => x.getBoundingClientRect());
+      const triees = [...rects].sort((a, b) => a.left - b.left);
+      const centres = rects.map((b) => b.top + b.height / 2);
+      const tronque = (sel) => {
+        const x = e.querySelector(sel);
+        return !x || x.scrollWidth > x.clientWidth;
+      };
+      const nom = e.querySelector(".ya-status-nom");
+      return {
+        superpose: triees.some((b, i) => i > 0 && b.left < triees[i - 1].right - 0.5),
+        hors: rects.some((b) => b.right > innerWidth + 0.5 || b.left < 0),
+        ligne: Math.max(...centres) - Math.min(...centres) < 4 && rects.every((b) => b.top >= r.top - 1 && b.bottom <= r.bottom + 1),
+        entiers: [".ya-status-position", ".ya-status-langage", ".ya-status-maj .message", ".ya-status-maj button", ".ya-connexion", ".ya-status-version"].filter(tronque),
+        brancheCoupee: nom.scrollWidth > nom.clientWidth,
+        defile: document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight,
+      };
+    });
+    expect(m).toMatchObject({ superpose: false, hors: false, ligne: true, entiers: [], brancheCoupee: true, defile: false });
+    await expect(etat).toContainText("Rust");
+    await expect(etat.getByRole("button", { name: "Mettre à jour" })).toBeVisible();
+    await expect(etat.locator(".ya-status-version")).toContainText(/v\d+\.\d+\.\d+/);
+    await page.screenshot({ path: path.join(path.dirname(depot), "etape2.png") });
+
+    // Étape 3 : retour, sans recharger (AC-094-2).
+    relais.retablir();
+    await avancer(page, () => expect(badge).toHaveText("Serveur : Connecté", { timeout: 300 }));
+    await expect(bandeau(page)).toHaveCount(0);
+    expect(await page.evaluate(() => window.__sans_rechargement)).toBe(true);
+  } finally {
+    github.fermer();
+  }
 });

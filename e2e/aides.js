@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { spawn, spawnSync } from "node:child_process";
+import http from "node:http";
 import net from "node:net";
 import fs from "node:fs";
 import os from "node:os";
@@ -197,3 +198,13 @@ export async function avancer(page, attente, { pas = 1500, timeout = 10000, limi
 /** Témoin : un chemin sous TMPDIR, hors du projet. `attendre(t, suite)` donne une commande qui attend qu'il existe ; le test le crée au moment voulu. */
 export const temoin = () => path.join(process.env.TMPDIR || os.tmpdir(), `temoin-${randomUUID()}`);
 export const attendre = (t, suite) => `while [ ! -e "${t}" ]; do sleep 0.05; done; ${suite}`;
+
+/** Faux GitHub : répond tout de suite que la dernière release est v0.9.2. Rend `{ url, fermer }` ; `url` va dans `releases` de `lancerYaide`. */
+export async function fauxGithub() {
+  const serveur = http.createServer((req, res) => {
+    res.writeHead(302, { Location: "https://github.com/tixplop/yaide/releases/tag/v0.9.2", "Content-Length": 0 });
+    res.end();
+  });
+  await new Promise((ok) => serveur.listen(0, "127.0.0.1", ok));
+  return { url: `http://127.0.0.1:${serveur.address().port}/`, fermer: () => serveur.close() };
+}

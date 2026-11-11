@@ -451,7 +451,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-status > span[hidden] { display: none; }
 .ya-status svg { width: 13px; height: 13px; }
 .ya-status > .ya-status-espace { flex: 1; padding: 0; }
-.ya-status-branche { min-width: 0; max-width: 40%; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.ya-status-branche { min-width: 0; max-width: 40%; flex: 0 1000 auto; overflow: hidden; text-overflow: ellipsis; }
 .ya-status-nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ya-status-position, .ya-status-langage, .ya-status-version, .ya-status-maj > button { flex: none; }
 .ya-status-maj { display: flex; align-items: center; min-width: 0; flex: 0 1 auto; padding: 0; font-size: 11.5px; line-height: 16px; }

@@ -473,6 +473,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       etat = nouvel;
       shells.definirEtat(nouvel);
       montrerCoupure();
+      barre.connexion = nouvel === "coupe" ? "deconnecte" : "connecte";
+      majEtat();
       editeur.definirEtat(nouvel);
       if (nouvel !== "coupe") {
         if (places.message?.textContent.includes(TEXTE_COUPURE)) montrerBandeau("message", null);
