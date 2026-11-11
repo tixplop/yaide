@@ -923,101 +923,218 @@ test("REQ067_parcours_28_demarrer_ouvre_un_onglet", async ({ page }) => {
   await expect(page.getByRole("tab", { name: /^Agent \d$/ })).toHaveCount(2);
 });
 
-test("REQ078_AC13_AC56_17_largeur_1200_et_800x480", async ({ page, browserName }) => {
+test("REQ078_AC13_AC56_17_REQ078_AC23_REQ077_AC28_REQ078_AC24_REQ077_AC9_mise_en_page_de_l_agent", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
-  await agentPret(page);
-  await page.setViewportSize({ width: 1600, height: 900 });
-  await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
-  await rail(page, "Agent").click();
-  await expect(champMessage(page)).toBeFocused();
-  const mesurer = () =>
-    page.evaluate(() => {
-      const corps = document.querySelector(".cadre-code .agent-corps");
-      const contenu = (e) => {
-        const c = getComputedStyle(e);
-        return { largeur: e.clientWidth - parseFloat(c.paddingLeft) - parseFloat(c.paddingRight), gauche: parseFloat(c.paddingLeft), droite: parseFloat(c.paddingRight) };
+  // Une seule session, une conversation par étape ; la réponse du faux provider est posée avant chaque envoi.
+  const etapes = [];
+  const servir = (r) => {
+    etapes.length = faux.recues.length;
+    etapes.push(r);
+  };
+  await agentPret(page, etapes);
+  await test.step("REQ078_AC23_bords_alignes_1200", async () => {
+    servir(reponse({ texte: "## Titre de réponse\n\nUn texte court.", tokens: 100 }));
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
+    await rail(page, "Agent").click();
+    await expect(champMessage(page)).toBeFocused();
+    await champMessage(page).fill("Dis bonjour");
+    await expect(envoyer(page)).toBeEnabled();
+    await page.keyboard.press("Enter");
+    await patienter(page, () => expect(fil(page).getByText("Un texte court.")).toBeVisible({ timeout: 300 }));
+    const bords = async () => {
+      const boite = async (l) => {
+        const b = await l.boundingBox();
+        return { gauche: b.x, droite: b.x + b.width, largeur: b.width };
       };
-      const saisie = corps.querySelector(".agent-saisie");
-      const envoyer = [...saisie.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Envoyer" || b.textContent.trim() === "Envoyer");
-      const select = saisie.querySelector("select");
+      const editeur = await boite(page.locator("main.cadre-principal"));
+      const c = await boite(champMessage(page));
       return {
-        entete: contenu(corps.querySelector(".agent-entete")),
-        fil: contenu(corps.querySelector(".agent-fil")),
-        saisie: contenu(saisie),
-        saisieDefile: saisie.scrollWidth - saisie.clientWidth,
-        enteteDefile: corps.querySelector(".agent-entete").scrollWidth - corps.querySelector(".agent-entete").clientWidth,
-        filDefile: corps.querySelector(".agent-fil").scrollWidth - corps.querySelector(".agent-fil").clientWidth,
-        profil: select ? select.getBoundingClientRect().width : 0,
-        ecartEnvoyer: envoyer ? saisie.getBoundingClientRect().right - parseFloat(getComputedStyle(saisie).paddingRight) - envoyer.getBoundingClientRect().right : null,
-        editeur: document.querySelector("main.cadre-principal").getBoundingClientRect().width,
-        page: [document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight],
+        champ: c,
+        ecart: c.gauche - editeur.gauche,
+        titre: await boite(page.locator(".cadre-code .agent-titre")),
+        titreReponse: await boite(fil(page).locator("h2")),
+        texte: await boite(fil(page).getByText("Un texte court.")),
+        conversations: await boite(page.getByRole("button", { name: "Conversations", exact: true })),
+        envoyer: await boite(envoyer(page)),
+        profil: await boite(profil(page)),
+      };
+    };
+    const proche = (a, b, nom) => expect(Math.abs(a - b), nom).toBeLessThanOrEqual(1);
+    const replie = await bords();
+    expect([Math.round(replie.champ.largeur), Math.round(replie.ecart)]).toEqual([1200, 152]);
+    proche(replie.titre.gauche, replie.champ.gauche, "titre de la conversation, bord gauche");
+    proche(replie.titreReponse.gauche, replie.champ.gauche, "titre de la réponse, bord gauche");
+    proche(replie.texte.gauche, replie.champ.gauche, "texte de la réponse, bord gauche");
+    proche(replie.conversations.droite, replie.champ.droite, "Conversations, bord droit");
+    proche(replie.envoyer.droite, replie.champ.droite, "Envoyer, bord droit");
+    expect(replie.profil.largeur, "Profil").toBe(200);
+    await page.getByRole("banner").getByRole("button", { name: "Déplier le panneau" }).first().click();
+    const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+    await poignee.focus();
+    for (let i = 0; i < 60 && (await poignee.getAttribute("aria-valuenow")) !== "280"; i++) {
+      await page.keyboard.press(Number(await poignee.getAttribute("aria-valuenow")) > 280 ? "ArrowLeft" : "ArrowRight");
+    }
+    await expect(poignee).toHaveAttribute("aria-valuenow", "280");
+    expect(Math.round((await bords()).champ.largeur)).toBe(1196);
+  });
+  await test.step("REQ077_AC28_REQ078_AC24_reponse_onglet_agent_sans_et_avec_agents", async () => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).first().click();
+    servir(reponse({ texte: REPONSE_MD, tokens: 100 }));
+    // Une conversation sans agent.
+    await page.getByRole("button", { name: "Nouvelle conversation" }).click();
+    await champMessage(page).fill("Compare");
+    await expect(envoyer(page)).toBeEnabled();
+    await page.keyboard.press("Enter");
+    await patienter(page, () => expect(fil(page).locator("table")).toBeVisible({ timeout: 300 }));
+    await expect(fil(page).locator("pre")).toBeVisible();
+    verifierReponse(await mesurerReponse(page), "sans agent");
+    servir(reponse({ texte: REPONSE_MD, tokens: 100 }));
+    // Une conversation avec Relecteur et Testeur, créés sur le disque.
+    for (const nom of ["Relecteur", "Testeur"]) {
+      const d = path.join(yaide.dossier, ".yaide", "agents", nom.toLowerCase());
+      fs.mkdirSync(d, { recursive: true });
+      fs.writeFileSync(path.join(d, "agent.json"), JSON.stringify({ nom, avatar: "", couleur: nom === "Testeur" ? "orange" : "vert" }));
+    }
+    const colonne = page.locator("aside.cadre-agent");
+    await page.getByRole("button", { name: "Agents", exact: true }).click();
+    await colonne.getByRole("checkbox", { name: "Relecteur" }).check();
+    await colonne.getByRole("checkbox", { name: "Testeur" }).check();
+    await colonne.getByRole("button", { name: "Démarrer une conversation" }).click();
+    await expect(ongletAgent(page, 2)).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("button", { name: "Replier l'agent" }).click();
+    await champMessage(page).fill("Relis");
+    await expect(envoyer(page)).toBeEnabled();
+    await page.keyboard.press("Enter");
+    await patienter(page, () => expect(fil(page).getByRole("group", { name: "Testeur" }).locator("table")).toBeVisible({ timeout: 300 }));
+    await expect(fil(page).getByRole("group", { name: "Relecteur" }).locator("pre")).toBeVisible();
+    verifierReponse(await mesurerReponse(page), "avec agents");
+  });
+  await test.step("REQ078_AC13_AC56_17_largeur_1200_et_800x480", async () => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await ongletAgent(page, 1).click();
+    await page.getByRole("button", { name: "Nouvelle conversation" }).click();
+    await expect(champMessage(page)).toBeFocused();
+    const mesurer = () =>
+      page.evaluate(() => {
+        const corps = [...document.querySelectorAll(".cadre-code .agent-corps")].find((e) => e.getClientRects().length);
+        const contenu = (e) => {
+          const c = getComputedStyle(e);
+          return { largeur: e.clientWidth - parseFloat(c.paddingLeft) - parseFloat(c.paddingRight), gauche: parseFloat(c.paddingLeft), droite: parseFloat(c.paddingRight) };
+        };
+        const saisie = corps.querySelector(".agent-saisie");
+        const envoyer = [...saisie.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Envoyer" || b.textContent.trim() === "Envoyer");
+        const select = saisie.querySelector("select");
+        return {
+          entete: contenu(corps.querySelector(".agent-entete")),
+          fil: contenu(corps.querySelector(".agent-fil")),
+          saisie: contenu(saisie),
+          saisieDefile: saisie.scrollWidth - saisie.clientWidth,
+          enteteDefile: corps.querySelector(".agent-entete").scrollWidth - corps.querySelector(".agent-entete").clientWidth,
+          filDefile: corps.querySelector(".agent-fil").scrollWidth - corps.querySelector(".agent-fil").clientWidth,
+          profil: select ? select.getBoundingClientRect().width : 0,
+          ecartEnvoyer: envoyer ? saisie.getBoundingClientRect().right - parseFloat(getComputedStyle(saisie).paddingRight) - envoyer.getBoundingClientRect().right : null,
+          editeur: document.querySelector("main.cadre-principal").getBoundingClientRect().width,
+          page: [document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight],
+        };
+      });
+    // AC-078-13 : 1200 px au plus, centré, panneau et colonne repliés à 1600 px.
+    const grand = await mesurer();
+    for (const z of ["entete", "fil", "saisie"]) {
+      expect(Math.round(grand[z].largeur), z).toBe(1200);
+      expect(Math.abs(grand[z].gauche - grand[z].droite), `${z} centré`).toBeLessThanOrEqual(1);
+    }
+    expect(grand.page).toEqual([0, 0]);
+
+    // Même fenêtre, panneau à 280 px : 12 px de marge de chaque côté, rien ne défile en largeur (AC-078-23).
+    await page.getByRole("banner").getByRole("button", { name: "Déplier le panneau" }).first().click();
+    const poignee280 = page.getByRole("separator", { name: "Largeur du panneau" });
+    await poignee280.focus();
+    for (let i = 0; i < 60 && (await poignee280.getAttribute("aria-valuenow")) !== "280"; i++) {
+      await page.keyboard.press(Number(await poignee280.getAttribute("aria-valuenow")) > 280 ? "ArrowLeft" : "ArrowRight");
+    }
+    await expect(poignee280).toHaveAttribute("aria-valuenow", "280");
+    const p280 = await mesurer();
+    for (const z of ["entete", "fil", "saisie"]) expect([p280[z].gauche, p280[z].droite], `${z} à 280 px`).toEqual([12, 12]);
+    expect([p280.enteteDefile, p280.filDefile, p280.saisieDefile]).toEqual([0, 0, 0]);
+    expect(p280.page).toEqual([0, 0]);
+    // AC-078-25 : la colonne dépliée garde sa limite de 720 px.
+    await page.getByRole("button", { name: "Agents", exact: true }).click();
+    await expect(page.getByRole("separator", { name: "Largeur de l'agent" })).toHaveAttribute("aria-valuemax", "720");
+    await page.getByRole("button", { name: "Replier l'agent" }).click();
+    await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).first().click();
+
+    // 800 × 480, panneau à 240 px : rien ne déborde, la page ne défile pas.
+    await page.setViewportSize({ width: 800, height: 480 });
+    await page.getByRole("banner").getByRole("button", { name: "Déplier le panneau" }).first().click();
+    const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+    await poignee.focus();
+    for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
+    await expect(poignee).toHaveAttribute("aria-valuenow", "240");
+    await expect(champMessage(page)).toBeVisible();
+    const petit = await mesurer();
+    expect(petit.page).toEqual([0, 0]);
+    expect([petit.enteteDefile, petit.filDefile, petit.saisieDefile]).toEqual([0, 0, 0]);
+    for (const z of ["entete", "fil", "saisie"]) expect(petit[z].largeur, z).toBeGreaterThan(0);
+
+    // AC-056-17 : éditeur à 320 px (colonne dépliée, panneau replié), puis à 1280 px.
+    await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).first().click();
+    await page.getByRole("button", { name: "Agents", exact: true }).click();
+    await elargirColonne(page);
+    await expect.poll(async () => Math.round((await mesurer()).editeur)).toBe(320);
+    for (const [largeur, hauteur] of [[800, 480], [1376, 720]]) {
+      await page.setViewportSize({ width: largeur, height: hauteur });
+      if (largeur === 1376) await page.getByRole("button", { name: "Replier l'agent" }).click();
+      await page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
+      const m = await mesurer();
+      expect(Math.round(m.editeur), `${largeur} px : éditeur`).toBe(largeur === 800 ? 320 : 1280);
+      expect(m.saisieDefile, `${largeur} px : saisie`).toBe(0);
+      expect(m.profil, `${largeur} px : Profil`).toBeGreaterThan(0);
+      expect(m.profil, `${largeur} px : Profil`).toBeLessThanOrEqual(200);
+      // « Envoyer » est le dernier à droite, au bord du contenu ; à 320 px ce bord est à 12 px de la zone de saisie.
+      expect(Math.round(m.ecartEnvoyer), `${largeur} px : Envoyer`).toBe(0);
+      if (largeur === 800) expect(m.saisie.droite, "marge à 320 px").toBe(12);
+    }
+
+    // Sans compteur (profil sans fenêtre de contexte), « Envoyer » reste calé à droite.
+    await api(page, "PUT", "/api/agent/profils", { nom: "libre", provider: "anthropic", modele: "modele-inconnu" });
+    await page.reload();
+    await page.getByRole("button", { name: "Nouvelle conversation" }).click();
+    await profil(page).selectOption({ label: "libre" });
+    await expect(page.locator(".cadre-code .agent-compteur:visible")).toHaveCount(0);
+    expect(Math.round((await mesurer()).ecartEnvoyer), "sans compteur : Envoyer").toBe(0);
+  });
+  await test.step("REQ077_AC9_onglet_agent_320_px", async () => {
+    const chemin = "src/" + "tres-long-".repeat(7) + "fin.rs";
+    expect(chemin.length).toBeGreaterThanOrEqual(80);
+    const md = ["| a | b | c | d | e | f |", "|---|---|---|---|---|---|", `| ${chemin} | 1 | 2 | 3 | 4 | 5 |`, "", "```", "x".repeat(300), "```"].join("\n");
+    servir(reponse({ texte: md, tokens: 100 }));
+    await page.setViewportSize({ width: 800, height: 480 });
+    await ongletAgent(page, 1).click();
+    await page.getByRole("button", { name: "Nouvelle conversation" }).click();
+    await page.getByRole("button", { name: "Agents", exact: true }).click();
+    await elargirColonne(page);
+    await expect.poll(() => page.locator("main.cadre-principal").evaluate((e) => Math.round(e.getBoundingClientRect().width))).toBe(320);
+    await champMessage(page).fill("Tableau");
+    await page.keyboard.press("Enter");
+    await patienter(page, () => expect(fil(page).locator("table")).toBeVisible({ timeout: 300 }));
+    await expect(fil(page).locator("pre")).toBeVisible();
+    const m = await fil(page).evaluate((f) => {
+      const droite = f.getBoundingClientRect().right;
+      const t = f.querySelector("table");
+      const pre = f.querySelector("pre");
+      return {
+        defile: f.scrollWidth - f.clientWidth,
+        tableauDeborde: t.getBoundingClientRect().right > droite + 0.5 || t.scrollWidth > t.clientWidth + 1,
+        cellule: [...t.querySelectorAll("td")][0].scrollWidth <= [...t.querySelectorAll("td")][0].clientWidth + 1,
+        codeDeborde: pre.getBoundingClientRect().right > droite + 0.5 || pre.scrollWidth > pre.clientWidth + 1,
       };
     });
-  // AC-078-13 : 1200 px au plus, centré, panneau et colonne repliés à 1600 px.
-  const grand = await mesurer();
-  for (const z of ["entete", "fil", "saisie"]) {
-    expect(Math.round(grand[z].largeur), z).toBe(1200);
-    expect(Math.abs(grand[z].gauche - grand[z].droite), `${z} centré`).toBeLessThanOrEqual(1);
-  }
-  expect(grand.page).toEqual([0, 0]);
-
-  // Même fenêtre, panneau à 280 px : 12 px de marge de chaque côté, rien ne défile en largeur (AC-078-23).
-  await page.getByRole("banner").getByRole("button", { name: "Déplier le panneau" }).first().click();
-  const poignee280 = page.getByRole("separator", { name: "Largeur du panneau" });
-  await poignee280.focus();
-  for (let i = 0; i < 60 && (await poignee280.getAttribute("aria-valuenow")) !== "280"; i++) {
-    await page.keyboard.press(Number(await poignee280.getAttribute("aria-valuenow")) > 280 ? "ArrowLeft" : "ArrowRight");
-  }
-  await expect(poignee280).toHaveAttribute("aria-valuenow", "280");
-  const p280 = await mesurer();
-  for (const z of ["entete", "fil", "saisie"]) expect([p280[z].gauche, p280[z].droite], `${z} à 280 px`).toEqual([12, 12]);
-  expect([p280.enteteDefile, p280.filDefile, p280.saisieDefile]).toEqual([0, 0, 0]);
-  expect(p280.page).toEqual([0, 0]);
-  // AC-078-25 : la colonne dépliée garde sa limite de 720 px.
-  await page.getByRole("button", { name: "Agents", exact: true }).click();
-  await expect(page.getByRole("separator", { name: "Largeur de l'agent" })).toHaveAttribute("aria-valuemax", "720");
-  await page.getByRole("button", { name: "Replier l'agent" }).click();
-  await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).first().click();
-
-  // 800 × 480, panneau à 240 px : rien ne déborde, la page ne défile pas.
-  await page.setViewportSize({ width: 800, height: 480 });
-  await page.getByRole("banner").getByRole("button", { name: "Déplier le panneau" }).first().click();
-  const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
-  await poignee.focus();
-  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
-  await expect(poignee).toHaveAttribute("aria-valuenow", "240");
-  await expect(champMessage(page)).toBeVisible();
-  const petit = await mesurer();
-  expect(petit.page).toEqual([0, 0]);
-  expect([petit.enteteDefile, petit.filDefile, petit.saisieDefile]).toEqual([0, 0, 0]);
-  for (const z of ["entete", "fil", "saisie"]) expect(petit[z].largeur, z).toBeGreaterThan(0);
-
-  // AC-056-17 : éditeur à 320 px (colonne dépliée, panneau replié), puis à 1280 px.
-  await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).first().click();
-  await page.getByRole("button", { name: "Agents", exact: true }).click();
-  await elargirColonne(page);
-  await expect.poll(async () => Math.round((await mesurer()).editeur)).toBe(320);
-  for (const [largeur, hauteur] of [[800, 480], [1376, 720]]) {
-    await page.setViewportSize({ width: largeur, height: hauteur });
-    if (largeur === 1376) await page.getByRole("button", { name: "Replier l'agent" }).click();
-    await page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
-    const m = await mesurer();
-    expect(Math.round(m.editeur), `${largeur} px : éditeur`).toBe(largeur === 800 ? 320 : 1280);
-    expect(m.saisieDefile, `${largeur} px : saisie`).toBe(0);
-    expect(m.profil, `${largeur} px : Profil`).toBeGreaterThan(0);
-    expect(m.profil, `${largeur} px : Profil`).toBeLessThanOrEqual(200);
-    // « Envoyer » est le dernier à droite, au bord du contenu ; à 320 px ce bord est à 12 px de la zone de saisie.
-    expect(Math.round(m.ecartEnvoyer), `${largeur} px : Envoyer`).toBe(0);
-    if (largeur === 800) expect(m.saisie.droite, "marge à 320 px").toBe(12);
-  }
-
-  // Sans compteur (profil sans fenêtre de contexte), « Envoyer » reste calé à droite.
-  await api(page, "PUT", "/api/agent/profils", { nom: "libre", provider: "anthropic", modele: "modele-inconnu" });
-  await page.reload();
-  await ongletAgent(page, 1).click();
-  await profil(page).selectOption({ label: "libre" });
-  await expect(page.locator(".cadre-code .agent-compteur")).toBeHidden();
-  expect(Math.round((await mesurer()).ecartEnvoyer), "sans compteur : Envoyer").toBe(0);
+    expect(m).toEqual({ defile: 0, tableauDeborde: false, cellule: true, codeDeborde: false });
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.getByRole("button", { name: "Replier l'agent" }).click();
+  });
 });
 
 test("REQ078_AC15_ordre_de_tab_et_touches", async ({ page, browserName }) => {
@@ -1060,35 +1177,6 @@ test("REQ078_AC15_ordre_de_tab_et_touches", async ({ page, browserName }) => {
   await champMessage(page).focus();
   await page.keyboard.press("Control+Shift+F");
   await expect(page.getByRole("navigation", { name: "Panneaux" }).getByRole("tab", { name: "Fichiers" })).toBeFocused();
-});
-
-test("REQ077_AC9_onglet_agent_320_px", async ({ page, browserName }) => {
-  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
-  const chemin = "src/" + "tres-long-".repeat(7) + "fin.rs";
-  expect(chemin.length).toBeGreaterThanOrEqual(80);
-  const md = ["| a | b | c | d | e | f |", "|---|---|---|---|---|---|", `| ${chemin} | 1 | 2 | 3 | 4 | 5 |`, "", "```", "x".repeat(300), "```"].join("\n");
-  await agentPret(page, [reponse({ texte: md, tokens: 100 })]);
-  await page.setViewportSize({ width: 800, height: 480 });
-  await rail(page, "Agent").click();
-  await page.getByRole("button", { name: "Agents", exact: true }).click();
-  await elargirColonne(page);
-  await expect.poll(() => page.locator("main.cadre-principal").evaluate((e) => Math.round(e.getBoundingClientRect().width))).toBe(320);
-  await champMessage(page).fill("Tableau");
-  await page.keyboard.press("Enter");
-  await patienter(page, () => expect(fil(page).locator("table")).toBeVisible({ timeout: 300 }));
-  await expect(fil(page).locator("pre")).toBeVisible();
-  const m = await fil(page).evaluate((f) => {
-    const droite = f.getBoundingClientRect().right;
-    const t = f.querySelector("table");
-    const pre = f.querySelector("pre");
-    return {
-      defile: f.scrollWidth - f.clientWidth,
-      tableauDeborde: t.getBoundingClientRect().right > droite + 0.5 || t.scrollWidth > t.clientWidth + 1,
-      cellule: [...t.querySelectorAll("td")][0].scrollWidth <= [...t.querySelectorAll("td")][0].clientWidth + 1,
-      codeDeborde: pre.getBoundingClientRect().right > droite + 0.5 || pre.scrollWidth > pre.clientWidth + 1,
-    };
-  });
-  expect(m).toEqual({ defile: 0, tableauDeborde: false, cellule: true, codeDeborde: false });
 });
 
 const REPONSE_MD = [
@@ -1278,88 +1366,6 @@ function verifierReponse(m, etiquette) {
   // AC-077-26
   expect(m.lien, e("lien")).toEqual({ target: "_blank", rel: "noopener noreferrer" });
 }
-
-test("REQ078_AC23_bords_alignes_1200", async ({ page, browserName }) => {
-  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
-  await agentPret(page, [reponse({ texte: "## Titre de réponse\n\nUn texte court.", tokens: 100 })]);
-  await page.setViewportSize({ width: 1600, height: 900 });
-  await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
-  await rail(page, "Agent").click();
-  await expect(champMessage(page)).toBeFocused();
-  await champMessage(page).fill("Dis bonjour");
-  await expect(envoyer(page)).toBeEnabled();
-  await page.keyboard.press("Enter");
-  await patienter(page, () => expect(fil(page).getByText("Un texte court.")).toBeVisible({ timeout: 300 }));
-  const bords = async () => {
-    const boite = async (l) => {
-      const b = await l.boundingBox();
-      return { gauche: b.x, droite: b.x + b.width, largeur: b.width };
-    };
-    const editeur = await boite(page.locator("main.cadre-principal"));
-    const c = await boite(champMessage(page));
-    return {
-      champ: c,
-      ecart: c.gauche - editeur.gauche,
-      titre: await boite(page.locator(".cadre-code .agent-titre")),
-      titreReponse: await boite(fil(page).locator("h2")),
-      texte: await boite(fil(page).getByText("Un texte court.")),
-      conversations: await boite(page.getByRole("button", { name: "Conversations", exact: true })),
-      envoyer: await boite(envoyer(page)),
-      profil: await boite(profil(page)),
-    };
-  };
-  const proche = (a, b, nom) => expect(Math.abs(a - b), nom).toBeLessThanOrEqual(1);
-  const replie = await bords();
-  expect([Math.round(replie.champ.largeur), Math.round(replie.ecart)]).toEqual([1200, 152]);
-  proche(replie.titre.gauche, replie.champ.gauche, "titre de la conversation, bord gauche");
-  proche(replie.titreReponse.gauche, replie.champ.gauche, "titre de la réponse, bord gauche");
-  proche(replie.texte.gauche, replie.champ.gauche, "texte de la réponse, bord gauche");
-  proche(replie.conversations.droite, replie.champ.droite, "Conversations, bord droit");
-  proche(replie.envoyer.droite, replie.champ.droite, "Envoyer, bord droit");
-  expect(replie.profil.largeur, "Profil").toBe(200);
-  await page.getByRole("banner").getByRole("button", { name: "Déplier le panneau" }).first().click();
-  const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
-  await poignee.focus();
-  for (let i = 0; i < 60 && (await poignee.getAttribute("aria-valuenow")) !== "280"; i++) {
-    await page.keyboard.press(Number(await poignee.getAttribute("aria-valuenow")) > 280 ? "ArrowLeft" : "ArrowRight");
-  }
-  await expect(poignee).toHaveAttribute("aria-valuenow", "280");
-  expect(Math.round((await bords()).champ.largeur)).toBe(1196);
-});
-
-test("REQ077_AC28_REQ078_AC24_reponse_onglet_agent_sans_et_avec_agents", async ({ page, browserName }) => {
-  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
-  await agentPret(page, [reponse({ texte: REPONSE_MD, tokens: 100 })]);
-  await page.setViewportSize({ width: 1600, height: 900 });
-  await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
-  // Une conversation sans agent.
-  await rail(page, "Agent").click();
-  await champMessage(page).fill("Compare");
-  await expect(envoyer(page)).toBeEnabled();
-  await page.keyboard.press("Enter");
-  await patienter(page, () => expect(fil(page).locator("table")).toBeVisible({ timeout: 300 }));
-  await expect(fil(page).locator("pre")).toBeVisible();
-  verifierReponse(await mesurerReponse(page), "sans agent");
-  // Une conversation avec Relecteur et Testeur, créés sur le disque.
-  for (const nom of ["Relecteur", "Testeur"]) {
-    const d = path.join(yaide.dossier, ".yaide", "agents", nom.toLowerCase());
-    fs.mkdirSync(d, { recursive: true });
-    fs.writeFileSync(path.join(d, "agent.json"), JSON.stringify({ nom, avatar: "", couleur: nom === "Testeur" ? "orange" : "vert" }));
-  }
-  const colonne = page.locator("aside.cadre-agent");
-  await page.getByRole("button", { name: "Agents", exact: true }).click();
-  await colonne.getByRole("checkbox", { name: "Relecteur" }).check();
-  await colonne.getByRole("checkbox", { name: "Testeur" }).check();
-  await colonne.getByRole("button", { name: "Démarrer une conversation" }).click();
-  await expect(ongletAgent(page, 2)).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("button", { name: "Replier l'agent" }).click();
-  await champMessage(page).fill("Relis");
-  await expect(envoyer(page)).toBeEnabled();
-  await page.keyboard.press("Enter");
-  await patienter(page, () => expect(fil(page).getByRole("group", { name: "Testeur" }).locator("table")).toBeVisible({ timeout: 300 }));
-  await expect(fil(page).getByRole("group", { name: "Relecteur" }).locator("pre")).toBeVisible();
-  verifierReponse(await mesurerReponse(page), "avec agents");
-});
 
 test("REQ085_parcours_56_un_agent_raisonne_l_autre_non", async ({ page }) => {
   // P-056 : AC-085-5, AC-085-8 (et AC-085-7 : la requête de Testeur ne porte pas le raisonnement).
