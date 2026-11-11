@@ -385,3 +385,26 @@ export async function installerVersion() {
   if (r.ok) return { ok: true };
   return { echec: (await r.text()).trim() || `erreur ${r.status}` };
 }
+
+/**
+ * Appel des routes des serveurs MCP (`.yaide/mcp.json`). Rend `{ serveurs: [{ nom, command, url, args, env: [[nom, valeur]] }] }`,
+ * `{ erreurs: { nom?, command?, env? } }` (refus de la saisie, 422), `{ cause, message, detail? }` ou `{ coupure: true }`.
+ */
+async function appelMcp(chemin, options) {
+  const r = await appeler(chemin, options);
+  if (!r) return { coupure: true };
+  let corps;
+  try {
+    corps = await r.json();
+  } catch {
+    return { cause: "erreur", message: `erreur ${r.status}` };
+  }
+  if (r.ok) return corps;
+  if (r.status === 422) return { erreurs: corps.erreurs ?? {} };
+  return { cause: corps.cause, message: corps.message, detail: corps.detail };
+}
+
+export const lireServeursMcp = () => appelMcp("/api/agent/mcp");
+/** `saisie` : `{ ancien?, nom, command, args: [ligne], env: [ligne NOM=valeur] }`. Rend la liste à jour. */
+export const enregistrerServeurMcp = (saisie) => appelMcp("/api/agent/mcp/serveurs", json("PUT", saisie));
+export const supprimerServeurMcp = (nom) => appelMcp(`/api/agent/mcp/serveurs/${q(nom)}`, { method: "DELETE" });
