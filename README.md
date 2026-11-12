@@ -144,7 +144,8 @@ Quand le dépôt du projet a au moins deux worktrees (`git worktree list`), les 
 - Un fichier d'un autre worktree s'ouvre dans un onglet comme les autres ; son info-bulle donne son chemin depuis le projet, par exemple `../essai/src/main.rs`. Les onglets restent ouverts quand le choix change.
 - Le choix n'est pas gardé : à chaque chargement de la page, c'est le projet. Si le worktree choisi disparaît, Yaide revient au projet et le dit.
 - Restent sur le projet : la recherche, l'ouverture rapide, les shells, l'agent, Claude et opencode.
-- Créer ou supprimer un worktree se fait dans un shell (`git worktree add ../essai -b essai`, `git worktree remove ../essai`) : la liste est relue toutes les 3 s et suit d'elle-même.
+- Depuis la vue Git, la corbeille de la ligne « Worktree » supprime le worktree choisi, après confirmation, s'il n'a aucune modification ; sa branche reste. La corbeille de la ligne de branche (« Supprimer une branche ») supprime une branche locale déjà fusionnée, pas la branche courante. Si git refuse (branche non fusionnée, prise par un worktree, worktree modifié), Yaide affiche son message ; forcer se fait dans le shell (`git branch -D`, `git worktree remove --force`).
+- Créer un worktree se fait dans un shell (`git worktree add ../essai -b essai`) : la liste est relue toutes les 3 s et suit d'elle-même.
 
 ## Réglages de l'interface
 
