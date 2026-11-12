@@ -1104,7 +1104,7 @@ async fn agent_supprimer_cle(
 
 async fn agent_profil(State(etat): State<Partage>, corps: Bytes) -> Response {
     match corps_json(&corps) {
-        Some(v) => reponse_reglages(&etat, etat.reglages.enregistrer_profil(&v)),
+        Some(v) => reponse_reglages(&etat, etat.reglages.enregistrer_profil(&v).map(|_| ())),
         None => corps_invalide(),
     }
 }

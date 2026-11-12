@@ -1,7 +1,8 @@
-//! Les neuf outils de l'agent (REQ-057). Une erreur d'outil n'est pas une erreur Rust :
+//! Les quatorze outils de l'agent (REQ-057, REQ-097, REQ-098). Une erreur d'outil n'est pas une erreur Rust :
 //! elle part au modèle comme résultat (`echec`), en une phrase courte en anglais.
 
 use super::agents::{Agents, COULEURS};
+use super::outils_config;
 use super::provider::DefOutil;
 use super::reglages::{Erreur, Reglages};
 use super::web;
@@ -78,7 +79,7 @@ fn def(nom: &str, description: &str, proprietes: Value, requis: &[&str]) -> DefO
 pub fn definitions() -> Vec<DefOutil> {
     let texte = |d: &str| json!({"type": "string", "description": d});
     let entier = |d: &str| json!({"type": "integer", "description": d});
-    vec![
+    let mut outils = vec![
         def(
             "read",
             "Read a text file of the project. Optionally from a line (1-based) and for a number of lines.",
@@ -141,7 +142,9 @@ pub fn definitions() -> Vec<DefOutil> {
             }),
             &[],
         ),
-    ]
+    ];
+    outils.extend(outils_config::definitions());
+    outils
 }
 
 /// L'argument qui résume un appel, pour l'affichage : chemin, commande, motif, requête ou adresse.
@@ -168,7 +171,7 @@ pub fn argument_principal(nom: &str, arguments: &Value) -> String {
             };
             return arguments[c].as_str().unwrap_or("").to_string();
         }
-        _ => return String::new(),
+        _ => return outils_config::argument_principal(nom, arguments).unwrap_or_default(),
     };
     arguments[cle].as_str().unwrap_or("").to_string()
 }
@@ -236,7 +239,10 @@ async fn lancer(nom: &str, a: &Value, ctx: &Contexte) -> Result<Resultat, String
             .map(ok),
         "list_agents" => Ok(ok(lister_agents(ctx))),
         "save_agent" => sauver_agent(a, ctx).map(ok),
-        _ => Err(format!("Unknown tool: {nom}.")),
+        _ => match outils_config::lancer(nom, a, ctx) {
+            Some(r) => r.map(ok),
+            None => Err(format!("Unknown tool: {nom}.")),
+        },
     }
 }
 
@@ -622,7 +628,12 @@ mod tests {
                 "websearch",
                 "webfetch",
                 "list_agents",
-                "save_agent"
+                "save_agent",
+                "get_config",
+                "save_provider",
+                "save_profile",
+                "save_mcp_server",
+                "save_interface"
             ]
         );
         assert_eq!(argument_principal("bash", &json!({"command": "ls"})), "ls");

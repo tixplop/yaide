@@ -1877,7 +1877,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn REQ097_AC1_list_agents_et_save_agent_offerts_avec_ou_sans_agent() {
+    async fn REQ097_AC1_REQ098_AC1_list_agents_et_save_agent_offerts_avec_ou_sans_agent() {
         let b = banc("a097-ac1", true, None).await;
         let rel = b.agent("Relecteur", None);
         b.scenario(vec![texte("a", 1), texte("b", 1)]);
@@ -1892,7 +1892,15 @@ mod tests {
             let noms = noms_outils(&corps);
             let attendus: Vec<String> = outils::definitions().into_iter().map(|d| d.nom).collect();
             assert_eq!(noms, attendus, "requête {i}");
-            for n in ["list_agents", "save_agent"] {
+            for n in [
+                "list_agents",
+                "save_agent",
+                "get_config",
+                "save_provider",
+                "save_profile",
+                "save_mcp_server",
+                "save_interface",
+            ] {
                 let t = corps["tools"]
                     .as_array()
                     .unwrap()
@@ -1901,6 +1909,10 @@ mod tests {
                     .unwrap_or_else(|| panic!("{n} absent de la requête {i}"));
                 assert!(!t["function"]["description"].as_str().unwrap().is_empty());
                 assert_eq!(t["function"]["parameters"]["type"], "object");
+                let props = t["function"]["parameters"]["properties"]
+                    .as_object()
+                    .unwrap();
+                assert!(!props.contains_key("key") && !props.contains_key("api_key"));
             }
         }
     }

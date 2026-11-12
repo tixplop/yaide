@@ -65,6 +65,11 @@ pub struct Reglages {
     verrou: Mutex<()>,
 }
 
+/// Identifiants des six providers, dans l'ordre des dialogues.
+pub fn ids_providers() -> Vec<&'static str> {
+    TOUS.iter().map(|p| p.id()).collect()
+}
+
 pub fn provider(id: &str) -> Option<Provider> {
     TOUS.into_iter().find(|p| p.id() == id)
 }
@@ -324,8 +329,8 @@ impl Reglages {
         Ok(())
     }
 
-    /// Sans `id` dans le corps : création. Rien n'est enregistré si un champ est refusé.
-    pub fn enregistrer_profil(&self, corps: &Value) -> Result<(), Erreur> {
+    /// Sans `id` dans le corps : création. Rien n'est enregistré si un champ est refusé. Rend l'id du profil.
+    pub fn enregistrer_profil(&self, corps: &Value) -> Result<String, Erreur> {
         let _g = self.verrouiller();
         let mut f = self.charger().unwrap_or_default();
         let id = match corps.get("id").and_then(Value::as_str) {
@@ -340,7 +345,8 @@ impl Reglages {
             None => f.profils.push(profil),
         }
         normaliser(&mut f.profils, defaut.as_deref());
-        self.sauver(&f)
+        self.sauver(&f)?;
+        Ok(id)
     }
 
     pub fn supprimer_profil(&self, id: &str) -> Result<(), Erreur> {
