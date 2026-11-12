@@ -238,7 +238,7 @@ test("REQ086_AC13_ligne_refusee_hors_barre", () => {
 
 test("REQ086_AC13_ligne_css_28px_marges_12px_opacite", () => {
   expect(css).toMatch(/\.ya-barre\.ya-ligne\s*\{[^}]*height:\s*28px[^}]*padding-inline:\s*var\(--space-3\)/);
-  expect(css).toMatch(/\.ya-barre\.ya-ligne:has\(:disabled\)[^}]*opacity:\s*\.45/);
+  expect(css).toMatch(/\.ya-barre\.ya-ligne:has\(select:disabled\)[^}]*opacity:\s*\.45/);
 });
 
 test("REQ086_AC13_ligne_titre_recalcule_apres_mise_a_jour_en_place", () => {
@@ -292,4 +292,47 @@ test("REQ096_AC15_multiligne_sans_retour_une_valeur_par_ligne_aide_et_erreur_rel
   // Sans `sansRetour`, le champ garde son aspect et ne coupe pas son wrap.
   expect(champ({ libelle: "Notes", type: "multiligne" }).querySelector("textarea").hasAttribute("wrap")).toBe(false);
   expect(() => champ({ libelle: "Nom", sansRetour: true })).toThrow(/multiligne/);
+});
+
+async function listeAvecAction(opts = {}, boutonOpts = {}) {
+  const { bouton } = await import("./bouton.js");
+  const b = bouton({ icone: "trash", nomAccessible: "Supprimer le worktree", taille: "normale", ...boutonOpts });
+  const c = champ({ libelle: "Worktree", type: "liste", options: ["a", "b"], presentation: "barre", ligne: true, action: b.enveloppe, ...opts });
+  document.body.append(c);
+  return { c, bt: c.querySelector("button"), select: c.querySelector("select") };
+}
+
+test("REQ099_AC10_liste_en_barre_action_apres_la_liste_dans_la_meme_ligne_arret_de_tab_apres_elle", async () => {
+  const { c, bt, select } = await listeAvecAction();
+  expect([...c.children].map((e) => e.tagName)).toEqual(["LABEL", "SELECT", "SPAN"]);
+  expect(c.lastElementChild.contains(bt)).toBe(true);
+  expect(bt.disabled).toBe(false);
+  expect(select.compareDocumentPosition(bt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const sans = champ({ libelle: "Branche", type: "liste", options: ["a"], presentation: "barre" });
+  const { bouton } = await import("./bouton.js");
+  const b2 = bouton({ icone: "trash", nomAccessible: "Supprimer", taille: "normale" });
+  const avec = champ({ libelle: "Branche", type: "liste", options: ["a"], presentation: "barre", action: b2.enveloppe });
+  expect(sans.querySelector("button")).toBeNull();
+  expect(avec.lastElementChild).toBe(b2.enveloppe);
+  expect(() => champ({ libelle: "x", type: "texte", action: b2.enveloppe })).toThrow(/action/);
+  expect(() => champ({ libelle: "x", type: "liste", options: ["a"], action: b2.enveloppe })).toThrow(/action/);
+  expect(() => champ({ libelle: "x", type: "case", action: b2.enveloppe })).toThrow(/action/);
+});
+
+test("REQ099_AC11_bouton_a_son_propre_etat_desactive_et_suit_celui_de_la_liste", async () => {
+  const seul = await listeAvecAction({}, { desactive: true });
+  expect(seul.select.disabled).toBe(false);
+  expect(seul.bt.disabled).toBe(true);
+  const liste = await listeAvecAction({ desactive: true });
+  expect(liste.select.disabled).toBe(true);
+  expect(liste.bt.disabled).toBe(true);
+  const actif = await listeAvecAction();
+  expect(actif.bt.disabled).toBe(false);
+});
+
+test("REQ099_AC10_css_bouton_a_4_px_de_la_liste_sans_retrecir_et_attenuation_limitee_a_la_liste", () => {
+  expect(regle(".ya-barre .bouton-enveloppe")).toContain("flex: none");
+  expect(css).toMatch(/\.ya-barre:has\(select:disabled\) \.champ-libelle/);
+  expect(css).toMatch(/\.ya-barre\.ya-ligne:has\(select:disabled\) \.ya-input/);
+  expect(css).not.toMatch(/\.ya-barre:has\(:disabled\)/);
 });

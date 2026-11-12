@@ -42,9 +42,10 @@
 .ya-barre { flex-direction: row; align-items: center; height: var(--size-control); }
 .ya-barre .champ-libelle { flex: none; white-space: nowrap; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
 .ya-barre .ya-input { flex: 1 1 0; min-width: 0; width: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ya-barre:has(:disabled) .champ-libelle { opacity: .45; }
+.ya-barre .bouton-enveloppe { flex: none; }
+.ya-barre:has(select:disabled) .champ-libelle { opacity: .45; }
 .ya-barre.ya-ligne { box-sizing: border-box; height: 28px; padding-inline: var(--space-3); gap: var(--space-1); }
-.ya-barre.ya-ligne:has(:disabled) .ya-input { opacity: .45; }
+.ya-barre.ya-ligne:has(select:disabled) .ya-input { opacity: .45; }
 .champ-aide { font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
 .champ-erreur { font: var(--texte-petit) var(--font-sans); color: var(--danger); }
 /* C-002 : un bouton à droite de la saisie (Réglages en dialogue). */

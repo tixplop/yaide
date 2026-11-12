@@ -15,6 +15,7 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
   if (presentation === "barre" && type !== "liste") throw new Error("champ : la presentation « barre » n'existe que pour une liste");
   if (ligne && presentation !== "barre") throw new Error("champ : « ligne » n'existe que pour la presentation « barre »");
   if (sansRetour && type !== "multiligne") throw new Error("champ : sansRetour demande le type « multiligne »");
+  if (action && !(type === "liste" && presentation === "barre") && !(type === "case" && presentation === "ligne")) throw new Error("champ : action n'existe que pour une liste en presentation « barre » ou une case en « ligne »");
   const n = ++compteur;
   if (type === "couleur") return champCouleur(libelle, valeur || "violet", n, desactive);
   if (type === "case" && presentation === "ligne") return caseEnLigne({ libelle, valeur, avant, action, desactive, n });
@@ -95,6 +96,11 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
     racine.append(e);
   }
   if (decrit.length) saisie.setAttribute("aria-describedby", decrit.join(" "));
+  // Le bouton de l'action suit la liste ; il est désactivé avec elle, sinon il garde son propre état.
+  if (action) {
+    if (desactive) for (const b of action.querySelectorAll("button")) b.disabled = true;
+    racine.append(action);
+  }
   return racine;
 }
 

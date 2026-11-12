@@ -666,3 +666,13 @@ test("REQ094_AC3_contrastes_de_la_connexion", () => {
     });
   }
 });
+
+// REQ-099 : contrastes de C-002 `liste` en `barre` avec `action` (design-system.md).
+test("REQ099_contrastes_de_l_action_d_une_liste_en_barre", () => {
+  THEMES.forEach((theme, k) => {
+    expect(ratio(theme, "--ink-muted", "--bg-100"), `icône (${theme})`).toBe([6.5, 6.2][k]);
+    expect(ratio(theme, "--ink", "--bg-400"), `icône survolée (${theme})`).toBe([7.3, 13.2][k]);
+    expect(ratio(theme, "--accent-fg", "--bg-100"), `focus (${theme})`).toBe([6.9, 5.9][k]);
+    expect(ratio(theme, "--ink", "--bg-300"), `info-bulle (${theme})`).toBe([8.9, 16.4][k]);
+  });
+});
