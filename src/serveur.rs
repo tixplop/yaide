@@ -778,11 +778,12 @@ async fn git_etat(State(etat): State<Partage>, Query(q): Requete) -> Response {
                 .iter()
                 .map(|w| {
                     format!(
-                        "{{\"chemin\":{},\"nom\":{},\"branche\":{},\"detachee\":{}}}",
+                        "{{\"chemin\":{},\"nom\":{},\"branche\":{},\"detachee\":{},\"racine\":{}}}",
                         json_texte(&w.chemin),
                         json_texte(&w.nom),
                         json_texte(&w.branche),
-                        w.detachee
+                        w.detachee,
+                        json_texte(&w.racine_rel)
                     )
                 })
                 .collect();
@@ -875,6 +876,32 @@ async fn git_branche(State(etat): State<Partage>, Query(q): Requete) -> Response
     };
     let nom = param(&q, "nom").to_string();
     fait(avec_git(dossier, move |p| git::changer_branche(p, &nom)).await)
+}
+
+async fn git_branche_supprimer(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let Some((dossier, _)) = cible_git(&etat, &q).await else {
+        return worktree_inconnu();
+    };
+    let nom = param(&q, "nom").to_string();
+    fait(avec_git(dossier, move |p| git::supprimer_branche(p, &nom)).await)
+}
+
+async fn git_worktree_supprimer(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let demande = param(&q, "worktree").to_string();
+    if demande.is_empty() {
+        return erreur_git(git::Erreur::Invalide(
+            "Yaide ne supprime pas le worktree du projet.".into(),
+        ));
+    }
+    let projet = etat.projet_dir.clone();
+    let p = projet.clone();
+    let liste = tokio::task::spawn_blocking(move || depot::worktrees(&p))
+        .await
+        .unwrap_or_default();
+    let Some(w) = liste.into_iter().find(|w| w.chemin == demande) else {
+        return worktree_inconnu();
+    };
+    fait(avec_git(projet, move |p| git::supprimer_worktree(p, &w.racine)).await)
 }
 
 async fn git_pull(State(etat): State<Partage>, Query(q): Requete) -> Response {
@@ -1466,6 +1493,8 @@ pub async fn servir(
         .route("/api/git/indexer", post(git_indexer))
         .route("/api/git/commit", post(git_commit))
         .route("/api/git/branche", post(git_branche))
+        .route("/api/git/branche/supprimer", post(git_branche_supprimer))
+        .route("/api/git/worktree/supprimer", post(git_worktree_supprimer))
         .route("/api/git/pull", post(git_pull))
         .route("/api/git/push", post(git_push))
         .layer(middleware::from_fn_with_state(etat.clone(), garde))

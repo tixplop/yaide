@@ -387,6 +387,29 @@ pub fn changer_branche(d: &Path, nom: &str) -> Result<(), Erreur> {
     reussi(d, &["switch", nom]).map(|_| ())
 }
 
+/// Supprime une branche déjà fusionnée (`-d`, jamais `-D`) ; pas la branche courante.
+pub fn supprimer_branche(d: &Path, nom: &str) -> Result<(), Erreur> {
+    verifier_depot(d)?;
+    if !liste_branches(d).iter().any(|b| b == nom) {
+        return Err(Erreur::Invalide("Cette branche n'existe pas.".into()));
+    }
+    let (courante, detachee) = branche_courante(d);
+    if !detachee && courante == nom {
+        return Err(Erreur::Invalide(
+            "Git ne supprime pas la branche courante.".into(),
+        ));
+    }
+    reussi(d, &["branch", "-d", nom]).map(|_| ())
+}
+
+/// Supprime le worktree de racine `racine`, sans `--force`.
+pub fn supprimer_worktree(projet: &Path, racine: &Path) -> Result<(), Erreur> {
+    let Some(racine) = racine.to_str() else {
+        return Err(Erreur::Invalide("Ce chemin n'est pas valide.".into()));
+    };
+    reussi(projet, &["worktree", "remove", racine]).map(|_| ())
+}
+
 /// `pull` ou `push` : 120 s au plus, rien n'est demandé à l'écran.
 pub fn synchroniser(d: &Path, commande: &str) -> Result<String, Erreur> {
     verifier_depot(d)?;

@@ -236,7 +236,7 @@ fn req086_ac1_liste_des_worktrees() {
     assert_eq!(r.code, 200, "{}", r.corps);
     assert!(
         r.corps.contains(
-            "\"worktrees\":[{\"chemin\":\"\",\"nom\":\"projet\",\"branche\":\"main\",\"detachee\":false},{\"chemin\":\"../essai\",\"nom\":\"essai\",\"branche\":\"essai\",\"detachee\":false}]"
+            "\"worktrees\":[{\"chemin\":\"\",\"nom\":\"projet\",\"branche\":\"main\",\"detachee\":false,\"racine\":\"\"},{\"chemin\":\"../essai\",\"nom\":\"essai\",\"branche\":\"essai\",\"detachee\":false,\"racine\":\"../essai\"}]"
         ),
         "{}",
         r.corps
@@ -374,4 +374,107 @@ fn req086_ac12_worktree_inconnu_refuse() {
     assert_eq!(c.code, 400, "{}", c.corps);
     assert!(c.corps.contains("\"cause\":\"worktree\""));
     assert_eq!(s.g(&s.projet, &["rev-parse", "main"]), avant);
+}
+
+fn liste_wt(s: &Serveur) -> String {
+    s.g(&s.projet, &["worktree", "list"])
+}
+
+#[test]
+fn req099_ac3_branche_prise_par_un_worktree_refusee() {
+    let s = lancer("sw3", None);
+    let r = s.appel("POST", "/api/git/branche/supprimer?nom=essai", b"");
+    assert_eq!(r.code, 409, "{}", r.corps);
+    assert!(r.corps.contains("\"cause\":\"git\""));
+    assert!(s
+        .g(&s.projet, &["branch", "--list", "essai"])
+        .contains("essai"));
+}
+
+#[test]
+fn req099_ac5_branche_courante_du_worktree_refusee() {
+    let s = lancer("sw5", None);
+    let r = s.appel(
+        "POST",
+        "/api/git/branche/supprimer?worktree=../essai&nom=essai",
+        b"",
+    );
+    assert_eq!(r.code, 400, "{}", r.corps);
+    assert!(r.corps.contains("Git ne supprime pas la branche courante."));
+    assert!(s
+        .g(&s.projet, &["branch", "--list", "essai"])
+        .contains("essai"));
+}
+
+#[test]
+fn req099_ac6_racine_dans_l_etat() {
+    let s = lancer("sw6", None);
+    let r = s.etat("");
+    assert!(r.corps.contains("\"racine\":\"\""), "{}", r.corps);
+    assert!(r.corps.contains("\"racine\":\"../essai\""), "{}", r.corps);
+    let s = lancer("sw6b", Some("app"));
+    let r = s.etat("");
+    assert!(
+        r.corps.contains("\"racine\":\"../../essai\""),
+        "{}",
+        r.corps
+    );
+}
+
+#[test]
+fn req099_ac6_suppression_propre_d_un_worktree() {
+    let s = lancer("sw6c", None);
+    let r = s.appel("POST", "/api/git/worktree/supprimer?worktree=../essai", b"");
+    assert_eq!(r.code, 204, "{}", r.corps);
+    assert!(!s.racine.join("essai").exists());
+    assert!(!liste_wt(&s).contains("essai"));
+    assert!(s
+        .g(&s.projet, &["branch", "--list", "essai"])
+        .contains("essai"));
+    let e = s.etat("").corps;
+    assert!(e.contains("\"worktrees\":[{"), "{e}");
+    assert!(!e.contains("../essai"), "{e}");
+}
+
+#[test]
+fn req099_ac8_worktree_sale_refuse_sans_rien_perdre() {
+    let s = lancer("sw8", None);
+    let essai = s.racine.join("essai");
+    std::fs::write(essai.join("main.rs"), "modifié\n").unwrap();
+    let r = s.appel("POST", "/api/git/worktree/supprimer?worktree=../essai", b"");
+    assert_eq!(r.code, 409, "{}", r.corps);
+    assert!(r.corps.contains("\"cause\":\"git\""));
+    assert_eq!(
+        std::fs::read_to_string(essai.join("main.rs")).unwrap(),
+        "modifié\n"
+    );
+    s.g(&essai, &["checkout", "--", "main.rs"]);
+    std::fs::write(essai.join("neuf.txt"), "neuf\n").unwrap();
+    let r = s.appel("POST", "/api/git/worktree/supprimer?worktree=../essai", b"");
+    assert_eq!(r.code, 409, "{}", r.corps);
+    assert_eq!(
+        std::fs::read_to_string(essai.join("neuf.txt")).unwrap(),
+        "neuf\n"
+    );
+    assert!(liste_wt(&s).contains("essai"));
+}
+
+#[test]
+fn req099_ac8_worktree_vide_ou_inconnu_refuse() {
+    let s = lancer("sw8b", None);
+    let r = s.appel("POST", "/api/git/worktree/supprimer?worktree=", b"");
+    assert_eq!(r.code, 400, "{}", r.corps);
+    assert!(r.corps.contains("\"cause\":\"invalide\""));
+    assert!(r
+        .corps
+        .contains("Yaide ne supprime pas le worktree du projet."));
+    let r = s.appel(
+        "POST",
+        "/api/git/worktree/supprimer?worktree=../inconnu",
+        b"",
+    );
+    assert_eq!(r.code, 400, "{}", r.corps);
+    assert!(r.corps.contains("\"cause\":\"worktree\""));
+    assert!(s.racine.join("essai").exists());
+    assert!(s.projet.exists());
 }

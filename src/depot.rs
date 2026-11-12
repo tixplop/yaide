@@ -62,6 +62,10 @@ pub struct Worktree {
     pub detachee: bool,
     /// Dossier du projet à l'intérieur de ce worktree (canonique).
     pub dossier: PathBuf,
+    /// Dossier racine du worktree (canonique).
+    pub racine: PathBuf,
+    /// Chemin de la racine depuis le projet (`""` pour le projet lui-même).
+    pub racine_rel: String,
 }
 
 /// Chemin relatif de `vers` depuis `depuis` (deux chemins absolus canoniques).
@@ -124,6 +128,9 @@ pub fn worktrees(projet: &Path) -> Vec<Worktree> {
         let Ok(dossier) = racine.join(prefixe).canonicalize() else {
             continue;
         };
+        let Ok(racine) = racine.canonicalize() else {
+            continue;
+        };
         let nom = racine
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -134,6 +141,8 @@ pub fn worktrees(projet: &Path) -> Vec<Worktree> {
             branche,
             detachee,
             dossier,
+            racine_rel: chemin_relatif(&projet, &racine),
+            racine,
         });
     }
     resultat.sort_by(|a, b| (!a.chemin.is_empty(), &a.nom).cmp(&(!b.chemin.is_empty(), &b.nom)));

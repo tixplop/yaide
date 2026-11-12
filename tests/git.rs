@@ -805,3 +805,47 @@ fn req025_ac3_ssh_defini_par_l_utilisateur_est_respecte() {
     assert!(a.contains("Reglage=config"), "{a}");
     assert!(!a.contains("BatchMode"), "{a}");
 }
+
+#[test]
+fn req099_ac1_branche_fusionnee_supprimee() {
+    let s = lancer("sb1");
+    s.depot();
+    let p = s.projet.clone();
+    s.g(&p, &["branch", "ancienne"]);
+    assert!(s.etat().corps.contains("\"ancienne\""));
+    let r = s.appel("POST", "/api/git/branche/supprimer?nom=ancienne", b"");
+    assert_eq!(r.code, 204, "{}", r.corps);
+    assert_eq!(s.g(&p, &["branch", "--list", "ancienne"]).trim(), "");
+    assert!(!s.etat().corps.contains("ancienne"));
+}
+
+#[test]
+fn req099_ac3_branche_non_fusionnee_refusee_par_git() {
+    let s = lancer("sb3");
+    s.depot();
+    let p = s.projet.clone();
+    s.g(&p, &["checkout", "-q", "-b", "travail"]);
+    s.ecrire("neuf.txt", b"neuf\n");
+    s.g(&p, &["add", "."]);
+    s.g(&p, &["commit", "-q", "-m", "travail"]);
+    s.g(&p, &["checkout", "-q", "main"]);
+    let r = s.appel("POST", "/api/git/branche/supprimer?nom=travail", b"");
+    assert_eq!(r.code, 409, "{}", r.corps);
+    assert!(r.corps.contains("\"cause\":\"git\""), "{}", r.corps);
+    assert!(!r.corps.contains("\"message\":\"\""), "{}", r.corps);
+    assert_eq!(s.g(&p, &["branch", "--list", "travail"]).trim(), "travail");
+}
+
+#[test]
+fn req099_ac5_branche_courante_ou_absente_refusee() {
+    let s = lancer("sb5");
+    s.depot();
+    let p = s.projet.clone();
+    let r = s.appel("POST", "/api/git/branche/supprimer?nom=main", b"");
+    assert_eq!(r.code, 400, "{}", r.corps);
+    assert!(r.corps.contains("Git ne supprime pas la branche courante."));
+    let r = s.appel("POST", "/api/git/branche/supprimer?nom=nexiste-pas", b"");
+    assert_eq!(r.code, 400, "{}", r.corps);
+    assert!(r.corps.contains("Cette branche n'existe pas."));
+    assert_eq!(s.g(&p, &["branch", "--list"]).trim(), "* main");
+}
