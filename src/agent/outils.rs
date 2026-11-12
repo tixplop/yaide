@@ -1,4 +1,4 @@
-//! Les quatorze outils de l'agent (REQ-057, REQ-097, REQ-098). Une erreur d'outil n'est pas une erreur Rust :
+//! Les quinze outils de l'agent (REQ-057, REQ-097, REQ-098, REQ-100). Une erreur d'outil n'est pas une erreur Rust :
 //! elle part au modèle comme résultat (`echec`), en une phrase courte en anglais.
 
 use super::agents::{Agents, COULEURS};
@@ -142,6 +142,12 @@ pub fn definitions() -> Vec<DefOutil> {
             }),
             &[],
         ),
+        def(
+            "subagent",
+            "Run a temporary subagent. It starts with an empty context, works alone on the prompt with the same tools as you (except subagent) and returns its final answer. Everything it needs must be in the prompt.",
+            json!({"prompt": texte("The task for the subagent, with all the context it needs")}),
+            &["prompt"],
+        ),
     ];
     outils.extend(outils_config::definitions());
     outils
@@ -163,6 +169,7 @@ pub fn argument_principal(nom: &str, arguments: &Value) -> String {
         "glob" => "pattern",
         "websearch" => "query",
         "webfetch" => "url",
+        "subagent" => "prompt",
         "save_agent" => {
             let c = if arguments["name"].is_string() {
                 "name"
@@ -629,6 +636,7 @@ mod tests {
                 "webfetch",
                 "list_agents",
                 "save_agent",
+                "subagent",
                 "get_config",
                 "save_provider",
                 "save_profile",
@@ -637,6 +645,11 @@ mod tests {
             ]
         );
         assert_eq!(argument_principal("bash", &json!({"command": "ls"})), "ls");
+        // REQ100_AC7
+        assert_eq!(
+            argument_principal("subagent", &json!({"prompt": "Liste les tests lents"})),
+            "Liste les tests lents"
+        );
         assert_eq!(argument_principal("read", &json!({"path": "a.rs"})), "a.rs");
         assert_eq!(
             argument_principal("glob", &json!({"pattern": "*.rs"})),

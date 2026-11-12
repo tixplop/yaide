@@ -655,6 +655,138 @@ Always give file paths relative to the project root.",
         verrou(&self.registre).remove(&id);
     }
 
+    /// Requête au provider d'un profil. `None` si le provider du profil est inconnu.
+    async fn requete(
+        &self,
+        p: &Profil,
+        instructions: &str,
+        historique: &[Message],
+        definitions: &[provider::DefOutil],
+    ) -> Option<(&'static str, Result<provider::Reponse, ErreurProvider>)> {
+        let prov = reglages::provider(&p.provider)?;
+        let reglage = Reglage {
+            modele: p.modele.clone(),
+            effort: p.effort.as_deref().and_then(|e| match e {
+                "faible" => Some(Effort::Faible),
+                "moyen" => Some(Effort::Moyen),
+                "eleve" => Some(Effort::Eleve),
+                _ => None,
+            }),
+            sortie_max: p.sortie_max.map(|n| n.min(u32::MAX as u64) as u32),
+            temperature: p.temperature.map(|t| t as f32),
+        };
+        let adresse = self
+            .reglages
+            .adresse(prov.id())
+            .unwrap_or_else(|| prov.adresse_par_defaut().to_string());
+        let cle = self.reglages.cle(prov.id());
+        let res = provider::envoyer(
+            &self.client,
+            prov,
+            &adresse,
+            cle.as_deref(),
+            &reglage,
+            instructions,
+            historique,
+            definitions,
+        )
+        .await;
+        Some((prov.nom(), res))
+    }
+
+    /// Exécute un appel d'outil : serveur MCP pour `mcp__…`, sinon outil intégré.
+    async fn executer_appel(&self, ctx: &Contexte, appel: &Appel) -> outils::Resultat {
+        if appel.nom.starts_with("mcp__") {
+            self.mcp
+                .appeler(&appel.nom, &appel.arguments, &self.limites)
+                .await
+        } else {
+            outils::executer(&appel.nom, &appel.arguments, ctx).await
+        }
+    }
+
+    /// Outil `subagent` (REQ-100) : une boucle en mémoire, sans journal ni compteur.
+    async fn sous_agent(
+        &self,
+        p: &Profil,
+        arguments: &Value,
+        definitions: &[provider::DefOutil],
+    ) -> outils::Resultat {
+        let Some(consigne) = arguments["prompt"].as_str() else {
+            return outils::Resultat {
+                contenu: "Missing or invalid argument: prompt.".into(),
+                echec: true,
+            };
+        };
+        let arret = |m: String| outils::Resultat {
+            contenu: format!("The subagent stopped: {m}"),
+            echec: true,
+        };
+        let ctx = Contexte {
+            projet: self.projet.clone(),
+            client: self.client.clone(),
+            limites: self.limites.clone(),
+            agents: self.agents.clone(),
+            reglages: self.reglages.clone(),
+        };
+        let instructions = self.instructions();
+        let definitions: Vec<provider::DefOutil> = definitions
+            .iter()
+            .filter(|d| d.nom != "subagent")
+            .cloned()
+            .collect();
+        let mut journal = vec![Entree::Utilisateur {
+            texte: consigne.to_string(),
+        }];
+        loop {
+            let Some((nom, res)) = self
+                .requete(p, &instructions, &messages(&journal), &definitions)
+                .await
+            else {
+                return arret("its profile has no provider.".into());
+            };
+            let rep = match res {
+                Ok(r) => r,
+                Err(ErreurProvider::Refus { code, corps }) => {
+                    return arret(format!("{nom} refused the request ({code}). {corps}"));
+                }
+                Err(ErreurProvider::Injoignable(cause)) => {
+                    return arret(format!("{nom} is unreachable: {cause}."));
+                }
+            };
+            if rep.appels.is_empty() {
+                return outils::Resultat {
+                    contenu: rep.texte,
+                    echec: false,
+                };
+            }
+            if p.fenetre.is_some_and(|f| rep.tokens >= f) {
+                return arret("its context window is full.".into());
+            }
+            let appels = rep.appels.clone();
+            journal.push(Entree::Agent {
+                texte: rep.texte,
+                raisonnement: rep.raisonnement,
+                blocs: rep.blocs,
+                auteur: None,
+            });
+            for appel in appels {
+                let r = self.executer_appel(&ctx, &appel).await;
+                journal.push(Entree::Outil {
+                    argument: outils::argument_principal(&appel.nom, &appel.arguments),
+                    id: appel.id,
+                    nom: appel.nom,
+                    arguments: appel.arguments,
+                    etat: if r.echec { "echec" } else { "reussi" }.into(),
+                    resultat: r.contenu,
+                    auteur: None,
+                    serveur: None,
+                    outil: None,
+                });
+            }
+        }
+    }
+
     /// Faux si le tour entier doit finir (erreur, arrêt).
     async fn boucle(
         &self,
@@ -693,8 +825,16 @@ Always give file paths relative to the project root.",
                     }
                 }
             };
-            let Some((p, prov)) =
-                profil_trouve.and_then(|p| reglages::provider(&p.provider).map(|v| (p, v)))
+            let Some(p) = profil_trouve else {
+                self.modifier(conv, |c| {
+                    c.entrees
+                        .push(message_erreur("Profil introuvable.".into(), String::new()))
+                });
+                return false;
+            };
+            let Some((nom, res)) = self
+                .requete(&p, &instructions, &historique, definitions)
+                .await
             else {
                 self.modifier(conv, |c| {
                     c.entrees
@@ -702,43 +842,15 @@ Always give file paths relative to the project root.",
                 });
                 return false;
             };
-            let reglage = Reglage {
-                modele: p.modele.clone(),
-                effort: p.effort.as_deref().and_then(|e| match e {
-                    "faible" => Some(Effort::Faible),
-                    "moyen" => Some(Effort::Moyen),
-                    "eleve" => Some(Effort::Eleve),
-                    _ => None,
-                }),
-                sortie_max: p.sortie_max.map(|n| n.min(u32::MAX as u64) as u32),
-                temperature: p.temperature.map(|t| t as f32),
-            };
-            let adresse = self
-                .reglages
-                .adresse(prov.id())
-                .unwrap_or_else(|| prov.adresse_par_defaut().to_string());
-            let cle = self.reglages.cle(prov.id());
-            let res = provider::envoyer(
-                &self.client,
-                prov,
-                &adresse,
-                cle.as_deref(),
-                &reglage,
-                &instructions,
-                &historique,
-                definitions,
-            )
-            .await;
             let rep = match res {
                 Ok(r) => r,
                 Err(e) => {
                     let entree = match e {
-                        ErreurProvider::Refus { code, corps } => message_erreur(
-                            format!("{} a refusé la requête ({code}).", prov.nom()),
-                            corps,
-                        ),
+                        ErreurProvider::Refus { code, corps } => {
+                            message_erreur(format!("{nom} a refusé la requête ({code})."), corps)
+                        }
                         ErreurProvider::Injoignable(cause) => message_erreur(
-                            format!("{} est injoignable : {cause}.", prov.nom()),
+                            format!("{nom} est injoignable : {cause}."),
                             String::new(),
                         ),
                     };
@@ -806,12 +918,10 @@ Always give file paths relative to the project root.",
                 if !commence {
                     return false;
                 }
-                let r = if appel.nom.starts_with("mcp__") {
-                    self.mcp
-                        .appeler(&appel.nom, &appel.arguments, &self.limites)
-                        .await
+                let r = if appel.nom == "subagent" {
+                    self.sous_agent(&p, &appel.arguments, definitions).await
                 } else {
-                    outils::executer(&appel.nom, &appel.arguments, &ctx).await
+                    self.executer_appel(&ctx, &appel).await
                 };
                 let fini = self.modifier(conv, |c| {
                     let entree = c.entrees.iter_mut().rev().find(
@@ -2093,5 +2203,274 @@ mod tests {
                 (&json!("testeur"), &json!("dit: deux"))
             ]
         );
+    }
+
+    // --- outil subagent (REQ-100) ---
+
+    fn sous(prompt: &str) -> (u16, Value, u64) {
+        appels(&[("s1", "subagent", json!({"prompt": prompt}))])
+    }
+
+    fn outil_de<'a>(v: &'a Value, nom: &str) -> &'a Value {
+        v["entrees"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["type"] == "outil" && e["nom"] == nom)
+            .unwrap_or_else(|| panic!("outil {nom} absent : {v}"))
+    }
+
+    #[tokio::test]
+    async fn REQ100_AC1_subagent_offert_avec_ou_sans_agent() {
+        let b = banc("a100-ac1", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        b.scenario(vec![texte("a", 1), texte("b", 1)]);
+        let id = b.envoyer(None, "un").unwrap();
+        b.fini(&id).await;
+        let id2 = b.envoyer_a(None, &[rel], "deux").unwrap();
+        b.fini(&id2).await;
+        for i in 0..2 {
+            let corps = b.corps(i);
+            let t = corps["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["function"]["name"] == "subagent")
+                .unwrap_or_else(|| panic!("subagent absent de la requête {i}"));
+            assert!(t["function"]["description"]
+                .as_str()
+                .unwrap()
+                .contains("temporary subagent"));
+            assert_eq!(
+                t["function"]["parameters"]["properties"]["prompt"]["type"],
+                "string"
+            );
+            assert_eq!(t["function"]["parameters"]["required"], json!(["prompt"]));
+            let attendus: Vec<String> = outils::definitions().into_iter().map(|d| d.nom).collect();
+            assert_eq!(noms_outils(&corps), attendus);
+        }
+    }
+
+    #[tokio::test]
+    async fn REQ100_AC2_AC4_sous_agent_isole_sans_trace_et_historique_relu() {
+        let b = banc("a100-ac2", true, None).await;
+        std::fs::write(b.dir.join("README.md"), "contenu-readme-z").unwrap();
+        std::fs::write(b.dir.join("AGENTS.md"), "regle-maison").unwrap();
+        std::fs::create_dir_all(b.dir.join(".yaide/agents")).unwrap();
+        b.scenario(vec![
+            sous("cherche-x"),
+            appels(&[("r1", "read", json!({"path": "README.md"}))]),
+            texte("trouvé-y", 999),
+            texte("fin-agent", 20),
+            texte("suite", 30),
+        ]);
+        let id = b.envoyer(None, "lance").unwrap();
+        let v = b.fini(&id).await;
+        assert_eq!(b.nb_requetes(), 4);
+        // AC-100-2
+        let r1 = b.corps(1);
+        let m = r1["messages"].as_array().unwrap();
+        let non_systeme: Vec<&Value> = m.iter().filter(|x| x["role"] != "system").collect();
+        assert_eq!(non_systeme.len(), 1, "{r1}");
+        assert_eq!(non_systeme[0]["content"], "cherche-x");
+        assert!(b.requete(1).contains("regle-maison"));
+        assert!(!b.requete(1).contains("lance"));
+        assert!(b.requete(2).contains("contenu-readme-z"));
+        let derniere = b.requete(3);
+        assert!(derniere.contains("trouvé-y"));
+        assert!(!derniere.contains("contenu-readme-z"));
+        assert!(!derniere.contains("README.md"));
+        // AC-100-4
+        let e = v["entrees"].as_array().unwrap();
+        assert_eq!(e.len(), 4, "{e:?}");
+        assert_eq!(e[2]["nom"], "subagent");
+        assert_eq!(e[2]["argument"], "cherche-x");
+        assert_eq!(e[2]["etat"], "reussi");
+        assert_eq!(e[2]["resultat"], "trouvé-y");
+        assert_eq!(e[3]["texte"], "fin-agent");
+        assert_eq!(v["tokens"], 20);
+        let noms: Vec<_> = std::fs::read_dir(b.dir.join(".yaide/conversations"))
+            .unwrap()
+            .map(|f| f.unwrap().file_name())
+            .collect();
+        assert_eq!(noms, [std::ffi::OsString::from(format!("{id}.json"))]);
+        assert_eq!(
+            std::fs::read_dir(b.dir.join(".yaide/agents"))
+                .unwrap()
+                .count(),
+            0
+        );
+        let neuf = gestionnaire(&b.dir, &b.reglages);
+        neuf.envoyer(Some(&id), &b.profil, "encore").unwrap();
+        for _ in 0..250 {
+            if neuf.lire(&id, 0).unwrap()["enCours"] == false {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let r = b.requete(4);
+        assert!(r.contains("trouvé-y") && r.contains("fin-agent") && r.contains("encore"));
+        assert!(!r.contains("contenu-readme-z"));
+    }
+
+    #[tokio::test]
+    async fn REQ100_AC3_outils_mcp_sans_subagent_et_modele_du_profil_de_l_agent() {
+        let b = banc("a100-ac3", true, None).await;
+        b.mcp(&[("echo", vec![])]);
+        let p2 = b.profil2();
+        let rel = b.agent("Relecteur", Some(&p2));
+        b.scenario(vec![
+            sous("a"),
+            texte("r1", 1),
+            texte("fin", 1),
+            sous("b"),
+            texte("r2", 1),
+            texte("fin", 1),
+        ]);
+        let id = b.envoyer(None, "un").unwrap();
+        b.fini(&id).await;
+        let id2 = b.envoyer_a(None, &[rel], "deux").unwrap();
+        b.fini(&id2).await;
+        assert_eq!(b.nb_requetes(), 6);
+        for (agent, sub, modele) in [(0, 1, "m"), (3, 4, "m2")] {
+            let tous = noms_outils(&b.corps(agent));
+            assert!(tous.contains(&"subagent".to_string()));
+            let attendus: Vec<String> = tous.into_iter().filter(|n| n != "subagent").collect();
+            let corps = b.corps(sub);
+            assert_eq!(noms_outils(&corps), attendus);
+            assert!(attendus.contains(&"mcp__echo__dire".to_string()));
+            assert_eq!(corps["model"], modele);
+            assert_eq!(b.corps(agent)["model"], modele);
+        }
+    }
+
+    #[tokio::test]
+    async fn REQ100_AC5_refus_du_provider_et_contexte_plein_arretent_le_sous_agent() {
+        let b = banc("a100-ac5", true, Some(100)).await;
+        std::fs::write(b.dir.join("README.md"), "x").unwrap();
+        b.scenario(vec![
+            sous("un"),
+            (429, json!({"error": "trop-de-requetes"}), 0),
+            texte("agent-continue", 10),
+        ]);
+        let id = b.envoyer(None, "lance").unwrap();
+        let v = b.fini(&id).await;
+        let o = outil_de(&v, "subagent");
+        assert_eq!(o["etat"], "echec");
+        let r = o["resultat"].as_str().unwrap();
+        assert!(
+            r.starts_with("The subagent stopped: OpenAI refused the request (429).")
+                && r.contains("trop-de-requetes"),
+            "{r}"
+        );
+        assert!(v["entrees"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["type"] != "message"));
+        assert_eq!(
+            v["entrees"].as_array().unwrap().last().unwrap()["texte"],
+            "agent-continue"
+        );
+        assert!(b.requete(2).contains("The subagent stopped"));
+
+        let c = banc("a100-ac5b", true, Some(100)).await;
+        c.scenario(vec![
+            sous("deux"),
+            appels(&[("r1", "read", json!({"path": "README.md"}))]),
+            texte("agent-continue", 10),
+        ]);
+        // 100 tokens atteignent la fenêtre : la requête de l'agent (10) ne la touche pas.
+        c.script.lock().unwrap().get_mut(1).unwrap().1["usage"]["prompt_tokens"] = json!(100);
+        let id = c.envoyer(None, "lance").unwrap();
+        let v = c.fini(&id).await;
+        let o = outil_de(&v, "subagent");
+        assert_eq!(o["etat"], "echec");
+        assert_eq!(
+            o["resultat"],
+            "The subagent stopped: its context window is full."
+        );
+        assert_eq!(c.nb_requetes(), 3);
+        assert_eq!(
+            v["entrees"].as_array().unwrap().last().unwrap()["texte"],
+            "agent-continue"
+        );
+        assert_eq!(v["tokens"], 10);
+    }
+
+    #[tokio::test]
+    async fn REQ100_AC6_arreter_pendant_la_requete_ou_bash_du_sous_agent() {
+        let b = banc("a100-ac6", true, None).await;
+        let mut lente = texte("trop tard", 1);
+        lente.2 = 30_000;
+        b.scenario(vec![sous("un"), lente]);
+        let id = b.envoyer(None, "lance").unwrap();
+        b.attendre(&id, |_| b.nb_requetes() == 2).await;
+        assert!(b.g.arreter(&id));
+        let v = b.g.lire(&id, 0).unwrap();
+        assert_eq!(v["enCours"], false);
+        assert_eq!(outil_de(&v, "subagent")["etat"], "echec");
+        assert_eq!(
+            v["entrees"].as_array().unwrap().last().unwrap(),
+            &json!({"type": "fin", "texte": "Arrêté."})
+        );
+
+        // pendant un bash du sous-agent
+        let pid = b.dir.join("pid");
+        let cmd = format!("echo $$ > {}; sleep 30", pid.display());
+        b.scenario(vec![
+            sous("deux"),
+            appels(&[("b1", "bash", json!({"command": cmd}))]),
+        ]);
+        b.envoyer(Some(&id), "encore").unwrap();
+        for _ in 0..250 {
+            if pid.exists() && std::fs::read_to_string(&pid).is_ok_and(|t| !t.trim().is_empty()) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let p: i32 = std::fs::read_to_string(&pid)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert!(std::path::Path::new(&format!("/proc/{p}")).exists());
+        assert!(b.g.arreter(&id));
+        let v = b.g.lire(&id, 0).unwrap();
+        assert_eq!(v["enCours"], false);
+        let e = v["entrees"].as_array().unwrap();
+        assert_eq!(e[e.len() - 2]["etat"], "echec");
+        assert_eq!(e[e.len() - 1]["texte"], "Arrêté.");
+        for _ in 0..100 {
+            if !std::path::Path::new(&format!("/proc/{p}")).exists() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(!std::path::Path::new(&format!("/proc/{p}")).exists());
+
+        // on peut continuer
+        b.scenario(vec![texte("repris", 1)]);
+        b.envoyer(Some(&id), "troisieme").unwrap();
+        let v = b.fini(&id).await;
+        assert_eq!(
+            v["entrees"].as_array().unwrap().last().unwrap()["texte"],
+            "repris"
+        );
+    }
+
+    #[tokio::test]
+    async fn REQ100_AC7_consigne_absente_echec_sans_requete_du_sous_agent() {
+        let b = banc("a100-ac7", true, None).await;
+        b.scenario(vec![
+            appels(&[("s1", "subagent", json!({}))]),
+            texte("fini", 1),
+        ]);
+        let id = b.envoyer(None, "lance").unwrap();
+        let v = b.fini(&id).await;
+        let o = outil_de(&v, "subagent");
+        assert_eq!(o["etat"], "echec");
+        assert_eq!(o["resultat"], "Missing or invalid argument: prompt.");
+        assert_eq!(b.nb_requetes(), 2);
     }
 }

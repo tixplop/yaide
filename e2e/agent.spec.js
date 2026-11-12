@@ -177,12 +177,12 @@ test("REQ056_parcours_19_regler_l_agent_et_corriger_un_fichier", async ({ page }
   await expect(editeur).toContainText("i += 1", { timeout: 8000 });
   await expect(editeur).not.toContainText("--sortie\" => i += 2");
 
-  // Ce que le provider a reçu : la clé, AGENTS.md, les quatorze outils, le résultat de l'outil.
+  // Ce que le provider a reçu : la clé, AGENTS.md, les quinze outils, le résultat de l'outil.
   const premiere = faux.recues[0];
   expect(premiere.chemin).toBe("/v1/messages");
   expect(premiere.entetes["x-api-key"]).toBe("sk-test");
   expect(JSON.stringify(premiere.corps)).toContain("regle-maison-42");
-  expect(premiere.corps.tools.map((t) => t.name).sort()).toEqual(["bash", "edit", "get_config", "glob", "list_agents", "read", "save_agent", "save_interface", "save_mcp_server", "save_profile", "save_provider", "webfetch", "websearch", "write"]);
+  expect(premiere.corps.tools.map((t) => t.name).sort()).toEqual(["bash", "edit", "get_config", "glob", "list_agents", "read", "save_agent", "save_interface", "save_mcp_server", "save_profile", "save_provider", "subagent", "webfetch", "websearch", "write"]);
   expect(JSON.stringify(faux.recues[1].corps.messages)).toContain("Exit code: 101");
   expect(faux.recues).toHaveLength(4);
 });
