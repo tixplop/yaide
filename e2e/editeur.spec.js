@@ -279,38 +279,210 @@ test("REQ011_AC4_AC5_AC6_REQ013_AC1_AC2_AC3_AC4_AC5_REQ014_groupe_onglets_sauveg
   });
 });
 
-test("REQ058_AC1_parcours_P022", async ({ page }) => {
+test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_parcours_P022", async ({ page, context }) => {
   await page.clock.install();
-  await ouvrir(page, (d) => {
-    fs.mkdirSync(path.join(d, "site"));
-    fs.writeFileSync(path.join(d, "site", "index.html"), "");
+  const dossier = await ouvrir(page, (d) => {
+    fs.mkdirSync(path.join(d, "site", "img"), { recursive: true });
+    fs.mkdirSync(path.join(d, "site", "docs"));
+    fs.writeFileSync(path.join(d, "site", "img", "logo.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+    fs.writeFileSync(path.join(d, "site", "style.css"), "body { font-family: sans-serif }\nh1 { color: rgb(255, 0, 0) }\n");
+    fs.writeFileSync(path.join(d, "site", "externe.css"), "#externe { color: rgb(0, 128, 0) }\n");
+    fs.writeFileSync(path.join(d, "site", "app.js"), 'document.getElementById("etat").textContent = "Prêt";\ndocument.getElementById("f").addEventListener("submit", (e) => {\n  e.preventDefault();\n  document.getElementById("etat").textContent = "Envoyé";\n});\n');
+    fs.writeFileSync(path.join(d, "site", "lib.js"), 'export const lire = (d) => d.message;\n');
+    fs.writeFileSync(path.join(d, "site", "main.js"), 'import { lire } from "./lib.js";\nfetch("donnees.json").then((r) => r.json()).then((d) => { document.getElementById("donnees").textContent = lire(d); });\n');
+    fs.writeFileSync(path.join(d, "site", "donnees.json"), '{"message":"Texte de donnees.json"}');
+    fs.writeFileSync(path.join(d, "site", "docs", "guide.html"), '<!DOCTYPE html>\n<link rel="stylesheet" href="../style.css">\n<h1>Guide</h1>\n<img src="../img/logo.png" alt="">\n');
+    fs.writeFileSync(path.join(d, "site", "autre.html"), "<p>Sans style</p>\n");
     fs.writeFileSync(path.join(d, "site", "page.htm"), "");
-    fs.writeFileSync(path.join(d, "site", "style.css"), "h1 {}\n");
   });
   const relais = await lancerRelais(yaide.port);
+  const pages = [];
+  const dialogues = [];
+  const externes = [];
+  context.on("page", (p) => pages.push(p));
+  page.on("request", (r) => {
+    if (/^https?:/.test(r.url()) && !r.url().startsWith(relais.origine) && !r.url().startsWith(yaide.origine + "/")) externes.push({ url: r.url(), duCadre: r.frame() !== page.mainFrame() });
+  });
+  page.on("dialog", (d) => dialogues.push(d.message()));
   try {
     await page.goto(relais.origine + "/");
     await expect(arbre(page)).toBeVisible();
-    await ligne(page, "site").click();
+    const jeton = (await page.evaluate(() => fetch("/api/apercu").then((r) => r.json()))).jeton;
+    const adresseDirecte = `https://localhost:${yaide.port}/apercu/${jeton}/site/externe.css`;
+    const securite =
+      "const s = document.getElementById('securite'); const l = [];\n" +
+      "const essai = (n, f) => { try { l.push(n + ': ' + f()); } catch { l.push(n + ': refusé'); } };\n" +
+      "essai('parent.document', () => (parent.document.querySelector('[role=tree]') ? 'lu' : 'rien'));\n" +
+      "essai('document.cookie', () => (document.cookie, 'lu'));\n" +
+      "essai('window.open', () => (window.open('about:blank') ? 'ouverte' : 'bloquée'));\n" +
+      "const api = (n, u, o) => fetch(u, o).then((r) => l.push(n + ': ' + (r.ok ? 'accepté' : 'refusé')), () => l.push(n + ': refusé'));\n" +
+      "api('POST creer', '/api/fichiers/creer?chemin=pirate.txt', { method: 'POST' }).then(() => api('GET fichiers', '/api/fichiers')).then(() => { s.textContent = l.join(' ; '); });\n";
+    const index = [
+      "<!DOCTYPE html>",
+      '<html lang="fr"><head><meta charset="utf-8"><title>Compteur</title>',
+      '<link rel="stylesheet" href="style.css">',
+      `<link rel="stylesheet" href="${adresseDirecte}">`,
+      "<style>h2 { color: rgb(255, 0, 0) } .note { background: rgb(255, 224, 138) }</style>",
+      "</head><body>",
+      "<h1>Compteur de lignes</h1>",
+      "<h2>Sous-titre</h2>",
+      '<img id="logo" src="img/logo.png" alt="Logo">',
+      '<p class="note">Une note</p>',
+      '<p id="externe">Feuille externe</p>',
+      '<p>État : <span id="etat"></span></p>',
+      '<p id="donnees"></p>',
+      '<p id="script"></p>',
+      '<p id="mots">Les chiffres</p>',
+      '<p><a href="#bas">Aller en bas</a> <a href="docs/guide.html">Lire le guide</a> <a href="autre.html">Autre page</a> <a href="autre.html" target="_blank">Dans un nouvel onglet</a> <a href="autre.html" target="_top">Tout en haut</a></p>',
+      '<form id="f"><label>Courriel <input name="courriel" type="email"></label> <button>S\'inscrire</button></form>',
+      '<div style="height: 2000px"></div>',
+      '<p id="bas">Fin</p>',
+      '<p id="securite"></p>',
+      '<script>document.getElementById("script").textContent = "Script de la page";</script>',
+      '<script>alert("bonjour")</script>',
+      `<script>${securite}</script>`,
+      '<script src="app.js"></script>',
+      '<script type="module" src="main.js"></script>',
+      "</body></html>",
+    ];
+    fs.writeFileSync(path.join(dossier, "site", "index.html"), index.join("\n") + "\n");
+    const ligneH1 = index.findIndex((l) => l.startsWith("<h1>"));
+    const ligneMots = index.findIndex((l) => l.includes('id="mots"'));
+    const urlAvant = page.url();
+    const cadre = () => page.locator('iframe[title="Aperçu"]:visible');
+    const vue = () => cadre().contentFrame();
     const bouton = page.getByRole("button", { name: "Aperçu", exact: true });
-    const titre = page.locator('iframe[title="Aperçu"]:visible').contentFrame().getByRole("heading", { name: "Titre" });
-    await ligne(page, "index.html").click();
-    await expect(bouton).toHaveAttribute("aria-pressed", "true");
-    await taper(page, "index.html", "<h1>Titre</h1>");
-    await expect(titre).toBeVisible();
-    await ligne(page, "page.htm").click();
-    await expect(bouton).toHaveAttribute("aria-pressed", "true");
-    await taper(page, "page.htm", "<h1>Titre</h1>");
-    await expect(titre).toBeVisible();
+    const defilement = () => vue().locator("html").evaluate(() => window.scrollY);
+    const lignesCode = () => page.locator(".cm-line:visible");
+
+    await ligne(page, "site").click();
+    await expect(ligne(page, "index.html")).toBeVisible();
+
+    // 1. Ouverture : la page et ses fichiers, le focus dans l'éditeur (AC-058-6, 11, 12, 13, 15, 2, 8).
     await ligne(page, "style.css").click();
     await expect(bouton).toHaveCount(0);
-    await onglet(page, /^page\.htm/).click();
+    await ligne(page, "page.htm").click();
     await expect(bouton).toHaveAttribute("aria-pressed", "true");
-    await expect(titre).toBeVisible();
+    await editeur(page, "page.htm").click();
+    await page.keyboard.type("<h1>Titre</h1>");
+    await page.keyboard.press("Control+s");
+    await expect(vue().getByRole("heading", { name: "Titre" })).toBeVisible();
+    await ligne(page, "index.html").click();
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    await expect(vue().getByRole("heading", { name: "Compteur de lignes" })).toHaveCSS("color", "rgb(255, 0, 0)");
+    await expect(vue().getByRole("heading", { name: "Sous-titre" })).toHaveCSS("color", "rgb(255, 0, 0)");
+    await expect(vue().locator(".note")).toHaveCSS("background-color", "rgb(255, 224, 138)");
+    await expect(vue().locator("#externe")).toHaveCSS("color", "rgb(0, 128, 0)");
+    await expect(vue().locator("#etat")).toHaveText("Prêt");
+    await expect(vue().locator("#donnees")).toHaveText("Texte de donnees.json");
+    await expect(vue().locator("#script")).toHaveText("Script de la page");
+    expect(await vue().locator("#logo").evaluate((i) => i.naturalWidth)).toBeGreaterThan(0);
+    await expect(cadre()).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    await expect(editeur(page, "index.html")).toBeFocused();
+    expect(await cadre().evaluate((f) => f.ownerDocument.activeElement === f)).toBe(false);
+    await expect(page.locator("footer")).toContainText("Ln 1, Col 1");
+    expect(dialogues).toEqual([]);
+
+    // 2. Frappe sans Ctrl+S : l'aperçu montre le fichier enregistré.
+    await vue().locator("body").evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const bas = await defilement();
+    expect(bas).toBeGreaterThan(100);
+    await lignesCode().nth(ligneH1).click();
+    await page.keyboard.press("End");
+    for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowLeft");
+    await page.keyboard.type(" !");
+    await expect(onglet(page, /^index\.html.*non sauvegardé/)).toBeVisible();
+    await expect(vue().getByRole("heading", { name: "Compteur de lignes", exact: true })).toBeVisible();
+
+    // 3. Ctrl+S : texte nouveau, même défilement, focus dans l'éditeur (AC-058-1, AC-058-9).
+    await page.keyboard.press("Control+s");
+    await expect(vue().getByRole("heading", { name: "Compteur de lignes !" })).toBeAttached();
+    await expect.poll(async () => Math.abs((await defilement()) - bas) <= 1).toBe(true);
+    await expect(editeur(page, "index.html")).toBeFocused();
+    expect(await cadre().evaluate((f) => f.ownerDocument.activeElement === f)).toBe(false);
+
+    // 4. Formulaire.
+    await vue().getByLabel("Courriel").fill("marie@exemple.org");
+    await vue().getByRole("button", { name: "S'inscrire" }).click();
+    await expect(vue().locator("#etat")).toHaveText("Envoyé");
+
+    // 5. Liens (AC-058-5).
+    await vue().locator("body").evaluate(() => window.scrollTo(0, 0));
+    await vue().getByRole("link", { name: "Aller en bas" }).click();
+    await expect.poll(defilement).toBeGreaterThan(100);
+    await vue().getByRole("link", { name: "Dans un nouvel onglet" }).click();
+    await vue().getByRole("link", { name: "Tout en haut" }).click();
+    await vue().getByRole("link", { name: "Lire le guide" }).click();
+    await expect(vue().getByRole("heading", { name: "Guide" })).toHaveCSS("color", "rgb(255, 0, 0)");
+    await expect(onglet(page, /^index\.html/)).toHaveAttribute("aria-selected", "true");
+    expect(pages).toHaveLength(0);
+    expect(page.url()).toBe(urlAvant);
+
+    // 6. Deux clics sur « Aperçu » : la page de l'onglet.
+    await bouton.click();
+    await expect(cadre()).toHaveCount(0);
+    await bouton.click();
+    await expect(vue().getByRole("heading", { name: "Compteur de lignes !" })).toBeVisible();
+    await expect(vue().locator("#etat")).toHaveText("Prêt");
+
+    // 7. Autre onglet : style.css passé au bleu (AC-058-14).
+    await onglet(page, /^style\.css/).click();
+    await expect(bouton).toHaveCount(0);
+    await editeur(page, "style.css").click();
+    await page.keyboard.press("Control+a");
+    await page.keyboard.type("h1 { color: rgb(0, 0, 255) }");
+    await page.keyboard.press("Control+s");
+    await expect(onglet(page, /^style\.css/)).not.toHaveAccessibleName(/non sauvegardé/);
+    await onglet(page, /^index\.html/).click();
+    await expect(vue().getByRole("heading", { name: "Compteur de lignes !" })).toHaveCSS("color", "rgb(0, 0, 255)");
+
+    // Page sans style, dans les deux thèmes (AC-058-8).
+    await vue().getByRole("link", { name: "Autre page" }).click();
+    const texte = vue().getByText("Sans style");
+    await expect(texte).toHaveCSS("color", "rgb(0, 0, 0)");
+    await expect(cadre()).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    const style = () => texte.evaluate((e) => JSON.stringify(getComputedStyle(e)));
+    const avant = await style();
+    await page.getByRole("button", { name: "Thème clair" }).click();
+    await expect(page.getByRole("button", { name: "Thème clair" })).toHaveAttribute("aria-pressed", "true");
+    await expect(texte).toHaveCSS("color", "rgb(0, 0, 0)");
+    await expect(cadre()).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    expect(await style()).toBe(avant);
+    await bouton.click();
+    await bouton.click();
+    await expect(vue().locator("#etat")).toHaveText("Prêt");
+
+    // Sécurité de la page dans le cadre (AC-058-16).
+    const refus = "parent.document: refusé ; document.cookie: refusé ; window.open: bloquée ; POST creer: refusé ; GET fichiers: refusé";
+    await expect(vue().locator("#securite")).toHaveText(refus);
+    expect(fs.existsSync(path.join(dossier, "pirate.txt"))).toBe(false);
+    // La même page ouverte seule, dans le même contexte (session valide).
+    const seule = await context.newPage();
+    await seule.goto(`${relais.origine}/apercu/${jeton}/site/index.html`);
+    await expect(seule.locator("#securite")).toHaveText(refus.replace("parent.document: refusé", "parent.document: rien"));
+    expect(fs.existsSync(path.join(dossier, "pirate.txt"))).toBe(false);
+    await seule.close();
+    pages.splice(pages.indexOf(seule), 1);
+    // AC-029-3 : la seule requête hors de Yaide est la feuille liée par la page, émise par le cadre.
+    expect([...new Set(externes.map((r) => r.url))]).toEqual([adresseDirecte]);
+    expect(externes.every((r) => r.duCadre)).toBe(true);
+    expect(dialogues).toEqual([]);
+
+    // 8. Coupure : la page reste, le texte écrit au retour (AC-058-1).
     relais.couper();
     await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue" })).toBeVisible({ timeout: 300 }));
-    await taper(page, "page.htm", "<p>Hors ligne</p>");
-    await expect(page.locator('iframe[title="Aperçu"]:visible').contentFrame().getByText("Hors ligne")).toBeVisible();
+    await lignesCode().nth(ligneMots).click();
+    await page.keyboard.press("End");
+    for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowLeft");
+    await page.keyboard.type(" et les mots");
+    await page.keyboard.press("Control+s");
+    await expect(page.getByRole("alert").filter({ hasText: "index.html sera sauvegardé au retour." })).toBeVisible();
+    await expect(vue().locator("#mots")).toHaveText("Les chiffres");
+    relais.retablir();
+    await avancer(page, () => expect(vue().locator("#mots")).toHaveText("Les chiffres et les mots", { timeout: 300 }));
+    expect(fs.readFileSync(path.join(dossier, "site", "index.html"), "utf8")).toContain("Les chiffres et les mots");
+    expect(dialogues).toEqual([]);
+    expect(pages).toHaveLength(0);
   } finally {
     relais.fermer();
   }

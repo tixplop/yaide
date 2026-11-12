@@ -100,11 +100,12 @@ test("REQ083_P053_ouvrir_une_note_et_une_page", async ({ page, browserName }) =>
   expect(Math.abs((await largeur(zone)) - g / 2)).toBeLessThanOrEqual(g * 0.1);
   expect(await cadre(page).evaluate((f) => f.ownerDocument.activeElement === f)).toBe(false);
 
-  // Étape 3 : la page suit la frappe.
+  // Étape 3 : la page montre le fichier enregistré.
   await lignes(page).nth(16).click();
   await page.keyboard.press("End");
   for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowLeft");
   await page.keyboard.type(" !");
+  await page.keyboard.press("Control+s");
   await expect(cadre(page).contentFrame().getByRole("heading", { name: "Compteur de lignes !" })).toBeVisible();
 
   // Étapes 4 et 5 : mode éteint, onglet fermé, fichier rouvert (AC-083-4).
@@ -179,6 +180,7 @@ test("REQ083_P054_recherche_fichiers_vides_rechargement", async ({ page, browser
   await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
   await expect(cadre(page).contentFrame().locator("body")).toHaveText("");
   await page.keyboard.type("<p>Bonjour");
+  await page.keyboard.press("Control+s");
   await expect(cadre(page).contentFrame().getByText("Bonjour")).toBeVisible();
 
   // Étape 5 : clic sur « Aperçu ».
