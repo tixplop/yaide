@@ -408,3 +408,23 @@ export const lireServeursMcp = () => appelMcp("/api/agent/mcp");
 /** `saisie` : `{ ancien?, nom, command, args: [ligne], env: [ligne NOM=valeur] }`. Rend la liste à jour. */
 export const enregistrerServeurMcp = (saisie) => appelMcp("/api/agent/mcp/serveurs", json("PUT", saisie));
 export const supprimerServeurMcp = (nom) => appelMcp(`/api/agent/mcp/serveurs/${q(nom)}`, { method: "DELETE" });
+
+let jetonApercuGarde = null;
+
+/** Jeton de la route d'aperçu, lu une fois ; null sans réponse. */
+export async function jetonApercu() {
+  if (jetonApercuGarde) return jetonApercuGarde;
+  const r = await appeler("/api/apercu");
+  if (!r || !r.ok) return null;
+  jetonApercuGarde = (await r.json()).jeton;
+  return jetonApercuGarde;
+}
+
+/** Au retour de la connexion : Yaide a pu être relancé avec un autre jeton. */
+export function oublierJetonApercu() {
+  jetonApercuGarde = null;
+}
+
+export function adresseApercu(jeton, chemin) {
+  return `/apercu/${jeton}/` + String(chemin).split("/").map(encodeURIComponent).join("/");
+}

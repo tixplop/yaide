@@ -1,42 +1,46 @@
-const CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">`;
-
-// La règle va après un éventuel <!DOCTYPE> pour ne pas changer le mode de rendu.
-export function texteSrcdoc(texte) {
-  const t = String(texte ?? "");
-  const m = t.match(/^\s*<!doctype[^>]*>/i);
-  const fin = m ? m[0].length : 0;
-  return t.slice(0, fin) + CSP + t.slice(fin);
-}
-
-export function apercuHtml() {
+export function apercuHtml({ adresse }) {
   const el = document.createElement("iframe");
   el.className = "zone-code-cadre";
   el.title = "Aperçu";
-  el.setAttribute("sandbox", "allow-same-origin");
+  el.setAttribute("sandbox", "allow-scripts allow-forms");
+  el.coupe = false;
   let x = 0;
   let y = 0;
-  let charge = false; // une page en cours de chargement vaut 0 : on garde alors la dernière position connue
+  let enAttente = false;
 
+  const surMessage = (e) => {
+    if (e.source !== el.contentWindow || e.data?.yaide !== "defilement") return;
+    x = Number(e.data.x) || 0;
+    y = Number(e.data.y) || 0;
+  };
+  window.addEventListener("message", surMessage);
   el.addEventListener("load", () => {
-    const fen = el.contentWindow;
-    const doc = el.contentDocument;
-    if (!fen || !doc) return;
-    charge = true;
-    fen.scrollTo(x, y);
-    const annuler = (e) => {
-      if (e.type === "submit" || (e.target.closest && e.target.closest("a[href], area[href]"))) e.preventDefault();
-    };
-    doc.addEventListener("click", annuler, true);
-    doc.addEventListener("submit", annuler, true);
+    el.contentWindow?.postMessage({ yaide: "defiler", x, y }, "*");
   });
 
-  el.maj = (texte) => {
-    if (charge && el.contentWindow) {
-      x = el.contentWindow.scrollX;
-      y = el.contentWindow.scrollY;
+  async function charger() {
+    const a = await adresse();
+    if (a) el.src = a;
+  }
+  el.recharger = () => {
+    if (el.coupe) {
+      enAttente = true;
+      return;
     }
-    charge = false;
-    el.srcdoc = texteSrcdoc(texte);
+    charger();
   };
+  el.definirCoupe = (oui) => {
+    el.coupe = Boolean(oui);
+    if (!el.coupe && enAttente) {
+      enAttente = false;
+      charger();
+    }
+  };
+  el.maj = () => {}; // la frappe ne touche pas l'aperçu HTML
+  el.retirer = () => {
+    window.removeEventListener("message", surMessage);
+    el.remove();
+  };
+  charger();
   return el;
 }

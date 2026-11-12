@@ -318,7 +318,7 @@ test("REQ044_le_code_en_ligne_n_est_pas_colore", () => {
 });
 
 test("REQ058_AC8_apercu_html_est_un_iframe_et_markdown_un_div", () => {
-  const h = zoneCode({ contenu: "<h1>T</h1>", langage: "html", apercu: true });
+  const h = zoneCode({ contenu: "<h1>T</h1>", langage: "html", apercu: true, adresseApercu: async () => "/apercu/j/a.html" });
   expect(h.querySelector("iframe.zone-code-cadre").title).toBe("Aperçu");
   expect(h.querySelector(".zone-code-apercu")).toBeNull();
   const m = zoneCode({ contenu: "# T", langage: "markdown", apercu: true });

@@ -1540,3 +1540,44 @@ test("REQ087_AC1_le_fichier_s_ouvre_dans_le_groupe_de_la_conversation_pas_dans_l
   await faux.ag[0].ouvrirReference({ chemin: "src/main.rs", ligne: 1 }, lienFichier());
   expect(noms()).toEqual([["Agent 1", "main.rs"], ["autre.txt"]]);
 });
+
+test("REQ058_AC1_AC14_sauvegarde_recharge_les_apercus_html_de_la_page", async () => {
+  let jeton = "jj";
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (String(url).includes("/api/apercu")) return { ok: true, status: 200, json: async () => ({ jeton }) };
+    return { ok: true, status: 200, json: async () => ({ version: "2" }) };
+  }));
+  try {
+  const { e } = monter();
+  e.ouvrir({ chemin: "site/index.html", contenu: "<p>a</p>", version: "1" });
+  e.ouvrir({ chemin: "site/style.css", contenu: "p{}", version: "1" });
+  const cadreHtml = () => document.querySelector('iframe[title="Aperçu"]');
+  await new Promise((r) => setTimeout(r, 20));
+  expect(cadreHtml().getAttribute("src")).toBe("/apercu/jj/site/index.html");
+  cadreHtml().setAttribute("src", "about:blank");
+  // la frappe ne recharge pas
+  e.code.querySelector(".zone-code:not([hidden])").vue.dispatch({ changes: { from: 0, insert: "X" } });
+  await new Promise((r) => setTimeout(r, 20));
+  expect(cadreHtml().getAttribute("src")).toBe("about:blank");
+  // la sauvegarde d'un autre fichier recharge la page
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  expect(cadreHtml().getAttribute("src")).toBe("/apercu/jj/site/index.html");
+  // pendant une coupure : pas de rechargement, puis rechargement au retour
+  cadreHtml().setAttribute("src", "about:blank");
+  e.definirEtat("coupe");
+  document.querySelector('iframe[title="Aperçu"]').closest(".zone-code").vue.dispatch({ changes: { from: 0, insert: "Y" } });
+  e.ouvrir({ chemin: "site/style.css", contenu: "p{}", version: "1" });
+  e.code.querySelector(".zone-code:not([hidden])").vue.dispatch({ changes: { from: 0, insert: "Z" } });
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  expect(cadreHtml().getAttribute("src")).toBe("about:blank");
+  // au retour : un autre jeton, la sauvegarde en attente s'écrit et la page se recharge avec le nouveau jeton
+  jeton = "kk";
+  e.definirEtat("connecte");
+  await new Promise((r) => setTimeout(r, 60));
+  expect(cadreHtml().getAttribute("src")).toBe("/apercu/kk/site/index.html");
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

@@ -1,4 +1,4 @@
-import { ecrireFichier, fermerShell, lireFichier, listeShells, versionsFichiers } from "../api.js";
+import { adresseApercu, ecrireFichier, fermerShell, jetonApercu, lireFichier, oublierJetonApercu, listeShells, versionsFichiers } from "../api.js";
 import { decider, texteAttente } from "../brouillons.js";
 import { decisionDisque } from "../disque.js";
 import { couper, feuilles, poserPart, retirerGroupe } from "../disposition.js";
@@ -454,6 +454,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       nom: nomDe(chemin),
       apercu,
       hybride,
+      async adresseApercu() {
+        const jeton = await jetonApercu();
+        return jeton ? adresseApercu(jeton, o.chemin) : null;
+      },
       surPosition() {
         if (trouver(actif) === o) publier(o);
       },
@@ -823,6 +827,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     clearTimeout(minuteur);
     minuteur = null;
     if (pret) ecrireGarde();
+    for (const autre of liste) if (estFichier(autre)) autre.zone.rechargerApercu();
     return null;
   }
 
@@ -1257,6 +1262,8 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     /** "connecte" ou "coupe" : au retour, les Ctrl+S mis en attente s'exécutent. */
     definirEtat(etat) {
       coupe = etat === "coupe";
+      if (!coupe) oublierJetonApercu();
+      for (const o of liste) if (estFichier(o)) o.zone.definirCoupe(coupe);
       if (coupe) return;
       executerAttente();
       verifierDisque();

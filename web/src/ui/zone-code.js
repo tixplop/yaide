@@ -148,7 +148,7 @@ const clavierTableau = Prec.high(
   ]),
 );
 
-export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, ligne, nom = "", surChangement, surPosition } = {}) {
+export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, ligne, nom = "", surChangement, surPosition } = {}) {
   if (!MODES.includes(mode)) throw new Error(`zoneCode : mode inconnu « ${mode} »`);
   const diff = mode === "diff";
   const racine = document.createElement("div");
@@ -200,15 +200,18 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   racine.contenu = () => vue.state.doc.toString();
   racine.definirApercu = (actif) => {
     if (actif && !ap) {
-      ap = langage === "html" ? apercuHtml() : creerApercu();
+      ap = langage === "html" ? apercuHtml({ adresse: adresseApercu }) : creerApercu();
       ap.maj(racine.contenu());
       racine.append(ap);
     } else if (!actif && ap) {
-      ap.remove();
+      if (ap.retirer) ap.retirer();
+      else ap.remove();
       ap = null;
     }
     racine.classList.toggle("zone-code-avec-apercu", actif);
   };
+  racine.rechargerApercu = () => ap?.recharger?.();
+  racine.definirCoupe = (oui) => ap?.definirCoupe?.(oui);
   // Bascule du mode hybride : la première ligne visible reste en haut, rien d'autre ne bouge (pas de surChangement).
   let hybrideActif = hybridePossible && hybride;
   racine.definirHybride = (actif) => {
@@ -241,6 +244,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   document.addEventListener("yaide-theme", suivreTheme);
   racine.detruire = () => {
     document.removeEventListener("yaide-theme", suivreTheme);
+    ap?.retirer?.();
     vue.destroy();
   };
   if (apercu) racine.definirApercu(true);
