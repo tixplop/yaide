@@ -35,6 +35,7 @@ struct Etat {
     opencode: opencode::Opencode,
     client_opencode: reqwest::Client,
     version: version::Version,
+    jeton_apercu: String,
 }
 
 type Partage = Arc<Etat>;
@@ -89,7 +90,8 @@ fn est_publique(m: &Method, chemin: &str) -> bool {
             | "/theme.js"
             | "/api/info"
     ) || chemin.starts_with("/polices/");
-    (m == Method::GET && fichier_statique) || (m == Method::POST && chemin == "/api/connexion")
+    (m == Method::GET && (fichier_statique || chemin.starts_with("/apercu/")))
+        || (m == Method::POST && chemin == "/api/connexion")
 }
 
 async fn garde(State(etat): State<Partage>, req: Request, next: Next) -> Response {
@@ -110,10 +112,50 @@ async fn garde(State(etat): State<Partage>, req: Request, next: Next) -> Respons
     {
         return StatusCode::FORBIDDEN.into_response();
     }
+    let apercu = req.uri().path().starts_with("/apercu/");
     let mut rep = next.run(req).await;
-    rep.headers_mut()
-        .insert(header::CONTENT_SECURITY_POLICY, CSP.parse().unwrap());
+    let h = rep.headers_mut();
+    if apercu {
+        // Page d'origine opaque (DEC-069) : ses propres en-têtes, pas la règle de Yaide.
+        h.insert(
+            header::CONTENT_SECURITY_POLICY,
+            "sandbox allow-scripts allow-forms".parse().unwrap(),
+        );
+        h.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().unwrap());
+    } else {
+        h.insert(header::CONTENT_SECURITY_POLICY, CSP.parse().unwrap());
+    }
     rep
+}
+
+async fn jeton_apercu(State(etat): State<Partage>) -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        format!("{{\"jeton\":\"{}\"}}", etat.jeton_apercu),
+    )
+        .into_response()
+}
+
+async fn servir_apercu(
+    State(etat): State<Partage>,
+    CheminUrl(p): CheminUrl<(String, String)>,
+) -> Response {
+    if !crate::apercu::jeton_ok(&etat.jeton_apercu, &p.0) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let rel = p.1;
+    match sur_disque(&etat, move |racine| crate::apercu::charger(racine, &rel)).await {
+        Ok((octets, genre)) => ([(header::CONTENT_TYPE, genre)], octets).into_response(),
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn servir_apercu_racine(
+    State(etat): State<Partage>,
+    CheminUrl(jeton): CheminUrl<String>,
+) -> Response {
+    servir_apercu(State(etat), CheminUrl((jeton, String::new()))).await
 }
 
 fn texte(code: StatusCode, msg: &'static str) -> Response {
@@ -1342,6 +1384,7 @@ pub async fn servir(
         reglages,
         agent,
         version: version::Version::new(),
+        jeton_apercu: crate::apercu::nouveau_jeton(),
     });
     let suivi = etat.clone();
     let veille = tokio::spawn(async move {
@@ -1375,6 +1418,9 @@ pub async fn servir(
         )
         .route("/polices/{nom}", get(police))
         .route("/api/info", get(info))
+        .route("/api/apercu", get(jeton_apercu))
+        .route("/apercu/{jeton}/", get(servir_apercu_racine))
+        .route("/apercu/{jeton}/{*chemin}", get(servir_apercu))
         .route("/api/version", get(version_etat))
         .route("/api/version/maj", post(version_maj))
         .route("/api/connexion", post(connexion))

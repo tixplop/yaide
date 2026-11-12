@@ -43,11 +43,15 @@ pub struct Entree {
     pub ignore: bool,
 }
 
-type Cache = Option<Vec<depot::Worktree>>;
+pub(crate) type Cache = Option<Vec<depot::Worktree>>;
 
 /// Un chemin qui commence par `../` mène dans un worktree du dépôt : renvoie sa racine
 /// et le reste du chemin. Les autres chemins restent dans `racine`.
-fn aiguiller(racine: &Path, rel: &str, cache: &mut Cache) -> Result<(PathBuf, String), Erreur> {
+pub(crate) fn aiguiller(
+    racine: &Path,
+    rel: &str,
+    cache: &mut Cache,
+) -> Result<(PathBuf, String), Erreur> {
     if rel != ".." && !rel.starts_with("../") {
         return Ok((racine.to_path_buf(), rel.to_string()));
     }

@@ -1,6 +1,7 @@
 use std::io::Write;
 #[allow(dead_code)]
 mod agent;
+mod apercu;
 mod auth;
 mod cli;
 mod config;
