@@ -168,6 +168,8 @@ export async function gitDiff(chemin) {
 export const gitIndexer = (chemin) => action(git(`/api/git/indexer?chemin=${q(chemin)}`), { method: "POST" });
 export const gitCommit = (texte) => action(git("/api/git/commit"), { method: "POST", body: texte });
 export const gitBranche = (nom) => action(git(`/api/git/branche?nom=${q(nom)}`), { method: "POST" });
+export const gitSupprimerBranche = (nom) => action(git(`/api/git/branche/supprimer?nom=${q(nom)}`), { method: "POST" });
+export const gitSupprimerWorktree = () => action(git("/api/git/worktree/supprimer"), { method: "POST" });
 export const gitPull = () => action(git("/api/git/pull"), { method: "POST" });
 export const gitPush = () => action(git("/api/git/push"), { method: "POST" });
 

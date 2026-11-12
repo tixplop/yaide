@@ -474,6 +474,9 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .git-branche { display: flex; align-items: center; gap: var(--space-1); }
 .git-branche > svg { flex: none; color: var(--ink-muted); }
 .git-branche > .champ { flex: 1 1 0; min-width: 0; }
+/* La liste « Branche » rétrécit jusqu'à 61 px (V-005). */
+.git-branche > .champ:has(.ya-input) { min-width: 61px; }
+.git-branche .ya-input { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-branche .bouton-enveloppe { flex: none; }
 .git-commit, .git-commit .bouton-enveloppe, .git-commit .bouton { display: flex; width: 100%; box-sizing: border-box; align-items: center; justify-content: center; gap: var(--space-1); }
 .git-liste { flex: 1 1 0; min-height: 0; overflow: auto; }

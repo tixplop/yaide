@@ -302,6 +302,8 @@ test("REQ023_AC9_REQ031_AC7_panneau_de_240_px_branche_pull_et_push_sur_une_ligne
   const attente = path.join(path.dirname(dossier), "attente.sh");
   fs.writeFileSync(attente, `#!/bin/sh\nwhile [ ! -f "${libere}" ]; do sleep 0.1; done\nexec git-upload-pack "$@"\n`, { mode: 0o755 });
   git(dossier, "config", "remote.origin.uploadpack", attente);
+  git(dossier, "branch", "ancienne-branche-au-nom-tres-long");
+  git(dossier, "worktree", "add", "-q", "-b", "essai", path.join(path.dirname(dossier), "essai"));
   await relancerSur(page, dossier, true);
   const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
   await poignee.focus();
@@ -309,15 +311,23 @@ test("REQ023_AC9_REQ031_AC7_panneau_de_240_px_branche_pull_et_push_sur_une_ligne
   await expect(poignee).toHaveAttribute("aria-valuenow", "240");
   await page.getByRole("tab", { name: "Git", exact: true }).click();
   const ligne = async () => {
-    const boites = await Promise.all([page.getByLabel("Branche"), page.getByRole("button", { name: "Pull" }), page.getByRole("button", { name: "Push" })].map((l) => l.evaluate((e) => e.getBoundingClientRect().toJSON())));
+    const boites = await Promise.all([page.getByLabel("Branche", { exact: true }), page.getByRole("button", { name: "Pull" }), page.getByRole("button", { name: "Push" }), page.getByRole("button", { name: "Supprimer une branche" })].map((l) => l.evaluate((e) => e.getBoundingClientRect().toJSON())));
+    const corbeilleWt = await page.getByRole("button", { name: "Supprimer le worktree" }).evaluate((e) => e.getBoundingClientRect().toJSON());
+    const selecteurWt = await page.locator(".git-corps").getByLabel("Worktree", { exact: true }).evaluate((e) => e.getBoundingClientRect().toJSON());
+    expect(Math.abs(corbeilleWt.right - boites[3].right), "corbeilles à l'aplomb").toBeLessThanOrEqual(1);
+    expect(Math.abs(corbeilleWt.left - boites[3].left), "corbeilles à l'aplomb").toBeLessThanOrEqual(1);
+    expect(selecteurWt.right).toBeLessThanOrEqual(corbeilleWt.left);
+    expect(corbeilleWt.right, "worktree sans débordement").toBeLessThanOrEqual((await page.locator(".cadre-panneau").evaluate((e) => e.getBoundingClientRect().right)));
+    expect(new Set([boites[3], corbeilleWt].map((b) => Math.round(b.height))).size).toBe(1);
     const panneau = await page.locator(".cadre-panneau").evaluate((e) => e.getBoundingClientRect().toJSON());
     expect(new Set(boites.map((b) => Math.round(b.top + b.height / 2))).size, "une seule ligne").toBe(1);
     expect(boites[0].right).toBeLessThanOrEqual(boites[1].left);
     expect(boites[1].right).toBeLessThanOrEqual(boites[2].left);
-    expect(boites[2].right).toBeLessThanOrEqual(panneau.right);
+    expect(boites[2].right).toBeLessThanOrEqual(boites[3].left);
+    expect(boites[3].right).toBeLessThanOrEqual(panneau.right);
     expect(boites[0].left).toBeGreaterThanOrEqual(panneau.left);
   };
-  await expect(page.getByLabel("Branche")).toBeVisible();
+  await expect(page.getByLabel("Branche", { exact: true })).toBeVisible();
   await expect(ligne).toPass();
   try {
     await page.getByRole("button", { name: "Pull" }).click();
@@ -370,7 +380,7 @@ test("REQ033_AC3_AC10_messages_info_succes_alerte_erreur_relus_au_style_calcule"
 test("REQ038_AC5_les_champs_et_la_liste_Branche_suivent_le_theme_de_la_page", async ({ page }) => {
   await relancerSur(page, depotStatuts());
   await page.getByRole("tab", { name: "Git", exact: true }).click();
-  const liste = page.getByLabel("Branche");
+  const liste = page.getByLabel("Branche", { exact: true });
   const message = page.getByLabel("Message", { exact: true });
   await expect(liste).toBeVisible();
   const schema = (loc) => loc.evaluate((e) => getComputedStyle(e).colorScheme);
@@ -607,7 +617,7 @@ test("REQ031_AC1_AC2_AC6_AC8_REQ032_AC13_REQ040_AC13_AC15_AC28_8_AC28_9_AC31_1_c
     // Deux commandes différentes n'ont pas la même icône, sauf les deux « Fermer ».
     const parIcone = new Map();
     // Exception explicite (DEC-026, AC-031-2) : la loupe sert à « Recherche » et à « Ouverture rapide ».
-    const groupe = (nom) => (nom.startsWith("Fermer") ? "Fermer" : nom.startsWith("Indexer") ? "Indexer" : nom === "Ouverture rapide" ? "Recherche" : nom);
+    const groupe = (nom) => (nom.startsWith("Fermer") ? "Fermer" : nom.startsWith("Indexer") ? "Indexer" : nom === "Ouverture rapide" ? "Recherche" : nom.startsWith("Supprimer") ? "Supprimer" : nom);
     for (const c of toutes) parIcone.set(c.icone, new Set([...(parIcone.get(c.icone) ?? []), groupe(c.nom)]));
     for (const [icone, ensemble] of parIcone) expect(ensemble.size, `icône ${icone} : ${[...ensemble]}`).toBe(1);
     // « Fermer le shell » n'a pas l'icône de la fermeture d'un onglet.

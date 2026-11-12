@@ -1,6 +1,7 @@
-import { gitBranche, gitCommit, gitDiff, gitEtat, gitIndexer, gitPull, gitPush } from "../api.js";
+import { gitBranche, gitCommit, gitDiff, gitEtat, gitIndexer, gitPull, gitPush, gitSupprimerBranche, gitSupprimerWorktree } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
+import { dialogue } from "../ui/dialogue.js";
 import { icone } from "../ui/icones.js";
 import { indication } from "../ui/indication.js";
 import { iconeDe, liste, STATUTS } from "../ui/liste.js";
@@ -32,6 +33,9 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
   let refocaliser = null; // focus voulu par l'action en cours, à la place du contrôle d'origine
   let detruit = false;
   let derniere = null; // clé de la dernière réponse appliquée, pour que la relecture ignore ce qui n'a pas changé
+  let sansRelecture = false; // la coupure d'une suppression ne relit rien : le dialogue reste tel quel
+  let dialogueWorktree = null; // dialogue « Supprimer le worktree » ouvert : { dlg }
+  let focusApresDisparition = false; // le worktree du dialogue a disparu : focus sur « Worktree » ou « Message »
   let cleHaut = null; // clé de ce qui est affiché dans la ligne « Branche » et près de « Commit »
 
   // De haut en bas : branche avec Pull et Push, message, Commit, messages ; puis la liste, qui défile.
@@ -156,6 +160,8 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
     cleWorktree = cle;
     if (liste.length < 2) return zoneWorktree.replaceChildren();
     const avait = zoneWorktree.contains(document.activeElement);
+    const surCorbeille = zoneWorktree.querySelector("button")?.contains(document.activeElement);
+    const corbeille = boutonCorbeille("Supprimer le worktree", occupe || Boolean(raison) || worktree.choisi() === "", () => ouvrirSuppressionWorktree());
     const c = champ({
       libelle: "Worktree",
       type: "liste",
@@ -165,17 +171,25 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
       valeur: worktree.choisi(),
       desactive: occupe || Boolean(raison),
       raison,
+      action: corbeille,
     });
     const select = c.querySelector("select");
     select.addEventListener("change", () => worktree.choisir(select.value));
     zoneWorktree.replaceChildren(c);
-    if (avait) select.focus({ preventScroll: true });
+    if (surCorbeille && !corbeille.querySelector("button").disabled) corbeille.querySelector("button").focus({ preventScroll: true });
+    else if (avait) select.focus({ preventScroll: true });
   }
 
   const desabonner = worktree.abonner(({ disparu }) => {
     if (detruit) return;
     if (worktree.choisi() !== choixVu) {
       choixVu = worktree.choisi();
+      if (disparu && dialogueWorktree) {
+        // Comme « Annuler » : le dialogue se ferme, le focus ira comme après une suppression.
+        dialogueWorktree.dlg.fermer({ rendreFocus: false });
+        dialogueWorktree = null;
+        focusApresDisparition = true;
+      }
       const f = document.activeElement;
       if (disparu && (zoneWorktree.contains(f) || zoneListe.contains(f))) focusPremiere = true;
       selection = null;
@@ -222,6 +236,7 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
         select.value = "";
       }
       select.disabled = occupe;
+      select.title = select.value;
       select.addEventListener("change", () => changerBranche(select.value));
       ligneBranche.replaceChildren(icone("branch", 14), b, ...boutonsSynchro());
       zoneCommit.replaceChildren(boutonAction("Commit", "principal", "check", "Ctrl+Entrée", "Control+Enter", valider));
@@ -252,6 +267,11 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
     }
     zoneListe.replaceChildren(contenu);
     zoneListe.scrollTop = defilement;
+    if (focusApresDisparition) {
+      focusApresDisparition = false;
+      (zoneWorktree.querySelector("select") ?? saisie()).focus({ preventScroll: true });
+      return;
+    }
     if (focusPremiere) {
       focusPremiere = false;
       (zoneListe.querySelector("[role=option]") ?? saisie()).focus({ preventScroll: true });
@@ -278,9 +298,20 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
     return b.enveloppe;
   }
 
+  const autresBranches = () => (etat ? etat.branches.filter((b) => etat.detachee || b !== etat.branche) : []);
+
+  function boutonCorbeille(nom, desactive, clic) {
+    const b = bouton({ icone: "trash", variante: "secondaire", nomAccessible: nom, ouvreDialogue: true, desactive });
+    b.addEventListener("click", clic);
+    return b.enveloppe;
+  }
+
+  const corbeille = (nom) => corps.querySelector(`button[aria-label="${nom}"]`);
+
   const boutonsSynchro = () => [
     boutonAction("Pull", "secondaire", "arrow-down", undefined, undefined, () => synchroniser("Pull", gitPull)),
     boutonAction("Push", "secondaire", "arrow-up", undefined, undefined, () => synchroniser("Push", gitPush)),
+    boutonCorbeille("Supprimer une branche", occupe || autresBranches().length === 0, () => ouvrirSuppressionBranche()),
   ];
 
   /** Fonction qui redonne le focus au contrôle qui l'a maintenant, même s'il est refait entre-temps. */
@@ -307,6 +338,7 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
     enCours = nom ?? null;
     const retour = retenirFocus();
     refocaliser = null;
+    sansRelecture = false;
     zoneMessage.replaceChildren();
     // Une alerte du champ « Message » ne survit pas à l'action suivante.
     champMessage.replaceWith((champMessage = nouveauChamp(saisie().value)));
@@ -316,7 +348,8 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
     } finally {
       occupe = false;
       enCours = null;
-      if (!detruit) {
+      if (!detruit && sansRelecture) afficher();
+      else if (!detruit) {
         await rafraichir();
         // Le focus n'est rendu que s'il est perdu : l'utilisateur a pu partir ailleurs pendant l'action.
         if (!document.activeElement || document.activeElement === document.body) (refocaliser ?? retour)();
@@ -372,6 +405,94 @@ export function vueGit({ dire, surBranche = () => {}, surDiff = () => {}, diffOu
       else zoneMessage.replaceChildren(message({ texte: `${nom} terminé.`, variante: "succes" }));
       surDisque();
     });
+  }
+
+  /** Dialogue de confirmation commun aux deux suppressions ; `appel` rend la réponse de l'API, `reussi(dlg)` finit la réussite. */
+  function confirmerSuppression({ titre, contenu, focus, focusSurAnnuler, appel, succes, retour, surReussite }) {
+    const annuler = bouton({ libelle: "Annuler" });
+    const ok = bouton({ libelle: "Supprimer", variante: "danger" });
+    const fin = () => {
+      dlg.fermer({ rendreFocus: false });
+      if (dialogueWorktree?.dlg === dlg) dialogueWorktree = null;
+    };
+    const annulation = () => {
+      if (occupe) return;
+      fin();
+      retour()?.focus();
+    };
+    const dlg = dialogue({ titre, contenu, actions: [annuler, ok], focusInitial: focusSurAnnuler ? annuler : focus, surAnnuler: annulation });
+    annuler.addEventListener("click", annulation);
+    ok.addEventListener("click", () => {
+      dlg.definirResultat();
+      dlg.enCours(true);
+      ok.textContent = "Suppression…";
+      ok.setAttribute("aria-busy", "true");
+      avec(null, async () => {
+        const nomOccupe = "Attendez la fin de la suppression.";
+        worktree.occuper(nomOccupe);
+        let r;
+        try {
+          r = await appel();
+        } finally {
+          worktree.occuper();
+        }
+        if (r.coupure) {
+          sansRelecture = true;
+          ok.textContent = "Supprimer";
+          ok.removeAttribute("aria-busy");
+          dlg.enCours(false);
+          dlg.definirResultat(message({ texte: TEXTE_COUPURE, variante: "erreur" }));
+          ok.focus();
+          return;
+        }
+        fin();
+        if (r.cause) {
+          zoneMessage.replaceChildren(echec(r));
+        } else {
+          surReussite();
+          zoneMessage.replaceChildren(message({ texte: succes(), variante: "succes" }));
+        }
+        refocaliser = () => retour(!r.cause)?.focus();
+        surDisque();
+      });
+    });
+    return dlg;
+  }
+
+  function ouvrirSuppressionBranche() {
+    const noms = autresBranches().sort((a, b) => a.localeCompare(b, "fr"));
+    if (noms.length === 0) return;
+    const c = champ({ libelle: "Branche", type: "liste", options: noms, valeur: noms[0], aide: "Git ne supprime qu'une branche déjà fusionnée." });
+    const select = c.querySelector("select");
+    let nomChoisi = noms[0];
+    const dlg = confirmerSuppression({
+      titre: "Supprimer une branche",
+      contenu: [c],
+      focus: select,
+      appel: () => gitSupprimerBranche((nomChoisi = select.value)),
+      succes: () => `Branche ${nomChoisi} supprimée.`,
+      retour: (reussi) => (reussi && corbeille("Supprimer une branche")?.disabled ? corps.querySelector(".git-branche select") : corbeille("Supprimer une branche")),
+      surReussite: () => {},
+    });
+    dlg.ouvrir();
+  }
+
+  function ouvrirSuppressionWorktree() {
+    const w = worktree.lister().find((x) => x.chemin === worktree.choisi());
+    if (!w) return;
+    const phrase = document.createElement("p");
+    phrase.textContent = `Le dossier ${w.racine} sera effacé.${w.detachee ? "" : ` La branche ${w.branche} reste.`}`;
+    const dlg = confirmerSuppression({
+      titre: `Supprimer le worktree ${w.nom} ?`,
+      contenu: [phrase],
+      focusSurAnnuler: true,
+      appel: gitSupprimerWorktree,
+      succes: () => `Worktree ${w.nom} supprimé.`,
+      retour: (reussi) => (reussi ? (zoneWorktree.querySelector("select") ?? saisie()) : (corbeille("Supprimer le worktree") ?? zoneWorktree.querySelector("select"))),
+      surReussite: () => worktree.choisir(""),
+    });
+    dialogueWorktree = { dlg };
+    dlg.ouvrir();
   }
 
   function changerBranche(nom) {

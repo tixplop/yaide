@@ -91,7 +91,7 @@ test("REQ024_AC1_AC3_changer_de_branche_et_les_fichiers_ouverts_suivent_le_disqu
   await page.getByRole("treeitem", { name: nomLigne("README.md") }).click();
   await expect(page.getByLabel("Éditeur README.md")).toContainText("# Titre");
   await panneauGit(page);
-  const choix = page.getByLabel("Branche");
+  const choix = page.getByLabel("Branche", { exact: true });
   await expect(choix.locator("option")).toHaveText(["main", "travail"]);
   await choix.selectOption("travail");
   await expect(barre(page)).toContainText("travail");
@@ -164,7 +164,7 @@ test("REQ028_AC1_REQ022_AC6_AC10_F_R_G_sans_toucher_aux_onglets_puis_dossier_par
     await page.getByRole("tab", { name: "Fichiers" }).focus();
     await page.keyboard.press("g");
     await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
-    await expect(page.getByLabel("Branche")).toBeVisible();
+    await expect(page.getByLabel("Branche", { exact: true })).toBeVisible();
     await page.getByRole("tab", { name: "Fichiers" }).click();
     await expect(page.getByRole("heading", { name: "Fichiers" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "README.md" })).toBeVisible();

@@ -589,7 +589,7 @@ test("REQ086_AC1_AC13_deux_options_projet_choisi_nom_accessible_Worktree", async
   expect([...s.options].map((o) => [o.value, o.textContent])).toEqual([["", "yaide (main)"], ["../essai", "essai (essai)"]]);
   expect(s.value).toBe("");
   const ordre = [...vue.corps.querySelectorAll("select, button, textarea")].map((e) => e.labels?.[0]?.textContent ?? e.getAttribute("aria-label") ?? e.textContent);
-  expect(ordre.slice(0, 3)).toEqual(["Worktree", "Branche", "Pull"]);
+  expect(ordre.slice(0, 4)).toEqual(["Worktree", "Supprimer le worktree", "Branche", "Pull"]);
 });
 
 test("REQ086_AC2_AC3_AC13_choisir_relit_avec_worktree_vide_selection_ferme_diff_garde_message_et_focus", async () => {
@@ -744,4 +744,317 @@ test("REQ086_AC8_aucune_ligne_avec_un_seul_worktree_ni_hors_depot", async () => 
   expect(selecteur(seul.vue)).toBeFalsy();
   const hors = await monter({ "/api/git/etat": { status: 409, corps: { cause: "pas-depot", message: "x" } } });
   expect(selecteur(hors.vue)).toBeFalsy();
+});
+
+// ---- REQ-099 : suppression d'une branche et d'un worktree ----
+
+HTMLDialogElement.prototype.showModal ??= function () {
+  this.setAttribute("open", "");
+};
+HTMLDialogElement.prototype.close ??= function () {
+  this.removeAttribute("open");
+};
+
+const WR = [
+  { chemin: "", nom: "yaide", branche: "main", detachee: false, racine: "." },
+  { chemin: "../essai", nom: "essai", branche: "essai", detachee: false, racine: "../essai" },
+];
+const ETAT_B = { ...ETAT, branche: "main", branches: ["main", "zeta", "Alpha", "beta"], worktrees: WR };
+const corbeilleBranche = (vue) => vue.corps.querySelector('button[aria-label="Supprimer une branche"]');
+const corbeilleWt = (vue) => vue.corps.querySelector('button[aria-label="Supprimer le worktree"]');
+const dlg = () => document.querySelector("dialog");
+const boutonDlg = (nom) => dlg().querySelectorAll(".dialogue-actions button")[nom === "Annuler" ? 0 : 1];
+const reponseOk = () => ({ status: 200, corps: {} });
+
+test("REQ099_AC2_corbeille_de_branche_apres_Push_desactivee_sans_autre_branche_ou_pendant_une_action", async () => {
+  const { vue } = await monter({ "/api/git/etat": ETAT_B, "/api/git/pull": () => new Promise(() => {}) });
+  const noms = [...vue.corps.querySelectorAll(".git-branche button")].map((b) => b.getAttribute("aria-label"));
+  expect(noms).toEqual(["Pull", "Push", "Supprimer une branche"]);
+  expect(corbeilleBranche(vue).disabled).toBe(false);
+  expect(corbeilleBranche(vue).querySelector("svg[data-icone=trash]")).toBeTruthy();
+  bouton(vue, "Pull").click();
+  await attendre();
+  expect(corbeilleBranche(vue).disabled).toBe(true);
+  const seule = await monter({ "/api/git/etat": { ...ETAT, branches: ["main"] } });
+  expect(corbeilleBranche(seule.vue).disabled).toBe(true);
+});
+
+test("REQ099_AC4_dialogue_de_branche_liste_alphabetique_sans_la_courante_focus_sur_la_liste_aide_et_boutons", async () => {
+  const { vue } = await monter({ "/api/git/etat": ETAT_B });
+  corbeilleBranche(vue).click();
+  expect(dlg().querySelector("h2").textContent).toBe("Supprimer une branche");
+  const select = dlg().querySelector("select");
+  expect([...select.options].map((o) => o.value)).toEqual(["Alpha", "beta", "zeta"]);
+  expect(select.value).toBe("Alpha");
+  expect(select.labels[0].textContent).toBe("Branche");
+  expect(select.labels[0].classList.contains("masque")).toBe(false);
+  expect(dlg().textContent).toContain("Git ne supprime qu'une branche déjà fusionnée.");
+  expect(document.activeElement).toBe(select);
+  expect(boutonDlg("Annuler").className).toContain("bouton-secondaire");
+  expect(boutonDlg("Supprimer").className).toContain("bouton-danger");
+  // Entrée sur la liste ne supprime rien.
+  select.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await attendre();
+  expect(dlg()).toBeTruthy();
+});
+
+test("REQ099_AC7_la_liste_du_dialogue_est_celle_de_l_ouverture", async () => {
+  let etat = ETAT_B;
+  const { vue } = await monter({ "/api/git/etat": () => etat });
+  corbeilleBranche(vue).click();
+  etat = { ...ETAT_B, branches: ["main", "nouvelle"], changements: [] };
+  await vue.rafraichir();
+  expect([...dlg().querySelector("select").options].map((o) => o.value)).toEqual(["Alpha", "beta", "zeta"]);
+});
+
+test("REQ099_AC9_corbeille_de_worktree_dans_la_ligne_Worktree_desactivee_pour_le_projet_et_pendant_une_action", async () => {
+  const { vue } = await monter({ "/api/git/etat": () => (worktree.choisi() ? { ...ETAT_B, branche: "essai" } : ETAT_B), "/api/git/pull": () => new Promise(() => {}) });
+  expect(corbeilleWt(vue).disabled).toBe(true);
+  expect(corbeilleWt(vue).querySelector("svg[data-icone=trash]")).toBeTruthy();
+  worktree.choisir("../essai");
+  await attendre();
+  await attendre();
+  expect(corbeilleWt(vue).disabled).toBe(false);
+  bouton(vue, "Pull").click();
+  await attendre();
+  expect(corbeilleWt(vue).disabled).toBe(true);
+});
+
+test("REQ099_AC9_AC11_dialogue_du_worktree_titre_phrase_focus_sur_Annuler_et_HEAD_detachee", async () => {
+  worktree.mettreAJour(WR);
+  worktree.choisir("../essai");
+  const { vue } = await monter({ "/api/git/etat": { ...ETAT_B, branche: "essai" } });
+  corbeilleWt(vue).click();
+  expect(dlg().querySelector("h2").textContent).toBe("Supprimer le worktree essai ?");
+  expect(dlg().textContent).toContain("Le dossier ../essai sera effacé. La branche essai reste.");
+  expect(document.activeElement).toBe(boutonDlg("Annuler"));
+  expect(boutonDlg("Supprimer").className).toContain("bouton-danger");
+  boutonDlg("Annuler").click();
+  const detachee = [WR[0], { ...WR[1], detachee: true }];
+  const e2 = await monter({ "/api/git/etat": { ...ETAT_B, worktrees: detachee } });
+  worktree.mettreAJour(detachee);
+  corbeilleWt(e2.vue).click();
+  expect(dlg().textContent).toContain("Le dossier ../essai sera effacé.");
+  expect(dlg().textContent).not.toContain("La branche");
+});
+
+test("REQ099_AC12_Echap_et_Annuler_ferment_sans_rien_faire_focus_sur_la_corbeille", async () => {
+  const { vue, appels } = await monter({ "/api/git/etat": ETAT_B });
+  corbeilleBranche(vue).focus();
+  corbeilleBranche(vue).click();
+  dlg().dispatchEvent(new Event("cancel", { cancelable: true }));
+  expect(dlg()).toBeNull();
+  expect(document.activeElement).toBe(corbeilleBranche(vue));
+  corbeilleBranche(vue).click();
+  boutonDlg("Annuler").click();
+  expect(dlg()).toBeNull();
+  expect(document.activeElement).toBe(corbeilleBranche(vue));
+  expect(appels.some((a) => a.url.includes("supprimer"))).toBe(false);
+});
+
+test("REQ099_AC13_Supprimer_met_tout_en_attente_puis_branche_supprimee_message_et_focus", async () => {
+  let fin;
+  let etat = ETAT_B;
+  const { vue, appels } = await monter({
+    "/api/git/etat": () => etat,
+    "/api/git/branche/supprimer": () => new Promise((r) => (fin = r)),
+  });
+  corbeilleBranche(vue).focus();
+  corbeilleBranche(vue).click();
+  dlg().querySelector("select").value = "beta";
+  boutonDlg("Supprimer").click();
+  await attendre();
+  expect(appels.at(-1)).toMatchObject({ url: "/api/git/branche/supprimer?nom=beta", methode: "POST" });
+  expect(boutonDlg("Supprimer").textContent).toBe("Suppression…");
+  expect(boutonDlg("Supprimer").disabled).toBe(true);
+  expect(boutonDlg("Annuler").disabled).toBe(true);
+  expect(bouton(vue, "Commit").disabled).toBe(true);
+  expect(selecteur(vue).disabled).toBe(true);
+  etat = { ...ETAT_B, branches: ["main", "zeta", "Alpha"] };
+  fin(reponseOk());
+  await attendre();
+  await attendre();
+  expect(dlg()).toBeNull();
+  expect(vue.corps.querySelector(".message-succes").textContent).toContain("Branche beta supprimée.");
+  expect(bouton(vue, "Commit").disabled).toBe(false);
+  expect(document.activeElement).toBe(corbeilleBranche(vue));
+});
+
+test("REQ099_AC13_derniere_branche_supprimee_le_focus_va_sur_la_liste_Branche", async () => {
+  let etat = { ...ETAT, branches: ["main", "travail"] };
+  const { vue } = await monter({ "/api/git/etat": () => etat, "/api/git/branche/supprimer": reponseOk });
+  corbeilleBranche(vue).click();
+  etat = { ...ETAT, branches: ["main"] };
+  boutonDlg("Supprimer").click();
+  await attendre();
+  await attendre();
+  expect(corbeilleBranche(vue).disabled).toBe(true);
+  expect(document.activeElement).toBe(vue.corps.querySelector(".git-branche select"));
+});
+
+test("REQ099_AC14_refus_de_git_dialogue_ferme_erreur_avec_detail_branche_toujours_la_focus_sur_la_corbeille", async () => {
+  const { vue } = await monter({
+    "/api/git/etat": ETAT_B,
+    "/api/git/branche/supprimer": { status: 409, corps: { cause: "git", message: "la branche n'est pas complètement fusionnée" } },
+  });
+  corbeilleBranche(vue).focus();
+  corbeilleBranche(vue).click();
+  boutonDlg("Supprimer").click();
+  await attendre();
+  await attendre();
+  expect(dlg()).toBeNull();
+  const m = vue.corps.querySelector(".message-erreur");
+  expect(m.textContent).toContain("Git a refusé.");
+  expect(m.textContent).toContain("la branche n'est pas complètement fusionnée");
+  expect([...vue.corps.querySelectorAll(".git-branche select option")].map((o) => o.value)).toContain("zeta");
+  expect(document.activeElement).toBe(corbeilleBranche(vue));
+});
+
+test("REQ099_AC15_coupure_le_dialogue_reste_ouvert_avec_erreur_boutons_actifs_focus_sur_Supprimer_rien_ne_change", async () => {
+  let coupe = true;
+  const { vue, dire } = await monter({ "/api/git/etat": ETAT_B });
+  const fetchOk = fetch;
+  corbeilleBranche(vue).click();
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (url.startsWith("/api/git/branche/supprimer") && coupe) throw new TypeError("réseau");
+    return fetchOk(url);
+  }));
+  boutonDlg("Supprimer").click();
+  await attendre();
+  await attendre();
+  expect(dlg()).toBeTruthy();
+  const m = dlg().querySelector(".message-erreur");
+  expect(m.textContent).toContain("Connexion perdue. Réessayez au retour.");
+  expect(m.compareDocumentPosition(dlg().querySelector(".dialogue-actions")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(boutonDlg("Supprimer").disabled).toBe(false);
+  expect(boutonDlg("Annuler").disabled).toBe(false);
+  expect(boutonDlg("Supprimer").textContent).toBe("Supprimer");
+  expect(document.activeElement).toBe(boutonDlg("Supprimer"));
+  expect(dire).not.toHaveBeenCalled();
+  expect(vue.corps.querySelector(".message")).toBeNull();
+  expect(corbeilleBranche(vue).disabled).toBe(false);
+});
+
+test("REQ099_AC13_worktree_supprime_projet_choisi_sans_bandeau_a_disparu_message_et_focus_sur_Worktree", async () => {
+  worktree.mettreAJour(WR);
+  worktree.choisir("../essai");
+  let supprime = false;
+  const evenements = [];
+  worktree.abonner((e) => evenements.push(e));
+  const { vue, appels } = await monter({
+    "/api/git/etat": () => (supprime ? { ...ETAT_B, worktrees: WR } : { ...ETAT_B, branche: "essai", worktrees: WR }),
+    "/api/git/worktree/supprimer": () => {
+      supprime = true;
+      return reponseOk();
+    },
+  });
+  corbeilleWt(vue).focus();
+  corbeilleWt(vue).click();
+  boutonDlg("Supprimer").click();
+  await attendre();
+  await attendre();
+  await attendre();
+  expect(appels.find((a) => a.url.startsWith("/api/git/worktree/supprimer")).url).toBe("/api/git/worktree/supprimer?worktree=..%2Fessai");
+  expect(dlg()).toBeNull();
+  expect(worktree.choisi()).toBe("");
+  expect(evenements.some((e) => e.disparu)).toBe(false);
+  expect(vue.corps.querySelector(".message-succes").textContent).toContain("Worktree essai supprimé.");
+  expect(document.activeElement).toBe(selecteur(vue));
+});
+
+test("REQ099_AC13_worktree_supprime_sans_selecteur_restant_le_focus_va_sur_Message", async () => {
+  worktree.mettreAJour(WR);
+  worktree.choisir("../essai");
+  let supprime = false;
+  const { vue } = await monter({
+    "/api/git/etat": () => (supprime ? { ...ETAT, worktrees: [WR[0]] } : { ...ETAT_B, branche: "essai" }),
+    "/api/git/worktree/supprimer": () => {
+      supprime = true;
+      return reponseOk();
+    },
+  });
+  corbeilleWt(vue).click();
+  boutonDlg("Supprimer").click();
+  await attendre();
+  await attendre();
+  await attendre();
+  expect(selecteur(vue)).toBeFalsy();
+  expect(document.activeElement).toBe(vue.corps.querySelector("textarea"));
+});
+
+test("REQ099_AC14_refus_du_worktree_il_reste_choisi_et_le_focus_revient_sur_sa_corbeille", async () => {
+  worktree.mettreAJour(WR);
+  worktree.choisir("../essai");
+  const { vue } = await monter({
+    "/api/git/etat": { ...ETAT_B, branche: "essai" },
+    "/api/git/worktree/supprimer": { status: 409, corps: { cause: "git", message: "contient des fichiers modifiés" } },
+  });
+  corbeilleWt(vue).focus();
+  corbeilleWt(vue).click();
+  boutonDlg("Supprimer").click();
+  await attendre();
+  await attendre();
+  await attendre();
+  expect(vue.corps.querySelector(".message-erreur").textContent).toContain("contient des fichiers modifiés");
+  expect(worktree.choisi()).toBe("../essai");
+  expect(document.activeElement).toBe(corbeilleWt(vue));
+});
+
+test("REQ099_AC15_worktree_choisi_disparu_pendant_son_dialogue_le_dialogue_se_ferme_et_le_focus_va_sur_Worktree", async () => {
+  worktree.mettreAJour(WR);
+  worktree.choisir("../essai");
+  let reponse = { ...ETAT_B, branche: "essai" };
+  const { vue } = await monter({ "/api/git/etat": () => reponse });
+  corbeilleWt(vue).click();
+  expect(dlg()).toBeTruthy();
+  reponse = { ...ETAT_B, worktrees: [WR[0], { chemin: "../autre", nom: "autre", branche: "autre", detachee: false, racine: "../autre" }] };
+  await vue.relire();
+  await attendre();
+  await attendre();
+  expect(dlg()).toBeNull();
+  expect(worktree.choisi()).toBe("");
+  expect(document.activeElement).toBe(selecteur(vue));
+});
+
+test("REQ099_AC12_Echap_puis_Annuler_sur_le_dialogue_du_worktree_ne_font_rien_focus_sur_sa_corbeille", async () => {
+  worktree.mettreAJour(WR);
+  worktree.choisir("../essai");
+  const { vue, appels } = await monter({ "/api/git/etat": { ...ETAT_B, branche: "essai" } });
+  corbeilleWt(vue).focus();
+  for (const fermer of [() => dlg().dispatchEvent(new Event("cancel", { cancelable: true })), () => boutonDlg("Annuler").click()]) {
+    corbeilleWt(vue).click();
+    expect(dlg()).toBeTruthy();
+    fermer();
+    expect(dlg()).toBeNull();
+    expect(appels.some((a) => a.url.includes("supprimer"))).toBe(false);
+    expect(worktree.choisi()).toBe("../essai");
+    expect(document.activeElement).toBe(corbeilleWt(vue));
+  }
+});
+
+test("REQ099_AC13_pendant_Suppression_les_deux_corbeilles_sont_desactivees_puis_de_nouveau_actives", async () => {
+  worktree.mettreAJour(WR);
+  worktree.choisir("../essai");
+  let fin;
+  const { vue } = await monter({ "/api/git/etat": { ...ETAT_B, branche: "essai" }, "/api/git/branche/supprimer": () => new Promise((r) => (fin = r)) });
+  corbeilleBranche(vue).click();
+  boutonDlg("Supprimer").click();
+  await attendre();
+  expect(boutonDlg("Supprimer").textContent).toBe("Suppression…");
+  expect(corbeilleBranche(vue).disabled).toBe(true);
+  expect(corbeilleWt(vue).disabled).toBe(true);
+  fin(reponseOk());
+  await attendre();
+  await attendre();
+  expect(corbeilleBranche(vue).disabled).toBe(false);
+  expect(corbeilleWt(vue).disabled).toBe(false);
+});
+
+test("REQ099_AC2_AC4_HEAD_detachee_corbeille_desactivee_sans_branche_sinon_le_dialogue_les_propose_toutes", async () => {
+  const sans = await monter({ "/api/git/etat": { ...ETAT, detachee: true, branche: "", branches: [] } });
+  expect(corbeilleBranche(sans.vue).disabled).toBe(true);
+  const avec = await monter({ "/api/git/etat": { ...ETAT, detachee: true, branche: "", branches: ["main", "travail"] } });
+  expect(corbeilleBranche(avec.vue).disabled).toBe(false);
+  corbeilleBranche(avec.vue).click();
+  expect([...dlg().querySelector("select").options].map((o) => o.value)).toEqual(["main", "travail"]);
 });
