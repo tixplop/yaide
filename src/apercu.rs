@@ -4,7 +4,7 @@ use ring::rand::{SecureRandom, SystemRandom};
 use std::path::Path;
 
 /// Script ajouté aux pages HTML : signale le défilement au parent et le reprend sur demande.
-const SCRIPT: &str = r#"<script>(function(){if(window.parent===window)return;var a=false;addEventListener("scroll",function(){if(a)return;a=true;requestAnimationFrame(function(){a=false;parent.postMessage({yaide:"defilement",x:scrollX,y:scrollY},"*")})});addEventListener("message",function(e){var d=e.data;if(e.source===parent&&d&&d.yaide==="defiler")scrollTo({left:d.x,top:d.y,behavior:"instant"})})})()</script>"#;
+const SCRIPT: &str = r#"<script>(function(){if(window.parent===window)return;var a=false;addEventListener("scroll",function(){if(a)return;a=true;requestAnimationFrame(function(){a=false;parent.postMessage({yaide:"defilement",x:scrollX,y:scrollY},"*")})});addEventListener("message",function(e){var d=e.data;if(e.source!==parent||!d||d.yaide!=="defiler")return;var f=function(){scrollTo({left:d.x,top:d.y,behavior:"instant"})};f();if(!window.ResizeObserver)return;var o=new ResizeObserver(f);o.observe(document.documentElement);var s=function(){o.disconnect()};setTimeout(s,3000);["wheel","keydown","touchstart","mousedown"].forEach(function(n){addEventListener(n,s,{once:true})})})})()</script>"#;
 
 /// 32 octets au hasard, en hexadécimal.
 pub fn nouveau_jeton() -> String {
