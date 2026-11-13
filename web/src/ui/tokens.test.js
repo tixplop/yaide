@@ -693,3 +693,29 @@ test("REQ101_AC12_contrastes_de_l_indication_lien_et_du_titre_atteint", () => {
     });
   }
 });
+
+// REQ-103 à REQ-106 : paires de « Base de connaissance » (design-system.md).
+test("REQ103_AC8_contrastes_de_la_base_de_connaissance", () => {
+  const paires = [
+    ["--info", "--bg-300", 4.5, [5.78, 6.3]],
+    ["--ink", "--bg-100", 4.5, [10.71, 15.52]],
+    ["--ink-muted", "--bg-300", 4.5, [5.48, 6.68]],
+    ["--ink-muted", "--bg-400", 4.5, [4.52, 5.37]],
+    ["--accent-fg", "--bg-300", 3, [5.78, 6.3]],
+    ["--accent-fg", "--bg-100", 3, [6.94, 5.93]],
+    ["--ink-faint", "--bg-000", 3, [5.21, 4.47]],
+    ["--ink", "--bg-400", 3, [7.36, 13.25]],
+  ];
+  for (const [texte, fond, seuil, mesures] of paires) {
+    THEMES.forEach((theme, i) => {
+      const r = ratio(theme, texte, fond);
+      const nom = `${texte} sur ${fond} (${theme})`;
+      expect(r, nom).toBeGreaterThanOrEqual(seuil);
+      egalA(r, mesures[i], nom);
+    });
+  }
+});
+
+test("REQ036_token_hauteur_dialogue_sections_560px", () => {
+  expect(readFileSync("web/src/ui/tokens.css", "utf8")).toMatch(/--hauteur-dialogue-sections:\s*560px;/);
+});

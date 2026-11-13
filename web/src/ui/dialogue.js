@@ -1,11 +1,12 @@
 const POSITIONS = ["centre", "palette", "reglages"];
 let compteur = 0;
 
-export function dialogue({ titre, contenu = [], actions = [], focusInitial, position = "centre", sansChamp = false, aide, surAnnuler }) {
+export function dialogue({ titre, contenu = [], actions = [], focusInitial, position = "centre", sansChamp = false, aide, sections, surAnnuler }) {
   if (!titre) throw new Error("dialogue : titre requis");
   if (sansChamp && position !== "palette") throw new Error("dialogue : sansChamp demande la position « palette »");
   if (!focusInitial && !sansChamp) throw new Error("dialogue : focusInitial requis");
   if (!surAnnuler) throw new Error("dialogue : surAnnuler requis");
+  if (sections && position !== "reglages") throw new Error("dialogue : sections demande la position « reglages »");
   if (!POSITIONS.includes(position)) throw new Error(`dialogue : position inconnue « ${position} »`);
   const el = document.createElement("dialog");
   el.className = { centre: "dialogue", palette: "dialogue ya-palette", reglages: "dialogue ya-reglages" }[position];
@@ -22,6 +23,10 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
     h.textContent = titre;
     el.setAttribute("aria-labelledby", h.id);
     el.append(h);
+  }
+  if (sections) {
+    el.classList.add("ya-reglages-sections");
+    el.append(sections);
   }
   const idAide = `dialogue-${compteur}-aide`;
   const poserAide = (a) => {

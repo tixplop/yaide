@@ -1255,3 +1255,91 @@ test("REQ096_AC17_contrastes_de_la_liste_objets_et_de_la_commande_du_rail", () =
     }
   });
 });
+
+// C-006 `objets` sans `actions` et `passages` (V-013, REQ-105, REQ-106).
+test("REQ105_AC8_objets_sans_actions_lecture_seule_un_arret_de_tab_la_liste", () => {
+  const long = "docs/une-documentation-tres-longue/avec/des/dossiers/imbriques/guide-utilisateur.md";
+  const l = liste({ variante: "objets", nom: "Fichiers de notes", lignes: [{ id: "a", libelle: "docs/a.md", policeCode: true }, { id: "b", libelle: long, policeCode: true }] });
+  document.body.append(l);
+  expect(l.tagName).toBe("UL");
+  expect(l.getAttribute("aria-label")).toBe("Fichiers de notes");
+  expect(l.tabIndex).toBe(0);
+  expect(l.querySelectorAll("button")).toHaveLength(0);
+  expect([...l.children].map((x) => x.textContent)).toEqual(["docs/a.md", long]);
+  expect(l.children[1].querySelector(".ya-objet-nom").title).toBe(long);
+  expect(l.classList.contains("ya-objets-lecture")).toBe(true);
+  expect(l.children[0].querySelector(".ya-objet-nom").classList.contains("liste-code")).toBe(true);
+  const r = regle(".ya-objets-lecture .ya-objet");
+  expect(r).toContain("height: var(--size-row)");
+  expect(r).toContain("font-size: 12px");
+  expect(regle(".ya-objets-lecture .ya-objet:hover")).toContain("background: transparent");
+  expect(regle(".ya-objets-lecture:focus-visible")).toContain("outline: var(--trait-fort) solid var(--accent-fg)");
+  expect(regle(".ya-objets-lecture:focus-visible")).toContain("outline-offset: calc(-1 * var(--trait-fort))");
+  expect(regle(".ya-objets-lecture .ya-objet-nom")).toContain("max-width: none");
+});
+
+test("REQ105_AC6_objets_avec_actions_gardent_leur_liste_sans_arret_de_tab", () => {
+  const l = liste({ variante: "objets", nom: "Collections", lignes: [{ id: "n", libelle: "notes", dossier: "2 fichiers · 7 passages", actions: [{ icone: "list", nomAccessible: "Fichiers de notes" }] }] });
+  expect(l.hasAttribute("tabindex")).toBe(false);
+  expect(l.classList.contains("ya-objets-lecture")).toBe(false);
+  expect(l.querySelector(".ya-objet-texte").textContent).toBe("2 fichiers · 7 passages");
+  expect(l.querySelector(".ya-objet-texte").classList.contains("liste-code")).toBe(false);
+});
+
+const passage = (o = {}) => ({ chemin: "docs/guide.md", debut: 12, fin: 40, collection: "notes", score: 0.82, texte: "# Titre\n  indenté\nfin", ...o });
+
+test("REQ106_AC7_passages_ol_nommee_un_li_par_passage_dans_l_ordre_lien_title_score_pre", () => {
+  const surLien = vi.fn();
+  const l = liste({ variante: "passages", nom: "Passages", surLien, lignes: [passage(), passage({ chemin: "src/a.rs", debut: 1, fin: 3, collection: "api", score: 0.5, texte: "fn a() {}" })] });
+  document.body.append(l);
+  expect(l.tagName).toBe("OL");
+  expect(l.getAttribute("aria-label")).toBe("Passages");
+  expect(l.hasAttribute("role")).toBe(false);
+  const lis = [...l.children];
+  expect(lis.map((x) => x.tagName)).toEqual(["LI", "LI"]);
+  const a = lis[0].querySelector("a");
+  expect(a.textContent).toBe("docs/guide.md:12-40");
+  expect(a.title).toBe("Ouvrir docs/guide.md à la ligne 12 dans l'éditeur.");
+  expect(a.hasAttribute("href")).toBe(true);
+  expect(a.hasAttribute("target")).toBe(false);
+  expect(a.getAttribute("href").startsWith("#")).toBe(true);
+  expect(lis[0].querySelector(".ya-passage-score").textContent).toBe("notes · score 0,82");
+  expect(lis[1].querySelector(".ya-passage-score").textContent).toBe("api · score 0,50");
+  const pre = lis[0].querySelector("pre");
+  expect(pre.textContent).toBe("# Titre\n  indenté\nfin");
+  expect(l.querySelectorAll("a")).toHaveLength(2);
+  expect(l.querySelectorAll("li > :is(button, input, [tabindex])")).toHaveLength(0);
+});
+
+test("REQ106_AC7_passages_clic_sur_le_lien_appelle_surLien_sans_navigation", () => {
+  const surLien = vi.fn();
+  const donnees = passage();
+  const l = liste({ variante: "passages", nom: "Passages", surLien, lignes: [donnees] });
+  document.body.append(l);
+  const e = new MouseEvent("click", { bubbles: true, cancelable: true });
+  l.querySelector("a").dispatchEvent(e);
+  expect(e.defaultPrevented).toBe(true);
+  expect(surLien).toHaveBeenCalledWith(donnees);
+});
+
+test("REQ106_AC7_passages_score_a_deux_decimales_virgule_et_entrees_invalides", () => {
+  const l = liste({ variante: "passages", nom: "Passages", lignes: [passage({ score: 1 }), passage({ score: 0.126 })] });
+  expect([...l.querySelectorAll(".ya-passage-score")].map((x) => x.textContent)).toEqual(["notes · score 1,00", "notes · score 0,13"]);
+  expect(() => liste({ variante: "passages", lignes: [] })).toThrow(/nom/);
+  expect(() => liste({ variante: "passages", nom: "P", lignes: [{ ...passage(), chemin: "" }] })).toThrow(/chemin/);
+  expect(() => liste({ variante: "passages", nom: "P", lignes: [{ ...passage(), score: "x" }] })).toThrow(/score/);
+});
+
+test("REQ106_AC7_passages_style_lien_info_pre_mono_cadre_retours_gardes", () => {
+  expect(regle(".ya-passages")).toContain("gap: 12px");
+  expect(regle(".ya-passage-lien")).toContain("color: var(--info)");
+  expect(regle(".ya-passage-lien")).toContain("text-decoration: underline");
+  expect(regle(".ya-passage-lien")).toContain("text-overflow: ellipsis");
+  expect(regle(".ya-passage-lien:focus-visible")).toContain("outline: var(--trait-fort) solid var(--accent-fg)");
+  expect(regle(".ya-passage-lien:focus-visible")).toContain("outline-offset: var(--trait)");
+  expect(regle(".ya-passage-score")).toContain("color: var(--ink-muted)");
+  expect(regle(".ya-passage-score")).toContain("flex: none");
+  const p = regle(".ya-passage pre");
+  expect(p).toContain("margin: var(--space-1) 0 0");
+  for (const t of ["var(--font-mono)", "var(--ink)", "var(--bg-100)", "var(--line)", "var(--radius-sm)", "white-space: pre-wrap", "overflow-wrap: anywhere", "12px/18px"]) expect(p).toContain(t);
+});

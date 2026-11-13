@@ -3,7 +3,7 @@ import { compteur as compteurDe } from "./compteur.js";
 import { icone } from "./icones.js";
 import { fermerInfoBulleDans } from "./info-bulle.js";
 
-const VARIANTES = ["plate", "arbre", "objets"];
+const VARIANTES = ["plate", "arbre", "objets", "passages"];
 let compteur = 0;
 
 // Mot dit par le nom accessible pour chaque statut git d'une ligne.
@@ -43,6 +43,11 @@ function listeObjets({ lignes, nom }) {
   const ul = document.createElement("ul");
   ul.className = "liste ya-objets";
   ul.setAttribute("aria-label", nom);
+  // Sans aucune action, la liste est en lecture seule : elle est elle-même l'arrêt de Tab, pour défiler au clavier.
+  if (lignes.every((l) => !l.actions?.length)) {
+    ul.classList.add("ya-objets-lecture");
+    ul.tabIndex = 0;
+  }
   for (const l of lignes) {
     if (!l.libelle) throw new Error("liste : libelle requis");
     const li = document.createElement("li");
@@ -51,6 +56,7 @@ function listeObjets({ lignes, nom }) {
     t.className = "ya-objet-nom";
     t.textContent = l.libelle;
     t.title = l.libelle;
+    if (ul.tabIndex === 0 && l.policeCode) t.classList.add("liste-code");
     li.append(t);
     if (l.dossier) {
       const d = document.createElement("span");
@@ -74,7 +80,43 @@ function listeObjets({ lignes, nom }) {
   return ul;
 }
 
-export function liste({ variante = "plate", lignes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, flottante = false, message, nom, focusSurListe = false, surActiver, surBasculer, surMenu, surDepot }) {
+// Variante `passages` (C-006, V-013) : `<ol>` nommé, une `<li>` par passage { chemin, debut, fin, collection, score, texte }.
+// Le lien appelle `surLien(passage)` ; son `href` reste dans la page.
+function listePassages({ lignes, nom, surLien }) {
+  if (!nom) throw new Error("liste : nom requis avec passages");
+  const ol = document.createElement("ol");
+  ol.className = "liste ya-passages";
+  ol.setAttribute("aria-label", nom);
+  for (const p of lignes) {
+    if (!p.chemin) throw new Error("liste : chemin requis");
+    if (!Number.isFinite(p.score)) throw new Error("liste : score requis");
+    const li = document.createElement("li");
+    li.className = "ya-passage";
+    const tete = document.createElement("div");
+    tete.className = "ya-passage-tete";
+    const a = document.createElement("a");
+    a.className = "ya-passage-lien";
+    const texteLien = `${p.chemin}:${p.debut}-${p.fin}`;
+    a.href = `#${texteLien}`;
+    a.textContent = texteLien;
+    a.title = `Ouvrir ${p.chemin} à la ligne ${p.debut} dans l'éditeur.`;
+    a.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      surLien?.(p);
+    });
+    const score = document.createElement("span");
+    score.className = "ya-passage-score";
+    score.textContent = `${p.collection} · score ${p.score.toFixed(2).replace(".", ",")}`;
+    tete.append(a, score);
+    const pre = document.createElement("pre");
+    pre.textContent = p.texte;
+    li.append(tete, pre);
+    ol.append(li);
+  }
+  return ol;
+}
+
+export function liste({ variante = "plate", lignes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, flottante = false, message, nom, focusSurListe = false, surActiver, surBasculer, surMenu, surDepot, surLien }) {
   if (!VARIANTES.includes(variante)) throw new Error(`liste : variante inconnue « ${variante} »`);
   if (flottante && (variante !== "plate" || pilotage !== "champ")) throw new Error("liste : flottante demande la variante « plate » et le pilotage « champ »");
   if (flottante && !nom) throw new Error("liste : nom requis avec flottante");
@@ -82,6 +124,7 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
   if (focusSurListe && (variante !== "plate" || pilotage === "champ")) throw new Error("liste : focusSurListe demande la variante « plate » et le pilotage « focus »");
   if (pilotage === "champ" && !champ) throw new Error("liste : champ requis avec pilotage « champ »");
   if (variante === "objets") return listeObjets({ lignes, nom });
+  if (variante === "passages") return listePassages({ lignes, nom, surLien });
   for (const l of lignes) {
     if (!l.libelle) throw new Error("liste : libelle requis");
     if (l.statut !== undefined && !(l.statut in STATUTS)) throw new Error(`liste : statut inconnu « ${l.statut} »`);

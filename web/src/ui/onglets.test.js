@@ -551,3 +551,91 @@ test("REQ079_AC27_nom_de_la_barre", () => {
   expect(barreFichiers({ nomBarre: "Fichiers ouverts" }).getAttribute("aria-label")).toBe("Fichiers ouverts");
   expect(barreFichiers().hasAttribute("aria-label")).toBe(false);
 });
+
+// C-005 `sections` (V-013, REQ-103).
+const sections = (extra = {}) => {
+  const panneaux = { c: document.createElement("div"), l: document.createElement("div"), r: document.createElement("div") };
+  const o = onglets({
+    presentation: "sections",
+    nomBarre: "Base de connaissance",
+    actif: "c",
+    onglets: [{ id: "c", libelle: "Configuration" }, { id: "l", libelle: "Collections" }, { id: "r", libelle: "Recherche" }],
+    panneaux,
+    surChoix: extra.surChoix,
+  });
+  document.body.append(o, ...Object.values(panneaux));
+  o.choisir("c");
+  return { o, panneaux };
+};
+
+test("REQ103_AC9_sections_tablist_nommee_onglets_relies_a_leur_tabpanel_un_seul_visible", () => {
+  const { o, panneaux } = sections();
+  expect(o.getAttribute("role")).toBe("tablist");
+  expect(o.getAttribute("aria-label")).toBe("Base de connaissance");
+  expect(o.classList.contains("ya-sections")).toBe(true);
+  const t = [...o.querySelectorAll('[role="tab"]')];
+  expect(t.map((x) => x.textContent)).toEqual(["Configuration", "Collections", "Recherche"]);
+  expect(o.querySelector("svg, .onglet-fermer")).toBeNull();
+  [panneaux.c, panneaux.l, panneaux.r].forEach((p, i) => {
+    expect(p.getAttribute("role")).toBe("tabpanel");
+    expect(t[i].getAttribute("aria-controls")).toBe(p.id);
+    expect(p.getAttribute("aria-labelledby")).toBe(t[i].id);
+  });
+  expect([panneaux.c, panneaux.l, panneaux.r].map((p) => p.hidden)).toEqual([false, true, true]);
+  expect(t.map((x) => x.getAttribute("aria-selected"))).toEqual(["true", "false", "false"]);
+  expect(t.map((x) => x.tabIndex)).toEqual([0, -1, -1]);
+});
+
+test("REQ103_AC9_sections_gauche_droite_en_bouclant_debut_fin_et_activation_au_focus", () => {
+  const surChoix = vi.fn();
+  const { o, panneaux } = sections({ surChoix });
+  const t = [...o.querySelectorAll('[role="tab"]')];
+  t[0].focus();
+  touche(t[0], "ArrowLeft");
+  expect(document.activeElement).toBe(t[2]);
+  expect(panneaux.r.hidden).toBe(false);
+  expect(panneaux.c.hidden).toBe(true);
+  touche(t[2], "ArrowRight");
+  expect(document.activeElement).toBe(t[0]);
+  touche(t[0], "ArrowRight");
+  expect(document.activeElement).toBe(t[1]);
+  expect(panneaux.l.hidden).toBe(false);
+  touche(t[1], "End");
+  expect(document.activeElement).toBe(t[2]);
+  touche(t[2], "Home");
+  expect(document.activeElement).toBe(t[0]);
+  expect(surChoix).toHaveBeenLastCalledWith("c");
+  t[1].click();
+  expect(panneaux.l.hidden).toBe(false);
+  expect(t[1].getAttribute("aria-selected")).toBe("true");
+  // Aucune fermeture : Suppr ne fait rien.
+  const surFermer = vi.fn();
+  const avecFermer = onglets({ presentation: "sections", actif: "a", onglets: [{ id: "a", libelle: "A", fermable: true }], panneaux: { a: document.createElement("div") }, surFermer });
+  document.body.append(avecFermer);
+  touche(tab(avecFermer, 0), "Delete");
+  expect(surFermer).toHaveBeenCalled();
+  const surFermer2 = vi.fn();
+  const sans = onglets({ presentation: "sections", actif: "a", onglets: [{ id: "a", libelle: "A" }], panneaux: { a: document.createElement("div") }, surFermer: surFermer2 });
+  document.body.append(sans);
+  touche(tab(sans, 0), "Delete");
+  expect(surFermer2).not.toHaveBeenCalled();
+});
+
+test("REQ103_AC9_sections_style_texte_32px_filet_actif_2px_sans_defilement", () => {
+  expect(regle(".ya-sections")).toContain("border-bottom: var(--trait) solid var(--line)");
+  expect(regle(".ya-sections")).toContain("padding: 0 var(--space-3)");
+  expect(regle(".ya-sections .onglet")).toContain("height: 32px");
+  expect(regle(".ya-sections .onglet")).toContain("padding: 0 var(--space-2)");
+  expect(regle(".ya-sections .onglet")).toContain("font: 13px/20px var(--font-sans)");
+  expect(regle(".ya-sections")).toContain("gap: var(--space-1)");
+  expect(regle(".ya-sections")).not.toContain("overflow-x");
+  const actif = regle('.ya-sections .onglet-cellule:has(> .onglet[aria-selected="true"])');
+  expect(actif).toContain("var(--trait-fort)");
+  expect(actif).toContain("var(--accent-fg)");
+  expect(actif).not.toContain("background");
+  expect(regle('.ya-sections .onglet[aria-selected="true"]')).toContain("color: var(--ink)");
+});
+
+test("REQ103_AC9_sections_refuse_un_panneau_inconnu", () => {
+  expect(() => onglets({ presentation: "sections", actif: "a", onglets: [{ id: "a", libelle: "A" }], panneaux: {} })).toThrow(/panneau/);
+});

@@ -228,3 +228,18 @@ test("REQ101_AC11_icone_link_au_trait_des_autres", () => {
   expect(icone("link", 13).getAttribute("width")).toBe("13");
   expect(icone("link").innerHTML).toContain("M10 13a5 5 0 0 0 7.54.54l3-3");
 });
+
+test("REQ103_AC8_icones_book_open_et_list_au_dessin_lucide_distinctes", () => {
+  const dessins = {
+    "book-open": ["M12 7v14", "M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"],
+    list: ["M3 6h.01", "M3 12h.01", "M3 18h.01", "M8 6h13", "M8 12h13", "M8 18h13"],
+  };
+  for (const [n, ds] of Object.entries(dessins)) {
+    expect(NOMS, n).toContain(n);
+    const s = icone(n, 20);
+    expect(s.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(s.getAttribute("stroke-width")).toBe("1.6");
+    expect(s.getAttribute("aria-hidden")).toBe("true");
+    for (const d of ds) expect(s.innerHTML, n).toContain(d);
+  }
+});

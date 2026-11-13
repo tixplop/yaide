@@ -143,6 +143,11 @@
 .onglet-statut-U { color: var(--git-untracked); }
 .onglet-question { color: var(--warning); font-weight: var(--graisse-forte); }
 .onglet-detail { color: var(--ink-muted); }
+/* C-005 `sections` (V-013) : parties d'un dialogue, texte seul, filet de 2 px sous l'onglet actif. */
+.ya-sections { box-sizing: border-box; height: calc(32px + var(--trait)); gap: var(--space-1); padding: 0 var(--space-3); border-bottom: var(--trait) solid var(--line); }
+.ya-sections .onglet { height: 32px; padding: 0 var(--space-2); font: 13px/20px var(--font-sans); }
+.ya-sections .onglet[aria-selected="true"] { color: var(--ink); }
+.ya-sections .onglet-cellule:has(> .onglet[aria-selected="true"]) { box-shadow: inset 0 calc(-1 * var(--trait-fort)) 0 var(--accent-fg); }
 .onglets-droite { display: flex; align-items: center; margin-left: auto; }
 
 .ya-tabs { align-items: stretch; height: var(--size-tab); overflow-x: auto; scrollbar-width: none; background: var(--bg-100); border-bottom: var(--trait) solid var(--line); font-size: 12.5px; }
@@ -303,6 +308,9 @@
 .menu-libelle { flex: 1 1 auto; }
 .ya-menu .menu-touche { font-size: 12px; opacity: .75; }
 .ya-menu .menu-commande:focus .menu-touche { opacity: 1; }
+.ya-menu .menu-commande[aria-disabled="true"] .menu-libelle, .ya-menu .menu-commande[aria-disabled="true"] .menu-touche { opacity: .45; }
+.ya-menu .menu-commande[aria-disabled="true"]:focus { background: transparent; color: var(--ink); outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
+.ya-menu .menu-commande[aria-disabled="true"]:focus .menu-touche { opacity: .45; }
 .ya-menu .menu-separateur { height: 0; margin: 4px 6px; border-top: var(--trait) solid var(--line); }
 
 /* Poignée (C-011) : occupe sa place dans la grille, ne recouvre rien. Au repos, un filet de 1 px au milieu. */
@@ -512,6 +520,20 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-objet-texte { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-muted); }
 .ya-objet-actions { flex: none; margin-left: auto; display: flex; gap: 2px; }
 
+/* C-006 `objets` sans actions : lecture seule, la liste est l'arrêt de Tab. */
+.ya-objets-lecture .ya-objet { height: var(--size-row); font-size: 12px; font-family: var(--font-sans); }
+.ya-objets-lecture .ya-objet:hover { background: transparent; }
+.ya-objets-lecture .ya-objet-nom { flex: 1 1 auto; min-width: 0; max-width: none; color: var(--ink); }
+.ya-objets-lecture:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait-fort)); }
+
+/* C-006 `passages` (V-013) : résultats d'une recherche dans la base de connaissance. */
+.ya-passages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.ya-passage-tete { display: flex; align-items: baseline; gap: var(--space-3); }
+.ya-passage-lien { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12.5px var(--font-sans); color: var(--info); text-decoration: underline; }
+.ya-passage-lien:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: var(--trait); }
+.ya-passage-score { flex: none; font: 12px/16px var(--font-sans); color: var(--ink-muted); }
+.ya-passage pre { margin: var(--space-1) 0 0; padding: 6px 8px; font: 12px/18px var(--font-mono); color: var(--ink); background: var(--bg-100); border: var(--trait) solid var(--line); border-radius: var(--radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
+
 /* C-007 `reglages`, « Liste et fiche » : le résultat est hors de la partie qui défile ; la fiche en grille 1fr 2fr. */
 .ya-reglages .dialogue-resultat { flex: none; margin-top: var(--space-2); }
 .ya-fiche { display: flex; flex-direction: column; gap: 12px; }
@@ -531,6 +553,11 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-reglages .ya-groupe-ligne { flex-direction: row; flex-wrap: wrap; column-gap: var(--space-6); }
 .ya-reglages .ya-groupe-ligne legend { flex: 0 0 100%; }
 .ya-reglages .ya-groupe-aide { margin: 0; flex: 0 0 100%; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+/* C-007 `reglages` avec sections : hauteur fixe, changer de section ne change pas la taille. */
+.ya-reglages-sections { height: min(var(--hauteur-dialogue-sections), calc(100vh - 2 * var(--space-4))); padding: 0; }
+.ya-reglages-sections .dialogue-titre { margin: var(--space-4) var(--space-4) var(--space-2); }
+.ya-reglages-sections .dialogue-contenu { padding: var(--space-3) var(--space-4) 0; }
+.ya-reglages-sections .dialogue-actions { padding: 0 var(--space-4) var(--space-4); }
 /* V-012 : l'aide du dialogue est à 12 px du titre et de la liste (le titre laisse 16 px). */
 .ya-reglages > .ya-aide-liste { margin: -4px 0 12px; }
 

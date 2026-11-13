@@ -316,3 +316,22 @@ test("REQ096_AC18_definir_aide_apres_coup_sous_le_titre_reliee_au_dialogue", () 
   expect(d.element.children[1]).toBe(b);
   expect(document.getElementById(d.element.getAttribute("aria-describedby")).textContent).toBe("Seconde");
 });
+
+test("REQ103_AC9_reglages_avec_sections_barre_sous_le_titre_hauteur_fixe_par_token", () => {
+  const barre = document.createElement("div");
+  barre.className = "ya-sections";
+  const bouton1 = bouton({ libelle: "Fermer" });
+  const d = dialogue({ titre: "Base de connaissance", position: "reglages", sections: barre, contenu: [], actions: [bouton1], focusInitial: bouton1, surAnnuler() {} });
+  expect([...d.element.children].map((c) => c.className.split(" ")[0])).toEqual(["dialogue-titre", "ya-sections", "dialogue-contenu", "dialogue-actions"]);
+  expect(d.element.classList.contains("ya-reglages-sections")).toBe(true);
+  const h = regle(".ya-reglages-sections");
+  expect(h).toContain("height: min(var(--hauteur-dialogue-sections), calc(100vh - 2 * var(--space-4)))");
+  expect(regle(".ya-reglages-sections")).toContain("padding: 0");
+  expect(regle(".ya-reglages-sections .dialogue-titre")).toContain("margin: var(--space-4) var(--space-4) var(--space-2)");
+  expect(regle(".ya-reglages-sections .dialogue-actions")).toContain("padding: 0 var(--space-4) var(--space-4)");
+  const c = regle(".ya-reglages-sections .dialogue-contenu");
+  expect(c).toContain("padding: var(--space-3) var(--space-4) 0");
+  expect(() => dialogue({ titre: "T", position: "centre", sections: barre, focusInitial: bouton1, surAnnuler() {} })).toThrow(/sections/);
+  const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
+  expect(tokens).toMatch(/--hauteur-dialogue-sections:\s*560px;/);
+});

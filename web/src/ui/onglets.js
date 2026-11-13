@@ -4,11 +4,12 @@ import { icone } from "./icones.js";
 import { infoBulle } from "./info-bulle.js";
 
 const ORIENTATIONS = ["horizontale", "verticale"];
-const PRESENTATIONS = { fichiers: "ya-tabs", shells: "ya-term-tabs", rail: "ya-activity" };
+const PRESENTATIONS = { fichiers: "ya-tabs", shells: "ya-term-tabs", rail: "ya-activity", sections: "ya-sections" };
+let compteurSections = 0;
 // Mot dit par le nom accessible pour chaque statut git d'un onglet.
 const STATUTS = { M: "modifié", A: "ajouté", U: "nouveau" };
 
-export function onglets({ presentation, orientation = "horizontale", onglets: liste, actif, actionsDroite = [], surChoix, surFermer, surMenu, nomBarre, courant = true, surGlisser }) {
+export function onglets({ presentation, orientation = "horizontale", onglets: liste, actif, actionsDroite = [], surChoix, surFermer, surMenu, nomBarre, courant = true, surGlisser, panneaux }) {
   if (!ORIENTATIONS.includes(orientation)) throw new Error(`onglets : orientation inconnue « ${orientation} »`);
   // `orientation` est l'ancienne option : verticale = rail.
   presentation ??= orientation === "verticale" ? "rail" : "fichiers";
@@ -21,6 +22,9 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
     if (o.statut !== undefined && !(o.statut in STATUTS)) throw new Error(`onglets : statut inconnu « ${o.statut} »`);
     if (o.compteur !== undefined && (!Number.isInteger(o.compteur) || o.compteur < 0)) throw new Error("onglets : compteur entier positif ou nul requis");
   }
+  const sections = presentation === "sections";
+  if (sections) for (const o of liste) if (!(panneaux?.[o.id] instanceof Element)) throw new Error(`onglets : panneau requis pour « ${o.id} »`);
+  const prefixe = `sections-${++compteurSections}`;
   const fichiers = presentation === "fichiers";
   const vertical = orientation === "verticale";
   const racine = document.createElement("div");
@@ -28,7 +32,7 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
   // Le rôle tablist est porté par la racine : les actions de droite en font partie.
   racine.setAttribute("role", "tablist");
   racine.setAttribute("aria-orientation", vertical ? "vertical" : "horizontal");
-  if (fichiers && nomBarre) racine.setAttribute("aria-label", nomBarre);
+  if ((fichiers || sections) && nomBarre) racine.setAttribute("aria-label", nomBarre);
   if (fichiers && !courant) racine.dataset.courant = "false";
 
   const elements = new Map();
@@ -69,6 +73,14 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
       t.append(d);
     }
     const nom = o.nomAccessible ?? (o.detail ? `${o.libelle} · ${o.detail}` : o.libelle);
+    if (sections) {
+      t.id = `${prefixe}-onglet-${o.id}`;
+      const p = panneaux[o.id];
+      p.id ||= `${prefixe}-panneau-${o.id}`;
+      p.setAttribute("role", "tabpanel");
+      p.setAttribute("aria-labelledby", t.id);
+      t.setAttribute("aria-controls", p.id);
+    }
     if (o.raccourci) t.setAttribute("aria-keyshortcuts", o.raccourci);
     if (iconeSeule) infoBulle({ texte: o.raccourci ? `${nom} (${o.raccourci})` : nom, ancre: t, position: vertical ? "droite" : "dessous" });
     if (o.titre) t.title = o.titre;
@@ -124,6 +136,7 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
       const sel = i === id;
       t.setAttribute("aria-selected", String(sel));
       t.tabIndex = sel ? 0 : -1;
+      if (sections) panneaux[i].hidden = !sel;
     }
     elements.get(id)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     if (notifier) surChoix?.(id);

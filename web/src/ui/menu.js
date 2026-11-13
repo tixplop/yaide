@@ -94,6 +94,7 @@ export function menu({ nom, groupes, position, ancre, surFermeture }) {
       e.className = "menu-commande";
       e.setAttribute("role", "menuitem");
       e.tabIndex = -1;
+      if (c.desactive) e.setAttribute("aria-disabled", "true");
       const t = document.createElement("span");
       t.className = "menu-libelle";
       t.textContent = c.libelle;
@@ -109,7 +110,7 @@ export function menu({ nom, groupes, position, ancre, surFermeture }) {
       e.addEventListener("mouseenter", () => e.focus());
       // Une commande n'agit qu'au `click` du bouton principal.
       e.addEventListener("click", (ev) => {
-        if (ev.button === 0) choisir(c);
+        if (ev.button === 0 && !c.desactive) choisir(c);
       });
       commandes.push(e);
       donnees.push(c);
@@ -152,7 +153,7 @@ export function menu({ nom, groupes, position, ancre, surFermeture }) {
       return;
     } else if ((e.key === "Enter" || e.key === " ") && i >= 0) {
       arreter(e);
-      choisir(donnees[i]);
+      if (!donnees[i].desactive) choisir(donnees[i]);
       return;
     } else return;
     e.preventDefault();

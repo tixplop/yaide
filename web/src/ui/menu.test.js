@@ -435,3 +435,39 @@ test("REQ056_AC12_menu_d_en_tete_decale_vers_la_gauche_s_il_ne_tient_pas", () =>
   }
   expect(() => menu({ nom: "x", ancre: {}, surFermeture: () => {}, groupes: [[{ libelle: "a" }]] })).toThrow(/ancre/);
 });
+
+test("REQ049_AC13_commande_desactivee_aria_disabled_focus_sans_aplat_entree_espace_clic_sans_effet", () => {
+  const surChoix = vi.fn();
+  const { m, items } = ouvrir({
+    groupes: [[{ libelle: "Renommer", touche: "F2", desactive: true, surChoix }, { libelle: "Ajouter", surChoix: () => surChoix("a") }]],
+  });
+  expect(items[0].getAttribute("aria-disabled")).toBe("true");
+  expect(items[1].hasAttribute("aria-disabled")).toBe(false);
+  // Atteignable au clavier : Haut revient dessus.
+  expect(document.activeElement).toBe(items[0]);
+  cle(items[0], "ArrowDown");
+  expect(document.activeElement).toBe(items[1]);
+  cle(items[1], "ArrowUp");
+  expect(document.activeElement).toBe(items[0]);
+  cle(items[0], "Enter");
+  cle(items[0], " ");
+  items[0].click();
+  evt(items[0], "mouseenter");
+  expect(surChoix).not.toHaveBeenCalled();
+  expect(document.body.contains(m.racine)).toBe(true);
+  expect(document.activeElement).toBe(items[0]);
+  // Les autres commandes agissent encore.
+  items[1].click();
+  expect(surChoix).toHaveBeenCalledWith("a");
+});
+
+test("REQ049_AC13_commande_desactivee_style_opacite_45_contour_sans_aplat", () => {
+  expect(regle('.ya-menu .menu-commande[aria-disabled="true"] .menu-libelle')).toContain("opacity: .45");
+  expect(regle('.ya-menu .menu-commande[aria-disabled="true"] .menu-touche')).toContain("opacity: .45");
+  const f = regle('.ya-menu .menu-commande[aria-disabled="true"]:focus');
+  expect(f).toContain("background: transparent");
+  expect(f).toContain("color: var(--ink)");
+  expect(f).toContain("outline: var(--trait) solid var(--accent-fg)");
+  expect(f).toContain("outline-offset: calc(-1 * var(--trait))");
+  expect(regle('.ya-menu .menu-commande[aria-disabled="true"]:focus .menu-touche')).toContain("opacity: .45");
+});
