@@ -87,6 +87,7 @@ test("REQ034_AC1_AC11_AC16_clic_droit_touche_menu_et_maj_f10_ouvrent_une_seule_f
   await ligne.focus();
   await page.keyboard.press("ContextMenu");
   await page.keyboard.press("End");
+  await page.keyboard.press("ArrowUp");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
