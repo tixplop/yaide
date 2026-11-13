@@ -420,6 +420,9 @@ fn faux_provider(scenario: Vec<(u16, Value, u64)>) -> (String, Recues) {
             "auth": entetes.get("authorization").and_then(|v| v.to_str().ok()),
             "corps": serde_json::from_slice::<Value>(&corps).unwrap_or(Value::Null),
         }));
+        if uri.path().ends_with("/embeddings") {
+            return vecteurs_de_test(&corps);
+        }
         let suivante = e.0.lock().unwrap().pop_front();
         match suivante {
             Some((code, v, delai)) => {
@@ -444,6 +447,45 @@ fn faux_provider(scenario: Vec<(u16, Value, u64)>) -> (String, Recues) {
             });
     });
     (adresse, recues)
+}
+
+/// Réponse de `/embeddings` : un texte `v<n>…` a le vecteur `[n, 1]`, les autres `[1, 0]` ;
+/// un texte qui contient `boom` fait refuser la requête.
+fn vecteurs_de_test(corps: &[u8]) -> (axum::http::StatusCode, String) {
+    let v: Value = serde_json::from_slice(corps).unwrap_or(Value::Null);
+    let textes = v["input"].as_array().cloned().unwrap_or_default();
+    if textes
+        .iter()
+        .any(|t| t.as_str().unwrap_or("").contains("boom"))
+    {
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "{\"error\":\"clé refusée\"}".into(),
+        );
+    }
+    let data: Vec<Value> = textes
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            let n: String = t
+                .as_str()
+                .unwrap_or("")
+                .strip_prefix('v')
+                .unwrap_or("")
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+            let e = match n.parse::<f32>() {
+                Ok(n) => vec![n, 1.0],
+                Err(_) => vec![1.0, 0.0],
+            };
+            json!({ "index": i, "embedding": e })
+        })
+        .collect();
+    (
+        axum::http::StatusCode::OK,
+        json!({ "data": data }).to_string(),
+    )
 }
 
 fn rep_texte(t: &str) -> (u16, Value, u64) {
@@ -1326,4 +1368,217 @@ fn REQ095_AC18_AC19_AC20_REQ096_AC26_deux_instances_partagent_le_mcp_json_de_l_u
     assert!(!outils_du_dernier_tour(&recues)
         .iter()
         .any(|o| o.starts_with("mcp__")));
+}
+
+fn rep_outil(id: &str, nom: &str, arguments: Value) -> (u16, Value, u64) {
+    (
+        200,
+        json!({"choices": [{"message": {"content": null, "tool_calls": [{
+            "id": id, "type": "function",
+            "function": {"name": nom, "arguments": arguments.to_string()}}]}}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 1}}),
+        0,
+    )
+}
+
+/// Corps des requêtes de conversation reçues (sans celles de `/embeddings`).
+fn requetes_de_chat(recues: &Recues) -> Vec<Value> {
+    recues
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["chemin"] != "/embeddings")
+        .map(|r| r["corps"].clone())
+        .collect()
+}
+
+fn outil_de(corps: &Value, nom: &str) -> Option<Value> {
+    corps["tools"]
+        .as_array()?
+        .iter()
+        .find(|t| t["function"]["name"] == nom)
+        .map(|t| t["function"].clone())
+}
+
+/// Base configurée sur le provider `openai` du faux provider, avec la collection `nom`
+/// qui contient les fichiers donnés.
+fn base_avec(s: &Serveur, nom: &str, fichiers: &[(&str, &str)]) {
+    let r = s.appel(
+        "PUT",
+        "/api/connaissance/config",
+        &json!({ "provider": "openai", "modele": "m-embed" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let mut chemins = vec![];
+    for (c, t) in fichiers {
+        let p = s.projet.join(c);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, t).unwrap();
+        chemins.push(*c);
+    }
+    let r = s.appel(
+        "POST",
+        "/api/connaissance/ajouts",
+        &json!({ "collection": nom, "chemins": chemins }),
+    );
+    assert_eq!(r.code, 202, "{}", r.corps);
+    for _ in 0..300 {
+        let a = s.appel("GET", "/api/connaissance", &Value::Null).json()["ajout"].clone();
+        if !a.is_null() && a["etat"] != "en_cours" {
+            assert_eq!(a["etat"], "fini", "{a}");
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("l'ajout ne finit pas");
+}
+
+#[test]
+fn REQ107_AC1_AC5_outil_offert_selon_la_base_aux_agents_et_au_sous_agent() {
+    let (adresse, recues) = faux_provider(vec![
+        rep_texte("a"),
+        rep_texte("b"),
+        rep_texte("c"),
+        rep_texte("d"),
+        rep_texte("e"),
+        rep_outil("s1", "subagent", json!({"prompt": "cherche"})),
+        rep_outil("k1", "knowledge_search", json!({"query": "x"})),
+        rep_texte("trouvé"),
+        rep_texte("fin"),
+    ]);
+    let s = lancer("ac107-1");
+    let p = configurer(&s, "openai", &adresse);
+    let dernier = |recues: &Recues| requetes_de_chat(recues).pop().unwrap();
+    // Base non configurée.
+    attendre_fin(&s, &message(&s, &p, "un"));
+    assert!(outil_de(&dernier(&recues), "knowledge_search").is_none());
+    // Configurée, sans collection : rien non plus.
+    let r = s.appel(
+        "PUT",
+        "/api/connaissance/config",
+        &json!({ "provider": "openai", "modele": "m-embed" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    attendre_fin(&s, &message(&s, &p, "deux"));
+    assert!(outil_de(&dernier(&recues), "knowledge_search").is_none());
+    // Deux collections : l'outil est offert, sans agent personnalisé.
+    base_avec(&s, "notes", &[("docs/a.md", "v1 a\n")]);
+    base_avec(&s, "api", &[("docs/b.md", "v2 b\n")]);
+    attendre_fin(&s, &message(&s, &p, "trois"));
+    let def = outil_de(&dernier(&recues), "knowledge_search").expect("outil offert");
+    let description = def["description"].as_str().unwrap();
+    assert!(description.contains("api") && description.contains("notes"));
+    assert_eq!(def["parameters"]["required"], json!(["query"]));
+    assert!(def["parameters"]["properties"]["query"].is_object());
+    assert!(def["parameters"]["properties"]["collection"].is_object());
+    // Deux agents personnalisés : chacun le reçoit.
+    for (nom, couleur) in [("Relecteur", "vert"), ("Testeur", "orange")] {
+        let r = s.appel(
+            "PUT",
+            "/api/agent/agents",
+            &json!({ "nom": nom, "couleur": couleur, "profil": p }),
+        );
+        assert_eq!(r.code, 200, "{}", r.corps);
+    }
+    let avant = requetes_de_chat(&recues).len();
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "agents": ["relecteur", "testeur"], "texte": "go" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    attendre_fin(&s, r.json()["conversation"].as_str().unwrap());
+    let chats = requetes_de_chat(&recues);
+    assert_eq!(chats.len(), avant + 2);
+    for c in &chats[avant..] {
+        assert!(outil_de(c, "knowledge_search").is_some());
+    }
+    // Un sous-agent le reçoit et l'appelle.
+    let v = attendre_fin(&s, &message(&s, &p, "sous"));
+    let chats = requetes_de_chat(&recues);
+    let n = chats.len();
+    assert!(outil_de(&chats[n - 4], "subagent").is_some());
+    assert!(outil_de(&chats[n - 3], "knowledge_search").is_some());
+    assert!(outil_de(&chats[n - 3], "subagent").is_none());
+    let sous = &v["entrees"][2];
+    assert_eq!(sous["nom"], "subagent", "{:?}", v["entrees"]);
+    let etapes = sous["etapes"].as_array().unwrap();
+    assert!(
+        etapes
+            .iter()
+            .any(|e| e["nom"] == "knowledge_search" && e["etat"] == "reussi"),
+        "{etapes:?}"
+    );
+}
+
+#[test]
+fn REQ107_AC2_AC3_appel_reussi_puis_trois_echecs_sans_message_ajoute() {
+    let (adresse, recues) = faux_provider(vec![
+        rep_outil(
+            "k1",
+            "knowledge_search",
+            json!({"query": "x", "collection": "notes"}),
+        ),
+        rep_texte("fini"),
+        rep_outil("k2", "knowledge_search", json!({"collection": "notes"})),
+        rep_outil(
+            "k3",
+            "knowledge_search",
+            json!({"query": "x", "collection": "zzz"}),
+        ),
+        rep_outil("k4", "knowledge_search", json!({"query": "boom"})),
+        rep_texte("fini aussi"),
+    ]);
+    let s = lancer("ac107-2");
+    let p = configurer(&s, "openai", &adresse);
+    base_avec(
+        &s,
+        "notes",
+        &[("docs/a.md", "v1 a\n"), ("docs/b.md", "v3 b\n")],
+    );
+    base_avec(&s, "api", &[("docs/c.md", "v9 c\n")]);
+    let v = attendre_fin(&s, &message(&s, &p, "cherche"));
+    let e = v["entrees"].as_array().unwrap();
+    assert_eq!(e.len(), 4, "{e:?}");
+    assert_eq!(e[2]["nom"], "knowledge_search", "{e:?}");
+    assert_eq!(e[2]["argument"], "x");
+    assert_eq!(e[2]["etat"], "reussi");
+    // Les passages de `notes` seulement, le plus proche d'abord ; vecteur de « x » : [1, 0].
+    assert_eq!(
+        e[2]["resultat"].as_str().unwrap(),
+        "docs/b.md:1-1 (notes, score 0.95)\nv3 b\n\ndocs/a.md:1-1 (notes, score 0.71)\nv1 a"
+    );
+    let envoyes: Vec<Value> = recues
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["chemin"] == "/embeddings")
+        .cloned()
+        .collect();
+    assert_eq!(envoyes.last().unwrap()["corps"]["input"], json!(["x"]));
+    // Le résultat part dans la requête suivante, puis la réponse finale.
+    let chats = requetes_de_chat(&recues);
+    assert!(chats.last().unwrap()["messages"]
+        .to_string()
+        .contains("docs/b.md:1-1 (notes, score 0.95)"));
+    assert_eq!(e[3]["texte"], "fini");
+
+    let v = attendre_fin(&s, &message(&s, &p, "échecs"));
+    let e = v["entrees"].as_array().unwrap();
+    // Nouvelle conversation : utilisateur, trois appels en échec, réponse.
+    assert_eq!(e.len(), 8, "{e:?}");
+    assert!(e.iter().all(|x| x["type"] != "message"), "{e:?}");
+    let attendus = [
+        "Missing or invalid argument: query.",
+        "Unknown collection: zzz. Available: api, notes.",
+        "refusé",
+    ];
+    for (i, a) in attendus.iter().enumerate() {
+        assert_eq!(e[2 + 2 * i]["etat"], "echec", "{e:?}");
+        assert!(
+            e[2 + 2 * i]["resultat"].as_str().unwrap().contains(a),
+            "{e:?}"
+        );
+    }
+    assert_eq!(e[7]["texte"], "fini aussi");
 }

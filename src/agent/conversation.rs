@@ -632,6 +632,7 @@ Always give file paths relative to the project root.",
         let (defs, problemes) = self.mcp.preparer(&self.limites).await;
         let mut outils_tour = outils::definitions();
         outils_tour.extend(defs);
+        outils_tour.extend(outils::definition_connaissance(&self.projet));
         if !self.modifier(&conv, |c| {
             for p in problemes {
                 c.entrees.push(Entree::Message {

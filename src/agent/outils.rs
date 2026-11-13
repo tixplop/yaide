@@ -4,9 +4,10 @@
 use super::agents::{Agents, COULEURS};
 use super::outils_config;
 use super::provider::DefOutil;
-use super::reglages::{Erreur, Reglages};
+use super::reglages::{self, Erreur, Reglages};
 use super::web;
-use crate::{fichiers, recherche};
+use crate::{connaissance, fichiers, recherche};
+
 use serde_json::{json, Value};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -153,6 +154,29 @@ pub fn definitions() -> Vec<DefOutil> {
     outils
 }
 
+/// L'outil `knowledge_search` (REQ-107), relu à chaque tour : offert seulement si la
+/// configuration de la base se lit et qu'elle a au moins une collection.
+pub fn definition_connaissance(projet: &Path) -> Option<DefOutil> {
+    let base = connaissance::Base::new(projet);
+    base.lire_config().ok()??;
+    let noms: Vec<String> = base.liste().ok()?.into_iter().map(|c| c.nom).collect();
+    if noms.is_empty() {
+        return None;
+    }
+    Some(def(
+        "knowledge_search",
+        &format!(
+            "Search the knowledge base of the project, built from files added by the user. Returns up to 10 passages, closest first, each with its file and lines, collection, score and text. Collections: {}.",
+            noms.join(", ")
+        ),
+        json!({
+            "query": json!({"type": "string", "description": "The question or the words to look for"}),
+            "collection": json!({"type": "string", "description": "Collection to search; omit to search all of them"}),
+        }),
+        &["query"],
+    ))
+}
+
 /// L'argument qui résume un appel, pour l'affichage : chemin, commande, motif, requête ou adresse.
 pub fn argument_principal(nom: &str, arguments: &Value) -> String {
     if nom.starts_with("mcp__") {
@@ -170,6 +194,7 @@ pub fn argument_principal(nom: &str, arguments: &Value) -> String {
         "websearch" => "query",
         "webfetch" => "url",
         "subagent" => "prompt",
+        "knowledge_search" => "query",
         "save_agent" => {
             let c = if arguments["name"].is_string() {
                 "name"
@@ -244,6 +269,9 @@ async fn lancer(nom: &str, a: &Value, ctx: &Contexte) -> Result<Resultat, String
         "webfetch" => web::recuperer(&ctx.client, requis(a, "url")?, ctx.limites.web)
             .await
             .map(ok),
+        "knowledge_search" => connaissance_chercher(requis(a, "query")?, &a["collection"], ctx)
+            .await
+            .map(ok),
         "list_agents" => Ok(ok(lister_agents(ctx))),
         "save_agent" => sauver_agent(a, ctx).map(ok),
         _ => match outils_config::lancer(nom, a, ctx) {
@@ -251,6 +279,64 @@ async fn lancer(nom: &str, a: &Value, ctx: &Contexte) -> Result<Resultat, String
             None => Err(format!("Unknown tool: {nom}.")),
         },
     }
+}
+
+/// Outil `knowledge_search` : la recherche de REQ-106, rendue en texte.
+async fn connaissance_chercher(
+    question: &str,
+    collection: &Value,
+    ctx: &Contexte,
+) -> Result<String, String> {
+    let base = connaissance::Base::new(&ctx.projet);
+    let config = base
+        .lire_config()?
+        .ok_or("The knowledge base is not configured.")?;
+    let provider = reglages::provider(&config.provider)
+        .ok_or("The provider of the knowledge base is unknown.")?;
+    let cle = ctx.reglages.cle(&config.provider);
+    connaissance::verifier_cle(provider, cle.as_deref())?;
+    let adresse = ctx
+        .reglages
+        .adresse(&config.provider)
+        .unwrap_or_else(|| provider.adresse_par_defaut().to_string());
+    let choisie = match collection {
+        Value::Null => None,
+        Value::String(n) => match base.trouver(n)? {
+            Some(n) => Some(n),
+            None => {
+                let noms: Vec<String> = base.liste()?.into_iter().map(|c| c.nom).collect();
+                return Err(format!(
+                    "Unknown collection: {n}. Available: {}.",
+                    noms.join(", ")
+                ));
+            }
+        },
+        _ => return Err("Missing or invalid argument: collection.".into()),
+    };
+    let acces = connaissance::Acces {
+        client: &ctx.client,
+        provider,
+        adresse: &adresse,
+        cle: cle.as_deref(),
+        modele: &config.modele,
+    };
+    let trouves = base
+        .chercher(&acces, question, choisie.as_deref())
+        .await
+        .map_err(|e| format!("{} {}", e.cause, e.detail).trim().to_string())?;
+    if trouves.is_empty() {
+        return Ok("No passage found.".into());
+    }
+    let blocs: Vec<String> = trouves
+        .iter()
+        .map(|t| {
+            format!(
+                "{}:{}-{} ({}, score {:.2})\n{}",
+                t.chemin, t.debut, t.fin, t.collection, t.score, t.texte
+            )
+        })
+        .collect();
+    Ok(blocs.join("\n\n"))
 }
 
 fn chemin_md(dossier: &str, md: &str) -> String {
@@ -619,6 +705,17 @@ mod tests {
     fn vivant(pid: i32) -> bool {
         fs::read_to_string(format!("/proc/{pid}/stat"))
             .is_ok_and(|s| s.rsplit(") ").next().is_some_and(|r| !r.starts_with('Z')))
+    }
+
+    #[test]
+    fn REQ107_AC4_argument_principal_de_knowledge_search() {
+        assert_eq!(
+            argument_principal(
+                "knowledge_search",
+                &json!({"query": "Comment se connecter ?", "collection": "notes"})
+            ),
+            "Comment se connecter ?"
+        );
     }
 
     #[test]
