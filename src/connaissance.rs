@@ -3,6 +3,7 @@
 
 use crate::agent::provider::{self, ErreurProvider, Provider};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 
 const PASSAGE_MAX: usize = 2000;
@@ -97,13 +98,7 @@ impl From<&str> for Erreur {
 
 impl Acces<'_> {
     async fn vecteurs(&self, textes: &[String]) -> Result<Vec<Vec<f32>>, Erreur> {
-        if self.provider.cle_obligatoire() && self.cle.is_none_or(|c| c.is_empty()) {
-            return Err(format!(
-                "Aucune clé pour {}. Ajoutez-la avec Ctrl+P, puis > Providers LLM.",
-                self.provider.nom()
-            )
-            .into());
-        }
+        verifier_cle(self.provider, self.cle)?;
         provider::embeddings(
             self.client,
             self.provider,
@@ -115,6 +110,21 @@ impl Acces<'_> {
         .await
         .map_err(|e| erreur_provider(self.provider, e))
     }
+}
+
+/// Refuse d'avance un provider qui demande une clé quand il n'y en a pas.
+pub fn verifier_cle(provider: Provider, cle: Option<&str>) -> Result<(), String> {
+    if provider.cle_obligatoire() && cle.is_none_or(|c| c.is_empty()) {
+        return Err(format!(
+            "Aucune clé pour {}. Ajoutez-la avec Ctrl+P, puis > Providers LLM.",
+            provider.nom()
+        ));
+    }
+    Ok(())
+}
+
+pub fn fournit_des_vecteurs(provider: &str) -> bool {
+    PROVIDERS_ADMIS.contains(&provider)
 }
 
 /// Même forme que l'entrée d'erreur de la conversation : cause d'un côté, texte du provider de l'autre.
@@ -245,6 +255,46 @@ fn cosinus(a: &[f32], b: &[f32]) -> f32 {
     } else {
         ab / (aa.sqrt() * bb.sqrt())
     }
+}
+
+/// Range dans la collection les fichiers de la file dont tous les vecteurs sont arrivés ;
+/// rend leur nombre. Un vecteur incohérent met `echec` et arrête.
+fn finaliser(
+    coll: &mut Collection,
+    nouveaux: &mut VecDeque<Fichier>,
+    curseur: &mut usize,
+    vecteurs: &[Vec<f32>],
+    echec: &mut Option<Erreur>,
+) -> usize {
+    let mut n = 0;
+    while let Some(f) = nouveaux.front() {
+        let k = f.passages.len();
+        if *curseur + k > vecteurs.len() {
+            break;
+        }
+        let mut f = nouveaux.pop_front().expect("front vu");
+        f.vecteurs = vecteurs[*curseur..*curseur + k].to_vec();
+        *curseur += k;
+        if let Some(v) = f.vecteurs.first() {
+            if v.is_empty() {
+                *echec = Some("Le provider a rendu un vecteur vide.".into());
+                break;
+            }
+            if coll.dimension != 0 && v.len() != coll.dimension {
+                *echec = Some("La dimension des vecteurs du provider a changé.".into());
+                break;
+            }
+            coll.dimension = v.len();
+        }
+        if f.vecteurs.iter().any(|v| v.len() != coll.dimension) {
+            *echec = Some("Le provider a rendu des vecteurs de tailles différentes.".into());
+            break;
+        }
+        coll.fichiers.retain(|e| e.chemin != f.chemin);
+        coll.fichiers.push(f);
+        n += 1;
+    }
+    n
 }
 
 impl Base {
@@ -391,11 +441,20 @@ impl Base {
         Ok(())
     }
 
+    pub fn a_des_collections(&self) -> Result<bool, String> {
+        Ok(!self.noms_collections()?.is_empty())
+    }
+
+    /// Nombres de fichiers et de passages ; ne lit que `passages.json`, pas les vecteurs.
     pub fn liste(&self) -> Result<Vec<Resume>, String> {
         self.noms_collections()?
             .iter()
             .map(|n| {
-                let c = self.charger(n)?;
+                let chemin = self.dossier_collections().join(n).join("passages.json");
+                let brut = std::fs::read(&chemin)
+                    .map_err(|e| format!("lecture de {} impossible : {e}", chemin.display()))?;
+                let c: Collection = serde_json::from_slice(&brut)
+                    .map_err(|e| format!("{} est illisible : {e}", chemin.display()))?;
                 Ok(Resume {
                     nom: c.nom.clone(),
                     fichiers: c.fichiers.len(),
@@ -436,6 +495,20 @@ impl Base {
         portee: &str,
         fichiers: &[(String, String)],
     ) -> Result<Ajout, Erreur> {
+        self.ajouter_avec(acces, nom, portee, fichiers, &|_| {})
+            .await
+    }
+
+    /// Comme `ajouter`, avec la collection écrite après chaque lot de vecteurs (fichiers complets
+    /// seulement) ; `progres` reçoit le nombre de fichiers traités à chaque étape.
+    pub async fn ajouter_avec(
+        &self,
+        acces: &Acces<'_>,
+        nom: &str,
+        portee: &str,
+        fichiers: &[(String, String)],
+        progres: &(dyn Fn(usize) + Sync),
+    ) -> Result<Ajout, Erreur> {
         valider_nom(nom)?;
         self.lire_config()?;
         let exact = self.trouver(nom)?;
@@ -459,7 +532,7 @@ impl Base {
         let retires = avant - coll.fichiers.len();
 
         let mut inchanges = 0;
-        let mut nouveaux: Vec<Fichier> = Vec::new();
+        let mut nouveaux: VecDeque<Fichier> = VecDeque::new();
         for (chemin, contenu) in fichiers {
             let emp = empreinte(contenu);
             if coll
@@ -470,12 +543,15 @@ impl Base {
                 inchanges += 1;
                 continue;
             }
-            nouveaux.push(Fichier {
+            nouveaux.push_back(Fichier {
                 chemin: chemin.clone(),
                 empreinte: emp,
                 passages: decouper(chemin, contenu),
                 vecteurs: Vec::new(),
             });
+        }
+        if inchanges > 0 {
+            progres(inchanges);
         }
         let textes: Vec<String> = nouveaux
             .iter()
@@ -483,6 +559,10 @@ impl Base {
             .collect();
         let mut vecteurs: Vec<Vec<f32>> = Vec::new();
         let mut echec: Option<Erreur> = None;
+        let mut curseur = 0;
+        let mut ajoutes = 0;
+        let mut a_ecrire = retires > 0;
+        let mut cree = exact.is_some();
         for lot in textes.chunks(LOT) {
             match acces.vecteurs(lot).await {
                 Ok(v) => vecteurs.extend(v),
@@ -491,37 +571,42 @@ impl Base {
                     break;
                 }
             }
-        }
-        // Les fichiers dont tous les vecteurs sont arrivés.
-        let mut ajoutes = 0;
-        let mut curseur = 0;
-        for mut f in nouveaux {
-            let n = f.passages.len();
-            if curseur + n > vecteurs.len() {
+            let n = finaliser(
+                &mut coll,
+                &mut nouveaux,
+                &mut curseur,
+                &vecteurs,
+                &mut echec,
+            );
+            ajoutes += n;
+            a_ecrire |= n > 0;
+            if echec.is_some() {
                 break;
             }
-            f.vecteurs = vecteurs[curseur..curseur + n].to_vec();
-            curseur += n;
-            if let Some(v) = f.vecteurs.first() {
-                if v.is_empty() {
-                    echec = Some("Le provider a rendu un vecteur vide.".into());
-                    break;
-                }
-                if coll.dimension != 0 && v.len() != coll.dimension {
-                    echec = Some("La dimension des vecteurs du provider a changé.".into());
-                    break;
-                }
-                coll.dimension = v.len();
+            if a_ecrire {
+                coll.fichiers.sort_by(|a, b| a.chemin.cmp(&b.chemin));
+                self.enregistrer(&coll)?;
+                a_ecrire = false;
+                cree = true;
             }
-            if f.vecteurs.iter().any(|v| v.len() != coll.dimension) {
-                echec = Some("Le provider a rendu des vecteurs de tailles différentes.".into());
-                break;
-            }
-            coll.fichiers.retain(|e| e.chemin != f.chemin);
-            coll.fichiers.push(f);
-            ajoutes += 1;
+            progres(n);
         }
-        if ajoutes > 0 || retires > 0 || (exact.is_none() && echec.is_none()) {
+        if echec.is_none() {
+            // Les fichiers sans passage, derniers de la file.
+            let n = finaliser(
+                &mut coll,
+                &mut nouveaux,
+                &mut curseur,
+                &vecteurs,
+                &mut echec,
+            );
+            ajoutes += n;
+            a_ecrire |= n > 0;
+            if n > 0 {
+                progres(n);
+            }
+        }
+        if a_ecrire || (!cree && echec.is_none()) {
             coll.fichiers.sort_by(|a, b| a.chemin.cmp(&b.chemin));
             self.enregistrer(&coll)?;
         }
@@ -573,6 +658,256 @@ impl Base {
         trouves.truncate(RESULTATS_MAX);
         Ok(trouves)
     }
+}
+
+/// Où en est le dernier ajout du projet. Gardé en mémoire seulement : après un redémarrage,
+/// rien n'est « en cours ».
+#[derive(Serialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum EtatAjout {
+    EnCours,
+    Fini,
+    Arrete,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SuiviAjout {
+    pub numero: u64,
+    pub collection: String,
+    pub etat: EtatAjout,
+    pub faits: usize,
+    pub total: usize,
+    pub ajoutes: usize,
+    pub inchanges: usize,
+    pub retires: usize,
+    pub ignores: usize,
+    pub cause: Option<String>,
+    pub detail: Option<String>,
+}
+
+#[derive(Default)]
+pub struct Suivi {
+    actuel: std::sync::Mutex<Option<SuiviAjout>>,
+}
+
+impl Suivi {
+    fn verrou(&self) -> std::sync::MutexGuard<'_, Option<SuiviAjout>> {
+        self.actuel.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn lire(&self) -> Option<SuiviAjout> {
+        self.verrou().clone()
+    }
+
+    pub fn en_cours_pour(&self, collection: &str) -> bool {
+        self.verrou().as_ref().is_some_and(|s| {
+            s.etat == EtatAjout::EnCours && s.collection.eq_ignore_ascii_case(collection)
+        })
+    }
+
+    /// `None` si un ajout est déjà en cours ; sinon le numéro du nouvel ajout.
+    pub fn demarrer(&self, collection: &str, total: usize) -> Option<u64> {
+        let mut g = self.verrou();
+        let precedent = match g.as_ref() {
+            Some(s) if s.etat == EtatAjout::EnCours => return None,
+            Some(s) => s.numero,
+            None => 0,
+        };
+        let numero = precedent + 1;
+        *g = Some(SuiviAjout {
+            numero,
+            collection: collection.to_string(),
+            etat: EtatAjout::EnCours,
+            faits: 0,
+            total,
+            ajoutes: 0,
+            inchanges: 0,
+            retires: 0,
+            ignores: 0,
+            cause: None,
+            detail: None,
+        });
+        Some(numero)
+    }
+
+    fn modifier(&self, numero: u64, f: impl FnOnce(&mut SuiviAjout)) {
+        if let Some(s) = self.verrou().as_mut().filter(|s| s.numero == numero) {
+            f(s);
+        }
+    }
+
+    /// La tâche s'est arrêtée sans conclure (panique) : l'ajout n'est plus « en cours ».
+    pub fn interrompre(&self, numero: u64) {
+        self.modifier(numero, |s| {
+            if s.etat == EtatAjout::EnCours {
+                s.etat = EtatAjout::Arrete;
+                s.cause = Some("L'ajout s'est interrompu.".into());
+            }
+        });
+    }
+
+    fn avancer(&self, numero: u64, n: usize) {
+        self.modifier(numero, |s| s.faits = (s.faits + n).min(s.total));
+    }
+}
+
+/// Fichiers d'un chemin demandé : sa portée (pour retirer ce qui a disparu) et ses fichiers.
+pub struct Cible {
+    pub portee: String,
+    pub fichiers: Vec<String>,
+    /// Fichiers que git ignore sous ce chemin : comptés comme ignorés, jamais lus.
+    pub ignores_git: usize,
+}
+
+/// Parcourt les chemins (relatifs au projet) sans lire les fichiers : règles git, sans `.git/`
+/// ni `.yaide/`. Un chemin hors du projet ou absent est refusé.
+pub fn parcourir(projet: &Path, chemins: &[String]) -> Result<Vec<Cible>, crate::fichiers::Erreur> {
+    use crate::fichiers::{resoudre, Erreur as E};
+    let racine = projet.canonicalize()?;
+    let mut cibles = Vec::new();
+    for rel in chemins {
+        let abs = resoudre(&racine, rel)?;
+        let relatif = abs.strip_prefix(&racine).unwrap_or(&abs);
+        let premier = relatif
+            .components()
+            .next()
+            .map(|c| c.as_os_str().to_owned());
+        if premier.is_some_and(|p| p == ".git" || p == ".yaide") {
+            return Err(E::Invalide("Ce dossier n'est pas ajoutable."));
+        }
+        let meta = std::fs::metadata(&abs)?;
+        let en_rel = |p: &Path| {
+            p.strip_prefix(&racine)
+                .unwrap_or(p)
+                .to_string_lossy()
+                .into_owned()
+        };
+        let portee = en_rel(&abs);
+        if meta.is_file() {
+            cibles.push(Cible {
+                fichiers: vec![portee.clone()],
+                portee,
+                ignores_git: 0,
+            });
+            continue;
+        }
+        let git = crate::depot::est_un_depot(&racine);
+        let interdits = [racine.join(".git"), racine.join(".yaide")];
+        let marcher = |regles_git: bool| -> Vec<String> {
+            let interdits = interdits.clone();
+            ignore::WalkBuilder::new(&abs)
+                .hidden(false)
+                .ignore(false)
+                .git_ignore(regles_git)
+                .git_exclude(regles_git)
+                .git_global(regles_git)
+                .parents(regles_git)
+                .sort_by_file_path(|a, b| a.cmp(b))
+                .filter_entry(move |e| !interdits.iter().any(|i| e.path() == i))
+                .build()
+                .flatten()
+                .filter(|e| e.file_type().is_some_and(|t| t.is_file()))
+                .map(|e| en_rel(e.path()))
+                .collect()
+        };
+        let fichiers = marcher(git);
+        let ignores_git = if git {
+            marcher(false).len() - fichiers.len()
+        } else {
+            0
+        };
+        cibles.push(Cible {
+            portee,
+            fichiers,
+            ignores_git,
+        });
+    }
+    Ok(cibles)
+}
+
+pub fn total(cibles: &[Cible]) -> usize {
+    cibles
+        .iter()
+        .map(|c| c.fichiers.len() + c.ignores_git)
+        .sum()
+}
+
+/// Tout ce qu'il faut à la tâche d'ajout, possédé : elle ne dépend d'aucune requête.
+pub struct Demande {
+    pub projet: PathBuf,
+    pub collection: String,
+    pub cibles: Vec<Cible>,
+    pub provider: Provider,
+    pub adresse: String,
+    pub cle: Option<String>,
+    pub modele: String,
+}
+
+/// Exécute l'ajout, un chemin après l'autre, et note l'avancement dans `suivi`.
+pub async fn executer(suivi: &Suivi, numero: u64, d: Demande) {
+    let client = provider::client();
+    let acces = Acces {
+        client: &client,
+        provider: d.provider,
+        adresse: &d.adresse,
+        cle: d.cle.as_deref(),
+        modele: &d.modele,
+    };
+    let base = Base::new(&d.projet);
+    for cible in d.cibles {
+        let projet = d.projet.clone();
+        let chemins = cible.fichiers;
+        let lus = tokio::task::spawn_blocking(move || {
+            let mut lus = Vec::new();
+            let mut ignores = 0;
+            for c in chemins {
+                match crate::fichiers::lire(&projet, &c) {
+                    Ok((texte, _)) => lus.push((c, texte)),
+                    Err(_) => ignores += 1,
+                }
+            }
+            (lus, ignores)
+        })
+        .await;
+        let Ok((lus, ignores)) = lus else {
+            return arreter(
+                suivi,
+                numero,
+                "La lecture des fichiers s'est interrompue.".into(),
+            );
+        };
+        let ignores = ignores + cible.ignores_git;
+        suivi.modifier(numero, |s| s.ignores += ignores);
+        suivi.avancer(numero, ignores);
+        let r = base
+            .ajouter_avec(&acces, &d.collection, &cible.portee, &lus, &|n| {
+                suivi.avancer(numero, n)
+            })
+            .await;
+        match r {
+            Ok(a) => suivi.modifier(numero, |s| {
+                s.ajoutes += a.ajoutes;
+                s.inchanges += a.inchanges;
+                s.retires += a.retires;
+            }),
+            Err(e) => {
+                suivi.modifier(numero, |s| {
+                    s.etat = EtatAjout::Arrete;
+                    s.cause = Some(e.cause);
+                    s.detail = Some(e.detail).filter(|d| !d.is_empty());
+                });
+                return;
+            }
+        }
+    }
+    suivi.modifier(numero, |s| s.etat = EtatAjout::Fini);
+}
+
+fn arreter(suivi: &Suivi, numero: u64, cause: String) {
+    suivi.modifier(numero, |s| {
+        s.etat = EtatAjout::Arrete;
+        s.cause = Some(cause);
+    });
 }
 
 #[cfg(test)]

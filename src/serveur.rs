@@ -4,7 +4,8 @@ use crate::agent::mcp;
 use crate::agent::outils::Limites;
 use crate::agent::reglages::{Erreur, Reglages};
 use crate::{
-    auth, commande_mise_a_jour, config, depot, fichiers, git, opencode, recherche, shells, version,
+    auth, commande_mise_a_jour, config, connaissance, depot, fichiers, git, opencode, recherche,
+    shells, version,
 };
 use axum::body::Bytes;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
@@ -36,6 +37,7 @@ struct Etat {
     client_opencode: reqwest::Client,
     version: version::Version,
     jeton_apercu: String,
+    ajouts: Arc<connaissance::Suivi>,
 }
 
 type Partage = Arc<Etat>;
@@ -1275,6 +1277,302 @@ async fn mcp_supprimer(State(etat): State<Partage>, CheminUrl(nom): CheminUrl<St
     reponse_mcp(&fichier, r)
 }
 
+fn refus_base(code: StatusCode, cause: &str, message: impl Into<String>) -> Response {
+    json_rep(
+        code,
+        serde_json::json!({ "cause": cause, "message": message.into() }),
+    )
+}
+
+/// Configuration de la base et ce qu'il faut pour joindre son provider, ou le refus à rendre.
+#[allow(clippy::result_large_err)]
+fn acces_base(
+    etat: &Etat,
+) -> Result<
+    (
+        connaissance::Config,
+        crate::agent::provider::Provider,
+        String,
+        Option<String>,
+    ),
+    Response,
+> {
+    let config = connaissance::Base::new(&etat.projet_dir)
+        .lire_config()
+        .map_err(|m| refus_base(StatusCode::CONFLICT, "illisible", m))?
+        .ok_or_else(|| {
+            refus_base(
+                StatusCode::CONFLICT,
+                "non_configuree",
+                "La base de connaissance n'est pas configurée.",
+            )
+        })?;
+    let provider = crate::agent::reglages::provider(&config.provider).ok_or_else(|| {
+        refus_base(
+            StatusCode::CONFLICT,
+            "illisible",
+            "Le provider de la base est inconnu.",
+        )
+    })?;
+    let cle = etat.reglages.cle(&config.provider);
+    connaissance::verifier_cle(provider, cle.as_deref())
+        .map_err(|m| refus_base(StatusCode::CONFLICT, "cle", m))?;
+    let adresse = etat
+        .reglages
+        .adresse(&config.provider)
+        .unwrap_or_else(|| provider.adresse_par_defaut().to_string());
+    Ok((config, provider, adresse, cle))
+}
+
+/// Configuration, collections (avec l'avancement d'un ajout en cours) et dernier ajout.
+/// Ne contacte aucun provider (AC-029-4).
+fn vue_connaissance(etat: &Etat) -> Response {
+    let base = connaissance::Base::new(&etat.projet_dir);
+    let mut erreur: Option<String> = None;
+    let config = match base.lire_config() {
+        Ok(c) => c,
+        Err(m) => {
+            erreur = Some(m);
+            None
+        }
+    };
+    let liste = base.liste().unwrap_or_else(|m| {
+        erreur.get_or_insert(m);
+        Vec::new()
+    });
+    let ajout = etat.ajouts.lire();
+    let en_cours = ajout
+        .as_ref()
+        .filter(|a| a.etat == connaissance::EtatAjout::EnCours);
+    let mut collections: Vec<serde_json::Value> = liste
+        .iter()
+        .map(|c| {
+            let mut v = serde_json::to_value(c).unwrap_or_default();
+            if let Some(a) = en_cours.filter(|a| a.collection.eq_ignore_ascii_case(&c.nom)) {
+                v["ajout"] = serde_json::json!({ "faits": a.faits, "total": a.total });
+            }
+            v
+        })
+        .collect();
+    if let Some(a) = en_cours.filter(|a| {
+        !liste
+            .iter()
+            .any(|c| c.nom.eq_ignore_ascii_case(&a.collection))
+    }) {
+        collections.push(serde_json::json!({
+            "nom": a.collection, "fichiers": 0, "passages": 0,
+            "ajout": { "faits": a.faits, "total": a.total },
+        }));
+        collections.sort_by_key(|c| c["nom"].as_str().unwrap_or("").to_lowercase());
+    }
+    json_rep(
+        StatusCode::OK,
+        serde_json::json!({
+            "config": config, "erreur": erreur, "collections": collections, "ajout": ajout,
+        }),
+    )
+}
+
+async fn connaissance_etat(State(etat): State<Partage>) -> Response {
+    vue_connaissance(&etat)
+}
+
+/// `{ provider, modele }` ; n'écrit que le fichier de configuration, sans contacter le provider.
+async fn connaissance_config(State(etat): State<Partage>, corps: Bytes) -> Response {
+    let Some(v) = corps_json(&corps) else {
+        return corps_invalide();
+    };
+    let (Some(provider), Some(modele)) = (v["provider"].as_str(), v["modele"].as_str()) else {
+        return corps_invalide();
+    };
+    if !connaissance::fournit_des_vecteurs(provider) {
+        return json_rep(
+            StatusCode::BAD_REQUEST,
+            serde_json::json!({ "champ": "provider", "message": "Ce provider ne fournit pas de vecteurs." }),
+        );
+    }
+    if modele.trim().is_empty() {
+        return json_rep(
+            StatusCode::BAD_REQUEST,
+            serde_json::json!({ "champ": "modele", "message": "Donnez le nom du modèle." }),
+        );
+    }
+    let base = connaissance::Base::new(&etat.projet_dir);
+    if let Err(m) = base.lire_config() {
+        return refus_base(StatusCode::CONFLICT, "illisible", m);
+    }
+    match base.ecrire_config(provider, modele) {
+        Ok(_) => vue_connaissance(&etat),
+        Err(m) if base.a_des_collections().unwrap_or(false) => {
+            refus_base(StatusCode::CONFLICT, "collections", m)
+        }
+        Err(m) => refus_base(StatusCode::INTERNAL_SERVER_ERROR, "ecriture", m),
+    }
+}
+
+/// Nom exact d'une collection, ou la réponse 400 ou 404 à rendre.
+#[allow(clippy::result_large_err)]
+fn collection_existante(base: &connaissance::Base, nom: &str) -> Result<String, Response> {
+    connaissance::valider_nom(nom).map_err(|m| refus_base(StatusCode::BAD_REQUEST, "nom", m))?;
+    base.trouver(nom)
+        .map_err(|m| refus_base(StatusCode::INTERNAL_SERVER_ERROR, "lecture", m))?
+        .ok_or_else(|| {
+            refus_base(
+                StatusCode::NOT_FOUND,
+                "inconnue",
+                "Cette collection n'existe pas.",
+            )
+        })
+}
+
+async fn connaissance_fichiers(
+    State(etat): State<Partage>,
+    CheminUrl(nom): CheminUrl<String>,
+) -> Response {
+    let base = connaissance::Base::new(&etat.projet_dir);
+    let exact = match collection_existante(&base, &nom) {
+        Ok(n) => n,
+        Err(r) => return r,
+    };
+    match base.fichiers(&exact) {
+        Ok(f) => json_rep(
+            StatusCode::OK,
+            serde_json::json!({ "nom": exact, "fichiers": f }),
+        ),
+        Err(m) => refus_base(StatusCode::INTERNAL_SERVER_ERROR, "lecture", m),
+    }
+}
+
+async fn connaissance_supprimer(
+    State(etat): State<Partage>,
+    CheminUrl(nom): CheminUrl<String>,
+) -> Response {
+    let base = connaissance::Base::new(&etat.projet_dir);
+    if let Err(m) = connaissance::valider_nom(&nom) {
+        return refus_base(StatusCode::BAD_REQUEST, "nom", m);
+    }
+    // Avant de chercher la collection : un premier ajout ne l'a peut-être pas encore écrite.
+    if etat.ajouts.en_cours_pour(&nom) {
+        return refus_base(
+            StatusCode::CONFLICT,
+            "encours",
+            format!("L'ajout à {nom} est en cours. Attendez sa fin pour supprimer la collection."),
+        );
+    }
+    let exact = match collection_existante(&base, &nom) {
+        Ok(n) => n,
+        Err(r) => return r,
+    };
+    match base.supprimer(&exact) {
+        Ok(()) => vue_connaissance(&etat),
+        Err(m) => refus_base(StatusCode::INTERNAL_SERVER_ERROR, "ecriture", m),
+    }
+}
+
+/// `{ collection, chemins }` ; répond 202 et ajoute en tâche de fond, sans lien avec la requête.
+async fn connaissance_ajouter(State(etat): State<Partage>, corps: Bytes) -> Response {
+    let Some(v) = corps_json(&corps) else {
+        return corps_invalide();
+    };
+    let chemins: Option<Vec<String>> = v["chemins"]
+        .as_array()
+        .and_then(|a| a.iter().map(|c| c.as_str().map(str::to_string)).collect())
+        .filter(|c: &Vec<String>| !c.is_empty());
+    let (Some(nom), Some(chemins)) = (v["collection"].as_str(), chemins) else {
+        return corps_invalide();
+    };
+    if let Err(m) = connaissance::valider_nom(nom) {
+        return refus_base(StatusCode::BAD_REQUEST, "nom", m);
+    }
+    let (config, provider, adresse, cle) = match acces_base(&etat) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let base = connaissance::Base::new(&etat.projet_dir);
+    let collection = match base.trouver(nom) {
+        Ok(c) => c.unwrap_or_else(|| nom.to_string()),
+        Err(m) => return refus_base(StatusCode::INTERNAL_SERVER_ERROR, "lecture", m),
+    };
+    let projet = etat.projet_dir.clone();
+    let cibles =
+        match tokio::task::spawn_blocking(move || connaissance::parcourir(&projet, &chemins)).await
+        {
+            Ok(Ok(c)) => c,
+            Ok(Err(e)) => return erreur_fichier(e),
+            Err(e) => {
+                return refus_base(StatusCode::INTERNAL_SERVER_ERROR, "erreur", e.to_string())
+            }
+        };
+    let total = connaissance::total(&cibles);
+    let Some(numero) = etat.ajouts.demarrer(&collection, total) else {
+        return refus_base(
+            StatusCode::CONFLICT,
+            "encours",
+            "Un ajout est déjà en cours. Attendez sa fin, puis réessayez.",
+        );
+    };
+    let demande = connaissance::Demande {
+        projet: etat.projet_dir.clone(),
+        collection: collection.clone(),
+        cibles,
+        provider,
+        adresse,
+        cle,
+        modele: config.modele,
+    };
+    let suivi = etat.ajouts.clone();
+    tokio::spawn(async move {
+        let travail = {
+            let suivi = suivi.clone();
+            tokio::spawn(async move { connaissance::executer(&suivi, numero, demande).await })
+        };
+        if travail.await.is_err() {
+            suivi.interrompre(numero);
+        }
+    });
+    json_rep(
+        StatusCode::ACCEPTED,
+        serde_json::json!({ "numero": numero, "collection": collection, "total": total }),
+    )
+}
+
+/// `{ question, collection? }`.
+async fn connaissance_chercher(State(etat): State<Partage>, corps: Bytes) -> Response {
+    let Some(v) = corps_json(&corps) else {
+        return corps_invalide();
+    };
+    let Some(question) = v["question"].as_str().filter(|q| !q.trim().is_empty()) else {
+        return corps_invalide();
+    };
+    let (config, provider, adresse, cle) = match acces_base(&etat) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let base = connaissance::Base::new(&etat.projet_dir);
+    let collection = match v["collection"].as_str() {
+        Some(n) => match collection_existante(&base, n) {
+            Ok(n) => Some(n),
+            Err(r) => return r,
+        },
+        None => None,
+    };
+    let client = crate::agent::provider::client();
+    let acces = connaissance::Acces {
+        client: &client,
+        provider,
+        adresse: &adresse,
+        cle: cle.as_deref(),
+        modele: &config.modele,
+    };
+    match base.chercher(&acces, question, collection.as_deref()).await {
+        Ok(passages) => json_rep(StatusCode::OK, serde_json::json!({ "passages": passages })),
+        Err(e) => json_rep(
+            StatusCode::BAD_GATEWAY,
+            serde_json::json!({ "cause": "provider", "message": e.cause, "detail": e.detail }),
+        ),
+    }
+}
+
 async fn agents_liste(State(etat): State<Partage>) -> Response {
     json_rep(
         StatusCode::OK,
@@ -1412,6 +1710,7 @@ pub async fn servir(
         agent,
         version: version::Version::new(),
         jeton_apercu: crate::apercu::nouveau_jeton(),
+        ajouts: Default::default(),
     });
     let suivi = etat.clone();
     let veille = tokio::spawn(async move {
@@ -1484,6 +1783,14 @@ pub async fn servir(
         .route("/api/agent/mcp", get(mcp_liste))
         .route("/api/agent/mcp/serveurs", put(mcp_enregistrer))
         .route("/api/agent/mcp/serveurs/{nom}", delete(mcp_supprimer))
+        .route("/api/connaissance", get(connaissance_etat))
+        .route("/api/connaissance/config", put(connaissance_config))
+        .route(
+            "/api/connaissance/collections/{nom}",
+            get(connaissance_fichiers).delete(connaissance_supprimer),
+        )
+        .route("/api/connaissance/ajouts", post(connaissance_ajouter))
+        .route("/api/connaissance/recherche", post(connaissance_chercher))
         .route("/api/agent/messages", post(agent_message))
         .route("/api/agent/conversations", get(agent_conversations))
         .route("/api/agent/conversations/{id}", get(agent_conversation))

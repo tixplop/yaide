@@ -1,0 +1,830 @@
+//! Routes de la base de connaissance et ajout en tâche de fond (REQ-103 à REQ-106).
+#![allow(non_snake_case)]
+use serde_json::{json, Value};
+use std::collections::VecDeque;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+const EXE: &str = env!("CARGO_BIN_EXE_yaide");
+
+struct Serveur {
+    child: Child,
+    port: u16,
+    cookie: String,
+    projet: PathBuf,
+}
+
+impl Drop for Serveur {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+struct Rep {
+    code: u16,
+    corps: String,
+}
+
+impl Rep {
+    fn json(&self) -> Value {
+        serde_json::from_str(&self.corps).unwrap_or_else(|_| panic!("pas du JSON : {}", self.corps))
+    }
+}
+
+fn port_libre() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
+struct RepBrute {
+    code: u16,
+    entetes: String,
+    corps: String,
+}
+
+fn requete(
+    port: u16,
+    methode: &str,
+    chemin: &str,
+    cookie: &str,
+    origine: &str,
+    corps: &[u8],
+) -> RepBrute {
+    let mut cmd = Command::new("curl");
+    cmd.args(["-sk", "-i", "--max-time", "30", "-X", methode])
+        .arg(format!("https://127.0.0.1:{port}{chemin}"))
+        .args(["-H", &format!("Origin: {origine}")])
+        .args(["--data-binary", "@-"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped());
+    if !cookie.is_empty() {
+        cmd.args(["-H", &format!("Cookie: {cookie}")]);
+    }
+    let mut enfant = cmd.spawn().unwrap();
+    let mut stdin = enfant.stdin.take().unwrap();
+    let donnees = corps.to_vec();
+    let fil = std::thread::spawn(move || {
+        let _ = stdin.write_all(&donnees);
+    });
+    let sortie = enfant.wait_with_output().unwrap();
+    fil.join().unwrap();
+    let texte = String::from_utf8_lossy(&sortie.stdout).into_owned();
+    let code = texte
+        .split_whitespace()
+        .nth(1)
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    let (entetes, corps) = texte
+        .split_once("\r\n\r\n")
+        .map_or((String::new(), String::new()), |(e, c)| {
+            (e.to_string(), c.to_string())
+        });
+    RepBrute {
+        code,
+        entetes,
+        corps,
+    }
+}
+
+impl Serveur {
+    fn appel(&self, methode: &str, chemin: &str, corps: &Value) -> Rep {
+        let origine = format!("https://127.0.0.1:{}", self.port);
+        let corps = if corps.is_null() {
+            String::new()
+        } else {
+            corps.to_string()
+        };
+        let r = requete(
+            self.port,
+            methode,
+            chemin,
+            &self.cookie,
+            &origine,
+            corps.as_bytes(),
+        );
+        Rep {
+            code: r.code,
+            corps: r.corps,
+        }
+    }
+
+    fn etat(&self) -> Value {
+        let r = self.appel("GET", "/api/connaissance", &Value::Null);
+        assert_eq!(r.code, 200, "{}", r.corps);
+        r.json()
+    }
+
+    fn ajouter(&self, collection: &str, chemins: &[&str]) -> Rep {
+        self.appel(
+            "POST",
+            "/api/connaissance/ajouts",
+            &json!({ "collection": collection, "chemins": chemins }),
+        )
+    }
+
+    fn chercher(&self, question: &str, collection: Option<&str>) -> Rep {
+        let mut corps = json!({ "question": question });
+        if let Some(c) = collection {
+            corps["collection"] = json!(c);
+        }
+        self.appel("POST", "/api/connaissance/recherche", &corps)
+    }
+
+    /// Attend la fin du dernier ajout ; rend son état.
+    fn attendre_fin(&self) -> Value {
+        let debut = Instant::now();
+        loop {
+            let ajout = self.etat()["ajout"].clone();
+            if !ajout.is_null() && ajout["etat"] != "en_cours" {
+                return ajout;
+            }
+            assert!(debut.elapsed() < Duration::from_secs(30), "ajout sans fin");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn collection(&self, nom: &str) -> Option<Value> {
+        self.etat()["collections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["nom"] == nom)
+            .cloned()
+    }
+
+    fn fichiers(&self, nom: &str) -> Vec<String> {
+        let r = self.appel(
+            "GET",
+            &format!("/api/connaissance/collections/{nom}"),
+            &Value::Null,
+        );
+        assert_eq!(r.code, 200, "{}", r.corps);
+        r.json()["fichiers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f.as_str().unwrap().to_string())
+            .collect()
+    }
+
+    fn config_json(&self) -> PathBuf {
+        self.projet.join(".yaide/connaissance/config.json")
+    }
+}
+
+fn dossier(nom: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!("connaissance-{nom}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let d = d.canonicalize().unwrap();
+    let mut c = Command::new(EXE)
+        .arg("passwd")
+        .env("XDG_CONFIG_HOME", d.join("cfg"))
+        .env("HOME", &d)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    c.stdin.take().unwrap().write_all(b"mdp\n").unwrap();
+    assert!(c.wait().unwrap().success());
+    d
+}
+
+fn demarrer(racine: &Path, projet: &str) -> Serveur {
+    let projet = racine.join(projet);
+    std::fs::create_dir_all(&projet).unwrap();
+    let port = port_libre();
+    let child = Command::new(EXE)
+        .arg(&projet)
+        .args(["--port", &port.to_string()])
+        .env("XDG_CONFIG_HOME", racine.join("cfg"))
+        .env("HOME", racine)
+        .env("GIT_CEILING_DIRECTORIES", racine)
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut s = Serveur {
+        child,
+        port,
+        cookie: String::new(),
+        projet,
+    };
+    let origine = format!("https://127.0.0.1:{port}");
+    for _ in 0..1000 {
+        if requete(port, "GET", "/api/info", "", &origine, b"").code == 200 {
+            let r = requete(port, "POST", "/api/connexion", "", &origine, b"mdp");
+            let ligne = r
+                .entetes
+                .lines()
+                .find(|l| l.to_lowercase().starts_with("set-cookie:"))
+                .expect("pas de Set-Cookie");
+            s.cookie = ligne[11..].trim().split(';').next().unwrap().to_string();
+            return s;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("le serveur ne répond pas");
+}
+
+fn lancer(nom: &str) -> Serveur {
+    demarrer(&dossier(nom), "projet")
+}
+
+type Recues = Arc<Mutex<Vec<Value>>>;
+
+/// Faux provider : répond sur `/embeddings`, une réponse du scénario par requête
+/// `(code, délai en ms)`, puis 200 tout de suite. Un texte `v<n>…` a le vecteur `[n, 1]`,
+/// les autres `[1, 0]`.
+fn faux_provider(scenario: Vec<(u16, u64)>) -> (String, Recues) {
+    use axum::body::Bytes;
+    use axum::extract::State;
+    use axum::http::{HeaderMap, StatusCode, Uri};
+    #[derive(Clone)]
+    struct Etat(Arc<Mutex<VecDeque<(u16, u64)>>>, Recues);
+    fn vecteur(t: &str) -> Vec<f32> {
+        let chiffres: String = t
+            .strip_prefix('v')
+            .unwrap_or("")
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        match chiffres.parse::<f32>() {
+            Ok(n) => vec![n, 1.0],
+            Err(_) => vec![1.0, 0.0],
+        }
+    }
+    async fn rep(
+        State(e): State<Etat>,
+        uri: Uri,
+        entetes: HeaderMap,
+        corps: Bytes,
+    ) -> (StatusCode, String) {
+        let v: Value = serde_json::from_slice(&corps).unwrap_or(Value::Null);
+        e.1.lock().unwrap().push(json!({
+            "chemin": uri.path(),
+            "auth": entetes.get("authorization").and_then(|v| v.to_str().ok()),
+            "model": v["model"],
+            "input": v["input"],
+        }));
+        let (code, delai) = e.0.lock().unwrap().pop_front().unwrap_or((200, 0));
+        tokio::time::sleep(Duration::from_millis(delai)).await;
+        if code != 200 {
+            return (
+                StatusCode::from_u16(code).unwrap(),
+                "{\"error\":\"clé refusée\"}".into(),
+            );
+        }
+        let data: Vec<Value> = v["input"]
+            .as_array()
+            .map(|a| a.as_slice())
+            .unwrap_or(&[])
+            .iter()
+            .enumerate()
+            .map(|(i, t)| json!({ "index": i, "embedding": vecteur(t.as_str().unwrap_or("")) }))
+            .collect();
+        (StatusCode::OK, json!({ "data": data }).to_string())
+    }
+    let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    ecoute.set_nonblocking(true).unwrap();
+    let adresse = format!("http://{}", ecoute.local_addr().unwrap());
+    let recues: Recues = Default::default();
+    let etat = Etat(Arc::new(Mutex::new(scenario.into())), recues.clone());
+    std::thread::spawn(move || {
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async move {
+                let app = axum::Router::new().fallback(rep).with_state(etat);
+                let ecoute = tokio::net::TcpListener::from_std(ecoute).unwrap();
+                axum::serve(ecoute, app).await.unwrap();
+            });
+    });
+    (adresse, recues)
+}
+
+/// Ollama (sans clé) à l'adresse donnée, puis la base configurée sur ce provider.
+fn configurer(s: &Serveur, adresse: &str) {
+    let r = s.appel(
+        "PUT",
+        "/api/agent/providers/ollama",
+        &json!({ "adresse": adresse }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let r = s.appel(
+        "PUT",
+        "/api/connaissance/config",
+        &json!({ "provider": "ollama", "modele": "m-embed" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+}
+
+fn ecrire(s: &Serveur, chemin: &str, contenu: &str) {
+    let p = s.projet.join(chemin);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(p, contenu).unwrap();
+}
+
+fn nombre_requetes(r: &Recues) -> usize {
+    r.lock().unwrap().len()
+}
+
+#[test]
+fn REQ103_AC3_REQ029_AC4_configuration_sans_requete_et_relue_au_redemarrage() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let racine = dossier("ac3");
+    let s = demarrer(&racine, "projet");
+    assert_eq!(s.etat()["config"], Value::Null);
+    assert!(!s.projet.join(".yaide").exists());
+    configurer(&s, &adresse);
+    let ecrit: Value =
+        serde_json::from_str(&std::fs::read_to_string(s.config_json()).unwrap()).unwrap();
+    assert_eq!(ecrit, json!({ "provider": "ollama", "modele": "m-embed" }));
+    // Lire la base et la configuration ne contacte pas le provider.
+    let _ = s.etat();
+    assert_eq!(
+        s.appel("GET", "/api/agent/reglages", &Value::Null).code,
+        200
+    );
+    assert_eq!(nombre_requetes(&recues), 0);
+    // Un provider sans vecteurs, ou un modèle vide, ne s'enregistre pas.
+    let r = s.appel(
+        "PUT",
+        "/api/connaissance/config",
+        &json!({ "provider": "anthropic", "modele": "m" }),
+    );
+    assert_eq!(r.code, 400);
+    let r = s.appel(
+        "PUT",
+        "/api/connaissance/config",
+        &json!({ "provider": "ollama", "modele": "  " }),
+    );
+    assert_eq!(r.code, 400);
+    assert_eq!(r.json()["champ"], "modele");
+    let nom = s.projet.file_name().unwrap().to_owned();
+    drop(s);
+    let s = demarrer(&racine, nom.to_str().unwrap());
+    assert_eq!(
+        s.etat()["config"],
+        json!({ "provider": "ollama", "modele": "m-embed" })
+    );
+    assert_eq!(nombre_requetes(&recues), 0);
+}
+
+#[test]
+fn REQ103_AC6_deux_projets_ont_chacun_leur_base() {
+    let (adresse, _) = faux_provider(vec![]);
+    let racine = dossier("ac6");
+    let a = demarrer(&racine, "a");
+    let b = demarrer(&racine, "b");
+    configurer(&a, &adresse);
+    ecrire(&a, "docs/a.md", "v1 un\n");
+    assert_eq!(a.ajouter("notes", &["docs"]).code, 202);
+    assert_eq!(a.attendre_fin()["etat"], "fini");
+    assert!(a.collection("notes").is_some());
+    let eb = b.etat();
+    assert_eq!(eb["config"], Value::Null);
+    assert_eq!(eb["collections"], json!([]));
+    assert_eq!(eb["ajout"], Value::Null);
+    assert!(!b.projet.join(".yaide").exists());
+}
+
+#[test]
+fn REQ103_AC7_REQ104_AC7_refus_sans_requete_config_illisible_non_configuree_sans_cle() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac7");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    // Base non configurée.
+    let r = s.ajouter("notes", &["docs"]);
+    assert_eq!(r.code, 409);
+    assert_eq!(r.json()["cause"], "non_configuree");
+    assert_eq!(s.chercher("x", None).json()["cause"], "non_configuree");
+    // Provider avec clé obligatoire, sans clé.
+    s.appel(
+        "PUT",
+        "/api/agent/providers/openai",
+        &json!({ "adresse": adresse }),
+    );
+    let r = s.appel(
+        "PUT",
+        "/api/connaissance/config",
+        &json!({ "provider": "openai", "modele": "m" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let r = s.ajouter("notes", &["docs"]);
+    assert_eq!(r.code, 409);
+    assert_eq!(
+        r.json()["message"],
+        "Aucune clé pour OpenAI. Ajoutez-la avec Ctrl+P, puis > Providers LLM."
+    );
+    assert_eq!(s.chercher("x", None).code, 409);
+    // Configuration illisible : dite, jamais réécrite, ajout et recherche refusés.
+    std::fs::write(s.config_json(), "{ cassé").unwrap();
+    let e = s.etat();
+    assert_eq!(e["config"], Value::Null);
+    let message = e["erreur"].as_str().unwrap();
+    assert!(message.contains("config.json"), "{message}");
+    let r = s.ajouter("notes", &["docs"]);
+    assert_eq!(r.code, 409);
+    assert_eq!(r.json()["cause"], "illisible");
+    assert_eq!(s.chercher("x", None).json()["cause"], "illisible");
+    let r = s.appel(
+        "PUT",
+        "/api/connaissance/config",
+        &json!({ "provider": "ollama", "modele": "m" }),
+    );
+    assert_eq!(r.code, 409);
+    assert_eq!(std::fs::read_to_string(s.config_json()).unwrap(), "{ cassé");
+    assert_eq!(nombre_requetes(&recues), 0);
+}
+
+#[test]
+fn REQ104_AC2_AC3_AC8_ajout_de_dossier_compteurs_et_liste_de_chemins() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac2");
+    std::process::Command::new("git")
+        .args(["init", "-q"])
+        .arg(&s.projet)
+        .status()
+        .unwrap();
+    ecrire(&s, ".gitignore", "docs/ignore.md\n");
+    ecrire(&s, "docs/a.md", "v1 a\n");
+    ecrire(&s, "docs/b.md", "v2 b\n");
+    ecrire(&s, "docs/sous/c.md", "v3 c\n");
+    ecrire(&s, "docs/ignore.md", "v4 ignoré par git\n");
+    ecrire(&s, "docs/autre.md", "v5 hors dossier\n");
+    std::fs::write(s.projet.join("docs/binaire.bin"), [0u8, 1, 2, 255]).unwrap();
+    std::fs::write(
+        s.projet.join("docs/gros.txt"),
+        vec![b'a'; 5 * 1024 * 1024 + 1],
+    )
+    .unwrap();
+    configurer(&s, &adresse);
+
+    let r = s.ajouter("notes", &["docs"]);
+    assert_eq!(r.code, 202, "{}", r.corps);
+    let fin = s.attendre_fin();
+    assert_eq!(fin["etat"], "fini");
+    assert_eq!(fin["collection"], "notes");
+    assert_eq!(fin["ajoutes"], 4);
+    assert_eq!(fin["ignores"], 3);
+    assert_eq!(fin["faits"], fin["total"]);
+    assert_eq!(
+        s.fichiers("notes"),
+        ["docs/a.md", "docs/autre.md", "docs/b.md", "docs/sous/c.md"]
+    );
+    assert_eq!(s.collection("notes").unwrap()["passages"], 4);
+    let envoyes: Vec<Value> = recues.lock().unwrap().clone();
+    assert_eq!(envoyes.len(), 1);
+    assert_eq!(envoyes[0]["chemin"], "/embeddings");
+    assert_eq!(envoyes[0]["model"], "m-embed");
+    let textes: Vec<&str> = envoyes[0]["input"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t.as_str().unwrap())
+        .collect();
+    assert!(!textes.iter().any(|t| t.contains("ignoré par git")));
+
+    // Une liste de chemins : ces fichiers, et eux seuls.
+    recues.lock().unwrap().clear();
+    assert_eq!(s.ajouter("deux", &["docs/a.md", "docs/b.md"]).code, 202);
+    assert_eq!(s.attendre_fin()["ajoutes"], 2);
+    assert_eq!(s.fichiers("deux"), ["docs/a.md", "docs/b.md"]);
+    // Un chemin hors du projet ou absent est refusé, sans ajout.
+    assert_eq!(s.ajouter("deux", &["../ailleurs"]).code, 403);
+    assert_eq!(s.ajouter("deux", &["docs/absent.md"]).code, 404);
+    assert_eq!(s.ajouter("deux", &[".yaide"]).code, 400);
+}
+
+#[test]
+fn REQ104_AC5_ajouter_de_nouveau_ne_renvoie_que_ce_qui_a_change() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac5");
+    ecrire(&s, "docs/a.md", "v1 a\n");
+    ecrire(&s, "docs/b.md", "v2 b\n");
+    ecrire(&s, "docs/c.md", "v3 c\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    assert_eq!(s.attendre_fin()["ajoutes"], 3);
+    recues.lock().unwrap().clear();
+    ecrire(&s, "docs/a.md", "v9 modifié\n");
+    std::fs::remove_file(s.projet.join("docs/b.md")).unwrap();
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    let fin = s.attendre_fin();
+    assert_eq!(fin["ajoutes"], 1);
+    assert_eq!(fin["inchanges"], 1);
+    assert_eq!(fin["retires"], 1);
+    let envoyes = recues.lock().unwrap().clone();
+    assert_eq!(envoyes.len(), 1);
+    assert_eq!(envoyes[0]["input"], json!(["v9 modifié"]));
+    assert_eq!(s.fichiers("notes"), ["docs/a.md", "docs/c.md"]);
+    // La recherche voit le nouveau contenu.
+    let trouves = s.chercher("v9", Some("notes")).json();
+    assert_eq!(trouves["passages"][0]["texte"], "v9 modifié");
+}
+
+#[test]
+fn REQ104_AC6_nom_refuse_rien_envoye_et_casse_ignoree() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac6nom");
+    ecrire(&s, "docs/a.md", "v1 a\n");
+    configurer(&s, &adresse);
+    for nom in ["", &"a".repeat(41), "api docs", "é", "a/b"] {
+        let r = s.ajouter(nom, &["docs"]);
+        assert_eq!(r.code, 400, "{nom:?} : {}", r.corps);
+    }
+    assert_eq!(nombre_requetes(&recues), 0);
+    assert_eq!(s.etat()["ajout"], Value::Null);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    ecrire(&s, "docs/b.md", "v2 b\n");
+    assert_eq!(s.ajouter("Notes", &["docs"]).code, 202);
+    let fin = s.attendre_fin();
+    assert_eq!(fin["collection"], "notes");
+    assert_eq!(s.fichiers("notes"), ["docs/a.md", "docs/b.md"]);
+    let noms: Vec<Value> = s.etat()["collections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["nom"].clone())
+        .collect();
+    assert_eq!(noms, [json!("notes")]);
+}
+
+#[test]
+fn REQ104_AC9_refus_du_provider_arrete_l_ajout_et_garde_les_fichiers_finis() {
+    // Premier lot accepté, deuxième refusé : a.md (fini dans le premier lot) reste.
+    let (adresse, _) = faux_provider(vec![(200, 0), (401, 0)]);
+    let s = lancer("ac9");
+    ecrire(&s, "docs/a.md", "v1 a\n");
+    let ligne = format!("v2 {}", "x".repeat(1500));
+    ecrire(&s, "docs/b.md", &vec![ligne; 70].join("\n"));
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    let fin = s.attendre_fin();
+    assert_eq!(fin["etat"], "arrete");
+    assert_eq!(fin["cause"], "Ollama a refusé la requête (401).");
+    assert!(fin["detail"].as_str().unwrap().contains("clé refusée"));
+    assert_eq!(s.fichiers("notes"), ["docs/a.md"]);
+    let t = s.chercher("v1", Some("notes")).json();
+    assert_eq!(t["passages"][0]["chemin"], "docs/a.md");
+    // Provider injoignable.
+    let mort = format!("http://127.0.0.1:{}", port_libre());
+    s.appel(
+        "PUT",
+        "/api/agent/providers/ollama",
+        &json!({ "adresse": mort }),
+    );
+    ecrire(&s, "docs/c.md", "v3 c\n");
+    assert_eq!(s.ajouter("notes", &["docs/c.md"]).code, 202);
+    let fin = s.attendre_fin();
+    assert_eq!(fin["etat"], "arrete");
+    assert!(fin["cause"].as_str().unwrap().contains("injoignable"));
+    assert_eq!(s.fichiers("notes"), ["docs/a.md"]);
+}
+
+#[test]
+fn REQ104_AC10_REQ105_AC4_AC5_second_ajout_refuse_progression_et_suppression_refusee() {
+    // Deux lots : le second tarde, ce qui laisse lire l'avancement.
+    let (adresse, _) = faux_provider(vec![(200, 0), (200, 1500)]);
+    let s = lancer("ac10");
+    let ligne = format!("v2 {}", "x".repeat(1500));
+    ecrire(&s, "docs/a.md", "v1 a\n");
+    ecrire(&s, "docs/b.md", &vec![ligne; 70].join("\n"));
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    // a.md est fini dès le premier lot, b.md attend le second : « 1 / 2 ».
+    let debut = Instant::now();
+    let mut vu = None;
+    while debut.elapsed() < Duration::from_secs(10) {
+        if let Some(c) = s.collection("notes") {
+            if c["ajout"]["faits"] == 1 {
+                vu = Some(c["ajout"].clone());
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let vu = vu.expect("l'avancement se lit");
+    assert!(vu["faits"].as_u64() < vu["total"].as_u64(), "{vu}");
+    assert_eq!(vu["total"], 2);
+    let r = s.ajouter("notes", &["docs/b.md"]);
+    assert_eq!(r.code, 409);
+    assert_eq!(r.json()["cause"], "encours");
+    assert_eq!(
+        r.json()["message"],
+        "Un ajout est déjà en cours. Attendez sa fin, puis réessayez."
+    );
+    let r = s.appel(
+        "DELETE",
+        "/api/connaissance/collections/notes",
+        &Value::Null,
+    );
+    assert_eq!(r.code, 409);
+    assert_eq!(
+        r.json()["message"],
+        "L'ajout à notes est en cours. Attendez sa fin pour supprimer la collection."
+    );
+    let fin = s.attendre_fin();
+    assert_eq!(fin["etat"], "fini");
+    assert_eq!(fin["ajoutes"], 2);
+    assert_eq!(fin["faits"], fin["total"]);
+    let c = s.collection("notes").unwrap();
+    assert_eq!(c["fichiers"], 2);
+    assert_eq!(c["passages"], 71);
+    assert!(c.get("ajout").is_none());
+}
+
+#[test]
+fn REQ104_AC11_arret_de_yaide_pendant_l_ajout_ne_garde_que_les_fichiers_finis() {
+    let (adresse, recues) = faux_provider(vec![(200, 0), (200, 60_000)]);
+    let racine = dossier("ac11");
+    let mut s = demarrer(&racine, "projet");
+    let ligne = format!("v2 {}", "x".repeat(1500));
+    ecrire(&s, "docs/a.md", "v1 a\n");
+    ecrire(&s, "docs/b.md", &vec![ligne; 70].join("\n"));
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    let debut = Instant::now();
+    while nombre_requetes(&recues) < 2 {
+        assert!(debut.elapsed() < Duration::from_secs(20));
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(s.etat()["ajout"]["etat"], "en_cours");
+    // SIGTERM, comme `kill` : l'arrêt est propre et ne attend pas la fin de l'ajout.
+    let pid = s.child.id().to_string();
+    assert!(Command::new("kill")
+        .args(["-TERM", &pid])
+        .status()
+        .unwrap()
+        .success());
+    s.child.wait().unwrap();
+    let s2 = demarrer(&racine, "projet");
+    let e = s2.etat();
+    assert_eq!(e["ajout"], Value::Null);
+    assert_eq!(s2.fichiers("notes"), ["docs/a.md"]);
+    assert_eq!(e["collections"][0]["fichiers"], 1);
+    assert!(e["collections"][0].get("ajout").is_none());
+}
+
+#[test]
+fn REQ105_AC1_AC2_AC4_collections_listees_fichiers_triés_suppression() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("ac105");
+    let ligne = format!("v1 {}", "x".repeat(1500));
+    ecrire(&s, "docs/b.md", &vec![ligne; 5].join("\n"));
+    ecrire(&s, "docs/a.md", "v1 a\nv2 b");
+    ecrire(&s, "api/z.md", "v3 z\n");
+    configurer(&s, &adresse);
+    // Pas de collection : liste vide.
+    assert_eq!(s.etat()["collections"], json!([]));
+    assert_eq!(s.ajouter("notes", &["docs/b.md", "docs/a.md"]).code, 202);
+    s.attendre_fin();
+    assert_eq!(s.ajouter("api", &["api"]).code, 202);
+    s.attendre_fin();
+    let e = s.etat();
+    assert_eq!(
+        e["collections"],
+        json!([
+            { "nom": "api", "fichiers": 1, "passages": 1 },
+            { "nom": "notes", "fichiers": 2, "passages": 6 },
+        ])
+    );
+    assert_eq!(s.fichiers("notes"), ["docs/a.md", "docs/b.md"]);
+    let r = s.appel("GET", "/api/connaissance/collections/absente", &Value::Null);
+    assert_eq!(r.code, 404);
+    // Changer de modèle est refusé tant qu'une collection existe.
+    let r = s.appel(
+        "PUT",
+        "/api/connaissance/config",
+        &json!({ "provider": "ollama", "modele": "autre" }),
+    );
+    assert_eq!(r.code, 409);
+    assert_eq!(r.json()["cause"], "collections");
+    // Supprimer : la collection quitte la liste et le disque.
+    let r = s.appel(
+        "DELETE",
+        "/api/connaissance/collections/notes",
+        &Value::Null,
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert!(s.collection("notes").is_none());
+    assert!(!s
+        .projet
+        .join(".yaide/connaissance/collections/notes")
+        .exists());
+    assert!(s.collection("api").is_some());
+    let r = s.appel(
+        "DELETE",
+        "/api/connaissance/collections/notes",
+        &Value::Null,
+    );
+    assert_eq!(r.code, 404);
+    // Plus aucune collection : la configuration redevient modifiable.
+    s.appel("DELETE", "/api/connaissance/collections/api", &Value::Null);
+    let r = s.appel(
+        "PUT",
+        "/api/connaissance/config",
+        &json!({ "provider": "ollama", "modele": "autre" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+}
+
+#[test]
+fn REQ106_AC1_AC2_AC5_recherche_classee_filtrée_et_erreur_du_provider() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac106");
+    for n in 1..=12 {
+        ecrire(&s, &format!("docs/f{n:02}.md"), &format!("v{n} texte {n}"));
+    }
+    ecrire(&s, "api/g.md", "v3 api");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    assert_eq!(s.ajouter("api", &["api"]).code, 202);
+    s.attendre_fin();
+    recues.lock().unwrap().clear();
+
+    let r = s.chercher("v3", None);
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let envoyes = recues.lock().unwrap().clone();
+    assert_eq!(envoyes.len(), 1);
+    assert_eq!(envoyes[0]["chemin"], "/embeddings");
+    assert_eq!(envoyes[0]["input"], json!(["v3"]));
+    let p = r.json()["passages"].as_array().unwrap().clone();
+    assert_eq!(p.len(), 10);
+    // Cosinus de [3, 1] avec [n, 1], calculé ici : classement attendu.
+    let cos = |n: f32| (3.0 * n + 1.0) / (10f32.sqrt() * (n * n + 1.0).sqrt());
+    let scores: Vec<f32> = p
+        .iter()
+        .map(|x| x["score"].as_f64().unwrap() as f32)
+        .collect();
+    assert!(scores.windows(2).all(|w| w[0] >= w[1]), "{scores:?}");
+    let mut attendus: Vec<f32> = (1..=12).map(|n| cos(n as f32)).collect();
+    attendus.push(cos(3.0));
+    attendus.sort_by(|a, b| b.total_cmp(a));
+    for (s, a) in scores.iter().zip(&attendus) {
+        assert!((s - a).abs() < 1e-5, "{scores:?} / {attendus:?}");
+    }
+    // Les deux collections sont classées ensemble : f03 et g.md sont à 1,0.
+    let tetes: Vec<(&str, &str)> = p[..2]
+        .iter()
+        .map(|x| {
+            (
+                x["chemin"].as_str().unwrap(),
+                x["collection"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert!(tetes.contains(&("docs/f03.md", "notes")), "{tetes:?}");
+    assert!(tetes.contains(&("api/g.md", "api")), "{tetes:?}");
+    assert_eq!(p[0]["debut"], 1);
+    assert_eq!(p[0]["fin"], 1);
+    assert!(p[0]["texte"].as_str().unwrap().starts_with("v3"));
+
+    // Une collection : seuls ses passages ; moins de 10 passages, tous.
+    let r = s.chercher("v3", Some("api"));
+    let p = r.json()["passages"].as_array().unwrap().clone();
+    assert_eq!(p.len(), 1);
+    assert_eq!(p[0]["collection"], "api");
+    // La casse du nom ne compte pas.
+    assert_eq!(
+        s.chercher("v3", Some("API")).json()["passages"][0]["collection"],
+        "api"
+    );
+    assert_eq!(s.chercher("v3", Some("absente")).code, 404);
+    assert_eq!(s.chercher("   ", None).code, 400);
+
+    // Refus du provider : la cause, la réponse du provider, aucun résultat.
+    let (refus, _) = faux_provider(vec![(401, 0)]);
+    s.appel(
+        "PUT",
+        "/api/agent/providers/ollama",
+        &json!({ "adresse": refus }),
+    );
+    let r = s.chercher("v3", None);
+    assert_eq!(r.code, 502);
+    let v = r.json();
+    assert_eq!(v["message"], "Ollama a refusé la requête (401).");
+    assert!(v["detail"].as_str().unwrap().contains("clé refusée"));
+    assert!(v.get("passages").is_none());
+    // Provider injoignable.
+    s.appel(
+        "PUT",
+        "/api/agent/providers/ollama",
+        &json!({ "adresse": format!("http://127.0.0.1:{}", port_libre()) }),
+    );
+    let r = s.chercher("v3", None);
+    assert_eq!(r.code, 502);
+    assert!(r.json()["message"]
+        .as_str()
+        .unwrap()
+        .contains("injoignable"));
+}
