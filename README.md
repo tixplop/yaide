@@ -195,6 +195,8 @@ Deux boutons de la barre de titre, à gauche de « Thème clair », replient le 
 
 Quand le focus est dans un shell, toutes les touches que le navigateur laisse passer vont au shell, dont Ctrl+S et Ctrl+P. Seul Ctrl+Maj+F reste à Yaide.
 
+Copier-coller : dans un shell, Ctrl+C copie la sélection (sans sélection, il interrompt le programme) et Ctrl+V colle ; sur macOS, Cmd+C et Cmd+V. Partout dans Yaide, la copie donne du texte simple, sans mise en forme ni marques markdown ; l'éditeur copie le texte du fichier tel qu'il est écrit.
+
 ## Aperçu markdown
 
 À l'ouverture, un fichier markdown (`.md`, `.markdown`) s'affiche en mode hybride, et un fichier HTML avec son aperçu à côté de l'éditeur. Un clic sur « Mode hybride » ou sur « Aperçu » éteint ce mode pour cet onglet seulement : un onglet fermé puis rouvert reprend le mode par défaut, et un onglet restauré au retour garde son état.

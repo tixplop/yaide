@@ -490,3 +490,33 @@ test("REQ101_AC2_mode_hybride_eteint_rien_ne_se_suit", () => {
   z.detruire();
   z.remove();
 });
+
+function evenementPresse(type, donnees) {
+  const e = new Event(type, { bubbles: true, cancelable: true });
+  const appels = [];
+  e.clipboardData = { clearData() {}, setData: (t, v) => appels.push([t, v]), getData: (t) => donnees?.[t] ?? "", types: Object.keys(donnees ?? {}), files: [], items: [] };
+  return { e, appels };
+}
+
+test.each([false, true])("REQ102_AC10_copie_en_texte_simple_marques_comprises_hybride_%s", (hybride) => {
+  const z = zoneCode({ contenu: "Un mot en **gras**", langage: "markdown", nom: "a.md", hybride });
+  document.body.append(z);
+  z.vue.focus();
+  z.vue.dispatch({ selection: { anchor: 0, head: z.vue.state.doc.length } });
+  const { e, appels } = evenementPresse("copy");
+  z.vue.contentDOM.dispatchEvent(e);
+  expect(appels).toEqual([["text/plain", "Un mot en **gras**"]]);
+  z.detruire();
+  z.remove();
+});
+
+test("REQ102_AC11_collage_html_insere_le_texte_simple", () => {
+  const z = zoneCode({ contenu: "", langage: "markdown", nom: "a.md" });
+  document.body.append(z);
+  z.vue.focus();
+  const { e } = evenementPresse("paste", { "text/html": "<b>gras</b>", "text/plain": "gras" });
+  z.vue.contentDOM.dispatchEvent(e);
+  expect(z.contenu()).toBe("gras");
+  z.detruire();
+  z.remove();
+});

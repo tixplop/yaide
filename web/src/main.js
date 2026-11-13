@@ -2,6 +2,7 @@ import { info, sessionValide } from "./api.js";
 import { vueConnexion } from "./vues/connexion.js";
 import { charger } from "./reglages-interface.js";
 import { vuePrincipale } from "./vues/principale.js";
+import { copierEnTexteSimple } from "./ui/copie.js";
 
 export function titre() {
   return "yaide";
@@ -29,4 +30,7 @@ async function demarrer(app) {
 }
 
 const app = document.getElementById("app");
-if (app) demarrer(app);
+if (app) {
+  copierEnTexteSimple();
+  demarrer(app);
+}

@@ -279,7 +279,7 @@ test("REQ011_AC4_AC5_AC6_REQ013_AC1_AC2_AC3_AC4_AC5_REQ014_groupe_onglets_sauveg
   });
 });
 
-test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_parcours_P022", async ({ page, context }) => {
+test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_REQ102_AC9_parcours_P022", async ({ page, context, browserName }) => {
   await page.clock.install();
   const dossier = await ouvrir(page, (d) => {
     fs.mkdirSync(path.join(d, "site", "img"), { recursive: true });
@@ -481,6 +481,19 @@ test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_pa
     relais.retablir();
     await avancer(page, () => expect(vue().locator("#mots")).toHaveText("Les chiffres et les mots", { timeout: 300 }));
     expect(fs.readFileSync(path.join(dossier, "site", "index.html"), "utf8")).toContain("Les chiffres et les mots");
+    // 2. Copie de l'aperçu HTML en texte simple (AC-102-9), Chromium seul : presse-papiers réel.
+    if (browserName === "chromium") {
+      await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+      fs.writeFileSync(path.join(dossier, "site", "autre.html"), "<p><b>gras</b> et <i>penché</i></p>\n");
+      await ligne(page, "autre.html").click();
+      const paragraphe = vue().locator("p", { hasText: "penché" });
+      await expect(paragraphe).toHaveText("gras et penché");
+      await paragraphe.click({ clickCount: 3 });
+      await page.keyboard.press("Control+c");
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("gras et penché");
+      const types = await page.evaluate(async () => (await navigator.clipboard.read()).flatMap((x) => x.types));
+      expect(types).not.toContain("text/html");
+    }
     expect(dialogues).toEqual([]);
     expect(pages).toHaveLength(0);
   } finally {
