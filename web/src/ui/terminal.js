@@ -1,6 +1,7 @@
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { indication } from "./indication.js";
+import { estMac } from "../references.js";
 
 // Tableau ANSI du design system : noir, rouge, vert, jaune, bleu, magenta, cyan, blanc (puis version vive).
 const ANSI = {
@@ -57,7 +58,15 @@ export function terminal({ flux, connecte = true, nom, arrete, surTaille } = {})
   });
   term.open(zone);
   // Ctrl+Maj+F reste à l'application : xterm ne le traite pas, il remonte jusqu'au document.
-  term.attachCustomKeyEventHandler((e) => !CTRL_MAJ_F(e));
+  // Hors macOS, Ctrl+C avec sélection et Ctrl+V vont au navigateur (événements copy et paste, que xterm traite).
+  term.attachCustomKeyEventHandler((e) => {
+    if (CTRL_MAJ_F(e)) return false;
+    if (e.type === "keydown" && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && !estMac()) {
+      const touche = e.key.toLowerCase();
+      if (touche === "v" || (touche === "c" && term.hasSelection())) return false;
+    }
+    return true;
+  });
   flux.binaryType = "arraybuffer";
   term.onData((d) => flux.send(d));
   flux.addEventListener("message", (e) => {

@@ -236,3 +236,53 @@ test("REQ068_AC15_terminal_arrete_des_la_creation", () => {
   const { t } = monter({ arrete: { code: 2 } });
   expect(t.term.options.disableStdin).toBe(true);
 });
+
+const ctrl = (t, key, init = {}) => clavier(t, { key, code: `Key${key.toUpperCase()}`, keyCode: key.toUpperCase().charCodeAt(0), ctrlKey: true, ...init });
+
+test("REQ102_AC2_ctrl_c_sans_selection_envoie_l_interruption", () => {
+  const { flux, t } = monter();
+  ctrl(t, "c");
+  expect(flux.envoyes).toEqual(["\x03"]);
+});
+
+test("REQ102_AC1_ctrl_c_avec_selection_n_envoie_rien_et_garde_la_selection", async () => {
+  const { flux, t } = monter();
+  flux.recevoir("bonjour");
+  await new Promise((r) => t.term.write("", r));
+  t.term.select(0, 0, 7);
+  ctrl(t, "c");
+  expect(flux.envoyes).toEqual([]);
+  expect(t.term.hasSelection()).toBe(true);
+});
+
+test("REQ102_AC3_ctrl_v_n_envoie_pas_le_caractere_de_controle", () => {
+  const { flux, t } = monter();
+  ctrl(t, "v");
+  expect(flux.envoyes).toEqual([]);
+});
+
+test("REQ102_AC5_terminal_arrete_copie_possible_collage_muet", async () => {
+  const { flux, t } = monter({ arrete: { code: 0 } });
+  flux.recevoir("fini");
+  await new Promise((r) => t.term.write("", r));
+  t.term.select(0, 0, 4);
+  ctrl(t, "c");
+  ctrl(t, "v");
+  t.term.paste("texte");
+  expect(flux.envoyes).toEqual([]);
+  expect(t.term.hasSelection()).toBe(true);
+});
+
+test("REQ102_AC6_macos_ctrl_c_envoie_l_interruption_meme_avec_selection", async () => {
+  vi.stubGlobal("navigator", { platform: "MacIntel" });
+  try {
+    const { flux, t } = monter();
+    flux.recevoir("bonjour");
+    await new Promise((r) => t.term.write("", r));
+    t.term.select(0, 0, 7);
+    ctrl(t, "c");
+    expect(flux.envoyes).toEqual(["\x03"]);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

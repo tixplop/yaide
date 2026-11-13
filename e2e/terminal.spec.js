@@ -122,3 +122,26 @@ test("REQ038_AC2_changer_de_theme_garde_le_texte_de_l_editeur_et_la_sortie_du_sh
   await expect(page.locator(".cm-content")).toHaveText("mon texte");
   await expect(page.locator(".terminal-zone")).toContainText("sortie du shell");
 });
+
+test("REQ102_AC1_AC3_AC4_ctrl_c_copie_la_selection_en_texte_simple_et_ctrl_v_colle", async ({ page, context, browserName }) => {
+  test.skip(browserName !== "chromium", "presse-papiers réel : Chromium seul");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await ouvrir(page);
+  await page.evaluate(() => window.flux.dispatchEvent(new MessageEvent("message", { data: "bonjour\r\n\x1b[31mrouge\x1b[0m" })));
+  const rangees = page.locator(".terminal-zone .xterm-rows > div");
+  await expect(rangees.nth(1)).toContainText("rouge");
+  const h = await rangees.nth(0).boundingBox();
+  const z = await page.locator(".terminal-zone .xterm-screen").boundingBox();
+  await page.mouse.move(z.x + 1, h.y + h.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(z.x + z.width - 2, h.y + h.height * 1.5, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.press("Control+c");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("bonjour\nrouge");
+  expect(await page.evaluate(() => window.envoyes)).toEqual([]);
+  await page.evaluate(() => navigator.clipboard.writeText("echo collé\nls"));
+  await page.keyboard.press("Control+v");
+  const recu = await page.evaluate(() => window.envoyes.join(""));
+  expect(recu.replace(/\r\n?|\n/g, "\n")).toBe("echo collé\nls");
+  expect(recu).not.toContain("\x16");
+});
