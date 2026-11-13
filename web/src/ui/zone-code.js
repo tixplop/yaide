@@ -8,6 +8,7 @@ import { apercuHtml } from "./apercu-html.js";
 import { couleurs } from "./couleurs-code.js";
 import { hybride as extensionHybride, TableauRendu, tableauxHybride } from "./hybride.js";
 import { themeCourant } from "./theme.js";
+import { lienDeDocument, ligneDuTitre } from "../references.js";
 
 const MODES = ["edition", "diff"];
 
@@ -148,7 +149,7 @@ const clavierTableau = Prec.high(
   ]),
 );
 
-export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, ligne, nom = "", surChangement, surPosition } = {}) {
+export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, ligne, nom = "", surChangement, surPosition, surLien, surSurvolLien } = {}) {
   if (!MODES.includes(mode)) throw new Error(`zoneCode : mode inconnu « ${mode} »`);
   const diff = mode === "diff";
   const racine = document.createElement("div");
@@ -157,10 +158,22 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   hote.className = "zone-code-editeur";
   racine.append(hote);
 
+  // Ctrl+clic du mode hybride : ancre du même document, adresse web, ou fichier (à l'appelant).
+  const suivreLien = (adresse) => {
+    const lien = lienDeDocument(adresse);
+    if (lien?.sorte === "ancre") {
+      const numero = ligneDuTitre(racine.contenu(), lien.ancre);
+      if (numero) {
+        racine.aller(numero);
+        vue.focus();
+      }
+    } else if (lien?.sorte === "web") window.open(lien.adresse, "_blank", "noopener,noreferrer");
+    else if (lien) surLien?.({ adresse, element: vue.contentDOM });
+  };
   const compartiment = new Compartment();
   const compartimentHybride = new Compartment();
   const hybridePossible = langage === "markdown" && !diff;
-  const extensionsHybride = () => [extensionHybride(), numerosDesTitres, numerosDesTableaux, clavierTableau, EditorView.lineWrapping];
+  const extensionsHybride = () => [extensionHybride({ surLien: suivreLien, surSurvol: surSurvolLien }), numerosDesTitres, numerosDesTableaux, clavierTableau, EditorView.lineWrapping];
   const extensions = [
     compartiment.of(themeCourant() === "dark" ? themeSombre : themeClair),
     lineNumbers(),

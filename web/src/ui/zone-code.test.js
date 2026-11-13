@@ -420,3 +420,73 @@ test("REQ063_AC8_numero_du_tableau_seul_avec_sa_classe_puis_celui_de_la_ligne_su
   z.detruire();
   z.remove();
 });
+
+// Suivre un lien en mode hybride (REQ-101)
+const DOC_LIENS = "# Début\n\n[Tests](#lancer-les-tests) [web](https://exemple.org/a) [f](docs/x.md#L3) [absent](#absent)\n\n" + "ligne\n".repeat(30) + "## Lancer les tests !\n\nfin";
+function ctrlClic(z, pos, cible) {
+  z.vue.posAtCoords = () => pos;
+  cible.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, ctrlKey: true }));
+}
+
+test("REQ101_AC4_ancre_du_meme_document_curseur_au_debut_du_titre_focus_gardé", () => {
+  const z = zoneCode({ contenu: DOC_LIENS, langage: "markdown", hybride: true, nom: "a.md" });
+  document.body.append(z);
+  const ligneTitre = DOC_LIENS.slice(0, DOC_LIENS.indexOf("## Lancer")).split("\n").length;
+  ctrlClic(z, DOC_LIENS.indexOf("Tests") + 1, z.vue.contentDOM);
+  const sel = z.vue.state.selection.main;
+  expect(sel.empty).toBe(true);
+  expect(z.vue.state.doc.lineAt(sel.head)).toMatchObject({ number: ligneTitre, from: sel.head });
+  expect(z.vue.hasFocus).toBe(true);
+  // Ancre absente : rien ne bouge.
+  ctrlClic(z, DOC_LIENS.indexOf("absent]") + 1, z.vue.contentDOM);
+  expect(z.vue.state.selection.main.head).toBe(sel.head);
+  z.detruire();
+  z.remove();
+});
+
+test("REQ101_AC5_web_s_ouvre_avec_noopener_sans_toucher_au_texte_clic_simple_n_ouvre_rien", () => {
+  const ouvrir = vi.spyOn(window, "open").mockImplementation(() => null);
+  const z = zoneCode({ contenu: DOC_LIENS, langage: "markdown", hybride: true, nom: "a.md" });
+  document.body.append(z);
+  const pos = DOC_LIENS.indexOf("web]");
+  z.vue.posAtCoords = () => pos;
+  z.vue.contentDOM.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+  expect(ouvrir).not.toHaveBeenCalled();
+  ctrlClic(z, pos, z.vue.contentDOM);
+  expect(ouvrir).toHaveBeenCalledTimes(1);
+  expect(ouvrir).toHaveBeenCalledWith("https://exemple.org/a", "_blank", "noopener,noreferrer");
+  expect(z.contenu()).toBe(DOC_LIENS);
+  z.detruire();
+  z.remove();
+  ouvrir.mockRestore();
+});
+
+test("REQ101_AC3_fichier_passe_par_surLien_et_survol_par_surSurvolLien", () => {
+  const surLien = vi.fn();
+  const surSurvolLien = vi.fn();
+  const z = zoneCode({ contenu: DOC_LIENS, langage: "markdown", hybride: true, nom: "a.md", surLien, surSurvolLien });
+  document.body.append(z);
+  const pos = DOC_LIENS.indexOf("[f]") + 1;
+  ctrlClic(z, pos, z.vue.contentDOM);
+  expect(surLien).toHaveBeenCalledWith({ adresse: "docs/x.md#L3", element: z.vue.contentDOM });
+  z.vue.contentDOM.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+  expect(surSurvolLien).toHaveBeenLastCalledWith({ geste: "Ctrl+clic", suite: "pour ouvrir docs/x.md" });
+  z.detruire();
+  z.remove();
+});
+
+test("REQ101_AC2_mode_hybride_eteint_rien_ne_se_suit", () => {
+  const surLien = vi.fn();
+  const z = zoneCode({ contenu: DOC_LIENS, langage: "markdown", nom: "a.md", surLien });
+  document.body.append(z);
+  ctrlClic(z, DOC_LIENS.indexOf("[f]") + 1, z.vue.contentDOM);
+  expect(surLien).not.toHaveBeenCalled();
+  z.definirHybride(true);
+  ctrlClic(z, DOC_LIENS.indexOf("[f]") + 1, z.vue.contentDOM);
+  expect(surLien).toHaveBeenCalledTimes(1);
+  z.definirHybride(false);
+  ctrlClic(z, DOC_LIENS.indexOf("[f]") + 1, z.vue.contentDOM);
+  expect(surLien).toHaveBeenCalledTimes(1);
+  z.detruire();
+  z.remove();
+});

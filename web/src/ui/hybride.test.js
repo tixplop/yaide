@@ -2,8 +2,8 @@ import { EditorState } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorView } from "@codemirror/view";
 import { readFileSync } from "node:fs";
-import { expect, test } from "vitest";
-import { debutCellule, decorationsHybride, hybride, tableauxHybride } from "./hybride.js";
+import { expect, test, vi } from "vitest";
+import { debutCellule, decorationsHybride, hybride, lienA, tableauxHybride } from "./hybride.js";
 
 // Le curseur est en fin de document : une dernière ligne « fin » le tient loin des lignes testées.
 function deco(texte, { curseur, plages } = {}) {
@@ -372,4 +372,176 @@ test("REQ063_AC3_les_regles_du_tableau_de_l_apercu_servent_au_tableau_rendu", ()
   const css = readFileSync("web/src/ui/composants.css", "utf8");
   for (const sel of ["table", "th, .zone-code-apercu td", "tbody tr:nth-child(even) td"]) expect(css).toMatch(new RegExp(`\\.zone-code-apercu ${sel.replace(/[()]/g, "\\$&")}[^{]*\\.cm-hy-tableau`));
   expect(css).toMatch(/\.cm-hy-tableau \{[^}]*cursor: text/);
+});
+
+// Ctrl+clic et survol des liens (REQ-101)
+function monterLiens(doc, { anchor, ...options } = {}) {
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  const vue = new EditorView({ doc, selection: { anchor: anchor ?? doc.length }, parent, extensions: [markdown({ base: markdownLanguage }), hybride(options)] });
+  const sur = (pos) => {
+    vue.posAtCoords = () => pos;
+  };
+  const evt = (type, cible, init = {}) => {
+    const e = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, ...init });
+    cible.dispatchEvent(e);
+    return e;
+  };
+  return { vue, parent, sur, evt, fin: () => (vue.destroy(), parent.remove()) };
+}
+const DOC = "a\n\nun [Lire](../README.md) ici\n\nfin de ligne assez longue pour curseur";
+
+test("REQ101_AC2_lienA_link_autolink_adresse_seule_et_rien_pour_reference_image", () => {
+  const doc = "[Lire](../README.md) <https://a.fr> https://b.fr [x][r] ![i](c.png) [^1]\n\n[r]: d.md";
+  const etat = EditorState.create({ doc, extensions: [markdown({ base: markdownLanguage })] });
+  expect(lienA(etat, 3)).toEqual({ de: 0, a: 20, adresse: "../README.md" });
+  expect(lienA(etat, 25).adresse).toBe("https://a.fr");
+  expect(lienA(etat, 38).adresse).toBe("https://b.fr");
+  for (const mot of ["[x][r]", "![i](c.png)", "[^1]", "c.png"]) expect(lienA(etat, doc.indexOf(mot) + 1)).toBeUndefined();
+  expect(lienA(etat, 20)).toBeUndefined();
+});
+
+test("REQ101_AC10_suivable_sur_tout_le_lien_ligne_du_curseur_comprise_sauf_adresses_refusees", () => {
+  const doc = "[Lire](../README.md)\n\n[x](javascript:alert(1)) [y][r] ![i](c.png)\n\n[Z](https://a.fr)";
+  const m = monterLiens(doc, { anchor: 0 });
+  const marques = [...m.parent.querySelectorAll(".cm-hy-suivable")].map((e) => e.textContent);
+  expect(marques).toEqual(["[Lire](../README.md)", "Z"]);
+  m.fin();
+});
+
+test("REQ101_AC2_AC13_ctrl_clic_suit_sans_curseur_ajoute_ni_deplacement_clic_simple_n_ouvre_rien", () => {
+  const surLien = vi.fn();
+  const m = monterLiens(DOC, { surLien, anchor: DOC.length });
+  const tete = m.vue.state.selection.main.head;
+  const cible = m.parent.querySelector(".cm-hy-lien");
+  m.sur(DOC.indexOf("Lire") + 1);
+  const e = m.evt("mousedown", cible, { ctrlKey: true });
+  expect(e.defaultPrevented).toBe(true);
+  expect(surLien).toHaveBeenCalledTimes(1);
+  expect(surLien).toHaveBeenCalledWith("../README.md");
+  expect(m.vue.state.selection.ranges.length).toBe(1);
+  expect(m.vue.state.selection.main.head).toBe(tete);
+  expect(m.parent.querySelector(".cm-hy-lien").textContent).toBe("Lire");
+  // Ligne du curseur : le lien reste suivi.
+  m.vue.dispatch({ selection: { anchor: DOC.indexOf("Lire") + 2 } });
+  m.sur(DOC.indexOf("](") + 1);
+  m.evt("mousedown", m.vue.contentDOM, { ctrlKey: true });
+  expect(surLien).toHaveBeenCalledTimes(2);
+  expect(m.vue.state.selection.ranges.length).toBe(1);
+  expect(m.vue.state.selection.main.head).toBe(DOC.indexOf("Lire") + 2);
+  // Clic simple : rien.
+  m.evt("mousedown", cible);
+  expect(surLien).toHaveBeenCalledTimes(2);
+  m.fin();
+});
+
+test("REQ101_AC8_ctrl_clic_sur_adresse_refusee_reference_image_ou_texte_n_appelle_rien", () => {
+  const doc = "[x](javascript:alert(1)) [y][r] ![i](c.png) texte\n\nfin";
+  const surLien = vi.fn();
+  // jsdom n'a pas de rectangles de sélection : le clic ordinaire de CodeMirror en a besoin.
+  Range.prototype.getClientRects ??= () => [];
+  const m = monterLiens(doc, { surLien, anchor: doc.length });
+  for (const mot of ["x]", "y]", "i]"]) {
+    m.sur(doc.indexOf(mot));
+    m.evt("mousedown", m.vue.contentDOM, { ctrlKey: true });
+  }
+  expect(surLien).not.toHaveBeenCalled();
+  // Sur un lien refusé, la sélection ne bouge pas non plus.
+  m.sur(doc.indexOf("x]"));
+  expect(m.evt("mousedown", m.vue.contentDOM, { ctrlKey: true }).defaultPrevented).toBe(true);
+  expect(m.parent.querySelector(".cm-hy-suivable")).toBeNull();
+  m.fin();
+});
+
+test("REQ101_AC2_AC13_tableau_rendu_ctrl_clic_suit_le_lien_et_reste_rendu", () => {
+  const surLien = vi.fn();
+  const doc = "| a | b |\n|---|---|\n| [Y](docs/x.md) | [Z](javascript:alert(1)) |\n\nfin";
+  const m = monterLiens(doc, { surLien, anchor: doc.length });
+  const [a] = m.parent.querySelectorAll(".cm-hy-tableau a");
+  expect(a.dataset.lien).toBe("docs/x.md");
+  expect(a.classList.contains("cm-hy-suivable")).toBe(true);
+  expect(a.hasAttribute("href")).toBe(false);
+  expect(a.hasAttribute("title")).toBe(false);
+  const tete = m.vue.state.selection.main.head;
+  const e = m.evt("mousedown", a, { ctrlKey: true });
+  expect(e.defaultPrevented).toBe(true);
+  expect(surLien).toHaveBeenCalledWith("docs/x.md");
+  expect(m.vue.state.selection.main.head).toBe(tete);
+  expect(m.parent.querySelector(".cm-hy-tableau")).not.toBeNull();
+  // Clic simple : le tableau garde son comportement (curseur dans la cellule), rien ne s'ouvre.
+  m.evt("mousedown", a);
+  expect(surLien).toHaveBeenCalledTimes(1);
+  expect(m.vue.state.selection.main.head).not.toBe(tete);
+  m.fin();
+});
+
+test("REQ101_AC10_ya_ctrl_pose_et_retire_par_clavier_souris_blur_et_depart", () => {
+  const m = monterLiens(DOC);
+  const ctrl = () => m.vue.dom.classList.contains("ya-ctrl");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Control" }));
+  expect(ctrl()).toBe(true);
+  window.dispatchEvent(new KeyboardEvent("keyup", { key: "Control" }));
+  expect(ctrl()).toBe(false);
+  m.vue.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Control", bubbles: true }));
+  expect(ctrl()).toBe(true);
+  window.dispatchEvent(new Event("blur"));
+  expect(ctrl()).toBe(false);
+  m.sur(0);
+  m.evt("mousemove", m.vue.contentDOM, { ctrlKey: true });
+  expect(ctrl()).toBe(true);
+  m.evt("mousemove", m.vue.contentDOM);
+  expect(ctrl()).toBe(false);
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift" }));
+  expect(ctrl()).toBe(false);
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Control" }));
+  m.vue.dom.dispatchEvent(new MouseEvent("mouseleave"));
+  expect(ctrl()).toBe(false);
+  m.fin();
+});
+
+test("REQ101_AC11_survol_texte_pour_les_trois_sortes_et_null_hors_lien_ou_refuse", () => {
+  const doc = "[Lire](../README.md) [T](#lancer-les-tests) [doc](https://exemple.org/a) [x](javascript:alert(1)) mot\n\nfin";
+  const surSurvol = vi.fn();
+  const m = monterLiens(doc, { surSurvol, anchor: doc.length });
+  const survoler = (mot) => {
+    m.sur(doc.indexOf(mot));
+    m.evt("mousemove", m.vue.contentDOM);
+    return surSurvol.mock.lastCall[0];
+  };
+  expect(survoler("Lire")).toEqual({ geste: "Ctrl+clic", suite: "pour ouvrir ../README.md" });
+  expect(survoler("T]")).toEqual({ geste: "Ctrl+clic", suite: "pour aller à #lancer-les-tests" });
+  expect(survoler("doc]")).toEqual({ geste: "Ctrl+clic", suite: "pour ouvrir https://exemple.org/a dans un nouvel onglet" });
+  expect(survoler("x]")).toBeNull();
+  expect(survoler("mot")).toBeNull();
+  survoler("Lire");
+  m.vue.dom.dispatchEvent(new MouseEvent("mouseleave"));
+  expect(surSurvol.mock.lastCall[0]).toBeNull();
+  survoler("Lire");
+  window.dispatchEvent(new Event("blur"));
+  expect(surSurvol.mock.lastCall[0]).toBeNull();
+  m.fin();
+});
+
+test("REQ101_AC10_AC11_sur_macOS_cmd_clic_et_meta", () => {
+  // estMac est lu à la création : on simule la plateforme.
+  vi.stubGlobal("navigator", { platform: "MacIntel" });
+  try {
+    Range.prototype.getClientRects ??= () => [];
+    const surSurvol = vi.fn();
+    const surLien = vi.fn();
+    const m = monterLiens(DOC, { surSurvol, surLien });
+    m.sur(DOC.indexOf("Lire"));
+    m.evt("mousemove", m.vue.contentDOM, { metaKey: true });
+    expect(surSurvol).toHaveBeenLastCalledWith({ geste: "Cmd+clic", suite: "pour ouvrir ../README.md" });
+    expect(m.vue.dom.classList.contains("ya-ctrl")).toBe(true);
+    m.evt("mousedown", m.vue.contentDOM, { ctrlKey: true });
+    expect(surLien).not.toHaveBeenCalled();
+    m.evt("mousedown", m.vue.contentDOM, { metaKey: true });
+    expect(surLien).toHaveBeenCalledWith("../README.md");
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "Meta" }));
+    expect(m.vue.dom.classList.contains("ya-ctrl")).toBe(false);
+    m.fin();
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

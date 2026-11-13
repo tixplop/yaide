@@ -2,6 +2,7 @@ import { Decoration, EditorView, ViewPlugin, WidgetType } from "@codemirror/view
 import { StateField } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { rendreMarkdown } from "./apercu.js";
+import { estMac, lienDeDocument } from "../references.js";
 
 // Mode hybride (REQ-062, DEC-041) : le markdown est mis en forme dans l'éditeur, d'après l'arbre de
 // @codemirror/lang-markdown. Les marques sont retirées du DOM, sauf sur les lignes que touche la sélection.
@@ -218,6 +219,8 @@ export class TableauRendu extends WidgetType {
     const table = modele.content.querySelector("table");
     if (table) {
       for (const a of table.querySelectorAll("a")) {
+        a.dataset.lien ??= a.getAttribute("href") ?? "";
+        if (lienDeDocument(a.dataset.lien)) a.classList.add("cm-hy-suivable");
         a.removeAttribute("href");
         a.removeAttribute("title");
       }
@@ -263,8 +266,121 @@ function construireTableaux(etat) {
   );
 }
 
+// Lien en ligne `[texte](adresse)`, autolien ou adresse seule qui couvre `pos` : { de, a, adresse }, ou rien.
+export function lienA(etat, pos) {
+  let trouve;
+  syntaxTree(etat).iterate({
+    from: pos,
+    to: pos,
+    enter: (n) => {
+      if (trouve) return false;
+      let url;
+      if (n.name === "Link") {
+        const marques = n.node.getChildren("LinkMark");
+        if (marques.length < 4 || etat.doc.sliceString(marques[2].from, marques[2].to) !== "(") return false;
+        url = n.node.getChild("URL");
+      } else if (n.name === "Autolink") url = n.node.getChild("URL");
+      else if (n.name === "URL" && !["Link", "Image", "Autolink", "LinkReference"].includes(n.node.parent?.name)) url = n.node;
+      else if (n.name === "Image") return false;
+      if (url && n.from <= pos && pos < n.to) trouve = { de: n.from, a: n.to, adresse: etat.doc.sliceString(url.from, url.to) };
+    },
+  });
+  return trouve;
+}
+
+// Tous les liens du texte visible, pour poser `cm-hy-suivable` sur ceux qui se suivent.
+const suivable = Decoration.mark({ class: "cm-hy-suivable" });
+function liensSuivables(vue) {
+  const sortie = [];
+  for (const { from, to } of vue.visibleRanges) {
+    syntaxTree(vue.state).iterate({
+      from,
+      to,
+      enter: (n) => {
+        if (n.name === "Image") return false;
+        if (!["Link", "Autolink", "URL"].includes(n.name)) return;
+        const lien = lienA(vue.state, n.from);
+        if (lien && lien.de === n.from && lienDeDocument(lien.adresse)) sortie.push(suivable.range(lien.de, lien.a));
+        if (n.name !== "URL") return false;
+      },
+    });
+  }
+  return Decoration.set(sortie, true);
+}
+
+const GESTES = { fichier: (l) => `pour ouvrir ${l.ecrit}`, ancre: (_, adresse) => `pour aller à ${adresse}`, web: (_, adresse) => `pour ouvrir ${adresse} dans un nouvel onglet` };
+
+// Ctrl+clic (Cmd+clic sur macOS) suit un lien (REQ-101). `surLien(adresse)` ; `surSurvol({ geste, suite })` ou `surSurvol(null)`.
+function suiviDesLiens({ surLien, surSurvol }) {
+  return ViewPlugin.fromClass(
+    class {
+      constructor(vue) {
+        this.vue = vue;
+        this.decorations = liensSuivables(vue);
+        const mac = estMac();
+        const touche = mac ? "Meta" : "Control";
+        const modif = (e) => (mac ? e.metaKey : e.ctrlKey);
+        const poser = (oui) => vue.dom.classList.toggle("ya-ctrl", oui);
+        // Adresse du lien sous le pointeur (même s'il ne se suit pas), ou undefined.
+        const adresseSous = (e) => {
+          const a = e.target.closest?.("a[data-lien]");
+          if (a && vue.dom.contains(a)) return a.dataset.lien;
+          let pos = null;
+          try {
+            pos = vue.posAtCoords({ x: e.clientX, y: e.clientY }, false);
+          } catch {
+            pos = null;
+          }
+          if (pos == null && vue.contentDOM.contains(e.target)) pos = vue.posAtDOM(e.target, 0);
+          return pos == null ? undefined : lienA(vue.state, pos)?.adresse;
+        };
+        this.mousedown = (e) => {
+          if (e.button !== 0 || !modif(e)) return;
+          const adresse = adresseSous(e);
+          if (adresse === undefined) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (lienDeDocument(adresse)) surLien?.(adresse);
+        };
+        this.mousemove = (e) => {
+          poser(modif(e));
+          const adresse = adresseSous(e);
+          const lien = adresse === undefined ? null : lienDeDocument(adresse);
+          surSurvol?.(lien ? { geste: mac ? "Cmd+clic" : "Ctrl+clic", suite: GESTES[lien.sorte](lien, adresse) } : null);
+        };
+        this.quitter = () => {
+          poser(false);
+          surSurvol?.(null);
+        };
+        this.touche = (e) => {
+          if (e.key === touche) poser(e.type === "keydown");
+        };
+        vue.dom.addEventListener("mousedown", this.mousedown, true);
+        vue.dom.addEventListener("mousemove", this.mousemove);
+        vue.dom.addEventListener("mouseleave", this.quitter);
+        window.addEventListener("keydown", this.touche, true);
+        window.addEventListener("keyup", this.touche, true);
+        window.addEventListener("blur", this.quitter);
+      }
+      update(u) {
+        if (u.docChanged || u.viewportChanged || syntaxTree(u.state) !== syntaxTree(u.startState)) this.decorations = liensSuivables(u.view);
+      }
+      destroy() {
+        const { vue } = this;
+        vue.dom.removeEventListener("mousedown", this.mousedown, true);
+        vue.dom.removeEventListener("mousemove", this.mousemove);
+        vue.dom.removeEventListener("mouseleave", this.quitter);
+        window.removeEventListener("keydown", this.touche, true);
+        window.removeEventListener("keyup", this.touche, true);
+        window.removeEventListener("blur", this.quitter);
+      }
+    },
+    { decorations: (p) => p.decorations },
+  );
+}
+
 // Extension CodeMirror du mode hybride. Le document n'est jamais modifié : seules des décorations sont posées.
-export function hybride() {
+export function hybride({ surLien, surSurvol } = {}) {
   const plugin = ViewPlugin.fromClass(
     class {
       constructor(vue) {
@@ -276,5 +392,5 @@ export function hybride() {
     },
     { decorations: (p) => p.decorations },
   );
-  return [plugin, champTableaux, EditorView.editorAttributes.of({ class: "cm-hybride" })];
+  return [plugin, suiviDesLiens({ surLien, surSurvol }), champTableaux, EditorView.editorAttributes.of({ class: "cm-hybride" })];
 }
