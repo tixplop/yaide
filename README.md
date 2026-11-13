@@ -136,6 +136,18 @@ Si la commande `opencode` (version 2) est dans le `PATH` du serveur au moment o�
 - Après une mise à jour d'opencode, `node e2e/capturer-opencode.js` relève de nouveau le contrat de son API (dans `web/src/opencode-captures/`).
 - **Raisonnement.** Quand le modèle rend son raisonnement, il s'affiche replié sous « Raisonnement » ; un clic ou Entrée le déplie.
 
+## Base de connaissance
+
+Yaide peut indexer les fichiers de votre projet pour les interroger par le sens, sans chercher un mot exact.
+
+- **Configurer** : « Base de connaissance » au pied du rail droit, section « Configuration ». Choisissez un provider (OpenAI, Google, OpenRouter, LiteLLM ou Ollama) et un modèle d'embedding, par exemple `nomic-embed-text`. L'adresse et la clé sont celles de Providers LLM.
+- **Ajouter** : clic droit sur un fichier ou un dossier de l'arborescence, puis « Ajouter à la base de connaissance… ». Plusieurs lignes sélectionnées s'ajoutent d'un coup. Les fichiers binaires ou trop gros sont ignorés.
+- **Collections** : chaque ajout va dans une collection, créée par son premier ajout. La section « Collections » les liste, montre leurs fichiers et les supprime. Tant qu'une collection existe, le provider et le modèle ne changent plus.
+- **Rechercher** : section « Recherche », une question, une collection ou toutes. Les 10 passages les plus proches s'affichent ; un clic sur le chemin ouvre le fichier à la première ligne du passage.
+- **Agent** : quand la base a au moins une collection, l'Agent de Yaide reçoit l'outil `knowledge_search` (`query`, et `collection` facultatif).
+
+Le texte des fichiers ajoutés et vos questions partent au provider choisi. Avec Ollama, tout reste sur votre machine. La base est écrite dans `.yaide/connaissance/` du projet : ne la poussez pas dans git si vous ne voulez pas la partager.
+
 ## Worktrees
 
 Quand le dépôt du projet a au moins deux worktrees (`git worktree list`), les vues Fichiers et Git ont une ligne « Worktree », sous leur titre. Chaque option donne le nom du dossier du worktree puis sa branche : « essai (essai) ».

@@ -586,11 +586,42 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   // ---- Onglets Agent (REQ-078) ----
 
+  // Refus de lecture d'un fichier cité (AC-087-11) : le texte à dire.
+  function texteRefusLecture(lecture, ecrit) {
+    if (lecture.coupure) return TEXTE_COUPURE;
+    const refus = {
+      introuvable: `${ecrit} n'existe pas.`,
+      invalide: lecture.message === "C'est un dossier." ? `${ecrit} est un dossier. Yaide ne l'ouvre pas.` : undefined,
+      binaire: `${ecrit} est un fichier binaire. Yaide ne l'ouvre pas.`,
+      "non-utf8": `${ecrit} est un fichier binaire. Yaide ne l'ouvre pas.`,
+      "trop-gros": `${ecrit} dépasse 5 Mo. Yaide ne l'ouvre pas.`,
+      interdit: `${ecrit} est hors du projet et de ses worktrees. Yaide ne l'ouvre pas.`,
+    };
+    return refus[lecture.cause] ?? `Impossible d'ouvrir ${ecrit} : ${(lecture.message ?? "erreur").replace(/\.$/, "")}.`;
+  }
+
+  /**
+   * Ouvre un fichier cité hors d'une conversation (passage de la base de connaissance, REQ-106) dans le groupe actif.
+   * Rend le texte du refus, ou rien ; `avantOuverture` est appelé juste avant l'ouverture.
+   */
+  async function ouvrirCitee({ chemin: ecrit, ligne }, avantOuverture) {
+    const chemin = depuisProjet(ecrit, cheminProjet);
+    if (chemin === undefined) return `${ecrit} est un dossier. Yaide ne l'ouvre pas.`;
+    const ouvert = trouver(chemin);
+    let lecture = {};
+    if (!ouvert || !estFichier(ouvert)) {
+      lecture = await lireFichier(chemin);
+      if (lecture.coupure || lecture.cause) return texteRefusLecture(lecture, ecrit);
+    }
+    avantOuverture?.();
+    ouvrir({ chemin, contenu: lecture.contenu, version: lecture.version, ligne });
+  }
+
+  let alerteReference = null;
   /**
    * Ouvre le fichier cité par une réponse (`{ chemin, ligne }`) ou par un lien de document (`lienDeDocument` : `{ chemin, ecrit, ligne, ancre }`),
    * dans le groupe de `o` ; un refus est dit, le focus revient à `lien`, sinon à l'éditeur du document.
    */
-  let alerteReference = null;
   async function ouvrirReference(o, ref, lien) {
     alerteReference?.remove();
     alerteReference = null;
@@ -609,17 +640,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     if (!ouvert || !estFichier(ouvert)) {
       lecture = await lireFichier(chemin);
       if (lecture.coupure) return refuser(TEXTE_COUPURE);
-      if (lecture.cause) {
-        const refus = {
-          introuvable: `${ecrit} n'existe pas.`,
-          invalide: lecture.message === "C'est un dossier." ? `${ecrit} est un dossier. Yaide ne l'ouvre pas.` : undefined,
-          binaire: `${ecrit} est un fichier binaire. Yaide ne l'ouvre pas.`,
-          "non-utf8": `${ecrit} est un fichier binaire. Yaide ne l'ouvre pas.`,
-          "trop-gros": `${ecrit} dépasse 5 Mo. Yaide ne l'ouvre pas.`,
-          interdit: `${ecrit} est hors du projet et de ses worktrees. Yaide ne l'ouvre pas.`,
-        };
-        return refuser(refus[lecture.cause] ?? `Impossible d'ouvrir ${ecrit} : ${(lecture.message ?? "erreur").replace(/\.$/, "")}.`);
-      }
+      if (lecture.cause) return refuser(texteRefusLecture(lecture, ecrit));
     }
     if (!liste.includes(o)) return; // l'onglet a été fermé pendant la lecture
     if (deDocument) ligne = ref.ancre ? (ligneDuTitre(ouvert && estFichier(ouvert) ? ouvert.zone.contenu() : lecture.contenu, ref.ancre) ?? 1) : (ref.ligne ?? 1);
@@ -1281,6 +1302,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     /** Les zones de question de tous les groupes. */
     questions: () => [...groupes.values()].map((g) => g.questionOnglet),
     deplacer,
+    ouvrirCitee,
     /** Une lecture de fichier commence (`oui`, rend son numéro de geste) ou se termine. */
     lecture(oui) {
       lectures = Math.max(0, lectures + (oui ? 1 : -1));

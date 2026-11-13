@@ -1814,3 +1814,17 @@ test("REQ101_AC9_sans_ligne_ni_titre_trouve_on_va_a_la_ligne_1_meme_onglet_deja_
   await vi.waitFor(() => expect(actifNom()).toBe("autre.md"));
   expect(v.state.doc.lineAt(v.state.selection.main.head).number).toBe(1);
 });
+
+test("REQ106_AC3_ouvrirCitee_ouvre_a_la_ligne_apres_avantOuverture_ou_rend_le_refus_sans_rien_ouvrir", async () => {
+  const { e } = monterAg({ chemin: PROJET });
+  fauxFichiers({ "docs/a.md": "l1\nl2\nl3\nl4\n" });
+  const avant = vi.fn();
+  expect(await e.ouvrirCitee({ chemin: "docs/ancien.md", ligne: 2 }, avant)).toBe("docs/ancien.md n'existe pas.");
+  expect(avant).not.toHaveBeenCalled();
+  expect(nomsOnglets()).toEqual([]);
+  expect(await e.ouvrirCitee({ chemin: "docs/a.md", ligne: 3 }, avant)).toBeUndefined();
+  expect(avant).toHaveBeenCalledTimes(1);
+  expect(actifNom()).toBe("a.md");
+  const vue = e.code.querySelector(".zone-code").vue;
+  expect(vue.state.selection.main.head).toBe(vue.state.doc.line(3).from);
+});

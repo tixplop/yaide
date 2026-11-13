@@ -541,6 +541,14 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-fiche-champs { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; }
 .ya-fiche-large { grid-column: 1 / -1; }
 
+/* V-013, section « Recherche » : formulaire sur une ligne, résumé, puis les passages qui défilent seuls. */
+.ya-recherche:not([hidden]) { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.ya-recherche-form { flex: none; display: grid; grid-template-columns: 1fr 180px auto; gap: 12px; align-items: end; }
+.ya-recherche-resultats { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.ya-recherche-resume { margin: 0; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+.ya-recherche-resultats > * { flex: none; }
+.ya-recherche-resultats > .ya-passages { flex: 1 1 auto; min-height: 0; }
+
 /* C-007 `reglages` : le contenu défile seul entre le titre et les actions. */
 .ya-reglages { display: flex; flex-direction: column; margin: auto; max-height: calc(100vh - 2 * var(--space-4)); width: var(--largeur-palette); }
 .ya-reglages:not([open]) { display: none; }

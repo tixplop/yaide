@@ -87,8 +87,8 @@ function git(chemin) {
 /** Lit la réponse d'erreur du serveur : `{ cause, message }`. */
 async function erreurServeur(r) {
   try {
-    const { cause, message } = await r.json();
-    return { cause, message };
+    const { cause, message, detail } = await r.json();
+    return detail ? { cause, message, detail } : { cause, message };
   } catch {
     return { cause: "erreur", message: `erreur ${r.status}` };
   }
@@ -482,6 +482,18 @@ export async function lireFichiersConnaissance(collection) {
 /** Supprime une collection : l'état de la base relu, `{ cause, message }` ou `{ coupure: true }`. */
 export async function supprimerConnaissance(collection) {
   const r = await appeler(`/api/connaissance/collections/${q(collection)}`, { method: "DELETE" });
+  if (!r) return { coupure: true };
+  try {
+    if (r.ok) return await r.json();
+  } catch {
+    return { coupure: true };
+  }
+  return erreurServeur(r);
+}
+
+/** Recherche dans la base : `{ passages: [{ chemin, debut, fin, collection, score, texte }] }`, `{ cause, message, detail? }` ou `{ coupure: true }`. */
+export async function chercherConnaissance(question, collection) {
+  const r = await appeler("/api/connaissance/recherche", json("POST", collection ? { question, collection } : { question }));
   if (!r) return { coupure: true };
   try {
     if (r.ok) return await r.json();

@@ -26,7 +26,7 @@ const API = { nom: "api", fichiers: 1, passages: 1 };
 const etat = (collections = [], config = CONFIG, extra = {}) => rep({ config, erreur: null, collections, ajout: null, ...extra });
 
 // Faux serveur : `routes` donne, pour chaque requête (méthode + url), la réponse ou une fonction ; la première lecture est `initial`.
-function monter(initial, routes = {}) {
+function monter(initial, routes = {}, options = {}) {
   const appels = [];
   vi.stubGlobal("fetch", vi.fn(async (url, options = {}) => {
     const appel = { url: String(url), methode: options.method ?? "GET", corps: options.body ? JSON.parse(options.body) : undefined };
@@ -40,7 +40,7 @@ function monter(initial, routes = {}) {
   document.body.append(ouvreur);
   ouvreur.focus();
   const etats = [];
-  const v = vueConnaissance({ surEtat: (o) => etats.push(o) });
+  const v = vueConnaissance({ surEtat: (o) => etats.push(o), ...options });
   return { v, appels, ouvreur, etats };
 }
 const dlg = () => [...document.querySelectorAll("dialog")].at(-1);
@@ -85,7 +85,7 @@ test("REQ103_AC9_configuree_ouvre_Recherche_et_les_fleches_changent_de_section_e
   expect(onglet("Recherche").getAttribute("aria-selected")).toBe("true");
   expect(panneau("Recherche").hidden).toBe(false);
   expect(panneau("Configuration").hidden).toBe(true);
-  expect(document.activeElement).toBe(onglet("Recherche"));
+  expect(document.activeElement).toBe(champDe("Question"));
   touche(onglet("Recherche"), "ArrowRight");
   expect(onglet("Configuration").getAttribute("aria-selected")).toBe("true");
   touche(onglet("Configuration"), "ArrowLeft");
@@ -94,7 +94,7 @@ test("REQ103_AC9_configuree_ouvre_Recherche_et_les_fleches_changent_de_section_e
   expect(onglet("Configuration").getAttribute("aria-selected")).toBe("true");
   touche(onglet("Configuration"), "End");
   expect(onglet("Recherche").getAttribute("aria-selected")).toBe("true");
-  expect(panneau("Recherche").children.length).toBe(0);
+  expect(champDe("Question")).toBeTruthy();
 });
 
 test("REQ103_AC9_configurer_force_la_section_Configuration_et_le_retour_de_focus_va_a_surFermeture", async () => {
@@ -411,4 +411,175 @@ test("REQ105_AC6_relecture_pendant_un_ajout_laisse_le_focus_sur_la_liste_des_fic
   await vi.advanceTimersByTimeAsync(1000);
   expect(document.activeElement.getAttribute("aria-label")).toBe("Fichiers de notes");
   expect(document.activeElement.tagName).toBe("UL");
+});
+
+// ---- Recherche (REQ-106, V-013) ----
+
+const PASSAGES = [
+  { chemin: "docs/guide.md", debut: 12, fin: 40, collection: "notes", score: 0.824, texte: "Lancer :\n  cargo test" },
+  { chemin: "docs/contribuer.md", debut: 5, fin: 21, collection: "api", score: 0.5, texte: "Contribuer" },
+];
+const RECHERCHE = "POST /api/connaissance/recherche";
+const saisir = (el, texte) => {
+  el.value = texte;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+};
+const liens = () => [...document.querySelectorAll(".ya-passage-lien")];
+
+test("REQ106_AC4_AC8_non_configuree_et_sans_collection_disent_pourquoi_sans_champ", async () => {
+  const m = monter(etat([], null));
+  await m.v.ouvrir();
+  onglet("Recherche").click();
+  const p = panneau("Recherche");
+  expect(p.textContent).toContain("La base n'est pas configurée.");
+  expect([...p.querySelectorAll("label")].length).toBe(0);
+  parNom("Configurer la base").click();
+  expect(onglet("Configuration").getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement).toBe(champDe("Provider"));
+  document.body.replaceChildren();
+  const n = monter(etat([]));
+  await n.v.ouvrir();
+  const q = panneau("Recherche");
+  expect(q.textContent).toContain("Aucune collection. Ajoutez d'abord des fichiers depuis l'arborescence.");
+  expect(q.querySelectorAll("label, button").length).toBe(0);
+});
+
+test("REQ106_AC4_AC6_Rechercher_desactive_sur_question_vide_ou_espaces_et_Entree_lance", async () => {
+  const m = monter(etat([NOTES, API]), { [RECHERCHE]: rep({ passages: PASSAGES }) });
+  await m.v.ouvrir();
+  const q = champDe("Question");
+  expect(document.activeElement).toBe(q);
+  expect(parNom("Rechercher").disabled).toBe(true);
+  saisir(q, "   ");
+  expect(parNom("Rechercher").disabled).toBe(true);
+  touche(q, "Enter");
+  expect(m.appels.filter((a) => a.methode === "POST")).toEqual([]);
+  saisir(q, "Comment lancer les tests ?");
+  expect(parNom("Rechercher").disabled).toBe(false);
+  expect([...champDe("Collection").options].map((o) => o.textContent)).toEqual(["Toutes les collections", "api", "notes"]);
+  touche(q, "Enter");
+  expect(parNom("Recherche…").disabled).toBe(true);
+  await vi.waitFor(() => expect(parNom("Rechercher")).toBeTruthy());
+  expect(m.appels.find((a) => a.methode === "POST").corps).toEqual({ question: "Comment lancer les tests ?" });
+});
+
+test("REQ106_AC6_AC7_collection_choisie_part_au_serveur_et_les_passages_ont_resume_lien_score_et_texte", async () => {
+  const m = monter(etat([NOTES, API]), { [RECHERCHE]: rep({ passages: PASSAGES }) });
+  await m.v.ouvrir();
+  champDe("Collection").value = "notes";
+  champDe("Collection").dispatchEvent(new Event("change", { bubbles: true }));
+  saisir(champDe("Question"), "x");
+  parNom("Rechercher").click();
+  await vi.waitFor(() => expect(liens().length).toBe(2));
+  expect(m.appels.find((a) => a.methode === "POST").corps).toEqual({ question: "x", collection: "notes" });
+  const p = panneau("Recherche");
+  const statut = p.querySelector("[role=status]");
+  expect(statut.textContent).toBe("2 passages, du plus proche au moins proche.");
+  const ol = p.querySelector("ol");
+  expect(ol.getAttribute("aria-label")).toBe("Passages");
+  expect(liens()[0].textContent).toBe("docs/guide.md:12-40");
+  expect(liens()[0].title).toBe("Ouvrir docs/guide.md à la ligne 12 dans l'éditeur.");
+  expect(ol.querySelector("li").textContent).toContain("notes · score 0,82");
+  expect(ol.querySelector("pre").textContent).toBe("Lancer :\n  cargo test");
+});
+
+test("REQ106_AC7_un_seul_passage_et_aucun_passage", async () => {
+  const m = monter(etat([NOTES]), { [RECHERCHE]: rep({ passages: [PASSAGES[0]] }) });
+  await m.v.ouvrir();
+  saisir(champDe("Question"), "x");
+  parNom("Rechercher").click();
+  await vi.waitFor(() => expect(liens().length).toBe(1));
+  expect(panneau("Recherche").querySelector("[role=status]").textContent).toBe("1 passage, du plus proche au moins proche.");
+  document.body.replaceChildren();
+  const n = monter(etat([NOTES]), { [RECHERCHE]: rep({ passages: [] }) });
+  await n.v.ouvrir();
+  saisir(champDe("Question"), "x");
+  parNom("Rechercher").click();
+  await vi.waitFor(() => expect(panneau("Recherche").querySelector("[role=status]")).toBeTruthy());
+  expect(panneau("Recherche").querySelector("[role=status]").textContent).toBe("Aucun passage.");
+});
+
+test("REQ106_AC5_refus_du_provider_et_coupure_en_erreur_sans_passage", async () => {
+  let n = 0;
+  const m = monter(etat([NOTES]), {
+    [RECHERCHE]: () => {
+      n++;
+      if (n === 1) return rep({ passages: PASSAGES });
+      if (n === 2) return rep({ cause: "provider", message: "OpenAI a refusé la requête (401).", detail: '{"error":"clé"}' }, 502);
+      throw new TypeError("réseau");
+    },
+  });
+  await m.v.ouvrir();
+  saisir(champDe("Question"), "x");
+  parNom("Rechercher").click();
+  await vi.waitFor(() => expect(liens().length).toBe(2));
+  parNom("Rechercher").click();
+  await vi.waitFor(() => expect(panneau("Recherche").querySelector("[role=alert]")).toBeTruthy());
+  const a = panneau("Recherche").querySelector("[role=alert]");
+  expect(a.textContent).toContain("OpenAI a refusé la requête (401).");
+  expect(a.querySelector("pre").textContent).toBe('{"error":"clé"}');
+  expect(liens().length).toBe(0);
+  parNom("Rechercher").click();
+  await vi.waitFor(() => expect(panneau("Recherche").textContent).toContain("Connexion perdue. Réessayez au retour."));
+});
+
+test("REQ106_AC3_AC9_clic_sur_un_passage_ferme_le_dialogue_et_ouvre_a_la_ligne_de_debut", async () => {
+  const ouvrirFichier = vi.fn(async (ref, avant) => {
+    avant();
+  });
+  const m = monter(etat([NOTES]), { [RECHERCHE]: rep({ passages: PASSAGES }) }, { ouvrirFichier });
+  await m.v.ouvrir();
+  saisir(champDe("Question"), "x");
+  parNom("Rechercher").click();
+  await vi.waitFor(() => expect(liens().length).toBe(2));
+  liens()[0].click();
+  await vi.waitFor(() => expect(dlg()).toBeUndefined());
+  expect(ouvrirFichier.mock.calls[0][0]).toEqual({ chemin: "docs/guide.md", ligne: 12 });
+  expect(document.activeElement).not.toBe(m.ouvreur);
+});
+
+test("REQ106_AC3_AC9_fichier_absent_message_dans_la_section_dialogue_ouvert_focus_sur_le_lien", async () => {
+  const ouvrirFichier = vi.fn(async () => "docs/ancien.md n'existe pas.");
+  const m = monter(etat([NOTES]), { [RECHERCHE]: rep({ passages: PASSAGES }) }, { ouvrirFichier });
+  await m.v.ouvrir();
+  saisir(champDe("Question"), "x");
+  parNom("Rechercher").click();
+  await vi.waitFor(() => expect(liens().length).toBe(2));
+  liens()[1].click();
+  await vi.waitFor(() => expect(panneau("Recherche").querySelector("[role=alert]")).toBeTruthy());
+  expect(panneau("Recherche").querySelector("[role=alert]").textContent).toContain("docs/ancien.md n'existe pas.");
+  expect(dlg()).toBeTruthy();
+  expect(document.activeElement).toBe(liens()[1]);
+  expect(liens().length).toBe(2);
+});
+
+test("REQ106_AC10_rouvrir_garde_question_collection_et_passages_sans_nouvelle_requete", async () => {
+  const m = monter(etat([NOTES, API]), { [RECHERCHE]: rep({ passages: PASSAGES }) });
+  await m.v.ouvrir();
+  champDe("Collection").value = "api";
+  champDe("Collection").dispatchEvent(new Event("change", { bubbles: true }));
+  saisir(champDe("Question"), "ma question");
+  parNom("Rechercher").click();
+  await vi.waitFor(() => expect(liens().length).toBe(2));
+  parNom("Fermer").click();
+  await m.v.ouvrir();
+  expect(champDe("Question").value).toBe("ma question");
+  expect(champDe("Collection").value).toBe("api");
+  expect(liens().length).toBe(2);
+  expect(m.appels.filter((a) => a.methode === "POST").length).toBe(1);
+});
+
+test("REQ106_fermer_pendant_une_recherche_puis_rouvrir_remet_Rechercher_a_la_reponse", async () => {
+  let rendre;
+  const m = monter(etat([NOTES]), { [RECHERCHE]: () => new Promise((ok) => (rendre = () => ok(rep({ passages: PASSAGES })))) });
+  await m.v.ouvrir();
+  saisir(champDe("Question"), "x");
+  parNom("Rechercher").click();
+  expect(parNom("Recherche…")).toBeTruthy();
+  parNom("Fermer").click();
+  await m.v.ouvrir();
+  expect(parNom("Recherche…")).toBeTruthy();
+  rendre();
+  await vi.waitFor(() => expect(parNom("Rechercher")).toBeTruthy());
+  expect(parNom("Recherche…")).toBeUndefined();
 });

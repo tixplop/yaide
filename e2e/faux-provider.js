@@ -15,12 +15,25 @@ export function erreur(statut, type, message) {
   return { statut, corps: { type: "error", error: { type, message } } };
 }
 
+/** Vecteur de 64 dimensions : sac de mots hachés (FNV-1a), normalisé ; deux textes aux mots communs sont proches. */
+export function vecteurDeTexte(texte) {
+  const v = new Array(64).fill(0);
+  for (const mot of String(texte).toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []) {
+    let h = 2166136261;
+    for (const c of mot) h = Math.imul(h ^ c.codePointAt(0), 16777619) >>> 0;
+    v[h % 64] += 1;
+  }
+  const norme = Math.hypot(...v) || 1;
+  return v.map((x) => x / norme);
+}
+
 /**
  * Faux provider au format Anthropic, sur un port libre. `etapes` : les réponses, servies dans l'ordre
- * (la dernière est répétée) ; une étape peut porter `retenir` (une promesse) : la réponse attend qu'elle soit tenue. Rend `{ adresse, recues, arreter }` ; `recues` garde `{ chemin, entetes, corps }`.
+ * (la dernière est répétée) ; une étape peut porter `retenir` (une promesse) : la réponse attend qu'elle soit tenue. Sa route `/embeddings` (format OpenAI) rend un vecteur par texte (`vecteurDeTexte`) ; `embeddings` garde ses corps. Rend `{ adresse, recues, embeddings, arreter }` ; `recues` garde `{ chemin, entetes, corps }`.
  */
 export async function lancerFauxProvider(etapes = []) {
   const recues = [];
+  const embeddings = [];
   const serveur = http.createServer((req, res) => {
     let brut = "";
     req.on("data", (d) => (brut += d));
@@ -30,6 +43,13 @@ export async function lancerFauxProvider(etapes = []) {
         corps = JSON.parse(brut);
       } catch {
         // Corps illisible : gardé à null.
+      }
+      if (req.url === "/embeddings") {
+        // Route de la base de connaissance : un vecteur par texte, hors du scénario `etapes`.
+        embeddings.push(corps);
+        const data = [].concat(corps?.input ?? []).map((t, index) => ({ index, embedding: vecteurDeTexte(t) }));
+        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ data }));
+        return;
       }
       recues.push({ chemin: req.url, entetes: req.headers, corps });
       const etape = etapes[Math.min(recues.length - 1, etapes.length - 1)];
@@ -46,6 +66,7 @@ export async function lancerFauxProvider(etapes = []) {
   return {
     adresse: `http://127.0.0.1:${serveur.address().port}`,
     recues,
+    embeddings,
     arreter: async () => {
       serveur.closeAllConnections();
       await new Promise((ok) => serveur.close(ok));

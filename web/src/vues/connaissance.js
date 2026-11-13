@@ -1,4 +1,4 @@
-import { enregistrerConfigConnaissance, lireConnaissance, lireFichiersConnaissance, supprimerConnaissance } from "../api.js";
+import { chercherConnaissance, enregistrerConfigConnaissance, lireConnaissance, lireFichiersConnaissance, supprimerConnaissance } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { dialogue } from "../ui/dialogue.js";
@@ -42,11 +42,13 @@ const enColonne = (...noeuds) => {
 };
 
 /**
- * REQ-103, REQ-105, V-013. Dialogue « Base de connaissance » : sections Configuration, Collections et Recherche (celle-ci vide, T-234).
+ * REQ-103, REQ-105, V-013. Dialogue « Base de connaissance » : sections Configuration, Collections et Recherche (REQ-106).
  * `ouvrir({ configurer, surFermeture })` lit l'état de la base ; `configurer` choisit « Configuration » ; `surFermeture` remplace le retour du focus
  * au bouton (le dialogue vient d'ailleurs). `surEtat(ouvert)` suit l'ouverture.
+ * `ouvrirFichier({ chemin, ligne }, avantOuverture)` ouvre un passage dans l'éditeur : rend le texte du refus, ou rien.
+ * Question, collection et passages restent en mémoire jusqu'au rechargement de la page.
  */
-export function vueConnaissance({ surEtat = () => {} } = {}) {
+export function vueConnaissance({ surEtat = () => {}, ouvrirFichier = async () => {} } = {}) {
   let dlg = null;
   let generation = 0;
   let etat = null;
@@ -60,10 +62,13 @@ export function vueConnaissance({ surEtat = () => {} } = {}) {
   let saisie = { provider: "openai", modele: "" };
   let panneaux = {};
   let enregistrement = false;
+  const memoire = { question: "", collection: "", passages: null };
+  let recherche = null; // éléments de la section « Recherche » affichée
+  let rechercheEnCours = false;
   const fermer = bouton({ libelle: "Fermer" });
   const enregistrer = bouton({ libelle: "Enregistrer", variante: "principal" });
 
-  function arreter() {
+  function arreter({ rendreFocus = true } = {}) {
     if (!dlg) return;
     generation++;
     clearTimeout(minuteur);
@@ -71,9 +76,9 @@ export function vueConnaissance({ surEtat = () => {} } = {}) {
     const apres = retour;
     dlg = null;
     retour = null;
-    d.fermer({ rendreFocus: !apres });
+    d.fermer({ rendreFocus: rendreFocus && !apres });
     surEtat(false);
-    apres?.();
+    if (rendreFocus) apres?.();
   }
 
   const verrou = () => etat.collections.length > 0;
@@ -152,6 +157,7 @@ export function vueConnaissance({ surEtat = () => {} } = {}) {
       etat = r;
       saisie = { provider: r.config?.provider ?? saisie.provider, modele: r.config?.modele ?? modele };
       const { inModele } = rendreConfiguration();
+      rendreRecherche();
       if (dansModele) inModele.focus();
       dlg.definirResultat(message({ texte: "Configuration enregistrée.", variante: "succes" }));
     } else dlg.definirResultat(messageEchec(r, "Enregistrement impossible"));
@@ -273,6 +279,7 @@ export function vueConnaissance({ surEtat = () => {} } = {}) {
   // Le verrou a pu changer (dernière collection supprimée, premier ajout terminé) : les champs suivent.
   function majConfiguration() {
     rendreConfiguration();
+    rendreRecherche();
     majActions();
   }
 
@@ -298,6 +305,123 @@ export function vueConnaissance({ surEtat = () => {} } = {}) {
       }
       suivre();
     }, 1000);
+  }
+
+  // ---- Recherche ----
+
+  function rendreRecherche({ focus = false } = {}) {
+    recherche = null;
+    const p = panneaux.recherche;
+    if (!etat.config) {
+      const configurer = bouton({ libelle: "Configurer la base" });
+      configurer.addEventListener("click", () => {
+        barre.choisir("configuration");
+        panneaux.configuration.querySelector("select").focus();
+      });
+      p.replaceChildren(indication({ texte: "La base n'est pas configurée.", action: configurer }));
+      return;
+    }
+    if (etat.collections.length === 0) {
+      p.replaceChildren(indication({ texte: "Aucune collection. Ajoutez d'abord des fichiers depuis l'arborescence." }));
+      return;
+    }
+    if (memoire.collection && !etat.collections.some((c) => c.nom === memoire.collection)) memoire.collection = "";
+    const noms = etat.collections.map((c) => c.nom).sort();
+    const cQuestion = champ({ libelle: "Question", valeur: memoire.question });
+    const cCollection = champ({ libelle: "Collection", type: "liste", options: [{ valeur: "", texte: "Toutes les collections" }, ...noms.map((n) => ({ valeur: n, texte: n }))], valeur: memoire.collection });
+    const question = cQuestion.querySelector("input");
+    const choix = cCollection.querySelector("select");
+    const form = document.createElement("div");
+    form.className = "ya-recherche-form";
+    const resultats = document.createElement("div");
+    resultats.className = "ya-recherche-resultats";
+    const fabriquer = () => {
+      const b = bouton(
+        rechercheEnCours
+          ? { libelle: "Rechercher", libelleEnCours: "Recherche…", variante: "principal" }
+          : { libelle: "Rechercher", variante: "principal", desactive: question.value.trim() === "" },
+      );
+      b.addEventListener("click", chercher);
+      return b;
+    };
+    let lancer = fabriquer();
+    form.append(cQuestion, cCollection, lancer);
+    recherche = { question, resultats };
+    const majBouton = () => {
+      const avecFocus = document.activeElement === lancer;
+      const neuf = fabriquer();
+      lancer.replaceWith(neuf);
+      lancer = neuf;
+      if (avecFocus) neuf.focus();
+    };
+    recherche.majBouton = majBouton;
+    question.addEventListener("input", () => {
+      memoire.question = question.value;
+      lancer.disabled = rechercheEnCours || question.value.trim() === "";
+    });
+    question.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter") return;
+      ev.preventDefault();
+      chercher();
+    });
+    choix.addEventListener("change", () => (memoire.collection = choix.value));
+    p.replaceChildren(form, resultats);
+    rendrePassages();
+    if (focus) question.focus();
+  }
+
+  function rendrePassages(refus) {
+    if (!recherche) return;
+    const { resultats } = recherche;
+    resultats.replaceChildren();
+    if (refus) resultats.append(refus);
+    const trouves = memoire.passages;
+    if (!trouves) return;
+    const resume = document.createElement("p");
+    resume.className = "ya-recherche-resume";
+    resume.setAttribute("role", "status");
+    resume.textContent = trouves.length === 0 ? "Aucun passage." : `${pluriel(trouves.length, "passage")}, du plus proche au moins proche.`;
+    resultats.prepend(resume);
+    if (trouves.length) resultats.append(liste({ variante: "passages", nom: "Passages", lignes: trouves, surLien: ouvrirPassage }));
+  }
+
+  async function chercher() {
+    if (rechercheEnCours || !recherche) return;
+    const question = recherche.question.value.trim();
+    if (question === "") return;
+    const mienne = generation;
+    rechercheEnCours = true;
+    recherche.majBouton();
+    const r = await chercherConnaissance(question, memoire.collection || undefined);
+    rechercheEnCours = false;
+    recherche?.majBouton();
+    if (!dlg || mienne !== generation) return;
+    if (Array.isArray(r.passages)) {
+      memoire.passages = r.passages;
+      rendrePassages();
+      return;
+    }
+    memoire.passages = null;
+    rendrePassages(
+      r.coupure
+        ? message({ texte: TEXTE_COUPURE, variante: "erreur" })
+        : message({ texte: `${sansPoint(r.message)}.`, variante: "erreur", ...(r.detail ? { detail: r.detail } : {}) }),
+    );
+  }
+
+  async function ouvrirPassage(p) {
+    const lien = document.activeElement;
+    const mienne = generation;
+    const refus = await ouvrirFichier({ chemin: p.chemin, ligne: p.debut }, () => {
+      if (dlg && mienne === generation) arreter({ rendreFocus: false });
+    });
+    if (!refus) return;
+    if (!dlg || mienne !== generation || !recherche) return;
+    rendrePassages(message({ texte: refus, variante: "erreur" }));
+    // Les liens ont été refaits : le focus revient au lien du même passage.
+    const liens = [...recherche.resultats.querySelectorAll(".ya-passage-lien")];
+    const rang = (memoire.passages ?? []).indexOf(p);
+    (liens[rang] ?? lien)?.focus();
   }
 
   // ---- Dialogue ----
@@ -340,17 +464,20 @@ export function vueConnaissance({ surEtat = () => {} } = {}) {
     etat = r;
     if (r.config) saisie = { provider: r.config.provider, modele: r.config.modele };
     for (const s of SECTIONS) panneaux[s.id] = document.createElement("div");
+    panneaux.recherche.className = "ya-recherche";
     section = configurer || !r.config ? "configuration" : "recherche";
     barre = onglets({ presentation: "sections", nomBarre: "Base de connaissance", onglets: SECTIONS, actif: section, surChoix: choisir, panneaux });
     hote.append(barre);
     rendreConfiguration();
     rendreCollections();
+    rendreRecherche();
     dlg.remplacer(SECTIONS.map((s) => panneaux[s.id]), ongletDe(section));
     barre.choisir(section);
     enregistrer.onclick = valider;
     majActions();
     suivre();
     if (section === "configuration") panneaux.configuration.querySelector("select").focus();
+    else if (recherche) recherche.question.focus();
     else ongletDe(section).focus();
   }
 

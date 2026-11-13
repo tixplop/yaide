@@ -98,7 +98,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const serveursMcp = avec.agents ? vueServeursMcp({ surEtat: (ouvert) => boutonMcp.definirOuvert(ouvert) }) : null;
   boutonMcp?.addEventListener("click", () => serveursMcp.ouvrir());
   const boutonBase = avec.agents ? bouton({ icone: "book-open", nomAccessible: "Base de connaissance", positionInfoBulle: "gauche", ouvreDialogue: true }) : null;
-  const baseConnaissance = avec.agents ? vueConnaissance({ surEtat: (ouvert) => boutonBase.definirOuvert(ouvert) }) : null;
+  const baseConnaissance = avec.agents ? vueConnaissance({ surEtat: (ouvert) => boutonBase.definirOuvert(ouvert), ouvrirFichier: (ref, avant) => editeur.ouvrirCitee(ref, avant) }) : null;
   boutonBase?.addEventListener("click", () => baseConnaissance.ouvrir());
   boutonAgent.addEventListener("click", () => ouvrirConversation());
   boutonAgents.addEventListener("click", entrerDansAgents);
