@@ -839,7 +839,7 @@ body { margin: 0; }
 .cm-hy-barre { text-decoration: line-through; }
 .cm-hy-code { padding: 0 var(--space-1); border-radius: var(--radius-xs); font: var(--texte-code-ligne) var(--font-mono); background-color: var(--code-fond); }
 .cm-hy-suivable { cursor: text; }
-.ya-ctrl .cm-hy-suivable { cursor: pointer; }
+.ya-ctrl .cm-hy-suivable, .ya-ctrl .cm-hy-suivable * { cursor: pointer; }
 .cm-hy-lien { color: var(--info); text-decoration: underline; cursor: text; }
 .cm-line.cm-hy-citation { padding-left: var(--space-4); background-color: var(--msg-info); box-shadow: inset var(--filet-note) 0 0 var(--info); }
 .cm-line.cm-hy-bloc-code { font: var(--texte-code) var(--font-mono); background-color: var(--code-fond); }

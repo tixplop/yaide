@@ -12,6 +12,7 @@ function guide() {
   const l = Array.from({ length: 140 }, (_, i) => `Ligne de texte ${i + 1}.`);
   l[0] = "# Guide";
   l[2] = "Commencez par [le README](../README.md), puis lisez [Lancer les tests](#lancer-les-tests).";
+  l[4] = "Voir [le **guide**](guide.md).";
   l[8] = "[ancien guide](ancien.md)";
   l[12] = "[clap](http://127.0.0.1:9/clap)";
   l[14] = "| Nom | Doc |";
@@ -48,22 +49,61 @@ test("REQ101_parcours_73_74_liens_d_un_document_markdown", async ({ page, contex
     const lignes = page.locator(".cm-content:visible .cm-line");
     const readme = lignes.nth(2).locator(".cm-hy-lien", { hasText: "le README" });
     await expect(readme).toBeVisible();
-    const suivable = lignes.nth(2).locator(".cm-hy-suivable", { hasText: "le README" }).first();
-    const curseur = (el) => el.evaluate((e) => getComputedStyle(e).cursor);
+    // Pointeur de l'élément réellement sous la souris (et non d'un ancêtre).
+    const pointeurEn = ([x, y]) => page.evaluate(([px, py]) => getComputedStyle(document.elementFromPoint(px, py)).cursor, [x, y]);
+    const centre = async (loc) => {
+      const b = await loc.boundingBox();
+      return [b.x + b.width / 2, b.y + b.height / 2];
+    };
+    const centreTexte = (ligne, texte) =>
+      ligne.evaluate((el, t) => {
+        const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = w.nextNode(); n; n = w.nextNode()) {
+          const i = n.data.indexOf(t);
+          if (i < 0) continue;
+          const r = document.createRange();
+          r.setStart(n, i);
+          r.setEnd(n, i + t.length);
+          const b = r.getBoundingClientRect();
+          return [b.x + b.width / 2, b.y + b.height / 2];
+        }
+        return null;
+      }, texte);
 
     // P-073 étape 1 : survol, pointeur du texte, indication dans la barre.
     await readme.hover();
-    expect(await curseur(suivable)).toBe("text");
+    const surReadme = await centre(readme);
+    expect(await pointeurEn(surReadme)).toBe("text");
     await expect(pied).toContainText("Ctrl+clic pour ouvrir ../README.md");
     // Étape 3 : Ctrl enfoncé sans bouger la souris : main ; relâché : texte.
     await page.keyboard.down("Control");
-    await expect.poll(() => curseur(suivable)).toBe("pointer");
+    await expect.poll(() => pointeurEn(surReadme)).toBe("pointer");
     await page.keyboard.up("Control");
-    await expect.poll(() => curseur(suivable)).toBe("text");
+    await expect.poll(() => pointeurEn(surReadme)).toBe("text");
+    // Ctrl déjà tenu : texte hors lien, puis passage de la souris sur le lien.
+    const surTexte = await centreTexte(lignes.nth(1), "Ligne de texte 2.");
+    await page.mouse.move(surTexte[0], surTexte[1]);
+    await page.keyboard.down("Control");
+    // Hors lien, le pointeur reste celui du texte (`auto` sur le texte d'une ligne : barre en I).
+    expect(await pointeurEn(surTexte)).toMatch(/^(text|auto)$/);
+    await page.mouse.move(surReadme[0], surReadme[1]);
+    await expect.poll(() => pointeurEn(surReadme)).toBe("pointer");
+    // Lien dont le texte contient du gras.
+    const surGuide = await centreTexte(lignes.nth(4), "guide");
+    await page.mouse.move(surGuide[0], surGuide[1]);
+    await expect.poll(() => pointeurEn(surGuide)).toBe("pointer");
+    await page.keyboard.up("Control");
+    await expect.poll(() => pointeurEn(surGuide)).toBe("text");
     // Tableau rendu : même indication.
     const cellule = page.locator(".cm-hy-tableau:visible a", { hasText: "le README" });
     await cellule.hover();
     await expect(pied).toContainText("Ctrl+clic pour ouvrir ../README.md");
+    const surCellule = await centre(cellule);
+    expect(await pointeurEn(surCellule)).toBe("text");
+    await page.keyboard.down("Control");
+    await expect.poll(() => pointeurEn(surCellule)).toBe("pointer");
+    await page.keyboard.up("Control");
+    await expect.poll(() => pointeurEn(surCellule)).toBe("text");
     await page.mouse.move(700, 5);
     await expect(pied).not.toContainText("Ctrl+clic");
 
@@ -73,6 +113,16 @@ test("REQ101_parcours_73_74_liens_d_un_document_markdown", async ({ page, contex
     const col = (await pied.textContent()).match(/Ln 3, Col (\d+)/)[1];
     await expect(page.getByRole("tab", { name: /^README\.md/ })).toHaveAttribute("aria-selected", "false");
     expect(context.pages()).toHaveLength(1);
+    // Ligne du curseur en texte brut : main avec Ctrl sur « [ » et sur « ](../README.md) ».
+    for (const morceau of ["[", "](../README.md)"]) {
+      const pos = await centreTexte(lignes.nth(2), morceau);
+      await page.mouse.move(pos[0], pos[1]);
+      expect(await pointeurEn(pos)).toBe("text");
+      await page.keyboard.down("Control");
+      await expect.poll(() => pointeurEn(pos)).toBe("pointer");
+      await page.keyboard.up("Control");
+      await expect.poll(() => pointeurEn(pos)).toBe("text");
+    }
 
     // Étape 4 : Ctrl+clic ouvre README.md, hybride, focus dans son éditeur.
     await page.locator(".cm-hy-lien", { hasText: "le README" }).first().click({ modifiers: ["Control"] });
