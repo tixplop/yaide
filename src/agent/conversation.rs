@@ -44,6 +44,9 @@ pub enum Entree {
         serveur: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         outil: Option<String>,
+        /// Étapes du sous-agent d'un appel `subagent` (REQ-100) ; jamais envoyées au modèle.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        etapes: Option<Vec<Entree>>,
     },
     Fin {
         texte: String,
@@ -262,7 +265,21 @@ fn messages_pour(entrees: &[Entree], moi: Option<&str>, noms: &[(String, String)
 fn ranger(c: &mut Conversation, yaide_arrete: bool) {
     let auteur = c.actif.take();
     for e in &mut c.entrees {
-        if let Entree::Outil { etat, resultat, .. } = e {
+        if let Entree::Outil {
+            etat,
+            resultat,
+            etapes,
+            ..
+        } = e
+        {
+            for etape in etapes.iter_mut().flatten() {
+                if let Entree::Outil { etat, resultat, .. } = etape {
+                    if etat == "enCours" {
+                        *etat = "echec".into();
+                        *resultat = "Stopped by the user.".into();
+                    }
+                }
+            }
             if etat == "enCours" {
                 *etat = "echec".into();
                 *resultat = "Stopped by the user.".into();
@@ -280,6 +297,7 @@ fn ranger(c: &mut Conversation, yaide_arrete: bool) {
             auteur: auteur.clone(),
             serveur,
             outil,
+            etapes: None,
         });
     }
     c.entrees.push(if yaide_arrete {
@@ -711,6 +729,8 @@ Always give file paths relative to the project root.",
         p: &Profil,
         arguments: &Value,
         definitions: &[provider::DefOutil],
+        conv: &Mutex<Conversation>,
+        id_appel: &str,
     ) -> outils::Resultat {
         let Some(consigne) = arguments["prompt"].as_str() else {
             return outils::Resultat {
@@ -738,6 +758,10 @@ Always give file paths relative to the project root.",
         let mut journal = vec![Entree::Utilisateur {
             texte: consigne.to_string(),
         }];
+        let arret_tour = || arret("the turn was stopped.".into());
+        if !self.copier_etapes(conv, id_appel, &journal) {
+            return arret_tour();
+        }
         loop {
             let Some((nom, res)) = self
                 .requete(p, &instructions, &messages(&journal), &definitions)
@@ -755,6 +779,15 @@ Always give file paths relative to the project root.",
                 }
             };
             if rep.appels.is_empty() {
+                journal.push(Entree::Agent {
+                    texte: rep.texte.clone(),
+                    raisonnement: rep.raisonnement,
+                    blocs: rep.blocs,
+                    auteur: None,
+                });
+                if !self.copier_etapes(conv, id_appel, &journal) {
+                    return arret_tour();
+                }
                 return outils::Resultat {
                     contenu: rep.texte,
                     echec: false,
@@ -770,21 +803,56 @@ Always give file paths relative to the project root.",
                 blocs: rep.blocs,
                 auteur: None,
             });
+            if !self.copier_etapes(conv, id_appel, &journal) {
+                return arret_tour();
+            }
             for appel in appels {
-                let r = self.executer_appel(&ctx, &appel).await;
+                let (serveur, outil) = match self.mcp.identite(&appel.nom).await {
+                    Some((s, o)) if appel.nom.starts_with("mcp__") => (Some(s), Some(o)),
+                    _ => (None, None),
+                };
                 journal.push(Entree::Outil {
                     argument: outils::argument_principal(&appel.nom, &appel.arguments),
-                    id: appel.id,
-                    nom: appel.nom,
-                    arguments: appel.arguments,
-                    etat: if r.echec { "echec" } else { "reussi" }.into(),
-                    resultat: r.contenu,
+                    id: appel.id.clone(),
+                    nom: appel.nom.clone(),
+                    arguments: appel.arguments.clone(),
+                    etat: "enCours".into(),
+                    resultat: String::new(),
                     auteur: None,
-                    serveur: None,
-                    outil: None,
+                    serveur,
+                    outil,
+                    etapes: None,
                 });
+                if !self.copier_etapes(conv, id_appel, &journal) {
+                    return arret_tour();
+                }
+                let r = self.executer_appel(&ctx, &appel).await;
+                if let Some(Entree::Outil { etat, resultat, .. }) = journal.last_mut() {
+                    *etat = if r.echec { "echec" } else { "reussi" }.into();
+                    *resultat = r.contenu;
+                }
+                if !self.copier_etapes(conv, id_appel, &journal) {
+                    return arret_tour();
+                }
             }
         }
+    }
+
+    /// Recopie le journal du sous-agent dans les étapes de son appel. Faux si le tour est arrêté.
+    fn copier_etapes(
+        &self,
+        conv: &Mutex<Conversation>,
+        id_appel: &str,
+        journal: &[Entree],
+    ) -> bool {
+        self.modifier(conv, |c| {
+            let entree = c.entrees.iter_mut().rev().find(
+                |e| matches!(e, Entree::Outil { id, etat, .. } if id == id_appel && etat == "enCours"),
+            );
+            if let Some(Entree::Outil { etapes, .. }) = entree {
+                *etapes = Some(journal.to_vec());
+            }
+        })
     }
 
     /// Faux si le tour entier doit finir (erreur, arrêt).
@@ -911,6 +979,7 @@ Always give file paths relative to the project root.",
                         etat: "enCours".into(),
                         resultat: String::new(),
                         auteur: agent.clone(),
+                        etapes: (appel.nom == "subagent").then(Vec::new),
                         serveur,
                         outil,
                     });
@@ -919,7 +988,8 @@ Always give file paths relative to the project root.",
                     return false;
                 }
                 let r = if appel.nom == "subagent" {
-                    self.sous_agent(&p, &appel.arguments, definitions).await
+                    self.sous_agent(&p, &appel.arguments, definitions, conv, &appel.id)
+                        .await
                 } else {
                     self.executer_appel(&ctx, &appel).await
                 };
@@ -1431,6 +1501,7 @@ mod tests {
                     auteur: None,
                     serveur: None,
                     outil: None,
+                    etapes: None,
                 },
             ],
             agents: vec![],
@@ -2472,5 +2543,204 @@ mod tests {
         assert_eq!(o["etat"], "echec");
         assert_eq!(o["resultat"], "Missing or invalid argument: prompt.");
         assert_eq!(b.nb_requetes(), 2);
+    }
+
+    fn appel_avec_texte(texte: &str, id: &str, nom: &str, a: Value) -> (u16, Value, u64) {
+        (
+            200,
+            json!({"choices": [{"message": {"content": texte, "tool_calls": [
+                {"id": id, "type": "function",
+                 "function": {"name": nom, "arguments": a.to_string()}}]}}],
+                   "usage": {"prompt_tokens": 5, "completion_tokens": 1}}),
+            0,
+        )
+    }
+
+    fn types(etapes: &Value) -> Vec<String> {
+        etapes
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["type"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn REQ100_AC4_etapes_gardees_relues_et_jamais_envoyees() {
+        let b = banc("a100-ac4e", true, None).await;
+        std::fs::write(b.dir.join("README.md"), "contenu-readme-z").unwrap();
+        b.scenario(vec![
+            sous("cherche-x"),
+            appel_avec_texte("je-lis", "r1", "read", json!({"path": "README.md"})),
+            texte("trouvé-y", 999),
+            texte("fin-agent", 20),
+            texte("suite", 30),
+        ]);
+        let id = b.envoyer(None, "lance").unwrap();
+        let v = b.fini(&id).await;
+        let verifier = |v: &Value| {
+            let o = outil_de(v, "subagent");
+            assert_eq!(o["resultat"], "trouvé-y");
+            let et = &o["etapes"];
+            assert_eq!(types(et), ["utilisateur", "agent", "outil", "agent"]);
+            assert_eq!(et[0]["texte"], "cherche-x");
+            assert_eq!(et[1]["texte"], "je-lis");
+            assert_eq!(et[2]["nom"], "read");
+            assert_eq!(et[2]["argument"], "README.md");
+            assert_eq!(et[2]["etat"], "reussi");
+            assert!(et[2]["resultat"]
+                .as_str()
+                .unwrap()
+                .contains("contenu-readme-z"));
+            assert_eq!(et[3]["texte"], "trouvé-y");
+        };
+        verifier(&v);
+        // les autres outils n'ont pas d'étapes
+        assert!(outil_de(&b.g.lire(&id, 0).unwrap(), "subagent")["etapes"].is_array());
+        let neuf = gestionnaire(&b.dir, &b.reglages);
+        verifier(&neuf.lire(&id, 0).unwrap());
+        b.scenario(vec![]);
+        neuf.envoyer(Some(&id), &b.profil, "encore").unwrap();
+        for _ in 0..250 {
+            if neuf.lire(&id, 0).unwrap()["enCours"] == false {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let r = b.requete(4);
+        assert!(r.contains("trouvé-y") && r.contains("encore"));
+        assert!(!r.contains("je-lis"));
+        assert!(!r.contains("contenu-readme-z"));
+    }
+
+    #[tokio::test]
+    async fn REQ100_AC8_etapes_lisibles_pendant_un_bash_lent_du_sous_agent() {
+        let b = banc("a100-ac8", true, None).await;
+        b.scenario(vec![
+            sous("lent"),
+            appel_avec_texte("debut", "b1", "bash", json!({"command": "sleep 1"})),
+            texte("terminé", 1),
+            texte("fin-agent", 1),
+        ]);
+        let id = b.envoyer(None, "lance").unwrap();
+        let v = b
+            .attendre(&id, |v| {
+                v["entrees"].as_array().is_some_and(|e| {
+                    e.len() > 2 && e[2]["etapes"].as_array().is_some_and(|x| x.len() == 3)
+                })
+            })
+            .await;
+        let total = v["total"].as_u64().unwrap() as usize;
+        let lu = b.g.lire(&id, total - 1).unwrap();
+        let o = &lu["entrees"][0];
+        assert_eq!(o["nom"], "subagent");
+        assert_eq!(o["etat"], "enCours");
+        assert_eq!(types(&o["etapes"]), ["utilisateur", "agent", "outil"]);
+        assert_eq!(o["etapes"][0]["texte"], "lent");
+        assert_eq!(o["etapes"][1]["texte"], "debut");
+        assert_eq!(o["etapes"][2]["etat"], "enCours");
+        let v = b.fini(&id).await;
+        let o = outil_de(&v, "subagent");
+        assert_eq!(o["etat"], "reussi");
+        assert_eq!(
+            types(&o["etapes"]),
+            ["utilisateur", "agent", "outil", "agent"]
+        );
+        assert_eq!(o["etapes"][2]["etat"], "reussi");
+        assert_eq!(o["etapes"][3]["texte"], "terminé");
+    }
+
+    #[tokio::test]
+    async fn REQ100_AC9_bash_du_sous_agent_arrete_ou_yaide_arrete() {
+        let b = banc("a100-ac9", true, None).await;
+        b.scenario(vec![
+            sous("lent"),
+            appel_avec_texte("debut", "b1", "bash", json!({"command": "sleep 30"})),
+        ]);
+        let id = b.envoyer(None, "lance").unwrap();
+        b.attendre(&id, |v| {
+            v["entrees"].as_array().is_some_and(|e| {
+                e.len() > 2 && e[2]["etapes"].as_array().is_some_and(|x| x.len() == 3)
+            })
+        })
+        .await;
+        assert!(b.g.arreter(&id));
+        let v = b.g.lire(&id, 0).unwrap();
+        let et = &outil_de(&v, "subagent")["etapes"];
+        assert_eq!(types(et), ["utilisateur", "agent", "outil"]);
+        assert_eq!(et[1]["texte"], "debut");
+        assert_eq!(et[2]["etat"], "echec");
+        assert_eq!(et[2]["resultat"], "Stopped by the user.");
+
+        // Yaide arrêté : fichier resté en cours, relu par un gestionnaire neuf
+        let etape = |t: &str, etat: &str| {
+            serde_json::from_value::<Entree>(json!({
+                "type": "outil", "id": t, "nom": "bash", "arguments": {}, "argument": "x",
+                "etat": etat, "resultat": if etat == "reussi" { "ok" } else { "" }
+            }))
+            .unwrap()
+        };
+        let c = Conversation {
+            id: "abc".into(),
+            titre: "t".into(),
+            profil: b.profil.clone(),
+            cree: 1,
+            maj: 1,
+            en_cours: true,
+            instructions: String::new(),
+            tokens: 0,
+            entrees: vec![
+                Entree::Utilisateur { texte: "u".into() },
+                Entree::Outil {
+                    id: "s".into(),
+                    nom: "subagent".into(),
+                    arguments: json!({"prompt": "p"}),
+                    argument: "p".into(),
+                    etat: "enCours".into(),
+                    resultat: String::new(),
+                    auteur: None,
+                    serveur: None,
+                    outil: None,
+                    etapes: Some(vec![
+                        Entree::Utilisateur { texte: "p".into() },
+                        etape("fait", "reussi"),
+                        etape("lent", "enCours"),
+                    ]),
+                },
+            ],
+            agents: vec![],
+            actif: None,
+            restants: vec![],
+        };
+        b.g.sauver(&c).unwrap();
+        let neuf = gestionnaire(&b.dir, &b.reglages);
+        let v = neuf.lire("abc", 0).unwrap();
+        let et = &v["entrees"][1]["etapes"];
+        assert_eq!(v["entrees"][1]["etat"], "echec");
+        assert_eq!(et[0]["texte"], "p");
+        assert_eq!(et[1]["etat"], "reussi");
+        assert_eq!(et[1]["resultat"], "ok");
+        assert_eq!(et[2]["etat"], "echec");
+        assert_eq!(et[2]["resultat"], "Stopped by the user.");
+    }
+
+    #[tokio::test]
+    async fn REQ100_AC10_appel_mcp_du_sous_agent_avec_serveur_et_outil() {
+        let b = banc("a100-ac10", true, None).await;
+        b.mcp(&[("echo", vec![])]);
+        b.scenario(vec![
+            sous("parle"),
+            appels(&[("m1", "mcp__echo__dire", json!({"texte": "bonjour"}))]),
+            texte("ok", 1),
+            texte("fin", 1),
+        ]);
+        let id = b.envoyer(None, "lance").unwrap();
+        let v = b.fini(&id).await;
+        let et = &outil_de(&v, "subagent")["etapes"];
+        assert_eq!(et[2]["nom"], "mcp__echo__dire");
+        assert_eq!(et[2]["serveur"], "echo");
+        assert_eq!(et[2]["outil"], "dire");
+        assert_eq!(et[2]["etat"], "reussi");
+        assert_eq!(et[2]["resultat"], "dit: bonjour");
     }
 }
