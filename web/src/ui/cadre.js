@@ -33,7 +33,7 @@ export function symbole(taille) {
 /**
  * C-010. `barreTitre` : { projet, chemin, surOuvrir, actions } ; `rail` : { onglets, commandes } ;
  * `panneau` : { titre, repli (bouton de repli, après le titre), entete (élément fixe sous le titre), corps } ;
- * `barreEtat` : { branche, position, langage, version, connexion (`connecte` par défaut, ou `deconnecte`), maj: { etat, derniere, raison }, surMaj } (textes, ou rien ; `etat` : aucune, disponible, encours, echec, installee ; `surMaj` : clic sur « Mettre à jour ») ; `agent` : { titre, repli, corps } (colonne à droite) ; `railDroit` : { commandes, pied } (listes de boutons, dans l'ordre ; `pied`, vide par défaut, au bas du rail après les commandes) ;
+ * `barreEtat` : { branche, lien ({ geste, suite } ou rien), position, langage, version, connexion (`connecte` par défaut, ou `deconnecte`), maj: { etat, derniere, raison }, surMaj } (textes, ou rien ; `etat` : aucune, disponible, encours, echec, installee ; `surMaj` : clic sur « Mettre à jour ») ; `agent` : { titre, repli, corps } (colonne à droite) ; `railDroit` : { commandes, pied } (listes de boutons, dans l'ordre ; `pied`, vide par défaut, au bas du rail après les commandes) ;
  * `tailles` : { panneau, agent, shells } en pixels ; `replis` : { panneau, agent, shells } (faux par défaut, vrai pour l'agent) ;
  * `fonctions` : { recherche, git, shells, agents, claude } (vrais par défaut) : `shells` et `agents` faux ne créent ni zone, ni poignée, ni commandes ; `racine.ajouterCommandeDroite(el)` crée le rail droit au besoin.
  * `surChangement(zone, taille)` et `surFin(zone, taille)` viennent des poignées.
@@ -230,6 +230,7 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   main.append(zone("div", "cadre-bandeaux", principal.bandeaux), groupes, ...(avec.shells ? [poignees.shells, zoneShells] : []));
 
   const branche = zone("span", "ya-status-branche");
+  const lien = zone("span", "ya-status-lien");
   const espace = zone("span", "ya-status-espace");
   const position = zone("span", "ya-status-position");
   const langage = zone("span", "ya-status-langage");
@@ -249,11 +250,11 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   const sr = zone("span", "ya-sr");
   sr.textContent = "Yaide ";
   const numero = document.createTextNode("");
-  const etat = zone("footer", "cadre-etat ya-status", [branche, espace, position, langage, maj, connexion, version]);
+  const etat = zone("footer", "cadre-etat ya-status", [branche, lien, espace, position, langage, maj, connexion, version]);
   let boutonMaj = null;
   let surMaj = () => {};
   // Texte sans action, sauf « Mettre à jour » : ni bouton, ni arrêt de tabulation ailleurs. Une partie sans texte est masquée.
-  racine.definirEtat = ({ branche: b, position: p, langage: l, version: v, maj: m, surMaj: clic, connexion: c } = {}) => {
+  racine.definirEtat = ({ branche: b, lien: li, position: p, langage: l, version: v, maj: m, surMaj: clic, connexion: c } = {}) => {
     const etatConnexion = c === "deconnecte" ? "deconnecte" : "connecte";
     connexion.dataset.connexion = etatConnexion;
     mot.data = etatConnexion === "connecte" ? "Connecté" : "Déconnecté";
@@ -262,6 +263,8 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
     position.textContent = p ?? "";
     langage.textContent = l ?? "";
     branche.hidden = !b;
+    lien.replaceChildren(...(li ? [icone("link", 13), zone("span", "ya-status-geste", [document.createTextNode(li.geste)]), document.createTextNode(` ${li.suite}`)] : []));
+    lien.hidden = !li;
     position.hidden = !p;
     langage.hidden = !l;
     numero.data = v ?? "";

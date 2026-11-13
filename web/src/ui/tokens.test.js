@@ -676,3 +676,20 @@ test("REQ099_contrastes_de_l_action_d_une_liste_en_barre", () => {
     expect(ratio(theme, "--ink", "--bg-300"), `info-bulle (${theme})`).toBe([8.9, 16.4][k]);
   });
 });
+
+// REQ-101 : contrastes ajoutés au tableau du design system (indication `lien`, titre atteint).
+test("REQ101_AC12_contrastes_de_l_indication_lien_et_du_titre_atteint", () => {
+  const paires = [
+    ["--ink-muted", "--bg-000", 4.5, [6.7, 5.8]],
+    ["--ink", "--bg-000", 4.5, [11, 14.4]],
+    ["--accent-fg", "--bg-200", 3, [6.6, 6.3]],
+  ];
+  for (const [texte, fond, seuil, mesures] of paires) {
+    THEMES.forEach((theme, i) => {
+      const r = ratio(theme, texte, fond);
+      const nom = `${texte} sur ${fond} (${theme})`;
+      expect(r, nom).toBeGreaterThanOrEqual(seuil);
+      egalA(r, mesures[i], nom);
+    });
+  }
+});

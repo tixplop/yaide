@@ -222,3 +222,9 @@ test("REQ096_AC12_icone_server_deux_serveurs_empiles_au_trait_lucide", () => {
   expect(s.innerHTML).toContain("M6 6h.01");
   expect(s.innerHTML).toContain("M6 18h.01");
 });
+
+test("REQ101_AC11_icone_link_au_trait_des_autres", () => {
+  expect(NOMS).toContain("link");
+  expect(icone("link", 13).getAttribute("width")).toBe("13");
+  expect(icone("link").innerHTML).toContain("M10 13a5 5 0 0 0 7.54.54l3-3");
+});

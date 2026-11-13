@@ -164,7 +164,7 @@ test("REQ037_AC4_AC10_barre_d_etat_texte_sans_action_et_parties_absentes_masquee
   const f = c.querySelector("footer");
   expect(f.textContent).toBe("mainServeur : Connecté");
   expect(f.querySelector("svg").getAttribute("data-icone")).toBe("branch");
-  expect([...f.querySelectorAll("span[hidden]")].map((e) => e.className)).toEqual(["ya-status-position", "ya-status-langage", "ya-status-version"]);
+  expect([...f.querySelectorAll("span[hidden]")].map((e) => e.className)).toEqual(["ya-status-lien", "ya-status-position", "ya-status-langage", "ya-status-version"]);
   c.definirEtat({ position: "Ln 1, Col 1", langage: "Texte" });
   expect(f.textContent).toBe("Ln 1, Col 1TexteServeur : Connecté");
   expect(f.querySelector(".ya-status-branche").hidden).toBe(true);
@@ -1176,4 +1176,49 @@ test("REQ096_AC12_pied_vide_par_defaut_et_rail_absent_sans_commande_ni_pied", ()
   const seul = monterFonctions({ agents: false }, { railDroit: { commandes: [], pied: [p("pied")] } });
   expect(seul.querySelector(".cadre-rail-droit .cadre-rail-pied").textContent).toBe("pied");
   expect(seul.classList.contains("cadre-sans-rail-droit")).toBe(false);
+});
+
+// REQ-101 : zone `lien` de la barre d'état (C-010) et règles CSS (C-008).
+const etatLien = (lien) => cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") }, barreEtat: { branche: "main", position: "Ln 1, Col 1", lien } });
+
+test("REQ101_AC11_zone_lien_texte_icone_sans_role_ni_title_ni_arret_de_tab_et_videe_sans_lien", () => {
+  const c = etatLien({ geste: "Ctrl+clic", suite: "pour ouvrir ../README.md" });
+  const f = c.querySelector("footer");
+  const z = f.querySelector(".ya-status-lien");
+  expect(z.previousElementSibling.className).toBe("ya-status-branche");
+  expect(z.nextElementSibling.className).toBe("ya-status-espace");
+  expect(z.hidden).toBe(false);
+  expect(z.textContent).toBe("Ctrl+clic pour ouvrir ../README.md");
+  expect(z.querySelector("svg").getAttribute("data-icone")).toBe("link");
+  expect(z.querySelector("svg").getAttribute("aria-hidden")).toBe("true");
+  expect(z.querySelector(".ya-status-geste").textContent).toBe("Ctrl+clic");
+  for (const e of [z, ...z.querySelectorAll("*")]) {
+    expect(e.hasAttribute("role")).toBe(false);
+    expect(e.hasAttribute("aria-live")).toBe(false);
+    expect(e.hasAttribute("title")).toBe(false);
+    expect(e.hasAttribute("tabindex")).toBe(false);
+  }
+  c.definirEtat({ branche: "main", position: "Ln 2, Col 1", lien: { geste: "Cmd+clic", suite: "pour aller à #titre" } });
+  expect(z.textContent).toBe("Cmd+clic pour aller à #titre");
+  expect(f.querySelector(".ya-status-position").textContent).toBe("Ln 2, Col 1");
+  expect(f.querySelector(".ya-status-branche").textContent).toBe("main");
+  c.definirEtat({ branche: "main", position: "Ln 2, Col 1" });
+  expect(z.hidden).toBe(true);
+  expect(z.textContent).toBe("");
+});
+
+test("REQ101_AC12_regles_css_de_l_indication_du_pointeur_et_du_titre_atteint", () => {
+  expect(regle(".ya-status > .ya-status-lien")).toContain("flex: 1 1 0");
+  expect(regle(".ya-status > .ya-status-lien")).toContain("min-width: 0");
+  expect(regle(".ya-status > .ya-status-lien")).toContain("overflow: hidden");
+  expect(regle(".ya-status > .ya-status-lien")).toContain("text-overflow: ellipsis");
+  expect(regle(".ya-status > .ya-status-lien")).toContain("white-space: nowrap");
+  expect(regle(".ya-status-geste")).toContain("color: var(--ink)");
+  expect(regle(".cm-hy-suivable")).toContain("cursor: text");
+  expect(regle(".ya-ctrl .cm-hy-suivable")).toContain("cursor: pointer");
+  const titres = (suffixe) => css.match(new RegExp(`\\.zone-code-apercu :is\\(h1, h2, h3, h4, h5, h6\\)${suffixe}\\s*\\{([^}]*)\\}`))[1].replace(/\s+/g, " ");
+  expect(titres("")).toContain("scroll-margin-top: var(--space-2)");
+  expect(titres(":focus-visible")).toContain("outline: var(--trait-fort) solid var(--accent-fg)");
+  expect(titres(":focus-visible")).toContain("outline-offset: var(--trait-fort)");
+  expect(titres(":focus")).toContain("outline: none");
 });
