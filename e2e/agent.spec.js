@@ -1436,3 +1436,68 @@ test("REQ085_parcours_56_un_agent_raisonne_l_autre_non", async ({ page }) => {
   await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "false");
   await expect(raisons("Relecteur").nth(1)).toHaveAttribute("aria-expanded", "false");
 });
+
+test("REQ100_parcours_71_suivre_un_sous_agent", async ({ page }) => {
+  // P-071 : AC-100-11, AC-100-12.
+  let tenir;
+  faux = await lancerFauxProvider([
+    reponse({ outils: [{ id: "s1", nom: "subagent", entree: { prompt: "Résume le README." } }], tokens: 1000 }),
+    reponse({ raisonnement: "Je commence par le README.", texte: "Je lis le README.", outils: [{ id: "r1", nom: "read", entree: { path: "README.md" } }], tokens: 1500 }),
+    { ...reponse({ texte: "Le README décrit le projet.", tokens: 2000 }), retenir: new Promise((ok) => (tenir = ok)) },
+    reponse({ texte: "Le sous-agent a fini.", tokens: 3000 }),
+  ]);
+  await page.clock.install();
+  yaide = await lancerYaide({ dossier: depotAgent() });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await reglerAnthropic(page);
+  await page.reload();
+  await rail(page, "Agent").click();
+  await expect(profil(page)).toBeEnabled();
+  await champMessage(page).fill("Fais résumer le README.");
+  await page.keyboard.press("Enter");
+
+  const ligne = fil(page).getByRole("button", { name: /^subagent Résume le README\., (en cours|réussi)$/ });
+  await patienter(page, () => expect(ligne).toBeVisible({ timeout: 300 }));
+  await expect(ligne).toHaveAttribute("aria-expanded", "false");
+  await fil(page).focus();
+  await page.keyboard.press("Tab");
+  await expect(ligne).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(ligne).toHaveAttribute("aria-expanded", "true");
+  await expect(ligne).toBeFocused();
+
+  const zone = fil(page).getByRole("group", { name: "Étapes du sous-agent" });
+  const raison = zone.getByRole("button", { name: "Raisonnement", exact: true });
+  const lecture = zone.getByRole("button", { name: "read README.md, réussi", exact: true });
+  await patienter(page, () => expect(lecture).toBeVisible({ timeout: 300 }));
+  await expect(zone).toContainText("Consigne : Résume le README.");
+  await expect(zone).toContainText("Sous-agent : Je lis le README.");
+  await expect(raison).toHaveAttribute("aria-expanded", "false");
+  await expect(lecture).toHaveAttribute("aria-expanded", "false");
+  await patienter(page, () => expect(zone.getByText("Le sous-agent travaille…")).toBeVisible({ timeout: 300 }));
+
+  // AC-100-12 : la réponse finale s'ajoute en moins de 2 s, sans replier la ligne ni déplacer le focus.
+  tenir();
+  await avancer(page, () => expect(zone).toContainText("Sous-agent : Le README décrit le projet.", { timeout: 300 }), { pas: 500, limite: 2000 });
+  await expect(ligne).toBeFocused();
+  await expect(ligne).toHaveAttribute("aria-expanded", "true");
+  await patienter(page, () => expect(ligne).toHaveAccessibleName("subagent Résume le README., réussi", { timeout: 300 }));
+  await expect(ligne).toHaveAttribute("aria-expanded", "true");
+  await expect(ligne).toBeFocused();
+  await expect(zone.getByText("Le sous-agent travaille…")).toHaveCount(0);
+  await patienter(page, () => expect(fil(page)).toContainText("Le sous-agent a fini.", { timeout: 300 }));
+
+  // Rechargement : ligne repliée ; dépliée, mêmes étapes, raisonnement et appel repliés.
+  await page.reload();
+  const relue = ligne;
+  await patienter(page, () => expect(relue).toBeVisible({ timeout: 300 }));
+  await expect(relue).toHaveAttribute("aria-expanded", "false");
+  await relue.focus();
+  await page.keyboard.press("Enter");
+  await expect(relue).toHaveAttribute("aria-expanded", "true");
+  await expect(zone).toContainText("Consigne : Résume le README.");
+  await expect(zone).toContainText("Sous-agent : Je lis le README.");
+  await expect(zone).toContainText("Sous-agent : Le README décrit le projet.");
+  await expect(raison).toHaveAttribute("aria-expanded", "false");
+  await expect(lecture).toHaveAttribute("aria-expanded", "false");
+});

@@ -1046,6 +1046,13 @@ test("REQ100_AC11_AC12_etapes_converties_sans_auteur_et_ids_de_raisonnement_uniq
   expect(zone.querySelector("button.ya-step[aria-label^=echo]")).not.toBeNull();
 });
 
+test("REQ100_AC11_la_consigne_du_serveur_sans_drapeau_se_lit_Consigne", async () => {
+  const sansDrapeau = ETAPES_SUB.map((x) => ({ ...x, consigne: undefined }));
+  const { vue } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }, APPEL_SUB({ etat: "reussi", etapes: sansDrapeau })], enCours: false, total: 2, tokens: 0 }] });
+  await tick();
+  expect(fil(vue).querySelector(".ya-sous-zone").firstElementChild.textContent.trim()).toBe("Consigne : Liste les tests lents.");
+});
+
 test("REQ100_AC12_pas_d_attente_de_l_agent_tant_que_l_appel_subagent_est_le_dernier_et_en_cours", async () => {
   const { vue } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }, APPEL_SUB()], enCours: true, total: 2, tokens: 0 }] });
   await tick(300);

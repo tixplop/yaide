@@ -38,7 +38,7 @@ function pourLeFil(e, rang) {
   if (e.type === "outil") {
     const outil = e.serveur ? { ...e, nom: e.outil } : e;
     // Étapes d'un appel `subagent` : mêmes conversions, ids de raisonnement `rsn:<rang>:<j>`.
-    return [Array.isArray(e.etapes) ? { ...outil, etapes: e.etapes.flatMap((x, j) => pourLeFil(x, `${rang}:${j}`)) } : outil];
+    return [Array.isArray(e.etapes) ? { ...outil, etapes: e.etapes.flatMap((x, j) => pourLeFil(x.type === "utilisateur" ? { ...x, consigne: true } : x, `${rang}:${j}`)) } : outil];
   }
   if (e.type !== "agent") return [e];
   const liste = [];
