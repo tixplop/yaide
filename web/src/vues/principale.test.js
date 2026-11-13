@@ -324,7 +324,7 @@ test("REQ028_AC17_REQ059_AC1_AC10_rail_droit_avec_le_bouton_Agent", async () => 
   const { vue } = monter();
   const rd = vue.querySelector(".cadre-rail-droit");
   const b = boutonAgentDe(vue);
-  expect([...rd.querySelectorAll("button")]).toEqual([b, boutonAgentsDe(vue), boutonMcpDe(vue)]);
+  expect([...rd.querySelectorAll("button")]).toEqual([b, boutonAgentsDe(vue), boutonBaseDe(vue), boutonMcpDe(vue)]);
   expect(b.getAttribute("aria-keyshortcuts")).toBe("A");
   expect(b.querySelector("svg[data-icone=bot]")).not.toBeNull();
   expect(b.textContent).toBe("");
@@ -517,7 +517,7 @@ test("REQ028_AC8_ordre_de_Tab_de_la_page_avec_l_agent_a_droite", async () => {
   const terminaux = vue.querySelector(".cadre-shells");
   // Replié : aucun arrêt dans la colonne, le bouton « Agents » est le dernier.
   expect(tabbables().some((e) => agentCol(vue).contains(e) || e === poignee)).toBe(false);
-  expect(tabbables().slice(-3)).toEqual([bouton, boutonAgentsDe(vue), boutonMcpDe(vue)]);
+  expect(tabbables().slice(-4)).toEqual([bouton, boutonAgentsDe(vue), boutonBaseDe(vue), boutonMcpDe(vue)]);
   boutonAgentsDe(vue).click();
   await vi.waitFor(() => expect(corpsAgents(vue).querySelector("input, button")).not.toBeNull());
   const liste = tabbables();
@@ -673,6 +673,7 @@ test("REQ086_AC8_git_desactive_aucune_requete_git_ni_ligne_worktree", async () =
 // ---- REQ-088 : « Sessions opencode » ----
 
 const boutonMcpDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label='Serveurs MCP']");
+const boutonBaseDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label='Base de connaissance']");
 const boutonSessionsDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label='Sessions opencode']");
 
 test("REQ088_AC1_AC12_bouton_sous_opencode_seulement_si_detecte", async () => {
@@ -680,7 +681,7 @@ test("REQ088_AC1_AC12_bouton_sous_opencode_seulement_si_detecte", async () => {
   const a = monter().vue;
   await vi.waitFor(() => expect(boutonSessionsDe(a)).not.toBeNull());
   const noms = nomsRailDroit(a);
-  expect(noms.slice(-3)).toEqual(["opencode", "Sessions opencode", "Serveurs MCP"]);
+  expect(noms.slice(-4)).toEqual(["opencode", "Sessions opencode", "Base de connaissance", "Serveurs MCP"]);
   const b = boutonSessionsDe(a);
   expect(b.getAttribute("aria-haspopup")).toBe("dialog");
   expect(b.querySelector("svg")).not.toBeNull();
@@ -1046,7 +1047,7 @@ test("REQ096_AC1_bouton_au_pied_du_rail_droit_seulement_avec_agents", async () =
   simulerOpencode();
   const a = monter().vue;
   await vi.waitFor(() => expect(boutonSessionsDe(a)).not.toBeNull());
-  expect(nomsRailDroit(a).slice(-3)).toEqual(["opencode", "Sessions opencode", "Serveurs MCP"]);
+  expect(nomsRailDroit(a).slice(-4)).toEqual(["opencode", "Sessions opencode", "Base de connaissance", "Serveurs MCP"]);
   expect(boutonMcpDe(a).closest(".cadre-rail-pied")).not.toBeNull();
   simulerOpencode({ opencode: false, claude: false });
   const b = monter({ reglages: { fonctions: { agents: false } } }).vue;
@@ -1082,6 +1083,60 @@ test("REQ096_AC13_dernier_arret_du_rail_droit_touches_et_dialogue", async () => 
   await vi.waitFor(() => expect(document.querySelector("dialog")).toBeNull());
   expect(document.activeElement).toBe(b);
   expect(b.getAttribute("aria-expanded")).not.toBe("true");
+});
+
+// ---- REQ-103 : « Base de connaissance » ----
+
+test("REQ103_AC1_AC8_bouton_juste_au_dessus_de_Serveurs_MCP_seulement_avec_agents_et_dialogue_au_clic", async () => {
+  simulerOpencode();
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonSessionsDe(vue)).not.toBeNull());
+  const b = boutonBaseDe(vue);
+  expect(boutonMcpDe(vue).closest(".cadre-rail-pied")).toBe(b.closest(".cadre-rail-pied"));
+  expect(b.closest(".bouton-enveloppe").nextElementSibling).toBe(boutonMcpDe(vue).closest(".bouton-enveloppe"));
+  expect(b.getAttribute("aria-haspopup")).toBe("dialog");
+  expect(b.hasAttribute("aria-pressed")).toBe(false);
+  expect(b.hasAttribute("aria-expanded")).toBe(false);
+  b.closest(".bouton-enveloppe").dispatchEvent(new Event("pointerenter"));
+  await vi.waitFor(() => expect(document.querySelector("[role=tooltip]").textContent).toBe("Base de connaissance"));
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ config: null, erreur: null, collections: [], ajout: null }) })));
+  b.focus();
+  b.click();
+  await vi.waitFor(() => expect(document.querySelector("dialog [role=tablist]")).not.toBeNull());
+  expect(document.querySelector("dialog [role=tablist]").getAttribute("aria-label")).toBe("Base de connaissance");
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  document.querySelector("dialog").dispatchEvent(new Event("cancel", { cancelable: true }));
+  await vi.waitFor(() => expect(document.querySelector("dialog")).toBeNull());
+  expect(document.activeElement).toBe(b);
+  simulerOpencode({ opencode: false, claude: false });
+  const sans = monter({ reglages: { fonctions: { agents: false } } }).vue;
+  await attendre();
+  expect(boutonBaseDe(sans)).toBeNull();
+});
+
+test("REQ104_AC7_Configurer_la_base_ouvre_V_013_sur_Configuration_et_Echap_rend_le_focus_a_la_ligne", async () => {
+  const rep = (corps, status = 200) => ({ ok: status < 400, status, json: async () => corps, text: async () => "" });
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const chemin = String(url).split("?")[0];
+    if (chemin === "/api/fichiers") return rep({ entrees: [{ nom: "notes.md", dossier: false, ignore: false }] });
+    if (chemin === "/api/connaissance") return rep({ config: null, erreur: null, collections: [], ajout: null });
+    if (chemin === "/api/git/etat") return rep({ cause: "pas-depot", message: "pas un dépôt" }, 409);
+    if (chemin === "/api/shells") return rep({ instance: "i1", shells: [] });
+    return rep({}, 409);
+  }));
+  const { vue } = monter();
+  await vi.waitFor(() => expect(ligne(vue, "notes.md")).toBeTruthy());
+  const l = ligne(vue, "notes.md");
+  l.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+  [...document.querySelectorAll("[role=menuitem]")].find((i) => i.textContent.startsWith("Ajouter")).click();
+  await vi.waitFor(() => expect([...document.querySelectorAll("button")].some((b) => b.textContent === "Configurer la base")).toBe(true));
+  [...document.querySelectorAll("button")].find((b) => b.textContent === "Configurer la base").click();
+  await vi.waitFor(() => expect(document.querySelector("dialog [role=tablist]")).not.toBeNull());
+  expect(document.querySelector("dialog [role=tab][aria-selected=true]").textContent).toBe("Configuration");
+  expect(document.activeElement.labels[0].textContent).toBe("Provider");
+  document.querySelector("dialog").dispatchEvent(new Event("cancel", { cancelable: true }));
+  await vi.waitFor(() => expect(document.querySelector("dialog")).toBeNull());
+  expect(document.activeElement).toBe(ligne(vue, "notes.md"));
 });
 
 // ---- REQ-101 : indication « lien » de la barre d'état ----

@@ -454,3 +454,39 @@ export async function ajouterConnaissance(collection, chemins) {
   }
   return erreurServeur(r);
 }
+
+/** Écrit la configuration de la base (`provider`, `modele`) : l'état de la base, `{ cause, message }` ou `{ coupure: true }`. */
+export async function enregistrerConfigConnaissance(provider, modele) {
+  const r = await appeler("/api/connaissance/config", json("PUT", { provider, modele }));
+  if (!r) return { coupure: true };
+  try {
+    if (r.ok) return await r.json();
+  } catch {
+    return { coupure: true };
+  }
+  return erreurServeur(r);
+}
+
+/** Fichiers d'une collection : `{ nom, fichiers: [chemin] }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function lireFichiersConnaissance(collection) {
+  const r = await appeler(`/api/connaissance/collections/${q(collection)}`);
+  if (!r) return { coupure: true };
+  try {
+    if (r.ok) return await r.json();
+  } catch {
+    return { coupure: true };
+  }
+  return erreurServeur(r);
+}
+
+/** Supprime une collection : l'état de la base relu, `{ cause, message }` ou `{ coupure: true }`. */
+export async function supprimerConnaissance(collection) {
+  const r = await appeler(`/api/connaissance/collections/${q(collection)}`, { method: "DELETE" });
+  if (!r) return { coupure: true };
+  try {
+    if (r.ok) return await r.json();
+  } catch {
+    return { coupure: true };
+  }
+  return erreurServeur(r);
+}

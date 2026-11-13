@@ -490,13 +490,13 @@ test("REQ068_AC1_bouton_selon_la_detection", async () => {
   const { vue } = monter();
   await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
   const rd = vue.querySelector(".cadre-rail-droit");
-  expect([...rd.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents", "Claude", "Serveurs MCP"]);
+  expect([...rd.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents", "Claude", "Base de connaissance", "Serveurs MCP"]);
   expect(icone(boutonClaudeDe(vue))).toBe("asterisk");
   simulerClaude({ disponible: false });
   const sans = monter().vue;
   await attendre();
   await attendre();
-  expect([...sans.querySelectorAll(".cadre-rail-droit button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents", "Serveurs MCP"]);
+  expect([...sans.querySelectorAll(".cadre-rail-droit button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents", "Base de connaissance", "Serveurs MCP"]);
 });
 
 test("REQ068_AC2_clic_ouvre_un_onglet", async () => {
@@ -548,7 +548,7 @@ test("REQ028_AC8_ordre_de_tab_avec_claude", async () => {
   const { vue } = monter();
   await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
   // Ordre du rail droit : « Claude » après « Agents ».
-  expect([...vue.querySelectorAll(".cadre-rail-droit button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents", "Claude", "Serveurs MCP"]);
+  expect([...vue.querySelectorAll(".cadre-rail-droit button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Agents", "Claude", "Base de connaissance", "Serveurs MCP"]);
   // Un fichier ouvert, puis une session Claude.
   await vi.waitFor(() => expect(ligne(vue, "main.rs")).toBeDefined());
   ligne(vue, "main.rs").click();
