@@ -5,6 +5,8 @@ mod apercu;
 mod auth;
 mod cli;
 mod config;
+#[allow(dead_code)]
+mod connaissance;
 mod depot;
 mod fichiers;
 mod git;

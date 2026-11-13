@@ -172,16 +172,7 @@ pub async fn envoyer(
             corps_anthropic(reglage, instructions, messages, outils),
         ),
     };
-    let mut requete = client.post(url).json(&corps);
-    if let Some(cle) = cle.filter(|c| !c.is_empty()) {
-        requete = match provider.format() {
-            Format::Anthropic => requete.header("x-api-key", cle),
-            Format::OpenAI => requete.bearer_auth(cle),
-        };
-    }
-    if provider.format() == Format::Anthropic {
-        requete = requete.header("anthropic-version", "2023-06-01");
-    }
+    let requete = avec_cle(client.post(url).json(&corps), provider, cle);
     let reponse = requete
         .send()
         .await
@@ -201,6 +192,70 @@ pub async fn envoyer(
             Format::Anthropic => lire_anthropic(&v),
         });
     lu.ok_or(ErreurProvider::Refus { code, corps: texte })
+}
+
+fn avec_cle(
+    mut requete: reqwest::RequestBuilder,
+    provider: Provider,
+    cle: Option<&str>,
+) -> reqwest::RequestBuilder {
+    if let Some(cle) = cle.filter(|c| !c.is_empty()) {
+        requete = match provider.format() {
+            Format::Anthropic => requete.header("x-api-key", cle),
+            Format::OpenAI => requete.bearer_auth(cle),
+        };
+    }
+    if provider.format() == Format::Anthropic {
+        requete = requete.header("anthropic-version", "2023-06-01");
+    }
+    requete
+}
+
+/// Vecteurs des textes par la route `/embeddings` du format OpenAI (DEC-073), rangés dans l'ordre des textes.
+pub async fn embeddings(
+    client: &reqwest::Client,
+    provider: Provider,
+    adresse: &str,
+    cle: Option<&str>,
+    modele: &str,
+    textes: &[String],
+) -> Result<Vec<Vec<f32>>, ErreurProvider> {
+    let url = format!("{}/embeddings", adresse.trim_end_matches('/'));
+    let corps = json!({ "model": modele, "input": textes });
+    let reponse = avec_cle(client.post(url).json(&corps), provider, cle)
+        .send()
+        .await
+        .map_err(|e| ErreurProvider::Injoignable(cause(&e)))?;
+    let code = reponse.status().as_u16();
+    let texte = reponse
+        .text()
+        .await
+        .map_err(|e| ErreurProvider::Injoignable(cause(&e)))?;
+    if !(200..300).contains(&code) {
+        return Err(ErreurProvider::Refus { code, corps: texte });
+    }
+    lire_embeddings(&texte, textes.len()).ok_or(ErreurProvider::Refus { code, corps: texte })
+}
+
+fn lire_embeddings(brut: &str, attendus: usize) -> Option<Vec<Vec<f32>>> {
+    let v: Value = serde_json::from_str(brut).ok()?;
+    let data = v.get("data")?.as_array()?;
+    if data.len() != attendus {
+        return None;
+    }
+    let mut rangs: Vec<(u64, Vec<f32>)> = Vec::new();
+    for (i, d) in data.iter().enumerate() {
+        let index = d.get("index").and_then(Value::as_u64).unwrap_or(i as u64);
+        let vecteur = d
+            .get("embedding")?
+            .as_array()?
+            .iter()
+            .map(|x| x.as_f64().map(|f| f as f32))
+            .collect::<Option<Vec<f32>>>()?;
+        rangs.push((index, vecteur));
+    }
+    rangs.sort_by_key(|(i, _)| *i);
+    Some(rangs.into_iter().map(|(_, v)| v).collect())
 }
 
 fn cause(e: &reqwest::Error) -> String {
