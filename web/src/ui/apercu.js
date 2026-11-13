@@ -1,6 +1,7 @@
 import MarkdownIt from "markdown-it";
 import { highlightCode } from "@lezer/highlight";
 import { couleurs } from "./couleurs-code.js";
+import { lienDeDocument, identifiantTitre } from "../references.js";
 import { langagePourMot, supportLangage } from "./langages.js";
 
 // Un seul analyseur par langage : l'aperçu se refait à chaque frappe, et `supportLangage` crée un StreamLanguage à chaque appel.
@@ -36,9 +37,28 @@ function creerMarkdown(options) {
 
 const md = creerMarkdown({ linkify: false });
 
+// Lien de l'aperçu : fichier (ouvert par la page), web (nouvel onglet) ou ancre (titre du même document).
+md.renderer.rules.link_open = (tokens, i, options, env, self) => {
+  const t = tokens[i];
+  const adresse = t.attrGet("href");
+  const lien = lienDeDocument(adresse, env?.document);
+  if (lien) {
+    t.attrSet("data-lien", adresse);
+    if (lien.sorte === "fichier") {
+      t.attrSet("title", lien.ligne ? `Ouvrir ${lien.ecrit} à la ligne ${lien.ligne} dans l'éditeur.` : `Ouvrir ${lien.ecrit} dans l'éditeur.`);
+    } else if (lien.sorte === "web") {
+      t.attrSet("target", "_blank");
+      t.attrSet("rel", "noopener noreferrer");
+      t.attrSet("title", "S'ouvre dans un nouvel onglet du navigateur.");
+    }
+  }
+  return self.renderToken(tokens, i, options);
+};
+
 // Le HTML brut est échappé (html: false) et les liens javascript: sont refusés par markdown-it.
-export function rendreMarkdown(texte) {
-  return md.render(String(texte ?? ""));
+// `document` : chemin du fichier affiché, pour résoudre les liens relatifs.
+export function rendreMarkdown(texte, { document } = {}) {
+  return md.render(String(texte ?? ""), { document });
 }
 
 const mdReponse = creerMarkdown({ linkify: true });
@@ -206,15 +226,41 @@ export function rendreReponse(texte) {
   return mdReponse.render(String(texte ?? ""));
 }
 
-export function apercu() {
+export function apercu({ document: cheminDocument, surLien } = {}) {
   const el = document.createElement("div");
   el.className = "zone-code-apercu";
   el.setAttribute("aria-label", "Aperçu");
   el.setAttribute("role", "region");
   el.tabIndex = -1; // une zone qui défile ne doit pas être un arrêt de tabulation
 
-  el.maj = (texte) => {
-    el.innerHTML = rendreMarkdown(texte);
+  let courant = cheminDocument;
+
+  el.maj = (texte, document = courant) => {
+    courant = document;
+    el.innerHTML = rendreMarkdown(texte, { document });
   };
+
+  // Clic, Ctrl/Maj+clic, Entrée (clic natif) et clic du milieu.
+  const suivre = (e) => {
+    const a = e.target.closest?.("a");
+    if (!a || !el.contains(a)) return;
+    const adresse = a.getAttribute("data-lien");
+    const lien = adresse === null ? null : lienDeDocument(adresse, courant);
+    if (!lien || lien.sorte === "web") return;
+    e.preventDefault();
+    if (lien.sorte === "fichier") {
+      surLien?.({ adresse, element: a });
+      return;
+    }
+    const titre = [...el.querySelectorAll("h1, h2, h3, h4, h5, h6")].find((h) => identifiantTitre(h.textContent) === lien.ancre);
+    if (!titre) return;
+    titre.setAttribute("tabindex", "-1");
+    titre.scrollIntoView?.({ block: "start" });
+    titre.focus();
+  };
+  el.addEventListener("click", suivre);
+  el.addEventListener("auxclick", (e) => {
+    if (e.button === 1) suivre(e);
+  });
   return el;
 }

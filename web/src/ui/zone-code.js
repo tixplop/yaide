@@ -149,7 +149,7 @@ const clavierTableau = Prec.high(
   ]),
 );
 
-export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, ligne, nom = "", surChangement, surPosition, surLien, surSurvolLien } = {}) {
+export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, document: cheminDocument, ligne, nom = "", surChangement, surPosition, surLien, surSurvolLien } = {}) {
   if (!MODES.includes(mode)) throw new Error(`zoneCode : mode inconnu « ${mode} »`);
   const diff = mode === "diff";
   const racine = document.createElement("div");
@@ -213,7 +213,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   racine.contenu = () => vue.state.doc.toString();
   racine.definirApercu = (actif) => {
     if (actif && !ap) {
-      ap = langage === "html" ? apercuHtml({ adresse: adresseApercu }) : creerApercu();
+      ap = langage === "html" ? apercuHtml({ adresse: adresseApercu }) : creerApercu({ document: cheminDocument, surLien });
       ap.maj(racine.contenu());
       racine.append(ap);
     } else if (!actif && ap) {
