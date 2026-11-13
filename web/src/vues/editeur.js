@@ -13,7 +13,7 @@ import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { zoneCode } from "../ui/zone-code.js";
 import { vueAgent } from "./agent.js";
-import { depuisProjet } from "../references.js";
+import { depuisProjet, lienDeDocument, ligneDuTitre } from "../references.js";
 import { depotOnglets } from "./depot-onglets.js";
 import { vueClaude } from "./claude.js";
 import { vueOpencode } from "./opencode.js";
@@ -40,6 +40,7 @@ const avecApercu = (chemin) => /\.(md|markdown|html|htm)$/i.test(chemin);
  * `claude` : faux, les onglets Claude gardés ne sont ni affichés ni branchés, mais restent dans la liste enregistrée, à leur place.
  * `agents` : faux, les onglets Agent gardés ne sont ni affichés ni branchés, mais restent dans la liste enregistrée, à leur place.
  * `surGroupes(arbre, courant)` : l'arbre des groupes (feuilles `{ id, ongletsFichiers, questionOnglet, fil, code }`) ou le groupe courant a changé (REQ-079).
+ * `surLien(lien | null)` : le lien survolé de l'éditeur actif du groupe courant ({ geste, suite }), ou `null` quand il n'y en a plus (REQ-101).
  * `chemin` : le chemin du projet, dit par l'info-bulle des onglets Claude.
  * Un onglet Claude (REQ-068) est dans la même liste que les fichiers : `{ claude: true, id, numero, instance }`, sa clé `chemin` ne désigne aucun fichier.
  * Un onglet opencode (REQ-072) l'est aussi : `{ opencode: true, id, numero }` (session) ou `{ opencode: true, id, agent, titre }` (sous-agent).
@@ -48,7 +49,7 @@ const avecApercu = (chemin) => /\.(md|markdown|html|htm)$/i.test(chemin);
  * Chaque onglet a un `groupe` ; `barre`, `fil`, `code` et `question` sont ceux du premier groupe, `groupes()` rend l'arbre de tous.
  * Rend `{ definirStatuts(statuts), barre, fil, code, groupes(), questions(), deplacer(id, groupe, zone), lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirAgent({ equipe }), relireReglagesAgents(), ouvrirOpencode({ sessionId, titre }), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
-export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {}, surGroupes = () => {}, claude = true, agents = true }) {
+export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {}, surGroupes = () => {}, surLien = () => {}, claude = true, agents = true }) {
   const liste = []; // { chemin, groupe, zone, disque (texte de base), version (de base), apercu, hybride, modifie, question, supprime, avis }
   let actif = null; // l'onglet actif du groupe courant
   let diff = null; // { chemin, el, groupe } : l'onglet de diff, au plus un, jamais gardé
@@ -64,6 +65,13 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   let statuts = new Map(); // chemin -> { lettre, mot } : statuts git (REQ-039)
   const cachees = []; // onglets Claude gardés mais non créés (Claude désactivé) : { garde, apres }, `apres` étant le chemin du fichier qui les précédait
   const attente = new Set(); // onglets dont Ctrl+S attend le retour de la connexion
+
+  let lienDe = null; // l'onglet dont le lien survolé est dit à la barre d'état
+  const effacerLien = () => {
+    if (!lienDe) return;
+    lienDe = null;
+    surLien(null);
+  };
 
   const trouver = (chemin) => liste.find((o) => o.chemin === chemin);
   const item = (id) => (id === DIFF ? diff : id === null ? undefined : trouver(id));
@@ -138,6 +146,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   /** Le groupe `id` devient courant : chacun garde son onglet actif. */
   function passerA(id) {
     if (id === courant) return;
+    effacerLien();
     groupes.get(courant).actif = actif;
     courant = id;
     actif = groupes.get(id).actif;
@@ -399,6 +408,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   function afficher() {
     if (detruit) return;
+    if (lienDe && (lienDe.chemin !== actif || lienDe.groupe !== courant || !liste.includes(lienDe))) effacerLien();
     if (depot.enCours()) {
       aRefaire = true;
       return;
@@ -452,8 +462,18 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       contenu: texte ?? contenu,
       langage: langagePourFichier(nomDe(chemin)) ?? undefined,
       nom: nomDe(chemin),
+      document: chemin,
       apercu,
       hybride,
+      surLien: ({ adresse, element }) => {
+        const lien = lienDeDocument(adresse, o.chemin, cheminProjet);
+        if (lien?.sorte === "fichier") ouvrirReference(o, lien, element);
+      },
+      surSurvolLien(lien) {
+        if (lien && (actif !== o.chemin || o.groupe !== courant)) return;
+        lienDe = lien ? o : null;
+        surLien(lien);
+      },
       async adresseApercu() {
         const jeton = await jetonApercu();
         return jeton ? adresseApercu(jeton, o.chemin) : null;
@@ -566,16 +586,23 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   // ---- Onglets Agent (REQ-078) ----
 
-  /** Ouvre le fichier cité par une réponse, dans le groupe de la conversation `o` ; un refus est dit, le focus reste sur `lien`. */
+  /**
+   * Ouvre le fichier cité par une réponse (`{ chemin, ligne }`) ou par un lien de document (`lienDeDocument` : `{ chemin, ecrit, ligne, ancre }`),
+   * dans le groupe de `o` ; un refus est dit, le focus revient à `lien`, sinon à l'éditeur du document.
+   */
   let alerteReference = null;
-  async function ouvrirReference(o, { chemin: ecrit, ligne }, lien) {
+  async function ouvrirReference(o, ref, lien) {
     alerteReference?.remove();
     alerteReference = null;
+    const deDocument = ref.ecrit !== undefined;
+    const ecrit = deDocument ? ref.ecrit : ref.chemin;
+    let { ligne } = ref;
     const refuser = (texte) => {
       alerteReference = dire({ texte, variante: "alerte", fermable: true });
       if (lien?.isConnected) lien.focus();
+      else if (deDocument && liste.includes(o)) o.zone.vue?.focus();
     };
-    const chemin = depuisProjet(ecrit, cheminProjet);
+    const chemin = deDocument ? ref.chemin : depuisProjet(ecrit, cheminProjet);
     if (chemin === undefined) return refuser(`${ecrit} est un dossier. Yaide ne l'ouvre pas.`);
     const ouvert = trouver(chemin);
     let lecture = {};
@@ -595,6 +622,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       }
     }
     if (!liste.includes(o)) return; // l'onglet a été fermé pendant la lecture
+    if (deDocument) ligne = ref.ancre ? (ligneDuTitre(ouvert && estFichier(ouvert) ? ouvert.zone.contenu() : lecture.contenu, ref.ancre) ?? 1) : (ref.ligne ?? 1);
     passerA(o.groupe);
     ouvrir({ chemin, contenu: lecture.contenu, version: lecture.version, ligne });
   }

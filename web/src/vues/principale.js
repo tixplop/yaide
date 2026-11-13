@@ -248,6 +248,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     surSauvegarde: () => git?.rafraichir(),
     claude: avec.claude,
     agents: avec.agents,
+    surLien: (lien) => {
+      barre.lien = lien ?? undefined;
+      majEtat();
+    },
     surActif: (a) => {
       barre.position = a?.position;
       barre.langage = a?.langage;

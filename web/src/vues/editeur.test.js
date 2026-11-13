@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
+import { ensureSyntaxTree } from "@codemirror/language";
 import { vueEditeur } from "./editeur.js";
 import { lire } from "../stockage.js";
 import { nomLangage } from "../ui/langages.js";
@@ -1580,4 +1581,236 @@ test("REQ058_AC1_AC14_sauvegarde_recharge_les_apercus_html_de_la_page", async ()
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+// ---- Suivre un lien d'un document (REQ-101) ----
+
+const GUIDE = "titre\n\n[Lire](../README.md)\n\n[l. 3](../src/main.rs#L3)\n\n[ancre](autre.md#lancer-les-tests)\n\n[absent](absent.md)\n";
+function monterDocument(fichiers, contenu = GUIDE) {
+  fauxFichiers(fichiers);
+  const surLien = vi.fn();
+  const dire = vi.fn(() => ({ remove: vi.fn() }));
+  const e = vueEditeur({ dire, surLien, chemin: PROJET });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  e.ouvrir({ chemin: "docs/guide.md", contenu, version: "1" });
+  const zone = () => e.code.querySelector(".zone-code");
+  const sur = (z, texte, type, init) => {
+    ensureSyntaxTree(z.vue.state, z.vue.state.doc.length, 5000);
+    z.vue.posAtCoords = () => z.vue.state.doc.toString().indexOf(`[${texte}]`) + 1;
+    z.vue.contentDOM.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, ...init }));
+  };
+  const lien = (texte, type = "mousemove", init = {}) => sur(zone(), texte, type, init);
+  const suivre = (texte, z = zone()) => sur(z, texte, "mousedown", { ctrlKey: true });
+  return { e, surLien, dire, zone, lien, suivre };
+}
+const toutes = async () => {
+  for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+};
+
+test("REQ101_AC1_AC9_Ctrl_clic_ouvre_le_fichier_en_hybride_sans_relire_ni_perdre_les_modifications", async () => {
+  const { e, zone, suivre } = monterDocument({ "README.md": "# Lisez-moi\n" });
+  const vueGuide = zone().vue;
+  vueGuide.dispatch({ changes: { from: 0, insert: "X" } });
+  suivre("Lire");
+  await vi.waitFor(() => expect(nomsOnglets()).toEqual(["guide.md", "README.md"]));
+  expect(actifNom()).toBe("README.md");
+  const lu = e.code.querySelectorAll(".zone-code")[1];
+  expect(lu.vue.state.doc.toString()).toBe("# Lisez-moi\n");
+  expect(lu.vue.dom.classList.contains("cm-hybride")).toBe(true);
+  expect(document.activeElement).toBe(lu.vue.contentDOM);
+  expect(vueGuide.state.doc.toString().startsWith("X")).toBe(true);
+  // Déjà ouvert : activé, sans relecture et sans second onglet.
+  fetch.mockClear();
+  onglet("guide.md").click();
+  zone().vue.focus();
+  suivre("Lire", e.code.querySelectorAll(".zone-code")[0]);
+  await toutes();
+  expect(fetch).not.toHaveBeenCalled();
+  expect(nomsOnglets()).toEqual(["guide.md", "README.md"]);
+  expect(actifNom()).toBe("README.md");
+});
+
+test("REQ101_AC3_AC9_ligne_du_lien_puis_onglet_deja_ouvert_garde_ses_modifications", async () => {
+  const { e, zone, suivre } = monterDocument({ "src/main.rs": "a\nb\nc\nd\n" });
+  suivre("l. 3");
+  await vi.waitFor(() => expect(actifNom()).toBe("main.rs"));
+  const rs = e.code.querySelectorAll(".zone-code")[1].vue;
+  expect(rs.state.doc.lineAt(rs.state.selection.main.head).number).toBe(3);
+  expect(document.activeElement).toBe(rs.contentDOM);
+  rs.dispatch({ changes: { from: 0, insert: "Z" } });
+  onglet("guide.md").click();
+  fetch.mockClear();
+  zone().vue.dispatch({ selection: { anchor: 0 } });
+  suivre("l. 3");
+  await toutes();
+  expect(fetch).not.toHaveBeenCalled();
+  expect(nomsOnglets()).toEqual(["guide.md", "main.rs"]);
+  expect(actifNom()).toBe("main.rs");
+  expect(rs.state.doc.toString().startsWith("Z")).toBe(true);
+});
+
+test("REQ101_AC3_chemin_absolu_et_file_menent_au_meme_fichier", async () => {
+  const { suivre } = monterDocument(
+    { "src/main.rs": "a\nb\n" },
+    `[x](${PROJET}/src/main.rs)\n\n[y](file://${PROJET}/src/main.rs)\n\nfin\n`,
+  );
+  suivre("x");
+  await vi.waitFor(() => expect(actifNom()).toBe("main.rs"));
+  onglet("guide.md").click();
+  suivre("y");
+  await toutes();
+  expect(nomsOnglets()).toEqual(["guide.md", "main.rs"]);
+});
+
+test("REQ101_AC6_AC9_refus_avec_le_chemin_ecrit_un_seul_message_focus_dans_l_editeur", async () => {
+  const { dire, zone, suivre } = monterDocument({});
+  suivre("absent");
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledTimes(1));
+  expect(dire).toHaveBeenLastCalledWith({ texte: "absent.md n'existe pas.", variante: "alerte", fermable: true });
+  expect(nomsOnglets()).toEqual(["guide.md"]);
+  expect(document.activeElement).toBe(zone().vue.contentDOM);
+});
+
+test("REQ101_AC6_dossier_hors_projet_binaire_et_coupure_disent_leur_texte", async () => {
+  const contenu = "[a](../web)\n\n[b](../../autre/x.md)\n\n[c](../img/logo.png)\n\n[d](../rien.md)\n\nfin\n";
+  const { dire, zone, suivre } = monterDocument(
+    { web: { cause: "invalide", message: "C'est un dossier." }, "../autre/x.md": { cause: "interdit", message: "Ce chemin sort du projet." }, "img/logo.png": { cause: "binaire", message: "Binaire." }, "rien.md": "coupure" },
+    contenu,
+  );
+  const attendus = [
+    ["a", "../web est un dossier. Yaide ne l'ouvre pas."],
+    ["b", "../../autre/x.md est hors du projet et de ses worktrees. Yaide ne l'ouvre pas."],
+    ["c", "../img/logo.png est un fichier binaire. Yaide ne l'ouvre pas."],
+    ["d", "Connexion perdue. Réessayez au retour."],
+  ];
+  for (const [lien, texte] of attendus) {
+    suivre(lien);
+    await vi.waitFor(() => expect(dire).toHaveBeenLastCalledWith({ texte, variante: "alerte", fermable: true }));
+    expect(document.activeElement).toBe(zone().vue.contentDOM);
+  }
+  expect(nomsOnglets()).toEqual(["guide.md"]);
+});
+
+test("REQ101_AC7_document_d_un_worktree_ouvre_le_fichier_du_worktree", async () => {
+  fauxFichiers({ "../essai/README.md": "essai\n" });
+  const e = vueEditeur({ dire: vi.fn(), chemin: PROJET });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  e.ouvrir({ chemin: "../essai/docs/guide.md", contenu: "[Lire](../README.md)\n\nfin\n", version: "1" });
+  const z = e.code.querySelector(".zone-code");
+  ensureSyntaxTree(z.vue.state, z.vue.state.doc.length, 5000);
+  z.vue.posAtCoords = () => 3;
+  z.vue.contentDOM.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, ctrlKey: true }));
+  await vi.waitFor(() => expect(onglet("README.md")).toBeTruthy());
+  expect(onglet("README.md").title || onglet("README.md").querySelector("[title]")?.title).toBe("../essai/README.md");
+  expect(e.code.querySelectorAll(".zone-code")[1].vue.state.doc.toString()).toBe("essai\n");
+});
+
+test("REQ101_AC4_ancre_d_un_autre_fichier_va_a_la_ligne_du_titre_ou_a_la_ligne_1", async () => {
+  const { e, suivre } = monterDocument({ "docs/autre.md": "# A\n\ntexte\n\n## Lancer les tests !\nfin\n" });
+  suivre("ancre");
+  await vi.waitFor(() => expect(actifNom()).toBe("autre.md"));
+  const v = e.code.querySelectorAll(".zone-code")[1].vue;
+  expect(v.state.doc.lineAt(v.state.selection.main.head).number).toBe(5);
+  expect(document.activeElement).toBe(v.contentDOM);
+  // Titre absent : le fichier s'ouvre en haut.
+  const { e: e2, suivre: suivre2 } = monterDocument({ "docs/autre.md": "# A\n\ntexte\n" });
+  suivre2("ancre");
+  await vi.waitFor(() => expect(e2.code.querySelectorAll(".zone-code").length).toBe(2));
+  const v2 = e2.code.querySelectorAll(".zone-code")[1].vue;
+  expect(v2.state.doc.lineAt(v2.state.selection.main.head).number).toBe(1);
+});
+
+test("REQ101_AC11_survol_d_un_lien_de_l_onglet_actif_dit_le_geste_puis_se_retire", async () => {
+  const { e, surLien, zone, lien } = monterDocument({ "README.md": "x" });
+  lien("Lire", "mousemove", { ctrlKey: true });
+  expect(surLien).toHaveBeenLastCalledWith({ geste: "Ctrl+clic", suite: "pour ouvrir ../README.md" });
+  zone().vue.dom.dispatchEvent(new MouseEvent("mouseleave"));
+  expect(surLien).toHaveBeenLastCalledWith(null);
+  // Changer d'onglet retire l'indication.
+  lien("Lire");
+  expect(surLien).toHaveBeenLastCalledWith({ geste: "Ctrl+clic", suite: "pour ouvrir ../README.md" });
+  e.ouvrir({ chemin: "autre.txt", contenu: "x", version: "1" });
+  expect(surLien).toHaveBeenLastCalledWith(null);
+  // Un onglet masqué ne dit rien, et le quitter retire l'indication.
+  onglet("guide.md").click();
+  lien("Lire");
+  const appels = surLien.mock.calls.length;
+  onglet("autre.txt").click();
+  await toutes();
+  expect(surLien.mock.calls.length).toBe(appels + 1);
+  expect(surLien).toHaveBeenLastCalledWith(null);
+  lien("Lire");
+  expect(surLien.mock.calls.length).toBe(appels + 1);
+});
+
+test("REQ101_AC1_le_lien_se_resout_depuis_le_chemin_renomme_du_document", async () => {
+  const { e, suivre } = monterDocument({ "lib/README.md": "x\n" }, "[Lire](../README.md)\n\nfin\n");
+  e.renomme({ de: "docs", vers: "lib/docs" });
+  suivre("Lire");
+  await vi.waitFor(() => expect(actifNom()).toBe("README.md"));
+  expect(onglet("README.md").title || onglet("README.md").querySelector("[title]")?.title).toBe("lib/README.md");
+});
+
+function monterApercu(fichiers, contenu) {
+  fauxFichiers(fichiers);
+  const dire = vi.fn(() => ({ remove: vi.fn() }));
+  const e = vueEditeur({ dire, chemin: PROJET });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  e.ouvrir({ chemin: "docs/guide.md", contenu, version: "1" });
+  const z = e.code.querySelector(".zone-code");
+  z.definirApercu(true);
+  const a = (adresse) => z.querySelector(`a[data-lien="${adresse}"]`);
+  return { e, z, dire, a };
+}
+
+test("REQ101_AC1_AC9_clic_dans_l_apercu_ouvre_README_en_hybride_focus_dans_l_editeur_modifications_gardees", async () => {
+  const { e, z, a } = monterApercu({ "README.md": "# R\n" }, "[Lire](../README.md)\n");
+  z.vue.dispatch({ changes: { from: 0, insert: "X" } });
+  a("../README.md").click();
+  await vi.waitFor(() => expect(actifNom()).toBe("README.md"));
+  const lu = e.code.querySelectorAll(".zone-code")[1];
+  expect(lu.vue.dom.classList.contains("cm-hybride")).toBe(true);
+  expect(document.activeElement).toBe(lu.vue.contentDOM);
+  expect(z.vue.state.doc.toString().startsWith("X")).toBe(true);
+});
+
+test("REQ101_AC6_refus_depuis_l_apercu_un_seul_message_focus_sur_le_lien", async () => {
+  const { dire, a } = monterApercu({}, "[x](absent.md)\n");
+  const lien = a("absent.md");
+  lien.focus();
+  lien.click();
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledTimes(1));
+  expect(dire).toHaveBeenCalledWith({ texte: "absent.md n'existe pas.", variante: "alerte", fermable: true });
+  expect(document.activeElement).toBe(lien);
+});
+
+test("REQ101_AC6_lien_detache_pendant_la_lecture_le_focus_va_dans_l_editeur_du_document", async () => {
+  const { z, dire, a } = monterApercu({}, "[x](absent.md)\n");
+  const lien = a("absent.md");
+  lien.click();
+  z.definirApercu(true);
+  z.vue.dispatch({ changes: { from: 0, insert: "" } });
+  lien.remove();
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledTimes(1));
+  expect(document.activeElement).toBe(z.vue.contentDOM);
+});
+
+test("REQ101_AC9_sans_ligne_ni_titre_trouve_on_va_a_la_ligne_1_meme_onglet_deja_ouvert", async () => {
+  const { e, suivre } = monterDocument({ "docs/autre.md": "a\nb\nc\n" }, "[ancre](autre.md#absent)\n\n[plain](autre.md)\n\nfin\n");
+  suivre("plain");
+  await vi.waitFor(() => expect(actifNom()).toBe("autre.md"));
+  const v = e.code.querySelectorAll(".zone-code")[1].vue;
+  v.dispatch({ selection: { anchor: v.state.doc.line(3).from } });
+  onglet("guide.md").click();
+  suivre("ancre");
+  await vi.waitFor(() => expect(actifNom()).toBe("autre.md"));
+  expect(v.state.doc.lineAt(v.state.selection.main.head).number).toBe(1);
+  v.dispatch({ selection: { anchor: v.state.doc.line(3).from } });
+  onglet("guide.md").click();
+  suivre("plain");
+  await vi.waitFor(() => expect(actifNom()).toBe("autre.md"));
+  expect(v.state.doc.lineAt(v.state.selection.main.head).number).toBe(1);
 });

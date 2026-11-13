@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
+import { ensureSyntaxTree } from "@codemirror/language";
 import * as oc from "../opencode.js";
 import * as worktree from "../worktree.js";
 import { ecrire, lire } from "../stockage.js";
@@ -1081,4 +1082,40 @@ test("REQ096_AC13_dernier_arret_du_rail_droit_touches_et_dialogue", async () => 
   await vi.waitFor(() => expect(document.querySelector("dialog")).toBeNull());
   expect(document.activeElement).toBe(b);
   expect(b.getAttribute("aria-expanded")).not.toBe("true");
+});
+
+// ---- REQ-101 : indication « lien » de la barre d'état ----
+
+test("REQ101_AC11_survol_d_un_lien_pose_l_indication_dans_la_barre_puis_la_retire", async () => {
+  const doc = "titre\n\n[Lire](../README.md)\n\nfin\n";
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const chemin = String(url).split("?")[0];
+    const rep = (corps, status = 200) => ({ ok: status < 400, status, json: async () => corps, text: async () => "" });
+    if (chemin === "/api/fichiers") return rep({ entrees: [{ nom: "notes.md", dossier: false, ignore: false }] });
+    if (chemin === "/api/fichier") return { ok: true, status: 200, text: async () => doc, headers: { get: () => "1" } };
+    if (chemin === "/api/git/etat") return rep({ cause: "pas-depot", message: "pas un dépôt" }, 409);
+    if (chemin === "/api/shells") return rep({ instance: "i1", shells: [] });
+    return rep({}, 409);
+  }));
+  const { vue } = monter();
+  await vi.waitFor(() => expect(ligne(vue, "notes.md")).toBeTruthy());
+  ligne(vue, "notes.md").click();
+  await vi.waitFor(() => expect(vue.querySelector(".zone-code")).not.toBeNull());
+  const z = vue.querySelector(".zone-code");
+  ensureSyntaxTree(z.vue.state, z.vue.state.doc.length, 5000);
+  z.vue.posAtCoords = () => doc.indexOf("Lire") + 1;
+  const indication = () => vue.querySelector("footer .ya-status-lien");
+  expect(indication().hidden).toBe(true);
+  z.vue.contentDOM.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+  expect(indication().hidden).toBe(false);
+  expect(indication().textContent).toContain("Ctrl+clic pour ouvrir ../README.md");
+  z.vue.dom.dispatchEvent(new MouseEvent("mouseleave"));
+  expect(indication().hidden).toBe(true);
+  expect(indication().textContent).toBe("");
+  // Changer d'onglet retire l'indication.
+  z.vue.contentDOM.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+  expect(indication().hidden).toBe(false);
+  boutonAgentDe(vue).click();
+  await vi.waitFor(() => expect(champAgent(vue)).not.toBeNull());
+  expect(indication().hidden).toBe(true);
 });
