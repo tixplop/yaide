@@ -203,6 +203,8 @@ Sur un fichier markdown, le bouton « Mode hybride » met le texte en forme dans
 
 Dans l'aperçu d'un fichier markdown, un bloc de code est coloré comme dans l'éditeur, avec les mêmes couleurs, si le mot après les trois accents graves est un nom de langage ou une extension : `rust` ou `rs`, `javascript` ou `js`, `typescript` ou `ts`, `python` ou `py`, `go`, `c`, `c++` ou `cpp`, `html`, `css`, `json`, `yaml` ou `yml`, `toml`, `markdown` ou `md`, `shell`, `bash` ou `sh`. Sans mot, ou avec un mot inconnu, le bloc reste en texte simple. Le code en ligne n'est pas coloré.
 
+Les liens d'un fichier markdown se suivent dans l'aperçu (clic ou Entrée) et, en mode hybride, par Ctrl+clic (Cmd+clic sur macOS). Les chemins sont relatifs au document, les ancres `#titre` se lisent comme sur GitHub, et les adresses web s'ouvrent dans un nouvel onglet.
+
 Le bouton « Aperçu » existe aussi pour les fichiers HTML (`.html` et `.htm`) : la page charge ses fichiers liés par un chemin relatif (feuilles de style, scripts, images, polices, données) et ce qu'elle lie sur Internet. Ses scripts s'exécutent dans un cadre isolé de Yaide : ils n'ont accès ni à l'interface, ni à la session, ni aux fichiers du projet. Un chemin qui commence par `/` n'est pas chargé. L'aperçu montre le fichier enregistré : il se recharge à chaque sauvegarde (Ctrl+S), pas pendant la frappe, en gardant la position de défilement.
 
 ## Thème clair
