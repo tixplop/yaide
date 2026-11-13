@@ -1024,3 +1024,54 @@ test("REQ095_AC14_messages_avant_le_premier_groupe_d_agent", async () => {
   expect(a.compareDocumentPosition(g) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(document.activeElement).toBe(champ(vue));
 });
+
+const ETAPES_SUB = [
+  { type: "utilisateur", texte: "Liste les tests lents.", consigne: true },
+  { type: "agent", texte: "Je lis.", raisonnement: "Je cherche." },
+  { type: "outil", id: "m1", nom: "mcp__echo__dire", serveur: "echo", outil: "dire", argument: "{}", etat: "reussi", resultat: "ok" },
+  { type: "agent", texte: "Trois tests." },
+];
+const APPEL_SUB = (o = {}) => ({ type: "outil", id: "s1", nom: "subagent", argument: "Liste les tests lents.", etat: "enCours", resultat: "", etapes: ETAPES_SUB.slice(0, 2), ...o });
+
+test("REQ100_AC11_AC12_etapes_converties_sans_auteur_et_ids_de_raisonnement_uniques", async () => {
+  const { vue } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }, APPEL_SUB({ etat: "reussi", etapes: ETAPES_SUB })], enCours: false, total: 2, tokens: 0 }] });
+  await tick();
+  const zone = fil(vue).querySelector(".ya-sous-zone");
+  const textes = [...zone.children].map((n) => n.textContent.trim());
+  expect(textes).toEqual(["Consigne : Liste les tests lents.", "RaisonnementJe cherche.", "Sous-agent : Je lis.", "echo›dire{}ok", "Sous-agent : Trois tests."]);
+  expect(zone.querySelectorAll(".ya-tour").length).toBe(0);
+  expect(fil(vue).querySelectorAll(".ya-tour")).toHaveLength(0);
+  const ids = [...zone.querySelectorAll(".ya-raison")].map((b) => b.getAttribute("aria-controls"));
+  expect(new Set(ids).size).toBe(ids.length);
+  expect(zone.querySelector("button.ya-step[aria-label^=echo]")).not.toBeNull();
+});
+
+test("REQ100_AC12_pas_d_attente_de_l_agent_tant_que_l_appel_subagent_est_le_dernier_et_en_cours", async () => {
+  const { vue } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }, APPEL_SUB()], enCours: true, total: 2, tokens: 0 }] });
+  await tick(300);
+  expect(fil(vue).textContent).not.toContain("L'agent travaille…");
+  expect(fil(vue).querySelector(".ya-sous-zone [role=status]").textContent).toBe("Le sous-agent travaille…");
+});
+
+test("REQ100_AC12_etapes_ajoutees_a_la_relecture_et_conversation_rouverte_repliee", async () => {
+  const debut = { entrees: [{ type: "utilisateur", texte: "go" }, APPEL_SUB()], enCours: true, total: 2, tokens: 0 };
+  const suite = { entrees: [APPEL_SUB({ etapes: ETAPES_SUB })], enCours: true, total: 2, tokens: 0 };
+  const { vue } = await monter({ conversation: "c1", lectures: [debut, suite] });
+  await tick();
+  const b = fil(vue).querySelector("button.ya-step");
+  b.click();
+  const zone = fil(vue).querySelector(".ya-sous-zone");
+  expect(zone.querySelectorAll(".ya-raison")).toHaveLength(1);
+  await tick(1000);
+  expect(fil(vue).querySelector("button.ya-step")).toBe(b);
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(zone.hidden).toBe(false);
+  expect(zone.children).toHaveLength(6); // quatre étapes, la consigne, l'attente
+  // Rouverte : un fil neuf, replié, avec les mêmes étapes.
+  const { vue: autre } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }, APPEL_SUB({ etat: "reussi", resultat: "Trois tests.", etapes: ETAPES_SUB })], enCours: false, total: 2, tokens: 0 }] });
+  await tick();
+  const b2 = fil(autre).querySelector("button.ya-step");
+  expect(b2.getAttribute("aria-expanded")).toBe("false");
+  expect(fil(autre).querySelector(".ya-sous-zone").hidden).toBe(true);
+  expect(fil(autre).querySelector(".ya-sous-zone").children).toHaveLength(5);
+});

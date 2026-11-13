@@ -35,7 +35,11 @@ export function quand(ms, maintenant = new Date(), avecAnnee = false) {
  * (`raisonnement`, non vide) devient une entrée avant la réponse, du même auteur ; la réponse vide n'est pas montrée.
  */
 function pourLeFil(e, rang) {
-  if (e.type === "outil" && e.serveur) return [{ ...e, nom: e.outil }];
+  if (e.type === "outil") {
+    const outil = e.serveur ? { ...e, nom: e.outil } : e;
+    // Étapes d'un appel `subagent` : mêmes conversions, ids de raisonnement `rsn:<rang>:<j>`.
+    return [Array.isArray(e.etapes) ? { ...outil, etapes: e.etapes.flatMap((x, j) => pourLeFil(x, `${rang}:${j}`)) } : outil];
+  }
   if (e.type !== "agent") return [e];
   const liste = [];
   if (typeof e.raisonnement === "string" && e.raisonnement.trim()) {

@@ -690,3 +690,118 @@ test("REQ095_AC13_outil_mcp_en_cours_puis_reussi", () => {
   expect(b.getAttribute("aria-label")).toBe('echo dire {"a":1}, réussi');
   expect(zone.querySelector(".ya-step-mcp-res").textContent).toBe("fait");
 });
+
+const ligneSub = (o = {}) => ({ type: "outil", id: "s1", nom: "subagent", argument: "Liste les tests lents.", etat: "reussi", resultat: "Trois tests.", etapes: [], ...o });
+const ETAPES = [
+  { type: "utilisateur", texte: "Liste les tests lents.", consigne: true },
+  { type: "raisonnement", id: "rsn:0:0", markdown: "Je cherche." },
+  { type: "agent", markdown: "Je lis le README." },
+  { type: "outil", id: "r1", nom: "read", argument: "README.md", etat: "reussi", resultat: "contenu du README" },
+  { type: "agent", markdown: "Trois tests." },
+];
+const zoneSub = (c) => c.querySelector(".ya-sous-zone");
+
+test("REQ100_AC11_deplie_au_clic_groupe_consigne_et_prefixes", () => {
+  const c = conversation({ entrees: [ligneSub({ etapes: ETAPES })] });
+  document.body.append(c);
+  const b = bouton(c);
+  const zone = zoneSub(c);
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  expect(zone.hidden).toBe(true);
+  expect(b.getAttribute("aria-controls")).toBe(zone.id);
+  expect(zone.getAttribute("role")).toBe("group");
+  expect(zone.getAttribute("aria-label")).toBe("Étapes du sous-agent");
+  expect(b.nextElementSibling).toBe(zone);
+  b.click();
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(zone.hidden).toBe(false);
+  const enfants = [...zone.children];
+  expect(enfants[0].textContent).toBe("Consigne : Liste les tests lents.");
+  expect(enfants[1].querySelector(".ya-raison-nom").textContent).toBe("Raisonnement");
+  expect(enfants[1].querySelector(".ya-raison").getAttribute("aria-expanded")).toBe("false");
+  expect(enfants[2].textContent.trim()).toBe("Sous-agent : Je lis le README.");
+  expect(enfants[3].querySelector("button").getAttribute("aria-label")).toBe("read README.md, réussi");
+  expect(enfants[4].textContent.trim()).toBe("Sous-agent : Trois tests.");
+  enfants[3].querySelector("button").click();
+  expect(enfants[3].querySelector(".ya-step-res").hidden).toBe(false);
+  expect(enfants[3].querySelector(".ya-step-res").textContent).toContain("contenu du README");
+  b.click();
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  expect(zone.hidden).toBe(true);
+});
+
+test("REQ100_AC11_echec_montre_le_resultat_apres_les_etapes", () => {
+  const c = conversation({ entrees: [ligneSub({ etat: "echec", resultat: "The subagent stopped: boom", etapes: ETAPES.slice(0, 3) })] });
+  const zone = zoneSub(c);
+  expect(zone.lastElementChild.className).toBe("ya-step-res");
+  expect(zone.lastElementChild.textContent).toBe("The subagent stopped: boom");
+  expect(zone.children).toHaveLength(4);
+});
+
+test("REQ100_AC11_ancien_appel_sans_etapes_garde_la_zone_de_resultat", () => {
+  const ancien = ligneSub();
+  delete ancien.etapes;
+  const c = conversation({ entrees: [ancien] });
+  expect(zoneSub(c)).toBeNull();
+  expect(c.querySelector(".ya-step-res").textContent).toContain("Trois tests.");
+});
+
+test("REQ100_AC12_attente_du_sous_agent_apres_200_ms_et_retiree_si_une_etape_tourne", () => {
+  const c = conversation({ entrees: [ligneSub({ etat: "enCours", etapes: ETAPES.slice(0, 1) })] });
+  const zone = zoneSub(c);
+  const attente = () => zone.querySelector("[role=status]");
+  expect(attente().textContent).toBe("Le sous-agent travaille…");
+  expect(attente().hidden).toBe(true);
+  vi.advanceTimersByTime(200);
+  expect(attente().hidden).toBe(false);
+  expect(zone.lastElementChild).toBe(attente());
+  const noeud = attente();
+  c.mettreAJour([ligneSub({ etat: "enCours", etapes: ETAPES.slice(0, 3) })]);
+  expect(attente()).toBe(noeud);
+  expect(zone.lastElementChild).toBe(noeud);
+  expect(zone.children).toHaveLength(4);
+  c.mettreAJour([ligneSub({ etat: "enCours", etapes: [...ETAPES.slice(0, 2), { type: "outil", id: "r1", nom: "bash", argument: "sleep 3", etat: "enCours" }] })]);
+  expect(attente()).toBeNull();
+  c.mettreAJour([ligneSub({ etapes: ETAPES })]);
+  expect(attente()).toBeNull();
+});
+
+test("REQ100_AC12_etapes_ajoutees_sans_replier_ni_deplacer_le_focus", () => {
+  const c = conversation({ entrees: [ligneSub({ etat: "enCours", etapes: ETAPES.slice(0, 4) })] });
+  document.body.append(c);
+  const b = bouton(c);
+  b.click();
+  const zone = zoneSub(c);
+  const raison = zone.querySelector(".ya-raison");
+  raison.click();
+  const lecture = zone.querySelectorAll("button.ya-step")[0];
+  lecture.click();
+  lecture.focus();
+  c.mettreAJour([ligneSub({ etat: "enCours", etapes: [...ETAPES.slice(0, 3), { ...ETAPES[3], resultat: "contenu du README, suite" }, ETAPES[4]] })]);
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(zone.hidden).toBe(false);
+  expect(raison.getAttribute("aria-expanded")).toBe("true");
+  expect(zone.querySelectorAll("button.ya-step")[0]).toBe(lecture);
+  expect(lecture.getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement).toBe(lecture);
+  expect(lecture.parentElement.querySelector(".ya-step-res").textContent).toContain("suite");
+  expect(zone.children[4].textContent.trim()).toBe("Sous-agent : Trois tests.");
+  c.mettreAJour([ligneSub({ etapes: ETAPES })]);
+  expect(b.getAttribute("aria-label")).toBe("subagent Liste les tests lents., réussi");
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(zone.hidden).toBe(false);
+  expect(document.activeElement).toBe(lecture);
+});
+
+test("REQ100_AC12_reponse_du_sous_agent_mise_a_jour_garde_son_prefixe_et_le_focus_sur_son_lien", () => {
+  const avec = (md) => [ETAPES[0], { type: "agent", markdown: md }];
+  const c = conversation({ entrees: [ligneSub({ etat: "enCours", etapes: avec("Voir [la doc](https://exemple.org/a)") })] });
+  document.body.append(c);
+  bouton(c).click();
+  const lien = zoneSub(c).querySelector("a");
+  lien.focus();
+  c.mettreAJour([ligneSub({ etat: "enCours", etapes: avec("Voir [la doc](https://exemple.org/a) et la suite.") })]);
+  const reponse = zoneSub(c).children[1];
+  expect(reponse.textContent.trim()).toBe("Sous-agent : Voir la doc et la suite.");
+  expect(document.activeElement).toBe(reponse.querySelector("a"));
+});

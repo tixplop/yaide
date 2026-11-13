@@ -52,7 +52,13 @@ function rendreOutil(e, surDeplier) {
   racine.className = "ya-steps";
   const zone = document.createElement("div");
   zone.id = `ya-conv-${++compteur}`;
-  zone.className = "ya-step-res";
+  if (Array.isArray(e.etapes)) {
+    // Déroulement d'un sous-agent (REQ-100) : ses étapes remplacent la zone de résultat.
+    zone.className = "ya-sous-zone";
+    zone.setAttribute("role", "group");
+    zone.setAttribute("aria-label", "Étapes du sous-agent");
+    zone.rendus = [];
+  } else zone.className = "ya-step-res";
   zone.hidden = true;
   const b = document.createElement("button");
   b.type = "button";
@@ -87,11 +93,30 @@ function rendreOutil(e, surDeplier) {
     surDeplier?.(e.id);
   });
   racine.append(b, zone);
-  majOutil(racine, e);
+  majOutil(racine, e, surDeplier);
   return racine;
 }
 
-function majOutil(racine, e) {
+// Étapes du sous-agent : mêmes mises à jour que le fil, sans auteur ni groupe ; l'attente et le résultat d'un échec restent en fin de zone.
+function majEtapes(zone, e, surDeplier) {
+  majRendus(zone.rendus, e.etapes, surDeplier, "Sous-agent");
+  zone.attente?.remove();
+  zone.resultat?.remove();
+  ajouterRendus(zone.rendus, e.etapes, surDeplier, undefined, "Sous-agent", (n) => zone.append(n));
+  if (e.etat === "echec") {
+    zone.resultat ??= Object.assign(document.createElement("div"), { className: "ya-step-res" });
+    zone.resultat.textContent = e.resultat ?? "";
+    zone.append(zone.resultat);
+  }
+  const travaille = e.etat === "enCours" && !e.etapes.some((x) => x.type === "outil" && x.etat === "enCours");
+  if (!travaille) zone.attente = null;
+  else {
+    zone.attente ??= indication({ texte: "Le sous-agent travaille…", variante: "chargement" });
+    zone.append(zone.attente);
+  }
+}
+
+function majOutil(racine, e, surDeplier) {
   const etat = ETATS[e.etat];
   if (!etat) throw new Error(`conversation : état inconnu « ${e.etat} »`);
   const b = racine.querySelector("button");
@@ -107,7 +132,10 @@ function majOutil(racine, e) {
     b.title = `${e.serveur} › ${e.nom}${arg ? ` ${arg}` : ""}`;
     b.setAttribute("aria-label", `${e.serveur} ${e.nom}${arg ? ` ${arg}` : ""}, ${etat.nom}`);
   } else b.setAttribute("aria-label", `${e.nom} ${arg}, ${etat.nom}`);
-  texteZone(racine.querySelector(".ya-step-res"), e);
+  const zone = racine.querySelector(":scope > .ya-step-res, :scope > .ya-sous-zone");
+  if (zone.rendus) {
+    if (Array.isArray(e.etapes)) majEtapes(zone, e, surDeplier);
+  } else texteZone(zone, e);
 }
 
 function rendreRaison(e, surDeplier, nom) {
@@ -242,6 +270,33 @@ function majAgent(n, e, nom, sansNom = false) {
   else n.closest(".ya-chat")?.focus({ preventScroll: true });
 }
 
+// Met à jour sur place les entrées déjà rendues ; `rendus` : { entree, noeud }.
+function majRendus(rendus, liste, surDeplier, nom) {
+  for (let i = 0; i < rendus.length && i < liste.length; i++) {
+    const { entree, noeud } = rendus[i];
+    const e = liste[i];
+    if (e.type === "outil" && entree.type === "outil") {
+      if (e.etat !== entree.etat || e.resultat !== entree.resultat || e.argument !== entree.argument || JSON.stringify(e.etapes) !== JSON.stringify(entree.etapes)) majOutil(noeud, e, surDeplier);
+    } else if (e.type === "agent" && entree.type === "agent" && e.markdown !== entree.markdown) {
+      majAgent(noeud, e, nom);
+    } else if (e.type === "raisonnement" && entree.type === "raisonnement" && e.markdown !== entree.markdown) {
+      majRaison(noeud, e, surDeplier, nom);
+    } else if (e.type === "sousAgent" && entree.type === "sousAgent" && JSON.stringify(e) !== JSON.stringify(entree)) {
+      majSousAgent(noeud, e);
+    }
+    rendus[i].entree = e;
+  }
+}
+
+// Rend les entrées nouvelles à la suite ; `placer(noeud, e)` les met dans le DOM et rend leur groupe éventuel.
+function ajouterRendus(rendus, liste, surDeplier, surOuvrir, nom, placer) {
+  for (let i = rendus.length; i < liste.length; i++) {
+    const e = liste[i];
+    const noeud = rendreEntree(e, surDeplier, surOuvrir, nom);
+    rendus.push({ entree: e, noeud, groupe: placer(noeud, e) });
+  }
+}
+
 const memeAuteur = (a, b) => !!a && !!b && a.nom === b.nom && a.avatar === b.avatar && a.couleur === b.couleur;
 
 function creerGroupe(auteur) {
@@ -292,41 +347,25 @@ export function conversation({ entrees = [], enAttente = false, vide, surDeplier
   };
 
   function appliquer(liste, enAttenteNouveau) {
-    for (let i = 0; i < rendus.length && i < liste.length; i++) {
-      const { entree, noeud } = rendus[i];
-      const e = liste[i];
-      if (e.type === "outil" && entree.type === "outil") {
-        if (e.etat !== entree.etat || e.resultat !== entree.resultat || e.argument !== entree.argument) majOutil(noeud, e);
-      } else if (e.type === "agent" && entree.type === "agent" && e.markdown !== entree.markdown) {
-        majAgent(noeud, e, nom);
-      } else if (e.type === "raisonnement" && entree.type === "raisonnement" && e.markdown !== entree.markdown) {
-        majRaison(noeud, e, surDeplier, nom);
-      } else if (e.type === "sousAgent" && entree.type === "sousAgent" && JSON.stringify(e) !== JSON.stringify(entree)) {
-        majSousAgent(noeud, e);
-      }
-      rendus[i].entree = e;
-    }
+    majRendus(rendus, liste, surDeplier, nom);
     attente?.remove();
     if (groupeAttente) {
       groupeAttente.el.remove();
       groupeAttente = null;
     }
-    for (let i = rendus.length; i < liste.length; i++) {
-      const e = liste[i];
-      const noeud = rendreEntree(e, surDeplier, surOuvrir, nom);
-      let groupe = null;
-      if (e.auteur && e.type !== "utilisateur" && e.type !== "message") {
-        groupe = rendus.at(-1)?.groupe;
-        if (!memeAuteur(groupe?.auteur, e.auteur)) {
-          groupe = creerGroupe(e.auteur);
-          el.append(groupe.el);
-        }
-        groupe.corps.append(noeud);
-      } else {
+    ajouterRendus(rendus, liste, surDeplier, surOuvrir, nom, (noeud, e) => {
+      if (!e.auteur || e.type === "utilisateur" || e.type === "message") {
         el.append(noeud);
+        return null;
       }
-      rendus.push({ entree: e, noeud, groupe });
-    }
+      let groupe = rendus.at(-1)?.groupe;
+      if (!memeAuteur(groupe?.auteur, e.auteur)) {
+        groupe = creerGroupe(e.auteur);
+        el.append(groupe.el);
+      }
+      groupe.corps.append(noeud);
+      return groupe;
+    });
     const auteurAttente = enAttenteNouveau && typeof enAttenteNouveau === "object" ? enAttenteNouveau : null;
     const cle = enAttenteNouveau ? JSON.stringify(auteurAttente) : "";
     if (attente && cle !== cleAttente) attente = null;
