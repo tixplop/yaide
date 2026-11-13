@@ -318,6 +318,22 @@ test("REQ034_AC1_clic_droit_marque_la_ligne_la_focalise_et_appelle_surMenu_sans_
   expect(surActiver).not.toHaveBeenCalled();
 });
 
+test("REQ049_AC3_clic_droit_et_touche_Menu_sur_une_ligne_de_la_selection_la_gardent_entiere", () => {
+  const surMenu = vi.fn();
+  const l = liste({ variante: "arbre", multiple: true, lignes: lignesMenu, selection: ["a", "b"], surMenu });
+  document.body.append(l);
+  const [a, b] = items(l);
+  clicDroit(b);
+  expect(surMenu).toHaveBeenLastCalledWith("b", expect.anything());
+  expect([a, b].map((x) => x.getAttribute("aria-selected"))).toEqual(["true", "true"]);
+  expect(document.activeElement).toBe(b);
+  a.getBoundingClientRect = () => ({ left: 0, bottom: 48 });
+  a.querySelector(".liste-libelle").getBoundingClientRect = () => ({ left: 40 });
+  a.dispatchEvent(new KeyboardEvent("keydown", { key: "ContextMenu", bubbles: true, cancelable: true }));
+  expect([a, b].map((x) => x.getAttribute("aria-selected"))).toEqual(["true", "true"]);
+  expect(document.activeElement).toBe(a);
+});
+
 test("REQ034_AC14_lignes_avec_aria_haspopup_menu_sauf_sansMenu", () => {
   const l = avecMenu(lignesMenu, vi.fn());
   expect(items(l).map((x) => x.getAttribute("aria-haspopup"))).toEqual(["menu", "menu", null]);
@@ -677,7 +693,7 @@ test("sans_multiple_selection_reste_un_id", () => {
   expect(() => liste({ lignes: lignes3, multiple: true })).toThrow(/arbre/);
 });
 
-test("REQ049_AC3_clic_droit_menu_et_maj_f10_ramenent_a_une_ligne", () => {
+test("REQ049_AC3_clic_droit_menu_et_maj_f10_sur_une_ligne_hors_selection_ramenent_a_une_ligne", () => {
   const cas = {
     "clic droit": (el) => el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 5, clientY: 6 })),
     Menu: (el) => touche(el, "ContextMenu"),
@@ -686,12 +702,12 @@ test("REQ049_AC3_clic_droit_menu_et_maj_f10_ramenent_a_une_ligne", () => {
   for (const [nom, geste] of Object.entries(cas)) {
     const surMenu = vi.fn();
     const { l, surSelection, el } = multi({ selection: ["a", "b", "c"], surMenu });
-    el[1].focus();
-    geste(el[1]);
-    expect(sel(l), nom).toEqual(["b.txt"]);
-    expect(surSelection, nom).toHaveBeenLastCalledWith(["b"], { ancre: "b", derniere: "b" });
+    el[3].focus();
+    geste(el[3]);
+    expect(sel(l), nom).toEqual(["d.txt"]);
+    expect(surSelection, nom).toHaveBeenLastCalledWith(["d"], { ancre: "d", derniere: "d" });
     expect(surMenu, nom).toHaveBeenCalledTimes(1);
-    expect(surMenu.mock.calls[0][0], nom).toBe("b");
+    expect(surMenu.mock.calls[0][0], nom).toBe("d");
   }
 });
 

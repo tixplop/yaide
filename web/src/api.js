@@ -430,3 +430,27 @@ export function oublierJetonApercu() {
 export function adresseApercu(jeton, chemin) {
   return `/apercu/${jeton}/` + String(chemin).split("/").map(encodeURIComponent).join("/");
 }
+
+/** Base de connaissance : `{ config, erreur, collections, ajout }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function lireConnaissance() {
+  const r = await appeler("/api/connaissance");
+  if (!r) return { coupure: true };
+  try {
+    if (r.ok) return await r.json();
+  } catch {
+    return { coupure: true };
+  }
+  return erreurServeur(r);
+}
+
+/** Ajoute des chemins à une collection : `{ numero, collection, total }` (ajout accepté), `{ cause, message }` ou `{ coupure: true }`. */
+export async function ajouterConnaissance(collection, chemins) {
+  const r = await appeler("/api/connaissance/ajouts", json("POST", { collection, chemins }));
+  if (!r) return { coupure: true };
+  try {
+    if (r.ok) return await r.json();
+  } catch {
+    return { coupure: true };
+  }
+  return erreurServeur(r);
+}

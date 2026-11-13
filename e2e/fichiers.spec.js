@@ -123,9 +123,9 @@ test("REQ007_AC1_AC2_AC3_AC5_AC6_AC8_REQ008_AC5_REQ009_AC5_REQ034_AC1_AC4_AC14_A
     await ligne(page, "README.md").click({ button: "right" });
     const m = menu(page, "Actions sur README.md");
     await expect(m).toBeVisible();
-    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit"]);
+    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…"]);
     await expect(m.getByRole("menuitem", { name: "Renommer", exact: true })).toBeVisible();
-    await expect(m.getByRole("separator")).toHaveCount(2);
+    await expect(m.getByRole("separator")).toHaveCount(3);
     await expect(ligne(page, "README.md")).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("tab", { name: "README.md" })).toHaveCount(0);
     await page.keyboard.press("Escape");
@@ -178,8 +178,8 @@ test("REQ007_AC4_REQ034_AC9_groupe_hors_depot_git", async ({ page }) => {
   await test.step("REQ034_AC9_hors_depot_ni_indexer_ni_commit", async () => {
     await ligne(page, "a.txt").click({ button: "right" });
     const m = menu(page, "Actions sur a.txt");
-    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr"]);
-    await expect(m.getByRole("separator")).toHaveCount(1);
+    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…"]);
+    await expect(m.getByRole("separator")).toHaveCount(2);
     await page.keyboard.press("Escape");
     await clicVide(page);
     await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier"]);

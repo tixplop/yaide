@@ -277,6 +277,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
   fichiers = vueFichiers({
     dire,
+    agents: avec.agents,
+    surConfigurer: () => {}, // le dialogue « Base de connaissance » vient avec T-233
     projet: nomDuDossier(chemin),
     lireEtat: () => git?.rafraichir(),
     estDepot: () => git.estDepot(),

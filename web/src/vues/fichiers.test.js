@@ -290,9 +290,97 @@ test("REQ049_AC3_clic_droit_ramene_a_une_ligne_partie_vide_ne_change_rien", asyn
   expect(document.querySelector("[role=menu]").getAttribute("aria-label")).toBe("Actions sur le projet");
   expect(choisies(vue)).toEqual(["a.txt", "b.txt", "c.txt"]);
   ligne(vue, "b.txt").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
-  expect(choisies(vue)).toEqual(["b.txt"]);
+  expect(choisies(vue)).toEqual(["a.txt", "b.txt", "c.txt"]); // une ligne de la sélection la garde
+  expect(document.querySelector("[role=menu]").getAttribute("aria-label")).toBe("Actions sur b.txt");
+  ctrl(vue, "b.txt");
+  ctrl(vue, "c.txt");
+  ligne(vue, "c.txt").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+  expect(choisies(vue)).toEqual(["c.txt"]); // ligne hors sélection : elle seule
   expect(bouton(vue, "Renommer").disabled).toBe(false);
 });
+
+const menuSur = (vue, chemin, touche) => {
+  if (touche) ligne(vue, chemin).dispatchEvent(new KeyboardEvent("keydown", { key: touche, shiftKey: touche === "F10", bubbles: true, cancelable: true }));
+  else ligne(vue, chemin).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+  return document.querySelector("[role=menu]");
+};
+const commande = (menu, debut) => [...menu.querySelectorAll("[role=menuitem]")].find((i) => i.textContent.startsWith(debut));
+
+test("REQ034_AC1_AC14_REQ104_AC1_REQ049_AC13_menu_a_quatre_groupes_dont_la_base_de_connaissance", async () => {
+  const { vue } = await monter({ "": [f("a.txt")] }, { estDepot: () => true, agents: true });
+  const m = menuSur(vue, "a.txt");
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…"]);
+  expect(m.querySelectorAll("[role=separator]").length).toBe(3);
+  expect(m.querySelector("[aria-disabled]")).toBeNull();
+});
+
+test("REQ034_AC21_hors_depot_deux_separateurs_avec_la_base", async () => {
+  const { vue } = await monter({ "": [f("a.txt")] }, { estDepot: () => false, agents: true });
+  const m = menuSur(vue, "a.txt");
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…"]);
+  expect(m.querySelectorAll("[role=separator]").length).toBe(2);
+});
+
+test("REQ103_AC1_REQ104_AC12_commande_absente_sans_agents_et_dans_la_partie_vide", async () => {
+  const sans = await monter({ "": [f("a.txt")] }, { estDepot: () => true });
+  const m = menuSur(sans.vue, "a.txt");
+  expect(commande(m, "Ajouter")).toBeUndefined();
+  expect(m.querySelectorAll("[role=separator]").length).toBe(2);
+  document.body.replaceChildren();
+  const avec = await monter({ "": [f("a.txt")] }, { estDepot: () => true, agents: true });
+  avec.vue.corps.querySelector(".fichiers-arbre").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+  const vide = document.querySelector("[role=menu]");
+  expect(vide.getAttribute("aria-label")).toBe("Actions sur le projet");
+  expect(commande(vide, "Ajouter")).toBeUndefined();
+});
+
+test("REQ049_AC3_AC4_AC13_AC14_selection_gardee_commandes_desactivees_et_touche_Menu", async () => {
+  const { vue } = await monter({ "": [f("CHANGELOG.md"), f("README.md")] }, { estDepot: () => true, agents: true });
+  ctrl(vue, "CHANGELOG.md");
+  ctrl(vue, "README.md");
+  const m = menuSur(vue, "CHANGELOG.md");
+  expect(m.getAttribute("aria-label")).toBe("Actions sur CHANGELOG.md");
+  expect(choisies(vue)).toEqual(["CHANGELOG.md", "README.md"]);
+  for (const nom of ["Renommer", "Supprimer", "Indexer"]) expect(commande(m, nom).getAttribute("aria-disabled")).toBe("true");
+  for (const nom of ["Nouveau fichier", "Commit", "Ajouter"]) expect(commande(m, nom).hasAttribute("aria-disabled")).toBe(false);
+  commande(m, "Renommer").click();
+  expect(document.querySelector("[role=menu]")).toBe(m); // le clic sur une commande désactivée ne ferme rien
+  expect(document.querySelector("dialog")).toBeNull();
+  m.querySelector("[role=menuitem]").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  expect(document.activeElement).toBe(ligne(vue, "CHANGELOG.md")); // le focus revient sur la ligne visée
+  // Maj+F10 sur une ligne sortie de la sélection : elle devient la seule.
+  ctrl(vue, "README.md");
+  expect(choisies(vue)).toEqual(["CHANGELOG.md"]);
+  const m2 = menuSur(vue, "README.md", "F10");
+  expect(choisies(vue)).toEqual(["README.md"]);
+  expect(m2.getAttribute("aria-label")).toBe("Actions sur README.md");
+  const m3 = (document.activeElement.blur(), menuSur(vue, "README.md", "ContextMenu"));
+  expect(commande(m3, "Renommer").hasAttribute("aria-disabled")).toBe(false);
+});
+
+test("REQ049_AC13_touche_Menu_sur_une_ligne_de_la_selection_garde_tout", async () => {
+  const { vue } = await monter({ "": [f("a.txt"), f("b.txt")] }, { estDepot: () => true, agents: true });
+  ctrl(vue, "a.txt");
+  ctrl(vue, "b.txt");
+  const m = menuSur(vue, "b.txt", "ContextMenu");
+  expect(choisies(vue)).toEqual(["a.txt", "b.txt"]);
+  expect(m.getAttribute("aria-label")).toBe("Actions sur b.txt");
+});
+
+test("REQ104_AC1_AC13_commande_ouvre_le_dialogue_pour_les_lignes_de_la_selection_dans_l_ordre_de_l_arbre", async () => {
+  const { vue } = await monter({ "": [d("docs"), f("a.txt"), f("b.txt")] }, { agents: true });
+  const base = fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => (String(url).startsWith("/api/connaissance") ? { ok: true, status: 200, json: async () => ({ config: { provider: "openai", modele: "m" }, collections: [{ nom: "notes" }], ajout: null }) } : base(url, init))));
+  ctrl(vue, "b.txt");
+  ctrl(vue, "docs");
+  const m = menuSur(vue, "b.txt");
+  commande(m, "Ajouter").click();
+  await attendre();
+  const dlg = document.querySelector("dialog[role=dialog], dialog");
+  expect(dlg.querySelector(".dialogue-titre").textContent).toBe("Ajouter à la base de connaissance");
+  expect(document.getElementById(dlg.getAttribute("aria-describedby")).textContent).toBe("Ajouter docs/ et b.txt à une collection.");
+});
+
 
 test("REQ049_AC3_clic_simple_ramene_a_une_ligne", async () => {
   const { vue } = await monter({ "": [f("a.txt"), f("b.txt")] });
@@ -871,4 +959,29 @@ test("REQ086_AC17_pendant_un_pull_la_liste_est_desactivee_avec_sa_raison", async
   const apres = vue.entete.querySelector("select");
   expect(apres.disabled).toBe(true);
   expect(apres.title).toBe("Attendez la fin du pull.");
+});
+
+test("REQ104_AC17_le_focus_revient_sur_la_ligne_visee_apres_Annuler_et_apres_un_ajout_accepte", async () => {
+  const { vue } = await monter({ "": [f("a.txt"), f("b.txt")] }, { agents: true });
+  const base = fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    if (init?.method === "POST" && String(url).startsWith("/api/connaissance")) return { ok: true, status: 202, json: async () => ({ numero: 1, collection: "notes", total: 1 }) };
+    if (String(url).startsWith("/api/connaissance")) return { ok: true, status: 200, json: async () => ({ config: { provider: "openai", modele: "m" }, collections: [], ajout: null }) };
+    return base(url, init);
+  }));
+  const ouvrirDialogue = async () => {
+    commande(menuSur(vue, "b.txt"), "Ajouter").click();
+    await attendre();
+    return document.querySelector("dialog");
+  };
+  let dlg = await ouvrirDialogue();
+  [...dlg.querySelectorAll("button")].find((b) => b.textContent === "Annuler").click();
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(document.activeElement).toBe(ligne(vue, "b.txt"));
+  dlg = await ouvrirDialogue();
+  dlg.querySelector("input").value = "notes";
+  [...dlg.querySelectorAll("button")].find((b) => b.textContent === "Ajouter").click();
+  await attendre();
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(document.activeElement).toBe(ligne(vue, "b.txt"));
 });

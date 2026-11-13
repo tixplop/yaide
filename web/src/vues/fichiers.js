@@ -7,6 +7,7 @@ import { liste } from "../ui/liste.js";
 import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 import * as worktree from "../worktree.js";
+import { ouvrirAjoutConnaissance } from "./ajout-connaissance.js";
 
 // Préfixe impossible dans un chemin relatif : marque les lignes qui ne sont pas des fichiers.
 const FACTICE = "\0";
@@ -31,10 +32,11 @@ function texteErreur(r) {
  * V-003. `dire({ texte, variante, fermable })` affiche un bandeau.
  * `projet` : nom affiché dans l'en-tête. `estDepot()` dit si le dossier est un dépôt git ; `surCommit()` mène au message de commit.
  * `lireEtat()` demande la lecture de l'état git, qui revient par `definirStatuts(Map | null)` (voir `statuts.js`).
+ * `agents` : la fonction `agents` est active (commande « Ajouter à la base de connaissance… ») ; `surConfigurer({ surFermeture })` ouvre la configuration de la base.
  * Rappels : `surOuvrir({ chemin, contenu, version })`, `surRenomme({ de, vers })`, `surSupprime({ chemin, dossier })`, `surLecture(oui)` (début et fin d'une lecture).
  * Rend `{ corps, entete (à poser dans `panneau.entete`, à masquer avec le panneau), rafraichir(), relire() (silencieuse), definirStatuts(statuts), definirCourant(chemin | null), detruire() }`.
  */
-export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estDepot = () => false, surCommit = () => {}, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {} }) {
+export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estDepot = () => false, surCommit = () => {}, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {}, agents = false, surConfigurer = () => {} }) {
   const corps = document.createElement("div");
   corps.className = "fichiers";
   const entete = document.createElement("div"); // ligne « Worktree » (REQ-086) puis ligne du projet
@@ -449,7 +451,9 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   function surMenu(id, position) {
     const vide = id === undefined;
     const dossier = !vide && Boolean(types.get(id));
-    if (!vide) choisir(id);
+    // Une ligne d'une sélection de plusieurs la garde entière (AC-049-3).
+    const plusieurs = !vide && selection.length > 1 && selection.includes(id);
+    if (!vide && !plusieurs) choisir(id);
     const base = vide ? vu : dossier ? id : dossierDe(id);
     const depot = estDepot();
     const commit = { libelle: "Commit", surChoix: surCommit };
@@ -464,13 +468,29 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
         vide
           ? []
           : [
-              { libelle: "Renommer", touche: "F2", surChoix: ouvrirRenommage },
-              { libelle: "Supprimer", touche: "Suppr", surChoix: ouvrirSuppression },
+              { libelle: "Renommer", touche: "F2", desactive: plusieurs, surChoix: ouvrirRenommage },
+              { libelle: "Supprimer", touche: "Suppr", desactive: plusieurs, surChoix: ouvrirSuppression },
             ],
-        depot ? (vide ? [commit] : [{ libelle: "Indexer", surChoix: () => indexer(id, dossier) }, commit]) : [],
+        depot ? (vide ? [commit] : [{ libelle: "Indexer", desactive: plusieurs, surChoix: () => indexer(id, dossier) }, commit]) : [],
+        agents && !vide ? [{ libelle: "Ajouter à la base de connaissance…", surChoix: () => ajouterALaBase(id, plusieurs) }] : [],
       ],
       surFermeture: () => {
         if (!vide) ligneDe(id)?.focus();
+      },
+    });
+  }
+
+  /** Les chemins à ajouter : toute la sélection (dans l'ordre de l'arbre) ou la seule ligne visée. */
+  function ajouterALaBase(id, plusieurs) {
+    const chemins = plusieurs ? [...selection] : [id];
+    ouvrirAjoutConnaissance({
+      chemins,
+      noms: chemins.map((c) => `${worktree.dansWorktree(c)}${types.get(c) ? "/" : ""}`),
+      dire,
+      surConfigurer,
+      actif: () => !detruit,
+      surRetour: () => {
+        if (!detruit) (ligneDe(id) ?? zoneArbre.querySelector("[role=treeitem][tabindex='0']"))?.focus();
       },
     });
   }

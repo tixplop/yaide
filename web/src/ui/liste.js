@@ -237,7 +237,7 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
       e.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
         if (ignorerContextmenu(ev)) return;
-        seul(l.id);
+        garder(l.id);
         e.focus();
         surMenu(l.id, { x: ev.clientX, y: ev.clientY });
       });
@@ -358,6 +358,12 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
     for (const id of liste) choisies.add(id);
     ancre = depart;
     surSelection?.(ids.filter((id) => choisies.has(id)), { ancre, derniere });
+  }
+
+  // Menu : une ligne d'une sélection de plusieurs la garde entière (AC-049-3) ; sinon la ligne devient la seule choisie.
+  function garder(id) {
+    if (choisies.size >= 2 && choisies.has(id)) marquer(id);
+    else seul(id);
   }
 
   function seul(id) {
@@ -547,7 +553,7 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
       cleRecente = true;
       clearTimeout(minuteur);
       minuteur = setTimeout(() => (cleRecente = false), 500);
-      seul(id);
+      garder(id);
       const el = elements.get(id);
       el.focus();
       const r = el.getBoundingClientRect();
