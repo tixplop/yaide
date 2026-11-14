@@ -11,7 +11,7 @@ use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
-use crate::shells::{descendants, signaler_pid, vivant};
+use crate::shells::{delai_sigkill, descendants, signaler_pid, vivant};
 
 pub const RAISON_PAR_DEFAUT: &str = "le serveur opencode ne répond pas";
 const STDERR_MAX: usize = 4096;
@@ -119,7 +119,8 @@ impl Opencode {
             signaler_pid(p, libc::SIGTERM);
         }
         let debut = Instant::now();
-        while debut.elapsed() < Duration::from_secs(3) {
+        let delai = delai_sigkill();
+        while debut.elapsed() < delai {
             let chef_fini = matches!(l.enfant.try_wait(), Ok(Some(_)));
             if chef_fini && !suivis.iter().any(|&p| vivant(p)) && !groupe_vivant(pgid) {
                 return;

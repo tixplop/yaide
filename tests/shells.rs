@@ -83,6 +83,11 @@ fn dossier(nom: &str) -> PathBuf {
 
 /// Lance Yaide dans un dossier neuf. `shell` : valeur de `SHELL` (`None` : variable absente).
 fn lancer(nom: &str, shell: Option<&str>) -> Serveur {
+    lancer_avec_env(nom, shell, &[])
+}
+
+/// Comme `lancer`, avec des variables d'environnement en plus pour Yaide.
+fn lancer_avec_env(nom: &str, shell: Option<&str>, env: &[(&str, &str)]) -> Serveur {
     let d = dossier(nom);
     let cfg = d.join("cfg");
     let mut c = Command::new(EXE)
@@ -104,6 +109,7 @@ fn lancer(nom: &str, shell: Option<&str>) -> Serveur {
         .args(["--port", &port.to_string()])
         .env("XDG_CONFIG_HOME", &cfg)
         .env("HOME", &d)
+        .envs(env.iter().copied())
         .stdout(Stdio::null());
     match shell {
         Some(s) => cmd.env("SHELL", s),
@@ -530,7 +536,11 @@ fn req021_identifiant_d_instance_stable_puis_change_au_redemarrage() {
 }
 
 fn arret_propre(signal: &str) {
-    let s = &mut lancer(&format!("arret-{signal}"), Some("/bin/bash"));
+    let s = &mut lancer_avec_env(
+        &format!("arret-{signal}"),
+        Some("/bin/bash"),
+        &[("YAIDE_DELAI_SIGKILL_MS", "300")],
+    );
     let mut pids = Vec::new();
     for _ in 0..2 {
         let mut w = ws(s, ouvrir(s));
@@ -670,7 +680,11 @@ fn req035_ac2_fermer_arrete_le_shell_et_ses_programmes() {
 
 #[test]
 fn req035_ac2_fermer_tue_ce_qui_ignore_hup_et_term() {
-    let s = lancer("fermer-dur", Some("/bin/bash"));
+    let s = lancer_avec_env(
+        "fermer-dur",
+        Some("/bin/bash"),
+        &[("YAIDE_DELAI_SIGKILL_MS", "300")],
+    );
     let id = ouvrir(&s);
     let mut w = ws(&s, id);
     taper(

@@ -61,6 +61,24 @@ impl Drop for GardeClient {
     }
 }
 
+/// Délai avant SIGKILL : 3 s, sauf si `YAIDE_DELAI_SIGKILL_MS` (variable de test) donne un
+/// nombre de millisecondes.
+pub fn delai_sigkill() -> Duration {
+    delai_depuis(std::env::var("YAIDE_DELAI_SIGKILL_MS").ok().as_deref())
+}
+
+fn delai_depuis(valeur: Option<&str>) -> Duration {
+    match valeur.and_then(|v| v.trim().parse::<u64>().ok()) {
+        Some(ms) if ms > 0 => Duration::from_millis(ms),
+        _ => Duration::from_secs(3),
+    }
+}
+
+/// Nombre de tours de 100 ms (au moins 1) avant SIGKILL.
+fn tours_sigkill() -> u64 {
+    (delai_sigkill().as_millis() as u64).div_ceil(100).max(1)
+}
+
 fn signaler(pgid: i32, signal: i32) -> bool {
     // SAFETY : kill n'a pas d'effet mémoire ; pgid vient d'un shell lancé par nous.
     unsafe { libc::kill(-pgid, signal) == 0 }
@@ -362,7 +380,7 @@ impl Registre {
         let pgid = shell.pgid;
         std::thread::spawn(move || {
             signaler_tout(pgid, libc::SIGTERM);
-            for _ in 0..30 {
+            for _ in 0..tours_sigkill() {
                 if membres(pgid).is_empty() {
                     return;
                 }
@@ -398,7 +416,7 @@ impl Registre {
             signaler_pid(p, libc::SIGHUP);
             signaler_pid(p, libc::SIGTERM);
         }
-        for _ in 0..30 {
+        for _ in 0..tours_sigkill() {
             if groupes.iter().all(|&g| membres(g).is_empty()) && !suivis.iter().any(|&p| vivant(p))
             {
                 self.attendre_clients().await;
@@ -420,6 +438,14 @@ impl Registre {
 mod tests {
     use super::*;
     use tokio::time::Instant;
+
+    #[test]
+    fn delai_sigkill_3_s_par_defaut_ou_si_illisible_ou_nul_sinon_la_valeur() {
+        assert_eq!(delai_depuis(None), Duration::from_secs(3));
+        assert_eq!(delai_depuis(Some("abc")), Duration::from_secs(3));
+        assert_eq!(delai_depuis(Some("0")), Duration::from_secs(3));
+        assert_eq!(delai_depuis(Some("300")), Duration::from_millis(300));
+    }
 
     #[tokio::test(start_paused = true)]
     async fn arreter_attend_les_gardes_de_clients() {

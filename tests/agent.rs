@@ -148,6 +148,11 @@ fn preparer(nom: &str) -> PathBuf {
 
 /// Lance Yaide sur `racine/<projet>` (le dossier est créé s'il manque).
 fn demarrer(racine: &Path, projet: &str) -> Serveur {
+    demarrer_avec_env(racine, projet, &[])
+}
+
+/// Comme `demarrer`, avec des variables d'environnement en plus pour Yaide.
+fn demarrer_avec_env(racine: &Path, projet: &str, env: &[(&str, &str)]) -> Serveur {
     let projet = racine.join(projet);
     std::fs::create_dir_all(&projet).unwrap();
     let port = port_libre();
@@ -157,6 +162,7 @@ fn demarrer(racine: &Path, projet: &str) -> Serveur {
         .env("XDG_CONFIG_HOME", racine.join("cfg"))
         .env("HOME", racine)
         .env("GIT_CEILING_DIRECTORIES", racine)
+        .envs(env.iter().copied())
         .stdout(Stdio::null())
         .spawn()
         .unwrap();
@@ -1103,7 +1109,7 @@ fn REQ095_AC11_les_signaux_arretent_le_serveur_mcp_et_son_enfant() {
 fn signal_arrete_le_serveur_mcp(signal: &str) {
     {
         let racine = preparer(&format!("mcp-{signal}"));
-        let mut s = demarrer(&racine, "projet");
+        let mut s = demarrer_avec_env(&racine, "projet", &[("YAIDE_DELAI_SIGKILL_MS", "300")]);
         let (adresse, _) = faux_provider(vec![rep_texte("ok")]);
         let profil = configurer(&s, "openai", &adresse);
         let faux = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/faux-mcp.mjs");

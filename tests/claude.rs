@@ -628,7 +628,7 @@ impl Drop for TueursDePid {
 /// Signal à Yaide ; renvoie le pid de claude et celui du processus détaché, une fois Yaide parti.
 fn arret_claude_sourd(nom: &str, signal: &str) -> (u32, u32) {
     let (path, temoin, detache) = faux_claude_sourd(nom);
-    let mut s = lancer(nom, &path);
+    let mut s = lancer_avec_env(nom, &path, &[("YAIDE_DELAI_SIGKILL_MS", "300")]);
     let _w = ws(&s, ouvrir(&s));
     let claude = pid_du_fichier(&temoin, "pid=");
     let det = pid_du_fichier(&detache, "");

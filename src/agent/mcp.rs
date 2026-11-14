@@ -19,7 +19,7 @@ use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::{watch, Mutex};
 
-use crate::shells::{descendants, signaler_pid, vivant};
+use crate::shells::{delai_sigkill, descendants, signaler_pid, vivant};
 
 const STDERR_MAX: usize = 64 * 1024;
 const STDERR_LIGNES: usize = 20;
@@ -323,7 +323,8 @@ async fn tuer(entrees: Vec<Entree>) {
         signaler_pid(p, libc::SIGTERM);
     }
     let debut = Instant::now();
-    while debut.elapsed() < Duration::from_secs(3) {
+    let delai = delai_sigkill();
+    while debut.elapsed() < delai {
         let chefs_finis = actifs
             .iter_mut()
             .all(|a| matches!(a.enfant.try_wait(), Ok(Some(_))));

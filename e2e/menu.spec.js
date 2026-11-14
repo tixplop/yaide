@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 import { mkdirSync, mkdtempSync, writeFileSync, copyFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { deuxImages } from "./aides.js";
 import { pathToFileURL } from "node:url";
 
 let dossier;
@@ -64,8 +65,8 @@ for (const touche of ["ContextMenu", "Shift+F10"]) {
     await ligne.focus();
     await page.keyboard.press(touche);
     await expect(page.getByRole("menu", { name: "Actions sur b" })).toBeVisible();
-    // Laisse au navigateur le temps d'envoyer un éventuel `contextmenu` en plus.
-    await page.waitForTimeout(700);
+    // Un éventuel `contextmenu` envoyé en plus par le navigateur serait arrivé après deux images.
+    await deuxImages(page);
     expect(await page.evaluate(() => window.ouvertures)).toEqual(["b"]);
     const m = await page.getByRole("menu").boundingBox();
     const nom = await ligne.locator(".liste-libelle").boundingBox();
@@ -97,8 +98,8 @@ test("REQ061_AC10_Menu_et_Maj_F10_sur_un_onglet_ouvrent_une_seule_fois", async (
   for (const touche of ["Shift+F10", "ContextMenu"]) {
     await onglet.focus();
     await page.keyboard.press(touche);
-    // Laisse au navigateur le temps d'envoyer un éventuel `contextmenu` en plus.
-    await page.waitForTimeout(700);
+    // Un éventuel `contextmenu` envoyé en plus par le navigateur serait arrivé après deux images.
+    await deuxImages(page);
   }
   expect(await page.evaluate(() => window.ouvertOnglets)).toEqual(["y", "y"]);
 });

@@ -152,6 +152,10 @@ export function nomLigne(nom) {
   return new RegExp(`^${nom.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(, [^,]+)*$`);
 }
 
+/** Attend deux images affichées : un événement envoyé en plus par le navigateur serait déjà arrivé. */
+export const deuxImages = (page) =>
+  page.evaluate(() => new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(fin))));
+
 // Brouillon des onglets gardé dans IndexedDB (écrit après un délai) : `gardeContient` attend qu'il contienne `texte`.
 const lireGarde = (page) =>
   page.evaluate(
@@ -207,4 +211,17 @@ export async function fauxGithub() {
   });
   await new Promise((ok) => serveur.listen(0, "127.0.0.1", ok));
   return { url: `http://127.0.0.1:${serveur.address().port}/`, fermer: () => serveur.close() };
+}
+
+/** À appeler avant un rechargement : résolue quand `n` flux de shell ont reçu leur première trame. */
+export function fluxRecus(page, n) {
+  return new Promise((fin) => {
+    let recus = 0;
+    page.on("websocket", (ws) => {
+      if (!ws.url().includes("/api/shells/")) return;
+      ws.once("framereceived", () => {
+        if (++recus === n) fin();
+      });
+    });
+  });
 }

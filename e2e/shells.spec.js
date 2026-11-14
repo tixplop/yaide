@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
-import { lancerYaide, ouvrirYaide, tailleStable, avancer, temoin, attendre } from "./aides.js";
+import { lancerYaide, ouvrirYaide, deuxImages, fluxRecus, tailleStable, avancer, temoin, attendre } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -328,9 +328,11 @@ test("REQ019_AC3_AC5_AC6_REQ018_AC2_REQ020_AC1_shells_ouverts_exit_focus_et_depa
   });
   await test.step("REQ018_AC2_les_shells_ouverts_reviennent_avec_leurs_onglets", async () => {
   await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
+    const flux = fluxRecus(page, 2);
     await page.reload();
     await expect(onglets(page)).toHaveText(["shell 1", "shell 2"]);
-    await page.waitForTimeout(500);
+    await flux;
+    await deuxImages(page);
     await expect(onglets(page)).toHaveCount(2);
   });
   await test.step("REQ019_AC3_exit_ferme_l_onglet", async () => {

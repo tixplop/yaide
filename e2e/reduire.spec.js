@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
-import { lancerYaide, ouvrirYaide, tailleStable, avancer, temoin, attendre } from "./aides.js";
+import { lancerYaide, ouvrirYaide, deuxImages, fluxRecus, tailleStable, avancer, temoin, attendre } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -148,9 +148,11 @@ async function tousReduitsRecharge(page) {
   const hauteur = await poignee(page).getAttribute("aria-valuenow");
   await bouton(page, "Réduire le shell").click();
   await attendreReduits(page, 1);
+  const flux = fluxRecus(page, 1);
   await page.reload();
   await expect(bouton(page, "Shells réduits")).toBeEnabled();
-  await page.waitForTimeout(1500);
+  await flux;
+  await deuxImages(page);
   await expect(poignee(page)).toHaveCount(0);
   await expect(onglets(page)).toHaveCount(0);
   expect(await page.evaluate(async () => (await (await fetch("/api/shells")).json()).shells.length)).toBe(1);

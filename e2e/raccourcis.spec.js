@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
+import { lancerYaide, ouvrirYaide, nomLigne, deuxImages } from "./aides.js";
 
 let yaide;
 test.beforeEach(async () => {
@@ -78,7 +78,7 @@ test("REQ034_AC1_AC11_AC16_clic_droit_touche_menu_et_maj_f10_ouvrent_une_seule_f
     await page.keyboard.press(touche);
     await expect(page.getByRole("menu")).toHaveCount(1);
     await expect(page.getByRole("menuitem", { name: "Nouveau fichier" })).toBeFocused();
-    await page.waitForTimeout(700);
+    await deuxImages(page);
     await expect(page.getByRole("menu")).toHaveCount(1);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);

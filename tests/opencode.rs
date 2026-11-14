@@ -578,7 +578,13 @@ fn signaler_et_attendre_la_sortie(s: &mut Serveur, signal: &str) {
 }
 
 fn serveur_sourd_arrete_par_sighup() {
-    let mut s = lancer("hup", &[("FAUX_OPENCODE_SIGNAUX", "ignorer")]);
+    let mut s = lancer(
+        "hup",
+        &[
+            ("FAUX_OPENCODE_SIGNAUX", "ignorer"),
+            ("YAIDE_DELAI_SIGKILL_MS", "300"),
+        ],
+    );
     assert_eq!(http(&s, "GET", "/api/opencode/api/info", "").0, 200);
     let pid = s.lancements()[0]["pid"].as_i64().unwrap();
     assert!(vivant(pid));
@@ -589,7 +595,10 @@ fn serveur_sourd_arrete_par_sighup() {
 fn detache_arrete(signal: &str) {
     let mut s = lancer(
         &format!("detache-{signal}"),
-        &[("FAUX_OPENCODE_DETACHE", "1")],
+        &[
+            ("FAUX_OPENCODE_DETACHE", "1"),
+            ("YAIDE_DELAI_SIGKILL_MS", "300"),
+        ],
     );
     assert_eq!(http(&s, "GET", "/api/opencode/api/info", "").0, 200);
     assert!(attendre(|| !s.pids_de("detache").is_empty(), 10));
@@ -600,7 +609,13 @@ fn detache_arrete(signal: &str) {
 }
 
 fn membre_du_groupe_arrete_par_sigterm() {
-    let mut s = lancer("membre", &[("FAUX_OPENCODE_MEMBRE", "1")]);
+    let mut s = lancer(
+        "membre",
+        &[
+            ("FAUX_OPENCODE_MEMBRE", "1"),
+            ("YAIDE_DELAI_SIGKILL_MS", "300"),
+        ],
+    );
     assert_eq!(http(&s, "GET", "/api/opencode/api/info", "").0, 200);
     assert!(attendre(|| !s.pids_de("membre").is_empty(), 10));
     let pid = s.pids_de("membre")[0];
