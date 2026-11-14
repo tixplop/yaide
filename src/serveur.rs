@@ -1825,7 +1825,7 @@ pub async fn servir(
                 &acces,
             )
             .await;
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            tokio::time::sleep(intervalle_verification()).await;
         }
     });
     let suivi = etat.clone();
@@ -1978,4 +1978,31 @@ async fn arret() {
         }
     };
     tokio::select! { _ = term.recv() => {}, _ = int.recv() => {}, _ = hup => {} }
+}
+
+/// Intervalle entre deux passes de vérification de la base : 3 s, sauf si
+/// `YAIDE_INTERVALLE_BASE_MS` (variable de test) donne un nombre de millisecondes.
+fn intervalle_verification() -> std::time::Duration {
+    intervalle_depuis(std::env::var("YAIDE_INTERVALLE_BASE_MS").ok().as_deref())
+}
+
+fn intervalle_depuis(valeur: Option<&str>) -> std::time::Duration {
+    match valeur.and_then(|v| v.trim().parse::<u64>().ok()) {
+        Some(ms) if ms > 0 => std::time::Duration::from_millis(ms),
+        _ => std::time::Duration::from_secs(3),
+    }
+}
+
+#[cfg(test)]
+mod tests_intervalle {
+    use super::intervalle_depuis;
+    use std::time::Duration;
+
+    #[test]
+    fn intervalle_verification_3_s_par_defaut_ou_si_illisible_sinon_la_valeur() {
+        assert_eq!(intervalle_depuis(None), Duration::from_secs(3));
+        assert_eq!(intervalle_depuis(Some("abc")), Duration::from_secs(3));
+        assert_eq!(intervalle_depuis(Some("")), Duration::from_secs(3));
+        assert_eq!(intervalle_depuis(Some("200")), Duration::from_millis(200));
+    }
 }

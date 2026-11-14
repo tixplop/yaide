@@ -199,18 +199,25 @@ fn dossier(nom: &str) -> PathBuf {
 }
 
 fn demarrer(racine: &Path, projet: &str) -> Serveur {
+    demarrer_avec(racine, projet, None)
+}
+
+/// `intervalle_ms` : intervalle de vérification de la base (tests REQ-110 seulement).
+fn demarrer_avec(racine: &Path, projet: &str, intervalle_ms: Option<&str>) -> Serveur {
     let projet = racine.join(projet);
     std::fs::create_dir_all(&projet).unwrap();
     let port = port_libre();
-    let child = Command::new(EXE)
-        .arg(&projet)
+    let mut cmd = Command::new(EXE);
+    cmd.arg(&projet)
         .args(["--port", &port.to_string()])
         .env("XDG_CONFIG_HOME", racine.join("cfg"))
         .env("HOME", racine)
         .env("GIT_CEILING_DIRECTORIES", racine)
-        .stdout(Stdio::null())
-        .spawn()
-        .unwrap();
+        .stdout(Stdio::null());
+    if let Some(ms) = intervalle_ms {
+        cmd.env("YAIDE_INTERVALLE_BASE_MS", ms);
+    }
+    let child = cmd.spawn().unwrap();
     let mut s = Serveur {
         child,
         port,
@@ -236,6 +243,10 @@ fn demarrer(racine: &Path, projet: &str) -> Serveur {
 
 fn lancer(nom: &str) -> Serveur {
     demarrer(&dossier(nom), "projet")
+}
+
+fn lancer_rapide(nom: &str) -> Serveur {
+    demarrer_avec(&dossier(nom), "projet", Some("200"))
 }
 
 type Recues = Arc<Mutex<Vec<Value>>>;
@@ -942,7 +953,7 @@ fn attendre_numero(s: &Serveur, numero: u64) -> Value {
 #[test]
 fn REQ110_AC1_REQ112_donnees_fichier_modifie_remis_a_jour_dans_chaque_collection() {
     let (adresse, recues) = faux_provider(vec![]);
-    let s = lancer("ac110-1");
+    let s = lancer_rapide("ac110-1");
     assert_eq!(s.etat()["fichiers"], json!({}));
     ecrire(&s, "docs/a.md", "v1 un\n");
     ecrire(&s, "docs/b.md", "v2 deux\n");
@@ -998,7 +1009,7 @@ fn REQ110_AC1_REQ112_donnees_fichier_modifie_remis_a_jour_dans_chaque_collection
 #[test]
 fn REQ110_AC2_fichier_touche_sans_changement_de_contenu_aucune_requete() {
     let (adresse, recues) = faux_provider(vec![]);
-    let s = lancer("ac110-2");
+    let s = lancer_rapide("ac110-2");
     ecrire(&s, "docs/a.md", "v1 un\n");
     ecrire(&s, "docs/b.md", "v2 deux\n");
     configurer(&s, &adresse);
@@ -1025,7 +1036,7 @@ fn REQ110_AC2_fichier_touche_sans_changement_de_contenu_aucune_requete() {
 #[test]
 fn REQ110_AC3_fichier_supprime_binaire_ou_renomme_quitte_les_collections_sans_requete() {
     let (adresse, recues) = faux_provider(vec![]);
-    let s = lancer("ac110-3");
+    let s = lancer_rapide("ac110-3");
     for (c, t) in [
         ("a", "v1 un"),
         ("b", "v2 deux"),
@@ -1055,7 +1066,7 @@ fn REQ110_AC3_fichier_supprime_binaire_ou_renomme_quitte_les_collections_sans_re
 #[test]
 fn REQ110_AC4_derniere_collection_videe_reste_a_zero() {
     let (adresse, _) = faux_provider(vec![]);
-    let s = lancer("ac110-4");
+    let s = lancer_rapide("ac110-4");
     ecrire(&s, "docs/a.md", "v1 un\n");
     configurer(&s, &adresse);
     assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
@@ -1076,7 +1087,7 @@ fn REQ110_AC4_derniere_collection_videe_reste_a_zero() {
 fn REQ110_AC5_changements_pendant_l_arret_rattrapes_au_redemarrage() {
     let (adresse, recues) = faux_provider(vec![]);
     let racine = dossier("ac110-5");
-    let s = demarrer(&racine, "projet");
+    let s = demarrer_avec(&racine, "projet", Some("200"));
     ecrire(&s, "docs/a.md", "v1 un\n");
     ecrire(&s, "docs/b.md", "v2 deux\n");
     configurer(&s, &adresse);
@@ -1087,7 +1098,7 @@ fn REQ110_AC5_changements_pendant_l_arret_rattrapes_au_redemarrage() {
     std::fs::write(projet.join("docs/a.md"), "v6 six\n").unwrap();
     std::fs::remove_file(projet.join("docs/b.md")).unwrap();
     let avant = nombre_requetes(&recues);
-    let s = demarrer(&racine, "projet");
+    let s = demarrer_avec(&racine, "projet", Some("200"));
     attendre("rattrapage", || s.fichiers("notes") == ["docs/a.md"]);
     attendre("vecteurs de a.md", || {
         vecteurs_de(&s, "notes") == [6.0, 1.0]
@@ -1099,7 +1110,7 @@ fn REQ110_AC5_changements_pendant_l_arret_rattrapes_au_redemarrage() {
 fn REQ110_AC6_REQ112_refus_du_provider_ancien_vecteurs_ecartes_sans_nouvelle_requete() {
     // 1re requête : l'ajout ; 2e : le refus.
     let (adresse, recues) = faux_provider(vec![(200, 0), (401, 0)]);
-    let s = lancer("ac110-6");
+    let s = lancer_rapide("ac110-6");
     ecrire(&s, "docs/a.md", "v1 un\n");
     ecrire(&s, "docs/b.md", "v2 deux\n");
     configurer(&s, &adresse);
@@ -1144,8 +1155,8 @@ fn REQ110_AC6_REQ112_refus_du_provider_ancien_vecteurs_ecartes_sans_nouvelle_req
 #[test]
 fn REQ110_AC7_aucune_mise_a_jour_pendant_un_ajout_et_ajout_non_refuse_pendant_une_mise_a_jour() {
     // 1 : ajout de a ; 2 : ajout de c (lent) ; 3 : mise à jour de a ; 4 : mise à jour lente de a ; 5 : ajout de d.
-    let (adresse, recues) = faux_provider(vec![(200, 0), (200, 3000), (200, 0), (200, 3000)]);
-    let s = lancer("ac110-7");
+    let (adresse, recues) = faux_provider(vec![(200, 0), (200, 1000), (200, 0), (200, 1000)]);
+    let s = lancer_rapide("ac110-7");
     ecrire(&s, "docs/a.md", "v1 un\n");
     ecrire(&s, "docs/c.md", "v3 trois\n");
     ecrire(&s, "docs/d.md", "v4 quatre\n");
@@ -1155,7 +1166,7 @@ fn REQ110_AC7_aucune_mise_a_jour_pendant_un_ajout_et_ajout_non_refuse_pendant_un
     assert_eq!(s.ajouter("notes", &["docs/c.md"]).code, 202);
     attendre("requête de l'ajout", || nombre_requetes(&recues) == 2);
     ecrire(&s, "docs/a.md", "v5 cinq\n");
-    // Pendant l'ajout (3 s, au moins une passe), a.md n'est pas envoyé.
+    // Pendant l'ajout (1 s, plusieurs passes), a.md n'est pas envoyé.
     let debut = Instant::now();
     while s.etat()["ajout"]["etat"] == "en_cours" {
         assert_eq!(nombre_requetes(&recues), 2);
