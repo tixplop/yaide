@@ -2,11 +2,11 @@
 //! (DEC-072 à DEC-075). Stockée sous `.yaide/connaissance/` du projet.
 
 use crate::agent::provider::{self, ErreurProvider, Provider};
+use crate::decoupage::{decouper, Decoupage};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 
-const PASSAGE_MAX: usize = 2000;
 const LOT: usize = 64;
 const RESULTATS_MAX: usize = 10;
 const PROVIDERS_ADMIS: [&str; 5] = ["openai", "google", "openrouter", "litellm", "ollama"];
@@ -152,88 +152,6 @@ pub fn erreur_provider(provider: Provider, e: ErreurProvider) -> Erreur {
 pub struct Base {
     projet: PathBuf,
     racine: PathBuf,
-}
-
-/// Découpe un fichier en passages de lignes entières de 2 000 caractères au plus ;
-/// une ligne plus longue est coupée en morceaux de 2 000, sans recouvrement.
-/// Le texte d'un passage est la tranche exacte du fichier, de `octet_debut` à `octet_fin`.
-pub fn decouper(chemin: &str, contenu: &str) -> Vec<Passage> {
-    let mut passages = Vec::new();
-    let mut ajouter = |debut: usize, fin: usize, o1: usize, o2: usize| {
-        let texte = &contenu[o1..o2];
-        if !texte.trim().is_empty() {
-            passages.push(Passage {
-                chemin: chemin.to_string(),
-                debut,
-                fin,
-                octet_debut: o1,
-                octet_fin: o2,
-                texte: texte.to_string(),
-            });
-        }
-    };
-    // Passage courant : octet de début, taille en caractères, octet de fin, dernière ligne.
-    let mut debut = 1;
-    let mut o_debut = 0;
-    let mut taille = 0;
-    let mut o_fin = 0;
-    let mut vide = true;
-    let mut pos = 0;
-    let mut numero = 0;
-    let mut separateur = 0; // caractères du saut de ligne qui précède la ligne
-    for brute in contenu.split_inclusive('\n') {
-        numero += 1;
-        let debut_ligne = pos;
-        pos += brute.len();
-        let sans = brute.strip_suffix('\n').unwrap_or(brute);
-        let sans = if brute.ends_with('\n') {
-            sans.strip_suffix('\r').unwrap_or(sans)
-        } else {
-            sans
-        };
-        let fin_ligne = debut_ligne + sans.len();
-        let n = sans.chars().count();
-        let saut = brute.chars().count() - n;
-        if n > PASSAGE_MAX {
-            if !vide {
-                ajouter(debut, numero - 1, o_debut, o_fin);
-            }
-            let mut o = debut_ligne;
-            let mut compte = 0;
-            for (i, _) in sans.char_indices() {
-                if compte == PASSAGE_MAX {
-                    ajouter(numero, numero, o, debut_ligne + i);
-                    o = debut_ligne + i;
-                    compte = 0;
-                }
-                compte += 1;
-            }
-            ajouter(numero, numero, o, fin_ligne);
-            vide = true;
-            debut = numero + 1;
-            separateur = saut;
-            continue;
-        }
-        if vide {
-            o_debut = debut_ligne;
-            debut = numero;
-            taille = n;
-        } else if taille + n + separateur > PASSAGE_MAX {
-            ajouter(debut, numero - 1, o_debut, o_fin);
-            debut = numero;
-            o_debut = debut_ligne;
-            taille = n;
-        } else {
-            taille += n + separateur;
-        }
-        vide = false;
-        o_fin = fin_ligne;
-        separateur = saut;
-    }
-    if !vide {
-        ajouter(debut, numero, o_debut, o_fin);
-    }
-    passages
 }
 
 /// Taille et date tirées de la version rendue par `fichiers::lire` (« <ns>-<taille> »).
@@ -617,7 +535,7 @@ impl Base {
                 empreinte: emp,
                 taille,
                 date,
-                passages: decouper(chemin, contenu),
+                passages: decouper(chemin, contenu, &Decoupage::default()),
                 vecteurs: Vec::new(),
             });
         }
@@ -967,7 +885,7 @@ impl Base {
             echecs.noter(chemin, taille, date, e.cause.clone());
             Err(e)
         };
-        let passages = decouper(chemin, &texte);
+        let passages = decouper(chemin, &texte, &Decoupage::default());
         let vecteurs = match self.vecteurs_du_fichier(client, acces, &passages).await {
             Ok(v) => v,
             Err(e) => return echec(e),
@@ -1554,7 +1472,7 @@ mod tests {
     #[test]
     fn REQ104_AC4_decoupage_lignes_entieres_sans_recouvrement() {
         let contenu: String = (0..300).map(|_| "a".repeat(19) + "\n").collect();
-        let ps = decouper("f.md", &contenu);
+        let ps = decouper("f.md", &contenu, &Decoupage::default());
         assert_eq!(ps.len(), 3);
         let mut suivante = 1;
         for p in &ps {
@@ -1565,7 +1483,11 @@ mod tests {
         }
         assert_eq!(suivante, 301);
         // Ligne de 5 000 caractères : trois morceaux ; numéros à partir de 1.
-        let ps = decouper("g", &format!("a\n{}\nb", "é".repeat(5000)));
+        let ps = decouper(
+            "g",
+            &format!("a\n{}\nb", "é".repeat(5000)),
+            &Decoupage::default(),
+        );
         let lignes: Vec<(usize, usize, usize)> = ps
             .iter()
             .map(|p| (p.debut, p.fin, p.texte.chars().count()))
@@ -1595,7 +1517,7 @@ mod tests {
                 )
             })
             .collect();
-        assert_eq!(decouper("g", &contenu).len(), 130);
+        assert_eq!(decouper("g", &contenu, &Decoupage::default()).len(), 130);
         b.ajouter(&acces(&c, &a, None), "n", "", &[f("g.txt", &contenu)])
             .await
             .unwrap();
@@ -1823,7 +1745,7 @@ mod tests {
     fn REQ109_AC2_decoupage_octets_relus_identiques_crlf_et_multioctets() {
         let longue = "é".repeat(5000);
         let contenu = format!("a\r\nbé\r\n{longue}\r\n\r\nz");
-        let ps = decouper("f", &contenu);
+        let ps = decouper("f", &contenu, &Decoupage::default());
         let lignes: Vec<(usize, usize, usize)> = ps
             .iter()
             .map(|p| (p.debut, p.fin, p.texte.chars().count()))
@@ -1848,7 +1770,7 @@ mod tests {
     #[test]
     fn REQ109_AC2_decoupage_300_lignes_octets_a_des_limites_de_caracteres() {
         let contenu: String = (0..300).map(|_| "é".repeat(19) + "\n").collect();
-        for p in decouper("f", &contenu) {
+        for p in decouper("f", &contenu, &Decoupage::default()) {
             assert!(
                 contenu.is_char_boundary(p.octet_debut) && contenu.is_char_boundary(p.octet_fin)
             );
@@ -1874,7 +1796,7 @@ mod tests {
         assert!(brut.contains("octet_debut") && brut.contains("a.md"));
         let t = b.chercher(&ac, "q", &[]).await.unwrap();
         let textes: Vec<String> = t.iter().map(|p| p.texte.clone()).collect();
-        let attendus: Vec<String> = decouper("a.md", &contenu)
+        let attendus: Vec<String> = decouper("a.md", &contenu, &Decoupage::default())
             .into_iter()
             .map(|p| p.texte)
             .collect();

@@ -7,6 +7,7 @@ mod cli;
 mod config;
 #[allow(dead_code)]
 mod connaissance;
+mod decoupage;
 mod depot;
 mod fichiers;
 mod git;
