@@ -828,3 +828,57 @@ fn REQ106_AC1_AC2_AC5_recherche_classee_filtrée_et_erreur_du_provider() {
         .unwrap()
         .contains("injoignable"));
 }
+
+#[test]
+fn REQ109_AC1_AC2_pointeurs_seuls_sur_disque_texte_relu_par_la_recherche() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("ac109");
+    let longue = "é".repeat(5000);
+    ecrire(&s, "docs/a.md", "v1 phrase secrète\r\nsuite\r\n");
+    ecrire(&s, "docs/b.md", &format!("{longue}\n"));
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    assert_eq!(s.attendre_fin()["ajoutes"], 2);
+    let dossier = s.projet.join(".yaide/connaissance/collections/notes");
+    let mut contenu = String::new();
+    for entree in std::fs::read_dir(&dossier).unwrap() {
+        let chemin = entree.unwrap().path();
+        let octets = std::fs::read(&chemin).unwrap();
+        contenu.push_str(&String::from_utf8_lossy(&octets));
+    }
+    assert!(!contenu.contains("secrète") && !contenu.contains("éé"));
+    let json: Value =
+        serde_json::from_str(&std::fs::read_to_string(dossier.join("passages.json")).unwrap())
+            .unwrap();
+    let p = &json["fichiers"][0]["passages"][0];
+    assert_eq!(p["chemin"], "docs/a.md");
+    assert_eq!((p["debut"].as_u64(), p["fin"].as_u64()), (Some(1), Some(2)));
+    let meta = std::fs::metadata(s.projet.join("docs/a.md")).unwrap();
+    let f0 = &json["fichiers"][0];
+    assert_eq!(f0["taille"].as_u64(), Some(meta.len()));
+    let ns = meta
+        .modified()
+        .unwrap()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    assert_eq!(f0["date"].as_u64().map(u128::from), Some(ns));
+    assert_eq!(p["octet_debut"], 0);
+    assert!(p["octet_fin"].as_u64().unwrap() > 0);
+    let r = s.chercher("v1", Some("notes")).json();
+    let textes: Vec<&str> = r["passages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["texte"].as_str().unwrap())
+        .collect();
+    assert_eq!(textes.len(), 4);
+    assert!(textes.contains(&"v1 phrase secrète\r\nsuite"));
+    assert_eq!(
+        textes
+            .iter()
+            .filter(|t| t.chars().all(|c| c == 'é'))
+            .count(),
+        3
+    );
+}

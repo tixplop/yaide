@@ -22,6 +22,11 @@ pub struct Passage {
     pub chemin: String,
     pub debut: usize,
     pub fin: usize,
+    /// Place du passage dans le fichier, en octets (début inclus, fin exclue).
+    pub octet_debut: usize,
+    pub octet_fin: usize,
+    /// Le texte n'est jamais écrit : il sert à demander les vecteurs, puis il est relu dans le fichier.
+    #[serde(skip)]
     pub texte: String,
 }
 
@@ -29,6 +34,9 @@ pub struct Passage {
 struct Fichier {
     chemin: String,
     empreinte: String,
+    /// Taille en octets et date de modification (ns depuis l'époque Unix) du contenu ajouté.
+    taille: u64,
+    date: u128,
     passages: Vec<Passage>,
     #[serde(skip)]
     vecteurs: Vec<Vec<f32>>,
@@ -141,73 +149,96 @@ pub fn erreur_provider(provider: Provider, e: ErreurProvider) -> Erreur {
 }
 
 pub struct Base {
+    projet: PathBuf,
     racine: PathBuf,
 }
 
 /// Découpe un fichier en passages de lignes entières de 2 000 caractères au plus ;
 /// une ligne plus longue est coupée en morceaux de 2 000, sans recouvrement.
+/// Le texte d'un passage est la tranche exacte du fichier, de `octet_debut` à `octet_fin`.
 pub fn decouper(chemin: &str, contenu: &str) -> Vec<Passage> {
-    fn vider(
-        passages: &mut Vec<Passage>,
-        chemin: &str,
-        courant: &mut Vec<&str>,
-        debut: usize,
-        fin: usize,
-    ) {
-        let texte = courant.join("\n");
+    let mut passages = Vec::new();
+    let mut ajouter = |debut: usize, fin: usize, o1: usize, o2: usize| {
+        let texte = &contenu[o1..o2];
         if !texte.trim().is_empty() {
             passages.push(Passage {
                 chemin: chemin.to_string(),
                 debut,
                 fin,
-                texte,
+                octet_debut: o1,
+                octet_fin: o2,
+                texte: texte.to_string(),
             });
         }
-        courant.clear();
-    }
-    let mut passages = Vec::new();
-    let mut courant: Vec<&str> = Vec::new();
-    let mut taille = 0;
+    };
+    // Passage courant : octet de début, taille en caractères, octet de fin, dernière ligne.
     let mut debut = 1;
-    for (i, ligne) in contenu.lines().enumerate() {
-        let numero = i + 1;
-        let n = ligne.chars().count();
+    let mut o_debut = 0;
+    let mut taille = 0;
+    let mut o_fin = 0;
+    let mut vide = true;
+    let mut pos = 0;
+    let mut numero = 0;
+    let mut separateur = 0; // caractères du saut de ligne qui précède la ligne
+    for brute in contenu.split_inclusive('\n') {
+        numero += 1;
+        let debut_ligne = pos;
+        pos += brute.len();
+        let sans = brute.strip_suffix('\n').unwrap_or(brute);
+        let sans = if brute.ends_with('\n') {
+            sans.strip_suffix('\r').unwrap_or(sans)
+        } else {
+            sans
+        };
+        let fin_ligne = debut_ligne + sans.len();
+        let n = sans.chars().count();
+        let saut = brute.chars().count() - n;
         if n > PASSAGE_MAX {
-            vider(&mut passages, chemin, &mut courant, debut, numero - 1);
-            let car: Vec<char> = ligne.chars().collect();
-            for morceau in car.chunks(PASSAGE_MAX) {
-                let texte: String = morceau.iter().collect();
-                if !texte.trim().is_empty() {
-                    passages.push(Passage {
-                        chemin: chemin.to_string(),
-                        debut: numero,
-                        fin: numero,
-                        texte,
-                    });
-                }
+            if !vide {
+                ajouter(debut, numero - 1, o_debut, o_fin);
             }
+            let mut o = debut_ligne;
+            let mut compte = 0;
+            for (i, _) in sans.char_indices() {
+                if compte == PASSAGE_MAX {
+                    ajouter(numero, numero, o, debut_ligne + i);
+                    o = debut_ligne + i;
+                    compte = 0;
+                }
+                compte += 1;
+            }
+            ajouter(numero, numero, o, fin_ligne);
+            vide = true;
             debut = numero + 1;
-            taille = 0;
+            separateur = saut;
             continue;
         }
-        let ajout = if courant.is_empty() { n } else { n + 1 };
-        if taille + ajout > PASSAGE_MAX {
-            vider(&mut passages, chemin, &mut courant, debut, numero - 1);
+        if vide {
+            o_debut = debut_ligne;
             debut = numero;
             taille = n;
+        } else if taille + n + separateur > PASSAGE_MAX {
+            ajouter(debut, numero - 1, o_debut, o_fin);
+            debut = numero;
+            o_debut = debut_ligne;
+            taille = n;
         } else {
-            taille += ajout;
+            taille += n + separateur;
         }
-        courant.push(ligne);
+        vide = false;
+        o_fin = fin_ligne;
+        separateur = saut;
     }
-    vider(
-        &mut passages,
-        chemin,
-        &mut courant,
-        debut,
-        contenu.lines().count(),
-    );
+    if !vide {
+        ajouter(debut, numero, o_debut, o_fin);
+    }
     passages
+}
+
+/// Taille et date tirées de la version rendue par `fichiers::lire` (« <ns>-<taille> »).
+fn taille_date(version: &str) -> (u64, u128) {
+    let (ns, taille) = version.split_once('-').unwrap_or(("0", "0"));
+    (taille.parse().unwrap_or(0), ns.parse().unwrap_or(0))
 }
 
 fn empreinte(contenu: &str) -> String {
@@ -300,6 +331,7 @@ fn finaliser(
 impl Base {
     pub fn new(projet: &Path) -> Self {
         Base {
+            projet: projet.to_path_buf(),
             racine: projet.join(".yaide").join("connaissance"),
         }
     }
@@ -493,7 +525,7 @@ impl Base {
         acces: &Acces<'_>,
         nom: &str,
         portee: &str,
-        fichiers: &[(String, String)],
+        fichiers: &[(String, String, String)],
     ) -> Result<Ajout, Erreur> {
         self.ajouter_avec(acces, nom, portee, fichiers, &|_| {})
             .await
@@ -506,7 +538,7 @@ impl Base {
         acces: &Acces<'_>,
         nom: &str,
         portee: &str,
-        fichiers: &[(String, String)],
+        fichiers: &[(String, String, String)],
         progres: &(dyn Fn(usize) + Sync),
     ) -> Result<Ajout, Erreur> {
         valider_nom(nom)?;
@@ -528,12 +560,13 @@ impl Base {
         };
         let avant = coll.fichiers.len();
         coll.fichiers
-            .retain(|f| !dans_portee(&f.chemin) || fichiers.iter().any(|(c, _)| *c == f.chemin));
+            .retain(|f| !dans_portee(&f.chemin) || fichiers.iter().any(|(c, _, _)| *c == f.chemin));
         let retires = avant - coll.fichiers.len();
 
         let mut inchanges = 0;
         let mut nouveaux: VecDeque<Fichier> = VecDeque::new();
-        for (chemin, contenu) in fichiers {
+        for (chemin, contenu, version) in fichiers {
+            let (taille, date) = taille_date(version);
             let emp = empreinte(contenu);
             if coll
                 .fichiers
@@ -546,6 +579,8 @@ impl Base {
             nouveaux.push_back(Fichier {
                 chemin: chemin.clone(),
                 empreinte: emp,
+                taille,
+                date,
                 passages: decouper(chemin, contenu),
                 vecteurs: Vec::new(),
             });
@@ -644,7 +679,7 @@ impl Base {
         };
         let mut v = acces.vecteurs(&[question.to_string()]).await?;
         let q = v.pop().ok_or("Le provider n'a rendu aucun vecteur.")?;
-        let mut trouves = Vec::new();
+        let mut candidats = Vec::new();
         for nom in noms {
             let c = self.charger(&nom)?;
             if c.dimension != q.len() {
@@ -652,19 +687,42 @@ impl Base {
             }
             for f in c.fichiers {
                 for (p, vec) in f.passages.into_iter().zip(&f.vecteurs) {
-                    trouves.push(Trouve {
-                        chemin: p.chemin,
-                        debut: p.debut,
-                        fin: p.fin,
-                        collection: c.nom.clone(),
-                        score: cosinus(&q, vec),
-                        texte: p.texte,
-                    });
+                    candidats.push((cosinus(&q, vec), c.nom.clone(), f.empreinte.clone(), p));
                 }
             }
         }
-        trouves.sort_by(|a, b| b.score.total_cmp(&a.score));
-        trouves.truncate(RESULTATS_MAX);
+        candidats.sort_by(|a, b| b.0.total_cmp(&a.0));
+        // Le texte est relu dans le fichier ; un fichier absent ou changé ne donne aucun passage.
+        let mut lus: std::collections::HashMap<String, Option<(String, String)>> =
+            std::collections::HashMap::new();
+        let mut trouves = Vec::new();
+        for (score, collection, emp, p) in candidats {
+            if trouves.len() == RESULTATS_MAX {
+                break;
+            }
+            let lu = lus.entry(p.chemin.clone()).or_insert_with(|| {
+                crate::fichiers::lire(&self.projet, &p.chemin)
+                    .ok()
+                    .map(|(t, _)| (empreinte(&t), t))
+            });
+            let Some((emp_lue, contenu)) = lu else {
+                continue;
+            };
+            if *emp_lue != emp {
+                continue;
+            }
+            let Some(texte) = contenu.get(p.octet_debut..p.octet_fin) else {
+                continue;
+            };
+            trouves.push(Trouve {
+                chemin: p.chemin,
+                debut: p.debut,
+                fin: p.fin,
+                collection,
+                score,
+                texte: texte.to_string(),
+            });
+        }
         Ok(trouves)
     }
 }
@@ -871,7 +929,7 @@ pub async fn executer(suivi: &Suivi, numero: u64, d: Demande) {
             let mut ignores = 0;
             for c in chemins {
                 match crate::fichiers::lire(&projet, &c) {
-                    Ok((texte, _)) => lus.push((c, texte)),
+                    Ok((texte, version)) => lus.push((c, texte, version)),
                     Err(_) => ignores += 1,
                 }
             }
@@ -1007,6 +1065,7 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&d).unwrap();
+        PROJET.with(|p| *p.borrow_mut() = d.clone());
         let b = Base::new(&d);
         (d, b)
     }
@@ -1021,8 +1080,17 @@ mod tests {
         }
     }
 
-    fn f(chemin: &str, contenu: &str) -> (String, String) {
-        (chemin.to_string(), contenu.to_string())
+    thread_local! {
+        static PROJET: std::cell::RefCell<PathBuf> = const { std::cell::RefCell::new(PathBuf::new()) };
+    }
+
+    /// Un fichier du projet courant du test : écrit sur le disque, car la recherche le relit.
+    fn f(chemin: &str, contenu: &str) -> (String, String, String) {
+        let cible = PROJET.with(|p| p.borrow().join(chemin));
+        std::fs::create_dir_all(cible.parent().unwrap()).unwrap();
+        std::fs::write(&cible, contenu).unwrap();
+        let version = crate::fichiers::version_de(&std::fs::metadata(cible).unwrap());
+        (chemin.to_string(), contenu.to_string(), version)
     }
 
     #[test]
@@ -1300,7 +1368,7 @@ mod tests {
         let c = client();
         let ac = acces(&c, &a, None);
         // Questions « x » → [1, 0] ; passage « x<n> » → [n, 1] : plus n est grand, plus il est proche.
-        let fichiers: Vec<(String, String)> = (1..=12)
+        let fichiers: Vec<(String, String, String)> = (1..=12)
             .map(|n| f(&format!("f{n:02}.txt"), &format!("x{n}")))
             .collect();
         b.ajouter(&ac, "notes", "", &fichiers).await.unwrap();
@@ -1324,7 +1392,9 @@ mod tests {
         assert!(t[0].score > t[1].score && t[0].score < 1.0);
         // Moins de 10 passages : tous.
         let (_d2, b2) = projet();
-        b2.ajouter(&ac, "n", "", &fichiers[..3]).await.unwrap();
+        let trois: Vec<(String, String, String)> =
+            fichiers[..3].iter().map(|(c, t, _)| f(c, t)).collect();
+        b2.ajouter(&ac, "n", "", &trois).await.unwrap();
         assert_eq!(b2.chercher(&ac, "x", &[]).await.unwrap().len(), 3);
         drop(d);
     }
@@ -1358,5 +1428,120 @@ mod tests {
         assert!(valider_nom("é").is_err());
         assert!(valider_nom(&"a".repeat(41)).is_err());
         assert!(valider_nom(&"a".repeat(40)).is_ok());
+    }
+
+    #[test]
+    fn REQ109_AC2_decoupage_octets_relus_identiques_crlf_et_multioctets() {
+        let longue = "é".repeat(5000);
+        let contenu = format!("a\r\nbé\r\n{longue}\r\n\r\nz");
+        let ps = decouper("f", &contenu);
+        let lignes: Vec<(usize, usize, usize)> = ps
+            .iter()
+            .map(|p| (p.debut, p.fin, p.texte.chars().count()))
+            .collect();
+        assert_eq!(
+            lignes,
+            vec![
+                (1, 2, 5),
+                (3, 3, 2000),
+                (3, 3, 2000),
+                (3, 3, 1000),
+                (4, 5, 3)
+            ]
+        );
+        for p in &ps {
+            assert_eq!(&contenu[p.octet_debut..p.octet_fin], p.texte);
+        }
+        assert_eq!(ps[0].texte, "a\r\nbé");
+        assert_eq!(ps[4].texte, "\r\nz");
+    }
+
+    #[test]
+    fn REQ109_AC2_decoupage_300_lignes_octets_a_des_limites_de_caracteres() {
+        let contenu: String = (0..300).map(|_| "é".repeat(19) + "\n").collect();
+        for p in decouper("f", &contenu) {
+            assert!(
+                contenu.is_char_boundary(p.octet_debut) && contenu.is_char_boundary(p.octet_fin)
+            );
+            assert_eq!(&contenu[p.octet_debut..p.octet_fin], p.texte);
+            assert!(p.texte.chars().count() <= 2000);
+        }
+    }
+
+    #[tokio::test]
+    async fn REQ109_AC1_AC2_rien_de_textuel_ecrit_texte_relu_dans_le_fichier() {
+        let (d, b) = projet();
+        let (a, _) = faux(200).await;
+        let c = client();
+        let ac = acces(&c, &a, None);
+        let contenu = format!("secret un\n{}\nsecret deux", "é".repeat(5000));
+        b.ajouter(&ac, "notes", "", &[f("a.md", &contenu)])
+            .await
+            .unwrap();
+        let brut =
+            std::fs::read_to_string(d.join(".yaide/connaissance/collections/notes/passages.json"))
+                .unwrap();
+        assert!(!brut.contains("secret") && !brut.contains("éé"), "{brut}");
+        assert!(brut.contains("octet_debut") && brut.contains("a.md"));
+        let t = b.chercher(&ac, "q", &[]).await.unwrap();
+        let textes: Vec<String> = t.iter().map(|p| p.texte.clone()).collect();
+        let attendus: Vec<String> = decouper("a.md", &contenu)
+            .into_iter()
+            .map(|p| p.texte)
+            .collect();
+        assert_eq!(textes.len(), 5);
+        for x in &attendus {
+            assert!(textes.contains(x));
+        }
+    }
+
+    #[tokio::test]
+    async fn REQ109_AC3_fichier_modifie_ou_supprime_ne_donne_aucun_passage() {
+        let (d, b) = projet();
+        let (a, _) = faux(200).await;
+        let c = client();
+        let ac = acces(&c, &a, None);
+        let mut fichiers: Vec<(String, String, String)> = (1..=12)
+            .map(|n| f(&format!("f{n:02}.txt"), &format!("x{n}")))
+            .collect();
+        fichiers.push(f("f13.txt", "x13"));
+        b.ajouter(&ac, "notes", "", &fichiers).await.unwrap();
+        let tous = b.chercher(&ac, "x", &[]).await.unwrap();
+        assert_eq!(tous[0].chemin, "f13.txt");
+        std::fs::write(d.join("f13.txt"), "x13 modifié").unwrap();
+        std::fs::remove_file(d.join("f12.txt")).unwrap();
+        let t = b.chercher(&ac, "x", &[]).await.unwrap();
+        assert_eq!(t.len(), 10);
+        assert!(!t
+            .iter()
+            .any(|p| p.chemin == "f13.txt" || p.chemin == "f12.txt"));
+        assert_eq!(t[0].chemin, "f11.txt");
+        assert_eq!(t[9].chemin, "f02.txt");
+    }
+
+    #[tokio::test]
+    async fn REQ109_collection_au_format_d_avant_est_illisible_avec_son_chemin() {
+        let (d, b) = projet();
+        let dossier = d.join(".yaide/connaissance/collections/vieille");
+        std::fs::create_dir_all(&dossier).unwrap();
+        std::fs::write(
+            dossier.join("passages.json"),
+            r#"{"nom":"vieille","dimension":2,"fichiers":[{"chemin":"a","empreinte":"e","passages":[{"chemin":"a","debut":1,"fin":1,"texte":"x"}]}]}"#,
+        )
+        .unwrap();
+        std::fs::write(dossier.join("vecteurs.bin"), [0u8; 8]).unwrap();
+        let (a, _) = faux(200).await;
+        let c = client();
+        let e = b
+            .chercher(&acces(&c, &a, None), "q", &[])
+            .await
+            .unwrap_err();
+        assert!(
+            e.cause
+                .contains(&dossier.join("passages.json").display().to_string()),
+            "{}",
+            e.cause
+        );
+        assert!(e.cause.contains("illisible"));
     }
 }
