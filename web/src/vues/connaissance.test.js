@@ -607,3 +607,26 @@ test("REQ110_collection_vide_0_fichier_Aucun_fichier_et_suppression_Elle_est_vid
   expect(conf.textContent).toContain("Elle est vide. Les fichiers du projet ne changent pas.");
   expect(conf.textContent).not.toContain("quittent la base");
 });
+
+test("REQ113_AC10_ligne_de_decoupage_sous_les_nombres_dans_Fichiers_de", async () => {
+  const cas = [
+    [{ strategie: "taille_fixe", taille: 2000, recouvrement: 0 }, "Découpage : Taille fixe · 2\u00a0000 caractères · sans recouvrement"],
+    [{ strategie: "taille_fixe", taille: 2000, recouvrement: 1 }, "Découpage : Taille fixe · 2\u00a0000 caractères · recouvrement 1 ligne"],
+    [{ strategie: "taille_fixe", taille: 2000, recouvrement: 2 }, "Découpage : Taille fixe · 2\u00a0000 caractères · recouvrement 2 lignes"],
+    [{ strategie: "paragraphes", taille: 1500, recouvrement: 0 }, "Découpage : Paragraphes · 1\u00a0500 caractères"],
+    [{ strategie: "sections_markdown", taille: 2000, recouvrement: 0 }, "Découpage : Sections Markdown · 2\u00a0000 caractères"],
+    [undefined, "Découpage : Taille fixe · 2\u00a0000 caractères · sans recouvrement"],
+  ];
+  for (const [decoupage, attendu] of cas) {
+    const m = monter(etat([NOTES]), { "GET /api/connaissance/collections/notes": rep({ nom: "notes", fichiers: ["docs/a.md"], ...(decoupage ? { decoupage } : {}) }) });
+    await m.v.ouvrir();
+    touche(onglet("Recherche"), "ArrowRight");
+    touche(onglet("Configuration"), "ArrowRight");
+    parNom("Fichiers de notes").click();
+    await vi.waitFor(() => expect(parNom("Retour aux collections")).toBeDefined());
+    const p = panneau("Collections");
+    const lignes = [...p.querySelectorAll(".ya-agents-barre, .ya-fiche-decoupage")].map((e) => e.textContent);
+    expect(lignes).toEqual(["notes2 fichiers · 7 passages", attendu]);
+    document.body.replaceChildren();
+  }
+});

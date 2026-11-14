@@ -444,8 +444,8 @@ export async function lireConnaissance() {
 }
 
 /** Ajoute des chemins à une collection : `{ numero, collection, total }` (ajout accepté), `{ cause, message }` ou `{ coupure: true }`. */
-export async function ajouterConnaissance(collection, chemins) {
-  const r = await appeler("/api/connaissance/ajouts", json("POST", { collection, chemins }));
+export async function ajouterConnaissance(collection, chemins, decoupage) {
+  const r = await appeler("/api/connaissance/ajouts", json("POST", decoupage ? { collection, chemins, decoupage } : { collection, chemins }));
   if (!r) return { coupure: true };
   try {
     if (r.ok) return await r.json();

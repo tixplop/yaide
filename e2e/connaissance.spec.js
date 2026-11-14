@@ -124,9 +124,30 @@ test("REQ103_parcours_75_76_base_de_connaissance", async ({ page }) => {
     await page.keyboard.press("Enter");
     await expect(deux.getByText("Lettres sans accent, chiffres, - et _ seulement.")).toBeVisible();
     await deux.getByLabel("Nom de la nouvelle collection").fill("api-docs");
+    // REQ-113 (AC-113-8) : « Taille maximale » et « Recouvrement » côte à côte ; « Sections Markdown » ne bouge rien.
+    const taille = deux.getByLabel("Taille maximale (caractères)");
+    const recouvrement = deux.getByLabel("Recouvrement (lignes)");
+    const [t1, r1, n1] = [await taille.boundingBox(), await recouvrement.boundingBox(), await deux.getByLabel("Nom de la nouvelle collection").boundingBox()];
+    expect(Math.abs(t1.y - r1.y)).toBeLessThan(1);
+    expect(Math.abs(t1.width - r1.width)).toBeLessThan(1);
+    expect(r1.x).toBeGreaterThan(t1.x + t1.width);
+    await deux.getByLabel("Découpage").selectOption({ label: "Sections Markdown" });
+    await expect(recouvrement).toBeHidden();
+    const [t2, n2] = [await taille.boundingBox(), await deux.getByLabel("Nom de la nouvelle collection").boundingBox()];
+    // La phrase de « Sections Markdown » passe sur deux lignes : la boîte descend, mais garde sa largeur, sa hauteur et sa colonne.
+    expect([t2.x, t2.width, t2.height]).toEqual([t1.x, t1.width, t1.height]);
+    expect(n2).toEqual(n1);
+    await taille.fill("1500");
     await page.keyboard.press("Enter");
     await expect(page.getByText("Ajout de 2 éléments à api-docs…")).toBeVisible();
     await expect(page.getByText("Ajout à api-docs terminé : 2 fichiers ajoutés, 0 ignoré.")).toBeVisible({ timeout: 20000 });
+
+    // REQ-113 (AC-113-8, AC-113-10) : le découpage choisi est celui de la collection.
+    await page.getByRole("button", { name: "Base de connaissance" }).click();
+    await base.getByRole("tab", { name: "Collections" }).click();
+    await base.getByRole("button", { name: "Fichiers de api-docs" }).click();
+    await expect(base.getByText("Découpage : Sections Markdown · 1\u00a0500 caractères")).toBeVisible();
+    await page.keyboard.press("Escape");
 
     // REQ-108 (AC-108-1, AC-108-3, AC-108-10) : « # » dans « Message à l'agent » liste les collections.
     await page.getByRole("button", { name: "Agent", exact: true }).click();

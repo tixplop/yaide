@@ -187,3 +187,14 @@ test("REQ078_AC13_regles_largeur_session_sur_agent_corps", () => {
   // Les règles de la colonne restent jusqu'à T-142.
   a(".agent-corps", "height: 100%");
 });
+
+test("REQ113_motif_plusieurs_champs_grille_de_deux_colonnes_egales_en_tokens", () => {
+  a(".ya-formulaire", "flex-direction: column");
+  a(".ya-formulaire", "gap: var(--space-3)");
+  a(".ya-formulaire-grille", "display: grid");
+  a(".ya-formulaire-grille", "grid-template-columns: repeat(2, minmax(0, 1fr))");
+  a(".ya-formulaire-grille", "gap: var(--space-3)");
+  a(".ya-formulaire-grille", "align-items: start");
+  a(".ya-formulaire-aide", "color: var(--ink-muted)");
+  a(".ya-formulaire [hidden]", "display: none");
+});

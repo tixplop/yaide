@@ -47,6 +47,12 @@
 .ya-barre.ya-ligne { box-sizing: border-box; height: 28px; padding-inline: var(--space-3); gap: var(--space-1); }
 .ya-barre.ya-ligne:has(select:disabled) .ya-input { opacity: .45; }
 .champ-aide { font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+/* Motif « Formulaire en dialogue », « Plusieurs champs » : champs l'un sous l'autre, deux champs courts liés côte à côte. */
+.ya-formulaire { display: flex; flex-direction: column; gap: var(--space-3); }
+.ya-formulaire [hidden] { display: none; }
+.ya-formulaire-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); align-items: start; }
+.ya-formulaire-aide { margin: 0; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+.ya-fiche-decoupage { margin: 0; padding: var(--space-1) var(--space-3) 0 calc(var(--space-3) + var(--space-8)); font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
 .champ-erreur { font: var(--texte-petit) var(--font-sans); color: var(--danger); }
 /* C-002 : un bouton à droite de la saisie (Réglages en dialogue). */
 .champ-ligne { display: flex; gap: var(--space-1); }

@@ -6,6 +6,16 @@ import { message } from "../ui/message.js";
 
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const NOUVELLE = "";
+const MESSAGE_TAILLE = "Entre 200 et 8\u00a0000 caractères.";
+const MESSAGE_RECOUVREMENT = "Entre 0 et 10 lignes.";
+const AIDE_DECOUPAGE = "Le découpage ne change plus une fois la collection créée.";
+const STRATEGIES = [
+  { valeur: "taille_fixe", texte: "Taille fixe", phrase: "Lignes entières, jusqu'à la taille maximale." },
+  { valeur: "paragraphes", texte: "Paragraphes", phrase: "Paragraphes entiers, jusqu'à la taille maximale." },
+  { valeur: "sections_markdown", texte: "Sections Markdown", phrase: "Une section par titre dans les fichiers Markdown ; les autres fichiers en taille fixe." },
+];
+/** Entier écrit en chiffres seulement (après `trim`), ou `undefined`. */
+const nombreEntier = (texte) => (/^\d+$/.test(texte.trim()) ? Number(texte.trim()) : undefined);
 const pluriel = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
 
 /** Phrase du dialogue : les chemins dans l'ordre de l'arbre. */
@@ -91,20 +101,57 @@ export async function ouvrirAjoutConnaissance({ noms, chemins, dire, surConfigur
   aide.textContent = phraseAjout(noms);
   const existantes = (etat.collections ?? []).map((c) => c.nom).sort((a, b) => a.localeCompare(b));
   const zone = document.createElement("div");
+  zone.className = "ya-formulaire";
   let liste = null;
   if (existantes.length > 0) {
     liste = champ({ libelle: "Collection", type: "liste", options: [...existantes, { valeur: NOUVELLE, texte: "Nouvelle collection…" }] });
     zone.append(liste);
   }
   const select = liste?.querySelector("select");
+  // Nom et découpage : pour une nouvelle collection seulement.
   const zoneNom = document.createElement("div");
+  zoneNom.className = "ya-formulaire";
   zone.append(zoneNom);
+  const reglages = { strategie: "taille_fixe", taille: "2000", recouvrement: "0" };
   let saisie;
+  let saisieTaille;
+  let saisieRecouvrement;
+  const grille = document.createElement("div");
+  grille.className = "ya-formulaire-grille";
+  const blocNom = document.createElement("div");
+  const blocStrategie = document.createElement("div");
+  const aideDecoupage = document.createElement("p");
+  aideDecoupage.className = "ya-formulaire-aide";
+  aideDecoupage.id = "ajout-decoupage-aide";
+  aideDecoupage.textContent = AIDE_DECOUPAGE;
+  zoneNom.append(blocNom, blocStrategie, grille, aideDecoupage);
   const nouveauChamp = (valeur, erreur) => {
-    zoneNom.replaceChildren(champ({ libelle: "Nom de la nouvelle collection", valeur, aide: "40 caractères au plus : lettres sans accent, chiffres, - et _.", erreur }));
-    saisie = zoneNom.querySelector("input");
+    blocNom.replaceChildren(champ({ libelle: "Nom de la nouvelle collection", valeur, aide: "40 caractères au plus : lettres sans accent, chiffres, - et _.", erreur }));
+    saisie = blocNom.querySelector("input");
     saisie.addEventListener("keydown", surEntree);
   };
+  const champsReglages = (erreurs = {}) => {
+    const taille = champ({ libelle: "Taille maximale (caractères)", valeur: reglages.taille, clavier: "numerique", erreur: erreurs.taille });
+    const recouvrement = champ({ libelle: "Recouvrement (lignes)", valeur: reglages.recouvrement, clavier: "numerique", erreur: erreurs.recouvrement });
+    recouvrement.hidden = reglages.strategie !== "taille_fixe";
+    grille.replaceChildren(taille, recouvrement);
+    saisieTaille = taille.querySelector("input");
+    saisieRecouvrement = recouvrement.querySelector("input");
+    for (const [i, cle] of [[saisieTaille, "taille"], [saisieRecouvrement, "recouvrement"]]) {
+      i.addEventListener("input", () => (reglages[cle] = i.value));
+      i.addEventListener("keydown", surEntree);
+    }
+  };
+  const strategie = champ({ libelle: "Découpage", type: "liste", options: STRATEGIES.map(({ valeur, texte }) => ({ valeur, texte })), valeur: reglages.strategie, aide: STRATEGIES[0].phrase });
+  blocStrategie.append(strategie);
+  const selStrategie = strategie.querySelector("select");
+  const phrase = strategie.querySelector(".champ-aide");
+  selStrategie.setAttribute("aria-describedby", `${phrase.id} ${aideDecoupage.id}`);
+  selStrategie.addEventListener("change", () => {
+    reglages.strategie = selStrategie.value;
+    phrase.textContent = STRATEGIES.find((x) => x.valeur === selStrategie.value).phrase;
+    grille.children[1].hidden = selStrategie.value !== "taille_fixe";
+  });
   const nouvelle = () => !select || select.value === NOUVELLE;
   const majNom = () => (zoneNom.hidden = !nouvelle());
   function surEntree(e) {
@@ -113,6 +160,7 @@ export async function ouvrirAjoutConnaissance({ noms, chemins, dire, surConfigur
     valider();
   }
   nouveauChamp("");
+  champsReglages();
   select?.addEventListener("change", majNom);
   select?.addEventListener("keydown", surEntree);
   majNom();
@@ -122,21 +170,34 @@ export async function ouvrirAjoutConnaissance({ noms, chemins, dire, surConfigur
   annuler.addEventListener("click", abandonner);
   ok.addEventListener("click", valider);
 
+  /** Toutes les erreurs ensemble, chacune sous son champ ; le focus va au premier : nom, taille, recouvrement. */
+  function afficherErreurs(erreurs) {
+    nouveauChamp(saisie.value, erreurs.nom);
+    champsReglages(erreurs);
+    const premier = erreurs.nom ? saisie : erreurs.taille ? saisieTaille : saisieRecouvrement;
+    premier.focus();
+  }
+
   async function valider() {
     const nom = select && !nouvelle() ? select.value : saisie.value.trim();
+    let decoupage;
     if (nouvelle()) {
-      const erreur = erreurNom(nom);
-      if (erreur) {
-        nouveauChamp(saisie.value, erreur);
-        return saisie.focus();
-      }
+      const erreurs = { nom: erreurNom(nom) };
+      const taille = nombreEntier(reglages.taille);
+      if (taille === undefined || taille < 200 || taille > 8000) erreurs.taille = MESSAGE_TAILLE;
+      const recouvrement = nombreEntier(reglages.recouvrement);
+      const avecRecouvrement = reglages.strategie === "taille_fixe";
+      if (avecRecouvrement && (recouvrement === undefined || recouvrement > 10)) erreurs.recouvrement = MESSAGE_RECOUVREMENT;
+      if (erreurs.nom || erreurs.taille || erreurs.recouvrement) return afficherErreurs(erreurs);
+      decoupage = { strategie: reglages.strategie, taille, ...(avecRecouvrement ? { recouvrement } : {}) };
     }
     dlg.definirResultat(null);
     dlg.enCours(true);
     ok.textContent = "Ajout…";
-    const r = await ajouterConnaissance(nom, chemins);
+    const r = await ajouterConnaissance(nom, chemins, decoupage);
     ok.textContent = "Ajouter";
     dlg.enCours(false);
+    if (r.cause === "taille" || r.cause === "recouvrement") return afficherErreurs({ [r.cause]: r.message });
     if (r.coupure || r.cause) {
       dlg.definirResultat(message({ texte: r.coupure ? TEXTE_COUPURE : r.message, variante: "erreur" }));
       return ok.focus();

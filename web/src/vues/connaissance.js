@@ -27,6 +27,15 @@ const SECTIONS = [
 
 const pluriel = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
 const nombres = (c) => `${pluriel(c.fichiers, "fichier")} · ${pluriel(c.passages, "passage")}`;
+const milliers = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0");
+const STRATEGIES = { taille_fixe: "Taille fixe", paragraphes: "Paragraphes", sections_markdown: "Sections Markdown" };
+/** Ligne de découpage d'une collection ; une réponse sans découpage vaut le défaut (REQ-113). */
+function texteDecoupage(d) {
+  const { strategie = "taille_fixe", taille = 2000, recouvrement = 0 } = d ?? {};
+  let t = `Découpage : ${STRATEGIES[strategie] ?? STRATEGIES.taille_fixe} · ${milliers(taille)} caractères`;
+  if (strategie === "taille_fixe") t += recouvrement === 0 ? " · sans recouvrement" : ` · recouvrement ${pluriel(recouvrement, "ligne")}`;
+  return t;
+}
 const sansPoint = (t) => String(t ?? "erreur").replace(/\.$/, "");
 const paragraphe = (texte) => {
   const p = document.createElement("p");
@@ -193,7 +202,7 @@ export function vueConnaissance({ surEtat = () => {}, ouvrirFichier = async () =
     const r = await lireFichiersConnaissance(nom);
     if (!dlg || mienne !== generation) return;
     if (!Array.isArray(r.fichiers)) return dlg.definirResultat(messageEchec(r, "Impossible de lire la collection"));
-    fichiersDe = { nom, fichiers: r.fichiers };
+    fichiersDe = { nom, fichiers: r.fichiers, decoupage: r.decoupage };
     rendreFichiers("retour");
   }
 
@@ -221,9 +230,13 @@ export function vueConnaissance({ surEtat = () => {}, ouvrirFichier = async () =
     const entete = document.createElement("div");
     entete.className = "ya-agents-barre";
     entete.append(qui);
+    const decoupage = document.createElement("p");
+    decoupage.className = "ya-fiche-decoupage";
+    decoupage.textContent = texteDecoupage(fichiersDe.decoupage);
     panneaux.collections.replaceChildren(
       enColonne(
         entete,
+        decoupage,
         fichiersDe.fichiers.length === 0
           ? indication({ texte: "Aucun fichier." })
           : liste({ variante: "objets", nom: `Fichiers de ${c.nom}`, lignes: fichiersDe.fichiers.map((f) => ({ id: f, libelle: f })) }),

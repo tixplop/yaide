@@ -48,6 +48,29 @@ const saisir = (valeur) => {
   champNom().value = valeur;
   champNom().dispatchEvent(new Event("input", { bubbles: true }));
 };
+const champs = () => [...dlg().querySelectorAll("input")];
+const champTaille = () => champs()[1];
+const champRecouvrement = () => champs()[2];
+const selectStrategie = () => [...dlg().querySelectorAll("select")].at(-1);
+const phraseDe = (sel) => document.getElementById(sel.getAttribute("aria-describedby").split(" ")[0]).textContent;
+/** Réglages d'une nouvelle collection : libellés, ordre, défauts, aide et description. */
+function reglagesVisibles() {
+  const sel = selectStrategie();
+  const libelle = (el) => dlg().querySelector(`label[for="${el.id}"]`).textContent;
+  expect(libelle(sel)).toBe("Découpage");
+  expect([...sel.options].map((o) => o.textContent)).toEqual(["Taille fixe", "Paragraphes", "Sections Markdown"]);
+  expect(sel.selectedOptions[0].textContent).toBe("Taille fixe");
+  expect(libelle(champTaille())).toBe("Taille maximale (caractères)");
+  expect(champTaille().value).toBe("2000");
+  expect(champTaille().getAttribute("inputmode")).toBe("numeric");
+  expect(champTaille().type).toBe("text");
+  expect(libelle(champRecouvrement())).toBe("Recouvrement (lignes)");
+  expect(champRecouvrement().value).toBe("0");
+  const [d1, d2] = sel.getAttribute("aria-describedby").split(" ");
+  expect(document.getElementById(d1).textContent).toBe("Lignes entières, jusqu'à la taille maximale.");
+  expect(document.getElementById(d2).textContent).toBe("Le découpage ne change plus une fois la collection créée.");
+}
+const DEFAUT = { strategie: "taille_fixe", taille: 2000, recouvrement: 0 };
 const post = (appels) => appels.filter((a) => a.init?.method === "POST").map((a) => JSON.parse(a.init.body));
 
 test("REQ104_AC13_phrase_des_chemins_un_deux_trois_et_plus", () => {
@@ -75,20 +98,45 @@ test("REQ104_AC14_liste_des_collections_triee_puis_nouvelle_collection_sans_depl
   expect(select.value).toBe("api");
   expect(document.activeElement).toBe(select);
   expect(champNom().closest("div[hidden]")).not.toBeNull();
+  // Collection existante : ni nom ni réglages (tout est dans la zone masquée).
+  expect(dlg().querySelector("select[aria-describedby*=ajout-decoupage-aide]").closest("div[hidden]")).not.toBeNull();
+  expect(champTaille().closest("div[hidden]")).not.toBeNull();
   select.value = "";
   select.dispatchEvent(new Event("change"));
   expect(champNom().closest("div[hidden]")).toBeNull();
   expect(dlg().textContent).toContain("Nom de la nouvelle collection");
+  expect(document.activeElement).toBe(select);
+  reglagesVisibles();
+  expect(document.activeElement).toBe(select);
+  // Changer de stratégie : la phrase suit, le recouvrement disparaît, les valeurs et le focus restent.
+  const strategie = selectStrategie();
+  champRecouvrement().value = "2";
+  champRecouvrement().dispatchEvent(new Event("input", { bubbles: true }));
+  strategie.value = "paragraphes";
+  strategie.dispatchEvent(new Event("change"));
+  expect(phraseDe(strategie)).toBe("Paragraphes entiers, jusqu'à la taille maximale.");
+  expect(champRecouvrement().closest("div.champ").hidden).toBe(true);
+  expect(document.activeElement).toBe(select);
+  strategie.value = "sections_markdown";
+  strategie.dispatchEvent(new Event("change"));
+  expect(phraseDe(strategie)).toBe("Une section par titre dans les fichiers Markdown ; les autres fichiers en taille fixe.");
+  strategie.value = "taille_fixe";
+  strategie.dispatchEvent(new Event("change"));
+  expect(phraseDe(strategie)).toBe("Lignes entières, jusqu'à la taille maximale.");
+  expect(champRecouvrement().closest("div.champ").hidden).toBe(false);
+  expect(champRecouvrement().value).toBe("2");
   expect(document.activeElement).toBe(select);
 });
 
 test("REQ104_AC14_sans_collection_seul_le_champ_du_nom_avec_le_focus", async () => {
   faux();
   await ouvrir();
-  expect(dlg().querySelector("select")).toBeNull();
+  expect([...dlg().querySelectorAll("label")].map((l) => l.textContent)).not.toContain("Collection");
   expect(document.activeElement).toBe(champNom());
   expect(dlg().querySelector("label").textContent).toBe("Nom de la nouvelle collection");
   expect(dlg().textContent).toContain("40 caractères au plus : lettres sans accent, chiffres, - et _.");
+  reglagesVisibles();
+  expect(document.activeElement).toBe(champNom());
 });
 
 test("REQ104_AC6_AC15_nom_refuse_dans_la_page_rien_n_est_envoye", async () => {
@@ -114,7 +162,7 @@ test("REQ104_AC6_nom_saisi_avec_la_casse_envoye_tel_quel_Entree_vaut_Ajouter", a
   saisir("Notes");
   champNom().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
   await vi.advanceTimersByTimeAsync(0);
-  expect(post(appels)).toEqual([{ collection: "Notes", chemins: ["docs"] }]);
+  expect(post(appels)).toEqual([{ collection: "Notes", chemins: ["docs"], decoupage: DEFAUT }]);
 });
 
 test("REQ104_AC7_AC16_base_non_configuree_sans_champ_configurer_ferme_et_ouvre_la_configuration", async () => {
@@ -165,7 +213,7 @@ test("REQ104_AC8_AC17_ajout_accepte_ferme_rend_le_focus_dit_le_debut_puis_la_fin
   await vi.advanceTimersByTimeAsync(0);
   expect(dlg()).toBeNull();
   expect(surRetour).toHaveBeenCalledTimes(1);
-  expect(post(appels)).toEqual([{ collection: "notes", chemins: ["docs"] }]);
+  expect(post(appels)).toEqual([{ collection: "notes", chemins: ["docs"], decoupage: DEFAUT }]);
   expect(dire).toHaveBeenCalledTimes(1);
   expect(dire).toHaveBeenLastCalledWith({ texte: "Ajout de docs/ à notes…", variante: "info", fermable: true });
   await vi.advanceTimersByTimeAsync(1000);
@@ -314,4 +362,104 @@ test("REQ111_AC4_AC5_refus_aussitot_ajout_en_cours_et_coupure_focus_rendu", asyn
   const dire = vi.fn();
   await mettreAJourFichiers({ noms: ["a.md"], chemins: ["a.md"], dire, surRetour: vi.fn() });
   expect(dire).toHaveBeenCalledWith({ texte: "Connexion perdue. Réessayez au retour.", variante: "alerte", fermable: true });
+});
+
+test("REQ113_AC1_sections_markdown_envoie_la_taille_sans_recouvrement", async () => {
+  const appels = faux();
+  await ouvrir();
+  saisir("notes");
+  selectStrategie().value = "sections_markdown";
+  selectStrategie().dispatchEvent(new Event("change"));
+  champTaille().value = " 1500 ";
+  champTaille().dispatchEvent(new Event("input", { bubbles: true }));
+  bouton("Ajouter").click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(post(appels)).toEqual([{ collection: "notes", chemins: ["docs"], decoupage: { strategie: "sections_markdown", taille: 1500 } }]);
+});
+
+test("REQ113_AC1_collection_existante_n_envoie_pas_de_decoupage", async () => {
+  const appels = faux({ etat: { config: CONFIG, collections: [{ nom: "notes" }], ajout: null } });
+  await ouvrir();
+  bouton("Ajouter").click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(post(appels)).toEqual([{ collection: "notes", chemins: ["docs"] }]);
+});
+
+const taper = (champ, valeur) => {
+  champ.value = valeur;
+  champ.dispatchEvent(new Event("input", { bubbles: true }));
+};
+const alertes = () => [...dlg().querySelectorAll("[role=alert]")].map((a) => a.textContent);
+
+test("REQ113_AC9_AC5_taille_et_recouvrement_refuses_dans_la_page_rien_n_est_envoye", async () => {
+  const appels = faux();
+  await ouvrir();
+  saisir("notes");
+  for (const v of ["150", "2 000", "1,5", "2k", "", "8001"]) {
+    taper(champTaille(), v);
+    bouton("Ajouter").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(alertes()).toEqual(["Entre 200 et 8\u00a0000 caractères."]);
+    expect(champTaille().getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(champTaille());
+    expect(champTaille().value).toBe(v);
+  }
+  taper(champTaille(), "2000");
+  for (const v of ["11", "-1"]) {
+    taper(champRecouvrement(), v);
+    bouton("Ajouter").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(alertes()).toEqual(["Entre 0 et 10 lignes."]);
+    expect(champRecouvrement().getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(champRecouvrement());
+  }
+  // Taille et recouvrement refusés : le focus va dans la taille.
+  taper(champTaille(), "150");
+  bouton("Ajouter").click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(alertes()).toEqual(["Entre 200 et 8\u00a0000 caractères.", "Entre 0 et 10 lignes."]);
+  expect(document.activeElement).toBe(champTaille());
+  // Nom vide et taille refusée : les deux erreurs ensemble, le focus dans le nom.
+  taper(champNom(), "");
+  bouton("Ajouter").click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(alertes()).toEqual(["Donnez un nom à la collection.", "Entre 200 et 8\u00a0000 caractères.", "Entre 0 et 10 lignes."]);
+  expect(champNom().getAttribute("aria-invalid")).toBe("true");
+  expect(document.activeElement).toBe(champNom());
+  expect(dlg()).not.toBeNull();
+  expect(post(appels)).toEqual([]);
+});
+
+test("REQ113_AC9_recouvrement_masque_non_controle_et_Entree_dans_la_taille_vaut_Ajouter_pas_sur_la_liste", async () => {
+  const appels = faux({ etat: { config: CONFIG, collections: [{ nom: "notes" }], ajout: null } });
+  await ouvrir();
+  const select = dlg().querySelector("select");
+  select.value = "";
+  select.dispatchEvent(new Event("change"));
+  saisir("docs-titres");
+  taper(champRecouvrement(), "99");
+  selectStrategie().value = "paragraphes";
+  selectStrategie().dispatchEvent(new Event("change"));
+  const entree = () => new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+  selectStrategie().dispatchEvent(entree());
+  await vi.advanceTimersByTimeAsync(0);
+  expect(post(appels)).toEqual([]);
+  champTaille().dispatchEvent(entree());
+  await vi.advanceTimersByTimeAsync(0);
+  expect(post(appels)).toEqual([{ collection: "docs-titres", chemins: ["docs"], decoupage: { strategie: "paragraphes", taille: 2000 } }]);
+});
+
+test("REQ113_AC9_refus_400_du_serveur_sur_la_taille_ou_le_recouvrement_sous_le_champ", async () => {
+  for (const [cause, message, champ] of [["taille", "Entre 200 et 8\u00a0000 caractères.", champTaille], ["recouvrement", "Entre 0 et 10 lignes.", champRecouvrement]]) {
+    faux({ ajouter: reponse(400, { cause, message }) });
+    await ouvrir();
+    saisir("notes");
+    bouton("Ajouter").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(alertes()).toEqual([message]);
+    expect(champ().getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(champ());
+    expect(dlg()).not.toBeNull();
+    document.body.replaceChildren();
+  }
 });
