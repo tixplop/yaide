@@ -1347,7 +1347,8 @@ fn vue_connaissance(etat: &Etat) -> Response {
     let ajout = etat.ajouts.lire();
     let en_cours = ajout
         .as_ref()
-        .filter(|a| a.etat == connaissance::EtatAjout::EnCours);
+        .filter(|a| a.etat == connaissance::EtatAjout::EnCours)
+        .filter(|a| a.genre == connaissance::Genre::Ajout);
     let mut collections: Vec<serde_json::Value> = liste
         .iter()
         .map(|c| {
@@ -1521,7 +1522,10 @@ async fn connaissance_ajouter(State(etat): State<Partage>, corps: Bytes) -> Resp
             }
         };
     let total = connaissance::total(&cibles);
-    let Some(numero) = etat.ajouts.demarrer(&collection, total) else {
+    let Some(numero) = etat
+        .ajouts
+        .demarrer(connaissance::Genre::Ajout, &collection, total)
+    else {
         return refus_base(
             StatusCode::CONFLICT,
             "encours",
@@ -1554,6 +1558,76 @@ async fn connaissance_ajouter(State(etat): State<Partage>, corps: Bytes) -> Resp
     json_rep(
         StatusCode::ACCEPTED,
         serde_json::json!({ "numero": numero, "collection": collection, "total": total }),
+    )
+}
+
+/// `{ chemins }` ; répond 202 et remet à jour en tâche de fond les fichiers de la base visés.
+async fn connaissance_mises_a_jour(State(etat): State<Partage>, corps: Bytes) -> Response {
+    let Some(v) = corps_json(&corps) else {
+        return corps_invalide();
+    };
+    let chemins: Option<Vec<String>> = v["chemins"]
+        .as_array()
+        .and_then(|a| a.iter().map(|c| c.as_str().map(str::to_string)).collect())
+        .filter(|c: &Vec<String>| !c.is_empty());
+    let Some(chemins) = chemins else {
+        return corps_invalide();
+    };
+    let (config, provider, adresse, cle) = match acces_base(&etat) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let base = connaissance::Base::new(&etat.projet_dir);
+    let visees = {
+        let base = base.clone();
+        tokio::task::spawn_blocking(move || base.visees(&chemins)).await
+    };
+    let visees = match visees {
+        Ok(Ok(v)) => v,
+        Ok(Err(m)) => return refus_base(StatusCode::CONFLICT, "illisible", m),
+        Err(e) => return refus_base(StatusCode::INTERNAL_SERVER_ERROR, "erreur", e.to_string()),
+    };
+    if visees.is_empty() {
+        return refus_base(
+            StatusCode::BAD_REQUEST,
+            "aucun_fichier",
+            "Aucun fichier de la base dans ces chemins.",
+        );
+    }
+    let total = visees.len();
+    let Some(numero) = etat
+        .ajouts
+        .demarrer(connaissance::Genre::MiseAJour, "", total)
+    else {
+        return refus_base(
+            StatusCode::CONFLICT,
+            "encours",
+            "Un ajout est déjà en cours. Attendez sa fin, puis réessayez.",
+        );
+    };
+    let acces: connaissance::AccesBase = Ok((provider, adresse, cle, config.modele));
+    let (suivi, verrou, echecs) = (
+        etat.ajouts.clone(),
+        etat.verrou_base.clone(),
+        etat.echecs_base.clone(),
+    );
+    tokio::spawn(async move {
+        let travail = {
+            let (suivi, verrou, echecs) = (suivi.clone(), verrou.clone(), echecs.clone());
+            tokio::spawn(async move {
+                connaissance::executer_mise_a_jour(
+                    &suivi, &verrou, &echecs, numero, &base, &acces, &visees,
+                )
+                .await
+            })
+        };
+        if travail.await.is_err() {
+            suivi.interrompre(numero);
+        }
+    });
+    json_rep(
+        StatusCode::ACCEPTED,
+        serde_json::json!({ "numero": numero, "total": total }),
     )
 }
 
@@ -1832,6 +1906,10 @@ pub async fn servir(
             get(connaissance_fichiers).delete(connaissance_supprimer),
         )
         .route("/api/connaissance/ajouts", post(connaissance_ajouter))
+        .route(
+            "/api/connaissance/mises-a-jour",
+            post(connaissance_mises_a_jour),
+        )
         .route("/api/connaissance/recherche", post(connaissance_chercher))
         .route("/api/agent/messages", post(agent_message))
         .route("/api/agent/conversations", get(agent_conversations))

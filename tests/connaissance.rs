@@ -1194,3 +1194,210 @@ fn REQ112_donnees_fichiers_vides_si_la_base_est_illisible() {
     assert!(e["erreur"].is_string());
     assert_eq!(e["fichiers"], json!({}));
 }
+
+impl Serveur {
+    fn mettre_a_jour(&self, chemins: &[&str]) -> Rep {
+        self.appel(
+            "POST",
+            "/api/connaissance/mises-a-jour",
+            &json!({ "chemins": chemins }),
+        )
+    }
+}
+
+fn abimer_vecteurs(s: &Serveur, collection: &str, flottants: usize) {
+    let p = s.projet.join(format!(
+        ".yaide/connaissance/collections/{collection}/vecteurs.bin"
+    ));
+    let octets: Vec<u8> = (0..flottants).flat_map(|_| 9.0f32.to_le_bytes()).collect();
+    std::fs::write(p, octets).unwrap();
+}
+
+#[test]
+fn REQ111_AC1_fichier_inchange_renvoye_au_provider_et_remplace_dans_chaque_collection() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac111-1");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/b.md", "v2 deux\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    assert_eq!(s.ajouter("api", &["docs/a.md"]).code, 202);
+    attendre_numero(&s, 2);
+    abimer_vecteurs(&s, "notes", 4);
+    abimer_vecteurs(&s, "api", 2);
+    let avant = nombre_requetes(&recues);
+    let r = s.mettre_a_jour(&["docs/a.md"]);
+    assert_eq!(r.code, 202, "{}", r.corps);
+    assert_eq!(r.json(), json!({ "numero": 3, "total": 1 }));
+    let fin = attendre_numero(&s, 3);
+    assert_eq!(fin["etat"], "fini");
+    assert_eq!(fin["genre"], "mise_a_jour");
+    assert_eq!(fin["collection"], "");
+    assert_eq!(fin["ajoutes"], 1);
+    assert_eq!(fin["faits"], 1);
+    assert_eq!(textes_depuis(&recues, avant), ["v1 un"]);
+    assert_eq!(vecteurs_de(&s, "api"), [1.0, 1.0]);
+    // b.md, non visé, garde ce qu'il avait.
+    assert_eq!(vecteurs_de(&s, "notes"), [1.0, 1.0, 9.0, 9.0]);
+    assert_eq!(s.etat()["ajout"]["genre"], "mise_a_jour");
+}
+
+#[test]
+fn REQ111_AC2_dossier_seuls_ses_fichiers_de_la_base_et_liste_de_deux_chemins() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac111-2");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/sous/b.md", "v2 deux\n");
+    ecrire(&s, "docs/c.md", "v3 trois\n");
+    configurer(&s, &adresse);
+    assert_eq!(
+        s.ajouter("notes", &["docs/a.md", "docs/sous/b.md"]).code,
+        202
+    );
+    s.attendre_fin();
+    let avant = nombre_requetes(&recues);
+    let r = s.mettre_a_jour(&["docs"]);
+    assert_eq!(r.code, 202, "{}", r.corps);
+    assert_eq!(r.json()["total"], 2);
+    let fin = attendre_numero(&s, 2);
+    assert_eq!(fin["etat"], "fini");
+    assert_eq!(fin["ajoutes"], 2);
+    let mut textes = textes_depuis(&recues, avant);
+    textes.sort();
+    assert_eq!(textes, ["v1 un", "v2 deux"]);
+    // Liste de deux chemins : un fichier et un dossier.
+    let avant = nombre_requetes(&recues);
+    let r = s.mettre_a_jour(&["docs/a.md", "docs/sous"]);
+    assert_eq!(r.code, 202, "{}", r.corps);
+    assert_eq!(r.json()["total"], 2);
+    assert_eq!(attendre_numero(&s, 3)["ajoutes"], 2);
+    assert_eq!(textes_depuis(&recues, avant).len(), 2);
+    assert_eq!(s.fichiers("notes"), ["docs/a.md", "docs/sous/b.md"]);
+}
+
+#[test]
+fn REQ111_chemin_sans_fichier_de_la_base_refuse_sans_requete() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac111-400");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/c.md", "v3 trois\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs/a.md"]).code, 202);
+    s.attendre_fin();
+    let avant = nombre_requetes(&recues);
+    for chemins in [&["docs/c.md"][..], &["doc"], &["autre"]] {
+        let r = s.mettre_a_jour(chemins);
+        assert_eq!(r.code, 400, "{}", r.corps);
+        assert_eq!(
+            r.json()["message"],
+            "Aucun fichier de la base dans ces chemins."
+        );
+    }
+    assert_eq!(
+        s.appel("POST", "/api/connaissance/mises-a-jour", &json!({}))
+            .code,
+        400
+    );
+    assert_eq!(nombre_requetes(&recues), avant);
+    assert_eq!(s.etat()["ajout"]["numero"], 1);
+}
+
+#[test]
+fn REQ111_refus_comme_l_ajout_base_non_configuree() {
+    let s = lancer("ac111-nonconf");
+    let r = s.mettre_a_jour(&["docs/a.md"]);
+    assert_eq!(r.code, 409, "{}", r.corps);
+    assert_eq!(r.json()["cause"], "non_configuree");
+}
+
+#[test]
+fn REQ111_AC4_travail_en_cours_refuse_en_409_et_continue() {
+    let (adresse, _) = faux_provider(vec![(200, 0), (200, 1500)]);
+    let s = lancer("ac111-409");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/d.md", "v4 quatre\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs/a.md"]).code, 202);
+    attendre_numero(&s, 1);
+    // Mise à jour lente : ajout et seconde mise à jour refusés, elle continue.
+    assert_eq!(s.mettre_a_jour(&["docs/a.md"]).code, 202);
+    let r = s.ajouter("notes", &["docs/d.md"]);
+    assert_eq!(r.code, 409);
+    let r = s.mettre_a_jour(&["docs/a.md"]);
+    assert_eq!(r.code, 409);
+    assert_eq!(r.json()["cause"], "encours");
+    assert_eq!(
+        r.json()["message"],
+        "Un ajout est déjà en cours. Attendez sa fin, puis réessayez."
+    );
+    let c = s.collection("notes").unwrap();
+    assert!(c.get("ajout").is_none(), "{c}");
+    assert_eq!(s.etat()["ajout"]["etat"], "en_cours");
+    let fin = attendre_numero(&s, 2);
+    assert_eq!(fin["etat"], "fini");
+    assert_eq!(fin["ajoutes"], 1);
+}
+
+#[test]
+fn REQ111_AC4_ajout_en_cours_refuse_la_mise_a_jour_et_continue() {
+    let (adresse, _) = faux_provider(vec![(200, 0), (200, 1500)]);
+    let s = lancer("ac111-409b");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/d.md", "v4 quatre\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs/a.md"]).code, 202);
+    attendre_numero(&s, 1);
+    assert_eq!(s.ajouter("notes", &["docs/d.md"]).code, 202);
+    let r = s.mettre_a_jour(&["docs/a.md"]);
+    assert_eq!(r.code, 409, "{}", r.corps);
+    assert_eq!(r.json()["cause"], "encours");
+    let fin = attendre_numero(&s, 2);
+    assert_eq!(fin["etat"], "fini");
+    assert_eq!(fin["genre"], "ajout");
+    assert_eq!(s.fichiers("notes"), ["docs/a.md", "docs/d.md"]);
+}
+
+#[test]
+fn REQ111_AC4_refus_401_arrete_la_mise_a_jour_les_fichiers_finis_restent_a_jour() {
+    // Ajout (200), mise à jour de a.md (200), de b.md (401).
+    let (adresse, recues) = faux_provider(vec![(200, 0), (200, 0), (401, 0)]);
+    let s = lancer("ac111-401");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/b.md", "v2 deux\n");
+    ecrire(&s, "docs/c.md", "v3 trois\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    abimer_vecteurs(&s, "notes", 6);
+    assert_eq!(s.mettre_a_jour(&["docs"]).code, 202);
+    let fin = attendre_numero(&s, 2);
+    assert_eq!(fin["etat"], "arrete");
+    assert_eq!(fin["genre"], "mise_a_jour");
+    assert_eq!(fin["cause"], "Ollama a refusé la requête (401).");
+    assert!(fin["detail"].as_str().unwrap().contains("clé refusée"));
+    assert_eq!(fin["ajoutes"], 1);
+    assert_eq!(nombre_requetes(&recues), 3);
+    assert_eq!(vecteurs_de(&s, "notes"), [1.0, 1.0, 9.0, 9.0, 9.0, 9.0]);
+}
+
+#[test]
+fn REQ111_fichier_supprime_quitte_ses_collections_sans_etre_compte() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac111-suppr");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/b.md", "v2 deux\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    let avant = nombre_requetes(&recues);
+    std::fs::remove_file(s.projet.join("docs/a.md")).unwrap();
+    let r = s.mettre_a_jour(&["docs"]);
+    // La passe automatique a pu retirer a.md avant la demande : le total varie, pas le résultat.
+    assert_eq!(r.code, 202, "{}", r.corps);
+    let fin = attendre_numero(&s, 2);
+    assert_eq!(fin["etat"], "fini");
+    assert_eq!(fin["ajoutes"], 1);
+    assert_eq!(s.fichiers("notes"), ["docs/b.md"]);
+    assert_eq!(textes_depuis(&recues, avant), ["v2 deux"]);
+}

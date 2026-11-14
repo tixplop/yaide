@@ -855,11 +855,70 @@ impl Base {
             return;
         };
         for (chemin, entrees) in suspects {
-            self.mettre_a_jour(verrou, echecs, client, acces, &chemin, &entrees)
+            let _ = self
+                .mettre_a_jour(verrou, echecs, client, acces, &chemin, &entrees, false)
                 .await;
         }
     }
 
+    /// Fichiers visés par une mise à jour manuelle (REQ-111) : un chemin de fichier présent dans
+    /// au moins une collection, ou les fichiers des collections sous un chemin de dossier.
+    pub fn visees(&self, chemins: &[String]) -> Result<Vec<String>, String> {
+        let chemins: Vec<&str> = chemins.iter().map(|c| c.trim_matches('/')).collect();
+        Ok(self
+            .entrees()?
+            .into_keys()
+            .filter(|f| {
+                chemins.iter().any(|c| {
+                    c.is_empty() || f == c || f.strip_prefix(c).is_some_and(|r| r.starts_with('/'))
+                })
+            })
+            .collect())
+    }
+
+    /// Remet à jour, un à un, les fichiers `chemins` dans toutes leurs collections, même à
+    /// contenu égal ; un fichier absent ou illisible les quitte. S'arrête à la première erreur
+    /// du provider ; `progres` reçoit 1 après chaque fichier, et le nombre de fichiers mis à jour
+    /// est rendu.
+    pub async fn mettre_a_jour_fichiers(
+        &self,
+        verrou: &tokio::sync::Mutex<()>,
+        echecs: &Echecs,
+        client: &reqwest::Client,
+        acces: &AccesBase,
+        chemins: &[String],
+        progres: &(dyn Fn(usize) + Sync),
+    ) -> (usize, Option<Erreur>) {
+        let mut faits = 0;
+        for chemin in chemins {
+            let base = self.clone();
+            let c = chemin.clone();
+            let entrees = tokio::task::spawn_blocking(move || {
+                base.entrees().map(|mut m| m.remove(&c).unwrap_or_default())
+            })
+            .await;
+            let entrees = match entrees {
+                Ok(Ok(e)) => e,
+                Ok(Err(m)) => return (faits, Some(m.into())),
+                Err(e) => return (faits, Some(e.to_string().into())),
+            };
+            if entrees.is_empty() {
+                progres(1);
+                continue;
+            }
+            match self
+                .mettre_a_jour(verrou, echecs, client, acces, chemin, &entrees, true)
+                .await
+            {
+                Ok(mis) => faits += usize::from(mis),
+                Err(e) => return (faits, Some(e)),
+            }
+            progres(1);
+        }
+        (faits, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     async fn mettre_a_jour(
         &self,
         verrou: &tokio::sync::Mutex<()>,
@@ -868,12 +927,13 @@ impl Base {
         acces: &AccesBase,
         chemin: &str,
         entrees: &[Entree],
-    ) {
+        force: bool,
+    ) -> Result<bool, Erreur> {
         let (projet, rel) = (self.projet.clone(), chemin.to_string());
         let Ok(lu) =
             tokio::task::spawn_blocking(move || crate::fichiers::lire(&projet, &rel)).await
         else {
-            return;
+            return Ok(false);
         };
         let (texte, version) = match lu {
             Ok(l) => l,
@@ -884,14 +944,14 @@ impl Base {
                         .await;
                 }
                 echecs.effacer(chemin);
-                return;
+                return Ok(false);
             }
         };
         let (taille, date) = taille_date(&version);
         let emp = empreinte(&texte);
         let mut a_remplacer = Vec::new();
         for e in entrees {
-            if e.empreinte != emp {
+            if force || e.empreinte != emp {
                 a_remplacer.push(e);
             } else if (e.taille, e.date) != (taille, date) {
                 let _ = self
@@ -901,13 +961,16 @@ impl Base {
         }
         if a_remplacer.is_empty() {
             echecs.effacer(chemin);
-            return;
+            return Ok(true);
         }
-        let echec = |cause: String| echecs.noter(chemin, taille, date, cause);
+        let echec = |e: Erreur| {
+            echecs.noter(chemin, taille, date, e.cause.clone());
+            Err(e)
+        };
         let passages = decouper(chemin, &texte);
         let vecteurs = match self.vecteurs_du_fichier(client, acces, &passages).await {
             Ok(v) => v,
-            Err(e) => return echec(e.cause),
+            Err(e) => return echec(e),
         };
         for e in a_remplacer {
             let f = Fichier {
@@ -927,10 +990,11 @@ impl Base {
                 )
                 .await;
             if let Err(m) = r {
-                return echec(m);
+                return echec(m.into());
             }
         }
         echecs.effacer(chemin);
+        Ok(true)
     }
 
     async fn vecteurs_du_fichier(
@@ -1022,9 +1086,17 @@ pub enum EtatAjout {
     Arrete,
 }
 
+#[derive(Serialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum Genre {
+    Ajout,
+    MiseAJour,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct SuiviAjout {
     pub numero: u64,
+    pub genre: Genre,
     pub collection: String,
     pub etat: EtatAjout,
     pub faits: usize,
@@ -1058,7 +1130,7 @@ impl Suivi {
     }
 
     /// `None` si un ajout est déjà en cours ; sinon le numéro du nouvel ajout.
-    pub fn demarrer(&self, collection: &str, total: usize) -> Option<u64> {
+    pub fn demarrer(&self, genre: Genre, collection: &str, total: usize) -> Option<u64> {
         let mut g = self.verrou();
         let precedent = match g.as_ref() {
             Some(s) if s.etat == EtatAjout::EnCours => return None,
@@ -1068,6 +1140,7 @@ impl Suivi {
         let numero = precedent + 1;
         *g = Some(SuiviAjout {
             numero,
+            genre,
             collection: collection.to_string(),
             etat: EtatAjout::EnCours,
             faits: 0,
@@ -1255,6 +1328,35 @@ pub async fn executer(suivi: &Suivi, verrou: &tokio::sync::Mutex<()>, numero: u6
         }
     }
     suivi.modifier(numero, |s| s.etat = EtatAjout::Fini);
+}
+
+/// Exécute une mise à jour manuelle (REQ-111) et note l'avancement dans `suivi`.
+pub async fn executer_mise_a_jour(
+    suivi: &Suivi,
+    verrou: &tokio::sync::Mutex<()>,
+    echecs: &Echecs,
+    numero: u64,
+    base: &Base,
+    acces: &AccesBase,
+    chemins: &[String],
+) {
+    let client = provider::client();
+    let (faits, echec) = base
+        .mettre_a_jour_fichiers(verrou, echecs, &client, acces, chemins, &|n| {
+            suivi.avancer(numero, n)
+        })
+        .await;
+    suivi.modifier(numero, |s| {
+        s.ajoutes = faits;
+        match echec {
+            Some(e) => {
+                s.etat = EtatAjout::Arrete;
+                s.cause = Some(e.cause);
+                s.detail = Some(e.detail).filter(|d| !d.is_empty());
+            }
+            None => s.etat = EtatAjout::Fini,
+        }
+    });
 }
 
 fn arreter(suivi: &Suivi, numero: u64, cause: String) {
