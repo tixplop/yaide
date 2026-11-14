@@ -304,7 +304,7 @@ impl Registre {
         let mut lecteur = paire.master.try_clone_reader().map_err(|e| e.to_string())?;
         let mut ecrivain = paire.master.take_writer().map_err(|e| e.to_string())?;
         let (entree, recue) = mpsc::channel::<Vec<u8>>();
-        let (diffusion, _) = broadcast::channel(512);
+        let (diffusion, _) = broadcast::channel(4096);
 
         let id = {
             let mut l = self.liste.lock().unwrap();
