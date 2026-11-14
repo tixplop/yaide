@@ -57,17 +57,24 @@ test("REQ101_parcours_73_74_liens_d_un_document_markdown", async ({ page, contex
     };
     const centreTexte = (ligne, texte) =>
       ligne.evaluate((el, t) => {
+        // Le texte peut être découpé en plusieurs nœuds par la coloration : on le cherche sur la ligne entière.
+        const noeuds = [];
         const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-        for (let n = w.nextNode(); n; n = w.nextNode()) {
-          const i = n.data.indexOf(t);
-          if (i < 0) continue;
-          const r = document.createRange();
-          r.setStart(n, i);
-          r.setEnd(n, i + t.length);
-          const b = r.getBoundingClientRect();
-          return [b.x + b.width / 2, b.y + b.height / 2];
-        }
-        return null;
+        for (let n = w.nextNode(); n; n = w.nextNode()) noeuds.push(n);
+        const tout = noeuds.map((n) => n.data).join("");
+        const debut = tout.indexOf(t);
+        if (debut < 0) return null;
+        const place = (pos) => {
+          for (const n of noeuds) {
+            if (pos <= n.data.length) return [n, pos];
+            pos -= n.data.length;
+          }
+        };
+        const r = document.createRange();
+        r.setStart(...place(debut));
+        r.setEnd(...place(debut + t.length));
+        const b = r.getBoundingClientRect();
+        return [b.x + b.width / 2, b.y + b.height / 2];
       }, texte);
 
     // P-073 étape 1 : survol, pointeur du texte, indication dans la barre.
