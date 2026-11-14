@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { ecrire, lire } from "../stockage.js";
-import { vues, monter, attendre, poignees, FauxWebSocket, tailles, simulerShells, bout, onglets, actifDe, zone, terminer, simulerServeur, ligne, barreTitre, icone, aside, agentCol, boutonAgentsDe, champAgent, clavier, largeur, simulerClaude, boutonClaudeDe, ongletsClaude } from "./principale.aides.js";
+import { vues, monter, attendre, poignees, FauxWebSocket, tailles, simulerShells, bout, onglets, actifDe, zone, terminer, simulerServeur, ligne, barreTitre, icone, aside, agentCol, boutonAgentsDe, champAgent, clavier, largeur, simulerClaude, boutonClaudeDe, ongletsClaude, avecHorloge } from "./principale.aides.js";
 
 vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
@@ -656,3 +656,48 @@ test("REQ069_AC4_shells_repli_impose_a_la_restauration", async () => {
   expect(appels).not.toContain("POST /api/shells");
   expect(zone(vue).hidden).toBe(true);
 });
+
+// ---- T-250 : preuves descendues de shells.spec.js ----
+
+/** Monte la vue avec `ids`, puis coupe la session : la surveillance passe à « coupe ». */
+async function monterCoupe(ids) {
+  simulerShells({ ids });
+  const { vue } = monter();
+  await vi.advanceTimersByTimeAsync(100);
+  expect(onglets(vue)).toHaveLength(ids.length);
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    throw new TypeError("coupure");
+  }));
+  await vi.advanceTimersByTimeAsync(6000);
+  expect(document.body.textContent).toContain("Connexion perdue. Modifications gardées.");
+  return vue;
+}
+const refus = () => [...document.querySelectorAll("[role=alert]")].filter((e) => e.textContent.includes("Connexion perdue. Réessayez au retour."));
+
+test("REQ015_AC8_pendant_la_coupure_un_nouveau_shell_est_refuse_avec_un_message", () =>
+  avecHorloge(async () => {
+    const vue = await monterCoupe([1]);
+    bout(vue, "Nouveau shell").click();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(refus()).toHaveLength(1);
+    expect(onglets(vue)).toEqual(["shell 1"]);
+  }));
+
+test("REQ041_AC7_coupure_croix_puis_suppr_sans_dialogue", () =>
+  avecHorloge(async () => {
+    const vue = await monterCoupe([1, 2]);
+    vue.querySelector("[aria-label='Fermer shell 2']").click();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(refus()).toHaveLength(1);
+    const premier = refus()[0];
+    expect(document.querySelector("dialog[open]")).toBeNull();
+    const actif = vue.querySelector(".shells [role=tab][aria-selected=true]");
+    actif.focus();
+    actif.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(refus().length).toBeGreaterThanOrEqual(1);
+    expect(refus()[0]).not.toBe(premier);
+    expect(document.querySelector("dialog[open]")).toBeNull();
+    expect(document.activeElement).toBe(actif);
+    expect(onglets(vue)).toEqual(["shell 1", "shell 2"]);
+  }));

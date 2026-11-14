@@ -1107,3 +1107,78 @@ test("REQ111_AC5_la_commande_envoie_les_chemins_dit_le_debut_et_rend_le_focus_a_
   expect(appels).toContainEqual({ chemins: ["docs", "a.md"] });
   expect(dire.mock.calls.at(-1)[0].texte).toBe("Mise à jour de 2 éléments dans la base de connaissance…");
 });
+
+// ---- T-250 : preuves descendues de coupure.spec.js ----
+
+test("REQ015_AC8_pendant_la_coupure_deplier_un_dossier_est_refuse", async () => {
+  const disque = { "": [d("src"), f("a.txt")], src: [f("main.rs")] };
+  const { vue, dire } = await monter(disque);
+  disque.coupure = true;
+  ligne(vue, "src").click();
+  await attendre();
+  await attendre();
+  expect(dire).toHaveBeenCalledTimes(1);
+  expect(dire.mock.calls[0][0]).toMatchObject({ texte: "Connexion perdue. Réessayez au retour.", variante: "alerte" });
+  expect(noms(vue)).toEqual(["src", "a.txt"]);
+  delete disque.coupure;
+});
+
+test("REQ015_AC8_pendant_la_coupure_creer_renommer_supprimer_disent_de_reessayer", async () => {
+  const REFUS = "Connexion perdue. Réessayez au retour.";
+  const alerte = () => dialogue().querySelector("[role=alert]")?.textContent ?? "";
+  const disque = { "": [f("README.md")] };
+  const { vue, appels } = await monter(disque);
+  ligne(vue, "README.md").click();
+  disque.coupure = true;
+  appels.length = 0;
+  const annuler = () => [...dialogue().querySelectorAll("button")].find((b) => b.textContent === "Annuler").click();
+  bouton(vue, "Nouveau fichier").click();
+  saisir("neuf.txt");
+  await attendre();
+  await attendre();
+  expect(alerte()).toBe(REFUS);
+  annuler();
+  bouton(vue, "Renommer").click();
+  saisir("autre.md");
+  await attendre();
+  await attendre();
+  expect(alerte()).toBe(REFUS);
+  annuler();
+  bouton(vue, "Supprimer").click();
+  [...dialogue().querySelectorAll("button")].find((b) => b.textContent === "Supprimer").click();
+  await attendre();
+  await attendre();
+  expect(alerte()).toBe(REFUS);
+  expect(noms(vue)).toEqual(["README.md"]);
+});
+
+test("REQ034_AC2_projet_vide_dans_un_depot_propose_aussi_commit", async () => {
+  const { vue } = await monter({ "": [] }, { estDepot: () => true });
+  expect(vue.corps.textContent).toContain("Dossier vide.");
+  vue.corps.querySelector(".fichiers-arbre").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+  const m = document.querySelector("[role=menu]");
+  expect(m.getAttribute("aria-label")).toBe("Actions sur le projet");
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "Commit"]);
+  expect(m.querySelectorAll("[role=separator]").length).toBe(1);
+});
+
+test("REQ034_AC6_indexer_un_dossier_dit_que_le_dossier_est_indexe", async () => {
+  const { vue, appels, dire } = await monter({ "": [d("Zeta")] }, { estDepot: () => true });
+  commande(menuSur(vue, "Zeta"), "Indexer").click();
+  await attendre();
+  await attendre();
+  expect(appels.some((a) => String(a).startsWith("/api/git/indexer?chemin=Zeta"))).toBe(true);
+  expect(dire).toHaveBeenCalledWith(expect.objectContaining({ texte: "Zeta/ est indexé.", variante: "succes" }));
+});
+
+test("REQ034_AC13_indexer_pendant_une_coupure_dit_connexion_perdue", async () => {
+  const disque = { "": [f("a.txt")] };
+  const { vue, dire } = await monter(disque, { estDepot: () => true });
+  const m = menuSur(vue, "a.txt");
+  disque.coupure = true;
+  commande(m, "Indexer").click();
+  await attendre();
+  await attendre();
+  expect(dire).toHaveBeenCalledTimes(1);
+  expect(dire.mock.calls[0][0]).toMatchObject({ texte: "Connexion perdue. Réessayez au retour.", variante: "alerte" });
+});

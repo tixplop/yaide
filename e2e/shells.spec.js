@@ -49,18 +49,6 @@ test("REQ020_AC2_REQ015_AC1_coupure_puis_reprise_sans_recharger_ni_doublon", asy
   expect(await compter()).toBe(2);
 });
 
-test("REQ015_AC8_pendant_la_coupure_un_nouveau_shell_est_refuse_avec_un_message", async ({ page }) => {
-  await page.clock.install();
-  await ouvrirYaide(page, relais.origine);
-  relais.couper();
-  await avancer(page, () => expect(page.getByText("Connexion perdue. Modifications gardées.")).toBeVisible({ timeout: 300 }));
-  await page.getByRole("button", { name: "Nouveau shell" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." })).toBeVisible();
-  await expect(onglets(page)).toHaveCount(1);
-  relais.retablir();
-  await avancer(page, () => expect(page.getByText("Connexion perdue. Réessayez au retour.")).toHaveCount(0, { timeout: 300 }));
-});
-
 test("REQ021_AC1_arreter_yaide_arrete_les_shells_et_leurs_processus", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine);
   await taper(page, "echo PID_$$");
@@ -206,29 +194,6 @@ test("REQ021_AC3_AC4_un_shell_ferme_par_le_bouton_n_entraine_pas_de_message_apre
 const croix = (page, n) => page.getByRole("button", { name: `Fermer shell ${n}`, exact: true });
 const pleinFermer = (page, n) => dialogue(page, `Fermer shell ${n} ?`).getByRole("button", { name: "Fermer", exact: true });
 const estActif = (page, n) => expect(page.getByRole("tab", { name: `shell ${n}`, exact: true })).toHaveAttribute("aria-selected", "true");
-
-test("REQ041_AC7_coupure_croix_puis_suppr_sans_dialogue", async ({ page }) => {
-  await page.clock.install();
-  await ouvrirYaide(page, relais.origine);
-  await page.getByRole("button", { name: "Nouveau shell" }).click();
-  await expect(onglets(page)).toHaveCount(2);
-  relais.couper();
-  await avancer(page, () => expect(page.getByText("Connexion perdue. Modifications gardées.")).toBeVisible({ timeout: 300 }));
-  const alerte = page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." });
-  await croix(page, 2).click();
-  await expect(alerte.first()).toBeVisible();
-  await alerte.first().evaluate((e) => { e.dataset.vu = "1"; });
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect.poll(() => focusDansTerminal(page)).toBe(true);
-  const actif = page.getByRole("tab", { name: "shell 2", exact: true });
-  await actif.focus();
-  await page.keyboard.press("Delete");
-  await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." }).and(page.locator(":not([data-vu])")).first()).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(actif).toBeFocused();
-  await expect(onglets(page)).toHaveCount(2);
-  relais.retablir();
-});
 
 test("REQ019_AC2_fenetre_changee_sur_un_autre_onglet_le_shell_repris_remplit_sa_zone", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });

@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, saisir, survoler, lacher } from "./aides.js";
-import { lancerRelais } from "./relais.js";
 
 let yaide;
 test.afterEach(async () => {
@@ -422,21 +421,6 @@ test("REQ034_AC2_AC3_AC16_AC19_REQ049_AC2_AC9_AC12_menu_du_projet_nouveau_depuis
   });
 });
 
-test("REQ034_AC2_projet_vide_dans_un_depot_propose_aussi_commit", async ({ page }) => {
-  const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "vide-"));
-  fs.mkdirSync(path.join(dossier, "p"));
-  spawnSync("git", ["init", "-q"], { cwd: path.join(dossier, "p") });
-  yaide = await lancerYaide({ shell: "/bin/sh", dossier: path.join(dossier, "p") });
-  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await expect(page.getByText("Dossier vide.")).toBeVisible();
-  // état git lu : le menu du projet a « Commit »
-  await expect(page.locator(".ya-status-branche")).toBeVisible();
-  await page.getByText("Dossier vide.").click({ button: "right" });
-  const m = menu(page, "Actions sur le projet");
-  await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Commit"]);
-  await expect(m.getByRole("separator")).toHaveCount(1);
-});
-
 test("REQ034_AC16_clic_droit_sur_une_ligne_d_erreur_est_la_partie_vide_et_ne_prend_pas_le_focus", async ({ page }) => {
   const dossier = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "noir-"));
   const projet = path.join(dossier, "p");
@@ -460,22 +444,6 @@ test("REQ034_AC16_clic_droit_sur_une_ligne_d_erreur_est_la_partie_vide_et_ne_pre
   } finally {
     fs.chmodSync(path.join(projet, "noir"), 0o755);
   }
-});
-
-test("REQ034_AC6_indexer_un_dossier_laisse_de_cote_ce_que_git_ignore", async ({ page }) => {
-  const dossier = await ouvrir(page);
-  fs.writeFileSync(path.join(dossier, "Zeta", "x.log"), "x");
-  fs.writeFileSync(path.join(dossier, ".gitignore"), "target/\n*.log\n");
-  await page.reload();
-  // L'état git arrive après le rechargement : tant qu'il manque, le menu n'a pas « Indexer ». On rouvre le menu jusqu'à l'avoir.
-  await expect(async () => {
-    await page.keyboard.press("Escape");
-    await ligne(page, "Zeta").click({ button: "right" });
-    await expect(page.getByRole("menuitem", { name: "Indexer" })).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 15000 });
-  await page.getByRole("menuitem", { name: "Indexer" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Zeta/ est indexé." })).toBeVisible();
-  expect(indexe(dossier)).toEqual(["Zeta/z.txt"]);
 });
 
 test("REQ034_AC5_AC6_AC7_AC18_REQ039_AC1_groupe_indexer_refus_de_git_dossier_et_lettre", async ({ page }) => {
@@ -598,24 +566,6 @@ test("REQ034_AC12_REQ050_AC12_REQ009_AC9_AC10_groupe_avec_shell_menu_depot_et_en
     expect(fs.existsSync(path.join(dossier, "b.txt"))).toBe(true);
     await expect(ligne(page, "b.txt")).toBeVisible();
   });
-});
-
-test("REQ034_AC13_indexer_pendant_une_coupure_dit_connexion_perdue_et_rien_ne_change", async ({ page }) => {
-  const dossier = await demarrer();
-  const relais = await lancerRelais(yaide.port);
-  try {
-    await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
-    // état git lu : le menu de l'arbre a « Indexer »
-    await expect(page.locator(".ya-status-branche")).toBeVisible();
-    await ligne(page, "a.txt").click({ button: "right" });
-    await expect(page.getByRole("menuitem", { name: "Indexer" })).toBeVisible();
-    relais.couper();
-    await page.getByRole("menuitem", { name: "Indexer" }).click();
-    await expect(page.getByText("Connexion perdue. Réessayez au retour.").first()).toBeVisible();
-    expect(indexe(dossier)).toEqual([]);
-  } finally {
-    relais.fermer();
-  }
 });
 
 test("REQ034_AC17_a_800_x_480_le_menu_reste_entier_sur_la_derniere_ligne_visible_et_s_ouvre_sous_la_ligne_au_clavier", async ({ page }) => {

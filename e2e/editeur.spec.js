@@ -501,16 +501,6 @@ test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_RE
   }
 });
 
-test("REQ012_AC2_le_html_du_markdown_ne_s_execute_pas", async ({ page }) => {
-  await ouvrir(page, (d) => fs.writeFileSync(path.join(d, "README.md"), '<script>window.piege=1</script>\n<img src=x onerror="window.piege=2">\n'));
-  await ligne(page, "README.md").click();
-  await page.getByRole("button", { name: "Aperçu", exact: true }).click();
-  const zone = page.getByRole("region", { name: "Aperçu" });
-  await expect(zone).toContainText("<script>");
-  await expect(zone.locator("script, img")).toHaveCount(0);
-  expect(await page.evaluate(() => window.piege)).toBeUndefined();
-});
-
 test("REQ014_sauvegarder_dans_le_dialogue_pendant_une_ecriture_en_cours_n_perd_aucun_texte", async ({ page }) => {
   const dossier = await ouvrir(page);
   let liberer;

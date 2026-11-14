@@ -158,44 +158,6 @@ test("REQ016_AC2_AC3_page_fermee_puis_sauvegarde_et_rechargement", async ({ page
   });
 });
 
-test("REQ015_AC8_pendant_la_coupure_deplier_un_dossier_est_refuse", async ({ page }) => {
-  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
-  await expect(arbre(page)).toBeVisible();
-  await expect(page.locator(".ya-status-branche")).toBeVisible();
-  await couper(page);
-  await ligne(page, "src").click();
-  await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." })).toBeVisible();
-  await expect(ligne(page, "main.rs")).toHaveCount(0);
-  await retablir(page);
-  await avancer(page, () => expect(page.getByText("Connexion perdue. Réessayez au retour.")).toHaveCount(0, { timeout: 300 }));
-});
-
-const REFUS = "Connexion perdue. Réessayez au retour.";
-
-test("REQ015_AC8_pendant_la_coupure_creer_renommer_supprimer_disent_de_reessayer", async ({ page }) => {
-  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
-  await ligne(page, "README.md").click();
-  await couper(page);
-  await page.getByRole("button", { name: "Nouveau fichier" }).click();
-  const dlg = page.getByRole("dialog", { name: "Nouveau fichier" });
-  await dlg.getByLabel("Chemin").fill("neuf.txt");
-  await page.keyboard.press("Enter");
-  await expect(dlg.getByRole("alert").filter({ hasText: REFUS })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Renommer" }).click();
-  const ren = page.getByRole("dialog", { name: "Renommer ou déplacer" });
-  await ren.getByLabel("Nouveau chemin").fill("autre.md");
-  await page.keyboard.press("Enter");
-  await expect(ren.getByRole("alert").filter({ hasText: REFUS })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Supprimer" }).click();
-  const sup = page.getByRole("dialog", { name: "Supprimer README.md ?" });
-  await sup.getByRole("button", { name: "Supprimer" }).click();
-  await expect(sup.getByRole("alert").filter({ hasText: REFUS })).toBeVisible();
-  expect(fs.existsSync(path.join(dossier, "README.md"))).toBe(true);
-  expect(fs.existsSync(path.join(dossier, "neuf.txt"))).toBe(false);
-});
-
 test("REQ015_AC8_pendant_la_coupure_changer_de_panneau_garde_l_arbre", async ({ page }) => {
   await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   await expect(ligne(page, "README.md")).toBeVisible();

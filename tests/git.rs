@@ -400,6 +400,21 @@ fn req023_ac1_indexer_et_valider() {
 }
 
 #[test]
+fn req034_ac6_indexer_un_dossier_laisse_de_cote_ce_que_git_ignore() {
+    let s = lancer("c1d");
+    s.depot();
+    let p = s.projet.clone();
+    std::fs::create_dir(p.join("Zeta")).unwrap();
+    s.ecrire("Zeta/z.txt", b"z");
+    s.ecrire("Zeta/x.log", b"x");
+    s.ecrire(".gitignore", b"*.log\n");
+    let r = s.indexer("Zeta");
+    assert_eq!(r.code, 204, "{}", r.corps);
+    let indexes = s.g(&p, &["diff", "--cached", "--name-only"]);
+    assert_eq!(indexes.trim(), "Zeta/z.txt");
+}
+
+#[test]
 fn req023_ac2_commit_sans_fichier_indexe() {
     let s = lancer("c2");
     s.depot();

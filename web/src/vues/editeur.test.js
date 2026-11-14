@@ -1851,3 +1851,14 @@ test("REQ106_AC3_ouvrirCitee_ouvre_a_la_ligne_apres_avantOuverture_ou_rend_le_re
 function languageDe(zone) {
   return zone.vue.state.facet(language)?.name ?? null;
 }
+
+// ---- T-250 : preuve descendue de editeur.spec.js ----
+
+test("REQ012_AC2_le_html_du_markdown_ne_s_execute_pas", () => {
+  const { z } = monterApercu({}, '<script>window.piege=1</script>\n<img src=x onerror="window.piege=2">\n');
+  const apercu = z.querySelector("[aria-label=Aperçu]");
+  expect(apercu).not.toBeNull();
+  expect(apercu.textContent).toContain("<script>");
+  expect(apercu.querySelectorAll("script, img").length).toBe(0);
+  expect(window.piege).toBeUndefined();
+});
