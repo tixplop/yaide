@@ -32,8 +32,6 @@ impl Default for Decoupage {
 }
 
 /// Réglage refusé : le champ (`taille` ou `recouvrement`) et le message à montrer.
-// Utilisés par le serveur à la tâche suivante (T-245).
-#[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
 pub struct Refus {
     pub champ: &'static str,
@@ -41,7 +39,6 @@ pub struct Refus {
 }
 
 impl Decoupage {
-    #[allow(dead_code)]
     pub fn valider(&self) -> Result<(), Refus> {
         if !(200..=8000).contains(&self.taille) {
             return Err(Refus {

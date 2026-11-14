@@ -47,6 +47,9 @@ struct Collection {
     nom: String,
     dimension: usize,
     fichiers: Vec<Fichier>,
+    /// Choisi à la création, définitif ; absent d'un ancien `passages.json` : le défaut.
+    #[serde(default)]
+    decoupage: Decoupage,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -409,12 +412,14 @@ impl Base {
     fn entrees(&self) -> Result<BTreeMap<String, Vec<Entree>>, String> {
         let mut m: BTreeMap<String, Vec<Entree>> = BTreeMap::new();
         for nom in self.noms_collections()? {
-            for f in self.lire_sans_vecteurs(&nom)?.fichiers {
+            let c = self.lire_sans_vecteurs(&nom)?;
+            for f in c.fichiers {
                 m.entry(f.chemin).or_default().push(Entree {
                     collection: nom.clone(),
                     empreinte: f.empreinte,
                     taille: f.taille,
                     date: f.date,
+                    decoupage: c.decoupage,
                 });
             }
         }
@@ -450,17 +455,17 @@ impl Base {
             .collect()
     }
 
-    /// Chemins des fichiers d'une collection, par ordre alphabétique.
+    /// Chemins des fichiers d'une collection, par ordre alphabétique, et son découpage.
     pub fn fichiers(&self, nom: &str) -> Result<Vec<String>, String> {
+        Ok(self.fichiers_et_decoupage(nom)?.0)
+    }
+
+    pub fn fichiers_et_decoupage(&self, nom: &str) -> Result<(Vec<String>, Decoupage), String> {
         let exact = self.trouver(nom)?.ok_or("Cette collection n'existe pas.")?;
-        let mut chemins: Vec<String> = self
-            .charger(&exact)?
-            .fichiers
-            .into_iter()
-            .map(|f| f.chemin)
-            .collect();
+        let c = self.lire_sans_vecteurs(&exact)?;
+        let mut chemins: Vec<String> = c.fichiers.into_iter().map(|f| f.chemin).collect();
         chemins.sort();
-        Ok(chemins)
+        Ok((chemins, c.decoupage))
     }
 
     pub fn supprimer(&self, nom: &str) -> Result<(), String> {
@@ -481,18 +486,20 @@ impl Base {
         portee: &str,
         fichiers: &[(String, String, String)],
     ) -> Result<Ajout, Erreur> {
-        self.ajouter_avec(acces, nom, portee, fichiers, &|_| {})
+        self.ajouter_avec(acces, nom, portee, fichiers, Decoupage::default(), &|_| {})
             .await
     }
 
     /// Comme `ajouter`, avec la collection écrite après chaque lot de vecteurs (fichiers complets
-    /// seulement) ; `progres` reçoit le nombre de fichiers traités à chaque étape.
+    /// seulement) ; `progres` reçoit le nombre de fichiers traités à chaque étape. `decoupage`
+    /// ne sert qu'à la création de la collection : une collection existante garde le sien.
     pub async fn ajouter_avec(
         &self,
         acces: &Acces<'_>,
         nom: &str,
         portee: &str,
         fichiers: &[(String, String, String)],
+        decoupage: Decoupage,
         progres: &(dyn Fn(usize) + Sync),
     ) -> Result<Ajout, Erreur> {
         valider_nom(nom)?;
@@ -504,6 +511,7 @@ impl Base {
                 nom: nom.to_string(),
                 dimension: 0,
                 fichiers: Vec::new(),
+                decoupage,
             },
         };
         let portee = portee.trim_matches('/');
@@ -535,7 +543,7 @@ impl Base {
                 empreinte: emp,
                 taille,
                 date,
-                passages: decouper(chemin, contenu, &Decoupage::default()),
+                passages: decouper(chemin, contenu, &coll.decoupage),
                 vecteurs: Vec::new(),
             });
         }
@@ -686,6 +694,7 @@ struct Entree {
     empreinte: String,
     taille: u64,
     date: u128,
+    decoupage: Decoupage,
 }
 
 enum Action {
@@ -885,19 +894,27 @@ impl Base {
             echecs.noter(chemin, taille, date, e.cause.clone());
             Err(e)
         };
-        let passages = decouper(chemin, &texte, &Decoupage::default());
-        let vecteurs = match self.vecteurs_du_fichier(client, acces, &passages).await {
-            Ok(v) => v,
-            Err(e) => return echec(e),
-        };
+        // Un appel au provider par découpage distinct, pas par collection.
+        let mut calculs: Vec<(Decoupage, Vec<Passage>, Vec<Vec<f32>>)> = Vec::new();
         for e in a_remplacer {
+            let i = match calculs.iter().position(|c| c.0 == e.decoupage) {
+                Some(i) => i,
+                None => {
+                    let passages = decouper(chemin, &texte, &e.decoupage);
+                    match self.vecteurs_du_fichier(client, acces, &passages).await {
+                        Ok(v) => calculs.push((e.decoupage, passages, v)),
+                        Err(err) => return echec(err),
+                    }
+                    calculs.len() - 1
+                }
+            };
             let f = Fichier {
                 chemin: chemin.to_string(),
                 empreinte: emp.clone(),
                 taille,
                 date,
-                passages: passages.clone(),
-                vecteurs: vecteurs.clone(),
+                passages: calculs[i].1.clone(),
+                vecteurs: calculs[i].2.clone(),
             };
             let r = self
                 .appliquer(
@@ -1184,6 +1201,8 @@ pub struct Demande {
     pub adresse: String,
     pub cle: Option<String>,
     pub modele: String,
+    /// Pour une nouvelle collection seulement.
+    pub decoupage: Decoupage,
 }
 
 /// Exécute l'ajout, un chemin après l'autre, et note l'avancement dans `suivi`.
@@ -1225,9 +1244,14 @@ pub async fn executer(suivi: &Suivi, verrou: &tokio::sync::Mutex<()>, numero: u6
         suivi.modifier(numero, |s| s.ignores += ignores);
         suivi.avancer(numero, ignores);
         let r = base
-            .ajouter_avec(&acces, &d.collection, &cible.portee, &lus, &|n| {
-                suivi.avancer(numero, n)
-            })
+            .ajouter_avec(
+                &acces,
+                &d.collection,
+                &cible.portee,
+                &lus,
+                d.decoupage,
+                &|n| suivi.avancer(numero, n),
+            )
             .await;
         match r {
             Ok(a) => suivi.modifier(numero, |s| {

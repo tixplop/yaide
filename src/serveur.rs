@@ -3,6 +3,7 @@ use crate::agent::conversation::{ErreurEnvoi, Gestionnaire};
 use crate::agent::mcp;
 use crate::agent::outils::Limites;
 use crate::agent::reglages::{Erreur, Reglages};
+use crate::decoupage::Decoupage;
 use crate::{
     auth, commande_mise_a_jour, config, connaissance, depot, fichiers, git, opencode, recherche,
     shells, version,
@@ -1452,10 +1453,10 @@ async fn connaissance_fichiers(
         Ok(n) => n,
         Err(r) => return r,
     };
-    match base.fichiers(&exact) {
-        Ok(f) => json_rep(
+    match base.fichiers_et_decoupage(&exact) {
+        Ok((f, decoupage)) => json_rep(
             StatusCode::OK,
-            serde_json::json!({ "nom": exact, "fichiers": f }),
+            serde_json::json!({ "nom": exact, "fichiers": f, "decoupage": decoupage }),
         ),
         Err(m) => refus_base(StatusCode::INTERNAL_SERVER_ERROR, "lecture", m),
     }
@@ -1487,6 +1488,34 @@ async fn connaissance_supprimer(
     }
 }
 
+/// Le découpage du corps (absent : le défaut), validé ; sinon (champ, message) du refus.
+fn lire_decoupage(v: &serde_json::Value) -> Result<Decoupage, (&'static str, &'static str)> {
+    let mut d = Decoupage::default();
+    if v.is_null() {
+        return Ok(d);
+    }
+    let Some(o) = v.as_object() else {
+        return Err(("strategie", "Découpage illisible."));
+    };
+    if let Some(s) = o.get("strategie") {
+        d.strategie =
+            serde_json::from_value(s.clone()).map_err(|_| ("strategie", "Découpage illisible."))?;
+    }
+    for (cle, champ) in [("taille", 0), ("recouvrement", 1)] {
+        let Some(x) = o.get(cle) else { continue };
+        let n = x.as_u64().and_then(|n| usize::try_from(n).ok());
+        // Un entier illisible vaut une valeur hors bornes, avec le message de `valider`.
+        let n = n.unwrap_or(usize::MAX);
+        if champ == 0 {
+            d.taille = n;
+        } else {
+            d.recouvrement = n;
+        }
+    }
+    d.valider().map_err(|r| (r.champ, r.message))?;
+    Ok(d)
+}
+
 /// `{ collection, chemins }` ; répond 202 et ajoute en tâche de fond, sans lien avec la requête.
 async fn connaissance_ajouter(State(etat): State<Partage>, corps: Bytes) -> Response {
     let Some(v) = corps_json(&corps) else {
@@ -1507,10 +1536,20 @@ async fn connaissance_ajouter(State(etat): State<Partage>, corps: Bytes) -> Resp
         Err(r) => return r,
     };
     let base = connaissance::Base::new(&etat.projet_dir);
-    let collection = match base.trouver(nom) {
-        Ok(c) => c.unwrap_or_else(|| nom.to_string()),
+    let existante = match base.trouver(nom) {
+        Ok(c) => c,
         Err(m) => return refus_base(StatusCode::INTERNAL_SERVER_ERROR, "lecture", m),
     };
+    // Le découpage ne sert qu'à créer la collection ; pour une existante, il est ignoré.
+    let decoupage = if existante.is_some() {
+        Decoupage::default()
+    } else {
+        match lire_decoupage(&v["decoupage"]) {
+            Ok(d) => d,
+            Err((champ, message)) => return refus_base(StatusCode::BAD_REQUEST, champ, message),
+        }
+    };
+    let collection = existante.unwrap_or_else(|| nom.to_string());
     let projet = etat.projet_dir.clone();
     let cibles =
         match tokio::task::spawn_blocking(move || connaissance::parcourir(&projet, &chemins)).await
@@ -1540,6 +1579,7 @@ async fn connaissance_ajouter(State(etat): State<Partage>, corps: Bytes) -> Resp
         adresse,
         cle,
         modele: config.modele,
+        decoupage,
     };
     let suivi = etat.ajouts.clone();
     let verrou = etat.verrou_base.clone();

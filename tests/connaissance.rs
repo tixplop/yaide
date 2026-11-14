@@ -1412,3 +1412,203 @@ fn REQ111_fichier_supprime_quitte_ses_collections_sans_etre_compte() {
     assert_eq!(s.fichiers("notes"), ["docs/b.md"]);
     assert_eq!(textes_depuis(&recues, avant), ["v2 deux"]);
 }
+
+impl Serveur {
+    fn ajouter_decoupe(&self, collection: &str, chemins: &[&str], decoupage: Value) -> Rep {
+        self.appel(
+            "POST",
+            "/api/connaissance/ajouts",
+            &json!({ "collection": collection, "chemins": chemins, "decoupage": decoupage }),
+        )
+    }
+
+    fn decoupage_de(&self, nom: &str) -> Value {
+        let r = self.appel(
+            "GET",
+            &format!("/api/connaissance/collections/{nom}"),
+            &Value::Null,
+        );
+        assert_eq!(r.code, 200, "{}", r.corps);
+        r.json()["decoupage"].clone()
+    }
+}
+
+/// Lignes (début, fin) des passages d'un fichier, lues dans `passages.json`.
+fn lignes_de(s: &Serveur, collection: &str, chemin: &str) -> Vec<(u64, u64)> {
+    let p = s.projet.join(format!(
+        ".yaide/connaissance/collections/{collection}/passages.json"
+    ));
+    let v: Value = serde_json::from_slice(&std::fs::read(p).unwrap()).unwrap();
+    v["fichiers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["chemin"] == chemin)
+        .map(|f| {
+            f["passages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| (p["debut"].as_u64().unwrap(), p["fin"].as_u64().unwrap()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Paragraphes de 150 caractères séparés par une ligne vide, le premier mot `v<n>`.
+fn paragraphes(debut: u32, n: u32) -> String {
+    (0..n)
+        .map(|i| format!("v{} {}\n", debut + i, "x".repeat(147)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+const PAR_200: fn() -> Value =
+    || json!({ "strategie": "paragraphes", "taille": 200, "recouvrement": 0 });
+
+#[test]
+fn REQ113_AC1_sans_decoupage_le_defaut_est_garde_et_rendu() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("ac113-1");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    assert_eq!(s.attendre_fin()["etat"], "fini");
+    let attendu = json!({ "strategie": "taille_fixe", "taille": 2000, "recouvrement": 0 });
+    let p = s
+        .projet
+        .join(".yaide/connaissance/collections/notes/passages.json");
+    let v: Value = serde_json::from_slice(&std::fs::read(p).unwrap()).unwrap();
+    assert_eq!(v["decoupage"], attendu);
+    assert_eq!(s.decoupage_de("notes"), attendu);
+}
+
+#[test]
+fn REQ113_AC5_decoupage_refuse_rien_n_est_cree_ni_envoye() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac113-5");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    configurer(&s, &adresse);
+    let taille = "Entre 200 et 8\u{a0}000 caractères.";
+    let recouvrement = "Entre 0 et 10 lignes.";
+    let cas = [
+        (json!({ "taille": 150 }), "taille", taille),
+        (json!({ "taille": 8001 }), "taille", taille),
+        (json!({ "taille": "2000" }), "taille", taille),
+        (json!({ "taille": 1.5 }), "taille", taille),
+        (json!({ "taille": -1 }), "taille", taille),
+        (json!({ "recouvrement": 11 }), "recouvrement", recouvrement),
+        (json!({ "recouvrement": "1" }), "recouvrement", recouvrement),
+        (
+            json!({ "strategie": "inconnue" }),
+            "strategie",
+            "Découpage illisible.",
+        ),
+        (json!("taille_fixe"), "strategie", "Découpage illisible."),
+    ];
+    for (d, cause, message) in cas {
+        let r = s.ajouter_decoupe("notes", &["docs"], d.clone());
+        assert_eq!(r.code, 400, "{d} : {}", r.corps);
+        assert_eq!(r.json()["cause"], cause, "{d}");
+        assert_eq!(r.json()["message"], message, "{d}");
+    }
+    assert_eq!(nombre_requetes(&recues), 0);
+    assert!(s.collection("notes").is_none());
+    assert!(!s.projet.join(".yaide/connaissance/collections").exists());
+    // Les bornes sont acceptées.
+    let r = s.ajouter_decoupe(
+        "notes",
+        &["docs"],
+        json!({ "strategie": "taille_fixe", "taille": 200, "recouvrement": 10 }),
+    );
+    assert_eq!(r.code, 202, "{}", r.corps);
+}
+
+#[test]
+fn REQ113_AC6_chaque_collection_garde_son_decoupage_pour_ajouts_et_mises_a_jour() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer_rapide("ac113-6");
+    ecrire(&s, "docs/a.md", &paragraphes(1, 2));
+    ecrire(&s, "docs/c.md", &paragraphes(7, 2));
+    configurer(&s, &adresse);
+    let fixe = json!({ "strategie": "taille_fixe", "taille": 200, "recouvrement": 0 });
+    assert_eq!(
+        s.ajouter_decoupe("notes", &["docs/a.md"], PAR_200()).code,
+        202
+    );
+    s.attendre_fin();
+    assert_eq!(
+        s.ajouter_decoupe("api", &["docs/a.md"], fixe.clone()).code,
+        202
+    );
+    s.attendre_fin();
+    assert_eq!(lignes_de(&s, "notes", "docs/a.md"), [(1, 1), (3, 3)]);
+    assert_eq!(lignes_de(&s, "api", "docs/a.md"), [(1, 2), (3, 3)]);
+    // Ajout à une collection existante (casse ignorée) : le découpage reçu est ignoré, même invalide.
+    let r = s.ajouter_decoupe(
+        "Notes",
+        &["docs/c.md"],
+        json!({ "strategie": "x", "taille": 3 }),
+    );
+    assert_eq!(r.code, 202, "{}", r.corps);
+    assert_eq!(r.json()["collection"], "notes");
+    assert_eq!(s.attendre_fin()["etat"], "fini");
+    assert_eq!(lignes_de(&s, "notes", "docs/c.md"), [(1, 1), (3, 3)]);
+    let r = s.ajouter_decoupe("api", &["docs/c.md"], PAR_200());
+    assert_eq!(r.code, 202);
+    s.attendre_fin();
+    assert_eq!(lignes_de(&s, "api", "docs/c.md"), [(1, 2), (3, 3)]);
+    assert_eq!(s.decoupage_de("Notes"), PAR_200());
+    assert_eq!(s.decoupage_de("api"), fixe);
+    // Mise à jour automatique : trois paragraphes, un appel par découpage distinct.
+    let avant = nombre_requetes(&recues);
+    ecrire(&s, "docs/a.md", &paragraphes(3, 3));
+    attendre("mise à jour automatique", || {
+        lignes_de(&s, "notes", "docs/a.md") == [(1, 1), (3, 3), (5, 5)]
+            && lignes_de(&s, "api", "docs/a.md") == [(1, 2), (3, 4), (5, 5)]
+    });
+    assert_eq!(nombre_requetes(&recues) - avant, 2);
+    // Mise à jour à la main.
+    let avant = nombre_requetes(&recues);
+    let r = s.mettre_a_jour(&["docs/a.md"]);
+    assert_eq!(r.code, 202, "{}", r.corps);
+    attendre_numero(&s, r.json()["numero"].as_u64().unwrap());
+    assert_eq!(nombre_requetes(&recues) - avant, 2);
+    assert_eq!(
+        lignes_de(&s, "notes", "docs/a.md"),
+        [(1, 1), (3, 3), (5, 5)]
+    );
+    assert_eq!(lignes_de(&s, "api", "docs/a.md"), [(1, 2), (3, 4), (5, 5)]);
+}
+
+#[test]
+fn REQ113_AC7_decoupage_relu_au_redemarrage_et_ancien_format_en_defaut() {
+    let (adresse, _) = faux_provider(vec![]);
+    let racine = dossier("ac113-7");
+    let s = demarrer(&racine, "projet");
+    ecrire(&s, "docs/a.md", &paragraphes(1, 2));
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter_decoupe("notes", &["docs"], PAR_200()).code, 202);
+    s.attendre_fin();
+    assert_eq!(s.ajouter("api", &["docs"]).code, 202);
+    s.attendre_fin();
+    // `api` est écrit comme avant cette évolution : sans `decoupage`.
+    let p = s
+        .projet
+        .join(".yaide/connaissance/collections/api/passages.json");
+    let mut v: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+    assert!(v.as_object_mut().unwrap().remove("decoupage").is_some());
+    std::fs::write(&p, v.to_string()).unwrap();
+    drop(s);
+    let s = demarrer(&racine, "projet");
+    assert_eq!(s.decoupage_de("notes"), PAR_200());
+    assert_eq!(
+        s.decoupage_de("api"),
+        json!({ "strategie": "taille_fixe", "taille": 2000, "recouvrement": 0 })
+    );
+    assert!(s.collection("api").is_some());
+    assert_eq!(s.fichiers("api"), ["docs/a.md"]);
+    let r = s.chercher("v1", Some("api"));
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert!(!r.json()["passages"].as_array().unwrap().is_empty());
+}
