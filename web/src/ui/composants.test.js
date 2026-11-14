@@ -207,3 +207,65 @@ test("REQ114_motif_petit_formulaire_dans_une_fiche_grille_1fr_1fr_auto_en_tokens
   a(".ya-fiche-recherche > .ya-btn", "margin-top: 20px");
   a(".ya-fiche-soustitre", "font: 600 13px/20px var(--font-sans)");
 });
+
+// REQ-115, C-008 « Couleurs réglées » : colonne « Correspondances » du design system.
+// [clé, propriété, propriété CSS, valeur d'aujourd'hui de l'aperçu, valeur d'aujourd'hui du mode hybride, sélecteur de l'aperçu, sélecteur du mode hybride]
+const CORRESPONDANCES = [
+  ...[1, 2, 3, 4, 5, 6].map((n) => [`titre${n}`, "couleur", "color", "var(--ink)", "var(--ink)", `.zone-code-apercu h${n}`, `.cm-line.cm-hy-titre${n}`]),
+  ["texte", "couleur", "color", "var(--ink)", "var(--ink)", ".zone-code-apercu :is(p, li):not(blockquote *, table *)", ".cm-hybride .cm-line"],
+  ["gras", "couleur", "color", "inherit", "inherit", ".zone-code-apercu strong", ".cm-hy-gras"],
+  ["italique", "couleur", "color", "inherit", "inherit", ".zone-code-apercu em", ".cm-hy-italique"],
+  ["barre", "couleur", "color", "inherit", "inherit", ".zone-code-apercu del", ".cm-hy-barre"],
+  ["lien", "couleur", "color", "var(--info)", "var(--info)", ".zone-code-apercu a", ".cm-hy-lien"],
+  ["code", "couleur", "color", "inherit", "var(--ink)", ".zone-code-apercu code", ".cm-hy-code"],
+  ["code", "fond", "background", "var(--apercu-fond)", "var(--code-fond)", ".zone-code-apercu code", ".cm-hy-code"],
+  ["bloc_code", "couleur", "color", "var(--ink)", "var(--ink)", ".zone-code-apercu pre", ".cm-line.cm-hy-bloc-code"],
+  ["bloc_code", "fond", "background", "var(--apercu-fond)", "var(--code-fond)", ".zone-code-apercu pre", ".cm-line.cm-hy-bloc-code"],
+  ["citation", "couleur", "color", "var(--ink)", "var(--ink)", ".zone-code-apercu blockquote", ".cm-line.cm-hy-citation"],
+  ["citation", "fond", "background", "var(--msg-info)", "var(--msg-info)", ".zone-code-apercu blockquote", ".cm-line.cm-hy-citation"],
+  ["citation", "bordure", "border-left", "var(--info)", "var(--info)", ".zone-code-apercu blockquote", ".cm-line.cm-hy-citation"],
+  ["entete_tableau", "couleur", "color", "var(--ink)", "var(--ink)", ".zone-code-apercu th", ".cm-hy-tableau th"],
+  ["entete_tableau", "fond", "background", "var(--apercu-entete)", "var(--apercu-entete)", ".zone-code-apercu th", ".cm-hy-tableau th"],
+  ["tableau", "couleur", "color", "var(--ink)", "var(--ink)", ".zone-code-apercu td", ".cm-hy-tableau td"],
+  ["tableau", "fond", "background", "var(--apercu-fond)", "var(--apercu-fond)", ".zone-code-apercu tbody tr:nth-child(even) td", ".cm-hy-tableau tbody tr:nth-child(even) td"],
+  ["tableau", "bordure", "border", "var(--line-strong)", "var(--line-strong)", ".zone-code-apercu td", ".cm-hy-tableau td"],
+  ["puce", "couleur", "color", "inherit", "var(--ink-muted)", ".zone-code-apercu ul > li::marker", ".cm-hy-puce"],
+  ["separateur", "couleur", "border-top", "var(--line-strong)", "var(--line-strong)", ".zone-code-apercu hr", ".cm-hy-trait"],
+];
+
+// Tous les corps des règles dont la liste de sélecteurs contient exactement `selecteur`.
+function corps(selecteur) {
+  let sortie = "";
+  for (const m of css.replace(/\/\*[^]*?\*\//g, "").matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+    if (m[1].split(/,(?![^(]*\))/).some((s) => s.trim() === selecteur)) sortie += m[2].replace(/\s+/g, " ");
+  }
+  return sortie;
+}
+
+test("REQ115_AC4_apercu_et_mode_hybride_lisent_les_variables_md_avec_la_valeur_d_aujourd_hui", () => {
+  for (const [cle, prop, , apercu, hybride, selApercu, selHybride] of CORRESPONDANCES) {
+    const variable = `--md-${cle.replaceAll("_", "-")}-${prop}`;
+    expect(corps(selApercu), `${selApercu} ${variable}`).toContain(`var(${variable}, ${apercu})`);
+    expect(corps(selHybride), `${selHybride} ${variable}`).toContain(`var(${variable}, ${hybride})`);
+  }
+});
+
+test("REQ115_AC9_aucune_regle_des_reponses_de_l_agent_ne_lit_une_variable_md", () => {
+  const sansCommentaires = css.replace(/\/\*[^]*?\*\//g, "");
+  let vues = 0;
+  for (const m of sansCommentaires.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+    if (!m[1].includes(".ya-chat-agent")) continue;
+    vues++;
+    expect(m[2], m[1].trim()).not.toContain("--md-");
+  }
+  expect(vues).toBeGreaterThan(10);
+  // Aucune règle commune : un sélecteur qui vise les deux est écrit deux fois.
+  for (const m of sansCommentaires.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+    if (m[2].includes("--md-")) expect(m[1], m[1].trim()).not.toContain("ya-chat");
+  }
+});
+
+test("REQ115_AC1_AC4_code_en_ligne_du_mode_hybride_prend_la_couleur_qui_l_entoure_dans_lien_titre_citation", () => {
+  const sel = ":is(.cm-hy-lien, .cm-line.cm-hy-titre1, .cm-line.cm-hy-titre2, .cm-line.cm-hy-titre3, .cm-line.cm-hy-titre4, .cm-line.cm-hy-titre5, .cm-line.cm-hy-titre6, .cm-line.cm-hy-citation) .cm-hy-code";
+  expect(corps(sel)).toContain("color: var(--md-code-couleur, inherit)");
+});

@@ -140,6 +140,7 @@ export function decorationsHybride(etat, plages = [{ from: 0, to: etat.doc.lengt
       },
     });
   }
+  sortie.push(...marquesSelectionFond(etat, sortie));
   return sortie.sort((a, b) => a.debut - b.debut || (b.ligne ? 1 : 0) - (a.ligne ? 1 : 0) || b.fin - a.fin);
 }
 
@@ -156,6 +157,25 @@ function enDecoration(d) {
   if (d.widget) return ornements[d.widget].range(d.debut, d.fin);
   if (!marquesCache.has(d.classe)) marquesCache.set(d.classe, Decoration.mark({ class: d.classe }));
   return marquesCache.get(d.classe).range(d.debut, d.fin);
+}
+
+// Sélection sur un fond réglé (REQ-115) : `drawSelection` dessine la sélection sous le texte, qu'un fond opaque cacherait.
+// Chaque plage sélectionnée d'une ligne de bloc de code, d'une ligne de citation ou d'un code en ligne reçoit une marque
+// `ya-sel-fond ya-sel-fond-<élément>`, sans style : la feuille construite lui donne `--selection` quand le fond de l'élément est réglé.
+const FONDS = { "cm-hy-bloc-code": "bloc-code", "cm-hy-citation": "citation", "cm-hy-code": "code" };
+function marquesSelectionFond(etat, decos) {
+  const doc = etat.doc;
+  const sortie = [];
+  for (const d of decos) {
+    const element = FONDS[d.classe];
+    if (!element || d.masque || d.widget) continue;
+    const [de, a] = d.ligne ? [d.debut, doc.lineAt(d.debut).to] : [d.debut, d.fin];
+    for (const r of etat.selection.ranges) {
+      const [debut, fin] = [Math.max(de, r.from), Math.min(a, r.to)];
+      if (fin > debut) sortie.push({ debut, fin, classe: `ya-sel-fond ya-sel-fond-${element}` });
+    }
+  }
+  return sortie;
 }
 
 function construire(vue) {

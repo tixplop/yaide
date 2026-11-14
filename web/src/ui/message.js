@@ -3,6 +3,8 @@ import { icone } from "./icones.js";
 
 const VARIANTES = ["info", "succes", "alerte", "erreur"];
 
+let compteur = 0;
+
 const ICONES_BARRE = { info: "circle-arrow-up", erreur: "circle-x", succes: "circle-check" };
 
 export function message({ texte, variante = "info", detail, champs, actions = [], fermable = false, fort = false, presentation = "normale" }) {
@@ -63,6 +65,9 @@ export function message({ texte, variante = "info", detail, champs, actions = []
     }
     if (fermable) {
       const f = bouton({ icone: "x", variante: "discret", nomAccessible: "Fermer" });
+      // La croix est décrite par le texte du message : deux croix affichées ensemble se distinguent (REQ-115).
+      t.id = `message-texte-${++compteur}`;
+      f.setAttribute("aria-describedby", t.id);
       f.addEventListener("click", () => m.remove());
       m.append(f.enveloppe);
     }

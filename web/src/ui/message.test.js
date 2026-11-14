@@ -129,3 +129,23 @@ test("REQ093_AC6_message_barre_css_ligne_18_px_sans_fond_et_erreur_qui_se_coupe"
   expect(r(".ya-message-barre.message-succes svg")).toContain("color: var(--git-added)");
   expect(r(".ya-message-barre:focus")).toContain("outline: 2px solid var(--accent-fg)");
 });
+
+test("REQ115_AC10_AC11_fermer_est_decrit_par_le_texte_du_message", () => {
+  const m = message({ texte: "Fichier illisible.", variante: "alerte", fermable: true });
+  const f = m.querySelector("button[aria-label='Fermer']");
+  const id = f.getAttribute("aria-describedby");
+  expect(id).toBeTruthy();
+  expect(m.querySelector(".message-texte").id).toBe(id);
+  const autre = message({ texte: "Autre.", variante: "alerte", fermable: true });
+  expect(autre.querySelector("button").getAttribute("aria-describedby")).not.toBe(id);
+});
+
+test("REQ115_AC10_AC11_le_second_message_empile_a_un_filet_haut_line", () => {
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  const regle = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].find((r) => r[1].trim() === ".message + .message");
+  expect(regle[2]).toContain("border-top: var(--trait) solid var(--line)");
+  const conteneur = document.createElement("div");
+  conteneur.append(message({ texte: "a" }), message({ texte: "b" }));
+  expect(conteneur.children[1].matches(".message + .message")).toBe(true);
+  expect(conteneur.children[0].matches(".message + .message")).toBe(false);
+});

@@ -545,3 +545,38 @@ test("REQ101_AC10_AC11_sur_macOS_cmd_clic_et_meta", () => {
     vi.unstubAllGlobals();
   }
 });
+
+// Sélection sur un fond réglé (REQ-115) : une marque `ya-sel-fond` par plage sélectionnée, sans style.
+function selection(texte, de, a) {
+  const etat = EditorState.create({ doc: texte, selection: { anchor: de, head: a }, extensions: [markdown({ base: markdownLanguage })] });
+  return decorationsHybride(etat)
+    .filter((d) => d.classe?.startsWith("ya-sel-fond"))
+    .map((d) => [d.classe, texte.slice(d.debut, d.fin)]);
+}
+
+test("REQ115_AC12_selection_dans_un_bloc_de_code_marque_ya_sel_fond_bloc_code", () => {
+  const texte = "```rust\nfn main() {}\n```\nfin";
+  const de = texte.indexOf("fn main");
+  expect(selection(texte, de, de + 7)).toEqual([["ya-sel-fond ya-sel-fond-bloc-code", "fn main"]]);
+});
+
+test("REQ115_AC12_selection_dans_une_citation_marque_ya_sel_fond_citation", () => {
+  const texte = "> une citation\n\nfin";
+  expect(selection(texte, 2, 5)).toEqual([["ya-sel-fond ya-sel-fond-citation", "une"]]);
+});
+
+test("REQ115_AC12_selection_dans_un_code_en_ligne_marque_ya_sel_fond_code", () => {
+  const texte = "un `code` ici";
+  expect(selection(texte, 4, 8)).toEqual([["ya-sel-fond ya-sel-fond-code", "code"]]);
+});
+
+test("REQ115_AC12_selection_hors_de_ces_elements_ou_vide_sans_marque", () => {
+  const texte = "un `code` ici\n\n> citation\n\nfin";
+  expect(selection(texte, 0, 3)).toEqual([]);
+  expect(selection(texte, 5, 5)).toEqual([]);
+  expect(selection("# Titre\n\nfin", 2, 7)).toEqual([]);
+});
+
+test("REQ115_AC12_composants_css_ne_donne_aucun_style_a_ya_sel_fond", () => {
+  expect(readFileSync("web/src/ui/composants.css", "utf8")).not.toContain("ya-sel-fond");
+});
