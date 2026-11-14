@@ -550,6 +550,17 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-reglages .dialogue-resultat { flex: none; margin-top: var(--space-2); }
 .ya-fiche { display: flex; flex-direction: column; gap: 12px; }
 .ya-fiche-titre { margin: 0; font: 600 13px/20px var(--font-sans); color: var(--ink); }
+.ya-fiche-soustitre { margin: 0; font: 600 13px/20px var(--font-sans); color: var(--ink); }
+/* Motif « Petit formulaire dans une fiche » : deux champs courts et leur bouton sur une ligne, alignés en haut. */
+.ya-fiche-recherche { display: grid; grid-template-columns: 1fr 1fr auto; gap: var(--space-3); align-items: start; }
+/* Fiche d'une collection : la liste des fichiers prend le reste de la hauteur et défile seule (3 lignes au moins) ; sinon le panneau défile. */
+.ya-collections:not([hidden]) { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.ya-collections > .ya-fiche-fichiers { flex: 1 1 auto; min-height: 0; }
+.ya-fiche-fichiers > * { flex: none; }
+.ya-fiche-fichiers > .ya-objets { flex: 1 1 auto; min-height: calc(3 * var(--size-row)); margin-top: calc(-1 * var(--space-1)); }
+.ya-fiche-recherche > .champ { min-width: 0; }
+.ya-fiche fieldset .ya-groupe-aide { margin-top: calc(-1 * var(--space-1)); }
+.ya-fiche-recherche > .ya-btn { margin-top: 20px; }
 .ya-fiche-champs { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; }
 .ya-fiche-large { grid-column: 1 / -1; }
 

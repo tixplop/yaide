@@ -479,9 +479,21 @@ export async function enregistrerConfigConnaissance(provider, modele) {
   return erreurServeur(r);
 }
 
-/** Fichiers d'une collection : `{ nom, fichiers: [chemin] }`, `{ cause, message }` ou `{ coupure: true }`. */
+/** Fichiers d'une collection : `{ nom, fichiers: [chemin], decoupage, recherche: { passages, score_minimal } }`, `{ cause, message }` ou `{ coupure: true }`. */
 export async function lireFichiersConnaissance(collection) {
   const r = await appeler(`/api/connaissance/collections/${q(collection)}`);
+  if (!r) return { coupure: true };
+  try {
+    if (r.ok) return await r.json();
+  } catch {
+    return { coupure: true };
+  }
+  return erreurServeur(r);
+}
+
+/** Écrit les réglages de recherche d'une collection (REQ-114) : `{ recherche: { passages, score_minimal } }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function enregistrerRechercheConnaissance(collection, recherche) {
+  const r = await appeler(`/api/connaissance/collections/${q(collection)}/recherche`, json("PUT", recherche));
   if (!r) return { coupure: true };
   try {
     if (r.ok) return await r.json();

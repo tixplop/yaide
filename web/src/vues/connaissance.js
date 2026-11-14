@@ -1,4 +1,4 @@
-import { chercherConnaissance, enregistrerConfigConnaissance, lireConnaissance, lireFichiersConnaissance, supprimerConnaissance } from "../api.js";
+import { chercherConnaissance, enregistrerConfigConnaissance, lireConnaissance, enregistrerRechercheConnaissance, lireFichiersConnaissance, supprimerConnaissance } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { dialogue } from "../ui/dialogue.js";
@@ -35,6 +35,25 @@ function texteDecoupage(d) {
   let t = `Découpage : ${STRATEGIES[strategie] ?? STRATEGIES.taille_fixe} · ${milliers(taille)} caractères`;
   if (strategie === "taille_fixe") t += recouvrement === 0 ? " · sans recouvrement" : ` · recouvrement ${pluriel(recouvrement, "ligne")}`;
   return t;
+}
+const MSG_PASSAGES = "Entre 1 et 50 passages.";
+const MSG_SCORE = "Un nombre de 0 à 1, deux décimales au plus, ou vide.";
+const AIDE_RECHERCHE = "Score minimal vide : aucun seuil. Les réglages valent dès la prochaine recherche.";
+const texteScore = (n) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
+/** Nombre de passages tapé : le nombre, ou null si refusé. */
+function lirePassages(t) {
+  const v = t.trim();
+  if (!/^\d+$/.test(v)) return null;
+  const n = Number(v);
+  return n >= 1 && n <= 50 ? n : null;
+}
+/** Score minimal tapé : `{ valeur }` (null si vide), ou null si refusé. */
+function lireScore(t) {
+  const v = t.trim();
+  if (v === "") return { valeur: null };
+  if (!/^\d+([.,]\d{1,2})?$/.test(v)) return null;
+  const n = Number(v.replace(",", "."));
+  return n <= 1 ? { valeur: n } : null;
 }
 const sansPoint = (t) => String(t ?? "erreur").replace(/\.$/, "");
 const paragraphe = (texte) => {
@@ -202,15 +221,20 @@ export function vueConnaissance({ surEtat = () => {}, ouvrirFichier = async () =
     const r = await lireFichiersConnaissance(nom);
     if (!dlg || mienne !== generation) return;
     if (!Array.isArray(r.fichiers)) return dlg.definirResultat(messageEchec(r, "Impossible de lire la collection"));
-    fichiersDe = { nom, fichiers: r.fichiers, decoupage: r.decoupage };
+    fichiersDe = { nom, fichiers: r.fichiers, decoupage: r.decoupage, recherche: r.recherche, ui: null };
     rendreFichiers("retour");
   }
 
+  // Le formulaire est construit à l'ouverture de la fiche et gardé : une relecture ne met à jour que les nombres.
   function rendreFichiers(focus) {
     const c = etat.collections.find((x) => x.nom === fichiersDe.nom);
     if (!c) {
       fichiersDe = null;
       return rendreCollections();
+    }
+    if (fichiersDe.ui) {
+      fichiersDe.ui.compte.textContent = nombres(c);
+      return;
     }
     const retourListe = bouton({ icone: "arrow-left", nomAccessible: "Retour aux collections", infoBulle: "Retour aux collections", positionInfoBulle: "gauche" });
     retourListe.enveloppe.classList.add("ya-agents-retour");
@@ -233,18 +257,103 @@ export function vueConnaissance({ surEtat = () => {}, ouvrirFichier = async () =
     const decoupage = document.createElement("p");
     decoupage.className = "ya-fiche-decoupage";
     decoupage.textContent = texteDecoupage(fichiersDe.decoupage);
-    panneaux.collections.replaceChildren(
-      enColonne(
+    const titreFichiers = document.createElement("h3");
+    titreFichiers.className = "ya-fiche-soustitre";
+    titreFichiers.textContent = "Fichiers";
+    fichiersDe.ui = { compte };
+    const fiche = enColonne(
         entete,
         decoupage,
+        formulaireRecherche(c.nom),
+        titreFichiers,
         fichiersDe.fichiers.length === 0
           ? indication({ texte: "Aucun fichier." })
           : liste({ variante: "objets", nom: `Fichiers de ${c.nom}`, lignes: fichiersDe.fichiers.map((f) => ({ id: f, libelle: f })) }),
-      ),
     );
-    // « retour » : entrée dans la vue ; sinon (relecture) le focus revient à l'élément de même nom.
-    const cible = focus === "retour" ? retourListe : focus ? [...panneaux.collections.querySelectorAll("[aria-label]")].find((e) => e.getAttribute("aria-label") === focus) : null;
-    cible?.focus();
+    fiche.classList.add("ya-fiche-fichiers");
+    panneaux.collections.replaceChildren(fiche);
+    if (focus === "retour") retourListe.focus();
+  }
+
+  // REQ-114, V-013 : « Réglages de recherche » de la collection `nom`.
+  function formulaireRecherche(nom) {
+    const { passages = 10, score_minimal = null } = fichiersDe.recherche ?? {};
+    const cPassages = champ({ libelle: "Nombre de passages", valeur: String(passages), clavier: "numerique" });
+    const cScore = champ({ libelle: "Score minimal", valeur: texteScore(score_minimal), clavier: "decimal" });
+    const inPassages = cPassages.querySelector("input");
+    const inScore = cScore.querySelector("input");
+    const aide = paragraphe(AIDE_RECHERCHE);
+    aide.id = `recherche-aide-${nom}`;
+    for (const i of [inPassages, inScore]) i.setAttribute("aria-describedby", aide.id);
+    let ok = bouton({ libelle: "Enregistrer", variante: "principal" });
+    const ligne = document.createElement("div");
+    ligne.className = "ya-fiche-recherche";
+    ligne.append(cPassages, cScore, ok);
+    const zoneMessage = document.createElement("div");
+    zoneMessage.hidden = true;
+    const poserMessage = (m) => {
+      zoneMessage.replaceChildren(...(m ? [m] : []));
+      zoneMessage.hidden = !m;
+    };
+    const groupe = document.createElement("fieldset");
+    const legende = document.createElement("legend");
+    legende.textContent = "Réglages de recherche";
+    groupe.append(legende, ligne, aide, zoneMessage);
+
+    const poserErreur = (cc, texte) => {
+      cc.querySelector(".champ-erreur")?.remove();
+      const saisie = cc.querySelector("input");
+      saisie.removeAttribute("aria-invalid");
+      saisie.setAttribute("aria-describedby", aide.id);
+      if (!texte) return;
+      const e = document.createElement("div");
+      e.className = "champ-erreur";
+      e.id = `${aide.id}-${saisie.id}`;
+      e.setAttribute("role", "alert");
+      e.textContent = texte;
+      cc.append(e);
+      saisie.setAttribute("aria-invalid", "true");
+      saisie.setAttribute("aria-describedby", `${aide.id} ${e.id}`);
+    };
+    const effacerMessage = () => poserMessage();
+    let enCours = false;
+    async function enregistrerReglages() {
+      if (enCours || !dlg) return;
+      effacerMessage();
+      const p = lirePassages(inPassages.value);
+      const sc = lireScore(inScore.value);
+      poserErreur(cPassages, p === null ? MSG_PASSAGES : "");
+      poserErreur(cScore, sc === null ? MSG_SCORE : "");
+      if (p === null || sc === null) return (p === null ? inPassages : inScore).focus();
+      enCours = true;
+      const mienne = generation;
+      const surBouton = document.activeElement === ok;
+      const attente = bouton({ libelle: "Enregistrer", libelleEnCours: "Enregistrement…", variante: "principal" });
+      ok.replaceWith(attente);
+      const r = await enregistrerRechercheConnaissance(nom, { passages: p, score_minimal: sc.valeur });
+      enCours = false;
+      attente.replaceWith(ok);
+      if (!dlg || mienne !== generation) return;
+      if (r.recherche) {
+        fichiersDe.recherche = r.recherche;
+        inPassages.value = String(r.recherche.passages);
+        inScore.value = texteScore(r.recherche.score_minimal);
+        poserMessage(message({ texte: "Réglages de recherche enregistrés.", variante: "succes" }));
+      } else if (r.coupure) poserMessage(message({ texte: TEXTE_COUPURE, variante: "erreur" }));
+      else poserMessage(message({ texte: `Enregistrement impossible : ${sansPoint(r.message)}.`, variante: "erreur" }));
+      if (surBouton) ok.focus();
+    }
+    ok.addEventListener("click", enregistrerReglages);
+    for (const i of [inPassages, inScore]) {
+      i.addEventListener("input", effacerMessage);
+      i.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          enregistrerReglages();
+        }
+      });
+    }
+    return groupe;
   }
 
   function demanderSuppression(nom) {
@@ -483,6 +592,7 @@ export function vueConnaissance({ surEtat = () => {}, ouvrirFichier = async () =
     etat = r;
     if (r.config) saisie = { provider: r.config.provider, modele: r.config.modele };
     for (const s of SECTIONS) panneaux[s.id] = document.createElement("div");
+    panneaux.collections.className = "ya-collections";
     panneaux.recherche.className = "ya-recherche";
     section = configurer || !r.config ? "configuration" : "recherche";
     barre = onglets({ presentation: "sections", nomBarre: "Base de connaissance", onglets: SECTIONS, actif: section, surChoix: choisir, panneaux });

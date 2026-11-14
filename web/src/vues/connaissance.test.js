@@ -630,3 +630,161 @@ test("REQ113_AC10_ligne_de_decoupage_sous_les_nombres_dans_Fichiers_de", async (
     document.body.replaceChildren();
   }
 });
+
+// ---- REQ-114 : réglages de recherche dans « Fichiers de … » ----
+
+const FICHE = (extra = {}) => rep({ nom: "notes", fichiers: ["docs/a.md", "docs/b.md"], recherche: { passages: 10, score_minimal: null }, ...extra });
+const PUT_NOTES = "PUT /api/connaissance/collections/notes/recherche";
+async function ouvrirFiche(initial = etat([NOTES]), routes = {}) {
+  const m = monter(initial, { "GET /api/connaissance/collections/notes": FICHE(), ...routes });
+  await m.v.ouvrir();
+  touche(onglet("Recherche"), "ArrowRight");
+  touche(onglet("Configuration"), "ArrowRight");
+  parNom("Fichiers de notes").click();
+  await vi.waitFor(() => expect(parNom("Retour aux collections")).toBeDefined());
+  return m;
+}
+const ecrire = (el, texte) => {
+  el.value = texte;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+};
+
+test("REQ114_AC9_formulaire_sous_le_decoupage_valeurs_aide_ordre_de_tab_et_focus", async () => {
+  await ouvrirFiche();
+  const p = panneau("Collections");
+  const groupe = p.querySelector("fieldset");
+  expect(groupe.querySelector("legend").textContent).toBe("Réglages de recherche");
+  const [np, sm] = [champDe("Nombre de passages"), champDe("Score minimal")];
+  expect([np.value, sm.value]).toEqual(["10", ""]);
+  expect([np.type, sm.type]).toEqual(["text", "text"]);
+  expect([np.getAttribute("inputmode"), sm.getAttribute("inputmode")]).toEqual(["numeric", "decimal"]);
+  const aide = groupe.querySelector("p");
+  expect(aide.textContent).toBe("Score minimal vide : aucun seuil. Les réglages valent dès la prochaine recherche.");
+  for (const i of [np, sm]) expect(i.getAttribute("aria-describedby").split(" ")).toContain(aide.id);
+  const ordre = [...p.children[0].children];
+  const rang = (e) => ordre.findIndex((n) => n === e || n.contains(e));
+  expect(rang(p.querySelector(".ya-fiche-decoupage"))).toBeLessThan(rang(groupe));
+  expect(rang(groupe)).toBeLessThan(rang(p.querySelector("h3")));
+  expect(p.querySelector("h3").textContent).toBe("Fichiers");
+  expect(rang(p.querySelector("h3"))).toBeLessThan(rang(p.querySelector("ul")));
+  expect(document.activeElement).toBe(parNom("Retour aux collections"));
+  const focalisables = [...dlg().querySelectorAll("button, input, [tabindex='0']")].filter((e) => panneau("Collections").contains(e) || e === parNom("Fermer"));
+  expect(focalisables.map((e) => (e.tagName === "INPUT" ? e.labels[0].textContent : e.getAttribute("aria-label") ?? e.textContent))).toEqual([
+    "Retour aux collections", "Nombre de passages", "Score minimal", "Enregistrer", "Fichiers de notes", "Fermer",
+  ]);
+});
+
+test("REQ114_AC9_reponse_sans_recherche_vaut_10_et_vide_score_avec_virgule", async () => {
+  await ouvrirFiche(etat([NOTES]), { "GET /api/connaissance/collections/notes": rep({ nom: "notes", fichiers: [] }) });
+  expect([champDe("Nombre de passages").value, champDe("Score minimal").value]).toEqual(["10", ""]);
+  document.body.replaceChildren();
+  await ouvrirFiche(etat([NOTES]), { "GET /api/connaissance/collections/notes": FICHE({ recherche: { passages: 3, score_minimal: 0.5 } }) });
+  expect([champDe("Nombre de passages").value, champDe("Score minimal").value]).toEqual(["3", "0,5"]);
+});
+
+test("REQ114_AC9_Entree_dans_chaque_champ_vaut_Enregistrer", async () => {
+  const m = await ouvrirFiche(etat([NOTES]), { [PUT_NOTES]: rep({ recherche: { passages: 4, score_minimal: null } }) });
+  for (const libelle of ["Nombre de passages", "Score minimal"]) {
+    ecrire(champDe("Nombre de passages"), "4");
+    const avant = ecritures(m.appels).length;
+    touche(champDe(libelle), "Enter");
+    await vi.waitFor(() => expect(ecritures(m.appels).length).toBe(avant + 1));
+    await vi.waitFor(() => expect(panneau("Collections").querySelector("[role=status]")).not.toBeNull());
+  }
+  expect(ecritures(m.appels).at(-1).corps).toEqual({ passages: 4, score_minimal: null });
+});
+
+test("REQ114_AC9_relecture_pendant_un_ajout_met_a_jour_les_nombres_sans_toucher_aux_champs_ni_au_focus", async () => {
+  vi.useFakeTimers();
+  let lectures = 0;
+  const ajout = (faits) => etat([{ ...NOTES, passages: faits, ajout: { faits, total: 5 } }]);
+  const m = monter(ajout(1), {
+    "GET /api/connaissance": () => (++lectures === 1 ? ajout(1) : ajout(3)),
+    "GET /api/connaissance/collections/notes": FICHE(),
+  });
+  await m.v.ouvrir();
+  touche(onglet("Recherche"), "ArrowRight");
+  touche(onglet("Configuration"), "ArrowRight");
+  parNom("Fichiers de notes").click();
+  await vi.waitFor(() => expect(parNom("Retour aux collections")).toBeDefined());
+  const np = champDe("Nombre de passages");
+  ecrire(np, "42");
+  np.focus();
+  const ul = panneau("Collections").querySelector("ul");
+  await vi.advanceTimersByTimeAsync(1100);
+  expect(panneau("Collections").textContent).toContain("3 passages");
+  expect(champDe("Nombre de passages")).toBe(np);
+  expect(np.value).toBe("42");
+  expect(document.activeElement).toBe(np);
+  expect(panneau("Collections").querySelector("ul")).toBe(ul);
+});
+
+test("REQ114_AC10_AC7_enregistrement_accepte_en_cours_message_statut_score_relu_focus_inchange", async () => {
+  let fin;
+  const m = await ouvrirFiche(etat([NOTES]), { [PUT_NOTES]: () => new Promise((r) => (fin = r)) });
+  ecrire(champDe("Nombre de passages"), "3");
+  ecrire(champDe("Score minimal"), "0.5");
+  champDe("Score minimal").focus();
+  touche(champDe("Score minimal"), "Enter");
+  await vi.waitFor(() => expect(parNom("Enregistrement…")).toBeDefined());
+  expect(m.appels.at(-1)).toEqual({ url: "/api/connaissance/collections/notes/recherche", methode: "PUT", corps: { passages: 3, score_minimal: 0.5 } });
+  fin(rep({ recherche: { passages: 3, score_minimal: 0.5 } }));
+  await vi.waitFor(() => expect(panneau("Collections").querySelector("[role=status]")?.textContent).toBe("Réglages de recherche enregistrés."));
+  expect(parNom("Enregistrer")).toBeDefined();
+  expect(champDe("Score minimal").value).toBe("0,5");
+  expect(document.activeElement).toBe(champDe("Score minimal"));
+  const groupe = panneau("Collections").querySelector("fieldset");
+  expect(groupe.querySelector("p").nextElementSibling.querySelector("[role=status]")).not.toBeNull();
+  ecrire(champDe("Score minimal"), "0,6");
+  expect(panneau("Collections").querySelector("[role=status]")).toBeNull();
+});
+
+test("REQ114_AC10_AC7_valeurs_refusees_messages_sous_les_champs_focus_et_aucune_requete", async () => {
+  const m = await ouvrirFiche();
+  const essai = (p, s) => {
+    ecrire(champDe("Nombre de passages"), p);
+    ecrire(champDe("Score minimal"), s);
+    parNom("Enregistrer").click();
+  };
+  const erreurs = () => [...panneau("Collections").querySelectorAll("[role=alert]")].map((e) => e.textContent);
+  for (const p of ["0", "51", "2,5", "dix", ""]) {
+    essai(p, "");
+    expect(erreurs()).toEqual(["Entre 1 et 50 passages."]);
+    expect(champDe("Nombre de passages").getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(champDe("Nombre de passages"));
+  }
+  for (const s of ["-0,1", "1,01", "0,555", "x"]) {
+    essai("5", s);
+    expect(erreurs()).toEqual(["Un nombre de 0 à 1, deux décimales au plus, ou vide."]);
+    expect(champDe("Score minimal").getAttribute("aria-invalid")).toBe("true");
+    expect(champDe("Nombre de passages").hasAttribute("aria-invalid")).toBe(false);
+    expect(document.activeElement).toBe(champDe("Score minimal"));
+  }
+  essai("0", "x");
+  expect(erreurs()).toEqual(["Entre 1 et 50 passages.", "Un nombre de 0 à 1, deux décimales au plus, ou vide."]);
+  expect(document.activeElement).toBe(champDe("Nombre de passages"));
+  expect(ecritures(m.appels)).toEqual([]);
+});
+
+test("REQ114_AC10_refus_du_serveur_coupure_et_valeurs_tapees_gardees", async () => {
+  await ouvrirFiche(etat([NOTES]), { [PUT_NOTES]: rep({ cause: "passages", message: "Entre 1 et 50 passages." }, 400) });
+  ecrire(champDe("Nombre de passages"), "7");
+  parNom("Enregistrer").click();
+  await vi.waitFor(() => expect(panneau("Collections").querySelector("[role=alert]")?.textContent).toBe("Enregistrement impossible : Entre 1 et 50 passages."));
+  expect(champDe("Nombre de passages").value).toBe("7");
+  document.body.replaceChildren();
+  await ouvrirFiche(etat([NOTES]), { [PUT_NOTES]: "coupure" });
+  ecrire(champDe("Score minimal"), "0,3");
+  parNom("Enregistrer").click();
+  await vi.waitFor(() => expect(panneau("Collections").querySelector("[role=alert]")?.textContent).toBe("Connexion perdue. Réessayez au retour."));
+  expect(champDe("Score minimal").value).toBe("0,3");
+});
+
+test("REQ114_AC10_valeurs_non_enregistrees_perdues_au_retour_puis_aux_fichiers", async () => {
+  await ouvrirFiche();
+  ecrire(champDe("Nombre de passages"), "33");
+  parNom("Retour aux collections").click();
+  parNom("Fichiers de notes").click();
+  await vi.waitFor(() => expect(parNom("Retour aux collections")).toBeDefined());
+  expect(champDe("Nombre de passages").value).toBe("10");
+});

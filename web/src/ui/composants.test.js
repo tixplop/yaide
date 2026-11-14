@@ -198,3 +198,12 @@ test("REQ113_motif_plusieurs_champs_grille_de_deux_colonnes_egales_en_tokens", (
   a(".ya-formulaire-aide", "color: var(--ink-muted)");
   a(".ya-formulaire [hidden]", "display: none");
 });
+
+test("REQ114_motif_petit_formulaire_dans_une_fiche_grille_1fr_1fr_auto_en_tokens", () => {
+  a(".ya-fiche-recherche", "display: grid");
+  a(".ya-fiche-recherche", "grid-template-columns: 1fr 1fr auto");
+  a(".ya-fiche-recherche", "gap: var(--space-3)");
+  a(".ya-fiche-recherche", "align-items: start");
+  a(".ya-fiche-recherche > .ya-btn", "margin-top: 20px");
+  a(".ya-fiche-soustitre", "font: 600 13px/20px var(--font-sans)");
+});

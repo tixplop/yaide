@@ -147,6 +147,28 @@ test("REQ103_parcours_75_76_base_de_connaissance", async ({ page }) => {
     await base.getByRole("tab", { name: "Collections" }).click();
     await base.getByRole("button", { name: "Fichiers de api-docs" }).click();
     await expect(base.getByText("Découpage : Sections Markdown · 1\u00a0500 caractères")).toBeVisible();
+
+    // REQ-114 (AC-114-9, AC-114-3) : réglages de recherche de `notes`, côte à côte ; 1 passage, puis la recherche le montre.
+    await base.getByRole("button", { name: "Retour aux collections" }).click();
+    await base.getByRole("button", { name: "Fichiers de notes" }).click();
+    const [rp, rs, rb] = [await base.getByLabel("Nombre de passages").boundingBox(), await base.getByLabel("Score minimal").boundingBox(), await base.getByRole("button", { name: "Enregistrer" }).boundingBox()];
+    expect(Math.abs(rp.y - rs.y)).toBeLessThan(1);
+    expect(Math.abs(rp.height - rs.height)).toBeLessThan(1);
+    expect(Math.abs(rp.width - rs.width)).toBeLessThan(1);
+    expect(rs.x).toBeGreaterThan(rp.x + rp.width);
+    expect(Math.abs(rb.y - rp.y)).toBeLessThan(1);
+    // La liste « Fichiers de notes » finit au bas du panneau, et le panneau ne défile pas.
+    const [liste, panneauC] = [await base.getByRole("list", { name: "Fichiers de notes" }).boundingBox(), await base.getByRole("tabpanel", { name: "Collections" }).boundingBox()];
+    expect(Math.abs(liste.y + liste.height - (panneauC.y + panneauC.height))).toBeLessThan(2);
+    expect(await base.getByRole("tabpanel", { name: "Collections" }).evaluate((e) => e.scrollHeight <= e.clientHeight + 1 && e.parentElement.scrollHeight <= e.parentElement.clientHeight + 1)).toBe(true);
+    await base.getByLabel("Nombre de passages").fill("1");
+    await page.keyboard.press("Enter");
+    await expect(base.getByText("Réglages de recherche enregistrés.")).toBeVisible();
+    await base.getByRole("tab", { name: "Recherche" }).click();
+    await base.getByLabel("Question").fill("Comment lancer les tests ?");
+    await base.getByLabel("Collection", { exact: true }).selectOption({ label: "notes" });
+    await page.keyboard.press("Enter");
+    await expect(base.getByRole("status").filter({ hasText: "du plus proche au moins proche." })).toHaveText("1 passage, du plus proche au moins proche.");
     await page.keyboard.press("Escape");
 
     // REQ-108 (AC-108-1, AC-108-3, AC-108-10) : « # » dans « Message à l'agent » liste les collections.
