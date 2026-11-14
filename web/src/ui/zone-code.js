@@ -171,6 +171,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     else if (lien) surLien?.({ adresse, element: vue.contentDOM });
   };
   const compartiment = new Compartment();
+  const compartimentLangage = new Compartment();
   const compartimentHybride = new Compartment();
   const hybridePossible = langage === "markdown" && !diff;
   const extensionsHybride = () => [extensionHybride({ surLien: suivreLien, surSurvol: surSurvolLien }), numerosDesTitres, numerosDesTableaux, clavierTableau, EditorView.lineWrapping];
@@ -188,7 +189,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
       syntaxHighlighting(couleurs),
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
     );
-    if (langage) extensions.push(supportLangage(langage));
+    extensions.push(compartimentLangage.of(langage ? supportLangage(langage) : []));
   }
   extensions.push(compartimentHybride.of(hybridePossible && hybride ? extensionsHybride() : []));
   extensions.push(
@@ -210,6 +211,10 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   const vue = new EditorView({ state: EditorState.create({ doc: contenu, extensions }), parent: hote });
 
   racine.vue = vue;
+  // Change la coloration sans recréer la vue : texte, historique, curseur et défilement restent.
+  racine.changerLangage = (id) => {
+    if (!diff) vue.dispatch({ effects: compartimentLangage.reconfigure(id ? supportLangage(id) : []) });
+  };
   racine.contenu = () => vue.state.doc.toString();
   racine.definirApercu = (actif) => {
     if (actif && !ap) {

@@ -30,7 +30,7 @@ async function ouvrir(page, options) {
 }
 
 test("REQ011_AC1_rust_colore_par_les_tokens_du_design_system", async ({ page }) => {
-  await ouvrir(page, { contenu: 'fn main() { let s = "a"; }', langage: "rust", nom: "main.rs" });
+  await ouvrir(page, { contenu: 'fn main() { let s = "a"; }\nprintln!("a");\n#[derive(Debug)]', langage: "rust", nom: "main.rs" });
   const couleur = (txt) => page.locator(".cm-line span", { hasText: txt }).first().evaluate((e) => getComputedStyle(e).color);
   const attendu = (token) =>
     page.evaluate((t) => {
@@ -42,6 +42,11 @@ test("REQ011_AC1_rust_colore_par_les_tokens_du_design_system", async ({ page }) 
   expect(await couleur("fn")).toBe(await attendu("--syn-keyword"));
   expect(await couleur('"a"')).toBe(await attendu("--syn-string"));
   expect(await page.locator(".cm-editor").evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(await attendu("--bg-200"));
+  for (const theme of [null, "light"]) {
+    if (theme) await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    expect(await couleur("println")).toBe(await attendu("--syn-function"));
+    expect(await couleur("#")).toBe(await attendu("--syn-control"));
+  }
 });
 
 test("REQ011_AC7_tab_indente_puis_echap_tab_sort_sans_rien_inserer", async ({ page }) => {

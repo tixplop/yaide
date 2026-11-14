@@ -11,6 +11,15 @@ import { yaml } from "@codemirror/lang-yaml";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { java, kotlin, csharp } from "@codemirror/legacy-modes/mode/clike";
+import { swift } from "@codemirror/legacy-modes/mode/swift";
+import { ruby } from "@codemirror/legacy-modes/mode/ruby";
+import { lua } from "@codemirror/legacy-modes/mode/lua";
+import { standardSQL } from "@codemirror/legacy-modes/mode/sql";
+import { xml } from "@codemirror/legacy-modes/mode/xml";
+import { properties } from "@codemirror/legacy-modes/mode/properties";
+import { diff } from "@codemirror/legacy-modes/mode/diff";
+import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
 
 // Langage d'un bloc clôturé (```rust) : sa coloration, ou null (markdown lui-même ou nom inconnu).
 function langageDeBloc(info) {
@@ -34,12 +43,27 @@ const LANGAGES = {
   toml: { extensions: ["toml"], support: () => StreamLanguage.define(toml) },
   markdown: { extensions: ["md", "markdown"], support: () => markdown({ base: markdownLanguage, codeLanguages: langageDeBloc }) },
   shell: { extensions: ["sh", "bash", "zsh"], support: () => StreamLanguage.define(shell) },
+  java: { extensions: ["java"], support: () => StreamLanguage.define(java) },
+  kotlin: { extensions: ["kt", "kts"], support: () => StreamLanguage.define(kotlin) },
+  csharp: { extensions: ["cs"], support: () => StreamLanguage.define(csharp) },
+  swift: { extensions: ["swift"], support: () => StreamLanguage.define(swift) },
+  ruby: { extensions: ["rb"], support: () => StreamLanguage.define(ruby) },
+  lua: { extensions: ["lua"], support: () => StreamLanguage.define(lua) },
+  sql: { extensions: ["sql"], support: () => StreamLanguage.define(standardSQL) },
+  xml: { extensions: ["xml", "svg"], support: () => StreamLanguage.define(xml) },
+  properties: { extensions: ["ini", "cfg", "conf", "properties", "env"], support: () => StreamLanguage.define(properties) },
+  diff: { extensions: ["diff", "patch"], support: () => StreamLanguage.define(diff) },
+  dockerfile: { extensions: ["dockerfile"], support: () => StreamLanguage.define(dockerFile) },
 };
 
 export const IDENTIFIANTS = Object.keys(LANGAGES);
 
+// `Dockerfile` n'a pas d'extension : reconnu par son nom entier, casse ignorée.
+const estDockerfile = (nom) => String(nom ?? "").split("/").pop().toLowerCase() === "dockerfile";
+
 // Identifiant du langage d'après le nom du fichier, ou null (texte simple).
 export function langagePourFichier(nom) {
+  if (estDockerfile(nom)) return "dockerfile";
   const point = String(nom ?? "").lastIndexOf(".");
   if (point < 0) return null;
   const ext = nom.slice(point + 1).toLowerCase();
@@ -68,10 +92,22 @@ const NOMS = {
   TOML: ["toml"],
   Markdown: ["md", "markdown"],
   Shell: ["sh", "bash", "zsh"],
+  Java: ["java"],
+  Kotlin: ["kt", "kts"],
+  "C#": ["cs"],
+  Swift: ["swift"],
+  Ruby: ["rb"],
+  Lua: ["lua"],
+  SQL: ["sql"],
+  XML: ["xml", "svg"],
+  INI: ["ini", "cfg", "conf", "properties", "env"],
+  Diff: ["diff", "patch"],
+  Dockerfile: ["dockerfile"],
 };
 
 // Nom du langage d'après le nom du fichier ; « Texte » pour les autres.
 export function nomLangage(nom) {
+  if (estDockerfile(nom)) return "Dockerfile";
   const point = String(nom ?? "").lastIndexOf(".");
   const ext = point < 0 ? "" : nom.slice(point + 1).toLowerCase();
   return Object.keys(NOMS).find((n) => NOMS[n].includes(ext)) ?? "Texte";

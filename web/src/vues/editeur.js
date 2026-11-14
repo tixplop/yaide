@@ -518,6 +518,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       for (const g of groupes.values()) if (g.actif === o.chemin) g.actif = nouveau;
       o.chemin = nouveau;
       o.zone.vue.contentDOM.setAttribute("aria-label", `Éditeur ${nomDe(nouveau)}`);
+      o.zone.changerLangage(langagePourFichier(nomDe(nouveau)) ?? undefined);
     }
     afficher();
     garderListe();

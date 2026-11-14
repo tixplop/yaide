@@ -1,3 +1,4 @@
+import { language } from "@codemirror/language";
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { ensureSyntaxTree } from "@codemirror/language";
@@ -132,9 +133,27 @@ test("REQ037_AC5_fil_d_ariane_segments_chevrons_nom_en_dernier_et_absent_sans_fi
 });
 
 test("REQ037_AC11_nom_de_langage_par_extension", () => {
-  expect(["main.rs", "a.ts", "a.js", "x.py", "a.go", "a.c", "a.cpp", "a.html", "a.css", "a.json", "a.yml", "a.toml", "a.md", "a.sh", "a.zzz", "Makefile"].map(nomLangage)).toEqual([
+  expect(["main.rs", "a.ts", "a.js", "x.py", "a.go", "a.c", "a.cpp", "a.html", "a.css", "a.json", "a.yml", "a.toml", "a.md", "a.sh", "a.zzz", "Makefile", "A.java", "a.kt", "a.cs", "a.swift", "a.rb", "a.lua", "a.sql", "a.xml", "a.svg", "a.ini", "a.env", "a.patch", "Dockerfile", "index.php"].map(nomLangage)).toEqual([
     "Rust", "TypeScript", "JavaScript", "Python", "Go", "C", "C++", "HTML", "CSS", "JSON", "YAML", "TOML", "Markdown", "Shell", "Texte", "Texte",
+    "Java", "Kotlin", "C#", "Swift", "Ruby", "Lua", "SQL", "XML", "XML", "INI", "INI", "Diff", "Dockerfile", "Texte",
   ]);
+});
+
+test("REQ011_AC10_le_langage_suit_le_renommage_sans_perdre_le_texte", () => {
+  const { e, surActif } = monter();
+  e.ouvrir({ chemin: "notes.txt", contenu: "fn main() {}", version: "1" });
+  const zone = e.code.querySelector(".zone-code");
+  zone.vue.dispatch({ changes: { from: 0, insert: "// " } });
+  expect(languageDe(zone)).toBeNull();
+  e.renomme({ de: "notes.txt", vers: "notes.rs" });
+  expect(e.code.querySelector(".zone-code")).toBe(zone);
+  expect(zone.contenu()).toBe("// fn main() {}");
+  expect(onglets()[0].dataset.modifie).toBe("true");
+  expect(languageDe(zone)).toBe("rust");
+  expect(dernier(surActif).langage).toBe("Rust");
+  e.renomme({ de: "notes.rs", vers: "notes.txt" });
+  expect(languageDe(zone)).toBeNull();
+  expect(dernier(surActif).langage).toBe("Texte");
 });
 
 test("REQ022_AC7_un_second_diff_remplace_le_premier_et_publie_son_fichier", () => {
@@ -1828,3 +1847,7 @@ test("REQ106_AC3_ouvrirCitee_ouvre_a_la_ligne_apres_avantOuverture_ou_rend_le_re
   const vue = e.code.querySelector(".zone-code").vue;
   expect(vue.state.selection.main.head).toBe(vue.state.doc.line(3).from);
 });
+
+function languageDe(zone) {
+  return zone.vue.state.facet(language)?.name ?? null;
+}

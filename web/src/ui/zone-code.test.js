@@ -30,6 +30,19 @@ const EXEMPLES = {
   "a.toml": ["toml", 'a = "x"\n[t]\nb = 1'],
   "a.md": ["markdown", "# Titre\n\ntexte"],
   "a.sh": ["shell", 'echo "x" | grep y'],
+  "A.java": ["java", "class A { int x = 1; }"],
+  "a.kt": ["kotlin", "fun main() { val x = 1 }"],
+  "a.cs": ["csharp", "class A { int x = 1; }"],
+  "a.swift": ["swift", "let x = 1\nfunc f() {}"],
+  "a.rb": ["ruby", "def f\n  1\nend"],
+  "a.lua": ["lua", "local x = 1\nfunction f() end"],
+  "a.sql": ["sql", "SELECT a FROM t WHERE b = 1;"],
+  "a.xml": ["xml", '<a b="c">x</a>'],
+  "a.svg": ["xml", '<svg width="1"></svg>'],
+  "a.ini": ["properties", "[s]\na = 1"],
+  "a.env": ["properties", "A=1"],
+  "a.patch": ["diff", "@@ -1 +1 @@\n-a\n+b"],
+  Dockerfile: ["dockerfile", "FROM alpine\nRUN echo x"],
 };
 
 test.each(Object.entries(EXEMPLES))("REQ011_AC2_%s_reconnu_et_colore", (fichier, [id, texte]) => {
@@ -40,11 +53,19 @@ test.each(Object.entries(EXEMPLES))("REQ011_AC2_%s_reconnu_et_colore", (fichier,
   z.vue.dispatch({}); // force le rendu avec l'arbre complet
   const mots = z.querySelectorAll(".cm-line span");
   expect(mots.length).toBeGreaterThan(0);
+  const styles = [...document.querySelectorAll("style")].map((x) => x.textContent).join("");
+  const colore = [...mots].some((m) => m.className && [...m.classList].some((c) => new RegExp("\\." + c + "\\s*{[^}]*var\\(--syn-").test(styles)));
+  if (id !== "markdown") expect(colore).toBe(true);
   z.detruire();
 });
 
-test("REQ011_AC2_les_douze_langages_sont_couverts", () => {
-  expect(IDENTIFIANTS.sort()).toEqual(["cpp", "css", "go", "html", "json", "javascript", "markdown", "python", "rust", "shell", "toml", "yaml"].sort());
+test("REQ011_AC9_Dockerfile_par_son_nom_et_php_en_texte", () => {
+  expect(["Dockerfile", "dockerfile", "sous/Dockerfile"].map(langagePourFichier)).toEqual(["dockerfile", "dockerfile", "dockerfile"]);
+  expect(langagePourFichier("index.php")).toBeNull();
+});
+
+test("REQ011_AC2_AC9_tous_les_langages_sont_couverts", () => {
+  expect(IDENTIFIANTS.sort()).toEqual(["cpp", "css", "go", "html", "json", "javascript", "markdown", "python", "rust", "shell", "toml", "yaml", "java", "kotlin", "csharp", "swift", "ruby", "lua", "sql", "xml", "properties", "diff", "dockerfile"].sort());
 });
 
 test("REQ011_AC1_rust_colore_avec_les_tokens", () => {
@@ -280,6 +301,8 @@ const EXEMPLES_APERCU = {
   markdown: ["markdown", "md", "# Titre\n\n*x*"],
   shell: ["shell", "sh", 'echo "a" | grep a'],
   bash: ["bash", "bash", "if true; then echo 1; fi"],
+  java: ["java", "java", "class A { int x = 1; }"],
+  kotlin: ["kotlin", "kt", "fun main() { val x = 1 }"],
 };
 
 for (const [langue, [nom, ext, code]] of Object.entries(EXEMPLES_APERCU)) {
@@ -519,4 +542,60 @@ test("REQ102_AC11_collage_html_insere_le_texte_simple", () => {
   expect(z.contenu()).toBe("gras");
   z.detruire();
   z.remove();
+});
+
+// ---- REQ-011 AC-11 : macros, annotations, diff ----
+
+import { highlightTree } from "@lezer/highlight";
+import { rustLanguage } from "@codemirror/lang-rust";
+import { pythonLanguage } from "@codemirror/lang-python";
+import { couleurs } from "./couleurs-code.js";
+import { supportLangage } from "./langages.js";
+
+// Texte -> [{ mot, regle }] : la règle CSS de chaque morceau coloré.
+function colorations(langage, texte) {
+  const arbre = langage.parser.parse(texte);
+  const sortie = [];
+  highlightTree(arbre, couleurs, (from, to, classe) => sortie.push({ mot: texte.slice(from, to), classe }));
+  const css = (couleurs.module?.getRules?.() ?? "");
+  return sortie.map(({ mot, classe }) => {
+    const c = classe.split(" ").find((x) => css.includes("." + x)) ?? classe;
+    const m = new RegExp("\\." + c.replace(/[^\w-]/g, "\\$&") + "\\s*{([^}]*)}").exec(css);
+    return { mot, regle: m?.[1] ?? "" };
+  });
+}
+const langageDe = (id) => {
+  const s = supportLangage(id);
+  return s.language ?? s;
+};
+const couleurDe = (cs, mot) => cs.filter((c) => c.mot === mot).map((c) => c.regle);
+const jetons = (cs, mot, token) => couleurDe(cs, mot).some((r) => r.includes(`var(${token})`));
+
+test("REQ011_AC11_macros_et_attributs_rust_et_python", () => {
+  const rs = colorations(rustLanguage, 'println!("a");\nlet v = vec![1];\n#[derive(Debug)]\nstruct A;');
+  expect(jetons(rs, "println", "--syn-function")).toBe(true);
+  expect(jetons(rs, "!", "--syn-function")).toBe(true);
+  expect(jetons(rs, "vec", "--syn-function")).toBe(true);
+  expect(jetons(rs, "#", "--syn-control")).toBe(true);
+  const py = colorations(pythonLanguage, "@dataclass\nclass A:\n  pass");
+  expect(jetons(py, "@", "--syn-control")).toBe(true);
+});
+
+test("REQ011_AC11_annotation_java_et_fichier_diff", () => {
+  const java = langageDe("java");
+  const j = colorations(java, "class A {\n  @Override\n  void f() {}\n}");
+  expect(j.some((c) => c.mot.includes("@Override") && c.regle.includes("var(--syn-control)"))).toBe(true);
+  const d = colorations(langageDe("diff"), "@@ -1 +1 @@\n-a\n+b\n");
+  expect(d.find((c) => c.mot.startsWith("+")).regle).toContain("var(--syn-number)");
+  expect(d.find((c) => c.mot.startsWith("-")).regle).toContain("var(--syn-string)");
+  expect(d.find((c) => c.mot.startsWith("@@")).regle).toContain("var(--syn-control)");
+});
+
+test("REQ011_AC11_marques_markdown_sans_couleur", () => {
+  const md = colorations(langageDe("markdown"), "# Titre\n\n**gras**\n");
+  for (const marque of ["#", "**"]) {
+    const regles = couleurDe(md, marque);
+    expect(regles.length, marque).toBeGreaterThan(0);
+    for (const r of regles) expect(r, marque).not.toMatch(/color:\s*var\(--syn/);
+  }
 });
