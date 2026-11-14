@@ -1612,3 +1612,191 @@ fn REQ113_AC7_decoupage_relu_au_redemarrage_et_ancien_format_en_defaut() {
     assert_eq!(r.code, 200, "{}", r.corps);
     assert!(!r.json()["passages"].as_array().unwrap().is_empty());
 }
+
+fn recherche_de(s: &Serveur, nom: &str) -> Value {
+    let r = s.appel(
+        "GET",
+        &format!("/api/connaissance/collections/{nom}"),
+        &Value::Null,
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    r.json()["recherche"].clone()
+}
+
+fn regler_recherche(s: &Serveur, nom: &str, corps: &Value) -> Rep {
+    s.appel(
+        "PUT",
+        &format!("/api/connaissance/collections/{nom}/recherche"),
+        corps,
+    )
+}
+
+#[test]
+fn REQ114_AC1_AC2_AC8_reglages_par_defaut_enregistres_relus_et_perdus_avec_la_collection() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let racine = dossier("ac114-1");
+    let s = demarrer_avec(&racine, "projet", Some("200"));
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/b.md", "v2 deux\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    let fichier = s
+        .projet
+        .join(".yaide/connaissance/collections/notes/recherche.json");
+    // AC-114-1
+    assert!(!fichier.exists());
+    assert_eq!(
+        recherche_de(&s, "notes"),
+        json!({ "passages": 10, "score_minimal": null })
+    );
+    // AC-114-2
+    let avant = nombre_requetes(&recues);
+    let r = regler_recherche(&s, "notes", &json!({ "passages": 3, "score_minimal": 0.5 }));
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert_eq!(
+        r.json()["recherche"],
+        json!({ "passages": 3, "score_minimal": 0.5 })
+    );
+    let ecrit: Value = serde_json::from_slice(&std::fs::read(&fichier).unwrap()).unwrap();
+    assert_eq!(ecrit, json!({ "passages": 3, "score_minimal": 0.5 }));
+    assert_eq!(nombre_requetes(&recues), avant);
+    drop(s);
+    let s = demarrer_avec(&racine, "projet", Some("200"));
+    let voulu = json!({ "passages": 3, "score_minimal": 0.5 });
+    assert_eq!(recherche_de(&s, "notes"), voulu);
+    // Nouvel ajout, puis mise à jour automatique d'un fichier : les réglages restent.
+    ecrire(&s, "docs/c.md", "v3 trois\n");
+    assert_eq!(s.ajouter("notes", &["docs/c.md"]).code, 202);
+    s.attendre_fin();
+    assert_eq!(recherche_de(&s, "notes"), voulu);
+    let avant = nombre_requetes(&recues);
+    ecrire(&s, "docs/a.md", "v5 cinq\n");
+    attendre("mise à jour de a.md", || nombre_requetes(&recues) > avant);
+    attendre("vecteurs de a.md", || {
+        vecteurs_de(&s, "notes").starts_with(&[5.0, 1.0])
+    });
+    assert_eq!(recherche_de(&s, "notes"), voulu);
+    // AC-114-8 : supprimée puis recréée par un ajout → réglages par défaut.
+    assert_eq!(
+        s.appel(
+            "DELETE",
+            "/api/connaissance/collections/notes",
+            &Value::Null
+        )
+        .code,
+        200
+    );
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    assert!(!fichier.exists());
+    assert_eq!(
+        recherche_de(&s, "notes"),
+        json!({ "passages": 10, "score_minimal": null })
+    );
+}
+
+#[test]
+fn REQ114_AC2_enregistrement_accepte_pendant_un_ajout() {
+    let (adresse, recues) = faux_provider(vec![(200, 0), (200, 1500)]);
+    let s = lancer("ac114-2b");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/c.md", "v3 trois\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs/a.md"]).code, 202);
+    s.attendre_fin();
+    assert_eq!(s.ajouter("notes", &["docs/c.md"]).code, 202);
+    attendre("requête de l'ajout", || nombre_requetes(&recues) == 2);
+    assert_eq!(s.etat()["ajout"]["etat"], "en_cours");
+    let r = regler_recherche(
+        &s,
+        "notes",
+        &json!({ "passages": 4, "score_minimal": null }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    s.attendre_fin();
+    assert_eq!(
+        recherche_de(&s, "notes"),
+        json!({ "passages": 4, "score_minimal": null })
+    );
+}
+
+#[test]
+fn REQ114_AC7_refus_du_serveur_champ_nomme_rien_d_ecrit_et_collection_inconnue() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("ac114-7");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    let fichier = s
+        .projet
+        .join(".yaide/connaissance/collections/notes/recherche.json");
+    let msg_passages = "Entre 1 et 50 passages.";
+    let msg_score = "Un nombre de 0 à 1, deux décimales au plus, ou vide.";
+    let refus = [
+        (
+            json!({ "passages": 0, "score_minimal": null }),
+            "passages",
+            msg_passages,
+        ),
+        (
+            json!({ "passages": 51, "score_minimal": null }),
+            "passages",
+            msg_passages,
+        ),
+        (
+            json!({ "passages": "10", "score_minimal": null }),
+            "passages",
+            msg_passages,
+        ),
+        (
+            json!({ "passages": 2.5, "score_minimal": null }),
+            "passages",
+            msg_passages,
+        ),
+        (json!({ "score_minimal": null }), "passages", msg_passages),
+        (
+            json!({ "passages": 10, "score_minimal": -0.1 }),
+            "score_minimal",
+            msg_score,
+        ),
+        (
+            json!({ "passages": 10, "score_minimal": 1.01 }),
+            "score_minimal",
+            msg_score,
+        ),
+        (
+            json!({ "passages": 10, "score_minimal": 0.555 }),
+            "score_minimal",
+            msg_score,
+        ),
+        (
+            json!({ "passages": 10, "score_minimal": "x" }),
+            "score_minimal",
+            msg_score,
+        ),
+    ];
+    for (corps, cause, message) in refus {
+        let r = regler_recherche(&s, "notes", &corps);
+        assert_eq!(r.code, 400, "{corps} : {}", r.corps);
+        assert_eq!(r.json()["cause"], cause, "{corps}");
+        assert_eq!(r.json()["message"], message, "{corps}");
+        assert!(!fichier.exists(), "{corps}");
+    }
+    // Un réglage valide déjà écrit reste inchangé après un refus.
+    assert_eq!(
+        regler_recherche(&s, "notes", &json!({ "passages": 2, "score_minimal": 0.3 })).code,
+        200
+    );
+    let avant = std::fs::read(&fichier).unwrap();
+    let r = regler_recherche(
+        &s,
+        "notes",
+        &json!({ "passages": 99, "score_minimal": 0.4 }),
+    );
+    assert_eq!(r.code, 400);
+    assert_eq!(std::fs::read(&fichier).unwrap(), avant);
+    let r = regler_recherche(&s, "zzz", &json!({ "passages": 3, "score_minimal": null }));
+    assert_eq!(r.code, 404, "{}", r.corps);
+}

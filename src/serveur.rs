@@ -1456,9 +1456,49 @@ async fn connaissance_fichiers(
     match base.fichiers_et_decoupage(&exact) {
         Ok((f, decoupage)) => json_rep(
             StatusCode::OK,
-            serde_json::json!({ "nom": exact, "fichiers": f, "decoupage": decoupage }),
+            serde_json::json!({ "nom": exact, "fichiers": f, "decoupage": decoupage, "recherche": base.lire_recherche(&exact) }),
         ),
         Err(m) => refus_base(StatusCode::INTERNAL_SERVER_ERROR, "lecture", m),
+    }
+}
+
+/// `{ passages, score_minimal }` ; n'écrit que `recherche.json`, sans verrou : marche pendant un ajout.
+async fn connaissance_recherche(
+    State(etat): State<Partage>,
+    CheminUrl(nom): CheminUrl<String>,
+    corps: Bytes,
+) -> Response {
+    let base = connaissance::Base::new(&etat.projet_dir);
+    let exact = match collection_existante(&base, &nom) {
+        Ok(n) => n,
+        Err(r) => return r,
+    };
+    let refus = |champ: &str, message: &str| refus_base(StatusCode::BAD_REQUEST, champ, message);
+    const MSG_PASSAGES: &str = "Entre 1 et 50 passages.";
+    const MSG_SCORE: &str = "Un nombre de 0 à 1, deux décimales au plus, ou vide.";
+    let Some(v) = corps_json(&corps).filter(|v| v.is_object()) else {
+        return refus("passages", MSG_PASSAGES);
+    };
+    let Some(passages) = v["passages"].as_u64().and_then(|n| u32::try_from(n).ok()) else {
+        return refus("passages", MSG_PASSAGES);
+    };
+    let score_minimal = match &v["score_minimal"] {
+        serde_json::Value::Null => None,
+        x => match x.as_f64() {
+            Some(f) => Some(f),
+            None => return refus("score_minimal", MSG_SCORE),
+        },
+    };
+    let r = connaissance::Recherche {
+        passages,
+        score_minimal,
+    };
+    if let Err((champ, message)) = r.valider() {
+        return refus(champ, message);
+    }
+    match base.ecrire_recherche(&exact, &r) {
+        Ok(()) => json_rep(StatusCode::OK, serde_json::json!({ "recherche": r })),
+        Err(m) => refus_base(StatusCode::INTERNAL_SERVER_ERROR, "ecriture", m),
     }
 }
 
@@ -1944,6 +1984,10 @@ pub async fn servir(
         .route(
             "/api/connaissance/collections/{nom}",
             get(connaissance_fichiers).delete(connaissance_supprimer),
+        )
+        .route(
+            "/api/connaissance/collections/{nom}/recherche",
+            put(connaissance_recherche),
         )
         .route("/api/connaissance/ajouts", post(connaissance_ajouter))
         .route(

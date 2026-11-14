@@ -8,8 +8,43 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 
 const LOT: usize = 64;
-const RESULTATS_MAX: usize = 10;
 const PROVIDERS_ADMIS: [&str; 5] = ["openai", "google", "openrouter", "litellm", "ollama"];
+
+/// Réglages de recherche d'une collection (REQ-114), dans `recherche.json`.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Recherche {
+    pub passages: u32,
+    #[serde(default)]
+    pub score_minimal: Option<f64>,
+}
+
+impl Default for Recherche {
+    fn default() -> Self {
+        Recherche {
+            passages: 10,
+            score_minimal: None,
+        }
+    }
+}
+
+impl Recherche {
+    /// Refus : (champ, message).
+    pub fn valider(&self) -> Result<(), (&'static str, &'static str)> {
+        if !(1..=50).contains(&self.passages) {
+            return Err(("passages", "Entre 1 et 50 passages."));
+        }
+        if let Some(x) = self.score_minimal {
+            let centiemes = x * 100.0;
+            if !(0.0..=1.0).contains(&x) || (centiemes.round() - centiemes).abs() > 1e-9 {
+                return Err((
+                    "score_minimal",
+                    "Un nombre de 0 à 1, deux décimales au plus, ou vide.",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Config {
@@ -468,6 +503,22 @@ impl Base {
         Ok((chemins, c.decoupage))
     }
 
+    /// Réglages de recherche de la collection `nom` (nom exact) ; absents ou illisibles : le défaut.
+    pub fn lire_recherche(&self, nom: &str) -> Recherche {
+        std::fs::read(self.dossier_collections().join(nom).join("recherche.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn ecrire_recherche(&self, nom: &str, r: &Recherche) -> Result<(), String> {
+        let brut = serde_json::to_vec_pretty(r).map_err(|e| e.to_string())?;
+        ecrire_atomique(
+            &self.dossier_collections().join(nom).join("recherche.json"),
+            &brut,
+        )
+    }
+
     pub fn supprimer(&self, nom: &str) -> Result<(), String> {
         let exact = self.trouver(nom)?.ok_or("Cette collection n'existe pas.")?;
         let dossier = self.dossier_collections().join(exact);
@@ -617,7 +668,8 @@ impl Base {
         }
     }
 
-    /// Les 10 passages les plus proches de la question, dans les collections nommées (casse
+    /// Les passages les plus proches de la question, selon les réglages de chaque collection
+    /// (REQ-114), dans les collections nommées (casse
     /// ignorée) ou, liste vide, dans toutes, classés ensemble. Rien n'est gardé en mémoire
     /// ensuite (AC-029-2).
     pub async fn chercher(
@@ -641,50 +693,59 @@ impl Base {
         };
         let mut v = acces.vecteurs(&[question.to_string()]).await?;
         let q = v.pop().ok_or("Le provider n'a rendu aucun vecteur.")?;
-        let mut candidats = Vec::new();
+        // Le texte est relu dans le fichier ; un fichier absent ou changé ne donne aucun passage.
+        let mut lus: std::collections::HashMap<String, Option<(String, String)>> =
+            std::collections::HashMap::new();
+        let mut trouves = Vec::new();
+        let mut limite = 0usize;
         for nom in noms {
             let c = self.charger(&nom)?;
             if c.dimension != q.len() {
                 continue;
             }
+            let reglage = self.lire_recherche(&nom);
+            limite = limite.max(reglage.passages as usize);
+            let mut candidats = Vec::new();
             for f in c.fichiers {
                 for (p, vec) in f.passages.into_iter().zip(&f.vecteurs) {
-                    candidats.push((cosinus(&q, vec), c.nom.clone(), f.empreinte.clone(), p));
+                    candidats.push((cosinus(&q, vec), f.empreinte.clone(), p));
                 }
             }
-        }
-        candidats.sort_by(|a, b| b.0.total_cmp(&a.0));
-        // Le texte est relu dans le fichier ; un fichier absent ou changé ne donne aucun passage.
-        let mut lus: std::collections::HashMap<String, Option<(String, String)>> =
-            std::collections::HashMap::new();
-        let mut trouves = Vec::new();
-        for (score, collection, emp, p) in candidats {
-            if trouves.len() == RESULTATS_MAX {
-                break;
+            candidats.sort_by(|a, b| b.0.total_cmp(&a.0));
+            let mut gardes = 0usize;
+            for (score, emp, p) in candidats {
+                if gardes == reglage.passages as usize
+                    || reglage.score_minimal.is_some_and(|m| (score as f64) < m)
+                {
+                    break;
+                }
+                let lu = lus.entry(p.chemin.clone()).or_insert_with(|| {
+                    crate::fichiers::lire(&self.projet, &p.chemin)
+                        .ok()
+                        .map(|(t, _)| (empreinte(&t), t))
+                });
+                let Some((emp_lue, contenu)) = lu else {
+                    continue;
+                };
+                if *emp_lue != emp {
+                    continue;
+                }
+                let Some(texte) = contenu.get(p.octet_debut..p.octet_fin) else {
+                    continue;
+                };
+                gardes += 1;
+                trouves.push(Trouve {
+                    chemin: p.chemin,
+                    debut: p.debut,
+                    fin: p.fin,
+                    collection: c.nom.clone(),
+                    score,
+                    texte: texte.to_string(),
+                });
             }
-            let lu = lus.entry(p.chemin.clone()).or_insert_with(|| {
-                crate::fichiers::lire(&self.projet, &p.chemin)
-                    .ok()
-                    .map(|(t, _)| (empreinte(&t), t))
-            });
-            let Some((emp_lue, contenu)) = lu else {
-                continue;
-            };
-            if *emp_lue != emp {
-                continue;
-            }
-            let Some(texte) = contenu.get(p.octet_debut..p.octet_fin) else {
-                continue;
-            };
-            trouves.push(Trouve {
-                chemin: p.chemin,
-                debut: p.debut,
-                fin: p.fin,
-                collection,
-                score,
-                texte: texte.to_string(),
-            });
         }
+        trouves.sort_by(|a, b| b.score.total_cmp(&a.score));
+        trouves.truncate(limite);
         Ok(trouves)
     }
 }
@@ -1753,6 +1814,132 @@ mod tests {
         assert!(b.chercher(&ac, "x", &["zzz".to_string()]).await.is_err());
         let liste: Vec<String> = b.liste().unwrap().into_iter().map(|r| r.nom).collect();
         assert_eq!(liste, ["api", "notes"]);
+    }
+
+    fn douze() -> Vec<(String, String, String)> {
+        (1..=12)
+            .map(|n| f(&format!("f{n:02}.txt"), &format!("x{n}")))
+            .collect()
+    }
+
+    fn regler(b: &Base, nom: &str, passages: u32, score_minimal: Option<f64>) {
+        b.ecrire_recherche(
+            nom,
+            &Recherche {
+                passages,
+                score_minimal,
+            },
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn REQ114_AC3_nombre_de_passages_de_la_collection() {
+        let (_d, b) = projet();
+        let (a, _) = faux(200).await;
+        let c = client();
+        let ac = acces(&c, &a, None);
+        b.ajouter(&ac, "notes", "", &douze()).await.unwrap();
+        regler(&b, "notes", 3, None);
+        let t = b.chercher(&ac, "x", &["notes".into()]).await.unwrap();
+        let textes: Vec<&str> = t.iter().map(|p| p.texte.as_str()).collect();
+        assert_eq!(textes, ["x12", "x11", "x10"]);
+    }
+
+    #[tokio::test]
+    async fn REQ114_AC4_score_minimal() {
+        let (_d, b) = projet();
+        let (a, _) = faux(200).await;
+        let c = client();
+        let ac = acces(&c, &a, None);
+        // Scores : x0.55 → 0,486 ; x0.6 → 0,514.
+        let fs = vec![f("a.txt", "x0.55"), f("b.txt", "x0.6")];
+        b.ajouter(&ac, "notes", "", &fs).await.unwrap();
+        regler(&b, "notes", 10, Some(0.5));
+        let t = b.chercher(&ac, "x", &[]).await.unwrap();
+        let textes: Vec<&str> = t.iter().map(|p| p.texte.as_str()).collect();
+        assert_eq!(textes, ["x0.6"]);
+        regler(&b, "notes", 10, Some(0.9));
+        assert!(b.chercher(&ac, "x", &[]).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn REQ114_AC5_plusieurs_collections_classees_ensemble() {
+        let (_d, b) = projet();
+        let (a, _) = faux(200).await;
+        let c = client();
+        let ac = acces(&c, &a, None);
+        let notes: Vec<_> = (1..=12)
+            .map(|n| f(&format!("n/f{n:02}.txt"), &format!("x{}", n * 2)))
+            .collect();
+        let api: Vec<_> = (1..=12)
+            .map(|n| f(&format!("a/f{n:02}.txt"), &format!("x{}", n * 2 - 1)))
+            .collect();
+        b.ajouter(&ac, "notes", "", &notes).await.unwrap();
+        b.ajouter(&ac, "api", "", &api).await.unwrap();
+        regler(&b, "notes", 3, None);
+        let t = b.chercher(&ac, "x", &[]).await.unwrap();
+        assert_eq!(t.len(), 10);
+        assert_eq!(t.iter().filter(|p| p.collection == "notes").count(), 3);
+        assert!(t.windows(2).all(|w| w[0].score >= w[1].score));
+        regler(&b, "notes", 20, None);
+        let t = b.chercher(&ac, "x", &[]).await.unwrap();
+        assert_eq!(t.len(), 20);
+        assert_eq!(t.iter().filter(|p| p.collection == "api").count(), 10);
+        assert_eq!(t.iter().filter(|p| p.collection == "notes").count(), 10);
+        regler(&b, "api", 5, None);
+        let t = b.chercher(&ac, "x", &[]).await.unwrap();
+        assert_eq!(t.iter().filter(|p| p.collection == "api").count(), 5);
+    }
+
+    #[tokio::test]
+    async fn REQ114_AC6_fichier_change_remplace_par_le_suivant() {
+        let (d, b) = projet();
+        let (a, _) = faux(200).await;
+        let c = client();
+        let ac = acces(&c, &a, None);
+        b.ajouter(&ac, "notes", "", &douze()).await.unwrap();
+        regler(&b, "notes", 3, None);
+        std::fs::write(d.join("f12.txt"), "x12 modifié").unwrap();
+        let t = b.chercher(&ac, "x", &[]).await.unwrap();
+        let textes: Vec<&str> = t.iter().map(|p| p.texte.as_str()).collect();
+        assert_eq!(textes, ["x11", "x10", "x9"]);
+    }
+
+    #[test]
+    fn REQ114_AC7_validation_des_reglages() {
+        let r = |passages, score_minimal| Recherche {
+            passages,
+            score_minimal,
+        };
+        for p in [0, 51] {
+            assert_eq!(
+                r(p, None).valider(),
+                Err(("passages", "Entre 1 et 50 passages."))
+            );
+        }
+        for s in [-0.1, 1.01, 0.555] {
+            assert_eq!(
+                r(10, Some(s)).valider(),
+                Err((
+                    "score_minimal",
+                    "Un nombre de 0 à 1, deux décimales au plus, ou vide."
+                ))
+            );
+        }
+        for p in [1, 50] {
+            assert!(r(p, None).valider().is_ok());
+        }
+        for s in [0.0, 1.0, 0.55, 0.07, 0.29] {
+            assert!(r(10, Some(s)).valider().is_ok(), "{s}");
+        }
+        assert!(serde_json::from_str::<Recherche>(r#"{"passages":2.5}"#).is_err());
+        assert!(serde_json::from_str::<Recherche>(r#"{"passages":"dix"}"#).is_err());
+        assert!(serde_json::from_str::<Recherche>(r#"{"score_minimal":0.5}"#).is_err());
+        assert_eq!(
+            serde_json::from_str::<Recherche>(r#"{"passages":4}"#).unwrap(),
+            r(4, None)
+        );
     }
 
     #[test]

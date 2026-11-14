@@ -1475,6 +1475,7 @@ fn REQ107_AC1_AC5_outil_offert_selon_la_base_aux_agents_et_au_sous_agent() {
     let def = outil_de(&dernier(&recues), "knowledge_search").expect("outil offert");
     let description = def["description"].as_str().unwrap();
     assert!(description.contains("api") && description.contains("notes"));
+    assert!(!description.contains("up to 10"), "{description}");
     assert_eq!(def["parameters"]["required"], json!(["query"]));
     assert!(def["parameters"]["properties"]["query"].is_object());
     assert_eq!(
@@ -1622,6 +1623,18 @@ fn REQ107_AC6_AC7_liste_et_recherche_sur_plusieurs_collections() {
             json!({"query": "x", "collections": []}),
         ),
         rep_texte("fin"),
+        rep_outil(
+            "k4",
+            "knowledge_search",
+            json!({"query": "x", "collections": ["notes"]}),
+        ),
+        rep_texte("fin2"),
+        rep_outil(
+            "k5",
+            "knowledge_search",
+            json!({"query": "x", "collections": ["notes"]}),
+        ),
+        rep_texte("fin3"),
     ]);
     let s = lancer("ac107-6");
     let p = configurer(&s, "openai", &adresse);
@@ -1670,8 +1683,33 @@ fn REQ107_AC6_AC7_liste_et_recherche_sur_plusieurs_collections() {
         r(8)
     );
     assert!(e[2..9].iter().all(|x| x["etat"] != "echec"), "{e:?}");
+    // REQ-114 (AC-114-3, AC-114-4) : `notes` réglée à 1 passage, puis à un score minimal trop haut.
+    let regler = |corps: Value| {
+        let r = s.appel(
+            "PUT",
+            "/api/connaissance/collections/notes/recherche",
+            &corps,
+        );
+        assert_eq!(r.code, 200, "{}", r.corps);
+    };
+    regler(json!({"passages": 1, "score_minimal": null}));
+    let v = attendre_fin(&s, &message(&s, &p, "réglé"));
+    let e = v["entrees"].as_array().unwrap();
+    let dernier = |e: &Vec<Value>| {
+        e.iter()
+            .rev()
+            .find(|x| x["nom"] == "knowledge_search")
+            .unwrap()
+            .clone()
+    };
+    let un = dernier(e)["resultat"].as_str().unwrap().to_string();
+    assert_eq!(un.matches("(notes, score").count(), 1, "{un}");
+    regler(json!({"passages": 10, "score_minimal": 0.99}));
+    let v = attendre_fin(&s, &message(&s, &p, "seuil"));
+    let d = dernier(v["entrees"].as_array().unwrap());
+    assert_eq!(d["etat"], "reussi");
+    assert_eq!(d["resultat"], "No passage found.");
 }
-
 /// Texte des instructions et messages d'une requête de conversation.
 fn requete_contient(corps: &Value, texte: &str) -> bool {
     corps["messages"].to_string().contains(texte)

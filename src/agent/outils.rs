@@ -178,7 +178,7 @@ pub fn definition_connaissance(projet: &Path) -> Vec<DefOutil> {
         def(
             "knowledge_search",
             &format!(
-                "Search the knowledge base of the project, built from files added by the user. Returns up to 10 passages, closest first, each with its file and lines, collection, score and text. Collections: {}.",
+                "Search the knowledge base of the project, built from files added by the user. Returns the closest passages, closest first, each with its file and lines, collection, score and text; each collection sets how many passages it returns and their minimum score. Collections: {}.",
                 noms.join(", ")
             ),
             json!({
