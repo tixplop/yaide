@@ -24,7 +24,15 @@ const d = (nom) => ({ nom, dossier: true });
 /** `disque` : chemin de dossier -> entrées (ou réponse d'erreur `{ status, corps }`) ; modifiable par le test. */
 async function monter(disque, options = {}) {
   const appels = [];
-  vi.stubGlobal("fetch", vi.fn(async (url) => {
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    if (String(url).startsWith("/api/connaissance")) {
+      appels.push(url);
+      if (init?.method === "POST") appels.push(JSON.parse(init.body));
+      if (disque.baCoupure) throw new TypeError("réseau");
+      if (disque.baRefus) return { ok: false, status: 500, json: async () => ({ cause: "interne", message: "x" }) };
+      const corps = init?.method === "POST" ? { numero: 7, total: 1 } : { config: { provider: "openai", modele: "m" }, collections: [], ajout: null, fichiers: disque.base ?? {} };
+      return { ok: true, status: init?.method === "POST" ? 202 : 200, json: async () => corps };
+    }
     const chemin = decodeURIComponent(new URL(url, "http://x").searchParams.get("chemin") ?? "");
     appels.push(url);
     if (typeof disque.attente === "function") await disque.attente(url);
@@ -309,15 +317,15 @@ const commande = (menu, debut) => [...menu.querySelectorAll("[role=menuitem]")].
 test("REQ034_AC1_AC14_REQ104_AC1_REQ049_AC13_menu_a_quatre_groupes_dont_la_base_de_connaissance", async () => {
   const { vue } = await monter({ "": [f("a.txt")] }, { estDepot: () => true, agents: true });
   const m = menuSur(vue, "a.txt");
-  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…"]);
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
   expect(m.querySelectorAll("[role=separator]").length).toBe(3);
-  expect(m.querySelector("[aria-disabled]")).toBeNull();
+  expect(m.querySelectorAll("[aria-disabled]").length).toBe(1); // Mettre à jour : aucun fichier de la base
 });
 
 test("REQ034_AC21_hors_depot_deux_separateurs_avec_la_base", async () => {
   const { vue } = await monter({ "": [f("a.txt")] }, { estDepot: () => false, agents: true });
   const m = menuSur(vue, "a.txt");
-  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…"]);
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
   expect(m.querySelectorAll("[role=separator]").length).toBe(2);
 });
 
@@ -325,6 +333,7 @@ test("REQ103_AC1_REQ104_AC12_commande_absente_sans_agents_et_dans_la_partie_vide
   const sans = await monter({ "": [f("a.txt")] }, { estDepot: () => true });
   const m = menuSur(sans.vue, "a.txt");
   expect(commande(m, "Ajouter")).toBeUndefined();
+  expect(commande(m, "Mettre à jour")).toBeUndefined();
   expect(m.querySelectorAll("[role=separator]").length).toBe(2);
   document.body.replaceChildren();
   const avec = await monter({ "": [f("a.txt")] }, { estDepot: () => true, agents: true });
@@ -332,6 +341,7 @@ test("REQ103_AC1_REQ104_AC12_commande_absente_sans_agents_et_dans_la_partie_vide
   const vide = document.querySelector("[role=menu]");
   expect(vide.getAttribute("aria-label")).toBe("Actions sur le projet");
   expect(commande(vide, "Ajouter")).toBeUndefined();
+  expect(commande(vide, "Mettre à jour")).toBeUndefined();
 });
 
 test("REQ049_AC3_AC4_AC13_AC14_selection_gardee_commandes_desactivees_et_touche_Menu", async () => {
@@ -984,4 +994,116 @@ test("REQ104_AC17_le_focus_revient_sur_la_ligne_visee_apres_Annuler_et_apres_un_
   await attendre();
   expect(document.querySelector("dialog")).toBeNull();
   expect(document.activeElement).toBe(ligne(vue, "b.txt"));
+});
+
+// ---- REQ-111, REQ-112 : fichiers de la base de connaissance ----
+const marque = (vue, chemin) => ligne(vue, chemin).querySelector(".liste-base");
+
+test("REQ112_AC1_AC3_AC5_les_fichiers_de_la_base_portent_la_marque_pas_les_autres_ni_les_dossiers", async () => {
+  const disque = {
+    "": [d("docs"), f("n.md")],
+    docs: [f("a.md"), f("c.md")],
+    base: { "docs/a.md": { collections: ["notes", "api"], echec: null }, "n.md": { collections: ["notes"], echec: "OpenAI a refusé la requête (401)." } },
+  };
+  const { vue } = await monter(disque, { agents: true });
+  ligne(vue, "docs").click();
+  await attendre();
+  await vue.relire();
+  expect(marque(vue, "docs/a.md")).not.toBeNull();
+  expect(marque(vue, "docs/c.md")).toBeNull();
+  expect(marque(vue, "docs")).toBeNull();
+  expect(ligne(vue, "docs/a.md").getAttribute("aria-label") ?? ligne(vue, "docs/a.md").textContent).toContain("a.md");
+  expect(marque(vue, "n.md").className).toContain("liste-base-echec");
+  expect(marque(vue, "n.md").getAttribute("aria-hidden")).toBe("true");
+});
+
+test("REQ112_AC1_agents_desactives_aucune_marque_et_aucune_lecture_de_la_base", async () => {
+  const disque = { "": [f("a.md")], base: { "a.md": { collections: ["notes"], echec: null } } };
+  const { vue, appels } = await monter(disque);
+  await vue.relire();
+  expect(marque(vue, "a.md")).toBeNull();
+  expect(appels.some((u) => String(u).startsWith("/api/connaissance"))).toBe(false);
+});
+
+test("REQ112_AC1_base_non_configuree_aucune_marque", async () => {
+  const { vue } = await monter({ "": [f("a.md")], base: {} }, { agents: true });
+  await vue.relire();
+  expect(marque(vue, "a.md")).toBeNull();
+});
+
+test("REQ112_AC2_la_marque_apparait_et_disparait_a_la_relecture_sans_redessiner_les_lignes", async () => {
+  const disque = { "": [f("a.md"), f("b.md")] };
+  const { vue } = await monter(disque, { agents: true });
+  await attendre();
+  ligne(vue, "a.md").focus();
+  const avant = ligne(vue, "a.md");
+  disque.base = { "b.md": { collections: ["notes"], echec: null } };
+  await vue.relire();
+  expect(marque(vue, "b.md")).not.toBeNull();
+  expect(ligne(vue, "a.md")).toBe(avant);
+  expect(document.activeElement).toBe(avant);
+  disque.base = {};
+  await vue.relire();
+  expect(marque(vue, "b.md")).toBeNull();
+  expect(ligne(vue, "a.md")).toBe(avant);
+});
+
+test("REQ112_AC4_relecture_sans_changement_aucune_ligne_redessinee_coupure_et_refus_gardent_la_marque", async () => {
+  const disque = { "": [f("a.md")], base: { "a.md": { collections: ["notes"], echec: null } } };
+  const { vue, dire } = await monter(disque, { agents: true });
+  await vue.relire();
+  const l = ligne(vue, "a.md");
+  await vue.relire();
+  expect(ligne(vue, "a.md")).toBe(l);
+  disque.baCoupure = true;
+  await vue.relire();
+  expect(marque(vue, "a.md")).not.toBeNull();
+  disque.baCoupure = false;
+  disque.baRefus = true;
+  await vue.relire();
+  expect(marque(vue, "a.md")).not.toBeNull();
+  expect(dire).not.toHaveBeenCalled();
+});
+
+test("REQ111_AC3_commande_desactivee_sans_fichier_de_la_base_active_pour_fichier_dossier_et_selection", async () => {
+  const disque = {
+    "": [d("docs"), d("vide"), f("a.md"), f("b.md")],
+    docs: [f("x.md")],
+    vide: [f("y.md")],
+    base: { "docs/x.md": { collections: ["notes"], echec: null }, "a.md": { collections: ["notes"], echec: null } },
+  };
+  const { vue } = await monter(disque, { agents: true });
+  await vue.relire();
+  const etat = (chemin) => commande(menuSur(vue, chemin), "Mettre à jour").getAttribute("aria-disabled");
+  expect(etat("a.md")).toBeNull();
+  expect(etat("docs")).toBeNull();
+  document.body.querySelector("[role=menu]")?.remove();
+  expect(etat("b.md")).toBe("true");
+  expect(etat("vide")).toBe("true");
+  ctrl(vue, "b.md");
+  ctrl(vue, "a.md");
+  expect(etat("b.md")).toBeNull();
+});
+
+test("REQ111_AC5_la_commande_envoie_les_chemins_dit_le_debut_et_rend_le_focus_a_la_ligne", async () => {
+  const disque = {
+    "": [d("docs"), f("a.md")],
+    docs: [f("x.md")],
+    base: { "docs/x.md": { collections: ["notes"], echec: null }, "a.md": { collections: ["notes"], echec: null } },
+  };
+  const { vue, appels, dire } = await monter(disque, { agents: true });
+  await vue.relire();
+  commande(menuSur(vue, "docs"), "Mettre à jour").click();
+  await attendre();
+  await attendre();
+  expect(appels).toContainEqual({ chemins: ["docs"] });
+  expect(dire.mock.calls.at(-1)[0]).toMatchObject({ texte: "Mise à jour de docs/ dans la base de connaissance…", variante: "info", fermable: true });
+  expect(document.querySelector("dialog[open]")).toBeNull();
+  expect(document.activeElement).toBe(ligne(vue, "docs"));
+  ctrl(vue, "a.md"); // « docs » est déjà sélectionné par le menu précédent
+  commande(menuSur(vue, "a.md"), "Mettre à jour").click();
+  await attendre();
+  await attendre();
+  expect(appels).toContainEqual({ chemins: ["docs", "a.md"] });
+  expect(dire.mock.calls.at(-1)[0].texte).toBe("Mise à jour de 2 éléments dans la base de connaissance…");
 });

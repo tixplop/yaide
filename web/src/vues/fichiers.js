@@ -1,4 +1,4 @@
-import { creerChemin, gitIndexer, lireFichier, listerDossier, renommerChemin, supprimerChemin } from "../api.js";
+import { creerChemin, gitIndexer, lireConnaissance, lireFichier, listerDossier, renommerChemin, supprimerChemin } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { dialogue } from "../ui/dialogue.js";
@@ -7,7 +7,7 @@ import { liste } from "../ui/liste.js";
 import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 import * as worktree from "../worktree.js";
-import { ouvrirAjoutConnaissance } from "./ajout-connaissance.js";
+import { mettreAJourFichiers, ouvrirAjoutConnaissance } from "./ajout-connaissance.js";
 
 // Préfixe impossible dans un chemin relatif : marque les lignes qui ne sont pas des fichiers.
 const FACTICE = "\0";
@@ -60,6 +60,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   let selection = []; // chemins sélectionnés, dans l'ordre de l'arbre
   let ancre = null; // départ de Maj+clic
   let derniere = null; // dernière ligne cliquée
+  let table = new Map(); // chemin -> { collections, echec } : les fichiers de la base de connaissance (REQ-112), vide si les agents sont désactivés
   let statuts = null; // Map chemin -> { lettre, mot }, ou null hors d'un dépôt
   let courant = null; // chemin du fichier de l'onglet actif
   let detruit = false;
@@ -109,6 +110,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
         enfants: e.dossier,
         ouvert,
         courant: id === courant,
+        ...(!e.dossier && table.has(id) ? { base: table.get(id) } : {}),
         ...(st ? (e.dossier ? { statutDossier: st.lettre } : { statut: st.lettre }) : {}),
       });
       if (!ouvert) continue;
@@ -222,10 +224,20 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     return r;
   }
 
+  /** Relit les fichiers de la base avec l'arbre ; une coupure ou un refus gardent la dernière table, sans message. */
+  async function lireBase() {
+    if (!agents) return;
+    const r = await lireConnaissance();
+    if (detruit || r.coupure || r.cause) return;
+    table = new Map(Object.entries(r.fichiers ?? {}));
+  }
+
   async function rafraichir() {
-    await Promise.all([vu, ...ouverts].map(charger).concat(lireEtat()));
+    await Promise.all([vu, ...ouverts].map(charger).concat(lireEtat(), lireBase()));
     afficher();
   }
+
+  const sansBase = (ligne) => ({ ...ligne, base: undefined });
 
   /** Relecture silencieuse (toutes les 3 s) des dossiers déjà lus : ni message, ni « Chargement… », rien de redessiné sans changement. */
   async function relire() {
@@ -237,10 +249,10 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     const g = generation;
     const sac = dossiers;
     const cibles = [vu, ...ouverts].filter((c) => dossiers.get(c)?.entrees);
-    const reponses = await Promise.all(cibles.map((c) => listerDossier(c)));
+    const [reponses] = await Promise.all([Promise.all(cibles.map((c) => listerDossier(c))), lireBase()]);
     if (detruit || g !== generation || sac !== dossiers) return;
     const avant = lignes(vu, 0, []);
-    const cleAvant = JSON.stringify(avant);
+    const cleAvant = JSON.stringify(avant.map(sansBase));
     cibles.forEach((c, i) => {
       const r = reponses[i];
       if (r.entrees) dossiers.set(c, { etat: "ok", entrees: r.entrees });
@@ -250,7 +262,11 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
       }
     });
     const apres = lignes(vu, 0, []);
-    if (JSON.stringify(apres) === cleAvant) return;
+    if (JSON.stringify(apres.map(sansBase)) === cleAvant) {
+      // Seule la marque a pu changer : elle est posée sans redessiner les lignes (AC-112-4).
+      zoneArbre.firstElementChild?.mettreAJourBase?.(apres);
+      return;
+    }
     const ids = new Set(apres.map((l) => l.id));
     const focalisee = zoneArbre.contains(document.activeElement) ? document.activeElement.closest?.("[data-chemin]")?.dataset.chemin : undefined;
     const disparue = (id) => id !== null && id !== undefined && !ids.has(id) && avant.some((l) => l.id === id);
@@ -472,7 +488,12 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
               { libelle: "Supprimer", touche: "Suppr", desactive: plusieurs, surChoix: ouvrirSuppression },
             ],
         depot ? (vide ? [commit] : [{ libelle: "Indexer", desactive: plusieurs, surChoix: () => indexer(id, dossier) }, commit]) : [],
-        agents && !vide ? [{ libelle: "Ajouter à la base de connaissance…", surChoix: () => ajouterALaBase(id, plusieurs) }] : [],
+        agents && !vide
+          ? [
+              { libelle: "Ajouter à la base de connaissance…", surChoix: () => ajouterALaBase(id, plusieurs) },
+              { libelle: "Mettre à jour dans la base de connaissance", desactive: !dansLaBase(plusieurs ? selection : [id]), surChoix: () => mettreAJourALaBase(id, plusieurs) },
+            ]
+          : [],
       ],
       surFermeture: () => {
         if (!vide) ligneDe(id)?.focus();
@@ -492,6 +513,22 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
       surRetour: () => {
         if (!detruit) (ligneDe(id) ?? zoneArbre.querySelector("[role=treeitem][tabindex='0']"))?.focus();
       },
+    });
+  }
+
+  /** Vrai si l'un des chemins visés est un fichier de la base, ou un dossier qui en contient un. */
+  function dansLaBase(chemins) {
+    return chemins.some((c) => (types.get(c) ? [...table.keys()].some((k) => k.startsWith(`${c}/`)) : table.has(c)));
+  }
+
+  function mettreAJourALaBase(id, plusieurs) {
+    const chemins = plusieurs ? [...selection] : [id];
+    mettreAJourFichiers({
+      chemins,
+      noms: chemins.map((c) => `${worktree.dansWorktree(c)}${types.get(c) ? "/" : ""}`),
+      dire,
+      actif: () => !detruit,
+      surRetour: () => (ligneDe(id) ?? zoneArbre.querySelector("[role=treeitem][tabindex='0']"))?.focus(),
     });
   }
 

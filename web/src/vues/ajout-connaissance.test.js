@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { ouvrirAjoutConnaissance, phraseAjout } from "./ajout-connaissance.js";
+import { mettreAJourFichiers, ouvrirAjoutConnaissance, phraseAjout } from "./ajout-connaissance.js";
 
 const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
 for (const [, nom, val] of tokens.matchAll(/(--[\w-]+):\s*([^;]+);/g)) document.documentElement.style.setProperty(nom, val.trim());
@@ -255,4 +255,63 @@ test("REQ104_AC8_la_relecture_s_arrete_quand_la_vue_est_detruite", async () => {
   const avant = appels.length;
   await vi.advanceTimersByTimeAsync(5000);
   expect(appels.length).toBe(avant);
+});
+
+// ---- REQ-111 : mise à jour ----
+async function mettreAJour(noms, ajouter, suivi = []) {
+  const appels = faux({ etat: suiviMaj({ etat: "en_cours" }), ajouter, suivi });
+  const dire = vi.fn();
+  const surRetour = vi.fn();
+  await mettreAJourFichiers({ noms, chemins: noms.map((n) => n.replace(/\/$/, "")), dire, surRetour });
+  return { appels, dire, surRetour };
+}
+const ACCEPTE = reponse(202, { numero: 4, total: 2 });
+const suiviMaj = (extra) => ({ config: CONFIG, collections: [], ajout: { numero: 4, genre: "mise_a_jour", collection: "", ...extra } });
+
+test("REQ111_AC5_textes_de_debut_pour_un_fichier_un_dossier_et_deux_elements_sans_dialogue", async () => {
+  for (const [noms, texte] of [
+    [["docs/a.md"], "Mise à jour de docs/a.md dans la base de connaissance…"],
+    [["docs/"], "Mise à jour de docs/ dans la base de connaissance…"],
+    [["a.md", "docs/"], "Mise à jour de 2 éléments dans la base de connaissance…"],
+  ]) {
+    const { appels, dire, surRetour } = await mettreAJour(noms, ACCEPTE);
+    expect(dire).toHaveBeenCalledWith({ texte, variante: "info", fermable: true });
+    expect(post(appels)).toEqual([{ chemins: noms.map((n) => n.replace(/\/$/, "")) }]);
+    expect(appels.find((a) => a.init?.method === "POST").url).toBe("/api/connaissance/mises-a-jour");
+    expect(dlg()).toBeNull();
+    expect(surRetour).toHaveBeenCalledTimes(1);
+  }
+});
+
+test("REQ111_AC5_fin_au_singulier_et_au_pluriel", async () => {
+  const un = await mettreAJour(["a.md"], ACCEPTE, [suiviMaj({ etat: "fini", ajoutes: 1 })]);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(un.dire).toHaveBeenLastCalledWith({ texte: "Mise à jour terminée : 1 fichier mis à jour.", variante: "succes", fermable: true });
+  const deux = await mettreAJour(["docs/"], ACCEPTE, [suiviMaj({ etat: "fini", ajoutes: 14 })]);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(deux.dire).toHaveBeenLastCalledWith({ texte: "Mise à jour terminée : 14 fichiers mis à jour.", variante: "succes", fermable: true });
+});
+
+test("REQ111_AC4_AC5_arret_avec_la_cause_et_le_detail_du_provider", async () => {
+  const { dire } = await mettreAJour(["a.md"], ACCEPTE, [suiviMaj({ etat: "arrete", cause: "OpenAI a refusé la requête (401).", detail: '{"error":"clé"}' })]);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(dire).toHaveBeenLastCalledWith({
+    texte: "La mise à jour s'est arrêtée. OpenAI a refusé la requête (401). Les fichiers déjà traités restent à jour.",
+    detail: '{"error":"clé"}',
+    variante: "erreur",
+    fermable: true,
+  });
+});
+
+test("REQ111_AC4_AC5_refus_aussitot_ajout_en_cours_et_coupure_focus_rendu", async () => {
+  const refus = await mettreAJour(["a.md"], reponse(409, { cause: "encours", message: "Un ajout est déjà en cours. Attendez sa fin, puis réessayez." }));
+  expect(refus.dire).toHaveBeenCalledTimes(1);
+  expect(refus.dire).toHaveBeenCalledWith({ texte: "Un ajout est déjà en cours. Attendez sa fin, puis réessayez.", variante: "erreur", fermable: true });
+  expect(refus.surRetour).toHaveBeenCalledTimes(1);
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    throw new TypeError("réseau");
+  }));
+  const dire = vi.fn();
+  await mettreAJourFichiers({ noms: ["a.md"], chemins: ["a.md"], dire, surRetour: vi.fn() });
+  expect(dire).toHaveBeenCalledWith({ texte: "Connexion perdue. Réessayez au retour.", variante: "alerte", fermable: true });
 });

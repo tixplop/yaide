@@ -1,4 +1,4 @@
-import { ajouterConnaissance, lireConnaissance } from "../api.js";
+import { ajouterConnaissance, lireConnaissance, mettreAJourConnaissance } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { dialogue } from "../ui/dialogue.js";
@@ -24,7 +24,7 @@ function erreurNom(nom) {
   return undefined;
 }
 
-/** Relit `GET /api/connaissance` chaque seconde jusqu'à la fin de l'ajout `numero`, puis le dit par `dire`. */
+/** Relit `GET /api/connaissance` chaque seconde jusqu'à la fin de l'ajout ou de la mise à jour `numero`, puis le dit par `dire`. */
 function suivre({ numero, dire, actif }) {
   const tour = async () => {
     if (!actif()) return;
@@ -32,6 +32,13 @@ function suivre({ numero, dire, actif }) {
     if (!actif()) return;
     const a = r.ajout;
     if (!r.coupure && r.collections && (!a || a.numero !== numero)) return;
+    if (a?.numero === numero && a.etat === "fini" && a.genre === "mise_a_jour") {
+      return dire({ texte: `Mise à jour terminée : ${pluriel(a.ajoutes, "fichier")} mis à jour.`, variante: "succes", fermable: true });
+    }
+    if (a?.numero === numero && a.etat === "arrete" && a.genre === "mise_a_jour") {
+      const texte = `La mise à jour s'est arrêtée. ${a.cause} Les fichiers déjà traités restent à jour.`;
+      return dire({ texte, detail: a.detail ?? undefined, variante: "erreur", fermable: true });
+    }
     if (a?.numero === numero && a.etat === "fini") {
       const texte = `Ajout à ${a.collection} terminé : ${pluriel(a.ajoutes, "fichier")} ${a.ajoutes > 1 ? "ajoutés" : "ajouté"}, ${a.ignores} ${a.ignores > 1 ? "ignorés" : "ignoré"}.`;
       return dire({ texte, variante: "succes", fermable: true });
@@ -141,4 +148,18 @@ export async function ouvrirAjoutConnaissance({ noms, chemins, dire, surConfigur
     suivre({ numero: r.numero, dire, actif });
   }
   dlg.ouvrir();
+}
+
+/**
+ * « Mettre à jour dans la base de connaissance » (REQ-111) : pas de dialogue, la mise à jour part aussitôt.
+ * `noms` et `chemins` comme pour l'ajout ; `surRetour()` rend le focus à la ligne visée, sans que les messages le déplacent.
+ */
+export async function mettreAJourFichiers({ noms, chemins, dire, surRetour, actif = () => true }) {
+  const r = await mettreAJourConnaissance(chemins);
+  if (!actif()) return;
+  surRetour();
+  if (r.coupure || r.cause) return dire({ texte: r.coupure ? TEXTE_COUPURE : r.message, variante: r.coupure ? "alerte" : "erreur", fermable: true });
+  const debut = noms.length === 1 ? noms[0] : `${noms.length} éléments`;
+  dire({ texte: `Mise à jour de ${debut} dans la base de connaissance…`, variante: "info", fermable: true });
+  suivre({ numero: r.numero, dire, actif });
 }

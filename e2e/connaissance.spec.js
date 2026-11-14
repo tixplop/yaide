@@ -144,6 +144,22 @@ test("REQ103_parcours_75_76_base_de_connaissance", async ({ page }) => {
     await page.keyboard.press("Tab");
     await expect(message).toHaveValue("#notes ");
     await expect(collections).toHaveCount(0);
+    await page.keyboard.press("Escape");
+
+    // REQ-112 (AC-112-2) et REQ-111 (AC-111-1), P-078 étapes 1, 3, 4 : marque dans l'arborescence, puis mise à jour d'un fichier.
+    if (!(await ligne(page, "faq.md").isVisible())) await ligne(page, "docs").click();
+    const faq = ligne(page, "faq.md");
+    await expect(faq.locator(".liste-base")).toBeVisible({ timeout: 10000 });
+    await expect(ligne(page, "schema.png").locator(".liste-base")).toHaveCount(0);
+    await faq.locator(".liste-base").hover();
+    const bulle = page.getByRole("tooltip", { name: "Dans la base de connaissance : notes" });
+    await expect(bulle).toBeVisible();
+    const [mq, bb] = [await faq.locator(".liste-base").boundingBox(), await bulle.boundingBox()];
+    expect(bb.y).toBeGreaterThan(mq.y);
+    await faq.click({ button: "right" });
+    await menu(page, "Actions sur docs/faq.md").getByRole("menuitem", { name: "Mettre à jour dans la base de connaissance" }).click();
+    await expect(page.getByText("Mise à jour terminée : 1 fichier mis à jour.")).toBeVisible({ timeout: 20000 });
+    await expect(faq).toBeFocused();
   } finally {
     await yaide.arreter();
     await faux.arreter();

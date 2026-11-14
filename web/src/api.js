@@ -455,6 +455,18 @@ export async function ajouterConnaissance(collection, chemins) {
   return erreurServeur(r);
 }
 
+/** Met à jour des chemins dans les collections : `{ numero, total }` (mise à jour acceptée), `{ cause, message }` ou `{ coupure: true }`. */
+export async function mettreAJourConnaissance(chemins) {
+  const r = await appeler("/api/connaissance/mises-a-jour", json("POST", { chemins }));
+  if (!r) return { coupure: true };
+  try {
+    if (r.ok) return await r.json();
+  } catch {
+    return { coupure: true };
+  }
+  return erreurServeur(r);
+}
+
 /** Écrit la configuration de la base (`provider`, `modele`) : l'état de la base, `{ cause, message }` ou `{ coupure: true }`. */
 export async function enregistrerConfigConnaissance(provider, modele) {
   const r = await appeler("/api/connaissance/config", json("PUT", { provider, modele }));

@@ -583,3 +583,27 @@ test("REQ106_fermer_pendant_une_recherche_puis_rouvrir_remet_Rechercher_a_la_rep
   await vi.waitFor(() => expect(parNom("Rechercher")).toBeTruthy());
   expect(parNom("Recherche…")).toBeUndefined();
 });
+
+test("REQ110_collection_vide_0_fichier_Aucun_fichier_et_suppression_Elle_est_vide", async () => {
+  const VIDE = { nom: "changelog", fichiers: 0, passages: 0 };
+  const m = monter(etat([VIDE]), {
+    "GET /api/connaissance/collections/changelog": rep({ nom: "changelog", fichiers: [] }),
+  });
+  await m.v.ouvrir();
+  touche(onglet("Recherche"), "ArrowRight");
+  touche(onglet("Configuration"), "ArrowRight");
+  const p = panneau("Collections");
+  expect(p.textContent).toContain("0 fichier · 0 passage");
+  parNom("Fichiers de changelog").click();
+  await vi.waitFor(() => expect(parNom("Retour aux collections")).toBeDefined());
+  expect(p.querySelector("h2").textContent).toBe("changelog");
+  expect(p.textContent).toContain("0 fichier · 0 passage");
+  expect(p.querySelector("ul")).toBeNull();
+  expect(p.querySelector("[role=status]").textContent).toBe("Aucun fichier.");
+  parNom("Retour aux collections").click();
+  parNom("Supprimer changelog").click();
+  const conf = dlg();
+  expect(document.getElementById(conf.getAttribute("aria-labelledby")).textContent).toBe("Supprimer la collection changelog ?");
+  expect(conf.textContent).toContain("Elle est vide. Les fichiers du projet ne changent pas.");
+  expect(conf.textContent).not.toContain("quittent la base");
+});

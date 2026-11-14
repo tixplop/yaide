@@ -222,7 +222,12 @@ export function vueConnaissance({ surEtat = () => {}, ouvrirFichier = async () =
     entete.className = "ya-agents-barre";
     entete.append(qui);
     panneaux.collections.replaceChildren(
-      enColonne(entete, liste({ variante: "objets", nom: `Fichiers de ${c.nom}`, lignes: fichiersDe.fichiers.map((f) => ({ id: f, libelle: f })) })),
+      enColonne(
+        entete,
+        fichiersDe.fichiers.length === 0
+          ? indication({ texte: "Aucun fichier." })
+          : liste({ variante: "objets", nom: `Fichiers de ${c.nom}`, lignes: fichiersDe.fichiers.map((f) => ({ id: f, libelle: f })) }),
+      ),
     );
     // « retour » : entrée dans la vue ; sinon (relecture) le focus revient à l'élément de même nom.
     const cible = focus === "retour" ? retourListe : focus ? [...panneaux.collections.querySelectorAll("[aria-label]")].find((e) => e.getAttribute("aria-label") === focus) : null;
@@ -236,7 +241,8 @@ export function vueConnaissance({ surEtat = () => {}, ouvrirFichier = async () =
     if (!c) return;
     if (c.ajout) return refuserEnCours(nom, `L'ajout à ${nom} est en cours. Attendez sa fin pour supprimer la collection.`);
     const phrase = document.createElement("p");
-    phrase.textContent = `Ses ${pluriel(c.fichiers, "fichier")} et ${pluriel(c.passages, "passage")} quittent la base. Les fichiers du projet ne changent pas.`;
+    phrase.textContent =
+      c.fichiers === 0 ? "Elle est vide. Les fichiers du projet ne changent pas." : `Ses ${pluriel(c.fichiers, "fichier")} et ${pluriel(c.passages, "passage")} quittent la base. Les fichiers du projet ne changent pas.`;
     const annuler = bouton({ libelle: "Annuler" });
     const ok = bouton({ libelle: "Supprimer", variante: "danger" });
     const mienne = generation;

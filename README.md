@@ -142,6 +142,10 @@ Yaide peut indexer les fichiers de votre projet pour les interroger par le sens,
 
 - **Configurer** : « Base de connaissance » au pied du rail droit, section « Configuration ». Choisissez un provider (OpenAI, Google, OpenRouter, LiteLLM ou Ollama) et un modèle d'embedding, par exemple `nomic-embed-text`. L'adresse et la clé sont celles de Providers LLM.
 - **Ajouter** : clic droit sur un fichier ou un dossier de l'arborescence, puis « Ajouter à la base de connaissance… ». Plusieurs lignes sélectionnées s'ajoutent d'un coup. Les fichiers binaires ou trop gros sont ignorés.
+- **Mettre à jour** : clic droit, puis « Mettre à jour dans la base de connaissance » (désactivée si aucun fichier visé n'est dans la base). Les passages des fichiers visés repartent au provider.
+- **Marque** : un fichier de la base porte l'icône `book-open` dans l'arborescence ; une marque rouge (`book-alert`) dit que sa dernière mise à jour automatique a échoué.
+- **Mise à jour automatique** : toutes les 3 s, un fichier modifié est relu et mis à jour ; un fichier supprimé ou renommé sort de la base.
+- **Pointeurs** : la base garde pour chaque passage le chemin et les lignes, et relit le texte dans le fichier. Une collection écrite par une version précédente est illisible : supprimez-la, puis ajoutez de nouveau ses fichiers.
 - **Collections** : chaque ajout va dans une collection, créée par son premier ajout. La section « Collections » les liste, montre leurs fichiers et les supprime. Tant qu'une collection existe, le provider et le modèle ne changent plus.
 - **Rechercher** : section « Recherche », une question, une collection ou toutes. Les 10 passages les plus proches s'affichent ; un clic sur le chemin ouvre le fichier à la première ligne du passage.
 - **Agent** : quand la base a au moins une collection, l'Agent de Yaide reçoit les outils `knowledge_list` et `knowledge_search` (`query`, et `collections` facultatif : une ou plusieurs collections). Écrire `#notes` dans un message, avec complétion, demande à l'agent d'interroger cette collection dans la conversation.
