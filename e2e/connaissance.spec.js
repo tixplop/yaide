@@ -127,6 +127,23 @@ test("REQ103_parcours_75_76_base_de_connaissance", async ({ page }) => {
     await page.keyboard.press("Enter");
     await expect(page.getByText("Ajout de 2 éléments à api-docs…")).toBeVisible();
     await expect(page.getByText("Ajout à api-docs terminé : 2 fichiers ajoutés, 0 ignoré.")).toBeVisible({ timeout: 20000 });
+
+    // REQ-108 (AC-108-1, AC-108-3, AC-108-10) : « # » dans « Message à l'agent » liste les collections.
+    await page.getByRole("button", { name: "Agent", exact: true }).click();
+    const message = page.getByRole("textbox", { name: "Message à l'agent" });
+    await message.click();
+    await page.keyboard.type("#");
+    const collections = page.getByRole("listbox", { name: "Collections" });
+    await expect(collections.getByRole("option", { name: /#api-docs/ })).toBeVisible();
+    await expect(collections.getByRole("option", { name: /#notes/ })).toContainText("4 fichiers · 5 passages");
+    const [cl, lb] = [await message.boundingBox(), await collections.locator("xpath=..").boundingBox()];
+    expect(Math.abs(lb.x - cl.x)).toBeLessThan(2);
+    expect(Math.abs(lb.width - Math.min(cl.width, 600))).toBeLessThan(1);
+    await page.keyboard.type("no");
+    await expect(collections.getByRole("option")).toHaveCount(1);
+    await page.keyboard.press("Tab");
+    await expect(message).toHaveValue("#notes ");
+    await expect(collections).toHaveCount(0);
   } finally {
     await yaide.arreter();
     await faux.arreter();

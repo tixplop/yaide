@@ -144,7 +144,7 @@ Yaide peut indexer les fichiers de votre projet pour les interroger par le sens,
 - **Ajouter** : clic droit sur un fichier ou un dossier de l'arborescence, puis « Ajouter à la base de connaissance… ». Plusieurs lignes sélectionnées s'ajoutent d'un coup. Les fichiers binaires ou trop gros sont ignorés.
 - **Collections** : chaque ajout va dans une collection, créée par son premier ajout. La section « Collections » les liste, montre leurs fichiers et les supprime. Tant qu'une collection existe, le provider et le modèle ne changent plus.
 - **Rechercher** : section « Recherche », une question, une collection ou toutes. Les 10 passages les plus proches s'affichent ; un clic sur le chemin ouvre le fichier à la première ligne du passage.
-- **Agent** : quand la base a au moins une collection, l'Agent de Yaide reçoit l'outil `knowledge_search` (`query`, et `collection` facultatif).
+- **Agent** : quand la base a au moins une collection, l'Agent de Yaide reçoit les outils `knowledge_list` et `knowledge_search` (`query`, et `collections` facultatif : une ou plusieurs collections). Écrire `#notes` dans un message, avec complétion, demande à l'agent d'interroger cette collection dans la conversation.
 
 Le texte des fichiers ajoutés et vos questions partent au provider choisi. Avec Ollama, tout reste sur votre machine. La base est écrite dans `.yaide/connaissance/` du projet : ne la poussez pas dans git si vous ne voulez pas la partager.
 

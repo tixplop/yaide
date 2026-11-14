@@ -1082,3 +1082,137 @@ test("REQ100_AC12_etapes_ajoutees_a_la_relecture_et_conversation_rouverte_replie
   expect(fil(autre).querySelector(".ya-sous-zone").hidden).toBe(true);
   expect(fil(autre).querySelector(".ya-sous-zone").children).toHaveLength(5);
 });
+
+// ---- REQ-108 : « # » liste les collections ----
+
+const COLLECTIONS = [
+  { nom: "notes", fichiers: 14, passages: 96 },
+  { nom: "docs-api", fichiers: 1, passages: 1 },
+  { nom: "api", fichiers: 2, passages: 7 },
+];
+async function monterCollections(lire, options = {}) {
+  const r = await monter(options);
+  r.api.lireConnaissance = lire;
+  return r;
+}
+const lignesCollections = () => [...document.querySelectorAll('.ya-flottante [role="option"]')].map((o) => o.textContent);
+const saisirCollections = async (vue, texte) => {
+  taper(vue, texte);
+  await vi.advanceTimersByTimeAsync(0);
+};
+
+test("REQ108_AC1_AC2_AC10_liste_triee_filtree_avec_nombres", async () => {
+  const lire = vi.fn(async () => ({ collections: COLLECTIONS }));
+  const { vue } = await monterCollections(lire);
+  expect(champ(vue).getAttribute("aria-autocomplete")).toBe("list");
+  await saisirCollections(vue, "#");
+  expect(lignesCollections()).toEqual(["#api2 fichiers · 7 passages", "#docs-api1 fichier · 1 passage", "#notes14 fichiers · 96 passages"]);
+  expect(document.querySelector('.ya-flottante [role="listbox"]').getAttribute("aria-label")).toBe("Collections");
+  await saisirCollections(vue, "#no");
+  expect(lignesCollections()).toEqual(["#notes14 fichiers · 96 passages"]);
+  await saisirCollections(vue, "#API");
+  expect(lignesCollections().map((t) => t.split(/\d/)[0])).toEqual(["#api", "#docs-api"]);
+  await saisirCollections(vue, "issue#3");
+  expect(lignesCollections()).toEqual([]);
+});
+
+test("REQ108_AC3_AC9_Tab_insere_sans_envoyer_et_message_tel_quel", async () => {
+  const { vue, api } = await monterCollections(async () => ({ collections: COLLECTIONS }));
+  await saisirCollections(vue, "Voir #no");
+  touche(champ(vue), "Tab");
+  expect(champ(vue).value).toBe("Voir #notes ");
+  expect(api.envoyerMessage).not.toHaveBeenCalled();
+  expect(lignesCollections()).toEqual([]);
+  await saisirCollections(vue, "Voir #");
+  touche(champ(vue), "Escape");
+  expect(champ(vue).value).toBe("Voir #");
+  expect(lignesCollections()).toEqual([]);
+  taper(vue, "Que dit #notes ?");
+  touche(champ(vue), "Enter");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.envoyerMessage.mock.calls[0][0].texte).toBe("Que dit #notes ?");
+  expect(fil(vue).textContent).toContain("Que dit #notes ?");
+  expect(fil(vue).querySelector("[class*=collection]")).toBeNull();
+});
+
+test("REQ108_AC4_messages_et_Entree_envoie", async () => {
+  for (const [lire, attendu] of [
+    [async () => ({ collections: [] }), "Aucune collection."],
+    [async () => ({ coupure: true }), "Liste indisponible pour l'instant."],
+    [async () => ({ cause: "x", message: "x" }), "Liste indisponible pour l'instant."],
+    [async () => ({}), "Liste indisponible pour l'instant."],
+    [async () => ({ collections: "x" }), "Liste indisponible pour l'instant."],
+  ]) {
+    const { vue, api } = await monterCollections(lire);
+    await saisirCollections(vue, "a #");
+    expect(document.querySelector('.ya-flottante [role="status"]').textContent).toBe(attendu);
+    touche(champ(vue), "Enter");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.envoyerMessage).toHaveBeenCalled();
+    vue.detruire();
+    document.body.replaceChildren();
+  }
+  const { vue, api } = await monterCollections(async () => ({ collections: COLLECTIONS }));
+  await saisirCollections(vue, "#zzz");
+  expect(document.querySelector('.ya-flottante [role="status"]').textContent).toBe("Aucune collection ne correspond.");
+  touche(champ(vue), "Enter");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.envoyerMessage).toHaveBeenCalledTimes(1);
+});
+
+test("REQ108_AC3_AC9_avec_agents_personnalises", async () => {
+  const { vue, api } = await monterCollections(async () => ({ collections: COLLECTIONS }), { equipe: AGENTS() });
+  await saisirCollections(vue, "#no");
+  expect(document.querySelector('.ya-flottante [role="listbox"]').getAttribute("aria-label")).toBe("Collections");
+  touche(champ(vue), "Tab");
+  expect(champ(vue).value).toBe("#notes ");
+  expect(api.envoyerMessage).not.toHaveBeenCalled();
+  taper(vue, "Relisez #notes");
+  touche(champ(vue), "Enter");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.envoyerMessage).toHaveBeenLastCalledWith({ agents: ["relecteur", "testeur"], texte: "Relisez #notes" });
+});
+
+test("REQ108_AC11_pendant_un_tour_Entree_insere_sans_envoyer", async () => {
+  const { vue, api } = await monterCollections(async () => ({ collections: COLLECTIONS }), {
+    lectures: [{ entrees: [], enCours: true, total: 1, tokens: 0 }, { entrees: [], enCours: true, total: 1, tokens: 0 }],
+  });
+  taper(vue, "premier");
+  touche(champ(vue), "Enter");
+  await tick(0);
+  expect(arreter(vue).closest(".bouton-enveloppe").hidden).toBe(false);
+  expect(api.envoyerMessage).toHaveBeenCalledTimes(1);
+  await saisirCollections(vue, "#no");
+  expect(envoyer(vue).disabled).toBe(true);
+  touche(champ(vue), "Enter");
+  expect(champ(vue).value).toBe("#notes ");
+  expect(api.envoyerMessage).toHaveBeenCalledTimes(1);
+  expect(envoyer(vue).disabled).toBe(true);
+  expect(fil(vue).querySelector("[class*=collection]")).toBeNull();
+});
+
+test("REQ108_AC5_liste_relue_a_chaque_ouverture", async () => {
+  const lire = vi.fn().mockResolvedValueOnce({ collections: [COLLECTIONS[0]] }).mockResolvedValue({ collections: COLLECTIONS });
+  const { vue } = await monterCollections(lire);
+  await saisirCollections(vue, "#");
+  expect(lignesCollections()).toHaveLength(1);
+  touche(champ(vue), "Escape");
+  await saisirCollections(vue, "");
+  await saisirCollections(vue, "#");
+  expect(lire).toHaveBeenCalledTimes(2);
+  expect(lignesCollections()).toHaveLength(3);
+});
+
+test("REQ108_AC10_Chargement_apres_200_ms_et_Entree_retenue", async () => {
+  let fin;
+  const { vue, api } = await monterCollections(() => new Promise((r) => (fin = r)));
+  await saisirCollections(vue, "#");
+  await tick(250);
+  expect(document.querySelector(".ya-flottante").textContent).toContain("Chargement…");
+  fin({ collections: COLLECTIONS });
+  await tick(0);
+  touche(champ(vue), "ArrowDown");
+  touche(champ(vue), "Enter");
+  expect(champ(vue).value).toBe("#docs-api ");
+  expect(api.envoyerMessage).not.toHaveBeenCalled();
+});

@@ -2,6 +2,7 @@ import * as apiReelle from "../api.js";
 import { avatar } from "../ui/avatar.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
+import { completion } from "../ui/completion.js";
 import { conversation } from "../ui/conversation.js";
 import { indication } from "../ui/indication.js";
 import { menu } from "../ui/menu.js";
@@ -11,6 +12,31 @@ import { ouvrirProfils as ouvrirProfilsReel } from "./profils.js";
 const INTERVALLE = 500;
 const TEXTE_VIDE = "Écrivez un message pour commencer.";
 const TEXTE_AUCUN_PROFIL = "Aucun profil. Créez-en un avec Ctrl+P, puis > Profils de modèle.";
+
+const pluriel = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+
+/** Collections de la base (REQ-108), relues à chaque ouverture de la liste « # ». */
+function sourceCollections(api) {
+  return {
+    nom: "Collections",
+    async suggestions(texte) {
+      const r = await api.lireConnaissance();
+      if (!r || r.coupure || r.cause || !Array.isArray(r.collections)) throw new Error("liste illisible");
+      if (r.collections.length === 0) return { message: "Aucune collection." };
+      const t = texte.toLowerCase();
+      const trier = (a) => a.sort((x, y) => x.nom.localeCompare(y.nom));
+      const contient = trier(r.collections.filter((c) => c.nom.toLowerCase().includes(t)));
+      const debut = contient.filter((c) => c.nom.toLowerCase().startsWith(t));
+      const lignes = [...debut, ...contient.filter((c) => !debut.includes(c))].map((c) => ({
+        id: `#${c.nom}`,
+        libelle: `#${c.nom}`,
+        dossier: `${pluriel(c.fichiers, "fichier")} · ${pluriel(c.passages, "passage")}`,
+        valeur: `#${c.nom}`,
+      }));
+      return lignes.length ? lignes : { message: "Aucune collection ne correspond." };
+    },
+  };
+}
 
 /** Tokens pour le compteur : exact sous 1 000, en milliers (« 12 k ») puis en millions (« 1,5 M »), arrondis vers le bas. */
 export function formaterTokens(n) {
@@ -190,7 +216,13 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
   // Saisie.
   const saisie = document.createElement("div");
   saisie.className = "agent-saisie";
-  const { champMessage, texteSaisi, barre, arreter, envoyer } = saisieMessage({ libelle: "Message à l'agent", surEnvoi: () => envoyerMessage() });
+  let suggestions = null;
+  const { champMessage, texteSaisi, barre, arreter, envoyer } = saisieMessage({
+    libelle: "Message à l'agent",
+    surEnvoi: () => envoyerMessage(),
+    retenirEntree: () => suggestions?.retenirEntree(),
+  });
+  suggestions = completion({ champ: texteSaisi, sources: { "#": sourceCollections(api) } });
   let champProfil = null;
   const compteur = document.createElement("span");
   compteur.className = "agent-compteur";
@@ -486,6 +518,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     majListe,
     detruire() {
       detruite = true;
+      suggestions.detruire();
       clearTimeout(minuteur);
       clearTimeout(retour);
     },
