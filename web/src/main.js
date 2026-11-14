@@ -1,6 +1,7 @@
 import { info, sessionValide } from "./api.js";
 import { vueConnexion } from "./vues/connexion.js";
 import { charger } from "./reglages-interface.js";
+import { charger as chargerCouleurs } from "./couleurs-markdown.js";
 import { vuePrincipale } from "./vues/principale.js";
 import { copierEnTexteSimple } from "./ui/copie.js";
 
@@ -22,8 +23,8 @@ async function demarrer(app) {
     montrer(vueConnexion({ chemin: projet.chemin, expiree, surSucces: principale }));
   };
   const principale = async () => {
-    const reglages = await charger();
-    montrer(vuePrincipale({ chemin: projet.chemin, reglages, surDeconnexion: () => connexion(false), surExpiree: () => connexion(true) }));
+    const [reglages, couleurs] = await Promise.all([charger(), chargerCouleurs()]);
+    montrer(vuePrincipale({ chemin: projet.chemin, reglages, couleursIllisibles: couleurs.illisible, surDeconnexion: () => connexion(false), surExpiree: () => connexion(true) }));
   };
   if (await sessionValide()) principale();
   else connexion(false);

@@ -38,7 +38,7 @@ function nomDuDossier(chemin) {
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 
 /** V-002. `surDeconnexion` est appelé une fois la session fermée, `surExpiree` si elle expire. */
-export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnexion, reglages = {} }) {
+export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnexion, reglages = {}, couleursIllisibles = false }) {
   const imposes = reglages.replis ?? {};
   // Une fonction désactivée n'est pas créée : ni vue, ni minuteur, ni requête.
   const avec = { recherche: true, git: true, shells: true, agents: true, claude: true, ...reglages.fonctions };
@@ -205,11 +205,11 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
 
   // Bandeaux : la coupure d'abord, puis un seul message à la fois.
   const bandeaux = document.createElement("div");
-  const places = { coupure: null, message: null };
-  const montrerBandeau = (nom, element) => {
-    places[nom]?.remove();
-    places[nom] = element;
-    if (element) bandeaux.append(element);
+  const places = { coupure: [], message: [] };
+  const montrerBandeau = (nom, ...elements) => {
+    for (const ancien of places[nom]) ancien.remove();
+    places[nom] = elements.filter(Boolean);
+    bandeaux.append(...places[nom]);
   };
   let etat = "connecte";
   let attenteTexte = "";
@@ -223,6 +223,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     montrerBandeau("message", m);
     return m;
   }
+  const illisible = (fichier) => message({ texte: `${fichier} est illisible. Corrigez-le, puis rechargez la page.`, variante: "alerte", fermable: true });
 
   let fichiers = null; // créé après l'éditeur, dont les premiers rappels arrivent avant
   let git = null; // créé après l'arbre, dont la première lecture le demande
@@ -405,8 +406,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     recalculer();
   });
   // Repli gardé : le panneau reste replié, et le focus va sur « Ouvrir un fichier » s'il n'y a aucun onglet.
-  if (reglages.illisible) {
-    dire({ texte: ".yaide/interface.json est illisible. Corrigez-le, puis rechargez la page.", variante: "alerte", fermable: true });
+  if (reglages.illisible || couleursIllisibles) {
+    montrerBandeau("message", reglages.illisible && illisible(".yaide/interface.json"), couleursIllisibles && illisible(".yaide/markdown.json"));
   }
   Promise.all([lire("replis"), restauration]).then(([precedents]) => {
     if (detruite) return;
@@ -491,7 +492,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       majEtat();
       editeur.definirEtat(nouvel);
       if (nouvel !== "coupe") {
-        if (places.message?.textContent.includes(TEXTE_COUPURE)) montrerBandeau("message", null);
+        if (places.message.some((m) => m.textContent.includes(TEXTE_COUPURE))) montrerBandeau("message", null);
         // Une lecture de l'état git perdue pendant la coupure : personne d'autre ne la relance.
         if (retour) git.rafraichir();
       }

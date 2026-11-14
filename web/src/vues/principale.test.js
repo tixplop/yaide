@@ -3,8 +3,10 @@ import { ensureSyntaxTree } from "@codemirror/language";
 import * as oc from "../opencode.js";
 import * as worktree from "../worktree.js";
 import { ecrire, lire } from "../stockage.js";
-import { monter, attendre, avecHorloge, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne, simulerOpencode, boutonClaudeDe, ongletsOc, nomDuChamp, nomsRailDroit, boutonOcDe, ongletsClaude, ligne } from "./principale.aides.js";
+import { charger as chargerCouleurs } from "../couleurs-markdown.js";
+import { simulerServeur, ETAT_GIT, monter, attendre, avecHorloge, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne, simulerOpencode, boutonClaudeDe, ongletsOc, nomDuChamp, nomsRailDroit, boutonOcDe, ongletsClaude, ligne } from "./principale.aides.js";
 
+vi.mock("../couleurs-markdown.js", () => ({ charger: vi.fn(async () => ({ illisible: false })) }));
 vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
 test("REQ028_AC6_titre_du_navigateur", () => {
@@ -1173,4 +1175,83 @@ test("REQ101_AC11_survol_d_un_lien_pose_l_indication_dans_la_barre_puis_la_retir
   boutonAgentDe(vue).click();
   await vi.waitFor(() => expect(champAgent(vue)).not.toBeNull());
   expect(indication().hidden).toBe(true);
+});
+
+// ---- REQ-115 : bandeaux de fichiers illisibles ----
+
+const TEXTE_MD = ".yaide/markdown.json est illisible. Corrigez-le, puis rechargez la page.";
+const TEXTE_IF = ".yaide/interface.json est illisible. Corrigez-le, puis rechargez la page.";
+const alertes = (vue) => [...vue.querySelectorAll("[role=alert]")].filter((a) => a.textContent.includes("est illisible."));
+
+test("REQ115_AC10_markdown_illisible_donne_un_bandeau_alerte_ferme_sans_focus_dedans", async () => {
+  simulerServeur(ETAT_GIT([]));
+  const { vue } = monter({ couleursIllisibles: true });
+  await attendre();
+  const [bandeau, ...autres] = alertes(vue);
+  expect(autres).toEqual([]);
+  expect(bandeau.querySelector(".message-texte").textContent).toBe(TEXTE_MD);
+  ligne(vue, "main.rs").click();
+  await vi.waitFor(() => expect(vue.querySelector(".cm-content")).not.toBeNull());
+  expect(bandeau.contains(document.activeElement)).toBe(false);
+  expect(document.activeElement.closest(".cm-content")).not.toBeNull();
+  const fermer = bandeau.querySelector("button");
+  expect(fermer.getAttribute("aria-label")).toBe("Fermer");
+  fermer.click();
+  expect(alertes(vue)).toEqual([]);
+  vue.detruire();
+  const sans = monter({ couleursIllisibles: false });
+  await attendre();
+  expect(sans.vue.textContent).not.toContain("illisible");
+});
+
+test("REQ115_AC10_AC11_deux_fichiers_illisibles_deux_bandeaux_interface_d_abord_chaque_fermer_retire_le_sien", async () => {
+  const { vue } = monter({ reglages: { illisible: true }, couleursIllisibles: true });
+  await attendre();
+  const [premier, second] = alertes(vue);
+  expect(alertes(vue)).toHaveLength(2);
+  expect(premier.querySelector(".message-texte").textContent).toBe(TEXTE_IF);
+  expect(second.querySelector(".message-texte").textContent).toBe(TEXTE_MD);
+  expect(premier.nextElementSibling).toBe(second);
+  for (const b of [premier, second]) {
+    const fermer = b.querySelector("button");
+    expect(fermer.getAttribute("aria-describedby")).toBe(b.querySelector(".message-texte").id);
+  }
+  premier.querySelector("button").click();
+  expect(alertes(vue)).toEqual([second]);
+});
+
+test("REQ115_AC8_enregistrer_markdown_json_dans_l_editeur_ne_relit_pas_les_couleurs", async () => {
+  const brut = simulerServeur(ETAT_GIT([]));
+  const base = fetch;
+  const puts = [];
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    if (init?.method === "PUT") {
+      puts.push(decodeURIComponent(url));
+      return { ok: true, status: 200, json: async () => ({ version: "2" }) };
+    }
+    const chemin = url.split("?")[0];
+    if (chemin === "/api/fichiers") {
+      const dossier = url.includes("chemin=.yaide");
+      return { ok: true, status: 200, json: async () => ({ entrees: dossier ? [{ nom: "markdown.json", dossier: false, ignore: false }] : [{ nom: ".yaide", dossier: true, ignore: false }] }) };
+    }
+    return base(url, init);
+  }));
+  void brut;
+  chargerCouleurs.mockClear();
+  const feuilles = [{ sentinelle: true }];
+  document.adoptedStyleSheets = feuilles;
+  const { vue } = monter();
+  await attendre();
+  await attendre();
+  ligne(vue, ".yaide").click();
+  await vi.waitFor(() => expect(ligne(vue, "markdown.json")).toBeDefined());
+  ligne(vue, "markdown.json").click();
+  await vi.waitFor(() => expect(vue.querySelector(".zone-code")?.vue).toBeDefined());
+  vue.querySelector(".zone-code").vue.dispatch({ changes: { from: 0, insert: "{}" } });
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(puts.some((u) => u.includes(".yaide/markdown.json"))).toBe(true));
+  await attendre();
+  expect(chargerCouleurs).not.toHaveBeenCalled();
+  expect(document.adoptedStyleSheets).toBe(feuilles);
+  document.adoptedStyleSheets = [];
 });

@@ -604,6 +604,17 @@ test("REQ069_AC9_bandeau_illisible_sans_focus", async () => {
   expect(sans.vue.textContent).not.toContain("illisible");
 });
 
+test("REQ115_AC11_un_message_suivant_remplace_les_deux_bandeaux_illisibles", async () => {
+  simulerClaude({ ouverture: { status: 503, corps: "pas de pty\n" } });
+  const { vue } = monter({ reglages: { illisible: true }, couleursIllisibles: true });
+  const illisibles = () => [...vue.querySelectorAll("[role=alert]")].filter((a) => a.textContent.includes("est illisible."));
+  expect(illisibles()).toHaveLength(2);
+  await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
+  boutonClaudeDe(vue).click();
+  await vi.waitFor(() => expect(vue.textContent).toContain("Impossible d'ouvrir une session Claude : pas de pty."));
+  expect(illisibles()).toEqual([]);
+});
+
 test("REQ069_AC2_AC3_AC5_cles_de_replis_l_emportent_sur_le_navigateur", async () => {
   largeur(1280);
   vi.mocked(lire).mockImplementation(async (cle) => (cle === "replis" ? { panneau: false, agent: true } : undefined));
