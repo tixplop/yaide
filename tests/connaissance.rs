@@ -882,3 +882,315 @@ fn REQ109_AC1_AC2_pointeurs_seuls_sur_disque_texte_relu_par_la_recherche() {
         3
     );
 }
+
+/// Sonde jusqu'à 10 s que `cond` soit vraie.
+fn attendre(quoi: &str, cond: impl Fn() -> bool) {
+    let debut = Instant::now();
+    while !cond() {
+        assert!(debut.elapsed() < Duration::from_secs(10), "{quoi}");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// Les textes envoyés au provider depuis la requête `depuis`, dans l'ordre.
+fn textes_depuis(r: &Recues, depuis: usize) -> Vec<String> {
+    r.lock().unwrap()[depuis..]
+        .iter()
+        .flat_map(|q| q["input"].as_array().unwrap().clone())
+        .map(|t| t.as_str().unwrap().to_string())
+        .collect()
+}
+
+/// Les vecteurs d'une collection, dans l'ordre de ses fichiers (par chemin).
+fn vecteurs_de(s: &Serveur, collection: &str) -> Vec<f32> {
+    let p = s.projet.join(format!(
+        ".yaide/connaissance/collections/{collection}/vecteurs.bin"
+    ));
+    std::fs::read(p)
+        .unwrap()
+        .chunks(4)
+        .map(|o| f32::from_le_bytes(o.try_into().unwrap()))
+        .collect()
+}
+
+fn date_gardee(s: &Serveur, collection: &str, chemin: &str) -> u128 {
+    let p = s.projet.join(format!(
+        ".yaide/connaissance/collections/{collection}/passages.json"
+    ));
+    let j: Value = serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap();
+    let f = j["fichiers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["chemin"] == chemin)
+        .unwrap();
+    f["date"].as_u64().unwrap().into()
+}
+
+fn attendre_numero(s: &Serveur, numero: u64) -> Value {
+    let debut = Instant::now();
+    loop {
+        let ajout = s.etat()["ajout"].clone();
+        if ajout["numero"] == numero && ajout["etat"] != "en_cours" {
+            return ajout;
+        }
+        assert!(debut.elapsed() < Duration::from_secs(30), "ajout sans fin");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn REQ110_AC1_REQ112_donnees_fichier_modifie_remis_a_jour_dans_chaque_collection() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac110-1");
+    assert_eq!(s.etat()["fichiers"], json!({}));
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/b.md", "v2 deux\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    assert_eq!(s.ajouter("api", &["docs/a.md"]).code, 202);
+    attendre_numero(&s, 2);
+    let f = s.etat()["fichiers"].clone();
+    assert_eq!(
+        f["docs/a.md"],
+        json!({ "collections": ["api", "notes"], "echec": null })
+    );
+    assert_eq!(
+        f["docs/b.md"],
+        json!({ "collections": ["notes"], "echec": null })
+    );
+    let avant = nombre_requetes(&recues);
+    // Changement par écriture directe sur le disque.
+    ecrire(&s, "docs/a.md", "v5 cinq\n");
+    attendre("requête de a.md", || nombre_requetes(&recues) > avant);
+    attendre("vecteurs de notes", || {
+        vecteurs_de(&s, "notes") == [5.0, 1.0, 2.0, 1.0]
+    });
+    assert_eq!(vecteurs_de(&s, "api"), [5.0, 1.0]);
+    assert_eq!(textes_depuis(&recues, avant), ["v5 cinq"]);
+    let r = s.chercher("v5", Some("api")).json();
+    assert_eq!(r["passages"][0]["texte"], "v5 cinq");
+    // Changement par Ctrl+S (PUT /api/fichier).
+    let avant = nombre_requetes(&recues);
+    let r = s.appel("PUT", "/api/fichier?chemin=docs/a.md", &Value::Null);
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let origine = format!("https://127.0.0.1:{}", s.port);
+    let r = requete(
+        s.port,
+        "PUT",
+        "/api/fichier?chemin=docs/a.md",
+        &s.cookie,
+        &origine,
+        b"v7 sept\n",
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    attendre("requête après Ctrl+S", || {
+        nombre_requetes(&recues) > avant
+    });
+    attendre("vecteurs après Ctrl+S", || {
+        vecteurs_de(&s, "api") == [7.0, 1.0]
+    });
+    assert_eq!(textes_depuis(&recues, avant), ["v7 sept"]);
+    assert_eq!(vecteurs_de(&s, "notes"), [7.0, 1.0, 2.0, 1.0]);
+}
+
+#[test]
+fn REQ110_AC2_fichier_touche_sans_changement_de_contenu_aucune_requete() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac110-2");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/b.md", "v2 deux\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    let avant = nombre_requetes(&recues);
+    let ancienne = date_gardee(&s, "notes", "docs/a.md");
+    let f = std::fs::File::options()
+        .write(true)
+        .open(s.projet.join("docs/a.md"))
+        .unwrap();
+    f.set_modified(std::time::SystemTime::now() + Duration::from_secs(60))
+        .unwrap();
+    // Un autre fichier change ensuite : sa requête prouve que la passe a eu lieu.
+    ecrire(&s, "docs/b.md", "v3 trois\n");
+    attendre("requête de b.md", || nombre_requetes(&recues) > avant);
+    attendre("date de a.md réécrite", || {
+        date_gardee(&s, "notes", "docs/a.md") != ancienne
+    });
+    assert_eq!(textes_depuis(&recues, avant), ["v3 trois"]);
+    assert_eq!(vecteurs_de(&s, "notes"), [1.0, 1.0, 3.0, 1.0]);
+}
+
+#[test]
+fn REQ110_AC3_fichier_supprime_binaire_ou_renomme_quitte_les_collections_sans_requete() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("ac110-3");
+    for (c, t) in [
+        ("a", "v1 un"),
+        ("b", "v2 deux"),
+        ("d", "v4 q"),
+        ("e", "v5 c"),
+    ] {
+        ecrire(&s, &format!("docs/{c}.md"), &format!("{t}\n"));
+    }
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    assert_eq!(s.ajouter("api", &["docs/b.md"]).code, 202);
+    attendre_numero(&s, 2);
+    let avant = nombre_requetes(&recues);
+    std::fs::remove_file(s.projet.join("docs/b.md")).unwrap();
+    std::fs::write(s.projet.join("docs/d.md"), b"v4\0binaire").unwrap();
+    std::fs::rename(s.projet.join("docs/e.md"), s.projet.join("docs/f.md")).unwrap();
+    attendre("sortie des fichiers", || {
+        s.fichiers("notes") == ["docs/a.md"]
+    });
+    assert_eq!(s.fichiers("api"), Vec::<String>::new());
+    assert_eq!(vecteurs_de(&s, "notes"), [1.0, 1.0]);
+    assert!(s.etat()["fichiers"]["docs/f.md"].is_null());
+    assert_eq!(nombre_requetes(&recues), avant);
+}
+
+#[test]
+fn REQ110_AC4_derniere_collection_videe_reste_a_zero() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("ac110-4");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    std::fs::remove_file(s.projet.join("docs/a.md")).unwrap();
+    attendre("collection vidée", || {
+        s.collection("notes").is_some_and(|c| c["fichiers"] == 0)
+    });
+    let c = s.collection("notes").unwrap();
+    assert_eq!(
+        (c["fichiers"].clone(), c["passages"].clone()),
+        (json!(0), json!(0))
+    );
+    assert_eq!(s.fichiers("notes"), Vec::<String>::new());
+}
+
+#[test]
+fn REQ110_AC5_changements_pendant_l_arret_rattrapes_au_redemarrage() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let racine = dossier("ac110-5");
+    let s = demarrer(&racine, "projet");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/b.md", "v2 deux\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    let projet = s.projet.clone();
+    drop(s);
+    std::fs::write(projet.join("docs/a.md"), "v6 six\n").unwrap();
+    std::fs::remove_file(projet.join("docs/b.md")).unwrap();
+    let avant = nombre_requetes(&recues);
+    let s = demarrer(&racine, "projet");
+    attendre("rattrapage", || s.fichiers("notes") == ["docs/a.md"]);
+    attendre("vecteurs de a.md", || {
+        vecteurs_de(&s, "notes") == [6.0, 1.0]
+    });
+    assert_eq!(textes_depuis(&recues, avant), ["v6 six"]);
+}
+
+#[test]
+fn REQ110_AC6_REQ112_refus_du_provider_ancien_vecteurs_ecartes_sans_nouvelle_requete() {
+    // 1re requête : l'ajout ; 2e : le refus.
+    let (adresse, recues) = faux_provider(vec![(200, 0), (401, 0)]);
+    let s = lancer("ac110-6");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/b.md", "v2 deux\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    ecrire(&s, "docs/a.md", "v5 cinq\n");
+    attendre("cause de l'échec", || {
+        s.etat()["fichiers"]["docs/a.md"]["echec"].is_string()
+    });
+    let cause = s.etat()["fichiers"]["docs/a.md"]["echec"].clone();
+    assert!(cause.as_str().unwrap().contains("401"), "{cause}");
+    assert_eq!(nombre_requetes(&recues), 2);
+    // Anciens vecteurs gardés, mais la recherche n'en rend aucun passage.
+    assert_eq!(vecteurs_de(&s, "notes"), [1.0, 1.0, 2.0, 1.0]);
+    let r = s.chercher("v1", Some("notes")).json();
+    let chemins: Vec<&str> = r["passages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["chemin"].as_str().unwrap())
+        .collect();
+    assert_eq!(chemins, ["docs/b.md"]);
+    // Pas de nouvel essai tant que a.md ne change pas : la requête de b.md arrive seule.
+    let avant = nombre_requetes(&recues);
+    ecrire(&s, "docs/b.md", "v3 trois\n");
+    attendre("requête de b.md", || nombre_requetes(&recues) > avant);
+    assert_eq!(textes_depuis(&recues, avant - 1)[1..], ["v3 trois"]);
+    assert!(s.etat()["fichiers"]["docs/a.md"]["echec"].is_string());
+    // Modifié de nouveau : une nouvelle requête, et l'échec s'efface.
+    let avant = nombre_requetes(&recues);
+    ecrire(&s, "docs/a.md", "v8 huit\n");
+    attendre("nouvelle requête de a.md", || {
+        nombre_requetes(&recues) > avant
+    });
+    assert_eq!(textes_depuis(&recues, avant), ["v8 huit"]);
+    attendre("échec effacé", || {
+        s.etat()["fichiers"]["docs/a.md"]["echec"].is_null()
+    });
+    assert_eq!(vecteurs_de(&s, "notes"), [8.0, 1.0, 3.0, 1.0]);
+}
+
+#[test]
+fn REQ110_AC7_aucune_mise_a_jour_pendant_un_ajout_et_ajout_non_refuse_pendant_une_mise_a_jour() {
+    // 1 : ajout de a ; 2 : ajout de c (lent) ; 3 : mise à jour de a ; 4 : mise à jour lente de a ; 5 : ajout de d.
+    let (adresse, recues) = faux_provider(vec![(200, 0), (200, 3000), (200, 0), (200, 3000)]);
+    let s = lancer("ac110-7");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    ecrire(&s, "docs/c.md", "v3 trois\n");
+    ecrire(&s, "docs/d.md", "v4 quatre\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs/a.md"]).code, 202);
+    attendre_numero(&s, 1);
+    assert_eq!(s.ajouter("notes", &["docs/c.md"]).code, 202);
+    attendre("requête de l'ajout", || nombre_requetes(&recues) == 2);
+    ecrire(&s, "docs/a.md", "v5 cinq\n");
+    // Pendant l'ajout (3 s, au moins une passe), a.md n'est pas envoyé.
+    let debut = Instant::now();
+    while s.etat()["ajout"]["etat"] == "en_cours" {
+        assert_eq!(nombre_requetes(&recues), 2);
+        assert!(debut.elapsed() < Duration::from_secs(10));
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    attendre("mise à jour de a.md", || nombre_requetes(&recues) == 3);
+    attendre("vecteurs de a.md", || {
+        vecteurs_de(&s, "notes") == [5.0, 1.0, 3.0, 1.0]
+    });
+    assert_eq!(s.fichiers("notes"), ["docs/a.md", "docs/c.md"]);
+    // Un ajout lancé pendant une mise à jour automatique n'est pas refusé.
+    ecrire(&s, "docs/a.md", "v6 six\n");
+    attendre("mise à jour lente", || nombre_requetes(&recues) == 4);
+    let r = s.ajouter("notes", &["docs/d.md"]);
+    assert_eq!(r.code, 202, "{}", r.corps);
+    let fin = attendre_numero(&s, 3);
+    assert_eq!(fin["etat"], "fini");
+    assert_eq!(s.fichiers("notes"), ["docs/a.md", "docs/c.md", "docs/d.md"]);
+    attendre("a.md remis à jour après l'ajout", || {
+        vecteurs_de(&s, "notes") == [6.0, 1.0, 3.0, 1.0, 4.0, 1.0]
+    });
+}
+
+#[test]
+fn REQ112_donnees_fichiers_vides_si_la_base_est_illisible() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("ac112-illisible");
+    ecrire(&s, "docs/a.md", "v1 un\n");
+    configurer(&s, &adresse);
+    assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
+    s.attendre_fin();
+    assert!(s.etat()["fichiers"]["docs/a.md"].is_object());
+    std::fs::write(s.config_json(), "{ pas du json").unwrap();
+    let e = s.etat();
+    assert!(e["erreur"].is_string());
+    assert_eq!(e["fichiers"], json!({}));
+}

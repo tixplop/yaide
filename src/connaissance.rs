@@ -3,7 +3,7 @@
 
 use crate::agent::provider::{self, ErreurProvider, Provider};
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 
 const PASSAGE_MAX: usize = 2000;
@@ -148,6 +148,7 @@ pub fn erreur_provider(provider: Provider, e: ErreurProvider) -> Erreur {
     }
 }
 
+#[derive(Clone)]
 pub struct Base {
     projet: PathBuf,
     racine: PathBuf,
@@ -477,16 +478,51 @@ impl Base {
         Ok(!self.noms_collections()?.is_empty())
     }
 
+    fn lire_sans_vecteurs(&self, nom: &str) -> Result<Collection, String> {
+        let chemin = self.dossier_collections().join(nom).join("passages.json");
+        let brut = std::fs::read(&chemin)
+            .map_err(|e| format!("lecture de {} impossible : {e}", chemin.display()))?;
+        serde_json::from_slice(&brut)
+            .map_err(|e| format!("{} est illisible : {e}", chemin.display()))
+    }
+
+    /// Pour chaque fichier des collections, ses entrées (une par collection qui le contient,
+    /// par ordre alphabétique) ; ne lit que `passages.json`.
+    fn entrees(&self) -> Result<BTreeMap<String, Vec<Entree>>, String> {
+        let mut m: BTreeMap<String, Vec<Entree>> = BTreeMap::new();
+        for nom in self.noms_collections()? {
+            for f in self.lire_sans_vecteurs(&nom)?.fichiers {
+                m.entry(f.chemin).or_default().push(Entree {
+                    collection: nom.clone(),
+                    empreinte: f.empreinte,
+                    taille: f.taille,
+                    date: f.date,
+                });
+            }
+        }
+        Ok(m)
+    }
+
+    /// Collections de chaque fichier de la base (ordre alphabétique) ; vide si la base est illisible.
+    pub fn collections_par_fichier(&self) -> BTreeMap<String, Vec<String>> {
+        let mut m: BTreeMap<String, Vec<String>> = self
+            .entrees()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(c, es)| (c, es.into_iter().map(|e| e.collection).collect()))
+            .collect();
+        for noms in m.values_mut() {
+            noms.sort_by_key(|n| n.to_lowercase());
+        }
+        m
+    }
+
     /// Nombres de fichiers et de passages ; ne lit que `passages.json`, pas les vecteurs.
     pub fn liste(&self) -> Result<Vec<Resume>, String> {
         self.noms_collections()?
             .iter()
             .map(|n| {
-                let chemin = self.dossier_collections().join(n).join("passages.json");
-                let brut = std::fs::read(&chemin)
-                    .map_err(|e| format!("lecture de {} impossible : {e}", chemin.display()))?;
-                let c: Collection = serde_json::from_slice(&brut)
-                    .map_err(|e| format!("{} est illisible : {e}", chemin.display()))?;
+                let c = self.lire_sans_vecteurs(n)?;
                 Ok(Resume {
                     nom: c.nom.clone(),
                     fichiers: c.fichiers.len(),
@@ -727,6 +763,255 @@ impl Base {
     }
 }
 
+struct Entree {
+    collection: String,
+    empreinte: String,
+    taille: u64,
+    date: u128,
+}
+
+enum Action {
+    Retirer,
+    Toucher(u64, u128),
+    Remplacer(Box<Fichier>),
+}
+
+/// Fichiers dont la dernière mise à jour automatique a échoué : chemin → (taille, date, cause).
+/// En mémoire seulement : après un redémarrage, chaque fichier est réessayé une fois.
+#[derive(Default)]
+pub struct Echecs(std::sync::Mutex<HashMap<String, (u64, u128, String)>>);
+
+impl Echecs {
+    fn verrou(&self) -> std::sync::MutexGuard<'_, HashMap<String, (u64, u128, String)>> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn cause(&self, chemin: &str) -> Option<String> {
+        self.verrou().get(chemin).map(|e| e.2.clone())
+    }
+
+    /// Efface la ligne d'un fichier (mise à jour réussie, fichier sorti des collections).
+    pub fn effacer(&self, chemin: &str) {
+        self.verrou().remove(chemin);
+    }
+
+    fn noter(&self, chemin: &str, taille: u64, date: u128, cause: String) {
+        self.verrou()
+            .insert(chemin.to_string(), (taille, date, cause));
+    }
+}
+
+/// Provider, adresse, clé et modèle de la base, ou la raison pour laquelle on ne peut pas le joindre.
+pub type AccesBase = Result<(Provider, String, Option<String>, String), Erreur>;
+
+impl Base {
+    /// Une passe de vérification (REQ-110) : taille et date de chaque fichier des collections ;
+    /// un fichier changé est relu, puis retiré, touché ou remis à jour. Ne fait rien si la base
+    /// n'est pas configurée, a une collection illisible ou aucune, ou si un ajout est en cours.
+    pub async fn verifier(
+        &self,
+        suivi: &Suivi,
+        verrou: &tokio::sync::Mutex<()>,
+        echecs: &Echecs,
+        client: &reqwest::Client,
+        acces: &AccesBase,
+    ) {
+        if suivi.lire().is_some_and(|s| s.etat == EtatAjout::EnCours) {
+            return;
+        }
+        let base = self.clone();
+        let suspects = tokio::task::spawn_blocking(move || {
+            base.lire_config().ok().flatten()?;
+            let connues = base.entrees().ok()?;
+            Some(connues)
+        })
+        .await;
+        let Ok(Some(connues)) = suspects else {
+            return;
+        };
+        echecs.verrou().retain(|c, _| connues.contains_key(c));
+        let notes = echecs.verrou().clone();
+        let base = self.clone();
+        let suspects = tokio::task::spawn_blocking(move || {
+            let mut v = Vec::new();
+            for (chemin, entrees) in connues {
+                let stat = std::fs::metadata(base.projet.join(&chemin))
+                    .ok()
+                    .map(|m| taille_date(&crate::fichiers::version_de(&m)));
+                if let Some((t, d)) = stat {
+                    if entrees.iter().all(|e| e.taille == t && e.date == d) {
+                        continue;
+                    }
+                    if notes.get(&chemin).is_some_and(|n| n.0 == t && n.1 == d) {
+                        continue;
+                    }
+                }
+                v.push((chemin, entrees));
+            }
+            v
+        })
+        .await;
+        let Ok(suspects) = suspects else {
+            return;
+        };
+        for (chemin, entrees) in suspects {
+            self.mettre_a_jour(verrou, echecs, client, acces, &chemin, &entrees)
+                .await;
+        }
+    }
+
+    async fn mettre_a_jour(
+        &self,
+        verrou: &tokio::sync::Mutex<()>,
+        echecs: &Echecs,
+        client: &reqwest::Client,
+        acces: &AccesBase,
+        chemin: &str,
+        entrees: &[Entree],
+    ) {
+        let (projet, rel) = (self.projet.clone(), chemin.to_string());
+        let Ok(lu) =
+            tokio::task::spawn_blocking(move || crate::fichiers::lire(&projet, &rel)).await
+        else {
+            return;
+        };
+        let (texte, version) = match lu {
+            Ok(l) => l,
+            Err(_) => {
+                for e in entrees {
+                    let _ = self
+                        .appliquer(verrou, &e.collection, chemin, Action::Retirer)
+                        .await;
+                }
+                echecs.effacer(chemin);
+                return;
+            }
+        };
+        let (taille, date) = taille_date(&version);
+        let emp = empreinte(&texte);
+        let mut a_remplacer = Vec::new();
+        for e in entrees {
+            if e.empreinte != emp {
+                a_remplacer.push(e);
+            } else if (e.taille, e.date) != (taille, date) {
+                let _ = self
+                    .appliquer(verrou, &e.collection, chemin, Action::Toucher(taille, date))
+                    .await;
+            }
+        }
+        if a_remplacer.is_empty() {
+            echecs.effacer(chemin);
+            return;
+        }
+        let echec = |cause: String| echecs.noter(chemin, taille, date, cause);
+        let passages = decouper(chemin, &texte);
+        let vecteurs = match self.vecteurs_du_fichier(client, acces, &passages).await {
+            Ok(v) => v,
+            Err(e) => return echec(e.cause),
+        };
+        for e in a_remplacer {
+            let f = Fichier {
+                chemin: chemin.to_string(),
+                empreinte: emp.clone(),
+                taille,
+                date,
+                passages: passages.clone(),
+                vecteurs: vecteurs.clone(),
+            };
+            let r = self
+                .appliquer(
+                    verrou,
+                    &e.collection,
+                    chemin,
+                    Action::Remplacer(Box::new(f)),
+                )
+                .await;
+            if let Err(m) = r {
+                return echec(m);
+            }
+        }
+        echecs.effacer(chemin);
+    }
+
+    async fn vecteurs_du_fichier(
+        &self,
+        client: &reqwest::Client,
+        acces: &AccesBase,
+        passages: &[Passage],
+    ) -> Result<Vec<Vec<f32>>, Erreur> {
+        if passages.is_empty() {
+            return Ok(Vec::new());
+        }
+        let (provider, adresse, cle, modele) = match acces {
+            Ok(a) => a,
+            Err(e) => {
+                return Err(Erreur {
+                    cause: e.cause.clone(),
+                    detail: e.detail.clone(),
+                })
+            }
+        };
+        let acces = Acces {
+            client,
+            provider: *provider,
+            adresse,
+            cle: cle.as_deref(),
+            modele,
+        };
+        let textes: Vec<String> = passages.iter().map(|p| p.texte.clone()).collect();
+        let mut vecteurs: Vec<Vec<f32>> = Vec::new();
+        for lot in textes.chunks(LOT) {
+            vecteurs.extend(acces.vecteurs(lot).await?);
+        }
+        let dim = vecteurs.first().map_or(0, |v| v.len());
+        if vecteurs.len() != passages.len() || dim == 0 || vecteurs.iter().any(|v| v.len() != dim) {
+            return Err("Le provider a rendu des vecteurs inattendus.".into());
+        }
+        Ok(vecteurs)
+    }
+
+    /// Applique `action` au fichier `chemin` de la collection, sous le verrou de la base, sur la
+    /// collection relue : un ajout terminé entre-temps n'est pas écrasé.
+    async fn appliquer(
+        &self,
+        verrou: &tokio::sync::Mutex<()>,
+        collection: &str,
+        chemin: &str,
+        action: Action,
+    ) -> Result<(), String> {
+        let _g = verrou.lock().await;
+        let base = self.clone();
+        let (collection, chemin) = (collection.to_string(), chemin.to_string());
+        tokio::task::spawn_blocking(move || {
+            let mut c = base.charger(&collection)?;
+            let Some(i) = c.fichiers.iter().position(|f| f.chemin == chemin) else {
+                return Ok(());
+            };
+            match action {
+                Action::Retirer => {
+                    c.fichiers.remove(i);
+                }
+                Action::Toucher(t, d) => {
+                    c.fichiers[i].taille = t;
+                    c.fichiers[i].date = d;
+                }
+                Action::Remplacer(f) => {
+                    if let Some(v) = f.vecteurs.first() {
+                        if c.dimension != 0 && v.len() != c.dimension {
+                            return Err("La dimension des vecteurs du provider a changé.".into());
+                        }
+                        c.dimension = v.len();
+                    }
+                    c.fichiers[i] = *f;
+                }
+            }
+            base.enregistrer(&c)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+}
+
 /// Où en est le dernier ajout du projet. Gardé en mémoire seulement : après un redémarrage,
 /// rien n'est « en cours ».
 #[derive(Serialize, Clone, Copy, Debug, PartialEq)]
@@ -911,7 +1196,9 @@ pub struct Demande {
 }
 
 /// Exécute l'ajout, un chemin après l'autre, et note l'avancement dans `suivi`.
-pub async fn executer(suivi: &Suivi, numero: u64, d: Demande) {
+pub async fn executer(suivi: &Suivi, verrou: &tokio::sync::Mutex<()>, numero: u64, d: Demande) {
+    // Pendant l'ajout, aucune mise à jour automatique n'écrit dans les collections (REQ-110).
+    let _verrou = verrou.lock().await;
     let client = provider::client();
     let acces = Acces {
         client: &client,

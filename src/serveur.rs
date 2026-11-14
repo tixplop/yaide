@@ -38,6 +38,8 @@ struct Etat {
     version: version::Version,
     jeton_apercu: String,
     ajouts: Arc<connaissance::Suivi>,
+    verrou_base: Arc<tokio::sync::Mutex<()>>,
+    echecs_base: Arc<connaissance::Echecs>,
 }
 
 type Partage = Arc<Etat>;
@@ -1284,44 +1286,46 @@ fn refus_base(code: StatusCode, cause: &str, message: impl Into<String>) -> Resp
     )
 }
 
-/// Configuration de la base et ce qu'il faut pour joindre son provider, ou le refus à rendre.
-#[allow(clippy::result_large_err)]
-fn acces_base(
-    etat: &Etat,
-) -> Result<
-    (
-        connaissance::Config,
-        crate::agent::provider::Provider,
-        String,
-        Option<String>,
-    ),
-    Response,
-> {
+type AccesBrut = (
+    connaissance::Config,
+    crate::agent::provider::Provider,
+    String,
+    Option<String>,
+);
+
+/// Configuration de la base et ce qu'il faut pour joindre son provider, ou le refus
+/// (code, cause, message).
+fn acces_base_brut(etat: &Etat) -> Result<AccesBrut, (StatusCode, &'static str, String)> {
     let config = connaissance::Base::new(&etat.projet_dir)
         .lire_config()
-        .map_err(|m| refus_base(StatusCode::CONFLICT, "illisible", m))?
+        .map_err(|m| (StatusCode::CONFLICT, "illisible", m))?
         .ok_or_else(|| {
-            refus_base(
+            (
                 StatusCode::CONFLICT,
                 "non_configuree",
-                "La base de connaissance n'est pas configurée.",
+                "La base de connaissance n'est pas configurée.".to_string(),
             )
         })?;
     let provider = crate::agent::reglages::provider(&config.provider).ok_or_else(|| {
-        refus_base(
+        (
             StatusCode::CONFLICT,
             "illisible",
-            "Le provider de la base est inconnu.",
+            "Le provider de la base est inconnu.".to_string(),
         )
     })?;
     let cle = etat.reglages.cle(&config.provider);
     connaissance::verifier_cle(provider, cle.as_deref())
-        .map_err(|m| refus_base(StatusCode::CONFLICT, "cle", m))?;
+        .map_err(|m| (StatusCode::CONFLICT, "cle", m))?;
     let adresse = etat
         .reglages
         .adresse(&config.provider)
         .unwrap_or_else(|| provider.adresse_par_defaut().to_string());
     Ok((config, provider, adresse, cle))
+}
+
+#[allow(clippy::result_large_err)]
+fn acces_base(etat: &Etat) -> Result<AccesBrut, Response> {
+    acces_base_brut(etat).map_err(|(code, cause, m)| refus_base(code, cause, m))
 }
 
 /// Configuration, collections (avec l'avancement d'un ajout en cours) et dernier ajout.
@@ -1365,10 +1369,23 @@ fn vue_connaissance(etat: &Etat) -> Response {
         }));
         collections.sort_by_key(|c| c["nom"].as_str().unwrap_or("").to_lowercase());
     }
+    let fichiers: serde_json::Map<String, serde_json::Value> = base
+        .collections_par_fichier()
+        .into_iter()
+        .filter(|_| erreur.is_none())
+        .map(|(chemin, noms)| {
+            let echec = etat.echecs_base.cause(&chemin);
+            (
+                chemin,
+                serde_json::json!({ "collections": noms, "echec": echec }),
+            )
+        })
+        .collect();
     json_rep(
         StatusCode::OK,
         serde_json::json!({
             "config": config, "erreur": erreur, "collections": collections, "ajout": ajout,
+            "fichiers": fichiers,
         }),
     )
 }
@@ -1521,10 +1538,14 @@ async fn connaissance_ajouter(State(etat): State<Partage>, corps: Bytes) -> Resp
         modele: config.modele,
     };
     let suivi = etat.ajouts.clone();
+    let verrou = etat.verrou_base.clone();
     tokio::spawn(async move {
         let travail = {
             let suivi = suivi.clone();
-            tokio::spawn(async move { connaissance::executer(&suivi, numero, demande).await })
+            let verrou = verrou.clone();
+            tokio::spawn(
+                async move { connaissance::executer(&suivi, &verrou, numero, demande).await },
+            )
         };
         if travail.await.is_err() {
             suivi.interrompre(numero);
@@ -1711,6 +1732,27 @@ pub async fn servir(
         version: version::Version::new(),
         jeton_apercu: crate::apercu::nouveau_jeton(),
         ajouts: Default::default(),
+        verrou_base: Default::default(),
+        echecs_base: Default::default(),
+    });
+    let verification = etat.clone();
+    let verification = tokio::spawn(async move {
+        let client = crate::agent::provider::client();
+        let base = connaissance::Base::new(&verification.projet_dir);
+        loop {
+            let acces = acces_base_brut(&verification)
+                .map(|(c, p, a, k)| (p, a, k, c.modele))
+                .map_err(|m| connaissance::Erreur::from(m.2));
+            base.verifier(
+                &verification.ajouts,
+                &verification.verrou_base,
+                &verification.echecs_base,
+                &client,
+                &acces,
+            )
+            .await;
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
     });
     let suivi = etat.clone();
     let veille = tokio::spawn(async move {
@@ -1816,6 +1858,7 @@ pub async fn servir(
         r = serveur => r.map_err(|e| format!("le serveur s'est arrêté : {e}")),
         _ = arret() => {
             veille.abort();
+            verification.abort();
             etat_arret.opencode.arreter().await;
             agent_arret.arreter_mcp().await;
             registre.arreter().await;
