@@ -162,13 +162,18 @@ function enDecoration(d) {
 // Sélection sur un fond réglé (REQ-115) : `drawSelection` dessine la sélection sous le texte, qu'un fond opaque cacherait.
 // Chaque plage sélectionnée d'une ligne de bloc de code, d'une ligne de citation ou d'un code en ligne reçoit une marque
 // `ya-sel-fond ya-sel-fond-<élément>`, sans style : la feuille construite lui donne `--selection` quand le fond de l'élément est réglé.
+let fondsReglesListe = new Set();
+/** Éléments (`code`, `bloc-code`, `citation`) dont un fond est réglé dans au moins un thème ; sans eux, aucune marque. */
+export function fondsRegles(elements) {
+  fondsReglesListe = new Set(elements);
+}
 const FONDS = { "cm-hy-bloc-code": "bloc-code", "cm-hy-citation": "citation", "cm-hy-code": "code" };
 function marquesSelectionFond(etat, decos) {
   const doc = etat.doc;
   const sortie = [];
   for (const d of decos) {
     const element = FONDS[d.classe];
-    if (!element || d.masque || d.widget) continue;
+    if (!element || !fondsReglesListe.has(element) || d.masque || d.widget) continue;
     const [de, a] = d.ligne ? [d.debut, doc.lineAt(d.debut).to] : [d.debut, d.fin];
     for (const r of etat.selection.ranges) {
       const [debut, fin] = [Math.max(de, r.from), Math.min(a, r.to)];

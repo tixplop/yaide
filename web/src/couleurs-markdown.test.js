@@ -1,3 +1,6 @@
+import { EditorState } from "@codemirror/state";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { decorationsHybride } from "./ui/hybride.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { analyser, charger, feuille } from "./couleurs-markdown.js";
 
@@ -108,4 +111,19 @@ test("REQ115_AC4_charger_ajoute_une_feuille_construite_pour_un_fichier_lisible",
   expect(await charger()).toEqual({ illisible: false });
   expect(document.adoptedStyleSheets).toHaveLength(1);
   expect(document.adoptedStyleSheets[0].texte).toContain("--md-titre1-couleur: #ff8800");
+});
+
+test("REQ115_AC12_charger_ne_marque_la_selection_que_pour_les_fonds_regles", async () => {
+  vi.stubGlobal("CSSStyleSheet", FausseFeuille);
+  const marques = () => {
+    const texte = "```rust\nfn main() {}\n```\n\n> une citation";
+    const etat = EditorState.create({ doc: texte, selection: { anchor: 0, head: texte.length }, extensions: [markdown({ base: markdownLanguage })] });
+    return [...new Set(decorationsHybride(etat).filter((d) => d.classe?.startsWith("ya-sel-fond")).map((d) => d.classe))];
+  };
+  vi.stubGlobal("fetch", faux('{"sombre":{"titre1":{"couleur":"#ff8800"}}}'));
+  await charger();
+  expect(marques()).toEqual([]);
+  vi.stubGlobal("fetch", faux('{"clair":{"bloc_code":{"fond":"#101820"}}}'));
+  await charger();
+  expect(marques()).toEqual(["ya-sel-fond ya-sel-fond-bloc-code"]);
 });

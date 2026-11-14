@@ -183,6 +183,34 @@ Le fichier `.yaide/interface.json` du projet règle l'interface. Écrivez-le vou
 - **Fichier illisible.** Un fichier qui n'est pas du JSON de cette forme (clé inconnue, valeur qui n'est pas `true` ou `false`) est ignoré en entier, et un message vous le dit au-dessus des onglets.
 - **Fonction désactivée.** Elle n'est qu'absente de l'interface : boutons, panneaux, touches et menus disparaissent, mais rien ne s'arrête et le serveur ne change pas. Les shells ouverts continuent de tourner et reviennent quand la fonction est réactivée ; les conversations, les agents et les réglages de `.yaide/` restent.
 
+## Couleurs du rendu markdown
+
+Le fichier `.yaide/markdown.json` du projet règle les couleurs de l'aperçu markdown et du mode hybride. Écrivez-le vous-même, dans l'éditeur de Yaide ou ailleurs : Yaide ne le crée ni ne l'écrit. Il a deux parties, `sombre` et `clair`, une par thème, toutes deux facultatives, comme chaque élément et chaque propriété. Ce qui n'est pas réglé garde le style d'origine.
+
+| Élément | Propriétés permises |
+| --- | --- |
+| `titre1` à `titre6` | `couleur` |
+| `texte`, `gras`, `italique`, `barre`, `lien`, `puce`, `separateur` | `couleur` |
+| `code` (code en ligne), `bloc_code`, `entete_tableau` | `couleur`, `fond` |
+| `citation`, `tableau` | `couleur`, `fond`, `bordure` |
+
+Une valeur s'écrit `#rgb` ou `#rrggbb`.
+
+```json
+{
+  "sombre": {
+    "titre1": { "couleur": "#ff8800" },
+    "titre2": { "couleur": "#00aa55" },
+    "citation": { "fond": "#202830", "bordure": "#4488ff" },
+    "bloc_code": { "fond": "#101820" }
+  },
+  "clair": { "titre1": { "couleur": "#a04000" } }
+}
+```
+
+- **Rechargement.** Le fichier est lu au chargement de la page : enregistrer le fichier ne change rien avant de recharger. Le bouton « Thème clair » passe d'une partie à l'autre sans recharger.
+- **Fichier illisible.** Un JSON cassé, une valeur qui n'est pas `#rgb` ou `#rrggbb`, un thème, un élément ou une propriété inconnus : le fichier est ignoré en entier, et un message au-dessus des onglets vous le dit.
+
 ## Raccourcis
 
 | Raccourci | Où | Effet |

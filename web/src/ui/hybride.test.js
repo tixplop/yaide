@@ -3,7 +3,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorView } from "@codemirror/view";
 import { readFileSync } from "node:fs";
 import { expect, test, vi } from "vitest";
-import { debutCellule, decorationsHybride, hybride, lienA, tableauxHybride } from "./hybride.js";
+import { debutCellule, fondsRegles, decorationsHybride, hybride, lienA, tableauxHybride } from "./hybride.js";
 
 // Le curseur est en fin de document : une dernière ligne « fin » le tient loin des lignes testées.
 function deco(texte, { curseur, plages } = {}) {
@@ -547,7 +547,8 @@ test("REQ101_AC10_AC11_sur_macOS_cmd_clic_et_meta", () => {
 });
 
 // Sélection sur un fond réglé (REQ-115) : une marque `ya-sel-fond` par plage sélectionnée, sans style.
-function selection(texte, de, a) {
+function selection(texte, de, a, fonds = ["code", "bloc-code", "citation"]) {
+  fondsRegles(fonds);
   const etat = EditorState.create({ doc: texte, selection: { anchor: de, head: a }, extensions: [markdown({ base: markdownLanguage })] });
   return decorationsHybride(etat)
     .filter((d) => d.classe?.startsWith("ya-sel-fond"))
@@ -575,6 +576,15 @@ test("REQ115_AC12_selection_hors_de_ces_elements_ou_vide_sans_marque", () => {
   expect(selection(texte, 0, 3)).toEqual([]);
   expect(selection(texte, 5, 5)).toEqual([]);
   expect(selection("# Titre\n\nfin", 2, 7)).toEqual([]);
+});
+
+test("REQ115_AC12_sans_fond_regle_aucune_marque_ya_sel_fond", () => {
+  const texte = "```rust\nfn main() {}\n```\n\n> une citation\n\nun `code` ici";
+  expect(selection(texte, 0, texte.length, [])).toEqual([]);
+  const bloc = selection(texte, 0, texte.length, ["bloc-code"]);
+  expect(bloc.length).toBeGreaterThan(0);
+  expect(bloc.every(([c]) => c.endsWith("bloc-code"))).toBe(true);
+  fondsRegles([]);
 });
 
 test("REQ115_AC12_composants_css_ne_donne_aucun_style_a_ya_sel_fond", () => {

@@ -1,4 +1,5 @@
 import { lireFichier } from "./api.js";
+import { fondsRegles } from "./ui/hybride.js";
 
 const CHEMIN = ".yaide/markdown.json";
 const ILLISIBLE = { illisible: true };
@@ -78,6 +79,9 @@ export async function charger() {
   if (typeof lecture.contenu !== "string") return { illisible: false };
   const reglages = analyser(lecture.contenu);
   if (reglages.illisible) return { illisible: true };
+  fondsRegles(
+    AVEC_SELECTION.filter((e) => Object.values(reglages).some((t) => t[e]?.fond)).map((e) => e.replaceAll("_", "-")),
+  );
   const texte = feuille(reglages);
   if (texte) {
     const f = new CSSStyleSheet();
