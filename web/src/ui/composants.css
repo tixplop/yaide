@@ -105,6 +105,7 @@
 /* C-012 : info-bulle. `info-bulle` porte le comportement, `ya-tooltip` l'aspect. */
 .info-bulle { position: fixed; inset: auto; margin: 0; box-sizing: border-box; }
 .ya-tooltip { border: 0; padding: 3px 8px; background: var(--bg-300); color: var(--ink); box-shadow: var(--shadow-popover); border-radius: var(--radius-md); font-family: var(--font-sans); font-size: 12.5px; line-height: 18px; white-space: nowrap; }
+.info-bulle.ya-tooltip { width: max-content; max-width: var(--largeur-info-bulle-max); white-space: normal; overflow-wrap: anywhere; }
 .bouton-enveloppe { display: inline-flex; }
 .bouton-enveloppe > :disabled { pointer-events: none; }
 .bouton-enveloppe:has([aria-busy="true"]) { cursor: progress; }
@@ -245,6 +246,11 @@
 /* Ligne D sélectionnée : --git-deleted tomberait sous 4,5:1 sur --bg-400 et --list-focus. */
 .liste-statut-D[aria-selected="true"], .liste-sdossier-D[aria-selected="true"], .liste-statut-D:focus-visible, .liste-sdossier-D:focus-visible, .liste-statut-D.liste-courante { color: var(--ink); }
 /* Ignorée : --git-ignored ne tient pas sur --bg-400, --list-focus et --hover. */
+.ya-tree .liste-base { flex: none; order: 2; display: inline-flex; justify-content: center; width: 14px; margin-left: auto; color: var(--ink-muted); }
+.ya-tree .liste-base svg { width: 13px; height: 13px; }
+.ya-tree .liste-base-echec { color: var(--danger); }
+.ya-tree .liste-ligne > .bouton-enveloppe ~ .liste-base, .ya-tree .liste-base ~ .liste-coche, .ya-tree .liste-base ~ .liste-statut { margin-left: 0; }
+.ya-tree .liste-base ~ .liste-point { margin-left: 7px; }
 .liste-attenuee { color: var(--git-ignored); font-style: italic; }
 .liste-attenuee .liste-icone { color: var(--git-ignored); }
 .liste-attenuee:hover, .liste-attenuee[aria-selected="true"], .liste-attenuee:focus-visible, .liste-attenuee.liste-courante { color: var(--ink-muted); }

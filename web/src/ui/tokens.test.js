@@ -719,3 +719,26 @@ test("REQ103_AC8_contrastes_de_la_base_de_connaissance", () => {
 test("REQ036_token_hauteur_dialogue_sections_560px", () => {
   expect(readFileSync("web/src/ui/tokens.css", "utf8")).toMatch(/--hauteur-dialogue-sections:\s*560px;/);
 });
+
+// REQ-112 : paires de la marque de la base de connaissance (design-system.md, C-006 `base`).
+test("REQ112_contrastes_de_la_marque_de_la_base_dans_les_deux_themes", () => {
+  const fonds = ["--bg-100", "--hover", "--bg-400", "--list-focus"];
+  const mesures = {
+    "--ink-muted": [[6.58, 6.29], [5.3, 5.87], [4.52, 5.37], [4.58, 5.51]],
+    "--danger": [[6.3, 6.29], [5.08, 5.87], [4.33, 5.37], [4.39, 5.51]],
+  };
+  for (const [texte, parFond] of Object.entries(mesures)) {
+    fonds.forEach((fond, k) => {
+      THEMES.forEach((theme, i) => {
+        const r = ratio(theme, texte, fond);
+        const nom = `${texte} sur ${fond} (${theme})`;
+        expect(r, nom).toBeGreaterThanOrEqual(3);
+        egalA(r, parFond[k][i], nom);
+      });
+    });
+  }
+});
+
+test("REQ112_token_largeur_info_bulle_max_480px", () => {
+  expect(readFileSync("web/src/ui/tokens.css", "utf8")).toMatch(/--largeur-info-bulle-max:\s*480px;/);
+});

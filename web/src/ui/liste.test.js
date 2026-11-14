@@ -1359,3 +1359,97 @@ test("REQ106_AC7_passages_style_lien_info_pre_mono_cadre_retours_gardes", () => 
   expect(p).toContain("margin: var(--space-1) 0 0");
   for (const t of ["var(--font-mono)", "var(--ink)", "var(--bg-100)", "var(--line)", "var(--radius-sm)", "white-space: pre-wrap", "overflow-wrap: anywhere", "12px/18px"]) expect(p).toContain(t);
 });
+
+// REQ-112 : marque de la base de connaissance dans l'arbre (C-006 `base`).
+const avecBase = (base, extra = {}) => liste({ variante: "arbre", multiple: true, lignes: [{ id: "d", libelle: "docs", enfants: true, ouvert: true, base: { collections: ["x"], echec: null } }, { id: "d/guide.md", libelle: "guide.md", niveau: 1, base, ...extra }, { id: "n.md", libelle: "n.md" }] });
+const OK = { collections: ["api-docs", "notes"], echec: null };
+
+test("REQ112_base_absente_ni_marque_ni_colonne", () => {
+  const l = avecBase(undefined, { statut: "M" });
+  const [, f, n] = items(l);
+  expect(f.querySelector(".liste-base")).toBeNull();
+  expect(n.querySelector(".liste-statut")).toBeNull();
+  expect(f.getAttribute("aria-label")).toBe("guide.md, modifié");
+});
+
+test("REQ112_base_marque_book_open_info_bulle_et_nom_accessible_apres_le_statut", () => {
+  vi.useFakeTimers();
+  const l = avecBase(OK, { statut: "M" });
+  document.body.append(l);
+  const [d, f] = items(l);
+  const m = f.querySelector(".liste-base");
+  expect(m.getAttribute("aria-hidden")).toBe("true");
+  expect(m.querySelector("svg").dataset.icone).toBe("book-open");
+  expect(m.querySelector("svg").getAttribute("stroke-width")).toBe("1.8");
+  expect(f.getAttribute("aria-label")).toBe("guide.md, modifié, dans la base de connaissance");
+  expect(m.tabIndex).toBe(-1);
+  m.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(500);
+  expect(document.querySelector('[role="tooltip"][data-ouverte="true"]').textContent).toBe("Dans la base de connaissance : api-docs, notes");
+  m.dispatchEvent(new Event("pointerleave"));
+  // Un dossier n'a jamais de marque.
+  expect(d.querySelector(".liste-base")).toBeNull();
+  vi.useRealTimers();
+});
+
+test("REQ112_base_en_echec_book_alert_danger_info_bulle_et_nom_accessible", () => {
+  vi.useFakeTimers();
+  const l = avecBase({ collections: ["notes"], echec: "Disque plein." });
+  document.body.append(l);
+  const f = items(l)[1];
+  const m = f.querySelector(".liste-base");
+  expect(m.classList.contains("liste-base-echec")).toBe(true);
+  expect(m.querySelector("svg").dataset.icone).toBe("book-alert");
+  expect(f.getAttribute("aria-label")).toBe("guide.md, dans la base de connaissance, mise à jour impossible");
+  m.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(500);
+  expect(document.querySelector('[role="tooltip"][data-ouverte="true"]').textContent).toBe("Mise à jour dans la base de connaissance impossible : Disque plein.");
+  m.dispatchEvent(new Event("pointerleave"));
+  vi.useRealTimers();
+});
+
+test("REQ112_base_colonne_de_la_lettre_reservee_sans_lettre_et_marque_avant_la_coche", () => {
+  const l = avecBase(OK);
+  document.body.append(l);
+  const f = items(l)[1];
+  const kids = [...f.children].map((c) => c.className);
+  expect(kids.indexOf("liste-base")).toBeLessThan(kids.findIndex((c) => c.startsWith("liste-statut")));
+  expect(f.querySelector(".liste-statut").getAttribute("aria-hidden")).toBe("true");
+  expect(f.querySelector(".liste-statut").textContent).toBe("");
+  items(l)[1].click();
+  items(l)[2].dispatchEvent(new MouseEvent("click", { ctrlKey: true, bubbles: true }));
+  items(l)[0].dispatchEvent(new MouseEvent("click", { ctrlKey: true, bubbles: true }));
+  const noms = [...items(l)[1].children].map((c) => c.className.split(" ")[0]);
+  expect(noms.indexOf("liste-base")).toBeLessThan(noms.indexOf("liste-coche"));
+  expect(noms.indexOf("liste-coche")).toBeLessThan(noms.indexOf("liste-statut"));
+  const css = regle(".ya-tree .liste-base");
+  expect(css).toContain("width: 14px");
+  expect(css).toContain("color: var(--ink-muted)");
+  expect(regle(".ya-tree .liste-base-echec")).toContain("color: var(--danger)");
+});
+
+test("REQ112_mise_a_jour_de_base_seule_garde_les_lignes_le_focus_et_la_selection", () => {
+  const l = avecBase(undefined);
+  document.body.append(l);
+  const avant = items(l);
+  avant[1].click();
+  avant[1].focus();
+  l.scrollTop = 40;
+  l.mettreAJourBase([{ id: "d", libelle: "docs", enfants: true }, { id: "d/guide.md", libelle: "guide.md", base: OK }, { id: "n.md", libelle: "n.md" }]);
+  expect(l.scrollTop).toBe(40);
+  expect(items(l)).toEqual(avant);
+  expect(items(l).every((e, i) => e === avant[i])).toBe(true);
+  expect(document.activeElement).toBe(avant[1]);
+  expect(avant[1].getAttribute("aria-selected")).toBe("true");
+  expect(avant[1].querySelector(".liste-base")).not.toBeNull();
+  l.mettreAJourBase([{ id: "d/guide.md", libelle: "guide.md", base: { collections: ["notes"], echec: "Trop gros." } }]);
+  expect(avant[1].querySelector("svg[data-icone='book-alert']")).not.toBeNull();
+  expect(avant[1].querySelectorAll(".liste-base").length).toBe(1);
+  expect(l.scrollTop).toBe(40);
+  l.mettreAJourBase([{ id: "d/guide.md", libelle: "guide.md" }]);
+  expect(avant[1].querySelector(".liste-base")).toBeNull();
+  expect(avant[1].querySelector(".liste-statut")).toBeNull();
+  expect(avant[1].hasAttribute("aria-label")).toBe(false);
+  expect(l.scrollTop).toBe(40);
+  expect(document.activeElement).toBe(avant[1]);
+});

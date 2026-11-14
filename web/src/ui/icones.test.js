@@ -243,3 +243,12 @@ test("REQ103_AC8_icones_book_open_et_list_au_dessin_lucide_distinctes", () => {
     for (const d of ds) expect(s.innerHTML, n).toContain(d);
   }
 });
+
+test("REQ112_icone_book_alert_au_dessin_lucide_distincte_de_book_open", () => {
+  expect(NOMS).toContain("book-alert");
+  const s = icone("book-alert", 13);
+  expect(s.getAttribute("viewBox")).toBe("0 0 24 24");
+  expect(s.getAttribute("aria-hidden")).toBe("true");
+  for (const d of ["M12 13h.01", "M12 6v3", "M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"]) expect(s.innerHTML).toContain(d);
+  expect(s.innerHTML).not.toBe(icone("book-open", 13).innerHTML);
+});

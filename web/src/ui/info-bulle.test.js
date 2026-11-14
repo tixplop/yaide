@@ -288,3 +288,11 @@ test("REQ059_AC1_placer_gauche_et_retournement", () => {
   const bord = { left: 0, top: 100, right: 48, bottom: 148, width: 48, height: 48 };
   expect(placer(bord, bulle, "gauche", fen).left).toBe(48);
 });
+
+test("REQ112_texte_long_info_bulle_passe_a_la_ligne_au_dela_du_token", () => {
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  const r = css.match(/\.info-bulle\.ya-tooltip\s*\{([^}]*)\}/)[1].replace(/\s+/g, " ");
+  for (const d of ["max-width: var(--largeur-info-bulle-max)", "white-space: normal", "overflow-wrap: anywhere", "width: max-content"]) expect(r, d).toContain(d);
+  // L'info-bulle courte garde son aspect : la règle de base est inchangée.
+  expect(css.match(/\.ya-tooltip\s*\{([^}]*)\}/)[1]).toContain("white-space: nowrap");
+});

@@ -1,7 +1,7 @@
 import { bouton } from "./bouton.js";
 import { compteur as compteurDe } from "./compteur.js";
 import { icone } from "./icones.js";
-import { fermerInfoBulleDans } from "./info-bulle.js";
+import { fermerInfoBulleDans, infoBulle } from "./info-bulle.js";
 
 const VARIANTES = ["plate", "arbre", "objets", "passages"];
 let compteur = 0;
@@ -170,6 +170,62 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
   // En mode focus, rien n'est sélectionné tant qu'on n'a pas choisi une ligne.
   let choisie = pilotage === "champ" || courante === selection;
 
+  // id -> [libellé, ...états] : début du nom accessible, que la marque de la base complète.
+  const nomsDeBase = new Map();
+
+  function nommer(e, id, base) {
+    const mots = [...nomsDeBase.get(id)];
+    if (base) mots.push("dans la base de connaissance");
+    if (base?.echec) mots.push("mise à jour impossible");
+    if (mots.length > 1) e.setAttribute("aria-label", mots.join(", "));
+    else e.removeAttribute("aria-label");
+  }
+
+  // Marque de la base (colonne avant la coche et la lettre) ; la colonne de la lettre reste réservée.
+  function poserBase(e, id, base) {
+    const echec = Boolean(base.echec);
+    if (!e.querySelector(":scope > .liste-statut, :scope > .liste-point")) {
+      const v = document.createElement("span");
+      v.className = "liste-statut liste-statut-vide";
+      v.setAttribute("aria-hidden", "true");
+      e.append(v);
+    }
+    const m = document.createElement("span");
+    m.className = echec ? "liste-base liste-base-echec" : "liste-base";
+    m.setAttribute("aria-hidden", "true");
+    const i = icone(echec ? "book-alert" : "book-open", 13);
+    i.setAttribute("stroke-width", "1.8");
+    m.append(i);
+    infoBulle({
+      texte: echec ? `Mise à jour dans la base de connaissance impossible : ${base.echec}` : `Dans la base de connaissance : ${base.collections.join(", ")}`,
+      ancre: m,
+      position: "dessous",
+    });
+    e.insertBefore(m, e.querySelector(":scope > .liste-coche, :scope > .liste-statut, :scope > .liste-point"));
+    nommer(e, id, base);
+  }
+
+  function retirerBase(e, id) {
+    e.querySelector(":scope > .liste-base")?.remove();
+    e.querySelector(":scope > .liste-statut-vide")?.remove();
+    nommer(e, id, undefined);
+  }
+
+  // Applique les seuls changements de `base` : les éléments de ligne, le focus, la sélection et le défilement restent.
+  racine.mettreAJourBase = (nouvelles) => {
+    for (const l of nouvelles) {
+      const e = elements.get(l.id);
+      if (!e || l.enfants) continue;
+      const avant = e.querySelector(":scope > .liste-base");
+      const actuelle = bases.get(l.id);
+      if (JSON.stringify(actuelle) === JSON.stringify(l.base)) continue;
+      bases.set(l.id, l.base);
+      if (avant) retirerBase(e, l.id);
+      if (l.base) poserBase(e, l.id, l.base);
+    }
+  };
+  const bases = new Map(lignes.filter((l) => !l.groupe).map((l) => [l.id, l.base]));
+
   for (const l of lignes) {
     if (l.groupe) {
       const g = document.createElement("div");
@@ -221,7 +277,8 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
       etats.push(STATUTS[l.statutDossier]);
     }
     if (l.indexe) etats.push("indexé");
-    if (etats.length) e.setAttribute("aria-label", [l.libelle, ...etats].join(", "));
+    nomsDeBase.set(l.id, [l.libelle, ...etats]);
+    nommer(e, l.id, l.base);
     if (l.courant) e.setAttribute("aria-current", "true");
     if (l.numero !== undefined) e.classList.add("ya-hit");
     if (arbre) {
@@ -312,6 +369,7 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
       m.setAttribute("aria-hidden", "true");
       e.append(m);
     }
+    if (arbre && l.base && !l.enfants) poserBase(e, l.id, l.base);
     if (flottante) {
       // Le champ garde le focus : on agit au pointerdown, jamais au click.
       e.addEventListener("pointerdown", (ev) => {
