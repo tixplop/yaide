@@ -1551,10 +1551,10 @@ async fn connaissance_chercher(State(etat): State<Partage>, corps: Bytes) -> Res
     let base = connaissance::Base::new(&etat.projet_dir);
     let collection = match v["collection"].as_str() {
         Some(n) => match collection_existante(&base, n) {
-            Ok(n) => Some(n),
+            Ok(n) => vec![n],
             Err(r) => return r,
         },
-        None => None,
+        None => Vec::new(),
     };
     let client = crate::agent::provider::client();
     let acces = connaissance::Acces {
@@ -1564,7 +1564,7 @@ async fn connaissance_chercher(State(etat): State<Partage>, corps: Bytes) -> Res
         cle: cle.as_deref(),
         modele: &config.modele,
     };
-    match base.chercher(&acces, question, collection.as_deref()).await {
+    match base.chercher(&acces, question, &collection).await {
         Ok(passages) => json_rep(StatusCode::OK, serde_json::json!({ "passages": passages })),
         Err(e) => json_rep(
             StatusCode::BAD_GATEWAY,

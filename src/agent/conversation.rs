@@ -632,7 +632,28 @@ Always give file paths relative to the project root.",
         let (defs, problemes) = self.mcp.preparer(&self.limites).await;
         let mut outils_tour = outils::definitions();
         outils_tour.extend(defs);
-        outils_tour.extend(outils::definition_connaissance(&self.projet));
+        let connaissance = outils::definition_connaissance(&self.projet);
+        let offerts = !connaissance.is_empty();
+        outils_tour.extend(connaissance);
+        // REQ-108 : les collections nommées par « # » dans les messages de l'utilisateur.
+        let nommees = if offerts {
+            let g = verrou(&conv);
+            let textes = g.entrees.iter().filter_map(|e| match e {
+                Entree::Utilisateur { texte } => Some(texte.as_str()),
+                _ => None,
+            });
+            outils::collections_nommees(&self.projet, textes)
+        } else {
+            Vec::new()
+        };
+        let note = if nommees.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "The user named these knowledge base collections in this conversation: {}. Search them with knowledge_search (collections argument) when they may help.",
+                nommees.join(", ")
+            )
+        };
         if !self.modifier(&conv, |c| {
             for p in problemes {
                 c.entrees.push(Entree::Message {
@@ -650,13 +671,13 @@ Always give file paths relative to the project root.",
             .map(|a| a.dossier.clone())
             .collect();
         if dossiers.is_empty() {
-            self.boucle(&conv, None, &outils_tour).await;
+            self.boucle(&conv, None, &outils_tour, &note).await;
         } else {
             for d in dossiers {
                 if !self.modifier(&conv, |c| c.actif = Some(d.clone())) {
                     break;
                 }
-                if !self.boucle(&conv, Some(d), &outils_tour).await {
+                if !self.boucle(&conv, Some(d), &outils_tour, &note).await {
                     break;
                 }
             }
@@ -862,6 +883,7 @@ Always give file paths relative to the project root.",
         conv: &Mutex<Conversation>,
         agent: Option<String>,
         definitions: &[provider::DefOutil],
+        note: &str,
     ) -> bool {
         let ctx = Contexte {
             projet: self.projet.clone(),
@@ -893,6 +915,13 @@ Always give file paths relative to the project root.",
                         )
                     }
                 }
+            };
+            let instructions = if note.is_empty() {
+                instructions
+            } else if instructions.is_empty() {
+                note.to_string()
+            } else {
+                format!("{instructions}\n\n{note}")
             };
             let Some(p) = profil_trouve else {
                 self.modifier(conv, |c| {

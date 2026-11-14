@@ -1452,6 +1452,7 @@ fn REQ107_AC1_AC5_outil_offert_selon_la_base_aux_agents_et_au_sous_agent() {
     // Base non configurée.
     attendre_fin(&s, &message(&s, &p, "un"));
     assert!(outil_de(&dernier(&recues), "knowledge_search").is_none());
+    assert!(outil_de(&dernier(&recues), "knowledge_list").is_none());
     // Configurée, sans collection : rien non plus.
     let r = s.appel(
         "PUT",
@@ -1470,7 +1471,12 @@ fn REQ107_AC1_AC5_outil_offert_selon_la_base_aux_agents_et_au_sous_agent() {
     assert!(description.contains("api") && description.contains("notes"));
     assert_eq!(def["parameters"]["required"], json!(["query"]));
     assert!(def["parameters"]["properties"]["query"].is_object());
-    assert!(def["parameters"]["properties"]["collection"].is_object());
+    assert_eq!(
+        def["parameters"]["properties"]["collections"],
+        json!({"type": "array", "items": {"type": "string"}, "description": "Collections to search; omit to search all of them"})
+    );
+    let liste = outil_de(&dernier(&recues), "knowledge_list").expect("knowledge_list offert");
+    assert_eq!(liste["parameters"]["properties"], json!({}));
     // Deux agents personnalisés : chacun le reçoit.
     for (nom, couleur) in [("Relecteur", "vert"), ("Testeur", "orange")] {
         let r = s.appel(
@@ -1492,6 +1498,7 @@ fn REQ107_AC1_AC5_outil_offert_selon_la_base_aux_agents_et_au_sous_agent() {
     assert_eq!(chats.len(), avant + 2);
     for c in &chats[avant..] {
         assert!(outil_de(c, "knowledge_search").is_some());
+        assert!(outil_de(c, "knowledge_list").is_some());
     }
     // Un sous-agent le reçoit et l'appelle.
     let v = attendre_fin(&s, &message(&s, &p, "sous"));
@@ -1517,14 +1524,19 @@ fn REQ107_AC2_AC3_appel_reussi_puis_trois_echecs_sans_message_ajoute() {
         rep_outil(
             "k1",
             "knowledge_search",
-            json!({"query": "x", "collection": "notes"}),
+            json!({"query": "x", "collections": ["notes"]}),
         ),
         rep_texte("fini"),
-        rep_outil("k2", "knowledge_search", json!({"collection": "notes"})),
+        rep_outil("k2", "knowledge_search", json!({"collections": ["notes"]})),
         rep_outil(
             "k3",
             "knowledge_search",
-            json!({"query": "x", "collection": "zzz"}),
+            json!({"query": "x", "collections": ["zzz"]}),
+        ),
+        rep_outil(
+            "k5",
+            "knowledge_search",
+            json!({"query": "x", "collections": "notes"}),
         ),
         rep_outil("k4", "knowledge_search", json!({"query": "boom"})),
         rep_texte("fini aussi"),
@@ -1566,11 +1578,12 @@ fn REQ107_AC2_AC3_appel_reussi_puis_trois_echecs_sans_message_ajoute() {
     let v = attendre_fin(&s, &message(&s, &p, "échecs"));
     let e = v["entrees"].as_array().unwrap();
     // Nouvelle conversation : utilisateur, trois appels en échec, réponse.
-    assert_eq!(e.len(), 8, "{e:?}");
+    assert_eq!(e.len(), 10, "{e:?}");
     assert!(e.iter().all(|x| x["type"] != "message"), "{e:?}");
     let attendus = [
         "Missing or invalid argument: query.",
         "Unknown collection: zzz. Available: api, notes.",
+        "Missing or invalid argument: collections.",
         "refusé",
     ];
     for (i, a) in attendus.iter().enumerate() {
@@ -1580,5 +1593,181 @@ fn REQ107_AC2_AC3_appel_reussi_puis_trois_echecs_sans_message_ajoute() {
             "{e:?}"
         );
     }
-    assert_eq!(e[7]["texte"], "fini aussi");
+    assert_eq!(e[9]["texte"], "fini aussi");
+}
+
+#[test]
+fn REQ107_AC6_AC7_liste_et_recherche_sur_plusieurs_collections() {
+    let (adresse, recues) = faux_provider(vec![
+        rep_outil("l1", "knowledge_list", json!({})),
+        rep_outil(
+            "k1",
+            "knowledge_search",
+            json!({"query": "x", "collections": ["notes", "api"]}),
+        ),
+        rep_outil(
+            "k2",
+            "knowledge_search",
+            json!({"query": "x", "collections": ["Notes"]}),
+        ),
+        rep_outil(
+            "k3",
+            "knowledge_search",
+            json!({"query": "x", "collections": []}),
+        ),
+        rep_texte("fin"),
+    ]);
+    let s = lancer("ac107-6");
+    let p = configurer(&s, "openai", &adresse);
+    base_avec(
+        &s,
+        "notes",
+        &[("docs/a.md", "v1 a\n"), ("docs/b.md", "v3 b\n")],
+    );
+    base_avec(&s, "api", &[("docs/c.md", "v9 c\n")]);
+    let embeddings = |recues: &Recues| {
+        recues
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r["chemin"] == "/embeddings")
+            .count()
+    };
+    let avant = embeddings(&recues);
+    let v = attendre_fin(&s, &message(&s, &p, "liste"));
+    let e = v["entrees"].as_array().unwrap();
+    assert_eq!(e[2]["nom"], "knowledge_list", "{e:?}");
+    assert_eq!(e[2]["argument"], "");
+    assert_eq!(e[2]["etat"], "reussi");
+    assert_eq!(
+        e[2]["resultat"].as_str().unwrap(),
+        "api: 1 file, 1 passage\nnotes: 2 files, 2 passages"
+    );
+    // `knowledge_list` ne contacte pas le provider de la base ; les trois recherches, oui.
+    assert_eq!(embeddings(&recues), avant + 3);
+    let r = |i: usize| e[i]["resultat"].as_str().unwrap();
+    // Deux collections, classées ensemble.
+    assert!(
+        r(4).contains("(api, score") && r(4).contains("(notes, score"),
+        "{}",
+        r(4)
+    );
+    // « Notes » vaut `notes` ; liste vide : toutes.
+    assert!(
+        r(6).contains("(notes,") && !r(6).contains("(api,"),
+        "{}",
+        r(6)
+    );
+    assert!(
+        r(8).contains("(api,") && r(8).contains("(notes,"),
+        "{}",
+        r(8)
+    );
+    assert!(e[2..9].iter().all(|x| x["etat"] != "echec"), "{e:?}");
+}
+
+/// Texte des instructions et messages d'une requête de conversation.
+fn requete_contient(corps: &Value, texte: &str) -> bool {
+    corps["messages"].to_string().contains(texte)
+}
+
+const NOTE: &str = "The user named these knowledge base collections in this conversation:";
+
+#[test]
+fn REQ108_AC6_AC8_message_qui_nomme_une_collection() {
+    let (adresse, recues) = faux_provider(vec![
+        rep_texte("a"),
+        rep_texte("b"),
+        rep_texte("c"),
+        rep_texte("d"),
+        rep_texte("e"),
+    ]);
+    let s = lancer("ac108-6");
+    let p = configurer(&s, "openai", &adresse);
+    base_avec(&s, "notes", &[("docs/a.md", "v1 a\n")]);
+    base_avec(&s, "api", &[("docs/b.md", "v2 b\n")]);
+    let texte = "Que dit #notes sur la connexion ?";
+    attendre_fin(&s, &message(&s, &p, texte));
+    let c = requetes_de_chat(&recues).pop().unwrap();
+    assert!(requete_contient(&c, texte));
+    assert!(requete_contient(&c, &format!("{NOTE} notes. Search them with knowledge_search (collections argument) when they may help.")));
+    // Inconnue, ou aucun « # » : aucune collection nommée.
+    for t in ["voir #inconnue", "rien ici, issue#notes"] {
+        attendre_fin(&s, &message(&s, &p, t));
+        assert!(
+            !requete_contient(&requetes_de_chat(&recues).pop().unwrap(), NOTE),
+            "{t}"
+        );
+    }
+    // Deux agents personnalisés : chacun reçoit la ligne.
+    for (nom, couleur) in [("Relecteur", "vert"), ("Testeur", "orange")] {
+        let r = s.appel(
+            "PUT",
+            "/api/agent/agents",
+            &json!({ "nom": nom, "couleur": couleur, "profil": p }),
+        );
+        assert_eq!(r.code, 200, "{}", r.corps);
+    }
+    let avant = requetes_de_chat(&recues).len();
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "agents": ["relecteur", "testeur"], "texte": "go #notes" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    attendre_fin(&s, r.json()["conversation"].as_str().unwrap());
+    let chats = requetes_de_chat(&recues);
+    assert_eq!(chats.len(), avant + 2);
+    for c in &chats[avant..] {
+        assert!(requete_contient(c, &format!("{NOTE} notes.")));
+    }
+}
+
+#[test]
+fn REQ108_AC7_collections_de_la_conversation_apres_redemarrage_et_suppression() {
+    let (adresse, recues) = faux_provider(vec![
+        rep_texte("a"),
+        rep_texte("b"),
+        rep_texte("c"),
+        rep_texte("d"),
+    ]);
+    let s = lancer("ac108-7");
+    let p = configurer(&s, "openai", &adresse);
+    base_avec(&s, "notes", &[("docs/a.md", "v1 a\n")]);
+    base_avec(&s, "api", &[("docs/b.md", "v2 b\n")]);
+    let id = message(&s, &p, "d'abord #notes");
+    attendre_fin(&s, &id);
+    let suite = |s: &Serveur, texte: &str| {
+        let r = s.appel(
+            "POST",
+            "/api/agent/messages",
+            &json!({ "conversation": id, "profil": p, "texte": texte }),
+        );
+        assert_eq!(r.code, 200, "{}", r.corps);
+        attendre_fin(s, &id);
+    };
+    suite(&s, "puis #Api");
+    assert!(requete_contient(
+        &requetes_de_chat(&recues).pop().unwrap(),
+        &format!("{NOTE} api, notes.")
+    ));
+    // Après un redémarrage, la conversation relue nomme toujours les deux.
+    let s = redemarrer(s);
+    suite(&s, "encore");
+    assert!(requete_contient(
+        &requetes_de_chat(&recues).pop().unwrap(),
+        &format!("{NOTE} api, notes.")
+    ));
+    // `notes` supprimée : seule `api` reste.
+    let r = s.appel(
+        "DELETE",
+        "/api/connaissance/collections/notes",
+        &Value::Null,
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    suite(&s, "enfin");
+    assert!(requete_contient(
+        &requetes_de_chat(&recues).pop().unwrap(),
+        &format!("{NOTE} api. ")
+    ));
 }

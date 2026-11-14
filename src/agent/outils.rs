@@ -154,27 +154,63 @@ pub fn definitions() -> Vec<DefOutil> {
     outils
 }
 
-/// L'outil `knowledge_search` (REQ-107), relu à chaque tour : offert seulement si la
-/// configuration de la base se lit et qu'elle a au moins une collection.
-pub fn definition_connaissance(projet: &Path) -> Option<DefOutil> {
+/// Les outils `knowledge_list` et `knowledge_search` (REQ-107), relus à chaque tour : offerts
+/// seulement si la configuration de la base se lit et qu'elle a au moins une collection.
+pub fn definition_connaissance(projet: &Path) -> Vec<DefOutil> {
     let base = connaissance::Base::new(projet);
-    base.lire_config().ok()??;
-    let noms: Vec<String> = base.liste().ok()?.into_iter().map(|c| c.nom).collect();
-    if noms.is_empty() {
-        return None;
+    if !matches!(base.lire_config(), Ok(Some(_))) {
+        return Vec::new();
     }
-    Some(def(
-        "knowledge_search",
-        &format!(
-            "Search the knowledge base of the project, built from files added by the user. Returns up to 10 passages, closest first, each with its file and lines, collection, score and text. Collections: {}.",
-            noms.join(", ")
+    let Ok(liste) = base.liste() else {
+        return Vec::new();
+    };
+    if liste.is_empty() {
+        return Vec::new();
+    }
+    let noms: Vec<String> = liste.into_iter().map(|c| c.nom).collect();
+    vec![
+        def(
+            "knowledge_list",
+            "List the collections of the knowledge base of the project, one per line, with their number of files and passages.",
+            json!({}),
+            &[],
         ),
-        json!({
-            "query": json!({"type": "string", "description": "The question or the words to look for"}),
-            "collection": json!({"type": "string", "description": "Collection to search; omit to search all of them"}),
-        }),
-        &["query"],
-    ))
+        def(
+            "knowledge_search",
+            &format!(
+                "Search the knowledge base of the project, built from files added by the user. Returns up to 10 passages, closest first, each with its file and lines, collection, score and text. Collections: {}.",
+                noms.join(", ")
+            ),
+            json!({
+                "query": json!({"type": "string", "description": "The question or the words to look for"}),
+                "collections": json!({"type": "array", "items": {"type": "string"}, "description": "Collections to search; omit to search all of them"}),
+            }),
+            &["query"],
+        ),
+    ]
+}
+
+/// Les noms `#<nom>` des textes qui désignent une collection existante : nom enregistré,
+/// sans doublon, par ordre alphabétique (REQ-108).
+pub fn collections_nommees<'a>(
+    projet: &Path,
+    textes: impl Iterator<Item = &'a str>,
+) -> Vec<String> {
+    let base = connaissance::Base::new(projet);
+    let mut noms: Vec<String> = Vec::new();
+    for texte in textes {
+        for mot in texte.split_whitespace() {
+            if let Some(n) = mot.strip_prefix('#') {
+                if let Ok(Some(exact)) = base.trouver(n) {
+                    if !noms.contains(&exact) {
+                        noms.push(exact);
+                    }
+                }
+            }
+        }
+    }
+    noms.sort();
+    noms
 }
 
 /// L'argument qui résume un appel, pour l'affichage : chemin, commande, motif, requête ou adresse.
@@ -195,6 +231,7 @@ pub fn argument_principal(nom: &str, arguments: &Value) -> String {
         "webfetch" => "url",
         "subagent" => "prompt",
         "knowledge_search" => "query",
+        "knowledge_list" => return String::new(),
         "save_agent" => {
             let c = if arguments["name"].is_string() {
                 "name"
@@ -269,7 +306,8 @@ async fn lancer(nom: &str, a: &Value, ctx: &Contexte) -> Result<Resultat, String
         "webfetch" => web::recuperer(&ctx.client, requis(a, "url")?, ctx.limites.web)
             .await
             .map(ok),
-        "knowledge_search" => connaissance_chercher(requis(a, "query")?, &a["collection"], ctx)
+        "knowledge_list" => connaissance_lister(ctx).map(ok),
+        "knowledge_search" => connaissance_chercher(requis(a, "query")?, &a["collections"], ctx)
             .await
             .map(ok),
         "list_agents" => Ok(ok(lister_agents(ctx))),
@@ -279,6 +317,32 @@ async fn lancer(nom: &str, a: &Value, ctx: &Contexte) -> Result<Resultat, String
             None => Err(format!("Unknown tool: {nom}.")),
         },
     }
+}
+
+/// Outil `knowledge_list` : une ligne par collection, sans requête au provider de la base.
+fn connaissance_lister(ctx: &Contexte) -> Result<String, String> {
+    let base = connaissance::Base::new(&ctx.projet);
+    base.lire_config()?
+        .ok_or("The knowledge base is not configured.")?;
+    let mut liste = base.liste()?;
+    liste.sort_by_key(|c| c.nom.to_lowercase());
+    if liste.is_empty() {
+        return Ok("No collection.".into());
+    }
+    let lignes: Vec<String> = liste
+        .iter()
+        .map(|c| {
+            format!(
+                "{}: {} file{}, {} passage{}",
+                c.nom,
+                c.fichiers,
+                if c.fichiers == 1 { "" } else { "s" },
+                c.passages,
+                if c.passages == 1 { "" } else { "s" }
+            )
+        })
+        .collect();
+    Ok(lignes.join("\n"))
 }
 
 /// Outil `knowledge_search` : la recherche de REQ-106, rendue en texte.
@@ -299,19 +363,28 @@ async fn connaissance_chercher(
         .reglages
         .adresse(&config.provider)
         .unwrap_or_else(|| provider.adresse_par_defaut().to_string());
-    let choisie = match collection {
-        Value::Null => None,
-        Value::String(n) => match base.trouver(n)? {
-            Some(n) => Some(n),
-            None => {
-                let noms: Vec<String> = base.liste()?.into_iter().map(|c| c.nom).collect();
-                return Err(format!(
-                    "Unknown collection: {n}. Available: {}.",
-                    noms.join(", ")
-                ));
+    let choisies: Vec<String> = match collection {
+        Value::Null => Vec::new(),
+        Value::Array(l) => {
+            let mut v = Vec::new();
+            for n in l {
+                let n = n
+                    .as_str()
+                    .ok_or("Missing or invalid argument: collections.")?;
+                match base.trouver(n)? {
+                    Some(n) => v.push(n),
+                    None => {
+                        let noms: Vec<String> = base.liste()?.into_iter().map(|c| c.nom).collect();
+                        return Err(format!(
+                            "Unknown collection: {n}. Available: {}.",
+                            noms.join(", ")
+                        ));
+                    }
+                }
             }
-        },
-        _ => return Err("Missing or invalid argument: collection.".into()),
+            v
+        }
+        _ => return Err("Missing or invalid argument: collections.".into()),
     };
     let acces = connaissance::Acces {
         client: &ctx.client,
@@ -321,7 +394,7 @@ async fn connaissance_chercher(
         modele: &config.modele,
     };
     let trouves = base
-        .chercher(&acces, question, choisie.as_deref())
+        .chercher(&acces, question, &choisies)
         .await
         .map_err(|e| format!("{} {}", e.cause, e.detail).trim().to_string())?;
     if trouves.is_empty() {
@@ -708,11 +781,35 @@ mod tests {
     }
 
     #[test]
+    fn REQ107_AC4_argument_principal_de_knowledge_list_vide() {
+        assert_eq!(argument_principal("knowledge_list", &json!({})), "");
+    }
+
+    #[test]
+    fn REQ108_AC6_AC7_AC8_recherche_des_noms_dans_les_textes() {
+        let d = dossier("noms108");
+        for n in ["notes", "Api"] {
+            let c = d.join(".yaide/connaissance/collections").join(n);
+            fs::create_dir_all(&c).unwrap();
+            fs::write(c.join("passages.json"), "{}").unwrap();
+        }
+        let noms = |t: &[&str]| collections_nommees(&d, t.iter().copied());
+        assert_eq!(noms(&["Que dit #notes sur la connexion ?"]), ["notes"]);
+        assert_eq!(noms(&["#notes"]), ["notes"]);
+        assert_eq!(noms(&["a\n#NOTES b", "voir #api"]), ["Api", "notes"]);
+        assert_eq!(
+            noms(&["issue#notes", "#inconnue", "sans", "notes#api"]),
+            Vec::<String>::new()
+        );
+        assert_eq!(noms(&["#notes #notes"]), ["notes"]);
+    }
+
+    #[test]
     fn REQ107_AC4_argument_principal_de_knowledge_search() {
         assert_eq!(
             argument_principal(
                 "knowledge_search",
-                &json!({"query": "Comment se connecter ?", "collection": "notes"})
+                &json!({"query": "Comment se connecter ?", "collections": ["notes"]})
             ),
             "Comment se connecter ?"
         );

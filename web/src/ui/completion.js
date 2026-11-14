@@ -1,11 +1,11 @@
 import { liste } from "./liste.js";
 
-const DECLENCHEURS = ["/", "@", "$"];
+const DECLENCHEURS = ["/", "@", "$", "#"];
 let compteur = 0;
 
 /**
  * Relie un `textarea` à une liste de suggestions flottante (motif « Compléter la saisie d'un message »).
- * `sources` : par déclencheur (`/`, `@`, `$`), `{ nom, suggestions(texte) }` ; `suggestions` rend une promesse de lignes C-006
+ * `sources` : par déclencheur (`/`, `@`, `$`, `#`), `{ nom, suggestions(texte) }` ; `suggestions` rend une promesse de lignes C-006
  * (chacune avec `valeur`, le texte inséré, et éventuellement `donnee`) ou de `{ message }`.
  * Rend `{ joints(), retenirEntree(), fermer(), detruire() }`.
  */

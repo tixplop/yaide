@@ -288,3 +288,18 @@ test("REQ090_AC11_nouvelle_recherche_garde_les_lignes_sans_chargement", async ()
   await vi.advanceTimersByTimeAsync(0);
   expect(options().length).toBe(2);
 });
+
+test("REQ108_AC1_AC3_diese_au_debut_apres_blanc_pas_au_milieu_d_un_mot_et_choix_insere_le_nom", async () => {
+  completion({ champ, sources: { ...sources(), "#": { nom: "Collections", suggestions: async () => lignesDe("#notes", "#api") } } });
+  await taper("issue#3");
+  expect(liste()).toBeNull();
+  await taper("#");
+  expect(options().map((o) => o.textContent)).toEqual(["#notes", "#api"]);
+  await taper("Que dit\n#no");
+  expect(options().length).toBe(2);
+  touche("Tab");
+  expect(champ.value).toBe("Que dit\n#notes ");
+  expect(liste()).toBeNull();
+  await taper("voir #");
+  expect(options().length).toBe(2);
+});

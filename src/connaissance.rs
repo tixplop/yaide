@@ -620,18 +620,27 @@ impl Base {
         }
     }
 
-    /// Les 10 passages les plus proches de la question, dans une collection ou dans toutes.
-    /// Rien n'est gardé en mémoire ensuite (AC-029-2).
+    /// Les 10 passages les plus proches de la question, dans les collections nommées (casse
+    /// ignorée) ou, liste vide, dans toutes, classés ensemble. Rien n'est gardé en mémoire
+    /// ensuite (AC-029-2).
     pub async fn chercher(
         &self,
         acces: &Acces<'_>,
         question: &str,
-        collection: Option<&str>,
+        collections: &[String],
     ) -> Result<Vec<Trouve>, Erreur> {
         self.lire_config()?;
-        let noms = match collection {
-            Some(n) => vec![self.trouver(n)?.ok_or("Cette collection n'existe pas.")?],
-            None => self.noms_collections()?,
+        let noms = if collections.is_empty() {
+            self.noms_collections()?
+        } else {
+            let mut noms: Vec<String> = Vec::new();
+            for n in collections {
+                let exact = self.trouver(n)?.ok_or("Cette collection n'existe pas.")?;
+                if !noms.contains(&exact) {
+                    noms.push(exact);
+                }
+            }
+            noms
         };
         let mut v = acces.vecteurs(&[question.to_string()]).await?;
         let q = v.pop().ok_or("Le provider n'a rendu aucun vecteur.")?;
@@ -1076,7 +1085,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(e2, Erreur::from(e.clone()));
         assert_eq!(
-            b.chercher(&acces(&c, &a, None), "q", None)
+            b.chercher(&acces(&c, &a, None), "q", &[])
                 .await
                 .unwrap_err(),
             Erreur::from(e)
@@ -1172,14 +1181,14 @@ mod tests {
         let (a2, r2) = faux(200).await;
         let mut ac = acces(&c, &a2, None);
         ac.provider = Provider::OpenAI;
-        let e = b.chercher(&ac, "q", None).await.unwrap_err();
+        let e = b.chercher(&ac, "q", &[]).await.unwrap_err();
         assert_eq!(
             e,
             Erreur::from("Aucune clé pour OpenAI. Ajoutez-la avec Ctrl+P, puis > Providers LLM.")
         );
         assert!(r2.lock().unwrap().is_empty());
         // Sans clé (LiteLLM, Ollama) : aucun en-tête d'authentification (AC-052-7).
-        b.chercher(&acces(&c, &a2, None), "q", None).await.unwrap();
+        b.chercher(&acces(&c, &a2, None), "q", &[]).await.unwrap();
         let recues = r2.lock().unwrap();
         assert_eq!(recues.len(), 1);
         assert_eq!(recues[0].1, None);
@@ -1229,7 +1238,7 @@ mod tests {
             .collect();
         assert_eq!(envoyes, vec![json!(["x9"])]);
         assert_eq!(b.fichiers("notes").unwrap(), vec!["docs/a.md", "docs/c.md"]);
-        let t = b.chercher(&ac, "x", None).await.unwrap();
+        let t = b.chercher(&ac, "x", &[]).await.unwrap();
         assert!(
             t.iter().any(|p| p.texte == "x9")
                 && !t.iter().any(|p| p.texte == "x1" || p.texte == "x2")
@@ -1279,7 +1288,7 @@ mod tests {
             }]
         );
         let (bon, _) = faux(200).await;
-        let t = b.chercher(&acces(&c, &bon, None), "q", None).await.unwrap();
+        let t = b.chercher(&acces(&c, &bon, None), "q", &[]).await.unwrap();
         assert_eq!(t.len(), 10);
         assert!(t.iter().all(|p| p.chemin == "a.txt"));
     }
@@ -1296,7 +1305,7 @@ mod tests {
             .collect();
         b.ajouter(&ac, "notes", "", &fichiers).await.unwrap();
         recues.lock().unwrap().clear();
-        let t = b.chercher(&ac, "x", None).await.unwrap();
+        let t = b.chercher(&ac, "x", &[]).await.unwrap();
         assert_eq!(recues.lock().unwrap()[0].2["input"][0], "x");
         let textes: Vec<&str> = t.iter().map(|p| p.texte.as_str()).collect();
         assert_eq!(
@@ -1316,7 +1325,7 @@ mod tests {
         // Moins de 10 passages : tous.
         let (_d2, b2) = projet();
         b2.ajouter(&ac, "n", "", &fichiers[..3]).await.unwrap();
-        assert_eq!(b2.chercher(&ac, "x", None).await.unwrap().len(), 3);
+        assert_eq!(b2.chercher(&ac, "x", &[]).await.unwrap().len(), 3);
         drop(d);
     }
 
@@ -1330,13 +1339,13 @@ mod tests {
             .await
             .unwrap();
         b.ajouter(&ac, "api", "", &[f("a.md", "x5")]).await.unwrap();
-        let api = b.chercher(&ac, "x", Some("API")).await.unwrap();
+        let api = b.chercher(&ac, "x", &["API".to_string()]).await.unwrap();
         assert_eq!(api.len(), 1);
         assert_eq!(api[0].collection, "api");
-        let tous = b.chercher(&ac, "x", None).await.unwrap();
+        let tous = b.chercher(&ac, "x", &[]).await.unwrap();
         let ordre: Vec<&str> = tous.iter().map(|p| p.collection.as_str()).collect();
         assert_eq!(ordre, ["api", "notes"]);
-        assert!(b.chercher(&ac, "x", Some("zzz")).await.is_err());
+        assert!(b.chercher(&ac, "x", &["zzz".to_string()]).await.is_err());
         let liste: Vec<String> = b.liste().unwrap().into_iter().map(|r| r.nom).collect();
         assert_eq!(liste, ["api", "notes"]);
     }
