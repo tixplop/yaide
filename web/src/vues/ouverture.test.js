@@ -281,3 +281,35 @@ test("REQ070_AC5_AC19_agents_desactives_seule_configuration", async () => {
   touche(entree, "Enter");
   expect(surCommande).toHaveBeenCalledWith("configuration", expect.anything());
 });
+
+test("REQ118_AC9_AC10_AC11_formater_en_dernier_seulement_si_l_onglet_peut_se_formater", async () => {
+  simuler(json({ chemins: ["src/main.rs"] }));
+  const surCommande = vi.fn();
+  let peut = false;
+  const { entree, declencheur, v } = await ouvrir({ surCommande, peutFormater: () => peut });
+  taper(entree, ">");
+  expect([...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration"]);
+  taper(entree, ">form");
+  expect(document.querySelector("dialog").textContent).toContain("Aucune commande trouvée.");
+  peut = true;
+  taper(entree, ">");
+  const lignes = [...document.querySelectorAll("dialog [role=option]")];
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Formater le document"]);
+  taper(entree, ">form");
+  const une = [...document.querySelectorAll("dialog [role=option]")];
+  expect(une).toHaveLength(1);
+  expect(une[0].getAttribute("aria-selected")).toBe("true");
+  expect(une[0].querySelector("b.liste-trouve").textContent).toBe("Form");
+  touche(entree, "Enter");
+  expect(surCommande).toHaveBeenCalledWith("formater", declencheur);
+  expect(document.querySelector("dialog")).toBeNull();
+  v.detruire();
+});
+
+test("REQ118_AC10_formater_suit_les_agents_desactives", async () => {
+  simuler(json({ chemins: [] }));
+  const { entree, v } = await ouvrir({ commandes: [{ id: "configuration", nom: "Configuration" }], peutFormater: () => true });
+  taper(entree, ">");
+  expect([...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent)).toEqual(["Configuration", "Formater le document"]);
+  v.detruire();
+});

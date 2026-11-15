@@ -270,7 +270,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     commandes: avec.agents ? undefined : [{ id: "configuration", nom: "Configuration" }],
     surOuvrir: editeur.ouvrir,
     surLecture: editeur.lecture,
+    peutFormater: editeur.peutFormater,
     surCommande: (id, avant) => {
+      if (id === "formater") return editeur.formater();
       if (id === "configuration") {
         panneauConfig = ouvrirConfiguration({
           surFermeture: () => { panneauConfig = null; avant?.focus?.(); },

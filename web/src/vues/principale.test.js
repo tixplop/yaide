@@ -1279,3 +1279,32 @@ test("REQ117_AC19_enregistrer_les_couleurs_retire_le_seul_bandeau_de_markdown_js
   [...dlg.querySelectorAll("button")].find((b) => b.textContent === "Enregistrer" && !b.closest("[hidden]")).click();
   await vi.waitFor(() => expect(alertes(vue).map((a) => a.querySelector(".message-texte").textContent)).toEqual([TEXTE_IF]));
 });
+
+test("REQ118_AC11_commande_en_dernier_et_entree_formate_avec_le_focus_dans_l_editeur", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const u = String(url);
+    if (u === "/api/chemins") return jsonOk({ chemins: ["a.json"] });
+    if (u === "/api/git/etat") return jsonOk({ branche: "main", detachee: false, branches: ["main"], changements: [] });
+    if (u.startsWith("/api/fichiers?")) return jsonOk({ entrees: [] });
+    if (u === "/api/session") return { status: 204 };
+    if (u === "/api/agent/reglages") return jsonOk({ providers: [], profils: [] });
+    if (u.startsWith("/api/fichier?chemin=a.json")) return { ok: true, status: 200, text: async () => '{"b":1}', headers: { get: () => "v1" } };
+    return { ok: false, status: 404, json: async () => ({ cause: "introuvable", message: "absent" }) };
+  }));
+  const { vue } = monter();
+  const entree = paletteCommandes("a.json");
+  await vi.waitFor(() => expect(document.querySelector("dialog [role=option]")).not.toBeNull());
+  entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(vue.querySelector(".zone-code:not([hidden])")).not.toBeNull());
+  expect(document.querySelector("dialog")).toBeNull();
+  const e2 = paletteCommandes(">");
+  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Formater le document"]);
+  e2.value = ">form";
+  e2.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(nomsCommandes()).toEqual(["Formater le document"]);
+  e2.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  const zone = vue.querySelector(".zone-code:not([hidden])");
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(zone.vue.state.doc.toString()).toBe('{\n  "b": 1\n}\n');
+  expect(document.activeElement).toBe(zone.vue.contentDOM);
+});

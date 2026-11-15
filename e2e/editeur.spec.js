@@ -957,3 +957,91 @@ test("REQ063_parcours_P027", async ({ page, browserName }) => {
   }
 });
 const gardeContientHybride = (page) => expect.poll(async () => (await gardes(page)).find((g) => g.chemin === "README.md")?.hybride).toBe(true);
+
+test("REQ118_AC1_AC5_AC8_AC11_parcours_87", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  const json = '{"nom":"compteur","version":2,"options":{"recursif":true,"extensions":[".rs",".toml"]},"exclus":[]}';
+  const xml = "<plan><etape>Lire le code</etape><etape>Lancer les tests</plan>";
+  const dossier = await ouvrir(page, (d) => {
+    fs.mkdirSync(path.join(d, "donnees"));
+    fs.writeFileSync(path.join(d, "donnees", "reglages.json"), json);
+    fs.writeFileSync(path.join(d, "donnees", "plan.xml"), xml);
+  });
+  const disque = path.join(dossier, "donnees", "reglages.json");
+  const palette = page.getByRole("dialog");
+  const commande = async (texte) => {
+    await page.keyboard.press("Control+p");
+    await page.keyboard.type(texte);
+  };
+  await ligne(page, "donnees").click();
+  await ligne(page, "plan.xml").click();
+  await ligne(page, "reglages.json").click();
+  await ouvrirMain(page);
+  await onglet(page, "reglages.json").click();
+  await expect(editeur(page, "reglages.json")).toBeFocused();
+
+  // Étapes 1 et 2.
+  await commande(">");
+  const options = palette.getByRole("option");
+  await expect(options).toHaveText(["Providers LLM", "Profils de modèle", "Configuration", "Formater le document"]);
+  await expect(options.first()).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.type("form");
+  await expect(options).toHaveCount(1);
+  await expect(options.first()).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(palette).toHaveCount(0);
+  const lignes = page.locator(".cm-content:visible .cm-line");
+  await expect(lignes).toHaveCount(13); // 12 lignes et la ligne vide finale
+  await expect(lignes.nth(0)).toHaveText("{");
+  await expect(lignes.nth(1)).toHaveText('  "nom": "compteur",');
+  await expect(onglet(page, /^reglages\.json.*non sauvegardé/)).toBeVisible();
+  await expect(editeur(page, "reglages.json")).toBeFocused();
+  await expect(page.locator("footer")).toContainText("Ln 1, Col 1");
+  expect(fs.readFileSync(disque, "utf8")).toBe(json);
+
+  // Étape 3.
+  await page.keyboard.press("Control+z");
+  await expect(lignes).toHaveCount(1);
+  await expect(lignes.first()).toHaveText(json);
+  await commande(">form");
+  await page.keyboard.press("Enter");
+  await expect(lignes).toHaveCount(13);
+  await page.keyboard.press("Control+s");
+  await expect(onglet(page, /^reglages\.json.*non sauvegardé/)).toHaveCount(0);
+  expect(fs.readFileSync(disque, "utf8")).toBe(
+    '{\n  "nom": "compteur",\n  "version": 2,\n  "options": {\n    "recursif": true,\n    "extensions": [\n      ".rs",\n      ".toml"\n    ]\n  },\n  "exclus": []\n}\n',
+  );
+
+  // Étape 4.
+  await onglet(page, "plan.xml").click();
+  await commande(">form");
+  await page.keyboard.press("Enter");
+  const alerte = page.getByRole("alert").filter({ hasText: "Formatage impossible : ce XML n'est pas valide." });
+  await expect(alerte).toBeVisible();
+  await expect(alerte.getByRole("button", { name: "Fermer" })).toBeVisible();
+  await expect(lignes).toHaveCount(1);
+  await expect(lignes.first()).toHaveText(xml);
+  await expect(onglet(page, "plan.xml")).toBeVisible();
+  await expect(editeur(page, "plan.xml")).toBeFocused();
+
+  // Étape 5.
+  await page.keyboard.press("Control+End");
+  for (let i = 0; i < 7; i++) await page.keyboard.press("ArrowLeft");
+  await page.keyboard.type("</etape>");
+  await commande(">form");
+  await page.keyboard.press("Enter");
+  await expect(alerte).toHaveCount(0);
+  await expect(lignes).toHaveText(["<plan>", "  <etape>Lire le code</etape>", "  <etape>Lancer les tests</etape>", "</plan>", ""]);
+
+  // Étape 6.
+  await onglet(page, "main.rs").click();
+  await commande(">form");
+  await expect(palette).toContainText("Aucune commande trouvée.");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  await expect(options).toHaveText(["Providers LLM", "Profils de modèle", "Configuration"]);
+  await page.keyboard.press("Escape");
+  await expect(editeur(page, "main.rs")).toBeFocused();
+});

@@ -1,3 +1,4 @@
+import { undo } from "@codemirror/commands";
 import { language } from "@codemirror/language";
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
@@ -1861,4 +1862,102 @@ test("REQ012_AC2_le_html_du_markdown_ne_s_execute_pas", () => {
   expect(apercu.textContent).toContain("<script>");
   expect(apercu.querySelectorAll("script, img").length).toBe(0);
   expect(window.piege).toBeUndefined();
+});
+
+// ---- REQ-118 : formater le document ----
+
+function monterFormatage(dire = vi.fn()) {
+  const e = vueEditeur({ dire });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  return e;
+}
+const texteActif = () => e_actif().vue.state.doc.toString();
+const JSON_UNE_LIGNE = '{"b":1,"a":[1,2,{}],"c":{"d":null},"e":[]}';
+const JSON_FORMATE = '{\n  "b": 1,\n  "a": [\n    1,\n    2,\n    {}\n  ],\n  "c": {\n    "d": null\n  },\n  "e": []\n}\n';
+
+test("REQ118_AC1_AC5_AC7_formate_en_une_modification_curseur_au_debut_et_focus_dans_l_editeur", () => {
+  const e = monterFormatage();
+  e.ouvrir({ chemin: "a.json", contenu: JSON_UNE_LIGNE, version: "1" });
+  expect(e.peutFormater()).toBe(true);
+  e_actif().vue.dispatch({ selection: { anchor: 5 } });
+  document.body.focus();
+  e.formater();
+  expect(texteActif()).toBe(JSON_FORMATE);
+  expect(onglet("a.json").closest("[role=tab]").dataset.modifie).toBe("true");
+  expect(e_actif().vue.state.selection.main.head).toBe(0);
+  expect(document.activeElement).toBe(e_actif().vue.contentDOM);
+  // Ctrl+Z défait tout d'un coup.
+  undo(e_actif().vue);
+  expect(texteActif()).toBe(JSON_UNE_LIGNE);
+});
+
+test("REQ118_AC7_texte_deja_formate_ne_change_rien_et_l_onglet_reste_propre", () => {
+  const e = monterFormatage();
+  e.ouvrir({ chemin: "a.json", contenu: JSON_FORMATE, version: "1" });
+  e.formater();
+  expect(texteActif()).toBe(JSON_FORMATE);
+  expect(onglet("a.json").closest("[role=tab]").dataset.modifie).toBeUndefined();
+});
+
+test("REQ118_AC4_svg_est_proposable_et_se_formate", () => {
+  const e = monterFormatage();
+  e.ouvrir({ chemin: "icone.svg", contenu: '<svg xmlns="http://www.w3.org/2000/svg"><g><rect width="1"/></g></svg>', version: "1" });
+  expect(e.peutFormater()).toBe(true);
+  e.formater();
+  expect(texteActif()).toBe('<svg xmlns="http://www.w3.org/2000/svg">\n  <g>\n    <rect width="1"/>\n  </g>\n</svg>\n');
+});
+
+test("REQ118_AC6_le_formatage_porte_sur_le_texte_affiche_non_enregistre", () => {
+  const e = monterFormatage();
+  e.ouvrir({ chemin: "a.json", contenu: '{"a":1}', version: "1" });
+  const vue = e_actif().vue;
+  vue.dispatch({ changes: { from: 6, insert: ',"z":2' } });
+  e.formater();
+  expect(texteActif()).toBe('{\n  "a": 1,\n  "z": 2\n}\n');
+});
+
+test("REQ118_AC8_AC12_refus_dit_le_message_garde_texte_et_point_puis_le_bandeau_part_au_succes", () => {
+  const bandeaux = [];
+  const dire = vi.fn((o) => {
+    const m = document.createElement("div");
+    m.textContent = o.texte;
+    bandeaux.push(m);
+    document.body.append(m);
+    return m;
+  });
+  const e = monterFormatage(dire);
+  e.ouvrir({ chemin: "a.json", contenu: '{"a":1,}', version: "1" });
+  e_actif().vue.dispatch({ selection: { anchor: 4 } });
+  e.formater();
+  expect(texteActif()).toBe('{"a":1,}');
+  expect(e_actif().vue.state.selection.main.head).toBe(4);
+  expect(onglet("a.json").closest("[role=tab]").dataset.modifie).toBeUndefined();
+  expect(dire).toHaveBeenLastCalledWith({ texte: "Formatage impossible : ce JSON n'est pas valide.", variante: "alerte", fermable: true });
+  expect(document.activeElement).toBe(e_actif().vue.contentDOM);
+  e.formater(); // un nouveau refus remplace le bandeau
+  expect(bandeaux.filter((b) => b.isConnected)).toHaveLength(1);
+  e_actif().vue.dispatch({ changes: { from: 0, to: 8, insert: '{"a":1}' } });
+  e.formater();
+  expect(bandeaux.filter((b) => b.isConnected)).toHaveLength(0);
+  e.ouvrir({ chemin: "a.xml", contenu: "<a><b></a>", version: "1" });
+  e.formater();
+  expect(dire).toHaveBeenLastCalledWith({ texte: "Formatage impossible : ce XML n'est pas valide.", variante: "alerte", fermable: true });
+});
+
+test("REQ118_AC9_pas_de_formatage_pour_markdown_rust_diff_ni_sans_onglet", () => {
+  const e = monterFormatage();
+  expect(e.peutFormater()).toBe(false);
+  e.ouvrir({ chemin: "notes.md", contenu: "# t", version: "1" });
+  expect(e.peutFormater()).toBe(false);
+  e.ouvrir({ chemin: "main.rs", contenu: "fn main() {}", version: "1" });
+  expect(e.peutFormater()).toBe(false);
+  e.ouvrir({ chemin: "a.json", contenu: "{}", version: "1" });
+  expect(e.peutFormater()).toBe(true);
+  e.ouvrirDiff({ chemin: "a.json", texte: "@@ -1 +1 @@\n-a\n+b\n" });
+  expect(e.peutFormater()).toBe(false);
+  e.ouvrirClaude({ id: "c" });
+  expect(e.peutFormater()).toBe(false);
+  e.ouvrirOpencode({ sessionId: "o", titre: "t" });
+  expect(e.peutFormater()).toBe(false);
 });

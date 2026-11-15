@@ -1,6 +1,7 @@
 import { adresseApercu, ecrireFichier, fermerShell, jetonApercu, lireFichier, oublierJetonApercu, listeShells, versionsFichiers } from "../api.js";
 import { decider, texteAttente } from "../brouillons.js";
 import { decisionDisque } from "../disque.js";
+import { formatable, formater as formaterTexte } from "../formatage.js";
 import { couper, feuilles, poserPart, retirerGroupe } from "../disposition.js";
 import { apresFermeture, estSous, garder, libelles, nomDe, plusPetitNumeroLibre, retrouver, suivreRenommage } from "../onglets-fichiers.js";
 import { bouton } from "../ui/bouton.js";
@@ -1026,6 +1027,29 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     o.alerte = dire({ texte: echec, variante: "alerte", fermable: true });
   }
 
+  // REQ-118 : le formatage ne s'applique qu'à un fichier de l'éditeur dont le type sait se formater.
+  const langageFormatable = () => {
+    const o = trouver(actif);
+    if (!o || !estFichier(o)) return null;
+    const langage = langagePourFichier(nomDe(o.chemin));
+    return formatable(langage) ? langage : null;
+  };
+  let alerteFormatage = null;
+  function formater() {
+    const langage = langageFormatable();
+    if (!langage) return;
+    const vue = trouver(actif).zone.vue;
+    alerteFormatage?.remove();
+    alerteFormatage = null;
+    const r = formaterTexte(vue.state.doc.toString(), langage);
+    if (r.erreur) {
+      alerteFormatage = dire({ texte: `Formatage impossible : ce ${r.erreur.toUpperCase()} n'est pas valide.`, variante: "alerte", fermable: true });
+    } else if (r.texte !== vue.state.doc.toString()) {
+      vue.dispatch({ changes: { from: 0, to: vue.state.doc.length, insert: r.texte }, selection: { anchor: 0 }, scrollIntoView: true });
+    }
+    vue.focus();
+  }
+
   const fermer = (chemin) => {
     const agentActif = actif === chemin && trouver(chemin)?.conversationAgent;
     const avant = groupes.size;
@@ -1332,6 +1356,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     ouvrirOpencode,
     ouvrirDiff,
     fermerDiff,
+    /** Vrai si l'onglet actif est un fichier JSON ou XML (REQ-118). */
+    peutFormater: () => langageFormatable() !== null,
+    /** Met en forme le texte de l'onglet actif en une seule modification, ou dit pourquoi c'est impossible. */
+    formater,
     /** Chemin du fichier dont le diff est ouvert, ou null. */
     diffOuvert: () => diff?.chemin ?? null,
     /** Relit le disque tout de suite (après un changement de branche ou un pull). */
