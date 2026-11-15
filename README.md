@@ -166,7 +166,7 @@ Quand le dépôt du projet a au moins deux worktrees (`git worktree list`), les 
 
 ## Réglages de l'interface
 
-Le fichier `.yaide/interface.json` du projet règle l'interface. Écrivez-le vous-même, dans l'éditeur de Yaide ou ailleurs, ou réglez-le par le dialogue « Préférences d'interface » (voir plus bas). Yaide ne l'écrit que par « Enregistrer » de ce dialogue. Il a deux parties, toutes deux facultatives, comme chacune de leurs clés.
+Le fichier `.yaide/interface.json` du projet règle l'interface. Écrivez-le vous-même, dans l'éditeur de Yaide ou ailleurs, ou réglez-le par le dialogue « Configuration » (voir plus bas). Yaide ne l'écrit que par « Enregistrer » de sa section « Interface ». Il a deux parties, toutes deux facultatives, comme chacune de leurs clés.
 
 - `replis` : l'état à l'ouverture. `true` veut dire replié, `false` déplié. Clés : `panneau` (le panneau de gauche), `shells` (la zone des shells), `agent` (la colonne de droite). Une clé présente l'emporte sur l'état gardé dans le navigateur ; une clé absente ne change rien.
 - `fonctions` : les fonctions de l'interface. `false` désactive, `true` ou une clé absente laisse active. Clés : `recherche`, `git`, `shells`, `agents`, `claude`. L'arborescence, l'éditeur, l'ouverture rapide et le thème sont toujours là.
@@ -178,14 +178,14 @@ Le fichier `.yaide/interface.json` du projet règle l'interface. Écrivez-le vou
 }
 ```
 
-- **Dialogue « Préférences d'interface ».** Ctrl+P, puis `>` : la commande « Préférences d'interface » ouvre trois choix de repli et cinq cases de fonctions, sans JSON à écrire. « Enregistrer » écrit le même fichier `.yaide/interface.json` (et crée `.yaide/` au besoin) ; les réglages sont pris en compte au rechargement de la page, pas avant.
+- **Dialogue « Configuration ».** Ctrl+P, `>`, puis la commande « Configuration » : le dialogue a deux sections, « Interface » et « Couleurs markdown » (voir plus bas). « Interface » offre trois choix de repli et cinq cases de fonctions, sans JSON à écrire. Son « Enregistrer » écrit le même fichier `.yaide/interface.json` (et crée `.yaide/` au besoin) ; les réglages sont pris en compte au rechargement de la page, pas avant.
 - **Rechargement.** Le fichier est lu à chaque ouverture ou rechargement de la page, sans relancer Yaide.
 - **Fichier illisible.** Un fichier qui n'est pas du JSON de cette forme (clé inconnue, valeur qui n'est pas `true` ou `false`) est ignoré en entier, et un message vous le dit au-dessus des onglets.
 - **Fonction désactivée.** Elle n'est qu'absente de l'interface : boutons, panneaux, touches et menus disparaissent, mais rien ne s'arrête et le serveur ne change pas. Les shells ouverts continuent de tourner et reviennent quand la fonction est réactivée ; les conversations, les agents et les réglages de `.yaide/` restent.
 
 ## Couleurs du rendu markdown
 
-Le fichier `.yaide/markdown.json` du projet règle les couleurs de l'aperçu markdown et du mode hybride. Écrivez-le vous-même, dans l'éditeur de Yaide ou ailleurs : Yaide ne le crée ni ne l'écrit. Il a deux parties, `sombre` et `clair`, une par thème, toutes deux facultatives, comme chaque élément et chaque propriété. Ce qui n'est pas réglé garde le style d'origine.
+Le fichier `.yaide/markdown.json` du projet règle les couleurs de l'aperçu markdown et du mode hybride. Écrivez-le vous-même, dans l'éditeur de Yaide ou ailleurs, ou réglez-le par la section « Couleurs markdown » du dialogue « Configuration » (Ctrl+P, `>`, « Configuration »). Yaide ne le crée et ne l'écrit que par « Enregistrer » de cette section. Il a deux parties, `sombre` et `clair`, une par thème, toutes deux facultatives, comme chaque élément et chaque propriété. Ce qui n'est pas réglé garde le style d'origine.
 
 | Élément | Propriétés permises |
 | --- | --- |
@@ -208,7 +208,8 @@ Une valeur s'écrit `#rgb` ou `#rrggbb`.
 }
 ```
 
-- **Rechargement.** Le fichier est lu au chargement de la page : enregistrer le fichier ne change rien avant de recharger. Le bouton « Thème clair » passe d'une partie à l'autre sans recharger.
+- **Dialogue « Configuration ».** La section « Couleurs markdown » a un champ par élément et par propriété, pour les deux thèmes (liste « Couleurs du thème »). Un champ vide garde le style d'origine. Quatre palettes suggérées, « Ardoise », « Sépia », « Forêt » et « Contrasté », remplissent les champs des deux thèmes, et « Par défaut » les vide ; rien n'est écrit avant « Enregistrer », qui applique les couleurs aussitôt à l'aperçu et au mode hybride, sans recharger la page. Le fichier garde les couleurs, pas le nom de la palette.
+- **Rechargement.** Un fichier modifié hors du dialogue est lu au chargement de la page : rien ne change avant de recharger. Le bouton « Thème clair » passe d'une partie à l'autre sans recharger.
 - **Fichier illisible.** Un JSON cassé, une valeur qui n'est pas `#rgb` ou `#rrggbb`, un thème, un élément ou une propriété inconnus : le fichier est ignoré en entier, et un message au-dessus des onglets vous le dit.
 
 ## Raccourcis

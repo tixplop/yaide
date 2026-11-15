@@ -250,6 +250,7 @@ test("REQ117_AC4_AC17_refus_messages_alerte_focus_theme_et_palette_retire_les_er
   await ouvrir();
   for (const v of ["red", "#ff00", "#ff0000; background: url(x)"]) {
     taper("Citation, bordure", v);
+    bouton("Enregistrer").focus();
     bouton("Enregistrer").click();
     await attendre();
     expect(etat.ecritures).toEqual([]);

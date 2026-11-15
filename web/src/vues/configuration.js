@@ -150,10 +150,10 @@ export function ouvrirConfiguration({ surFermeture = () => {}, surCouleursEnregi
 
   async function enregistrerCouleurs() {
     if (!pretC || enCoursC || ferme) return;
-    const avecFocus = document.activeElement === enregistrerC;
     await couleurs.enregistrer();
     if (ferme) return;
-    if (avecFocus || document.activeElement === document.body) enregistrerC.focus();
+    // Un refus a mis le focus dans le champ refusé : on n'y touche pas.
+    if (document.activeElement === document.body) enregistrerC.focus();
   }
 
   async function enregistrer() {
