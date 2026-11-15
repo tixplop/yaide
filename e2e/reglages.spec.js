@@ -190,8 +190,10 @@ test("REQ070_parcours_32_alleger_avec_faute_de_frappe", async ({ page }) => {
   await expect(page.getByRole("tab", { name: /^(Recherche|Git)$/ })).toHaveCount(0);
   await page.keyboard.press("Control+p");
   await page.keyboard.type(">");
-  await expect(page.getByRole("option")).toHaveCount(1);
+  // L'onglet actif est interface.json (JSON) : « Formater le document » s'ajoute (REQ-118), aucune commande des fonctions éteintes.
+  await expect(page.getByRole("option")).toHaveCount(2);
   await expect(page.getByRole("option", { name: "Configuration" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Formater le document" })).toBeVisible();
   await page.keyboard.type("prov");
   await expect(page.getByText("Aucune commande trouvée.")).toBeVisible();
   await page.keyboard.press("Escape");
