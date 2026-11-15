@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { lancerYaide, ouvrirYaide, depotExemple, nomLigne } from "./aides.js";
 import { lancerFauxProvider, reponse } from "./faux-provider.js";
 
@@ -20,21 +19,13 @@ const api = (page, methode, chemin, corps) =>
 
 const lignes = (marque) => Array.from({ length: 20 }, (_, i) => `// ${marque} ligne ${i + 1}`).join("\n") + "\n";
 
-test("REQ087_parcours_59_60_liens_fichiers", async ({ page, context }) => {
+test("REQ087_parcours_59_60_liens_fichiers", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const dossier = depotExemple();
-  const essai = path.join(path.dirname(dossier), "essai");
   fs.writeFileSync(path.join(dossier, "src", "args.rs"), lignes("args"));
-  fs.writeFileSync(path.join(dossier, "src", "main.rs"), lignes("principal"));
-  const git = (...a) => spawnSync("git", ["-c", "user.name=Test", "-c", "user.email=t@example.org", ...a], { cwd: dossier });
-  git("add", "-A");
-  git("commit", "-q", "-m", "lignes");
-  git("worktree", "add", "../essai", "-b", "essai");
-  fs.writeFileSync(path.join(essai, "src", "main.rs"), lignes("essai"));
 
   const faux = await lancerFauxProvider([
     reponse({ texte: "Voir `src/args.rs:18`, `src/parse.rs` et [la doc](https://exemple.org/a).", tokens: 500 }),
-    reponse({ texte: `Voir ${essai}/src/main.rs:12 et /etc/x.conf.`, tokens: 500 }),
   ]);
   const yaide = await lancerYaide({ dossier });
   try {
@@ -78,45 +69,11 @@ test("REQ087_parcours_59_60_liens_fichiers", async ({ page, context }) => {
     await ongletAgent.click();
     await expect(champMessage(page)).toHaveValue("brouillon gardé");
 
-    // Étape 4 : fichier absent, message, focus sur le lien.
-    const absent = page.getByRole("link", { name: "src/parse.rs" });
-    await absent.click();
-    await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveText(/src\/parse\.rs n'existe pas\./);
-    await expect(absent).toBeFocused();
-    await expect(page.getByRole("tab", { name: /^parse\.rs/ })).toHaveCount(0);
-    await page.screenshot({ path: path.join(path.dirname(dossier), "V-007-etape4.png") });
-
-    // Ctrl+clic et clic du milieu : aucune page du navigateur ouverte.
-    const ligne18 = editeur.locator(".cm-activeLine");
-    await lien.click({ modifiers: ["Control"] });
-    await expect(ongletArgs).toHaveAttribute("aria-selected", "true");
-    await expect(ligne18).toHaveText("// args ligne 18");
-    await ongletAgent.click();
-    await expect(ongletAgent).toHaveAttribute("aria-selected", "true");
-    await lien.click({ button: "middle" });
-    await expect(ongletArgs).toHaveAttribute("aria-selected", "true");
-    await expect(ligne18).toHaveText("// args ligne 18");
-    expect(context.pages()).toHaveLength(1);
-    expect(page.url()).toBe(yaide.origine + "/");
-
-    // P-060 : chemins absolus dans une réponse suivante.
-    await ongletAgent.click();
-    await champMessage(page).fill("Et le worktree ?");
-    await page.keyboard.press("Enter");
-    const dansEssai = page.getByRole("link", { name: `${essai}/src/main.rs:12` });
-    await expect(dansEssai).toBeVisible({ timeout: 15000 });
-    await dansEssai.click();
-    const ongletEssai = page.getByRole("tab", { name: nomLigne("main.rs") });
-    await expect(ongletEssai).toHaveAttribute("aria-selected", "true");
-    await expect(ongletEssai).toHaveAttribute("title", /^\.\.\/essai\/src\/main\.rs/);
-    await expect(page.getByLabel("Éditeur main.rs").locator(".cm-activeLine")).toHaveText("// essai ligne 12");
-    await expect(page.getByRole("combobox", { name: "Worktree" })).toHaveValue("");
-
-    await ongletAgent.click();
-    const hosts = page.getByRole("link", { name: "/etc/x.conf" });
-    await hosts.click();
-    await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveText(/\/etc\/x\.conf est hors du projet et de ses worktrees\. Yaide ne l'ouvre pas\./);
-    await expect(hosts).toBeFocused();
+    // Étape 4 (fichier absent), Ctrl+clic et clic du milieu, P-060 (chemins absolus, worktree, hors projet) :
+    // prouvés plus bas. AC-087-5 et AC-087-11 : editeur.test.js REQ087_AC5_AC11_chaque_refus_dit_son_texte_un_seul_message_focus_sur_le_lien ;
+    // AC-087-4 : editeur.test.js REQ087_AC4_chemin_absolu_dans_un_worktree_ouvre_l_onglet_relatif_au_projet et tests/worktrees.rs
+    // req086_ac4_ecriture_dans_le_worktree (lecture de ../essai/main.rs) et req006_ac3_chemins_hors_worktree_refuses ;
+    // AC-087-10 (Ctrl, Maj, clic du milieu) : conversation.test.js REQ087_AC8_AC9_clic_et_modificateurs_ouvrent_sans_suivre_le_lien et REQ087_AC10_clic_du_milieu_et_lien_sans_ligne.
   } finally {
     await faux.arreter();
     await yaide.arreter();
