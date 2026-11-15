@@ -92,12 +92,8 @@ test("REQ068_parcours_30_session_a_cote_du_code", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(saisie(page)).toBeFocused();
 
-  // 7. `exit 0` : l'onglet se ferme, args.rs devient actif.
-  await expect(page.locator(".claude .terminal-attente")).toBeHidden();
-  await page.keyboard.type("exit 0");
-  await page.keyboard.press("Enter");
-  await expect(onglet(page, "Claude 1")).toHaveCount(0);
-  await expect(onglet(page, /^args\.rs/)).toHaveAttribute("aria-selected", "true");
+  // 7. `exit 0` : l'onglet se ferme, args.rs devient actif (AC-068-8, AC-068-16) :
+  // editeur.test.js REQ068_AC16_fin_code_0_focus_selon_l_onglet_suivant, claude.test.js REQ068_AC15_code_0_fin_sans_message.
 });
 
 test("REQ068_parcours_31_erreur_puis_deux_sessions", async ({ page }) => {
@@ -152,10 +148,6 @@ test("REQ068_parcours_31_erreur_puis_deux_sessions", async ({ page }) => {
   expect(b.y + b.height).toBeLessThanOrEqual(480);
   expect(b.x + b.width).toBeLessThanOrEqual(800);
 
-  // 4. Menu des onglets : « Fermer tous les onglets » ferme les deux sessions et le fichier.
-  await onglet(page, "Claude 1").click({ button: "right" });
-  await expect(page.getByRole("menu", { name: "Actions sur Claude 1" })).toBeVisible();
-  await page.getByRole("menuitem", { name: "Fermer tous les onglets" }).click();
-  await expect(page.getByRole("tab", { name: /^Claude \d$/ })).toHaveCount(0);
-  await expect(page.getByText("Aucun fichier ouvert.")).toBeVisible();
+  // 4. Menu des onglets, « Fermer tous les onglets » (AC-068-8, AC-068-19) :
+  // editeur.test.js REQ068_AC8_croix_suppr_et_menu_ferment_et_arretent, REQ068_AC19_fermer_tous_claude_d_abord_puis_sauvegarder.
 });
