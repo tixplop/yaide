@@ -3,9 +3,10 @@ import { indication } from "./indication.js";
 const ZONES = ["onglet", "apercu"];
 
 // C-017 : une image entière dans sa zone, en lecture seule.
-export function image({ src, nom, zone = "onglet", coupe = false }) {
+export function image({ src, nom: nomInitial, zone = "onglet", coupe = false }) {
   if (!src) throw new Error("image : src requis");
-  if (!nom) throw new Error("image : nom requis");
+  if (!nomInitial) throw new Error("image : nom requis");
+  let nom = nomInitial;
   if (!ZONES.includes(zone)) throw new Error(`image : zone inconnue « ${zone} »`);
   const element = document.createElement("div");
   element.className = "ya-image";
@@ -72,6 +73,15 @@ export function image({ src, nom, zone = "onglet", coupe = false }) {
     element,
     focus: () => element.focus(),
     changerSource: (adresse) => charger(adresse),
+    /** Le fichier a changé de nom : nom accessible (onglet), `alt` et message d'erreur suivent. */
+    renommer(nouveau) {
+      if (!nouveau) throw new Error("image : nom requis");
+      nom = nouveau;
+      if (zone === "onglet") element.setAttribute("aria-label", nom);
+      if (img) img.alt = nom;
+      const m = element.querySelector(".indication[role=status]:not([aria-busy])");
+      if (m) m.querySelector("span").textContent = `${nom} ne peut pas être affiché.`;
+    },
     definirEtat(etat) {
       if (etat !== "absente") throw new Error(`image : état inconnu « ${etat} »`);
       jeton++;

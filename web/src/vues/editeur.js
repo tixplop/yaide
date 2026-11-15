@@ -29,6 +29,7 @@ const OPENCODE = "\0oc:"; // préfixe de la clé d'un onglet opencode (session o
 const AGENT = "\0agent:"; // préfixe de la clé d'un onglet Agent (son numéro : l'id de conversation n'existe qu'au premier message)
 const DIFF = "\0diff"; // identifiant de l'onglet de diff, qui n'est pas un fichier ouvert
 const TEXTE_SUPPRIME = "Fichier supprimé du disque. Ctrl+S le recrée.";
+const TEXTE_IMAGE_SUPPRIMEE = "Fichier supprimé du disque.";
 const estFichier = (o) => !o.claude && !o.opencode && !o.conversationAgent;
 const estTexte = (o) => estFichier(o) && !o.image; // un onglet d'image n'a ni texte, ni disque lu, ni éditeur
 const avecHybride = (chemin) => /\.(md|markdown)$/i.test(chemin);
@@ -500,13 +501,17 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   /** Un onglet d'image (REQ-120) : la zone C-017 prend la place de la zone de code ; l'image vient de la route d'aperçu. */
   function creerImage(chemin, jeton) {
-    const o = { chemin, groupe: courant, modifie: false, image: true };
+    const o = { chemin, groupe: courant, modifie: false, image: true, sansJeton: jeton === null };
     const z = image({ src: adresseApercu(jeton ?? "", chemin), nom: nomDe(chemin), coupe: coupe || jeton === null });
     o.image = z;
     o.zone = z.element;
     o.zone.detruire = () => {};
     o.zone.definirCoupe = z.definirCoupe;
     o.zone.vue = { focus: z.focus };
+    o.changerSource = z.changerSource;
+    o.renommerImage = z.renommer;
+    o.leverCoupe = z.definirCoupe;
+    o.definirEtatImage = z.definirEtat;
     liste.push(o);
     return o;
   }
@@ -539,6 +544,23 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     garderListe();
   }
 
+  /** Le nom de l'onglet d'image a changé : nom accessible, `alt` et source suivent. */
+  async function renommerImage(o) {
+    o.renommerImage(nomDe(o.chemin));
+    const jeton = await jetonApercu();
+    if (detruit || !liste.includes(o) || !jeton) return;
+    o.changerSource(adresseApercu(jeton, o.chemin));
+  }
+
+  /** Image ouverte sans jeton pendant une coupure : la vraie adresse d'abord, puis la zone quitte la coupure. */
+  async function reprendreImage(o) {
+    const jeton = await jetonApercu();
+    if (detruit || !liste.includes(o) || !jeton) return;
+    o.sansJeton = false;
+    o.changerSource(adresseApercu(jeton, o.chemin));
+    o.leverCoupe(false);
+  }
+
   function renomme({ de, vers }) {
     for (const o of liste) {
       const nouveau = suivreRenommage(o.chemin, de, vers);
@@ -546,7 +568,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       if (actif === o.chemin) actif = nouveau;
       for (const g of groupes.values()) if (g.actif === o.chemin) g.actif = nouveau;
       o.chemin = nouveau;
-      if (o.image) continue;
+      if (o.image) {
+        renommerImage(o);
+        continue;
+      }
       o.zone.vue.contentDOM.setAttribute("aria-label", `Éditeur ${nomDe(nouveau)}`);
       o.zone.changerLangage(langagePourFichier(nomDe(nouveau)) ?? undefined);
     }
@@ -972,7 +997,8 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       if (o.supprime) return;
       effacerAvis(o);
       o.supprime = true;
-      o.avis = message({ texte: TEXTE_SUPPRIME, variante: "alerte" });
+      if (o.image) o.definirEtatImage("absente");
+      o.avis = message({ texte: o.image ? TEXTE_IMAGE_SUPPRIMEE : TEXTE_SUPPRIME, variante: "alerte" });
     } else return;
     afficher();
     garderListe();
@@ -987,7 +1013,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   }
 
   async function verifierDisque() {
-    const fichiers = () => liste.filter(estTexte);
+    const fichiers = () => liste.filter(estFichier);
     if (coupe || !pret || detruit || sondageEnCours || fichiers().length === 0) return;
     sondageEnCours = true;
     try {
@@ -1002,6 +1028,20 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
         if (v === undefined) continue;
         if (v === null) {
           appliquer(o, null, "supprime");
+          continue;
+        }
+        if (o.image) {
+          // Une image ne se lit pas : seule sa version compte, la route répond `no-store`.
+          const revient = o.supprime;
+          if (revient) {
+            effacerAvis(o);
+            afficher();
+          }
+          if (revient || (o.version !== undefined && v !== o.version)) {
+            const jeton = await jetonApercu();
+            if (jeton) o.changerSource(adresseApercu(jeton, o.chemin));
+          }
+          o.version = v;
           continue;
         }
         if (o.supprime) {
@@ -1274,7 +1314,8 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   async function restaurer() {
     const gardes = await retrouver();
     const instance = claude && gardes.liste.some((g) => g.claude) ? (await listeShells())?.instance : undefined;
-    const lus = await Promise.all(gardes.liste.map((g) => (g.claude || g.opencode || g.conversationAgent ? null : lireGarde(g))));
+    const lus = await Promise.all(gardes.liste.map((g) => (g.claude || g.opencode || g.conversationAgent || estImage(g.chemin) ? null : lireGarde(g))));
+    const jeton = gardes.liste.some((g) => g.chemin && estImage(g.chemin)) ? await jetonApercu() : null;
     if (detruit) return;
     lectures--;
     const aVerifier = [];
@@ -1308,6 +1349,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
         return;
       }
       if (trouver(g.chemin)) return;
+      if (estImage(g.chemin)) {
+        creerImage(g.chemin, jeton);
+        return;
+      }
       const r = lus[i];
       const decision = decider(g, r);
       const apercu = Boolean(g.apercu);
@@ -1367,8 +1412,9 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     definirEtat(etat) {
       coupe = etat === "coupe";
       if (!coupe) oublierJetonApercu();
-      for (const o of liste) if (estFichier(o)) o.zone.definirCoupe(coupe);
+      for (const o of liste) if (estFichier(o) && !(o.sansJeton && !coupe)) o.zone.definirCoupe(coupe);
       if (coupe) return;
+      for (const o of liste) if (o.sansJeton) reprendreImage(o);
       executerAttente();
       verifierDisque();
     },

@@ -195,3 +195,17 @@ test("REQ120_AC4_REQ121_AC6_AC9_regles_css_de_ya_image", () => {
   expect(f).toContain("outline: var(--trait) solid var(--accent-fg)");
   expect(f).toContain("outline-offset: calc(-1 * var(--trait))");
 });
+
+test("REQ120_AC8_renommer_change_nom_accessible_alt_et_message_d_erreur", () => {
+  const z = image({ src: "/a.png", nom: "logo.png" });
+  charge(sondes[0]);
+  z.renommer("marque.png");
+  expect(z.element.getAttribute("aria-label")).toBe("marque.png");
+  expect(z.element.querySelector("img").alt).toBe("marque.png");
+  z.changerSource("/b.png");
+  echoue(sondes[1]);
+  expect(z.element.textContent).toBe("marque.png ne peut pas être affiché.");
+  z.renommer("autre.png");
+  expect(z.element.textContent).toBe("autre.png ne peut pas être affiché.");
+  expect(() => z.renommer("")).toThrow();
+});

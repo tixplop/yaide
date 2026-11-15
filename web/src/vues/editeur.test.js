@@ -2105,3 +2105,97 @@ test("REQ101_AC16_clic_dans_l_apercu_et_Ctrl_clic_en_hybride_ouvrent_l_onglet_d_
   expect(nomsOnglets()).toEqual(["guide.md", "logo.png"]);
   expect(e).toBeDefined();
 });
+
+// Réponses de la route des versions pour les tests d'image : `versions.v` change d'un appel à l'autre.
+function fauxVersions(versions) {
+  const base = fetch.getMockImplementation();
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    if (String(url) === "/api/fichiers/versions") return { ok: true, status: 200, json: async () => ({ ...versions.v }) };
+    return base(url, init);
+  }));
+}
+const srcImage = () => zoneImage().querySelector("img")?.getAttribute("src");
+
+test("REQ120_AC6_AC13_AC14_version_changee_nouvelle_source_supprime_puis_recree", async () => {
+  fauxImages();
+  const versions = { v: { "img/logo.png": "1" } };
+  fauxVersions(versions);
+  const { e } = monter();
+  e.lecture(false);
+  await e.restaurer();
+  await e.ouvrir({ chemin: "img/logo.png" });
+  sondesImg.at(-1).onload();
+  const avant = srcImage();
+  await e.relireDisque(); // première version vue : rien ne change
+  const n = sondesImg.length;
+  expect(n).toBe(1);
+  versions.v = { "img/logo.png": "2" };
+  await e.relireDisque();
+  expect(sondesImg).toHaveLength(2);
+  expect(sondesImg.at(-1).src).toBe(avant); // même adresse, rechargée
+  // AC-14 : l'ancienne image reste jusqu'au load, jamais « Chargement… »
+  expect(zoneImage().querySelector("img")).not.toBeNull();
+  expect(zoneImage().querySelector(".indication")).toBeNull();
+  sondesImg.at(-1).onload();
+  // supprimée hors de Yaide
+  versions.v = { "img/logo.png": null };
+  await e.relireDisque();
+  expect(zoneImage()).not.toBeNull();
+  expect(zoneImage().querySelector("img")).toBeNull();
+  const m = e.question.querySelector("[role=alert]");
+  expect(m.textContent).toBe("Fichier supprimé du disque.");
+  expect(e.question.textContent).not.toContain("Ctrl+S le recrée.");
+  expect(m.querySelector("button")).toBeNull();
+  expect(onglet("logo.png").dataset.modifie).toBeUndefined();
+  // recréée : l'image revient, le message part
+  versions.v = { "img/logo.png": "3" };
+  await e.relireDisque();
+  sondesImg.at(-1).onload();
+  expect(zoneImage().querySelector("img")).not.toBeNull();
+  expect(e.question.querySelector("[role=alert]")).toBeNull();
+});
+
+test("REQ120_AC8_retour_recree_l_onglet_sans_lecture_puis_le_renommage_suit", async () => {
+  fauxImages();
+  gardes([fichierGarde("img/logo.png"), fichierGarde("src/main.rs")], "img/logo.png");
+  const { e } = monter();
+  e.lecture(true);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["logo.png", "main.rs"]);
+  expect(actifNom()).toBe("logo.png");
+  expect(fetch.mock.calls.some(([u]) => String(u).includes("img%2Flogo.png"))).toBe(false); // jamais lue comme texte
+  sondesImg.at(-1).onload();
+  expect(zoneImage().querySelector("img")).not.toBeNull();
+  e.renomme({ de: "img/logo.png", vers: "img/marque.png" });
+  await vi.waitFor(() => expect(sondesImg.at(-1).src).toMatch(/\/img\/marque\.png$/));
+  sondesImg.at(-1).onload();
+  expect(actifNom()).toBe("marque.png");
+  expect(zoneImage().getAttribute("aria-label")).toBe("marque.png");
+  expect(zoneImage().querySelector("img").alt).toBe("marque.png");
+  expect(srcImage()).toMatch(/\/img\/marque\.png$/);
+  expect(e.fil.textContent).toBe("imgmarque.png");
+});
+
+test("REQ120_AC15_ouverture_pendant_une_coupure_zone_vide_puis_image_au_retour", async () => {
+  fauxImages();
+  const base = fetch.getMockImplementation();
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => (String(url) === "/api/apercu" ? { ok: false, status: 503 } : base(url, init))));
+  const { e } = monter();
+  e.lecture(false);
+  e.definirEtat("connecte"); // vide le jeton gardé par un test précédent
+  e.definirEtat("coupe");
+  await e.ouvrir({ chemin: "img/logo.png" });
+  expect(nomsOnglets()).toEqual(["logo.png"]);
+  expect(zoneImage()).not.toBeNull();
+  sondesImg.at(-1)?.onerror?.();
+  expect(zoneImage().textContent).toBe("");
+  expect(document.querySelector("[role=status]")).toBeNull();
+  vi.stubGlobal("fetch", vi.fn(base));
+  const avantRetour = sondesImg.length;
+  e.definirEtat("connecte");
+  await vi.waitFor(() => expect(sondesImg.at(-1).src).toMatch(/^\/apercu\/jt\/img\/logo\.png$/));
+  for (const sonde of sondesImg.slice(avantRetour - 1, -1)) sonde.onerror?.(); // l'ancienne adresse vide échoue : sans effet
+  expect(zoneImage().textContent).not.toContain("ne peut pas être affiché");
+  sondesImg.at(-1).onload();
+  expect(zoneImage().querySelector("img")).not.toBeNull();
+});
