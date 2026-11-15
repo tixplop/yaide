@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, expect, test, vi } from "vitest";
-import { ouvrirPreferences } from "./preferences.js";
+import { ouvrirConfiguration } from "./configuration.js";
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = function () {
@@ -52,7 +52,7 @@ const cocher = (c) => c.click();
 const OK = "Préférences enregistrées. Rechargez la page pour les appliquer.";
 
 async function ouvrir(options = {}) {
-  const p = ouvrirPreferences(options);
+  const p = ouvrirConfiguration(options);
   await attendre();
   await attendre();
   return p;
@@ -102,7 +102,7 @@ test("REQ071_AC7_AC14_illisible_defauts_alerte_et_remplacement", async () => {
   await attendre();
   expect(etat.ecritures).toEqual(["{}\n"]);
   expect(dlg().querySelector("[role=alert]")).toBeNull();
-  expect(dlg().querySelector("[role=status]").textContent).toBe(OK);
+  expect(dlg().querySelector("[role=tabpanel] [role=status]:not([aria-busy])").textContent).toBe(OK);
 });
 
 test("REQ071_AC9_AC16_coupure_a_l_enregistrement_saisie_gardee", async () => {
@@ -154,16 +154,16 @@ test("REQ071_AC17_coupure_a_l_ouverture", async () => {
 
 test("REQ071_AC10_AC12_AC13_role_nom_ordre_et_focus", async () => {
   faux();
-  const p = ouvrirPreferences();
+  const p = ouvrirConfiguration();
   const d = dlg();
   expect(d.textContent).toContain("Chargement…");
   expect(bouton("Enregistrer").disabled).toBe(true);
   await attendre();
   await attendre();
   expect(d.getAttribute("aria-labelledby")).toBeTruthy();
-  expect(document.getElementById(d.getAttribute("aria-labelledby")).textContent).toBe("Préférences d'interface");
-  expect(d.querySelector("h2").textContent).toBe("Préférences d'interface");
-  expect(document.getElementById(d.getAttribute("aria-describedby")).textContent).toBe("Dans .yaide/interface.json. Appliquées au prochain chargement de la page.");
+  expect(document.getElementById(d.getAttribute("aria-labelledby")).textContent).toBe("Configuration");
+  expect(d.querySelector("h2").textContent).toBe("Configuration");
+  expect(document.getElementById(d.querySelector("[role=tabpanel]").getAttribute("aria-describedby")).textContent).toBe("Dans .yaide/interface.json. Appliquées au prochain chargement de la page.");
   const fieldsets = d.querySelectorAll("fieldset");
   expect([...fieldsets].map((f) => f.querySelector("legend").textContent)).toEqual(["À l'ouverture de la page", "Fonctions"]);
   expect([...fieldsets[0].querySelectorAll("select")].map((s) => s.labels[0].textContent)).toEqual(["Panneau de gauche", "Zone des shells", "Colonne de l'agent"]);
@@ -212,7 +212,7 @@ test("REQ071_AC11_AC15_reussite_focus_et_message_retire", async () => {
   b.click();
   await attendre();
   await attendre();
-  const statut = dlg().querySelector("[role=status]");
+  const statut = dlg().querySelector("[role=tabpanel] [role=status]:not([aria-busy])");
   expect(statut.textContent).toBe(OK);
   expect(dlg().querySelector("[role=alert]")).toBeNull();
   expect(document.activeElement).toBe(bouton("Enregistrer"));
@@ -220,11 +220,59 @@ test("REQ071_AC11_AC15_reussite_focus_et_message_retire", async () => {
   expect(etat.ecritures).toEqual(["{}\n"]);
   // Un changement de case, puis de choix, retire le message.
   caseA("Git").click();
-  expect(dlg().querySelector("[role=status]")).toBeNull();
+  expect(dlg().querySelector("[role=tabpanel] [role=status]:not([aria-busy])")).toBeNull();
   bouton("Enregistrer").click();
   await attendre();
   await attendre();
-  expect(dlg().querySelector("[role=status]")).not.toBeNull();
+  expect(dlg().querySelector("[role=tabpanel] [role=status]:not([aria-busy])")).not.toBeNull();
   choisir(select("Colonne de l'agent"), "Déplié");
-  expect(dlg().querySelector("[role=status]")).toBeNull();
+  expect(dlg().querySelector("[role=tabpanel] [role=status]:not([aria-busy])")).toBeNull();
+});
+
+test("REQ116_AC5_dialogue_nomme_deux_onglets_fleches_et_fermeture_rend_le_focus", async () => {
+  faux();
+  const avant = document.createElement("button");
+  document.body.append(avant);
+  avant.focus();
+  const surFermeture = vi.fn(() => avant.focus());
+  ouvrirConfiguration({ surFermeture });
+  await attendre();
+  await attendre();
+  const d = dlg();
+  expect(d.getAttribute("aria-modal")).toBe("true");
+  expect(d.getAttribute("aria-labelledby")).toBeTruthy();
+  const onglets = [...d.querySelectorAll("[role=tab]")];
+  expect(onglets.map((o) => o.textContent)).toEqual(["Interface", "Couleurs markdown"]);
+  const panneaux = onglets.map((o) => document.getElementById(o.getAttribute("aria-controls")));
+  panneaux.forEach((p, i) => {
+    expect(p.getAttribute("role")).toBe("tabpanel");
+    expect(p.getAttribute("aria-labelledby")).toBe(onglets[i].id);
+  });
+  expect(onglets[0].getAttribute("aria-selected")).toBe("true");
+  expect(panneaux[0].hidden).toBe(false);
+  expect(panneaux[1].hidden).toBe(true);
+  onglets[0].focus();
+  onglets[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+  expect(onglets[1].getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement).toBe(onglets[1]);
+  expect(panneaux[1].hidden).toBe(false);
+  expect(panneaux[1].textContent).toBe("Chargement…");
+  expect([...d.querySelectorAll(".dialogue-actions button")].map((b) => b.textContent)).toEqual(["Fermer"]);
+  onglets[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+  expect(onglets[0].getAttribute("aria-selected")).toBe("true");
+  expect([...d.querySelectorAll(".dialogue-actions button")].map((b) => b.textContent)).toEqual(["Fermer", "Enregistrer"]);
+  bouton("Fermer").click();
+  expect(surFermeture).toHaveBeenCalledTimes(1);
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(document.activeElement).toBe(avant);
+});
+
+test("REQ116_AC5_echap_ferme", async () => {
+  faux();
+  const surFermeture = vi.fn();
+  ouvrirConfiguration({ surFermeture });
+  await attendre();
+  dlg().dispatchEvent(new Event("cancel", { cancelable: true }));
+  expect(surFermeture).toHaveBeenCalledTimes(1);
+  expect(document.querySelector("dialog")).toBeNull();
 });

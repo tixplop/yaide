@@ -191,7 +191,7 @@ test("REQ070_parcours_32_alleger_avec_faute_de_frappe", async ({ page }) => {
   await page.keyboard.press("Control+p");
   await page.keyboard.type(">");
   await expect(page.getByRole("option")).toHaveCount(1);
-  await expect(page.getByRole("option", { name: "Préférences d'interface" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Configuration" })).toBeVisible();
   await page.keyboard.type("prov");
   await expect(page.getByText("Aucune commande trouvée.")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -281,7 +281,7 @@ test("REQ070_parcours_33_claude_seul_a_800_par_480", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Claude 1", exact: true })).toBeVisible();
 });
 
-const dialoguePrefs = (page) => page.getByRole("dialog", { name: "Préférences d'interface" });
+const dialoguePrefs = (page) => page.getByRole("dialog", { name: "Configuration" });
 const SAVED = "Préférences enregistrées. Rechargez la page pour les appliquer.";
 
 test("REQ071_parcours_34_regler_sans_json", async ({ page }) => {
@@ -355,9 +355,9 @@ test("REQ071_parcours_35_illisible_puis_coupure_a_800_par_480", async ({ page })
     await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
     const bandeauCoupure = page.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." });
 
-    // 1-2. Ctrl+P, `>préf`, Entrée : alerte du fichier illisible, valeurs par défaut.
+    // 1-2. Ctrl+P, `>conf`, Entrée : alerte du fichier illisible, valeurs par défaut.
     await page.keyboard.press("Control+p");
-    await page.keyboard.type(">préf");
+    await page.keyboard.type(">conf");
     await expect(page.getByRole("option")).toHaveCount(1);
     await page.keyboard.press("Enter");
     const dlg = dialoguePrefs(page);

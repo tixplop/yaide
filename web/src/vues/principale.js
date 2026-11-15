@@ -16,7 +16,7 @@ import { vueEditeur } from "./editeur.js";
 import { vueFichiers } from "./fichiers.js";
 import { vueGit } from "./git.js";
 import { vueOuverture } from "./ouverture.js";
-import { ouvrirPreferences } from "./preferences.js";
+import { ouvrirConfiguration } from "./configuration.js";
 import { ouvrirProfils } from "./profils.js";
 import { ouvrirProviders } from "./providers.js";
 import { vueRecherche } from "./recherche.js";
@@ -267,12 +267,12 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   let panneauConfig = null;
   const ouverture = vueOuverture({
     dire,
-    commandes: avec.agents ? undefined : [{ id: "preferences", nom: "Préférences d'interface" }],
+    commandes: avec.agents ? undefined : [{ id: "configuration", nom: "Configuration" }],
     surOuvrir: editeur.ouvrir,
     surLecture: editeur.lecture,
     surCommande: (id, avant) => {
-      if (id === "preferences") {
-        panneauConfig = ouvrirPreferences({ surFermeture: () => { panneauConfig = null; avant?.focus?.(); } });
+      if (id === "configuration") {
+        panneauConfig = ouvrirConfiguration({ surFermeture: () => { panneauConfig = null; avant?.focus?.(); } });
         return;
       }
       const ouvrirPanneau = { providers: ouvrirProviders, profils: ouvrirProfils }[id];

@@ -2,7 +2,7 @@ import { EditorState } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { decorationsHybride } from "./ui/hybride.js";
 import { afterEach, expect, test, vi } from "vitest";
-import { analyser, charger, feuille } from "./couleurs-markdown.js";
+import { analyser, appliquer, charger, feuille, lire, serialiser } from "./couleurs-markdown.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -126,4 +126,53 @@ test("REQ115_AC12_charger_ne_marque_la_selection_que_pour_les_fonds_regles", asy
   vi.stubGlobal("fetch", faux('{"clair":{"bloc_code":{"fond":"#101820"}}}'));
   await charger();
   expect(marques()).toEqual(["ya-sel-fond ya-sel-fond-bloc-code"]);
+});
+
+const TEXTE_AC3 = '{\n  "sombre": {\n    "titre1": {\n      "couleur": "#ff8800"\n    }\n  },\n  "clair": {\n    "bloc_code": {\n      "fond": "#101820"\n    }\n  }\n}\n';
+
+test("REQ117_AC3_serialiser_texte_exact_ordre_et_omissions", () => {
+  expect(serialiser({ clair: { bloc_code: { fond: "#101820" } }, sombre: { titre1: { couleur: "#f80" } } })).toBe(TEXTE_AC3);
+  expect(serialiser({ sombre: { titre1: { couleur: "#F80" } } })).toContain('"#ff8800"');
+  const dans = { sombre: { puce: { couleur: "#111111" }, citation: { bordure: "#222222", fond: "#333333", couleur: "#444444" }, titre2: { couleur: "#555555" }, titre1: { couleur: "" }, texte: {} } };
+  const sortie = JSON.parse(serialiser(dans));
+  expect(Object.keys(sortie.sombre)).toEqual(["titre2", "citation", "puce"]);
+  expect(Object.keys(sortie.sombre.citation)).toEqual(["couleur", "fond", "bordure"]);
+  expect(serialiser({ sombre: {}, clair: { titre1: { couleur: "" } } })).toBe("{}\n");
+  expect(serialiser({ sombre: {}, clair: {} })).toBe("{}\n");
+});
+
+test("REQ117_AC1_AC9_AC10_lire_absent_illisible_coupure_raison", async () => {
+  const fetch = faux(null);
+  vi.stubGlobal("fetch", fetch);
+  expect(await lire()).toEqual({ sombre: {}, clair: {} });
+  expect(fetch.mock.calls.every(([, o]) => (o?.method ?? "GET") === "GET")).toBe(true);
+  vi.stubGlobal("fetch", faux("{"));
+  expect(await lire()).toEqual({ illisible: true });
+  vi.stubGlobal("fetch", faux('{"clair":{"titre1":{"couleur":"#a40"}}}'));
+  expect(await lire()).toEqual({ sombre: {}, clair: { titre1: { couleur: "#aa4400" } } });
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+  expect((await lire()).coupure).toBe(true);
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500, json: async () => ({ cause: "erreur", message: "Disque plein." }) })));
+  expect(await lire()).toEqual({ raison: "Disque plein" });
+});
+
+test("REQ117_AC5_appliquer_remplace_la_feuille_et_suit_les_fonds_regles", async () => {
+  vi.stubGlobal("CSSStyleSheet", FausseFeuille);
+  vi.stubGlobal("fetch", faux('{"sombre":{"titre1":{"couleur":"#ff8800"}}}'));
+  await charger();
+  const premiere = document.adoptedStyleSheets[0];
+  appliquer({ sombre: { titre1: { couleur: "#112233" } }, clair: {} });
+  expect(document.adoptedStyleSheets).toHaveLength(1);
+  expect(document.adoptedStyleSheets[0]).not.toBe(premiere);
+  expect(document.adoptedStyleSheets[0].texte).toContain("#112233");
+  const marques = () => {
+    const texte = "> une citation";
+    const etat = EditorState.create({ doc: texte, selection: { anchor: 0, head: texte.length }, extensions: [markdown({ base: markdownLanguage })] });
+    return decorationsHybride(etat).filter((d) => d.classe?.startsWith("ya-sel-fond")).length;
+  };
+  appliquer({ sombre: { citation: { fond: "#202830" } }, clair: {} });
+  expect(marques()).toBeGreaterThan(0);
+  appliquer({ sombre: {}, clair: {} });
+  expect(document.adoptedStyleSheets).toHaveLength(0);
+  expect(marques()).toBe(0);
 });

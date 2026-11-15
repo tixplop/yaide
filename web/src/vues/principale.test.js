@@ -267,7 +267,7 @@ test("REQ054_AC4_echap_rend_le_focus_d_avant_ctrl_p", async () => {
   expect(document.activeElement).toBe(avant);
 });
 
-test("REQ070_AC5_AC19_REQ071_AC8_ouvert_avec_agents_et_shells_desactives", async () => {
+test("REQ070_AC5_AC19_REQ071_AC1_AC8_REQ116_AC4_ouvert_avec_agents_et_shells_desactives", async () => {
   const appels = [];
   vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
     const u = String(url);
@@ -283,12 +283,13 @@ test("REQ070_AC5_AC19_REQ071_AC8_ouvert_avec_agents_et_shells_desactives", async
   const avant = vue.querySelector("header [aria-label=Déconnexion]");
   avant.focus();
   const entree = paletteCommandes(">");
-  expect(nomsCommandes()).toEqual(["Préférences d'interface"]);
+  expect(nomsCommandes()).toEqual(["Configuration"]);
   entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
   await new Promise((r) => setTimeout(r, 0));
   await new Promise((r) => setTimeout(r, 0));
   const dlg = document.querySelector("dialog");
-  expect(dlg.querySelector("h2").textContent).toBe("Préférences d'interface");
+  expect(dlg.querySelector("h2").textContent).toBe("Configuration");
+  expect([...dlg.querySelectorAll("[role=tab]")].map((t) => t.textContent)).toEqual(["Interface", "Couleurs markdown"]);
   expect([...dlg.querySelectorAll("input[type=checkbox]")].filter((c) => !c.checked).map((c) => c.labels[0].textContent)).toEqual(["Shells", "Agents"]);
   expect(appels.filter((a) => a.includes("/api/agent"))).toEqual([]);
   dlg.dispatchEvent(new Event("cancel", { cancelable: true }));
@@ -311,8 +312,8 @@ test("REQ054_AC1_AC7_trois_commandes_avec_les_agents_et_focus_rendu", async () =
   const avant = vue.querySelector("header [aria-label=Déconnexion]");
   avant.focus();
   const entree = paletteCommandes(">");
-  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Préférences d'interface"]);
-  entree.value = ">préf";
+  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Configuration"]);
+  entree.value = ">conf";
   entree.dispatchEvent(new Event("input", { bubbles: true }));
   entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
   await new Promise((r) => setTimeout(r, 0));

@@ -5,6 +5,7 @@ import { champ } from "../ui/champ.js";
 import { amenerDansLaVue, dialogue, groupe } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
 import { message } from "../ui/message.js";
+import { onglets } from "../ui/onglets.js";
 
 const CHEMIN = ".yaide/interface.json";
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
@@ -27,12 +28,18 @@ const FONCTIONS = [
   ["claude", "Claude"],
 ];
 
+const SECTIONS = [
+  { id: "interface", libelle: "Interface" },
+  { id: "couleurs", libelle: "Couleurs markdown" },
+];
+
 /**
- * V-011 : régler `.yaide/interface.json` sans écrire de JSON. N'applique rien à l'interface.
+ * V-011 : dialogue « Configuration », sections « Interface » (`.yaide/interface.json`, sans écrire de JSON ;
+ * n'applique rien à l'interface) et « Couleurs markdown » (panneau vide en attendant sa suite).
  * `surFermeture` est appelé à la fermeture (Fermer, Échap) ; le focus est alors à l'appelant.
  * Rend `{ fermer, element }`.
  */
-export function ouvrirPreferences({ surFermeture = () => {} } = {}) {
+export function ouvrirConfiguration({ surFermeture = () => {} } = {}) {
   let ferme = false;
   let enCours = false;
   let charge = false;
@@ -40,10 +47,16 @@ export function ouvrirPreferences({ surFermeture = () => {} } = {}) {
   const fonctions = Object.fromEntries(FONCTIONS.map(([c]) => [c, true]));
   let premier = null;
 
+  let section = "interface";
+  const panneaux = { interface: document.createElement("div"), couleurs: document.createElement("div") };
+  const hote = document.createElement("div");
+  hote.className = "ya-sections-hote";
   const aide = document.createElement("p");
+  aide.id = "configuration-aide-interface";
   aide.className = "ya-groupe-aide";
   aide.textContent = "Dans .yaide/interface.json. Appliquées au prochain chargement de la page.";
   const chargement = indication({ texte: "Chargement…", variante: "chargement" });
+  const chargementCouleurs = indication({ texte: "Chargement…", variante: "chargement" });
   const fermerB = bouton({ libelle: "Fermer" });
   let enregistrerB = bouton({ libelle: "Enregistrer", variante: "principal", desactive: true });
   const zoneAlerte = document.createElement("div");
@@ -99,7 +112,7 @@ export function ouvrirPreferences({ surFermeture = () => {} } = {}) {
     );
     charge = true;
     enregistrerB.disabled = false;
-    premier.focus();
+    if (section === "interface") premier.focus();
   }
 
   function nouveauBouton(enCoursDeVie) {
@@ -114,16 +127,14 @@ export function ouvrirPreferences({ surFermeture = () => {} } = {}) {
     if (!charge || enCours || ferme) return;
     enCours = true;
     const avecFocus = document.activeElement === enregistrerB;
-    const enCoursB = nouveauBouton(true);
-    enregistrerB.replaceWith(enCoursB);
-    enregistrerB = enCoursB;
+    enregistrerB = nouveauBouton(true);
+    majActions();
     fermerB.disabled = true;
     const r = await ecrireFichier(CHEMIN, serialiser({ replis, fonctions }));
     enCours = false;
     if (ferme) return;
-    const repos = nouveauBouton(false);
-    enregistrerB.replaceWith(repos);
-    enregistrerB = repos;
+    enregistrerB = nouveauBouton(false);
+    majActions();
     fermerB.disabled = false;
     if (r.coupure || r.cause) montrerResultat(r.coupure ? TEXTE_COUPURE : `Enregistrement impossible : ${sansPoint(r.message)}.`, "erreur");
     else {
@@ -134,16 +145,39 @@ export function ouvrirPreferences({ surFermeture = () => {} } = {}) {
   }
   enregistrerB.addEventListener("click", enregistrer);
 
+  // Les actions de la section affichée : « Enregistrer » n'existe que dans « Interface » pour l'instant.
+  function majActions() {
+    dlg.element.querySelector(".dialogue-actions").replaceChildren(fermerB, ...(section === "interface" ? [enregistrerB] : []));
+  }
+
+  panneaux.interface.append(aide, zoneAlerte, chargement);
+  panneaux.couleurs.append(chargementCouleurs);
+  const barre = onglets({
+    presentation: "sections",
+    nomBarre: "Configuration",
+    onglets: SECTIONS,
+    actif: section,
+    surChoix: (id) => {
+      section = id;
+      majActions();
+    },
+    panneaux,
+  });
+  panneaux.interface.setAttribute("aria-describedby", aide.id);
+  hote.append(barre);
+
   const dlg = dialogue({
-    titre: "Préférences d'interface",
-    aide,
-    contenu: [zoneAlerte, chargement],
+    titre: "Configuration",
+    sections: hote,
+    contenu: [panneaux.interface, panneaux.couleurs],
     actions: [fermerB, enregistrerB],
     focusInitial: fermerB,
     position: "reglages",
     surAnnuler: fermer,
   });
+  dlg.element.setAttribute("aria-modal", "true");
   dlg.ouvrir();
+  barre.choisir(section);
   // Entrée n'enregistre pas.
   dlg.element.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && e.target.matches("input, select")) e.preventDefault();

@@ -195,7 +195,7 @@ test("REQ054_AC1_chevron_liste_les_commandes_sans_fichier", async () => {
   const { entree, v } = await ouvrir();
   taper(entree, ">");
   const lignes = [...document.querySelectorAll("dialog [role=option]")];
-  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle", "Préférences d'interface"]);
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration"]);
   expect(document.querySelector("dialog").textContent).not.toContain("main.rs");
   v.detruire();
 });
@@ -239,7 +239,7 @@ test("REQ054_AC5_gras_aucune_commande_et_fleches", async () => {
   v.detruire();
 });
 
-test("REQ054_AC1_AC2_AC7_trois_commandes_et_pref", async () => {
+test("REQ054_AC1_AC2_AC7_trois_commandes_et_configuration", async () => {
   simuler(json({ chemins: ["src/main.rs"] }));
   const surCommande = vi.fn();
   const { entree, declencheur, v } = await ouvrir({ surCommande });
@@ -251,26 +251,26 @@ test("REQ054_AC1_AC2_AC7_trois_commandes_et_pref", async () => {
   touche(entree, "ArrowDown");
   expect(entree.getAttribute("aria-activedescendant")).toBe(toutes[2].id);
   touche(entree, "Enter");
-  expect(surCommande).toHaveBeenLastCalledWith("preferences", declencheur);
+  expect(surCommande).toHaveBeenLastCalledWith("configuration", declencheur);
   expect(document.querySelector("dialog")).toBeNull();
   v.ouvrir();
   const e2 = document.querySelector("dialog input");
-  taper(e2, ">préf");
+  taper(e2, ">conf");
   const lignes = [...document.querySelectorAll("dialog [role=option]")];
-  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Préférences d'interface"]);
-  expect(lignes[0].querySelector("b.liste-trouve").textContent).toBe("Préf");
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Configuration"]);
+  expect(lignes[0].querySelector("b.liste-trouve").textContent).toBe("Conf");
   touche(e2, "Enter");
   expect(surCommande).toHaveBeenCalledTimes(2);
   v.detruire();
 });
 
-test("REQ070_AC5_AC19_agents_desactives_seule_preferences", async () => {
+test("REQ070_AC5_AC19_agents_desactives_seule_configuration", async () => {
   simuler(json({ chemins: ["src/main.rs"] }));
   const surCommande = vi.fn();
-  const { entree } = await ouvrir({ surCommande, commandes: [{ id: "preferences", nom: "Préférences d'interface" }] });
+  const { entree } = await ouvrir({ surCommande, commandes: [{ id: "configuration", nom: "Configuration" }] });
   taper(entree, ">");
   const lignes = [...document.querySelectorAll("dialog [role=option]")];
-  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Préférences d'interface"]);
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Configuration"]);
   expect(lignes[0].getAttribute("aria-selected")).toBe("true");
   expect(entree.getAttribute("aria-activedescendant")).toBe(lignes[0].id);
   taper(entree, ">prov");
@@ -279,5 +279,5 @@ test("REQ070_AC5_AC19_agents_desactives_seule_preferences", async () => {
   expect(document.querySelector("dialog [role=listbox]").textContent).toContain("src/main.rs");
   taper(entree, ">");
   touche(entree, "Enter");
-  expect(surCommande).toHaveBeenCalledWith("preferences", expect.anything());
+  expect(surCommande).toHaveBeenCalledWith("configuration", expect.anything());
 });

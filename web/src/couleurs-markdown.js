@@ -20,6 +20,9 @@ const PERMIS = {
   separateur: ["couleur"],
 };
 for (let i = 1; i <= 6; i++) PERMIS[`titre${i}`] = ["couleur"];
+const ORDRE = [1, 2, 3, 4, 5, 6].map((i) => `titre${i}`).concat(
+  ["texte", "gras", "italique", "barre", "lien", "code", "bloc_code", "citation", "entete_tableau", "tableau", "puce", "separateur"],
+);
 const AVEC_SELECTION = ["code", "bloc_code", "citation"];
 
 function objet(v) {
@@ -73,20 +76,60 @@ export function feuille(reglages) {
   return regles.join("\n");
 }
 
+let feuilleCourante = null;
+
+/** Pose les réglages (`{ sombre, clair }`) : remplace la feuille posée avant, sans en ajouter une seconde. */
+export function appliquer(reglages) {
+  fondsRegles(
+    AVEC_SELECTION.filter((e) => Object.values(reglages).some((t) => t[e]?.fond)).map((e) => e.replaceAll("_", "-")),
+  );
+  const restantes = document.adoptedStyleSheets.filter((f) => f !== feuilleCourante);
+  feuilleCourante = null;
+  const texte = feuille(reglages);
+  if (texte) {
+    feuilleCourante = new CSSStyleSheet();
+    feuilleCourante.replaceSync(texte);
+    restantes.push(feuilleCourante);
+  }
+  document.adoptedStyleSheets = restantes;
+}
+
 /** Lit `.yaide/markdown.json` une fois et pose la feuille. Rend `{ illisible }`. N'écrit jamais. */
 export async function charger() {
   const lecture = await lireFichier(CHEMIN);
   if (typeof lecture.contenu !== "string") return { illisible: false };
   const reglages = analyser(lecture.contenu);
   if (reglages.illisible) return { illisible: true };
-  fondsRegles(
-    AVEC_SELECTION.filter((e) => Object.values(reglages).some((t) => t[e]?.fond)).map((e) => e.replaceAll("_", "-")),
-  );
-  const texte = feuille(reglages);
-  if (texte) {
-    const f = new CSSStyleSheet();
-    f.replaceSync(texte);
-    document.adoptedStyleSheets = [...document.adoptedStyleSheets, f];
-  }
+  appliquer(reglages);
   return { illisible: false };
+}
+
+/**
+ * Relit le fichier pour le dialogue : `{ sombre, clair }` (absent : vides), `{ illisible: true }`,
+ * `{ coupure: true }` ou `{ raison }` (autre erreur, message du serveur). N'écrit jamais.
+ */
+export async function lire() {
+  const lecture = await lireFichier(CHEMIN);
+  if (lecture.coupure) return { coupure: true };
+  if (typeof lecture.contenu === "string") return analyser(lecture.contenu);
+  if (lecture.cause === "introuvable") return { sombre: {}, clair: {} };
+  return { raison: String(lecture.message ?? "erreur").replace(/\.$/, "") };
+}
+
+/** Texte du fichier : `sombre` puis `clair`, éléments et propriétés dans l'ordre de REQ-115 ; valeurs vides omises. */
+export function serialiser(reglages) {
+  const sortie = {};
+  for (const theme of Object.keys(THEMES)) {
+    const partie = {};
+    for (const element of ORDRE) {
+      const proprietes = {};
+      for (const propriete of PERMIS[element]) {
+        const valeur = reglages[theme]?.[element]?.[propriete];
+        if (typeof valeur === "string" && valeur !== "") proprietes[propriete] = normaliser(valeur);
+      }
+      if (Object.keys(proprietes).length) partie[element] = proprietes;
+    }
+    if (Object.keys(partie).length) sortie[theme] = partie;
+  }
+  return JSON.stringify(sortie, null, 2) + "\n";
 }
