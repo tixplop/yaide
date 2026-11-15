@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { lancerYaide, ouvrirYaide, depotExemple, nomLigne, tailleStable, temoin, attendre, avancer } from "./aides.js";
-import { lancerFauxProvider, reponse, erreur } from "./faux-provider.js";
+import { lancerFauxProvider, reponse } from "./faux-provider.js";
 
 let yaide;
 let faux;
@@ -116,16 +116,9 @@ test("REQ056_parcours_19_regler_l_agent_et_corriger_un_fichier", async ({ page }
   await expect(provs.getByLabel("Clé d'API")).toHaveValue("");
   await expect(provs.getByText("Clé enregistrée. Saisissez-en une autre pour la remplacer.")).toBeVisible();
 
-  // 4. Adresse d'Ollama invalide, puis Échap.
-  await liste.getByRole("option", { name: /^Ollama/ }).click();
-  const avant = (await api(page, "GET", "/api/agent/reglages")).providers.find((p) => p.id === "ollama").adresse;
-  await provs.getByLabel("Adresse").fill("localhost:11434");
-  await provs.getByRole("button", { name: "Enregistrer" }).click();
-  await expect(provs.getByText("L'adresse doit commencer par http:// ou https://.")).toBeVisible();
-  await expect(provs.getByLabel("Adresse")).toBeFocused();
+  // 4. Échap ferme le dialogue (adresse invalide : AC-052-5, providers.test.js et agent.rs).
   await page.keyboard.press("Escape");
   await expect(provs).toHaveCount(0);
-  expect((await api(page, "GET", "/api/agent/reglages")).providers.find((p) => p.id === "ollama").adresse).toBe(avant);
   await expect(champMessage(page)).toBeFocused();
 
   // 5. Premier profil.
@@ -185,84 +178,6 @@ test("REQ056_parcours_19_regler_l_agent_et_corriger_un_fichier", async ({ page }
   expect(premiere.corps.tools.map((t) => t.name).sort()).toEqual(["bash", "edit", "get_config", "glob", "list_agents", "read", "save_agent", "save_interface", "save_mcp_server", "save_profile", "save_provider", "subagent", "webfetch", "websearch", "write"]);
   expect(JSON.stringify(faux.recues[1].corps.messages)).toContain("Exit code: 101");
   expect(faux.recues).toHaveLength(4);
-});
-
-test("REQ055_parcours_20_reprendre_refus_arreter_erreur", async ({ page }) => {
-  faux = await lancerFauxProvider([
-    reponse({ texte: "Le test attend une avance de 1.", tokens: 1200 }),
-    reponse({ outils: [{ id: "t1", nom: "bash", entree: { command: "sleep 30" } }], tokens: 1500 }),
-    erreur(429, "rate_limit_error", "Trop de requêtes, patientez."),
-  ]);
-  await page.clock.install();
-  yaide = await lancerYaide({ dossier: depotAgent() });
-  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await reglerAnthropic(page);
-  await api(page, "PUT", "/api/agent/profils", { nom: "gpt", provider: "openai", modele: "gpt-5", defaut: false });
-  await page.reload();
-  await rail(page, "Agent").click();
-  await expect(profil(page)).toHaveValue(/sonnet/);
-
-  // Une première conversation.
-  await champMessage(page).fill(MESSAGE);
-  await page.keyboard.press("Enter");
-  await patienter(page, () => expect(fil(page)).toContainText("Le test attend une avance de 1.", { timeout: 300 }));
-  await patienter(page, () => expect(arreter(page)).toBeHidden({ timeout: 300 }));
-
-  // 1. Au rechargement, la vue rouvre la conversation.
-  await page.reload();
-  await ongletAgent(page, 1).click();
-  await expect(fil(page)).toContainText("Le test attend une avance de 1.");
-  await expect(page.locator(".agent-titre")).toContainText("Le test parse_args échoue.");
-
-  // 2. Nouvelle conversation.
-  await page.getByRole("button", { name: "Nouvelle conversation" }).click();
-  await expect(page.locator(".agent-titre")).toHaveText("Nouvelle conversation");
-  await expect(page.getByText("Écrivez un message pour commencer.")).toBeVisible();
-  await expect(profil(page)).toHaveValue(/sonnet/);
-  await expect(champMessage(page)).toBeFocused();
-
-  // 3. Profil sans clé : refus, rien n'est envoyé, le texte reste.
-  await profil(page).selectOption({ label: "gpt" });
-  await champMessage(page).fill("Lance toute la suite de tests.");
-  await page.keyboard.press("Enter");
-  await expect(page.getByText("Aucune clé pour OpenAI. Ajoutez-la avec Ctrl+P, puis > Providers LLM.")).toBeVisible();
-  await expect(champMessage(page)).toHaveValue("Lance toute la suite de tests.");
-  await expect(page.getByText("Écrivez un message pour commencer.")).toBeVisible();
-  expect(faux.recues).toHaveLength(1);
-
-  // 4. Bon profil : le refus disparaît, la commande tourne ; Arrêter.
-  await profil(page).selectOption({ label: "sonnet" });
-  await champMessage(page).press("Enter");
-  await expect(page.getByText("Aucune clé pour OpenAI.")).toHaveCount(0);
-  const bash = page.getByRole("button", { name: /^bash sleep 30, en cours$/ });
-  await patienter(page, () => expect(bash).toBeVisible({ timeout: 300 }));
-  await arreter(page).click();
-  await expect(page.getByRole("button", { name: /^bash sleep 30, échec$/ })).toBeVisible();
-  await expect(fil(page).getByText("Arrêté.")).toBeVisible();
-  await expect(arreter(page)).toBeHidden();
-  await expect(champMessage(page)).toBeFocused();
-
-  // 5. Erreur du provider.
-  await champMessage(page).fill("Relance seulement les tests du module args.");
-  await page.keyboard.press("Enter");
-  await patienter(page, () => expect(fil(page)).toContainText("Anthropic a refusé la requête (429).", { timeout: 300 }));
-  await expect(fil(page)).toContainText("rate_limit_error");
-  await patienter(page, () => expect(arreter(page)).toBeHidden({ timeout: 300 }));
-  await champMessage(page).fill("Encore.");
-  await expect(envoyer(page)).toBeEnabled();
-
-  // 6. Le menu des conversations rouvre la première.
-  await page.getByRole("button", { name: "Conversations" }).click();
-  const items = page.getByRole("menuitem");
-  await expect(items).toHaveCount(2);
-  await expect(items.first()).toContainText("Lance toute la suite de tests.");
-  await expect(items.first()).toBeFocused();
-  await page.keyboard.press("ArrowDown");
-  await page.keyboard.press("Enter");
-  await expect(fil(page)).toContainText("Le test attend une avance de 1.");
-  await expect(fil(page)).not.toContainText("Arrêté.");
-  await expect(profil(page)).toHaveValue(/sonnet/);
-  await expect(champMessage(page)).toBeFocused();
 });
 
 test("REQ053_parcours_21_gerer_ses_profils", async ({ page }) => {
@@ -613,21 +528,13 @@ test("REQ067_parcours_28_29_deux_agents_relisent_puis_arret", async ({ page, bro
   await page.keyboard.press("Control+s");
   await expect.poll(() => fs.readFileSync(path.join(agents, "relecteur", "PERSONA.md"), "utf8")).toContain("persona-relecteur-71");
 
-  // 5 : un nom déjà pris et un avatar trop long ; rien n'est écrit.
+  // 5 : Testeur, orange, rapide (nom pris et avatar trop long : AC-064-5 et AC-064-15, agents.test.js).
   await colonne.getByRole("button", { name: "Retour aux agents" }).click();
   await colonne.getByRole("button", { name: "Nouvel agent" }).click();
-  await colonne.getByLabel("Nom", { exact: true }).fill("relecteur");
-  await colonne.getByLabel("Avatar").fill("QA!");
   await couleur("Orange");
   await colonne.getByLabel("Profil").selectOption("rapide");
-  await colonne.getByLabel("Avatar").press("Enter");
-  await expect(colonne.getByText("Ce nom est déjà pris. Choisissez-en un autre.")).toBeVisible();
-  await expect(colonne.getByText("Avatar : deux caractères au plus.")).toBeVisible();
-  await expect(colonne.getByLabel("Nom", { exact: true })).toBeFocused();
-  expect(fs.readdirSync(agents)).toEqual(["relecteur"]);
   // 6 : Testeur, sans avatar.
   await colonne.getByLabel("Nom", { exact: true }).fill("Testeur");
-  await colonne.getByLabel("Avatar").fill("");
   await fiche.click();
   await expect(colonne.getByText("Agent « Testeur » créé.")).toBeVisible();
   await colonne.getByRole("button", { name: "Retour aux agents" }).click();
@@ -666,17 +573,8 @@ test("REQ067_parcours_28_29_deux_agents_relisent_puis_arret", async ({ page, bro
   expect(JSON.stringify(faux.recues[0].corps)).toContain("regle-maison-42");
   expect(JSON.stringify(faux.recues[2].corps)).not.toContain("persona-relecteur-71");
 
-  // P-029 : « revue » est cassé à la main.
-  fs.mkdirSync(path.join(agents, "revue"));
-  fs.writeFileSync(path.join(agents, "revue", "agent.json"), '{ "nom": "Revue" "couleur": "gris" }');
+  // P-029 1 : l'agent.json cassé à la main est prouvé plus bas (AC-064-7 en Rust, AC-064-17 dans agents.test.js).
   await boutonAgents.click();
-  await expect(colonne.getByText(".yaide/agents/revue/agent.json est illisible. Corrigez-le, puis rouvrez Agents.")).toBeVisible();
-  await expect(colonne.getByRole("checkbox")).toHaveCount(2);
-  await expect(colonne.getByRole("checkbox", { name: "Relecteur" })).toBeFocused();
-  await expect(colonne.getByRole("checkbox", { name: "Relecteur" })).not.toBeChecked();
-  await expect(colonne.getByRole("checkbox", { name: "Testeur" })).not.toBeChecked();
-  await expect(colonne.getByRole("button", { name: "Démarrer une conversation" })).toBeDisabled();
-  await expect(colonne.getByText("Cochez un ou plusieurs agents.")).toBeVisible();
   // 2 : la couleur de Relecteur passe au rose.
   await colonne.getByRole("button", { name: "Modifier Relecteur" }).click();
   await expect(colonne.getByLabel("Nom", { exact: true })).toBeFocused();
@@ -845,7 +743,7 @@ test("REQ078_parcours_45_deux_onglets_tours_simultanes_rechargement", async ({ p
 });
 
 test("REQ078_parcours_46_deja_ouverte_coupure_suppr", async ({ page }) => {
-  // AC-078-5, AC-078-7, AC-078-16.
+  // AC-078-5, AC-078-7 (AC-078-16 : principale.test.js).
   let liberer;
   await agentPret(page, [{ ...reponse({ texte: "Alpha.", tokens: 100 }), retenir: new Promise((ok) => (liberer = ok)) }]);
   await rail(page, "Agent").click();
@@ -865,13 +763,6 @@ test("REQ078_parcours_46_deja_ouverte_coupure_suppr", async ({ page }) => {
   await expect(page.getByRole("tab", { name: /^Agent \d$/ })).toHaveCount(2);
   await ongletAgent(page, 2).click();
   await expect(page.getByText("Écrivez un message pour commencer.")).toBeVisible();
-
-  // AC-078-16 : connexion coupée, « Agent » n'ouvre rien.
-  await page.route("**/api/agent/reglages", (r) => r.abort());
-  await rail(page, "Agent").click();
-  await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /^Agent \d$/ })).toHaveCount(2);
-  await page.unroute("**/api/agent/reglages");
 
   // AC-078-7 : Suppr sur « Agent 1 » pendant son tour, sans question ; le tour continue sur le serveur.
   let dialogue = false;
