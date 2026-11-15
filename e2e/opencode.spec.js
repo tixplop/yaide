@@ -325,13 +325,7 @@ test("REQ074_parcours_38_choix_recharge_et_largeurs", async ({ page }) => {
   await expect.poll(modeleDe).toEqual({ id: "gpt-5", providerID: "openai", variant: "default" });
   await expect(effort.locator("option:checked")).toHaveText("Par défaut");
 
-  // 3. Le vrai rechargement : mêmes valeurs.
-  await gardeContient(page, '"opencode":true'); // la liste des onglets est écrite avec un délai
-  await page.reload();
-  await expect(onglet(page, "opencode 1")).toHaveAttribute("aria-selected", "true");
-  await expect(modele.locator("option:checked")).toHaveText("GPT-5 · openai");
-  await expect(effort.locator("option:checked")).toHaveText("Par défaut");
-  await expect(effort.locator("option")).toHaveText(["Par défaut", "low", "medium", "high"]);
+  // 3 (rechargement : mêmes valeurs) retiré : web/src/opencode.test.js REQ074_AC2_valeur_de_la_session_variant_default_ou_absent et REQ074_AC5_efforts_du_modele_affiche.
 
   // 4. Un choix fait ailleurs (POST direct sur le faux opencode) : la liste change en direct, le focus ne bouge pas.
   const [ligneTemoin] = fs.readFileSync(path.join(opencode, "temoin"), "utf8").trim().split("\n").slice(-1);
@@ -419,11 +413,7 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
   await modele.selectOption({ label: "GPT-5 · openai" });
   await expect(compteur).toHaveText("15 k / 400 k · 4 %");
 
-  // AC-076-4 : le vrai rechargement relit la même valeur.
-  await gardeContient(page, '"opencode":true');
-  await page.reload();
-  await expect(onglet(page, "opencode 2")).toHaveAttribute("aria-selected", "true");
-  await expect(compteur).toHaveText("15 k / 400 k · 4 %");
+  // AC-076-4 (rechargement : même valeur, relue dans l'historique) retiré : web/src/opencode.test.js REQ076_AC4_relu_dans_l_historique et REQ074_AC2_valeur_de_la_session_variant_default_ou_absent.
 
   // AC-076-7 : fenêtre inconnue (openrouter) → pas de compteur, barre à 26 px.
   await modele.selectOption({ label: "Claude Sonnet 4.5 · openrouter" });
@@ -692,13 +682,7 @@ test("REQ084_parcours_55_raisonnement_opencode", async ({ page }) => {
   await expect(raisons.nth(0)).toHaveAttribute("aria-expanded", "true");
   await expect(raisons.nth(0)).toBeFocused();
 
-  // AC-084-3 : le vrai rechargement, les deux raisonnements sont là, repliés.
-  await gardeContient(page, '"opencode":true');
-  await page.reload();
-  await expect(raisons).toHaveCount(2);
-  await expect(raisons.nth(0)).toHaveAttribute("aria-expanded", "false");
-  await expect(raisons.nth(1)).toHaveAttribute("aria-expanded", "false");
-  await expect(conversation.locator(".ya-raison-zone").first()).toBeHidden();
+  // AC-084-3 (rechargement : raisonnement à sa place, replié) retiré : web/src/opencode.test.js REQ084_AC3_historique_donne_le_raisonnement_a_sa_place et web/src/ui/conversation.test.js REQ084_AC6_REQ085_AC8_raisonnement_replie_deplie_au_clic_entree_espace_focus_gardé.
 });
 
 test("REQ088_REQ091_parcours_61_63_sessions_et_suggestions", async ({ page }) => {
