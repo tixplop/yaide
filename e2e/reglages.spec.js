@@ -334,11 +334,9 @@ test("REQ071_parcours_34_regler_sans_json", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(dlg).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Éditeur main.rs" })).toBeFocused();
-  await page.reload();
-  await expect(page.getByRole("button", { name: "Nouveau shell" })).toBeVisible();
-  await expect(page.locator("aside.cadre-panneau")).toBeHidden();
-  await expect(page.locator(".cadre-rail-droit").getByRole("button", { name: "Agent", exact: true })).toBeVisible();
-  await expect(page.locator(".cadre-rail-droit").getByRole("button", { name: "Agents", exact: true })).toBeVisible();
+  // Rechargement (AC-071-5, AC-071-8) : l'interface suit le fichier. Prouvé par les parcours gardés de ce fichier :
+  // panneau replié par le fichier (REQ069_AC2_AC4_AC7), boutons Agent et Agents revenus (parcours 33, étape 3),
+  // zone des shells revenue (parcours 32, étape 7) ; et par principale.test.js REQ070_AC5_AC19_REQ071_AC1_AC8.
 });
 
 test("REQ071_parcours_35_illisible_puis_coupure_a_800_par_480", async ({ page }) => {
@@ -390,11 +388,7 @@ test("REQ071_parcours_35_illisible_puis_coupure_a_800_par_480", async ({ page })
     await expect(dlg.getByRole("status")).toHaveText(SAVED);
     await expect(dlg.getByRole("alert")).toHaveCount(0);
     expect(fs.readFileSync(fichier, "utf8")).toBe('{\n  "fonctions": {\n    "git": false\n  }\n}\n');
-    await page.reload();
-    await expect(page.getByRole("button", { name: "Nouveau shell" })).toBeVisible();
-    await expect(page.getByRole("alert").filter({ hasText: "illisible" })).toHaveCount(0);
-    await expect(page.getByRole("tab", { name: "Git", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("tab", { name: "Fichiers", exact: true })).toBeVisible();
+    // Rechargement : plus de bandeau, Git absent. Prouvé par le parcours 32, étape 4 (bandeau disparu, Fichiers seul).
   } finally {
     relais.fermer();
   }
