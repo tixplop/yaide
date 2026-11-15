@@ -2132,7 +2132,7 @@ test("REQ120_AC6_AC13_AC14_version_changee_nouvelle_source_supprime_puis_recree"
   versions.v = { "img/logo.png": "2" };
   await e.relireDisque();
   expect(sondesImg).toHaveLength(2);
-  expect(sondesImg.at(-1).src).toBe(avant); // même adresse, rechargée
+  expect(sondesImg.at(-1).src).toBe(`${avant}?v=2`); // adresse propre à la version : le navigateur ne ressert pas l'ancienne image de sa mémoire
   // AC-14 : l'ancienne image reste jusqu'au load, jamais « Chargement… »
   expect(zoneImage().querySelector("img")).not.toBeNull();
   expect(zoneImage().querySelector(".indication")).toBeNull();

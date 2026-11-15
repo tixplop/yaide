@@ -191,7 +191,7 @@ test("REQ120_AC4_REQ121_AC6_AC9_regles_css_de_ya_image", () => {
   expect(i).toContain("max-height: 100%");
   expect(i).toContain("background: var(--apercu-page)");
   expect(i).toContain("display: block");
-  const f = regle(".ya-image:focus-visible");
+  const f = regle(".ya-image:focus");
   expect(f).toContain("outline: var(--trait) solid var(--accent-fg)");
   expect(f).toContain("outline-offset: calc(-1 * var(--trait))");
 });

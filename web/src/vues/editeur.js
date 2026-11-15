@@ -1039,7 +1039,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
           }
           if (revient || (o.version !== undefined && v !== o.version)) {
             const jeton = await jetonApercu();
-            if (jeton) o.changerSource(adresseApercu(jeton, o.chemin));
+            if (jeton) o.changerSource(adresseApercu(jeton, o.chemin) + "?v=" + encodeURIComponent(v));
           }
           o.version = v;
           continue;
