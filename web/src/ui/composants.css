@@ -969,3 +969,8 @@ body { margin: 0; }
 /* V-012 : dans une fiche, le refus d'un champ est juste sous lui, avant son aide. */
 .ya-fiche .champ-erreur { order: 1; }
 .ya-fiche .champ-aide { order: 2; }
+
+/* C-017 : image dans sa zone (onglet d'image, aperçu SVG). */
+.ya-image { box-sizing: border-box; flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; padding: var(--space-4); background: var(--bg-200); overflow: hidden; }
+.ya-image img { display: block; max-width: 100%; max-height: 100%; min-width: 0; min-height: 0; background: var(--apercu-page); }
+.ya-image:focus-visible { outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
