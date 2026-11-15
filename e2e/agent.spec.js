@@ -186,41 +186,20 @@ test("REQ053_parcours_21_gerer_ses_profils", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await api(page, "PUT", "/api/agent/providers/openrouter", { cle: "sk-or-test", adresse: "https://openrouter.ai/api/v1" });
   await api(page, "PUT", "/api/agent/profils", { nom: "sonnet", provider: "anthropic", modele: "claude-sonnet-4-5", fenetre: 200000, defaut: true });
+  await api(page, "PUT", "/api/agent/profils", { nom: "rapide", provider: "openrouter", modele: "google/gemini-2.5-flash", fenetre: 1048576, defaut: true });
 
-  // 1. Ctrl+P, >prof, Entrée.
+  // 1. Ctrl+P, >prof, Entrée : « rapide » est le profil par défaut, choisi, avec le focus.
   await rail(page, "Fichiers").focus();
   await ouvrirCommande(page, ">prof", [/Profils de modèle/]);
   const dlg = page.getByRole("dialog", { name: "Profils de modèle" });
   const liste = dlg.getByRole("listbox", { name: "Profils" });
   const option = (nom) => liste.getByRole("option", { name: new RegExp(`^${nom}`) });
-  await expect(option("sonnet")).toHaveAttribute("aria-selected", "true");
-  await expect(option("sonnet")).toContainText("par défaut");
-  await expect(option("sonnet")).toBeFocused();
-
-  // 2. Température hors limites.
-  await dlg.getByRole("button", { name: "Nouveau profil" }).click();
-  await expect(option("Nouveau profil")).toHaveAttribute("aria-selected", "true");
-  await expect(dlg.getByLabel("Nom", { exact: true })).toBeFocused();
-  await dlg.getByLabel("Nom", { exact: true }).fill("rapide");
-  await dlg.getByLabel("Provider", { exact: true }).selectOption({ label: "OpenRouter" });
-  await dlg.getByLabel("Modèle", { exact: true }).fill("google/gemini-2.5-flash");
-  await dlg.getByLabel("Effort").selectOption({ label: "Faible" });
-  await dlg.getByLabel("Température").fill("3");
-  await dlg.getByLabel("Fenêtre de contexte (tokens)").fill("1048576");
-  await dlg.getByRole("button", { name: "Enregistrer" }).click();
-  await expect(dlg.getByText("Température : un nombre de 0 à 2, ou vide.")).toBeVisible();
-  await expect(dlg.getByLabel("Température")).toBeFocused();
-  expect((await api(page, "GET", "/api/agent/reglages")).profils.map((p) => p.nom)).toEqual(["sonnet"]);
-
-  // 3. Corrigé, et par défaut.
-  await dlg.getByLabel("Température").fill("0,7");
-  await dlg.getByLabel("Profil par défaut").check();
-  await dlg.getByRole("button", { name: "Enregistrer" }).click();
-  await expect(dlg.getByText("Profil « rapide » enregistré.")).toBeVisible();
+  await expect(option("rapide")).toHaveAttribute("aria-selected", "true");
   await expect(option("rapide")).toContainText("par défaut");
   await expect(option("sonnet")).not.toContainText("par défaut");
-  await expect(dlg.getByLabel("Profil par défaut")).toBeChecked();
-  await expect(dlg.getByLabel("Profil par défaut")).toBeDisabled();
+  await expect(option("rapide")).toBeFocused();
+
+  // 2 et 3 (température hors limites, profil corrigé et par défaut) retirés : web/src/vues/profils.test.js REQ053_AC7_AC2_erreurs_par_champ_focus_au_premier_rien_envoye, REQ053_AC10_8192_pour_anthropic_et_virgule, REQ053_AC3_cocher_defaut_le_retire_a_l_autre, REQ053_AC1_enregistrer_un_profil_garde_la_ligne_nouveau_profil ; src/agent/reglages.rs req053_ac2_refus_par_champ_rien_enregistre, req053_ac3_un_seul_defaut_et_le_premier_d_office.
 
   // 4. Confirmation de suppression.
   await dlg.getByRole("button", { name: "Supprimer", exact: true }).click();
@@ -1314,19 +1293,7 @@ test("REQ085_parcours_56_un_agent_raisonne_l_autre_non", async ({ page }) => {
   expect(assistant.content[0]).toMatchObject({ type: "thinking", thinking: "Je lis args.rs d'abord.", signature: "sig-r1" });
   expect(JSON.stringify(faux.recues[2].corps)).not.toContain("sig-r1");
 
-  // Fermer l'onglet, rouvrir par « Conversations » : raisonnements à leur place, repliés.
-  await ongletAgent(page, 1).focus();
-  await page.keyboard.press("Delete");
-  await expect(ongletAgent(page, 1)).toHaveCount(0);
-  await rail(page, "Agent").click();
-  await page.getByRole("button", { name: "Conversations" }).click();
-  await expect(page.getByRole("menuitem")).toHaveCount(1);
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("menuitem")).toHaveCount(0);
-  await patienter(page, () => expect(raisons("Relecteur")).toHaveCount(2, { timeout: 300 }));
-  await expect(raisons("Testeur")).toHaveCount(0);
-  await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "false");
-  await expect(raisons("Relecteur").nth(1)).toHaveAttribute("aria-expanded", "false");
+  // Fermer l'onglet, rouvrir par « Conversations » (AC-085-5 : raisonnements à leur place, repliés) retiré : tests/agent.rs REQ085_AC1_AC4_AC5_raisonnement_dans_le_journal_et_blocs_renvoyes_apres_redemarrage (relu du journal), web/src/vues/agent.test.js REQ085_AC7_AC8_raisonnement_dans_le_groupe_de_relecteur_le_long_de_son_filet (place et groupe de l'auteur), web/src/ui/conversation.test.js REQ084_AC6_REQ085_AC8_raisonnement_replie_deplie_au_clic_entree_espace_focus_gardé (replié).
 });
 
 test("REQ100_parcours_71_suivre_un_sous_agent", async ({ page }) => {
@@ -1378,18 +1345,5 @@ test("REQ100_parcours_71_suivre_un_sous_agent", async ({ page }) => {
   await expect(ligne).toBeFocused();
   await expect(zone.getByText("Le sous-agent travaille…")).toHaveCount(0);
   await patienter(page, () => expect(fil(page)).toContainText("Le sous-agent a fini.", { timeout: 300 }));
-
-  // Rechargement : ligne repliée ; dépliée, mêmes étapes, raisonnement et appel repliés.
-  await page.reload();
-  const relue = ligne;
-  await patienter(page, () => expect(relue).toBeVisible({ timeout: 300 }));
-  await expect(relue).toHaveAttribute("aria-expanded", "false");
-  await relue.focus();
-  await page.keyboard.press("Enter");
-  await expect(relue).toHaveAttribute("aria-expanded", "true");
-  await expect(zone).toContainText("Consigne : Résume le README.");
-  await expect(zone).toContainText("Sous-agent : Je lis le README.");
-  await expect(zone).toContainText("Sous-agent : Le README décrit le projet.");
-  await expect(raison).toHaveAttribute("aria-expanded", "false");
-  await expect(lecture).toHaveAttribute("aria-expanded", "false");
+  // Rechargement (AC-100-12 : ligne repliée, mêmes étapes une fois dépliée) retiré : web/src/vues/agent.test.js REQ100_AC12_etapes_ajoutees_a_la_relecture_et_conversation_rouverte_repliee.
 });
