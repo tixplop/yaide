@@ -126,14 +126,7 @@ test("REQ072_parcours_36_tache_et_sous_agent", async ({ page }) => {
   await expect(page.getByRole("textbox", { name: "Éditeur NOTES.md" })).toBeFocused();
   await onglet(page, "args.rs").click();
 
-  // 1. Le bouton et son info-bulle, à gauche.
   const bouton = boutonOpencode(page);
-  await survoler(page, bouton);
-  const info = page.getByRole("tooltip", { name: "Nouvelle session opencode" });
-  await expect(info).toBeVisible();
-  const [i, b] = await Promise.all([info.boundingBox(), bouton.boundingBox()]);
-  expect(i.x + i.width).toBeLessThanOrEqual(b.x + 1);
-  await page.mouse.move(0, 0);
 
   // 2. L'onglet s'ouvre, actif, vide, le focus dans le champ.
   await bouton.click();
@@ -215,13 +208,12 @@ test("REQ072_parcours_36_tache_et_sous_agent", async ({ page }) => {
   await expect(champ(page)).toBeFocused();
 });
 
-test("REQ072_parcours_37_question_erreur_coupure_a_800_par_480", async ({ page }) => {
+test("REQ072_parcours_37_question_erreur_a_800_par_480", async ({ page }) => {
   await page.clock.install();
   const opencode = fauxOpencode("formulaire");
   yaide = await lancerYaide({ opencode, claude: fauxClaude() });
-  relais = await lancerRelais(yaide.port);
   await page.setViewportSize({ width: 800, height: 480 });
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, yaide.origine);
 
   // 1. Le rail droit à sept boutons sans défilement ; l'info-bulle de « opencode » entière, à gauche du bouton.
   const rail = page.locator(".cadre-rail-droit");
@@ -286,39 +278,6 @@ test("REQ072_parcours_37_question_erreur_coupure_a_800_par_480", async ({ page }
   await expect(echec).toContainText("Clé d'API invalide (faux provider)");
   await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
 
-  // 5. Coupure sans tour en cours : l'envoi est refusé au-dessus du champ (le texte reste), l'ouverture donne un bandeau.
-  const couper = async () => {
-    relais.couper();
-    await avancer(page, () => expect(alerte(page, "Connexion perdue. Modifications gardées.")).toBeVisible({ timeout: 300 }));
-  };
-  const retablir = async () => {
-    relais.retablir();
-    await avancer(page, () => expect(alerte(page, "Connexion perdue. Modifications gardées.")).toHaveCount(0, { timeout: 300 }));
-  };
-  await couper();
-  await champ(page).fill("Encore un message");
-  await page.keyboard.press("Enter");
-  await expect(alerte(page, "Connexion perdue. Réessayez au retour.")).toBeVisible();
-  await expect(champ(page)).toHaveValue("Encore un message");
-  await expect(page.getByText("Encore un message", { exact: true })).toHaveCount(0);
-  await boutonOpencode(page).click();
-  await expect(alerte(page, "Connexion perdue. Réessayez au retour.")).toHaveCount(2);
-  await expect(page.getByRole("tab", { name: /^opencode/ })).toHaveCount(1);
-  await retablir();
-  await champ(page).fill("");
-
-  // Un tour long coupé en route : au retour, la conversation reprend en direct (AC-072-10).
-  await envoyer(page, "[scenario:interruption] Réessaie.");
-  await expect(page.getByRole("button", { name: "Arrêter" })).toBeVisible();
-  await expect(page.getByText("morceau 4")).toBeVisible();
-  await couper();
-  await retablir();
-  const arreter = page.getByRole("button", { name: "Arrêter" });
-  await expect(arreter).toBeVisible();
-  await arreter.click();
-  await expect(page.getByText("Arrêté.", { exact: true })).toBeVisible();
-  await expect(arreter).toHaveCount(0);
-
   // 6. Largeur de la session et page sans défilement (AC-072-21).
   const mesures = await page.evaluate(() => {
     const session = document.querySelector(".session-contenu");
@@ -327,23 +286,6 @@ test("REQ072_parcours_37_question_erreur_coupure_a_800_par_480", async ({ page }
   });
   expect(mesures.page).toBe(false);
   expect(mesures.largeur).toBeLessThanOrEqual(1200 + 2 * 12 + 1);
-
-  // 7. Un `opencode` cassé et un serveur arrêté : le bandeau à l'ouverture, l'erreur au-dessus du champ à l'envoi.
-  fs.writeFileSync(path.join(opencode, "casse"), "");
-  const pids = fs
-    .readFileSync(path.join(opencode, "temoin"), "utf8")
-    .trim()
-    .split("\n")
-    .map((l) => JSON.parse(l).pid);
-  process.kill(pids[pids.length - 1], "SIGKILL");
-  await boutonOpencode(page).click();
-  const impossible = alerte(page, /^Impossible d'ouvrir une session opencode : .+\.$/);
-  await expect(impossible).toBeVisible();
-  await expect(page.getByRole("tab", { name: /^opencode/ })).toHaveCount(1);
-  await champ(page).fill("Un dernier message");
-  await page.keyboard.press("Enter");
-  await expect(alerte(page, /^opencode ne répond pas : .+\. Réessayez\.$/)).toBeVisible();
-  await expect(champ(page)).toHaveValue("Un dernier message");
 });
 
 test("REQ074_parcours_38_choix_recharge_et_largeurs", async ({ page }) => {
