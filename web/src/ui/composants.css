@@ -726,7 +726,9 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 
 /* Motif Grille de couleurs (section « Couleurs markdown » de V-011). */
 .ya-grille-couleurs { display: grid; grid-template-columns: 1fr 124px 124px 124px; column-gap: var(--space-3); row-gap: var(--space-1); align-items: center; }
-.ya-grille-entete { position: sticky; top: 0; z-index: 1; background: var(--bg-300); border-bottom: 1px solid var(--line); }
+.ya-palettes-ligne { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ya-grille-entete { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 124px 124px 124px; column-gap: var(--space-3); row-gap: var(--space-2); padding-bottom: var(--space-2); position: sticky; top: 0; z-index: 1; background: var(--bg-300); border-bottom: 1px solid var(--line); }
+.ya-grille-entete .champ { grid-column: 1 / -1; }
 .ya-grille-nom { font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ya-grille-colonne { font-size: 12px; line-height: 16px; color: var(--ink-muted); }
 .ya-grille-erreur { grid-column: 2 / -1; font-size: 12px; line-height: 16px; color: var(--danger); }

@@ -21,7 +21,7 @@ const attendre = () => new Promise((r) => setTimeout(r, 0));
 function faux({ lecture, ecriture } = {}) {
   const etat = { ecritures: [], lectures: 0, fichier: lecture };
   const fetch = vi.fn(async (url, opts = {}) => {
-    if (String(url).startsWith("/api/fichier?chemin=")) {
+    if (String(url).startsWith("/api/fichier?chemin=") && decodeURIComponent(String(url)).endsWith("interface.json")) {
       if (opts.method === "PUT") {
         if (ecriture) return ecriture(opts);
         etat.ecritures.push(opts.body);
@@ -34,6 +34,7 @@ function faux({ lecture, ecriture } = {}) {
       if (etat.fichier) return etat.fichier;
       return { ok: false, status: 404, json: async () => ({ cause: "introuvable", message: "Fichier introuvable." }) };
     }
+    if (String(url).startsWith("/api/fichier?chemin=")) return { ok: false, status: 404, json: async () => ({ cause: "introuvable", message: "Fichier introuvable." }) };
     return { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "x" }) };
   });
   vi.stubGlobal("fetch", fetch);
@@ -140,14 +141,14 @@ test("REQ071_AC9_echec_serveur_dit_la_raison", async () => {
 test("REQ071_AC17_coupure_a_l_ouverture", async () => {
   faux({ lecture: new TypeError("coupure") });
   await ouvrir();
-  expect(dlg().querySelector("[role=alert]").textContent).toBe("Connexion perdue. Réessayez au retour.");
-  expect(dlg().querySelector("select, input[type=checkbox], fieldset")).toBeNull();
+  expect(dlg().querySelector("[role=tabpanel]:not([hidden]) [role=alert]").textContent).toBe("Connexion perdue. Réessayez au retour.");
+  expect(dlg().querySelector("[role=tabpanel]:not([hidden])").querySelector("select, input[type=checkbox], fieldset")).toBeNull();
   expect(bouton("Enregistrer").disabled).toBe(true);
   expect(document.activeElement).toBe(bouton("Fermer"));
   document.body.replaceChildren();
   faux({ lecture: { ok: false, status: 500, json: async () => ({ cause: "erreur", message: "Disque plein." }) } });
   await ouvrir();
-  expect(dlg().querySelector("[role=alert]").textContent).toBe("Impossible de lire .yaide/interface.json : Disque plein.");
+  expect(dlg().querySelector("[role=tabpanel]:not([hidden]) [role=alert]").textContent).toBe("Impossible de lire .yaide/interface.json : Disque plein.");
   expect(bouton("Enregistrer").disabled).toBe(true);
   expect(document.activeElement).toBe(bouton("Fermer"));
 });
@@ -164,7 +165,7 @@ test("REQ071_AC10_AC12_AC13_role_nom_ordre_et_focus", async () => {
   expect(document.getElementById(d.getAttribute("aria-labelledby")).textContent).toBe("Configuration");
   expect(d.querySelector("h2").textContent).toBe("Configuration");
   expect(document.getElementById(d.querySelector("[role=tabpanel]").getAttribute("aria-describedby")).textContent).toBe("Dans .yaide/interface.json. Appliquées au prochain chargement de la page.");
-  const fieldsets = d.querySelectorAll("fieldset");
+  const fieldsets = d.querySelectorAll("[role=tabpanel]:not([hidden]) fieldset");
   expect([...fieldsets].map((f) => f.querySelector("legend").textContent)).toEqual(["À l'ouverture de la page", "Fonctions"]);
   expect([...fieldsets[0].querySelectorAll("select")].map((s) => s.labels[0].textContent)).toEqual(["Panneau de gauche", "Zone des shells", "Colonne de l'agent"]);
   for (const s of fieldsets[0].querySelectorAll("select")) expect([...s.options].map((o) => o.textContent)).toEqual(["Comme la dernière fois", "Déplié", "Replié"]);
@@ -256,8 +257,8 @@ test("REQ116_AC5_dialogue_nomme_deux_onglets_fleches_et_fermeture_rend_le_focus"
   expect(onglets[1].getAttribute("aria-selected")).toBe("true");
   expect(document.activeElement).toBe(onglets[1]);
   expect(panneaux[1].hidden).toBe(false);
-  expect(panneaux[1].textContent).toBe("Chargement…");
-  expect([...d.querySelectorAll(".dialogue-actions button")].map((b) => b.textContent)).toEqual(["Fermer"]);
+  expect(panneaux[1].textContent).toContain("Palettes suggérées");
+  expect([...d.querySelectorAll(".dialogue-actions button")].map((b) => b.textContent)).toEqual(["Fermer", "Enregistrer"]);
   onglets[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
   expect(onglets[0].getAttribute("aria-selected")).toBe("true");
   expect([...d.querySelectorAll(".dialogue-actions button")].map((b) => b.textContent)).toEqual(["Fermer", "Enregistrer"]);

@@ -6,7 +6,7 @@ import { ecrire, lire } from "../stockage.js";
 import { charger as chargerCouleurs } from "../couleurs-markdown.js";
 import { simulerServeur, ETAT_GIT, monter, attendre, avecHorloge, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne, simulerOpencode, boutonClaudeDe, ongletsOc, nomDuChamp, nomsRailDroit, boutonOcDe, ongletsClaude, ligne } from "./principale.aides.js";
 
-vi.mock("../couleurs-markdown.js", () => ({ charger: vi.fn(async () => ({ illisible: false })) }));
+vi.mock("../couleurs-markdown.js", () => ({ charger: vi.fn(async () => ({ illisible: false })), lire: vi.fn(async () => ({ sombre: {}, clair: {} })) }));
 vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
 test("REQ028_AC6_titre_du_navigateur", () => {

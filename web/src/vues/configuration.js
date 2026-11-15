@@ -6,6 +6,7 @@ import { amenerDansLaVue, dialogue, groupe } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
+import { sectionCouleurs } from "./configuration-couleurs.js";
 
 const CHEMIN = ".yaide/interface.json";
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
@@ -35,7 +36,7 @@ const SECTIONS = [
 
 /**
  * V-011 : dialogue « Configuration », sections « Interface » (`.yaide/interface.json`, sans écrire de JSON ;
- * n'applique rien à l'interface) et « Couleurs markdown » (panneau vide en attendant sa suite).
+ * n'applique rien à l'interface) et « Couleurs markdown » (champs et palettes, sans écriture).
  * `surFermeture` est appelé à la fermeture (Fermer, Échap) ; le focus est alors à l'appelant.
  * Rend `{ fermer, element }`.
  */
@@ -48,7 +49,14 @@ export function ouvrirConfiguration({ surFermeture = () => {} } = {}) {
   let premier = null;
 
   let section = "interface";
-  const panneaux = { interface: document.createElement("div"), couleurs: document.createElement("div") };
+  let messageCouleurs = null;
+  const couleurs = sectionCouleurs({
+    afficherResultat: (m) => {
+      messageCouleurs = m;
+      if (section === "couleurs") dlg.definirResultat(m);
+    },
+  });
+  const panneaux = { interface: document.createElement("div"), couleurs: couleurs.panneau };
   const hote = document.createElement("div");
   hote.className = "ya-sections-hote";
   const aide = document.createElement("p");
@@ -56,9 +64,10 @@ export function ouvrirConfiguration({ surFermeture = () => {} } = {}) {
   aide.className = "ya-groupe-aide";
   aide.textContent = "Dans .yaide/interface.json. Appliquées au prochain chargement de la page.";
   const chargement = indication({ texte: "Chargement…", variante: "chargement" });
-  const chargementCouleurs = indication({ texte: "Chargement…", variante: "chargement" });
   const fermerB = bouton({ libelle: "Fermer" });
   let enregistrerB = bouton({ libelle: "Enregistrer", variante: "principal", desactive: true });
+  // « Enregistrer » de « Couleurs markdown » : l'écriture vient avec T-257.
+  const enregistrerC = bouton({ libelle: "Enregistrer", variante: "principal", desactive: true });
   const zoneAlerte = document.createElement("div");
   const zoneResultat = document.createElement("div");
 
@@ -145,13 +154,12 @@ export function ouvrirConfiguration({ surFermeture = () => {} } = {}) {
   }
   enregistrerB.addEventListener("click", enregistrer);
 
-  // Les actions de la section affichée : « Enregistrer » n'existe que dans « Interface » pour l'instant.
+  // Les actions de la section affichée.
   function majActions() {
-    dlg.element.querySelector(".dialogue-actions").replaceChildren(fermerB, ...(section === "interface" ? [enregistrerB] : []));
+    dlg.element.querySelector(".dialogue-actions").replaceChildren(fermerB, section === "interface" ? enregistrerB : enregistrerC);
   }
 
   panneaux.interface.append(aide, zoneAlerte, chargement);
-  panneaux.couleurs.append(chargementCouleurs);
   const barre = onglets({
     presentation: "sections",
     nomBarre: "Configuration",
@@ -160,6 +168,7 @@ export function ouvrirConfiguration({ surFermeture = () => {} } = {}) {
     surChoix: (id) => {
       section = id;
       majActions();
+      dlg.definirResultat(section === "couleurs" ? messageCouleurs : null);
     },
     panneaux,
   });
@@ -183,6 +192,9 @@ export function ouvrirConfiguration({ surFermeture = () => {} } = {}) {
     if (e.key === "Enter" && e.target.matches("input, select")) e.preventDefault();
   });
 
+  couleurs.charger().then((pret) => {
+    if (!ferme) enregistrerC.disabled = !pret;
+  });
   lire().then((lu) => {
     if (ferme) return;
     if (lu.coupure || lu.raison !== undefined) {
