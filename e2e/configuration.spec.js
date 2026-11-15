@@ -25,6 +25,13 @@ test("AC-117-5_AC-116-1_AC-116-6_AC-116-7_AC-117-18_parcours_85_86_dialogue_conf
     await expect(titreEditeur).toHaveText("Titre");
     const titreApercu = apercu.getByRole("heading", { name: "Titre", exact: true });
     const couleur = (loc) => loc.evaluate((e) => getComputedStyle(e).color);
+    // Couleur du texte visible : parent du nœud texte « Titre ».
+    const couleurTexte = (loc) =>
+      loc.evaluate((e) => {
+        const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+        for (let n = w.nextNode(); n; n = w.nextNode()) if (n.data.includes("Titre")) return getComputedStyle(n.parentElement).color;
+        return null;
+      });
     const ink = () =>
       page.evaluate(() => {
         const s = document.createElement("span");
@@ -80,12 +87,12 @@ test("AC-117-5_AC-116-1_AC-116-6_AC-116-7_AC-117-18_parcours_85_86_dialogue_conf
     await expect(dlg.getByRole("status")).toHaveText("Couleurs enregistrées.");
     await dansFenetre(dlg.getByRole("status"));
     await expect.poll(() => couleur(titreApercu)).toBe("rgb(138, 180, 248)");
-    expect(await couleur(titreEditeur)).toBe("rgb(138, 180, 248)");
+    expect(await couleurTexte(titreEditeur)).toBe("rgb(138, 180, 248)");
     await dlg.getByRole("button", { name: "Fermer", exact: true }).click();
     await expect(dlg).toBeHidden();
     await page.getByRole("button", { name: "Thème clair" }).click();
     await expect.poll(() => couleur(titreApercu)).toBe("rgb(29, 79, 145)");
-    expect(await couleur(titreEditeur)).toBe("rgb(29, 79, 145)");
+    expect(await couleurTexte(titreEditeur)).toBe("rgb(29, 79, 145)");
 
     // P-086 : fenêtre de 800 × 480 (AC-116-6, AC-117-18).
     await page.setViewportSize({ width: 800, height: 480 });
@@ -136,7 +143,7 @@ test("AC-117-5_AC-116-1_AC-116-6_AC-116-7_AC-117-18_parcours_85_86_dialogue_conf
     await dlg.getByRole("button", { name: "Enregistrer", exact: true }).click();
     await expect(dlg.getByRole("status")).toHaveText("Couleurs enregistrées.");
     await expect.poll(() => couleur(titreApercu)).toBe(await ink());
-    expect(await couleur(titreEditeur)).toBe(await ink());
+    expect(await couleurTexte(titreEditeur)).toBe(await ink());
     expect(fs.readFileSync(fichier, "utf8")).toBe("{}\n");
   } finally {
     await yaide.arreter();

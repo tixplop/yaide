@@ -250,6 +250,14 @@ test("REQ115_AC4_apercu_et_mode_hybride_lisent_les_variables_md_avec_la_valeur_d
   }
 });
 
+test("REQ115_AC4_spans_de_coloration_des_titres_et_liens_du_mode_hybride_heritent_la_couleur_reglee", () => {
+  const m = css.match(/:is\(([^)]*)\) span:not\(([^)]*)\) \{ color: inherit; \}/);
+  expect(m).not.toBeNull();
+  for (let i = 1; i <= 6; i++) expect(m[1]).toContain(`.cm-line.cm-hy-titre${i}`);
+  expect(m[1]).toContain(".cm-hy-lien");
+  for (const c of [".cm-hy-marque", ".cm-hy-code", ".cm-hy-lien"]) expect(m[2]).toContain(c);
+});
+
 test("REQ115_AC9_aucune_regle_des_reponses_de_l_agent_ne_lit_une_variable_md", () => {
   const sansCommentaires = css.replace(/\/\*[^]*?\*\//g, "");
   let vues = 0;

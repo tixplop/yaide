@@ -949,6 +949,8 @@ body { margin: 0; }
 .cm-hy-barre { text-decoration: line-through; color: var(--md-barre-couleur, inherit); }
 .cm-hy-code { padding: 0 var(--space-1); border-radius: var(--radius-xs); font: var(--texte-code-ligne) var(--font-mono); color: var(--md-code-couleur, var(--ink)); background-color: var(--md-code-fond, var(--code-fond)); }
 :is(.cm-hy-lien, .cm-line.cm-hy-titre1, .cm-line.cm-hy-titre2, .cm-line.cm-hy-titre3, .cm-line.cm-hy-titre4, .cm-line.cm-hy-titre5, .cm-line.cm-hy-titre6, .cm-line.cm-hy-citation) .cm-hy-code { color: var(--md-code-couleur, inherit); }
+/* Les spans de coloration (couleurs-code.js) sont dans les lignes et les liens : en mode hybride, le texte d'un titre ou d'un lien prend leur couleur réglée. */
+:is(.cm-line.cm-hy-titre1, .cm-line.cm-hy-titre2, .cm-line.cm-hy-titre3, .cm-line.cm-hy-titre4, .cm-line.cm-hy-titre5, .cm-line.cm-hy-titre6, .cm-hy-lien) span:not(.cm-hy-marque, .cm-hy-code, .cm-hy-lien, .cm-hy-gras, .cm-hy-italique, .cm-hy-barre) { color: inherit; }
 .cm-hy-suivable { cursor: text; }
 .ya-ctrl .cm-hy-suivable, .ya-ctrl .cm-hy-suivable * { cursor: pointer; }
 .cm-hy-lien { color: var(--md-lien-couleur, var(--info)); text-decoration: underline; cursor: text; }
