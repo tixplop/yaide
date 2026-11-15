@@ -332,7 +332,6 @@ test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_RE
       '<p>État : <span id="etat"></span></p>',
       '<p id="donnees"></p>',
       '<p id="script"></p>',
-      '<p id="mots">Les chiffres</p>',
       '<p><a href="#bas">Aller en bas</a> <a href="docs/guide.html">Lire le guide</a> <a href="autre.html">Autre page</a> <a href="autre.html" target="_blank">Dans un nouvel onglet</a> <a href="autre.html" target="_top">Tout en haut</a></p>',
       '<form id="f"><label>Courriel <input name="courriel" type="email"></label> <button>S\'inscrire</button></form>',
       '<div style="height: 2000px"></div>',
@@ -347,7 +346,6 @@ test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_RE
     ];
     fs.writeFileSync(path.join(dossier, "site", "index.html"), index.join("\n") + "\n");
     const ligneH1 = index.findIndex((l) => l.startsWith("<h1>"));
-    const ligneMots = index.findIndex((l) => l.includes('id="mots"'));
     const urlAvant = page.url();
     const cadre = () => page.locator('iframe[title="Aperçu"]:visible');
     const vue = () => cadre().contentFrame();
@@ -468,19 +466,7 @@ test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_RE
     expect(externes.every((r) => r.duCadre)).toBe(true);
     expect(dialogues).toEqual([]);
 
-    // 8. Coupure : la page reste, le texte écrit au retour (AC-058-1).
-    relais.couper();
-    await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue" })).toBeVisible({ timeout: 300 }));
-    await lignesCode().nth(ligneMots).click();
-    await page.keyboard.press("End");
-    for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowLeft");
-    await page.keyboard.type(" et les mots");
-    await page.keyboard.press("Control+s");
-    await expect(page.getByRole("alert").filter({ hasText: "index.html sera sauvegardé au retour." })).toBeVisible();
-    await expect(vue().locator("#mots")).toHaveText("Les chiffres");
-    relais.retablir();
-    await avancer(page, () => expect(vue().locator("#mots")).toHaveText("Les chiffres et les mots", { timeout: 300 }));
-    expect(fs.readFileSync(path.join(dossier, "site", "index.html"), "utf8")).toContain("Les chiffres et les mots");
+    // 8 (coupure : la page reste, le texte écrit au retour, AC-058-1) retiré : web/src/ui/apercu-html.test.js REQ058_AC1_recharge_apres_sauvegarde_pas_pendant_la_frappe_ni_la_coupure, web/src/vues/editeur.test.js REQ058_AC1_AC14_sauvegarde_recharge_les_apercus_html_de_la_page ; l'alerte « sera sauvegardé au retour » : e2e/coupure.spec.js REQ015_AC3_AC5_AC7_ctrl_s_pendant_la_coupure_est_execute_au_retour.
     // 2. Copie de l'aperçu HTML en texte simple (AC-102-9), Chromium seul : presse-papiers réel.
     if (browserName === "chromium") {
       await context.grantPermissions(["clipboard-read", "clipboard-write"]);
