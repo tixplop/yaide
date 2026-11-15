@@ -262,6 +262,37 @@ fn req058_ac17_fichiers_servis_sans_cookie_avec_type_et_en_tetes() {
 }
 
 #[test]
+fn req120_ac9_ac3_images_servies_avec_leur_type_et_leurs_octets() {
+    let s = lancer("images");
+    let j = jeton(&s);
+    let cas = [
+        ("a.png", "image/png"),
+        ("a.jpg", "image/jpeg"),
+        ("a.jpeg", "image/jpeg"),
+        ("a.gif", "image/gif"),
+        ("a.webp", "image/webp"),
+        ("a.avif", "image/avif"),
+        ("a.bmp", "image/bmp"),
+        ("a.ico", "image/x-icon"),
+        ("PHOTO.JPG", "image/jpeg"),
+    ];
+    for (chemin, genre) in cas {
+        let octets = [chemin.as_bytes(), &[0u8, 0xff, 0x80, 0x01]].concat();
+        std::fs::write(s.projet.join(chemin), &octets).unwrap();
+        let r = requete(s.port, "GET", &format!("/apercu/{j}/{chemin}"), "", b"");
+        assert_eq!(r.code, 200, "{chemin}");
+        assert_eq!(r.entete("content-type").as_deref(), Some(genre), "{chemin}");
+        assert_eq!(r.corps, octets, "{chemin}");
+    }
+    // Plus de 5 Mo : servi sans limite.
+    let gros = vec![0x89u8; 5 * 1024 * 1024 + 10];
+    std::fs::write(s.projet.join("gros.png"), &gros).unwrap();
+    let r = requete(s.port, "GET", &format!("/apercu/{j}/gros.png"), "", b"");
+    assert_eq!(r.code, 200);
+    assert_eq!(r.corps.len(), gros.len());
+}
+
+#[test]
 fn req058_ac17_fichier_d_un_worktree() {
     let s = lancer("worktree");
     let j = jeton(&s);

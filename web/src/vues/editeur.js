@@ -3,11 +3,12 @@ import { decider, texteAttente } from "../brouillons.js";
 import { decisionDisque } from "../disque.js";
 import { formatable, formater as formaterTexte } from "../formatage.js";
 import { couper, feuilles, poserPart, retirerGroupe } from "../disposition.js";
-import { apresFermeture, estSous, garder, libelles, nomDe, plusPetitNumeroLibre, retrouver, suivreRenommage } from "../onglets-fichiers.js";
+import { apresFermeture, estImage, estSous, garder, libelles, nomDe, plusPetitNumeroLibre, retrouver, suivreRenommage } from "../onglets-fichiers.js";
 import { bouton } from "../ui/bouton.js";
 import { dialogue } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
 import { icone } from "../ui/icones.js";
+import { image } from "../ui/image.js";
 import { langagePourFichier, nomLangage } from "../ui/langages.js";
 import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
@@ -29,6 +30,7 @@ const AGENT = "\0agent:"; // préfixe de la clé d'un onglet Agent (son numéro 
 const DIFF = "\0diff"; // identifiant de l'onglet de diff, qui n'est pas un fichier ouvert
 const TEXTE_SUPPRIME = "Fichier supprimé du disque. Ctrl+S le recrée.";
 const estFichier = (o) => !o.claude && !o.opencode && !o.conversationAgent;
+const estTexte = (o) => estFichier(o) && !o.image; // un onglet d'image n'a ni texte, ni disque lu, ni éditeur
 const avecHybride = (chemin) => /\.(md|markdown)$/i.test(chemin);
 const avecApercu = (chemin) => /\.(md|markdown|html|htm)$/i.test(chemin);
 
@@ -264,6 +266,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     if (o.claude) return { groupe: o.groupe, claude: true, id: o.id, numero: o.numero, instance: o.instance };
     if (o.conversationAgent) return { groupe: o.groupe, conversationAgent: true, numero: o.numero, conversation: o.conversation };
     if (o.opencode) return o.agent === undefined ? { groupe: o.groupe, opencode: true, id: o.id, numero: o.numero, ...(o.titre === undefined ? {} : { titre: o.titre }) } : { groupe: o.groupe, opencode: true, id: o.id, agent: o.agent, titre: o.titre };
+    if (o.image) return { groupe: o.groupe, chemin: o.chemin };
     return { groupe: o.groupe, chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) };
   }
 
@@ -318,7 +321,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       surCourant(null);
       return surActif({});
     }
-    const etat = (o === diff ? diff.el : o.zone).vue?.state;
+    const etat = o.image ? undefined : (o === diff ? diff.el : o.zone).vue?.state;
     let position;
     if (etat) {
       const tete = etat.selection.main.head;
@@ -326,7 +329,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       position = `Ln ${l.number}, Col ${tete - l.from + 1}`;
     }
     surCourant(o === diff ? null : o.chemin);
-    surActif({ position, langage: o === diff ? undefined : nomLangage(nomDe(o.chemin)) });
+    surActif({ position, langage: o === diff || o.image ? undefined : nomLangage(nomDe(o.chemin)) });
   }
 
   // Seuls M, A et U colorent un onglet.
@@ -358,7 +361,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     const noms = nomsOnglets();
     const idActif = estCourant ? actif : g.actif;
     let actionsDroite = [];
-    if (o !== diff && estFichier(o) && avecHybride(o.chemin)) {
+    if (o !== diff && estTexte(o) && avecHybride(o.chemin)) {
       const hy = bouton({ icone: "type", variante: "discret", nomAccessible: "Mode hybride", presse: o.hybride });
       hy.addEventListener("click", () => {
         o.hybride = !o.hybride;
@@ -368,7 +371,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       });
       actionsDroite.push(hy.enveloppe);
     }
-    if (o !== diff && estFichier(o) && avecApercu(o.chemin)) {
+    if (o !== diff && estTexte(o) && avecApercu(o.chemin)) {
       const ap = bouton({ icone: "eye", variante: "discret", nomAccessible: "Aperçu", presse: o.apercu });
       ap.addEventListener("click", () => {
         o.apercu = !o.apercu;
@@ -495,9 +498,34 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     return o;
   }
 
-  /** `geste` : valeur rendue par `lecture(true)`. Sans valeur, l'ouverture est elle-même un geste. */
+  /** Un onglet d'image (REQ-120) : la zone C-017 prend la place de la zone de code ; l'image vient de la route d'aperçu. */
+  function creerImage(chemin, jeton) {
+    const o = { chemin, groupe: courant, modifie: false, image: true };
+    const z = image({ src: adresseApercu(jeton ?? "", chemin), nom: nomDe(chemin), coupe: coupe || jeton === null });
+    o.image = z;
+    o.zone = z.element;
+    o.zone.detruire = () => {};
+    o.zone.definirCoupe = z.definirCoupe;
+    o.zone.vue = { focus: z.focus };
+    liste.push(o);
+    return o;
+  }
+
+  async function ouvrirImage(chemin, geste) {
+    const jeton = await jetonApercu();
+    if (detruit) return;
+    if (!trouver(chemin)) creerImage(chemin, jeton);
+    suiteOuverture({ chemin, geste });
+  }
+
+  /** `geste` : valeur rendue par `lecture(true)`. Sans valeur, l'ouverture est elle-même un geste. Une image ne se lit pas : `contenu` est absent, la suite est asynchrone. */
   function ouvrir({ chemin, contenu, version, ligne, geste = ++dernierGeste }) {
+    if (estImage(chemin) && !trouver(chemin)) return ouvrirImage(chemin, geste);
     if (!trouver(chemin)) creer({ chemin, contenu, version, hybride: avecHybride(chemin), apercu: /\.html?$/i.test(chemin) });
+    suiteOuverture({ chemin, ligne, geste });
+  }
+
+  function suiteOuverture({ chemin, ligne, geste }) {
     if (geste !== dernierGeste && (actif === DIFF || trouver(actif))) {
       // Un geste plus récent a choisi un autre onglet : le fichier s'ouvre en arrière-plan.
       afficher();
@@ -506,7 +534,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     }
     activer(chemin);
     afficher();
-    if (Number.isInteger(ligne)) trouver(chemin).zone.aller(ligne);
+    if (Number.isInteger(ligne) && !trouver(chemin).image) trouver(chemin).zone.aller(ligne);
     trouver(chemin).zone.vue.focus();
     garderListe();
   }
@@ -518,6 +546,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       if (actif === o.chemin) actif = nouveau;
       for (const g of groupes.values()) if (g.actif === o.chemin) g.actif = nouveau;
       o.chemin = nouveau;
+      if (o.image) continue;
       o.zone.vue.contentDOM.setAttribute("aria-label", `Éditeur ${nomDe(nouveau)}`);
       o.zone.changerLangage(langagePourFichier(nomDe(nouveau)) ?? undefined);
     }
@@ -611,12 +640,12 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     if (chemin === undefined) return `${ecrit} est un dossier. Yaide ne l'ouvre pas.`;
     const ouvert = trouver(chemin);
     let lecture = {};
-    if (!ouvert || !estFichier(ouvert)) {
+    if (!ouvert && !estImage(chemin)) {
       lecture = await lireFichier(chemin);
       if (lecture.coupure || lecture.cause) return texteRefusLecture(lecture, ecrit);
     }
     avantOuverture?.();
-    ouvrir({ chemin, contenu: lecture.contenu, version: lecture.version, ligne });
+    await ouvrir({ chemin, contenu: lecture.contenu, version: lecture.version, ligne });
   }
 
   let alerteReference = null;
@@ -639,15 +668,15 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     if (chemin === undefined) return refuser(`${ecrit} est un dossier. Yaide ne l'ouvre pas.`);
     const ouvert = trouver(chemin);
     let lecture = {};
-    if (!ouvert || !estFichier(ouvert)) {
+    if (!ouvert && !estImage(chemin)) {
       lecture = await lireFichier(chemin);
       if (lecture.coupure) return refuser(TEXTE_COUPURE);
       if (lecture.cause) return refuser(texteRefusLecture(lecture, ecrit));
     }
     if (!liste.includes(o)) return; // l'onglet a été fermé pendant la lecture
-    if (deDocument) ligne = ref.ancre ? (ligneDuTitre(ouvert && estFichier(ouvert) ? ouvert.zone.contenu() : lecture.contenu, ref.ancre) ?? 1) : (ref.ligne ?? 1);
+    if (deDocument && !estImage(chemin)) ligne = ref.ancre ? (ligneDuTitre(ouvert && estTexte(ouvert) ? ouvert.zone.contenu() : lecture.contenu, ref.ancre) ?? 1) : (ref.ligne ?? 1);
     passerA(o.groupe);
-    ouvrir({ chemin, contenu: lecture.contenu, version: lecture.version, ligne });
+    await ouvrir({ chemin, contenu: lecture.contenu, version: lecture.version, ligne });
   }
 
   function creerAgent({ numero, conversation, equipe }) {
@@ -878,7 +907,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     clearTimeout(minuteur);
     minuteur = null;
     if (pret) ecrireGarde();
-    for (const autre of liste) if (estFichier(autre)) autre.zone.rechargerApercu();
+    for (const autre of liste) if (estTexte(autre)) autre.zone.rechargerApercu();
     return null;
   }
 
@@ -958,7 +987,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   }
 
   async function verifierDisque() {
-    const fichiers = () => liste.filter(estFichier);
+    const fichiers = () => liste.filter(estTexte);
     if (coupe || !pret || detruit || sondageEnCours || fichiers().length === 0) return;
     sondageEnCours = true;
     try {
@@ -1030,7 +1059,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   // REQ-118 : le formatage ne s'applique qu'à un fichier de l'éditeur dont le type sait se formater.
   const langageFormatable = () => {
     const o = trouver(actif);
-    if (!o || !estFichier(o)) return null;
+    if (!o || !estTexte(o)) return null;
     const langage = langagePourFichier(nomDe(o.chemin));
     return formatable(langage) ? langage : null;
   };
@@ -1207,7 +1236,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     e.preventDefault();
     if (document.querySelector("[role=dialog], dialog[open]")) return;
     const o = trouver(actif);
-    if (!o || !estFichier(o)) return;
+    if (!o || !estTexte(o)) return;
     if (o.question) return montrerQuestion(o);
     if (coupe) mettreEnAttente(o);
     else sauvegarderEtDire(o);

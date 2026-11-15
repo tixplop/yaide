@@ -1,4 +1,5 @@
 import { listerChemins, lireFichier } from "../api.js";
+import { estImage } from "../onglets-fichiers.js";
 import { champ } from "../ui/champ.js";
 import { dialogue } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
@@ -111,6 +112,11 @@ export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}
     async function ouvrirFichier(chemin) {
       const nom = nomDe(chemin);
       const geste = surLecture(true);
+      if (estImage(chemin)) {
+        if (dlg) fermer(false);
+        await surOuvrir({ chemin, geste });
+        return surLecture(false);
+      }
       const r = await lireFichier(chemin);
       if (detruit) return;
       if (r.contenu !== undefined) {

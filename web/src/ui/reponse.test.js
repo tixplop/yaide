@@ -198,3 +198,10 @@ test("REQ087_AC6_adresse_web_reste_un_lien_web_et_pas_de_double_lien", () => {
   expect(liens[4].target).toBe("_blank");
   expect(d.querySelectorAll("a a")).toHaveLength(0);
 });
+
+test("REQ087_AC12_img_logo_png_et_sa_ligne_sont_des_liens_de_fichier", () => {
+  expect(fichiers("voir img/logo.png et img/logo.png:3")).toEqual([
+    ["img/logo.png", "img/logo.png", null, "img/logo.png"],
+    ["img/logo.png#L3", "img/logo.png", "3", "img/logo.png:3"],
+  ]);
+});

@@ -1505,7 +1505,7 @@ test("REQ087_AC5_AC11_chaque_refus_dit_son_texte_un_seul_message_focus_sur_le_li
   dire.mockImplementation(() => ({ remove: retire }));
   fauxFichiers({
     "web/src": { cause: "invalide", message: "C'est un dossier." },
-    "img/logo.png": { cause: "binaire", message: "C'est un fichier binaire." },
+    "img/outil.dat": { cause: "binaire", message: "C'est un fichier binaire." },
     "logs/gros.log": { cause: "trop-gros", message: "Trop gros." },
     "../../../../etc/hosts": { cause: "interdit", message: "Ce chemin sort du projet." },
     "src/lourd.rs": { cause: "erreur", message: "Lecture impossible." },
@@ -1516,7 +1516,7 @@ test("REQ087_AC5_AC11_chaque_refus_dit_son_texte_un_seul_message_focus_sur_le_li
   const attendus = [
     ["src/absent.rs", "src/absent.rs n'existe pas."],
     ["web/src", "web/src est un dossier. Yaide ne l'ouvre pas."],
-    ["img/logo.png", "img/logo.png est un fichier binaire. Yaide ne l'ouvre pas."],
+    ["img/outil.dat", "img/outil.dat est un fichier binaire. Yaide ne l'ouvre pas."],
     ["logs/gros.log", "logs/gros.log dépasse 5 Mo. Yaide ne l'ouvre pas."],
     ["/etc/hosts", "/etc/hosts est hors du projet et de ses worktrees. Yaide ne l'ouvre pas."],
     ["src/lourd.rs", "Impossible d'ouvrir src/lourd.rs : Lecture impossible."],
@@ -1693,15 +1693,15 @@ test("REQ101_AC6_AC9_refus_avec_le_chemin_ecrit_un_seul_message_focus_dans_l_edi
 });
 
 test("REQ101_AC6_dossier_hors_projet_binaire_et_coupure_disent_leur_texte", async () => {
-  const contenu = "[a](../web)\n\n[b](../../autre/x.md)\n\n[c](../img/logo.png)\n\n[d](../rien.md)\n\nfin\n";
+  const contenu = "[a](../web)\n\n[b](../../autre/x.md)\n\n[c](../img/outil.dat)\n\n[d](../rien.md)\n\nfin\n";
   const { dire, zone, suivre } = monterDocument(
-    { web: { cause: "invalide", message: "C'est un dossier." }, "../autre/x.md": { cause: "interdit", message: "Ce chemin sort du projet." }, "img/logo.png": { cause: "binaire", message: "Binaire." }, "rien.md": "coupure" },
+    { web: { cause: "invalide", message: "C'est un dossier." }, "../autre/x.md": { cause: "interdit", message: "Ce chemin sort du projet." }, "img/outil.dat": { cause: "binaire", message: "Binaire." }, "rien.md": "coupure" },
     contenu,
   );
   const attendus = [
     ["a", "../web est un dossier. Yaide ne l'ouvre pas."],
     ["b", "../../autre/x.md est hors du projet et de ses worktrees. Yaide ne l'ouvre pas."],
-    ["c", "../img/logo.png est un fichier binaire. Yaide ne l'ouvre pas."],
+    ["c", "../img/outil.dat est un fichier binaire. Yaide ne l'ouvre pas."],
     ["d", "Connexion perdue. Réessayez au retour."],
   ];
   for (const [lien, texte] of attendus) {
@@ -1960,4 +1960,148 @@ test("REQ118_AC9_pas_de_formatage_pour_markdown_rust_diff_ni_sans_onglet", () =>
   expect(e.peutFormater()).toBe(false);
   e.ouvrirOpencode({ sessionId: "o", titre: "t" });
   expect(e.peutFormater()).toBe(false);
+});
+
+
+// ---- Onglet d'image (REQ-120) ----
+
+const sondesImg = [];
+function fauxImages(fichiers = {}) {
+  sondesImg.length = 0;
+  vi.stubGlobal("Image", class {
+    constructor() {
+      sondesImg.push(this);
+    }
+  });
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const u = String(url);
+    if (u === "/api/apercu") return { ok: true, status: 200, json: async () => ({ jeton: "jt" }) };
+    const chemin = decodeURIComponent(new URL(u, "http://x").searchParams.get("chemin") ?? "");
+    return { ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => fichiers[chemin] ?? "x" };
+  }));
+}
+const zoneImage = () => document.querySelector(".ya-image:not([hidden])");
+const NEUF = ["img/logo.png", "photo.jpg", "photo.jpeg", "anim.gif", "image.webp", "image.avif", "image.bmp", "favicon.ico", "PHOTO.JPG"];
+
+test("REQ120_AC1_AC3_AC10_AC11_image_ouverte_sans_lecture_zone_C017_fil_et_barre_d_etat", async () => {
+  fauxImages();
+  const { e, surActif } = monter();
+  for (const [i, chemin] of NEUF.entries()) {
+    await e.ouvrir({ chemin });
+    if (i === 0) {
+      sondesImg.at(-1).onload();
+      expect(zoneImage().querySelector("img").getAttribute("src")).toMatch(/^\/apercu\/[^/]+\/img\/logo\.png$/);
+      expect(document.activeElement).toBe(zoneImage());
+      expect(zoneImage().querySelector("img").alt).toBe("logo.png");
+    }
+    const z = zoneImage();
+    expect(z, chemin).not.toBeNull();
+    expect(z.getAttribute("role")).toBe("region");
+    expect(z.getAttribute("aria-label")).toBe(chemin.split("/").pop());
+    expect(z.getAttribute("tabindex")).toBe("-1");
+    expect(actifNom()).toBe(chemin.split("/").pop());
+    expect(e.code.querySelector(".zone-code")).toBeNull();
+    expect(document.querySelector("[role=alert]")).toBeNull();
+    expect(document.querySelector(".ya-message")).toBeNull();
+  }
+  expect(fetch.mock.calls.every(([u]) => String(u) === "/api/apercu")).toBe(true); // aucune lecture du fichier
+  await e.ouvrir({ chemin: "img/logo.png" });
+  expect(e.fil.textContent).toBe("imglogo.png");
+  expect(e.fil.querySelectorAll("svg[data-icone=chevron]").length).toBe(1);
+  expect(dernier(surActif)).toEqual({ position: undefined, langage: undefined });
+  expect(document.querySelector(".onglets-droite")).toBeNull();
+  expect(onglet("logo.png").dataset.modifie).toBeUndefined();
+});
+
+test("REQ120_AC2_AC11_deja_ouvert_pas_de_doublon_et_entree_sur_l_onglet_donne_le_focus_a_la_zone", async () => {
+  fauxImages();
+  const { e } = monter();
+  await e.ouvrir({ chemin: "img/logo.png" });
+  e.ouvrir({ chemin: "a.txt", contenu: "x", version: "1" });
+  expect(zoneImage()).toBeNull();
+  await e.ouvrir({ chemin: "img/logo.png" });
+  expect(nomsOnglets()).toEqual(["logo.png", "a.txt"]);
+  expect(actifNom()).toBe("logo.png");
+  expect(document.querySelectorAll(".ya-image")).toHaveLength(1);
+  onglet("a.txt").click();
+  await Promise.resolve();
+  onglet("logo.png").focus();
+  onglet("logo.png").click(); // Entrée sur un bouton de onglet = clic
+  await Promise.resolve();
+  expect(document.activeElement).toBe(zoneImage());
+  expect(zoneImage().matches("[tabindex='-1']")).toBe(true);
+});
+
+test("REQ120_AC5_ctrl_s_n_ecrit_rien_et_pas_de_formatage", async () => {
+  fauxImages();
+  const { e } = monter();
+  await e.ouvrir({ chemin: "logo.png" });
+  fetch.mockClear();
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(fetch).not.toHaveBeenCalled();
+  expect(e.peutFormater()).toBe(false);
+  expect(document.querySelector('button[aria-label="Aperçu"], button[aria-label="Mode hybride"]')).toBeNull();
+});
+
+test("REQ120_AC7_AC13_image_illisible_dit_ne_peut_pas_etre_affiche_sans_bandeau", async () => {
+  fauxImages();
+  const dire = vi.fn();
+  const e = vueEditeur({ dire });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  await e.ouvrir({ chemin: "casse.png" });
+  sondesImg.at(-1).onerror();
+  const m = zoneImage().querySelector("[role=status]");
+  expect(m.textContent).toBe("casse.png ne peut pas être affiché.");
+  expect(zoneImage().querySelector("img")).toBeNull();
+  expect(dire).not.toHaveBeenCalled();
+});
+
+test("REQ087_AC12_REQ101_AC16_ouvrirCitee_et_lien_de_document_ouvrent_l_onglet_d_image_sans_lecture", async () => {
+  fauxImages();
+  const { e } = monter();
+  expect(await e.ouvrirCitee({ chemin: "img/logo.png", ligne: 3 })).toBeUndefined();
+  expect(actifNom()).toBe("logo.png");
+  expect(zoneImage()).not.toBeNull();
+  expect(fetch.mock.calls.every(([u]) => String(u) === "/api/apercu")).toBe(true);
+  await e.ouvrirCitee({ chemin: "img/logo.png" });
+  expect(nomsOnglets()).toEqual(["logo.png"]);
+});
+
+test("REQ087_AC12_lien_de_conversation_vers_une_image", async () => {
+  fauxImages();
+  const { e } = monterAg({ chemin: PROJET });
+  e.ouvrirAgent();
+  await faux.ag[0].ouvrirReference({ chemin: "img/logo.png", ligne: 3 }, lienFichier());
+  expect(actifNom()).toBe("logo.png");
+  expect(zoneImage()).not.toBeNull();
+  await faux.ag[0].ouvrirReference({ chemin: "img/logo.png" }, lienFichier());
+  expect(nomsOnglets().filter((n) => n === "logo.png")).toHaveLength(1);
+  expect(e).toBeDefined();
+});
+
+test("REQ101_AC16_clic_dans_l_apercu_et_Ctrl_clic_en_hybride_ouvrent_l_onglet_d_image_sans_lecture", async () => {
+  for (const adresse of ["../img/logo.png", "../img/logo.png#haut"]) {
+    vi.stubGlobal("Image", class {});
+    const { e, z, a } = monterApercu({}, `[logo](${adresse})\n`);
+    fetch.mockClear();
+    a(adresse).click();
+    await vi.waitFor(() => expect(actifNom()).toBe("logo.png"));
+    expect(zoneImage()).not.toBeNull();
+    expect(e.code.querySelectorAll(".zone-code")).toHaveLength(1);
+    expect(fetch.mock.calls.some(([u]) => String(u).startsWith("/api/fichier"))).toBe(false);
+    expect(z.vue).toBeDefined();
+    editeurs.pop().detruire();
+    document.body.replaceChildren();
+  }
+  vi.stubGlobal("Image", class {});
+  const { e, suivre } = monterDocument({}, "[logo](../img/logo.png#haut)\n");
+  fetch.mockClear();
+  suivre("logo");
+  await vi.waitFor(() => expect(actifNom()).toBe("logo.png"));
+  expect(zoneImage()).not.toBeNull();
+  expect(fetch.mock.calls.some(([u]) => String(u).startsWith("/api/fichier"))).toBe(false);
+  expect(nomsOnglets()).toEqual(["guide.md", "logo.png"]);
+  expect(e).toBeDefined();
 });

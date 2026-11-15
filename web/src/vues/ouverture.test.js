@@ -313,3 +313,18 @@ test("REQ118_AC10_formater_suit_les_agents_desactives", async () => {
   expect([...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent)).toEqual(["Configuration", "Formater le document"]);
   v.detruire();
 });
+
+test("REQ120_AC2_ctrl_p_ouvre_une_image_sans_la_lire", async () => {
+  const fetch = vi.fn(async () => json({ chemins: ["img/logo.png", "src/main.rs"] }));
+  vi.stubGlobal("fetch", fetch);
+  const surLecture = vi.fn(() => 9);
+  const { entree, surOuvrir, v } = await ouvrir({ surLecture });
+  taper(entree, "logo");
+  touche(entree, "Enter");
+  await attendre();
+  await attendre();
+  expect(surOuvrir).toHaveBeenCalledWith({ chemin: "img/logo.png", geste: 9 });
+  expect(fetch.mock.calls.some(([u]) => String(u).startsWith("/api/fichier"))).toBe(false);
+  expect(document.querySelector("dialog")).toBeNull();
+  v.detruire();
+});

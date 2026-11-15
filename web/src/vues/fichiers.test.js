@@ -1182,3 +1182,16 @@ test("REQ034_AC13_indexer_pendant_une_coupure_dit_connexion_perdue", async () =>
   expect(dire).toHaveBeenCalledTimes(1);
   expect(dire.mock.calls[0][0]).toMatchObject({ texte: "Connexion perdue. Réessayez au retour.", variante: "alerte" });
 });
+
+test("REQ008_AC1_REQ120_AC1_une_image_s_ouvre_sans_lecture_du_fichier", async () => {
+  const surOuvrir = vi.fn(async () => {});
+  const surLecture = vi.fn(() => 5);
+  const { vue, appels } = await monter({ "": [d("img"), f("PHOTO.JPG")], img: [f("logo.png"), f("icone.svg")] }, { surOuvrir, surLecture });
+  const avant = appels.length;
+  ligne(vue, "PHOTO.JPG").click();
+  await attendre();
+  expect(surOuvrir).toHaveBeenCalledWith({ chemin: "PHOTO.JPG", geste: 5 });
+  expect(appels.slice(avant).some((u) => String(u).includes("/api/fichier?"))).toBe(false);
+  expect(surLecture).toHaveBeenLastCalledWith(false);
+  expect(vue.corps.ownerDocument.querySelector("[role=alert]")).toBeNull();
+});

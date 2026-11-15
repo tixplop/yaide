@@ -974,3 +974,4 @@ body { margin: 0; }
 .ya-image { box-sizing: border-box; flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; padding: var(--space-4); background: var(--bg-200); overflow: hidden; }
 .ya-image img { display: block; max-width: 100%; max-height: 100%; min-width: 0; min-height: 0; background: var(--apercu-page); }
 .ya-image:focus-visible { outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
+.ya-image[hidden] { display: none; }

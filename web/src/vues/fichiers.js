@@ -6,6 +6,7 @@ import { indication } from "../ui/indication.js";
 import { liste } from "../ui/liste.js";
 import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
+import { estImage } from "../onglets-fichiers.js";
 import * as worktree from "../worktree.js";
 import { mettreAJourFichiers, ouvrirAjoutConnaissance } from "./ajout-connaissance.js";
 
@@ -324,6 +325,10 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   async function ouvrirFichier(chemin) {
     const nom = nomDe(chemin);
     const geste = surLecture(true);
+    if (estImage(chemin)) {
+      await surOuvrir({ chemin, geste });
+      return surLecture(false);
+    }
     const r = await lireFichier(chemin);
     if (detruit) return;
     if (r.contenu !== undefined) {
