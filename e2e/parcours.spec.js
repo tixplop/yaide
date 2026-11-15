@@ -448,29 +448,7 @@ test("REQ048_parcours_16_replier_depuis_l_en_tete", async ({ page }) => {
   await expect(deplier).toBeFocused();
   expect(await contour(deplier)).toBe(true);
   await expect(tooltip).toHaveCount(0);
-  // 6. Rechargement : le panneau reste replié, le focus est dans l'éditeur.
-  // Le repli est écrit dans IndexedDB sans attente : on laisse l'écriture finir, un rechargement la couperait.
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          new Promise((resolu) => {
-            const o = indexedDB.open("yaide", 1);
-            o.onsuccess = () => {
-              const g = o.result.transaction("cles").objectStore("cles").get("replis");
-              g.onsuccess = () => {
-                o.result.close();
-                resolu(g.result?.panneau);
-              };
-            };
-          }),
-      ),
-    )
-    .toBe(true);
-  await page.reload();
-  await deplier.waitFor();
-  await expect(aside).toBeHidden();
-  await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+  // 6 (rechargement : le panneau reste replié, AC-048-2) retiré : web/src/vues/principale-panneaux.test.js REQ048_AC2_AC6_replier_depuis_l_en_tete (écrit replis.panneau), web/src/vues/principale-shells.test.js REQ046_AC12_le_panneau_replie_est_garde_et_relu_au_montage (relu au montage) ; le rechargement réel et le focus dans l'éditeur restent prouvés par le parcours 14 (AC-046-12).
   // 7. Rail Git : le panneau revient, le focus est dans le panneau, le bouton est au même endroit.
   await page.getByRole("tab", { name: "Git", exact: true }).click();
   await expect(aside).toBeVisible();
