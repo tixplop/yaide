@@ -40,31 +40,16 @@ test("REQ103_parcours_75_76_base_de_connaissance", async ({ page }) => {
   try {
     await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
     await api(page, "PUT", "/api/agent/providers/ollama", { adresse: faux.adresse });
+    await api(page, "PUT", "/api/connaissance/config", { provider: "ollama", modele: "nomic-embed-text" });
     await page.reload();
     await expect(arbre(page)).toBeVisible();
 
-    // P-075 étape 1 : base non configurée.
-    await ligne(page, "docs").click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Ajouter à la base de connaissance…" }).click();
-    const invite = page.getByRole("dialog", { name: "Ajouter à la base de connaissance" });
-    await expect(invite).toContainText("La base de connaissance n'est pas configurée. Choisissez d'abord un provider et un modèle.");
-    await expect(invite.getByRole("button", { name: "Configurer la base" })).toBeFocused();
-
-    // Étape 2 : « Configuration », modèle vide refusé, puis enregistré.
-    await page.keyboard.press("Enter");
+    // P-075 étapes 1 et 2 (base non configurée, « Configuration », modèle vide refusé, enregistrement, retour du focus) : retirées,
+    // preuves REQ104_AC7_AC16_base_non_configuree_sans_champ_configurer_ferme_et_ouvre_la_configuration (ajout-connaissance.test.js),
+    // REQ103_AC2_AC9, REQ103_AC4_AC10, REQ103_AC10_enregistrer_par_bouton_ou_Entree… et REQ103_AC9_configurer_force… (connaissance.test.js).
+    // La base est configurée par l'API.
+    // Étape 4 : ajout à une nouvelle collection.
     const base = page.getByRole("dialog", { name: "Base de connaissance" });
-    await expect(base.getByLabel("Provider")).toBeFocused();
-    await base.getByLabel("Provider").selectOption({ label: "Ollama" });
-    await base.getByRole("button", { name: "Enregistrer" }).click();
-    await expect(base.getByText("Donnez le nom du modèle.")).toBeVisible();
-    await expect(base.getByLabel("Modèle")).toBeFocused();
-    await base.getByLabel("Modèle").fill("nomic-embed-text");
-    await page.keyboard.press("Enter");
-    await expect(base.getByText("Configuration enregistrée.")).toBeVisible();
-
-    // Étape 4 : Échap rend le focus à `docs` ; ajout à une nouvelle collection.
-    await page.keyboard.press("Escape");
-    await expect(ligne(page, "docs")).toBeFocused();
     await ligne(page, "docs").click({ button: "right" });
     await page.getByRole("menuitem", { name: "Ajouter à la base de connaissance…" }).click();
     const ajout = page.getByRole("dialog", { name: "Ajouter à la base de connaissance" });
@@ -121,8 +106,7 @@ test("REQ103_parcours_75_76_base_de_connaissance", async ({ page }) => {
     await expect(deux.getByLabel("Collection", { exact: true })).toHaveValue("notes");
     await deux.getByLabel("Collection", { exact: true }).selectOption({ label: "Nouvelle collection…" });
     await deux.getByLabel("Nom de la nouvelle collection").fill("api docs");
-    await page.keyboard.press("Enter");
-    await expect(deux.getByText("Lettres sans accent, chiffres, - et _ seulement.")).toBeVisible();
+    // Nom refusé (« Lettres sans accent, chiffres, - et _ seulement. ») : REQ104_AC6_AC15_nom_refuse_dans_la_page_rien_n_est_envoye (ajout-connaissance.test.js).
     await deux.getByLabel("Nom de la nouvelle collection").fill("api-docs");
     // REQ-113 (AC-113-8) : « Taille maximale » et « Recouvrement » côte à côte ; « Sections Markdown » ne bouge rien.
     const taille = deux.getByLabel("Taille maximale (caractères)");
@@ -199,10 +183,8 @@ test("REQ103_parcours_75_76_base_de_connaissance", async ({ page }) => {
     await expect(bulle).toBeVisible();
     const [mq, bb] = [await faq.locator(".liste-base").boundingBox(), await bulle.boundingBox()];
     expect(bb.y).toBeGreaterThan(mq.y);
-    await faq.click({ button: "right" });
-    await menu(page, "Actions sur docs/faq.md").getByRole("menuitem", { name: "Mettre à jour dans la base de connaissance" }).click();
-    await expect(page.getByText("Mise à jour terminée : 1 fichier mis à jour.")).toBeVisible({ timeout: 20000 });
-    await expect(faq).toBeFocused();
+    // P-078 : « Mettre à jour dans la base de connaissance » et ses messages — preuves REQ111_AC5_la_commande_envoie_les_chemins_dit_le_debut_et_rend_le_focus_a_la_ligne
+    // et REQ111_AC5_fin_au_singulier_et_au_pluriel (fichiers.test.js, ajout-connaissance.test.js), tests/connaissance.rs REQ111_AC1.
   } finally {
     await yaide.arreter();
     await faux.arreter();
