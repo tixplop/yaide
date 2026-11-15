@@ -550,7 +550,7 @@ test("REQ050_parcours_17_deplacer_plusieurs_fichiers", async ({ page }) => {
   expect(fs.existsSync(path.join(dossier, "b.txt"))).toBe(false);
 });
 
-test("REQ050_parcours_18_dossier_refus_coupure", async ({ page, browserName }) => {
+test("REQ050_parcours_18_dossier_refus", async ({ page, browserName }) => {
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "src", "lib"));
   fs.writeFileSync(path.join(dossier, "src", "lib", "util.rs"), "//");
@@ -558,8 +558,7 @@ test("REQ050_parcours_18_dossier_refus_coupure", async ({ page, browserName }) =
   fs.writeFileSync(path.join(dossier, "doc", "b.txt"), "b");
   for (const n of ["a.txt", "Cargo.toml", "notes.md"]) fs.writeFileSync(path.join(dossier, n), n);
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  relais = await lancerRelais(yaide.port);
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, yaide.origine);
   await rangee(page, "src").click();
   await rangee(page, "src/lib").click();
   await expect(rangee(page, "src/lib/util.rs")).toBeVisible();
@@ -594,11 +593,5 @@ test("REQ050_parcours_18_dossier_refus_coupure", async ({ page, browserName }) =
   await lacher(page);
   await expect(rangee(page, "doc/notes.md")).toBeFocused();
   await expect(rangee(page, "doc")).toHaveAttribute("aria-expanded", "true");
-  // 6. Coupure : le dépôt dans la partie vide est refusé.
-  relais.couper();
-  await saisir(page, rangee(page, "doc/notes.md"));
-  await survoler(page, page.locator("[role=tree]"), { bas: true });
-  await lacher(page);
-  await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Réessayez au retour." })).toBeVisible();
-  expect(fs.existsSync(path.join(dossier, "doc", "notes.md"))).toBe(true);
+  // 6. Le dépôt pendant une coupure (AC-050-11) : fichiers.test.js, REQ050_AC11.
 });
