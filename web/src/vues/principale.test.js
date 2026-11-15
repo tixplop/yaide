@@ -6,7 +6,7 @@ import { ecrire, lire } from "../stockage.js";
 import { charger as chargerCouleurs } from "../couleurs-markdown.js";
 import { simulerServeur, ETAT_GIT, monter, attendre, avecHorloge, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne, simulerOpencode, boutonClaudeDe, ongletsOc, nomDuChamp, nomsRailDroit, boutonOcDe, ongletsClaude, ligne } from "./principale.aides.js";
 
-vi.mock("../couleurs-markdown.js", () => ({ charger: vi.fn(async () => ({ illisible: false })), lire: vi.fn(async () => ({ sombre: {}, clair: {} })) }));
+vi.mock("../couleurs-markdown.js", async (orig) => ({ ...(await orig()), charger: vi.fn(async () => ({ illisible: false })), lire: vi.fn(async () => ({ sombre: {}, clair: {} })) }));
 vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
 test("REQ028_AC6_titre_du_navigateur", () => {
@@ -1255,4 +1255,27 @@ test("REQ115_AC8_enregistrer_markdown_json_dans_l_editeur_ne_relit_pas_les_coule
   expect(chargerCouleurs).not.toHaveBeenCalled();
   expect(document.adoptedStyleSheets).toBe(feuilles);
   document.adoptedStyleSheets = [];
+});
+
+test("REQ117_AC19_enregistrer_les_couleurs_retire_le_seul_bandeau_de_markdown_json", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+    const u = String(url);
+    if (u === "/api/chemins") return jsonOk({ chemins: [] });
+    if (u === "/api/git/etat") return jsonOk({ branche: "main", detachee: false, branches: ["main"], changements: [] });
+    if (u.startsWith("/api/fichiers?")) return jsonOk({ entrees: [] });
+    if (u === "/api/session") return { status: 204 };
+    if (u.startsWith("/api/fichier?chemin=") && opts.method === "PUT") return jsonOk({ version: "v2" });
+    if (u.startsWith("/api/fichier?chemin=")) return { ok: true, status: 200, text: async () => '{"fonctions":{"agents":false,"shells":false}}', headers: { get: () => "v1" } };
+    return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
+  }));
+  const { vue } = monter({ reglages: { illisible: true, fonctions: { agents: false, shells: false } }, couleursIllisibles: true });
+  expect(alertes(vue)).toHaveLength(2);
+  const entree = paletteCommandes(">");
+  entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  const dlg = document.querySelector("dialog");
+  [...dlg.querySelectorAll("[role=tab]")].find((t) => t.textContent === "Couleurs markdown").click();
+  [...dlg.querySelectorAll("button")].find((b) => b.textContent === "Enregistrer" && !b.closest("[hidden]")).click();
+  await vi.waitFor(() => expect(alertes(vue).map((a) => a.querySelector(".message-texte").textContent)).toEqual([TEXTE_IF]));
 });

@@ -272,7 +272,13 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     surLecture: editeur.lecture,
     surCommande: (id, avant) => {
       if (id === "configuration") {
-        panneauConfig = ouvrirConfiguration({ surFermeture: () => { panneauConfig = null; avant?.focus?.(); } });
+        panneauConfig = ouvrirConfiguration({
+          surFermeture: () => { panneauConfig = null; avant?.focus?.(); },
+          surCouleursEnregistrees: () => {
+            const reste = places.message.filter((m) => !m.textContent.includes(".yaide/markdown.json est illisible."));
+            montrerBandeau("message", ...reste);
+          },
+        });
         return;
       }
       const ouvrirPanneau = { providers: ouvrirProviders, profils: ouvrirProfils }[id];

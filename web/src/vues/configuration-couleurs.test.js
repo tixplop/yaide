@@ -1,6 +1,9 @@
 import { afterEach, beforeAll, expect, test, vi } from "vitest";
 import { ouvrirConfiguration } from "./configuration.js";
 import { PALETTES } from "../ui/palettes.js";
+import { appliquer } from "../couleurs-markdown.js";
+
+vi.mock("../couleurs-markdown.js", async (orig) => ({ ...(await orig()), appliquer: vi.fn() }));
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = function () {
@@ -21,13 +24,18 @@ afterEach(() => {
 const attendre = () => new Promise((r) => setTimeout(r, 0));
 
 /** Faux serveur : `markdown` est le fichier `.yaide/markdown.json` (texte, `Error` ou réponse brute). */
-function faux({ markdown } = {}) {
-  const etat = { ecritures: [], requetes: [] };
+function faux({ markdown, put } = {}) {
+  const etat = { ecritures: [], requetes: [], urls: [] };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url, opts = {}) => {
       etat.requetes.push([String(url), opts.method ?? "GET"]);
-      if (opts.method === "PUT") etat.ecritures.push(opts.body);
+      if (opts.method === "PUT") {
+        etat.ecritures.push(opts.body);
+        etat.urls.push(decodeURIComponent(String(url)));
+        if (put) return put(opts);
+        return { ok: true, status: 200, json: async () => ({ version: "v2" }) };
+      }
       if (String(url).includes("markdown.json") && !opts.method) {
         if (typeof markdown === "string") return { ok: true, status: 200, text: async () => markdown, headers: { get: () => "v1" } };
         if (markdown instanceof Error) throw markdown;
@@ -210,4 +218,216 @@ test("REQ116_AC1_AC7_ouverture_sur_interface_fleche_droite_puis_tab_et_aides_rel
     expect(document.getElementById(panneau.getAttribute("aria-describedby"))).not.toBeNull();
   }
   expect(p.element).toBe(dlg());
+});
+
+const TEXTE_AC3 = '{\n  "sombre": {\n    "titre1": {\n      "couleur": "#ff8800"\n    }\n  },\n  "clair": {\n    "bloc_code": {\n      "fond": "#101820"\n    }\n  }\n}\n';
+const resultat = () => dlg().querySelector(".dialogue-resultat [role=status], .dialogue-resultat [role=alert]");
+
+test("REQ117_AC3_texte_exact_champs_relus_et_tout_vide_donne_accolades", async () => {
+  const etat = faux({ markdown: '{ "sombre": { "titre1": { "couleur": "#abc" } } }' });
+  await ouvrir();
+  taper("Titre 1, couleur", "#f80");
+  choisirTheme("Clair");
+  taper("Bloc de code, fond", "#101820");
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(etat.ecritures).toEqual([TEXTE_AC3]);
+  expect(etat.urls[0]).toContain(".yaide/markdown.json");
+  choisirTheme("Sombre");
+  expect(saisie("Titre 1, couleur").value).toBe("#f80");
+  taper("Titre 1, couleur", "#F80");
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(etat.ecritures[1]).toBe(TEXTE_AC3);
+  bouton("Par défaut").click();
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(etat.ecritures[2]).toBe("{}\n");
+});
+
+test("REQ117_AC4_AC17_refus_messages_alerte_focus_theme_et_palette_retire_les_erreurs", async () => {
+  const etat = faux();
+  await ouvrir();
+  for (const v of ["red", "#ff00", "#ff0000; background: url(x)"]) {
+    taper("Citation, bordure", v);
+    bouton("Enregistrer").click();
+    await attendre();
+    expect(etat.ecritures).toEqual([]);
+    const s = saisie("Citation, bordure");
+    expect(s.getAttribute("aria-invalid")).toBe("true");
+    const m = document.getElementById(s.getAttribute("aria-describedby"));
+    expect(m.getAttribute("role")).toBe("alert");
+    expect(m.textContent).toBe("Bordure : tapez une couleur #rgb ou #rrggbb, ou laissez vide.");
+    expect(s.value).toBe(v);
+    expect(document.activeElement).toBe(s);
+  }
+  taper("Titre 1, couleur", "vert");
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(document.getElementById(saisie("Titre 1, couleur").getAttribute("aria-describedby")).textContent).toBe("Tapez une couleur #rgb ou #rrggbb, ou laissez vide.");
+  expect(document.activeElement).toBe(saisie("Titre 1, couleur"));
+  // seule erreur en clair, sombre affiché
+  bouton("Ardoise").click();
+  expect(dlg().querySelector(".ya-grille-erreur")).toBeNull();
+  expect(saisie("Titre 1, couleur").hasAttribute("aria-invalid")).toBe(false);
+  choisirTheme("Clair");
+  taper("Texte, couleur", "rouge");
+  choisirTheme("Sombre");
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(themes().value).toBe("Clair");
+  expect(document.activeElement).toBe(saisie("Texte, couleur"));
+  expect(etat.ecritures).toEqual([]);
+  // erreur en sombre et en clair, clair affiché : sombre d'abord
+  choisirTheme("Sombre");
+  taper("Gras, couleur", "x1");
+  choisirTheme("Clair");
+  expect(themes().value).toBe("Clair");
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(themes().value).toBe("Sombre");
+  expect(document.activeElement).toBe(saisie("Gras, couleur"));
+  // le message est sous la ligne « Citation » : juste avant le nom de l'élément suivant
+  taper("Gras, couleur", "");
+  choisirTheme("Clair");
+  taper("Texte, couleur", "");
+  choisirTheme("Sombre");
+  taper("Citation, bordure", "red");
+  bouton("Enregistrer").click();
+  await attendre();
+  const msg = document.getElementById(saisie("Citation, bordure").getAttribute("aria-describedby"));
+  expect(msg.nextElementSibling.textContent).toBe("En-tête de tableau");
+  // corrigé puis enregistré : plus d'alerte ni d'aria-invalid
+  taper("Citation, bordure", "#f00");
+  bouton("Enregistrer").click();
+  await attendre();
+  await attendre();
+  expect(etat.ecritures).toHaveLength(1);
+  expect(dlg().querySelector(".ya-grille-erreur")).toBeNull();
+  expect(dlg().querySelector("[aria-invalid]")).toBeNull();
+  expect(saisie("Citation, bordure").value).toBe("#f00");
+});
+
+test("REQ117_AC5_appliquer_apres_reussite_pas_apres_echec", async () => {
+  appliquer.mockClear();
+  faux({ put: () => ({ ok: false, status: 500, json: async () => ({ cause: "erreur", message: "Disque plein." }) }) });
+  await ouvrir();
+  taper("Titre 1, couleur", "#f80");
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(appliquer).not.toHaveBeenCalled();
+  document.body.replaceChildren();
+  faux();
+  await ouvrir();
+  taper("Titre 1, couleur", "#f80");
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(appliquer).toHaveBeenCalledWith({ sombre: { titre1: { couleur: "#ff8800" } }, clair: {} });
+});
+
+test("REQ117_AC6_AC7_palette_puis_champ_ecrit_fermer_n_ecrit_rien", async () => {
+  const etat = faux();
+  await ouvrir();
+  bouton("Sépia").click();
+  taper("Titre 2, couleur", "#123456");
+  bouton("Enregistrer").click();
+  await attendre();
+  const ecrit = JSON.parse(etat.ecritures[0]);
+  const sepia = PALETTES.find((p) => p.nom === "Sépia");
+  expect(ecrit.sombre.titre2.couleur).toBe("#123456");
+  expect(ecrit.sombre.titre1.couleur).toBe(sepia.sombre.titre1.couleur);
+  expect(ecrit.clair.citation).toEqual(sepia.clair.citation);
+  document.body.replaceChildren();
+  const autre = faux();
+  await ouvrir();
+  taper("Titre 1, couleur", "#f80");
+  bouton("Fermer").click();
+  expect(autre.ecritures).toEqual([]);
+});
+
+test("REQ117_AC12_statut_focus_alerte_retiree_message_retire_et_etat_en_cours", async () => {
+  let fin;
+  const etat = faux({ markdown: "{ cassé", put: () => new Promise((r) => (fin = r)) });
+  await ouvrir();
+  expect(dlg().querySelector("[role=alert]")).not.toBeNull();
+  taper("Titre 1, couleur", "#f80");
+  const b = bouton("Enregistrer");
+  b.focus();
+  b.click();
+  await attendre();
+  expect(bouton("Enregistrement…") ?? [...dlg().querySelectorAll("button")].find((x) => x.textContent.includes("Enregistrement…"))).toBeDefined();
+  expect(bouton("Fermer").disabled).toBe(true);
+  expect(bouton("Ardoise").disabled).toBe(true);
+  expect(saisie("Titre 1, couleur").disabled).toBe(true);
+  fin({ ok: true, status: 200, json: async () => ({ version: "v2" }) });
+  await attendre();
+  await attendre();
+  expect(resultat().textContent).toBe("Couleurs enregistrées.");
+  expect(resultat().getAttribute("role")).toBe("status");
+  expect(document.activeElement).toBe(bouton("Enregistrer"));
+  expect(bouton("Fermer").disabled).toBe(false);
+  expect(saisie("Titre 1, couleur").disabled).toBe(false);
+  expect(dlg().querySelector("[role=alert]")).toBeNull();
+  taper("Titre 1, couleur", "#abc");
+  expect(resultat()).toBeFalsy();
+  expect(etat.ecritures).toHaveLength(1);
+  bouton("Ardoise").click();
+  expect(resultat().textContent).toContain("Palette Ardoise");
+});
+
+test("REQ117_AC10_coupure_pendant_l_ecriture_garde_la_saisie_autre_echec_dit_la_raison", async () => {
+  appliquer.mockClear();
+  faux({ put: () => { throw new TypeError("réseau"); } });
+  await ouvrir();
+  taper("Titre 1, couleur", "#f80");
+  bouton("Enregistrer").click();
+  await attendre();
+  await attendre();
+  expect(resultat().textContent).toBe("Connexion perdue. Réessayez au retour.");
+  expect(saisie("Titre 1, couleur").value).toBe("#f80");
+  expect(appliquer).not.toHaveBeenCalled();
+  document.body.replaceChildren();
+  faux({ put: () => ({ ok: false, status: 500, json: async () => ({ cause: "erreur", message: "Disque plein." }) }) });
+  await ouvrir();
+  taper("Titre 1, couleur", "#f80");
+  bouton("Enregistrer").click();
+  await attendre();
+  await attendre();
+  expect(resultat().textContent).toBe("Enregistrement impossible : Disque plein.");
+  expect(appliquer).not.toHaveBeenCalled();
+});
+
+test("REQ116_AC2_AC3_AC8_sections_gardent_leurs_saisies_chaque_enregistrer_son_fichier_echap_n_ecrit_rien", async () => {
+  let fin;
+  const etat = faux({ put: (o) => (o.body.includes("replis") ? new Promise((r) => (fin = r)) : { ok: true, status: 200, json: async () => ({ version: "v2" }) }) });
+  await ouvrir();
+  const selectI = () => [...dlg().querySelectorAll("select")].find((x) => x.labels[0].textContent === "Panneau de gauche");
+  onglet("Interface").click();
+  selectI().value = "Replié";
+  selectI().dispatchEvent(new Event("change", { bubbles: true }));
+  onglet("Couleurs markdown").click();
+  taper("Titre 1, couleur", "#f80");
+  onglet("Interface").click();
+  expect(selectI().value).toBe("Replié");
+  onglet("Couleurs markdown").click();
+  expect(saisie("Titre 1, couleur").value).toBe("#f80");
+  // Interface en cours d'écriture : celui des couleurs reste actif
+  onglet("Interface").click();
+  bouton("Enregistrer").click();
+  await attendre();
+  onglet("Couleurs markdown").click();
+  expect(bouton("Enregistrer").disabled).toBe(false);
+  bouton("Enregistrer").click();
+  await attendre();
+  await attendre();
+  expect(etat.urls.map((u) => u.split("/").pop())).toEqual(["interface.json", "markdown.json"]);
+  expect(resultat().textContent).toBe("Couleurs enregistrées.");
+  fin({ ok: true, status: 200, json: async () => ({ version: "v2" }) });
+  await attendre();
+  await attendre();
+  expect(resultat().textContent).toBe("Couleurs enregistrées.");
+  onglet("Interface").click();
+  expect(resultat()).toBeNull();
+  dlg().dispatchEvent(new Event("cancel", { cancelable: true }));
+  expect(etat.ecritures).toHaveLength(2);
 });

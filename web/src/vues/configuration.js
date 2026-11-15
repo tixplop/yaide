@@ -36,13 +36,15 @@ const SECTIONS = [
 
 /**
  * V-011 : dialogue « Configuration », sections « Interface » (`.yaide/interface.json`, sans écrire de JSON ;
- * n'applique rien à l'interface) et « Couleurs markdown » (champs et palettes, sans écriture).
+ * n'applique rien à l'interface) et « Couleurs markdown » (`.yaide/markdown.json`, appliqué dès l'enregistrement ; `surCouleursEnregistrees` le suit).
  * `surFermeture` est appelé à la fermeture (Fermer, Échap) ; le focus est alors à l'appelant.
  * Rend `{ fermer, element }`.
  */
-export function ouvrirConfiguration({ surFermeture = () => {} } = {}) {
+export function ouvrirConfiguration({ surFermeture = () => {}, surCouleursEnregistrees = () => {} } = {}) {
   let ferme = false;
   let enCours = false;
+  let enCoursC = false;
+  let pretC = false;
   let charge = false;
   const replis = {};
   const fonctions = Object.fromEntries(FONCTIONS.map(([c]) => [c, true]));
@@ -55,6 +57,13 @@ export function ouvrirConfiguration({ surFermeture = () => {} } = {}) {
       messageCouleurs = m;
       if (section === "couleurs") dlg.definirResultat(m);
     },
+    surEnCours: (oui) => {
+      enCoursC = oui;
+      enregistrerC = nouveauBoutonC(oui);
+      majActions();
+      fermerB.disabled = oui || enCours;
+    },
+    surEnregistre: () => surCouleursEnregistrees(),
   });
   const panneaux = { interface: document.createElement("div"), couleurs: couleurs.panneau };
   const hote = document.createElement("div");
@@ -66,8 +75,7 @@ export function ouvrirConfiguration({ surFermeture = () => {} } = {}) {
   const chargement = indication({ texte: "Chargement…", variante: "chargement" });
   const fermerB = bouton({ libelle: "Fermer" });
   let enregistrerB = bouton({ libelle: "Enregistrer", variante: "principal", desactive: true });
-  // « Enregistrer » de « Couleurs markdown » : l'écriture vient avec T-257.
-  const enregistrerC = bouton({ libelle: "Enregistrer", variante: "principal", desactive: true });
+  let enregistrerC = nouveauBoutonC(false);
   const zoneAlerte = document.createElement("div");
   const zoneResultat = document.createElement("div");
 
@@ -132,6 +140,22 @@ export function ouvrirConfiguration({ surFermeture = () => {} } = {}) {
     return b;
   }
 
+  function nouveauBoutonC(enCoursDeVie) {
+    const b = enCoursDeVie
+      ? bouton({ libelle: "Enregistrer", libelleEnCours: "Enregistrement…", variante: "principal" })
+      : bouton({ libelle: "Enregistrer", variante: "principal", desactive: !pretC });
+    b.addEventListener("click", enregistrerCouleurs);
+    return b;
+  }
+
+  async function enregistrerCouleurs() {
+    if (!pretC || enCoursC || ferme) return;
+    const avecFocus = document.activeElement === enregistrerC;
+    await couleurs.enregistrer();
+    if (ferme) return;
+    if (avecFocus || document.activeElement === document.body) enregistrerC.focus();
+  }
+
   async function enregistrer() {
     if (!charge || enCours || ferme) return;
     enCours = true;
@@ -144,7 +168,7 @@ export function ouvrirConfiguration({ surFermeture = () => {} } = {}) {
     if (ferme) return;
     enregistrerB = nouveauBouton(false);
     majActions();
-    fermerB.disabled = false;
+    fermerB.disabled = enCoursC;
     if (r.coupure || r.cause) montrerResultat(r.coupure ? TEXTE_COUPURE : `Enregistrement impossible : ${sansPoint(r.message)}.`, "erreur");
     else {
       zoneAlerte.replaceChildren();
@@ -193,7 +217,9 @@ export function ouvrirConfiguration({ surFermeture = () => {} } = {}) {
   });
 
   couleurs.charger().then((pret) => {
-    if (!ferme) enregistrerC.disabled = !pret;
+    if (ferme) return;
+    pretC = pret;
+    enregistrerC.disabled = !pret;
   });
   lire().then((lu) => {
     if (ferme) return;
