@@ -128,6 +128,7 @@ test("REQ072_parcours_36_tache_et_sous_agent", async ({ page }) => {
 
   const bouton = boutonOpencode(page);
 
+  // 1 (bouton et info-bulle à gauche) retiré : parcours 37 étape 1 et REQ072_AC17.
   // 2. L'onglet s'ouvre, actif, vide, le focus dans le champ.
   await bouton.click();
   await expect(onglet(page, "opencode 1")).toHaveAttribute("aria-selected", "true");
@@ -278,6 +279,7 @@ test("REQ072_parcours_37_question_erreur_a_800_par_480", async ({ page }) => {
   await expect(echec).toContainText("Clé d'API invalide (faux provider)");
   await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
 
+  // 5 (coupure sans tour, tour long coupé) retiré : web/src/opencode.test.js REQ072_AC10_* ; REQ072_AC13_coupure_et_503_aucun_onglet ; REQ072_AC27_envoi_refuse_coupure_et_serveur_absent.
   // 6. Largeur de la session et page sans défilement (AC-072-21).
   const mesures = await page.evaluate(() => {
     const session = document.querySelector(".session-contenu");
@@ -286,6 +288,8 @@ test("REQ072_parcours_37_question_erreur_a_800_par_480", async ({ page }) => {
   });
   expect(mesures.page).toBe(false);
   expect(mesures.largeur).toBeLessThanOrEqual(1200 + 2 * 12 + 1);
+
+  // 7 (opencode cassé, serveur arrêté) retiré : tests/opencode.rs REQ072_AC13_* et web/src/opencode.test.js REQ072_AC27_envoi_refuse_coupure_et_serveur_absent.
 });
 
 test("REQ074_parcours_38_choix_recharge_et_largeurs", async ({ page }) => {

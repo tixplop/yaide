@@ -180,6 +180,7 @@ test("REQ056_parcours_19_regler_l_agent_et_corriger_un_fichier", async ({ page }
   expect(faux.recues).toHaveLength(4);
 });
 
+// Parcours 20 (reprendre, refus, arrêter, erreur) retiré : AC-055-5, AC-055-6, AC-055-7, AC-055-12, AC-055-13, AC-055-14 et AC-056-6, AC-056-7, AC-056-12 sont prouvés par agent.test.js (REQ055_AC5_AC12, REQ055_AC6_AC13, REQ055_AC7_AC14, REQ056_AC6_AC12, REQ056_AC7, REQ056_AC12_titre…) et tests/conversation.rs (REQ055_AC7).
 test("REQ053_parcours_21_gerer_ses_profils", async ({ page }) => {
   yaide = await lancerYaide({ dossier: depotAgent() });
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
