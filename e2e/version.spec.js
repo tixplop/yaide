@@ -94,7 +94,6 @@ cp "$f" "$out"
     await expect.poll(mise_en_page, { timeout: 5000 }).toMatchObject({ superpose: false, hors: false, lignes: 1, coupes: [], defile: false });
     const m1 = await mise_en_page();
     expect(m1.n).toBeGreaterThanOrEqual(3);
-    await page.screenshot({ path: path.join(racine, "etape1.png") });
 
     // Tab depuis le dernier bouton du rail droit → « Mettre à jour », contour visible (AC-092-6).
     await page.locator(".cadre-rail-droit button").last().focus();
@@ -111,7 +110,6 @@ cp "$f" "$out"
     await expect(bouton).toHaveText("Mettre à jour");
     expect(fs.readFileSync(binaire).equals(avant)).toBe(true);
     await expect(etat).toContainText("v0.6.0");
-    await page.screenshot({ path: path.join(racine, "etape3.png") });
 
     // Étape 3 : empreinte juste, nouvel essai (AC-093-1, AC-093-6).
     ecrireEmpreinte(crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex"));
@@ -122,7 +120,6 @@ cp "$f" "$out"
     await expect(bouton).toHaveCount(0);
     await expect(etat).toContainText("v0.6.0");
     expect(fs.readFileSync(binaire).toString()).toBe("#!/bin/sh\necho nouveau\n");
-    await page.screenshot({ path: path.join(racine, "etape5.png") });
 
     // Le serveur tourne encore et le shell ouvert est vivant (AC-093-1).
     const shellsApres = await page.evaluate(() => fetch("/api/shells").then((r) => r.json()));
@@ -133,11 +130,7 @@ cp "$f" "$out"
     await page.keyboard.press("Enter");
     await expect(page.locator(".terminal:visible .xterm-rows")).toContainText("vivant42");
 
-    // Étape 4 : rechargement → même message, sans bouton (AC-093-2).
-    await page.reload();
-    await expect(etat.getByRole("status").filter({ hasText: "installée" })).toHaveText("v0.9.2 installée. Redémarrez Yaide pour l'utiliser.");
-    await expect(bouton).toHaveCount(0);
-    await expect(etat).toContainText("v0.6.0");
+    // Étape 4, le rechargement (AC-093-2) : tests/mise_a_jour.rs et principale.test.js.
 
     // Aucune requête vers une autre origine (AC-092-5).
     expect(autres).toEqual([]);
