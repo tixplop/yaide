@@ -480,3 +480,28 @@ test("REQ096_AC12_commande_serveurs_mcp_dialogue_info_bulle_gauche_sans_raccourc
   const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
   expect(css).toMatch(/\.cadre-rail-droit \.ya-icon-btn\[aria-expanded="true"\][^{]*\{[^}]*background: var\(--bg-400\);\s*color: var\(--ink\)/);
 });
+
+test("REQ117_AC13_bouton_pastilles_trois_ronds_masques_avant_le_libelle", () => {
+  const b = bouton({ libelle: "Ardoise", pastilles: [{ sombre: "#8ab4f8", clair: "#1d4f91" }, { sombre: "#7cc4ff", clair: "#0b57d0" }, { sombre: "#5b8bd0", clair: "#5b7fb5" }] });
+  const ronds = [...b.children];
+  expect(ronds).toHaveLength(3);
+  for (const r of ronds) expect(r.getAttribute("aria-hidden")).toBe("true");
+  expect(b.lastChild.nodeType).toBe(Node.TEXT_NODE);
+  expect(b.textContent).toBe("Ardoise");
+  expect(b.hasAttribute("aria-label")).toBe(false);
+  expect(b.hasAttribute("aria-pressed")).toBe(false);
+  expect(b.hasAttribute("data-actif")).toBe(false);
+  expect(b.hasAttribute("style")).toBe(false);
+  const regles = [...document.styleSheets].flatMap((f) => [...f.cssRules].map((r) => r.cssText)).join("\n");
+  const classe = [...b.classList].find((c) => c.startsWith("ya-pastilles-"));
+  expect(regles).toMatch(new RegExp(`\\.${classe} \\{[^}]*--pastille-1: #8ab4f8`));
+  expect(regles).toMatch(new RegExp(`\\[data-theme="light"\\] \\.${classe} \\{[^}]*--pastille-3: #5b7fb5`));
+});
+
+test("REQ117_AC13_bouton_pastilles_refuse_une_combinaison_invalide", () => {
+  const trois = [{ sombre: "#111", clair: "#222" }, { sombre: "#111", clair: "#222" }, { sombre: "#111", clair: "#222" }];
+  expect(() => bouton({ libelle: "A", pastilles: trois.slice(0, 2) })).toThrow();
+  expect(() => bouton({ libelle: "A", variante: "principal", pastilles: trois })).toThrow();
+  expect(() => bouton({ nomAccessible: "A", icone: "check", pastilles: trois })).toThrow();
+  expect(() => bouton({ libelle: "A", pastilles: [...trois.slice(0, 2), { sombre: "red", clair: "#222" }] })).toThrow();
+});

@@ -187,7 +187,7 @@ test("REQ036_AC1_aucun_ancien_nom_de_token_dans_web_src", () => {
 });
 
 test("REQ036_AC1_aucune_couleur_en_dur_hors_de_tokens_css", () => {
-  for (const f of sources().filter((f) => !f.endsWith("ui/tokens.css") && !f.includes("/polices/"))) {
+  for (const f of sources().filter((f) => !f.endsWith("ui/tokens.css") && !f.endsWith("ui/palettes.js") && !f.includes("/polices/"))) {
     const texte = readFileSync(f, "utf8").replace(/\/\*[^]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     expect(texte, f).not.toMatch(/#[0-9a-fA-F]{3,8}\b(?![-\w])/);
     expect(texte, f).not.toMatch(/\brgba?\(|\bhsla?\(/);

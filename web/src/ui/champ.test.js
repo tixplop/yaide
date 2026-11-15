@@ -336,3 +336,65 @@ test("REQ099_AC10_css_bouton_a_4_px_de_la_liste_sans_retrecir_et_attenuation_lim
   expect(css).toMatch(/\.ya-barre\.ya-ligne:has\(select:disabled\) \.ya-input/);
   expect(css).not.toMatch(/\.ya-barre:has\(:disabled\)/);
 });
+
+function codeCouleur(extra = {}) {
+  const c = champ({ libelle: "Citation, fond", type: "codeCouleur", ...extra });
+  document.body.append(c);
+  return { c, pastille: c.querySelector('input[type="color"]'), saisie: c.querySelector('input[type="text"]') };
+}
+function taper(saisie, v) {
+  saisie.value = v;
+  saisie.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+test("REQ117_AC15_codeCouleur_pastille_hors_tab_puis_champ_nomme", () => {
+  const { c, pastille, saisie } = codeCouleur();
+  const entrees = [...c.querySelectorAll("input")];
+  expect(entrees).toEqual([pastille, saisie]);
+  expect(pastille.tabIndex).toBe(-1);
+  expect(pastille.getAttribute("aria-label")).toBe("Choisir : Citation, fond");
+  expect(saisie.getAttribute("aria-label")).toBe("Citation, fond");
+  expect(saisie.placeholder).toBe("par défaut");
+  expect(saisie.spellcheck).toBe(false);
+  expect(saisie.getAttribute("autocomplete")).toBe("off");
+  expect(pastille.classList.contains("vide")).toBe(true);
+  expect(c.querySelector("[role=alert]")).toBeNull();
+});
+
+test("REQ117_AC15_codeCouleur_la_pastille_ecrit_rrggbb_minuscules_dans_le_champ", () => {
+  const { pastille, saisie } = codeCouleur();
+  pastille.value = "#ff8800";
+  pastille.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(saisie.value).toBe("#ff8800");
+  expect(pastille.classList.contains("vide")).toBe(false);
+});
+
+test("REQ117_AC15_codeCouleur_la_frappe_colore_la_pastille_sans_verifier", () => {
+  const { c, pastille, saisie } = codeCouleur();
+  taper(saisie, "#F80");
+  expect(pastille.classList.contains("vide")).toBe(false);
+  expect(pastille.value).toBe("#ff8800");
+  taper(saisie, "vert");
+  expect(pastille.classList.contains("vide")).toBe(true);
+  taper(saisie, "#AABBCC");
+  expect(pastille.value).toBe("#aabbcc");
+  taper(saisie, "");
+  expect(pastille.classList.contains("vide")).toBe(true);
+  expect(saisie.hasAttribute("aria-invalid")).toBe(false);
+  expect(c.querySelector("[role=alert]")).toBeNull();
+  expect(codeCouleur({ valeur: "#f80" }).pastille.value).toBe("#ff8800");
+});
+
+test("REQ117_AC15_codeCouleur_erreur_et_desactive", () => {
+  const { c, saisie } = codeCouleur({ erreur: "Tapez une couleur #rgb ou #rrggbb, ou laissez vide." });
+  const msg = c.messageErreur;
+  expect(c.contains(msg)).toBe(false);
+  expect(msg.getAttribute("role")).toBe("alert");
+  expect(msg.classList.contains("ya-grille-erreur")).toBe(true);
+  expect(msg.textContent).toBe("Tapez une couleur #rgb ou #rrggbb, ou laissez vide.");
+  expect(saisie.getAttribute("aria-invalid")).toBe("true");
+  expect(saisie.getAttribute("aria-describedby")).toBe(msg.id);
+  const d = codeCouleur({ desactive: true });
+  expect(d.pastille.disabled).toBe(true);
+  expect(d.saisie.disabled).toBe(true);
+});

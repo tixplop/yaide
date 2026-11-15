@@ -5,6 +5,29 @@ import { infoBulle as creerInfoBulle } from "./info-bulle.js";
 const VARIANTES = ["principal", "secondaire", "discret", "danger"];
 const TAILLES = ["normale", "ligne", "onglet", "barre"];
 
+const COULEUR_PASTILLE = /^#[0-9a-fA-F]{3,8}$/;
+const classes = new Map();
+let feuilleP = null;
+
+// Une classe par jeu de trois couleurs `{ sombre, clair }`, posée une fois dans une feuille partagée.
+function classePastilles(liste) {
+  for (const p of liste) if (!COULEUR_PASTILLE.test(p?.sombre ?? "") || !COULEUR_PASTILLE.test(p?.clair ?? "")) throw new Error("bouton : pastilles attend trois { sombre, clair } en #rgb ou #rrggbb");
+  const cle = liste.map((p) => `${p.sombre}${p.clair}`).join("");
+  if (!classes.has(cle)) {
+    const nom = `ya-pastilles-${classes.size}`;
+    const dec = (t) => liste.map((p, i) => `--pastille-${i + 1}: ${p[t]};`).join(" ");
+    if (!feuilleP) {
+      const el = document.createElement("style");
+      document.head.append(el);
+      feuilleP = el.sheet;
+    }
+    feuilleP.insertRule(`.${nom} { ${dec("sombre")} }`, feuilleP.cssRules.length);
+    feuilleP.insertRule(`[data-theme="light"] .${nom} { ${dec("clair")} }`, feuilleP.cssRules.length);
+    classes.set(cle, nom);
+  }
+  return classes.get(cle);
+}
+
 export function bouton({
   libelle,
   icone,
@@ -23,6 +46,7 @@ export function bouton({
   ouvreDialogue = false,
   compteur,
   actif,
+  pastilles,
 }) {
   if (!libelle && !icone) throw new Error("bouton : libelle requis");
   if (!VARIANTES.includes(variante)) throw new Error(`bouton : variante inconnue « ${variante} »`);
@@ -30,6 +54,7 @@ export function bouton({
   if (!libelle && !nomAccessible) throw new Error("bouton : nomAccessible requis sans libelle");
   if (libelle && !/[\p{L}\p{N}]/u.test(libelle) && !nomAccessible) throw new Error("bouton : nomAccessible requis pour un libellé qui n'est qu'un signe");
   if (taille === "barre" && (!libelle || icone || variante !== "secondaire")) throw new Error("bouton : la taille barre demande un libellé secondaire, sans icône");
+  if (pastilles && (!libelle || icone || variante !== "secondaire" || pastilles.length !== 3)) throw new Error("bouton : pastilles demande un libellé secondaire, sans icône, et trois couleurs");
   const b = document.createElement("button");
   b.type = submit ? "submit" : "button";
   // `bouton` et `bouton-*` sont des repères ; le style vient des classes `ya-`.
@@ -77,6 +102,16 @@ export function bouton({
   };
   if (compteur !== undefined) b.definirCompteur(compteur);
 
+  if (pastilles) {
+    // Trois ronds masqués avant le libellé ; leurs couleurs suivent `data-theme` par une classe, sans attribut `style`.
+    b.classList.add("ya-btn-pastilles", classePastilles(pastilles));
+    for (let i = 0; i < 3; i++) {
+      const rond = document.createElement("span");
+      rond.className = "ya-pastille-ronde";
+      rond.setAttribute("aria-hidden", "true");
+      b.append(rond);
+    }
+  }
   if (icone) {
     b.classList.add("bouton-icone");
     b.append(dessiner(icone));

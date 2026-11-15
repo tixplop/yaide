@@ -1,7 +1,7 @@
 import { icone } from "./icones.js";
 import { COULEURS } from "./avatar.js";
 
-const TYPES = ["texte", "motDePasse", "secret", "multiligne", "liste", "case", "couleur"];
+const TYPES = ["texte", "motDePasse", "secret", "multiligne", "liste", "case", "couleur", "codeCouleur"];
 const PRESENTATIONS = ["normale", "ligne", "barre"];
 const NOMS_COULEURS = { violet: "Violet", vert: "Vert", orange: "Orange", rose: "Rose", sarcelle: "Sarcelle", gris: "Gris" };
 const CLAVIERS = { numerique: "numeric", decimal: "decimal" };
@@ -17,6 +17,7 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
   if (sansRetour && type !== "multiligne") throw new Error("champ : sansRetour demande le type « multiligne »");
   if (action && !(type === "liste" && presentation === "barre") && !(type === "case" && presentation === "ligne")) throw new Error("champ : action n'existe que pour une liste en presentation « barre » ou une case en « ligne »");
   const n = ++compteur;
+  if (type === "codeCouleur") return champCodeCouleur({ libelle, valeur, erreur, desactive, n });
   if (type === "couleur") return champCouleur(libelle, valeur || "violet", n, desactive);
   if (type === "case" && presentation === "ligne") return caseEnLigne({ libelle, valeur, avant, action, desactive, n });
   const racine = document.createElement("div");
@@ -150,5 +151,57 @@ function champCouleur(libelle, valeur, n, desactive) {
     rangee.append(label);
   }
   racine.append(legende, rangee);
+  return racine;
+}
+
+const CODE_COULEUR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+// C-002, `codeCouleur` : pastille native pour la souris (hors Tab), puis le champ texte. Rien n'est vérifié pendant la frappe.
+function champCodeCouleur({ libelle, valeur, erreur, desactive, n }) {
+  const racine = document.createElement("div");
+  racine.className = "champ champ-code-couleur";
+  const rangee = document.createElement("div");
+  rangee.className = "ya-code-couleur";
+  const pastille = document.createElement("input");
+  pastille.type = "color";
+  pastille.className = "ya-pastille";
+  pastille.tabIndex = -1;
+  pastille.setAttribute("aria-label", `Choisir : ${libelle}`);
+  const saisie = document.createElement("input");
+  saisie.type = "text";
+  saisie.id = `champ-${n}`;
+  saisie.className = "ya-input ya-code-couleur-saisie";
+  saisie.placeholder = "par défaut";
+  saisie.spellcheck = false;
+  saisie.setAttribute("autocomplete", "off");
+  saisie.setAttribute("aria-label", libelle);
+  saisie.value = valeur;
+  const suivre = () => {
+    const v = saisie.value;
+    const valide = CODE_COULEUR.test(v);
+    if (valide) pastille.value = v.length === 4 ? `#${v[1]}${v[1]}${v[2]}${v[2]}${v[3]}${v[3]}`.toLowerCase() : v.toLowerCase();
+    pastille.classList.toggle("vide", !valide);
+  };
+  saisie.addEventListener("input", suivre);
+  pastille.addEventListener("input", () => {
+    saisie.value = pastille.value.toLowerCase();
+    saisie.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  suivre();
+  pastille.disabled = desactive;
+  saisie.disabled = desactive;
+  rangee.append(pastille, saisie);
+  racine.append(rangee);
+  if (erreur) {
+    const e = document.createElement("div");
+    e.className = "ya-grille-erreur";
+    e.id = `champ-${n}-erreur`;
+    e.setAttribute("role", "alert");
+    e.textContent = erreur;
+    saisie.setAttribute("aria-invalid", "true");
+    saisie.setAttribute("aria-describedby", e.id);
+    // Le message va sous la ligne de la grille : l'appelant le place (`racine.messageErreur`).
+    racine.messageErreur = e;
+  }
   return racine;
 }

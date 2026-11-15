@@ -269,3 +269,15 @@ test("REQ115_AC1_AC4_code_en_ligne_du_mode_hybride_prend_la_couleur_qui_l_entour
   const sel = ":is(.cm-hy-lien, .cm-line.cm-hy-titre1, .cm-line.cm-hy-titre2, .cm-line.cm-hy-titre3, .cm-line.cm-hy-titre4, .cm-line.cm-hy-titre5, .cm-line.cm-hy-titre6, .cm-line.cm-hy-citation) .cm-hy-code";
   expect(corps(sel)).toContain("color: var(--md-code-couleur, inherit)");
 });
+
+test("REQ117_motif_grille_de_couleurs", () => {
+  expect(regle(".ya-grille-couleurs")).toMatch(/grid-template-columns:\s*1fr 124px 124px 124px/);
+  const entete = regle(".ya-grille-entete");
+  expect(entete).toMatch(/position:\s*sticky/);
+  expect(entete).toMatch(/background:\s*var\(--bg-300\)/);
+  expect(entete).toMatch(/border-bottom:\s*1px solid var\(--line\)/);
+  const erreur = regle(".ya-grille-erreur");
+  expect(erreur).toMatch(/color:\s*var\(--danger\)/);
+  expect(erreur).toMatch(/font-size:\s*12px/);
+  expect(erreur).toMatch(/line-height:\s*16px/);
+});

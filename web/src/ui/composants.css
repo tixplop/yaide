@@ -705,6 +705,31 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-swatch { position: relative; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; cursor: pointer; }
 .ya-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .ya-swatch span { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--c); color: var(--on-accent); pointer-events: none; }
+/* C-002 `codeCouleur` : pastille native de 26 px, 4 px, champ de 94 px. */
+.ya-code-couleur { display: flex; align-items: center; gap: var(--space-1); width: 124px; }
+.ya-pastille { box-sizing: border-box; flex: none; width: 26px; height: 26px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg-300); cursor: pointer; }
+.ya-pastille:hover { border-color: var(--ink); }
+.ya-pastille::-webkit-color-swatch-wrapper { padding: 3px; }
+.ya-pastille::-webkit-color-swatch { border: 0; border-radius: var(--radius-xs); }
+.ya-pastille::-moz-color-swatch { border: 0; border-radius: var(--radius-xs); }
+.ya-pastille.vide::-webkit-color-swatch { background: linear-gradient(to top right, transparent calc(50% - 0.75px), var(--ink-muted) calc(50% - 0.75px), var(--ink-muted) calc(50% + 0.75px), transparent calc(50% + 0.75px)); }
+.ya-pastille.vide::-moz-color-swatch { background: linear-gradient(to top right, transparent calc(50% - 0.75px), var(--ink-muted) calc(50% - 0.75px), var(--ink-muted) calc(50% + 0.75px), transparent calc(50% + 0.75px)); }
+.ya-pastille:disabled { opacity: .45; }
+.ya-code-couleur-saisie { flex: none; width: 94px; font-family: var(--font-mono); font-size: 12.5px; }
+.ya-code-couleur-saisie::placeholder { font-family: var(--font-sans); }
+
+/* C-001 `pastilles` : trois ronds de 8 px, 2 px entre eux, 6 px avant le libellé. */
+.ya-btn-pastilles { gap: 2px; }
+.ya-pastille-ronde { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--pastille-1); }
+.ya-pastille-ronde:nth-of-type(2) { background: var(--pastille-2); }
+.ya-pastille-ronde:nth-of-type(3) { background: var(--pastille-3); margin-right: 4px; }
+
+/* Motif Grille de couleurs (section « Couleurs markdown » de V-011). */
+.ya-grille-couleurs { display: grid; grid-template-columns: 1fr 124px 124px 124px; column-gap: var(--space-3); row-gap: var(--space-1); align-items: center; }
+.ya-grille-entete { position: sticky; top: 0; z-index: 1; background: var(--bg-300); border-bottom: 1px solid var(--line); }
+.ya-grille-nom { font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ya-grille-colonne { font-size: 12px; line-height: 16px; color: var(--ink-muted); }
+.ya-grille-erreur { grid-column: 2 / -1; font-size: 12px; line-height: 16px; color: var(--danger); }
 .ya-swatch svg { display: none; width: 12px; height: 12px; stroke-width: 2.4; }
 .ya-swatch input:checked + span svg { display: block; }
 .ya-swatch:hover span { box-shadow: 0 0 0 1px var(--ink); }
