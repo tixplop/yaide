@@ -2353,6 +2353,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn REQ119_AC1_AC2_descriptions_subagent_et_save_agent() {
+        let b = banc("a119-ac1", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        b.scenario(vec![texte("a", 1), texte("b", 1)]);
+        let id = b.envoyer(None, "un").unwrap();
+        b.fini(&id).await;
+        let id2 = b.envoyer_a(None, &[rel], "deux").unwrap();
+        b.fini(&id2).await;
+        for i in 0..2 {
+            let corps = b.corps(i);
+            let desc = |nom: &str| {
+                corps["tools"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|t| t["function"]["name"] == nom)
+                    .unwrap()["function"]["description"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            };
+            assert_eq!(desc("subagent"), "Run a temporary subagent. Use it when the user asks to launch, invoke or delegate work to subagents. It starts with an empty context, works alone on the prompt with the same tools as you (except subagent) and returns its final answer. Everything it needs must be in the prompt. Nothing is saved: a subagent is not a custom agent.");
+            assert_eq!(desc("save_agent"), "Create a custom agent (without folder; name is required) or modify the agent of folder (an omitted argument keeps its value). persona and instructions replace the whole persona and instructions files. Custom agents are permanent: they are saved in the project and listed in the Agents panel. Use this tool only when the user explicitly asks to create or modify a custom agent, never to run a subagent or a task: use subagent for that.");
+        }
+    }
+
+    #[tokio::test]
     async fn REQ100_AC2_AC4_sous_agent_isole_sans_trace_et_historique_relu() {
         let b = banc("a100-ac2", true, None).await;
         std::fs::write(b.dir.join("README.md"), "contenu-readme-z").unwrap();

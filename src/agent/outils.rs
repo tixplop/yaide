@@ -131,7 +131,7 @@ pub fn definitions() -> Vec<DefOutil> {
         ),
         def(
             "save_agent",
-            "Create a custom agent (without folder; name is required) or modify the agent of folder (an omitted argument keeps its value). persona and instructions replace the whole persona and instructions files.",
+            "Create a custom agent (without folder; name is required) or modify the agent of folder (an omitted argument keeps its value). persona and instructions replace the whole persona and instructions files. Custom agents are permanent: they are saved in the project and listed in the Agents panel. Use this tool only when the user explicitly asks to create or modify a custom agent, never to run a subagent or a task: use subagent for that.",
             json!({
                 "folder": texte("Folder of the agent to modify, as given by list_agents; omit to create"),
                 "name": texte("Agent name, unique whatever the case"),
@@ -145,7 +145,7 @@ pub fn definitions() -> Vec<DefOutil> {
         ),
         def(
             "subagent",
-            "Run a temporary subagent. It starts with an empty context, works alone on the prompt with the same tools as you (except subagent) and returns its final answer. Everything it needs must be in the prompt.",
+            "Run a temporary subagent. Use it when the user asks to launch, invoke or delegate work to subagents. It starts with an empty context, works alone on the prompt with the same tools as you (except subagent) and returns its final answer. Everything it needs must be in the prompt. Nothing is saved: a subagent is not a custom agent.",
             json!({"prompt": texte("The task for the subagent, with all the context it needs")}),
             &["prompt"],
         ),
