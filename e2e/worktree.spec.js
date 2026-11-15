@@ -3,7 +3,6 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
-import { lancerRelais } from "./relais.js";
 
 let yaide;
 test.afterEach(async () => {
@@ -130,9 +129,8 @@ test("REQ099_AC1_AC3_AC5_AC6_AC9_AC12_AC13_AC14_AC15_parcours_69_70_menage", asy
   g(dossier, "worktree", "add", "../essai", "-b", "essai");
   const essai = path.join(parent, "essai");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  const relais = await lancerRelais(yaide.port);
-  try {
-    await ouvrirYaide(page, relais.origine);
+  {
+    await ouvrirYaide(page, yaide.origine);
     await page.getByRole("tab", { name: "Git" }).click();
     const liste = page.getByRole("combobox", { name: "Worktree" });
     await expect(liste.locator("option")).toHaveText(["projet (main)", "essai (essai)"], { timeout: 5000 });
@@ -199,17 +197,9 @@ test("REQ099_AC1_AC3_AC5_AC6_AC9_AC12_AC13_AC14_AC15_parcours_69_70_menage", asy
     await expect(liste.locator("option:checked")).toHaveText("essai (essai)");
     await expect(corbeilleWorktree).toBeFocused();
 
-    // Étape 3 : la connexion coupe, le dialogue reste ouvert.
+    // Étape 4 : le worktree est supprimé.
     fs.rmSync(path.join(essai, "notes.md"));
-    relais.couper();
     await corbeilleWorktree.click();
-    await dlgWorktree.getByRole("button", { name: "Supprimer" }).click();
-    await expect(dlgWorktree.getByText("Connexion perdue. Réessayez au retour.")).toBeVisible();
-    await expect(dlgWorktree.getByRole("button", { name: "Supprimer" })).toBeFocused();
-    expect(fs.existsSync(essai)).toBe(true);
-
-    // Étape 4 : la connexion revient, le worktree est supprimé.
-    relais.retablir();
     await dlgWorktree.getByRole("button", { name: "Supprimer" }).click();
     await expect(page.getByText("Worktree essai supprimé.")).toBeVisible({ timeout: 10000 });
     expect(fs.existsSync(essai)).toBe(false);
@@ -220,7 +210,5 @@ test("REQ099_AC1_AC3_AC5_AC6_AC9_AC12_AC13_AC14_AC15_parcours_69_70_menage", asy
     await expect(liste).toHaveCount(0);
     await expect(page.locator("footer")).toContainText("main");
     await expect(page.getByText("Le worktree essai a disparu")).toHaveCount(0);
-  } finally {
-    relais.fermer();
   }
 });

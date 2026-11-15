@@ -952,6 +952,27 @@ test("REQ099_AC15_coupure_le_dialogue_reste_ouvert_avec_erreur_boutons_actifs_fo
   expect(corbeilleBranche(vue).disabled).toBe(false);
 });
 
+test("REQ099_AC9_coupure_le_dialogue_du_worktree_reste_ouvert_avec_erreur_focus_sur_Supprimer_rien_ne_change", async () => {
+  worktree.mettreAJour(WR);
+  worktree.choisir("../essai");
+  const { vue, dire } = await monter({ "/api/git/etat": { ...ETAT_B, branche: "essai" } });
+  const fetchOk = fetch;
+  corbeilleWt(vue).click();
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (url.startsWith("/api/git/worktree/supprimer")) throw new TypeError("réseau");
+    return fetchOk(url);
+  }));
+  boutonDlg("Supprimer").click();
+  await attendre();
+  await attendre();
+  expect(dlg()).toBeTruthy();
+  expect(dlg().querySelector(".message-erreur").textContent).toContain("Connexion perdue. Réessayez au retour.");
+  expect(boutonDlg("Supprimer").disabled).toBe(false);
+  expect(document.activeElement).toBe(boutonDlg("Supprimer"));
+  expect(dire).not.toHaveBeenCalled();
+  expect(worktree.choisi()).toBe("../essai");
+});
+
 test("REQ099_AC13_worktree_supprime_projet_choisi_sans_bandeau_a_disparu_message_et_focus_sur_Worktree", async () => {
   worktree.mettreAJour(WR);
   worktree.choisir("../essai");
