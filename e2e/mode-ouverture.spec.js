@@ -108,18 +108,15 @@ test("REQ083_P053_ouvrir_une_note_et_une_page", async ({ page, browserName }) =>
   await page.keyboard.press("Control+s");
   await expect(cadre(page).contentFrame().getByRole("heading", { name: "Compteur de lignes !" })).toBeVisible();
 
-  // Étapes 4 et 5 : mode éteint, onglet fermé, fichier rouvert (AC-083-4).
+  // Étape 4 : mode éteint.
   await onglet(page, "README.md").click();
   await hybride(page).click();
   await expect(hybride(page)).toHaveAttribute("aria-pressed", "false");
   await expect(hybride(page)).toBeFocused();
   await expect(lignes(page).nth(0)).toHaveText("# projet");
   await expect(lignes(page).nth(9)).toHaveText("## Lancer");
-  await page.getByRole("button", { name: "Fermer README.md" }).click();
-  await ligne(page, "README.md").click();
-  await expect(hybride(page)).toHaveAttribute("aria-pressed", "true");
-  const onglets = page.getByRole("tab", { name: /\.(rs|html|md)(,|$)/ });
-  await expect(onglets.last()).toHaveAccessibleName(/^README\.md(,|$)/);
+  // Étape 5 : onglet fermé puis fichier rouvert (AC-083-4) : editeur.test.js REQ083_AC4_ferme_puis_rouvert_reprend_le_defaut
+  // (README.md, notes.md, index.html). README.md reste ouvert pour l'étape 6.
 
   // Étape 6 : main.rs sans mode ni aperçu, diff sans mode hybride (AC-083-3).
   await onglet(page, "main.rs").click();
