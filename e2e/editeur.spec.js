@@ -740,7 +740,7 @@ test("REQ031_AC3_le_bundle_de_production_garde_les_notices_Lucide_et_Feather", (
 
 test("REQ061_parcours_P024_fermer_des_onglets_d_un_coup", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
-  const dossier = await ouvrir(page, (d) => fs.appendFileSync(path.join(d, "README.md"), "\nmodifié sur le disque\n"), true);
+  await ouvrir(page, (d) => fs.appendFileSync(path.join(d, "README.md"), "\nmodifié sur le disque\n"), true);
   const ong = (nom) => page.getByRole("tab", { name: new RegExp(`^${nom.replace(".", "\\.")}(,|$)`) });
   await ouvrirMain(page);
   await taper(page, "main.rs", "X");
@@ -793,24 +793,7 @@ test("REQ061_parcours_P024_fermer_des_onglets_d_un_coup", async ({ page, browser
   await expect(ong("a.txt")).toBeVisible();
   await expect(ong("main.rs")).toHaveAttribute("aria-selected", "true");
   await expect(editeur(page, "main.rs")).toBeFocused();
-  // 5. Clic droit sur main.rs, « Fermer les autres onglets » : a.txt, puis Abandonner.
-  await ong("main.rs").click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Fermer les autres onglets" }).click();
-  const dlgA = page.getByRole("dialog", { name: "Sauvegarder a.txt ?" });
-  await expect(dlgA).toBeVisible();
-  await expect(ong("a.txt")).toHaveAttribute("aria-selected", "true");
-  await dlgA.getByRole("button", { name: "Abandonner" }).click();
-  await expect(ong("a.txt")).toHaveCount(0);
-  expect(fs.readFileSync(path.join(dossier, "a.txt"), "utf8")).toBe("a");
-  await expect(editeur(page, "main.rs")).toBeFocused();
-  // 6. Un seul onglet : « Fermer tous les onglets », puis Sauvegarder écrit le fichier.
-  await ong("main.rs").click({ button: "right" });
-  await expect(page.getByRole("menuitem")).toHaveText(["Fermer tous les onglets"]);
-  await page.getByRole("menuitem", { name: "Fermer tous les onglets" }).click();
-  await page.getByRole("dialog", { name: "Sauvegarder main.rs ?" }).getByRole("button", { name: "Sauvegarder" }).click();
-  await expect(page.getByText("Aucun fichier ouvert.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Ouvrir un fichier" })).toBeFocused();
-  expect(fs.readFileSync(path.join(dossier, "src", "main.rs"), "utf8")).toContain("X");
+  // 5 et 6 (Fermer les autres onglets, Abandonner, Sauvegarder, un seul onglet, « Aucun fichier ouvert. ») : AC-061-2 à AC-061-7 et AC-061-12, editeur.test.js ; l'écriture et l'abandon : REQ014, ci-dessus.
   expect(await page.getByRole("tab", { name: /shell/i }).count()).toBe(nbShells);
 });
 
