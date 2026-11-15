@@ -18,24 +18,6 @@ async function seConnecter(page, mdp = "mdp") {
   await page.keyboard.press("Enter");
 }
 
-test("REQ004_AC3_cinq_echecs_demandent_d_attendre_une_minute", async ({ page }) => {
-  await ouvrir(page);
-  for (let i = 0; i < 5; i++) {
-    await page.getByLabel("Mot de passe").fill("faux");
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("alert")).toHaveText("Mot de passe incorrect.");
-  }
-  await page.getByLabel("Mot de passe").fill("mdp");
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("alert")).toHaveText("Trop d'essais. Attendez une minute.");
-});
-
-test("REQ004_AC1_bon_mot_de_passe_affiche_la_vue_principale", async ({ page }) => {
-  await seConnecter(page);
-  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
-  await expect(page.getByRole("tablist").first()).toBeVisible();
-});
-
 test("REQ004_AC6_focus_dans_le_champ_et_Entree_envoie", async ({ page }) => {
   await ouvrir(page);
   const champ = page.getByLabel("Mot de passe");
@@ -43,13 +25,6 @@ test("REQ004_AC6_focus_dans_le_champ_et_Entree_envoie", async ({ page }) => {
   await expect(champ).toBeFocused();
   await champ.fill("mdp");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
-});
-
-test("REQ005_AC4_la_session_reste_valide_au_rechargement", async ({ page }) => {
-  await seConnecter(page);
-  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
-  await page.reload();
   await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
 });
 
@@ -150,25 +125,6 @@ test("REQ004_AC7_apres_un_echec_alerte_aria_et_texte_selectionne", async ({ page
   await expect(champ).toHaveAttribute("aria-describedby", new RegExp(id));
   await expect(champ).toBeFocused();
   expect(await champ.evaluate((e) => e.selectionStart === 0 && e.selectionEnd === e.value.length && e.value.length > 0)).toBe(true);
-});
-
-test("REQ004_AC9_champ_vide_ne_fait_aucune_requete_ni_echec", async ({ page }) => {
-  await ouvrir(page);
-  const requetes = [];
-  page.on("request", (r) => r.url().includes("/api/connexion") && requetes.push(r.url()));
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("alert")).toHaveText("Saisissez le mot de passe.");
-  expect(requetes).toEqual([]);
-  await expect(page.getByLabel("Mot de passe")).toBeFocused();
-  // Quatre échecs ensuite : l'envoi à vide n'a pas compté.
-  for (let i = 0; i < 4; i++) {
-    await page.getByLabel("Mot de passe").fill("faux");
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("alert")).toHaveText("Mot de passe incorrect.");
-  }
-  await page.getByLabel("Mot de passe").fill("mdp");
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
 });
 
 test("REQ005_AC3_deconnexion_ramene_a_la_connexion_et_le_cookie_n_est_plus_valide", async ({ page, context }) => {

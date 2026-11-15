@@ -132,16 +132,6 @@ test("REQ026_AC2_AC8_clic_puis_clavier_ouvrent_le_fichier_a_la_ligne_et_focus_da
   });
 });
 
-test("REQ026_AC5_AC7_plus_de_500_resultats_gardent_500_et_le_disent", async ({ page }) => {
-  const dossier = depot();
-  fs.writeFileSync(path.join(dossier, "gros.txt"), "motrare\n".repeat(501));
-  await ouvrir(page, dossier);
-  await rail(page).click();
-  await chercher(page, "motrare");
-  await expect(page.getByText("500 premiers résultats. Précisez votre recherche.")).toBeVisible();
-  await expect(resultats(page).getByRole("option")).toHaveCount(500);
-});
-
 test("REQ026_AC2_fichier_deja_ouvert_va_a_la_ligne", async ({ page }) => {
   await ouvrir(page, depot());
   await page.getByRole("tree").getByText("src").first().click();

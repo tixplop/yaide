@@ -42,6 +42,14 @@ test("REQ037_AC13_au_dela_de_500_le_message_remplace_le_resume", async () => {
   v.detruire();
 });
 
+test("REQ026_AC5_AC7_500_resultats_affiches_et_le_message_de_limite", async () => {
+  const hits = Array.from({ length: 500 }, (_, i) => hit("gros.txt", i + 1, "motrare", 0, 7));
+  const v = await chercher({ resultats: hits, limite: true });
+  expect(v.corps.querySelectorAll('[role="option"]')).toHaveLength(500);
+  expect(v.corps.textContent).toContain("500 premiers résultats. Précisez votre recherche.");
+  v.detruire();
+});
+
 test("REQ037_AC8_groupe_nom_dossier_compteur_et_partie_trouvee_en_mark", async () => {
   const v = await chercher({ resultats: [hit("src/main.rs", 4), hit("src/main.rs", 19, "#[test] fn main_x", 8, 15)], limite: false });
   const g = v.corps.querySelector(".liste-groupe");

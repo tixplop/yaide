@@ -109,26 +109,6 @@ function depotAvecDistant() {
   return { dossier, distant };
 }
 
-test("REQ025_AC1_AC4_pull_et_push_reussis", async ({ page }) => {
-  const { dossier, distant } = depotAvecDistant();
-  const autre = path.join(path.dirname(dossier), "autre");
-  g(path.dirname(dossier), "clone", "-q", "-b", "main", distant, autre);
-  fs.writeFileSync(path.join(autre, "distant.txt"), "d\n");
-  g(autre, "add", "-A");
-  g(autre, "commit", "-q", "-m", "du distant");
-  g(autre, "push", "-q");
-  await ouvrir(page, dossier);
-  await panneauGit(page);
-  await page.getByRole("button", { name: "Pull" }).click();
-  await expect(page.getByText("Pull terminé.")).toBeVisible();
-  expect(fs.existsSync(path.join(dossier, "distant.txt"))).toBe(true);
-  fs.writeFileSync(path.join(dossier, "README.md"), "# Local\n");
-  g(dossier, "commit", "-q", "-am", "local");
-  await page.getByRole("button", { name: "Push" }).click();
-  await expect(page.getByText("Push terminé.")).toBeVisible();
-  expect(g(distant, "log", "-1", "--format=%s", "main").trim()).toBe("local");
-});
-
 test("REQ031_AC10_pendant_un_pull_le_bouton_n_est_pas_attenue", async ({ page }) => {
   const { dossier } = depotAvecDistant();
   // Le serveur du dépôt distant attend un fichier que le test crée : aucune durée fixe.

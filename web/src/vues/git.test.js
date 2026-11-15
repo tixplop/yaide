@@ -244,6 +244,23 @@ test("REQ025_AC4_pendant_le_pull_bouton_occupe_et_autres_actions_desactivees_pui
   expect(bouton(vue, "Pull").disabled).toBe(false);
 });
 
+test("REQ025_AC4_pendant_le_push_bouton_occupe_et_autres_actions_desactivees_puis_termine", async () => {
+  let fin;
+  const { vue } = await monter({ "/api/git/push": () => new Promise((r) => (fin = r)) });
+  bouton(vue, "Push").click();
+  const push = bouton(vue, "Push");
+  expect(push.textContent).toBe("Push…");
+  expect(push.getAttribute("aria-busy")).toBe("true");
+  expect(push.disabled).toBe(true);
+  expect(bouton(vue, "Pull").disabled).toBe(true);
+  expect(bouton(vue, "Commit").disabled).toBe(true);
+  fin(null);
+  await attendre();
+  await attendre();
+  expect(vue.corps.textContent).toContain("Push terminé.");
+  expect(bouton(vue, "Push").disabled).toBe(false);
+});
+
 test("REQ025_AC5_echec_du_push_renvoie_vers_le_shell_avec_le_message_de_git", async () => {
   const { vue } = await monter({ "/api/git/push": { status: 409, corps: { cause: "git", message: "Permission denied" } } });
   bouton(vue, "Push").click();

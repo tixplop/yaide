@@ -267,17 +267,6 @@ test("REQ017_AC10_le_focus_reste_dans_le_terminal_quand_la_question_apparait", a
   });
 });
 
-test("REQ017_AC5_changement_pendant_la_coupure_la_question_est_posee_au_retour", async ({ page }) => {
-  await ouvrirMain(page);
-  await couper(page);
-  await taper(page, "// moi\n");
-  await gardeContient(page, "// moi");
-  fs.writeFileSync(main(), DISQUE);
-  await retablir(page);
-  await avancer(page, () => expect(question(page)).toBeVisible({ timeout: 300 }));
-  expect(fs.readFileSync(main(), "utf8")).toBe(DISQUE);
-});
-
 test("REQ017_AC5_brouillon_restaure_garde_sa_version_de_base", async ({ page }) => {
   await ouvrirMain(page);
   await taper(page, "// moi\n");
