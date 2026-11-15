@@ -2199,3 +2199,93 @@ test("REQ120_AC15_ouverture_pendant_une_coupure_zone_vide_puis_image_au_retour",
   sondesImg.at(-1).onload();
   expect(zoneImage().querySelector("img")).not.toBeNull();
 });
+
+// ---- Aperçu SVG (REQ-121) ----
+test("REQ121_AC1_AC7_AC8_svg_ouvert_avec_apercu_seul_bouton_focus_editeur_barre_d_etat", () => {
+  const { e, surActif } = monter();
+  e.ouvrir({ chemin: "logo.svg", contenu: '<svg xmlns="http://www.w3.org/2000/svg"/>', version: "1" });
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+  const ap = document.querySelector('.ya-image[aria-label="Aperçu"]');
+  expect(ap).not.toBeNull();
+  expect(ap.hasAttribute("tabindex")).toBe(false);
+  expect(ap.querySelector("[tabindex],button,a,input")).toBeNull();
+  expect(document.querySelector('button[aria-label="Mode hybride"]')).toBeNull();
+  expect(document.activeElement).toBe(e.code.querySelector(".cm-content"));
+  expect(dernier(surActif)).toEqual({ position: "Ln 1, Col 1", langage: "XML" });
+});
+
+test("REQ121_AC5_masquer_propre_a_l_onglet_et_retour_a_l_ouverture", () => {
+  const { e } = monter();
+  e.ouvrir({ chemin: "logo.svg", contenu: "<svg/>", version: "1" });
+  boutonApercu().click();
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
+  expect(document.querySelector(".ya-image")).toBeNull();
+  e.ouvrir({ chemin: "b.svg", contenu: "<svg/>", version: "1" });
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+  croix("logo.svg").click();
+  e.ouvrir({ chemin: "logo.svg", contenu: "<svg/>", version: "1" });
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+});
+
+test("REQ121_AC5_apercu_masque_garde_au_rechargement", async () => {
+  vi.resetModules();
+  const gardee = [{ chemin: "logo.svg", apercu: false }];
+  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder: vi.fn(), retrouver: async () => ({ liste: gardee, actif: "logo.svg", disposition: { arbre: { id: "g1", actif: "logo.svg" }, courant: "g1" } }) }));
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => "<svg/>" })));
+  try {
+  const { vueEditeur: neuf } = await import("./editeur.js");
+  const e = neuf({ dire: vi.fn() });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  await e.restaurer();
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
+  expect(document.querySelector(".ya-image")).toBeNull();
+  } finally {
+    vi.doUnmock("../onglets-fichiers.js");
+    vi.resetModules();
+  }
+});
+
+test("REQ083_AC3_rust_reste_sans_apercu_a_l_ouverture", () => {
+  const { e } = monter();
+  e.ouvrir({ chemin: "main.rs", contenu: "fn main() {}", version: "1" });
+  expect(boutonApercu()).toBeNull();
+  expect(document.querySelector(".ya-image, iframe")).toBeNull();
+});
+
+test("REQ121_AC2_AC3_frappe_point_de_modification_sans_ecriture_et_dessin_retabli", () => {
+  const origine = globalThis.Image;
+  const sondes = [];
+  globalThis.Image = class {
+    constructor() {
+      sondes.push(this);
+    }
+  };
+  const fetchEspion = vi.fn();
+  vi.stubGlobal("fetch", fetchEspion);
+  try {
+    const donnees = (t) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(t)}`;
+    const rouge = '<svg xmlns="http://www.w3.org/2000/svg"><circle fill="red" r="5"/></svg>';
+    const { e } = monter();
+    e.ouvrir({ chemin: "logo.svg", contenu: rouge, version: "1" });
+    sondes[0].onload();
+    const vue = e.code.querySelector(".zone-code").vue;
+    const i = rouge.indexOf("red");
+    vue.dispatch({ changes: { from: i, to: i + 3, insert: "blue" } });
+    const bleu = rouge.replace("red", "blue");
+    sondes.at(-1).onload();
+    expect(document.querySelector(".ya-image img").getAttribute("src")).toBe(donnees(bleu));
+    expect(document.querySelector('[role=tab][aria-label^="logo.svg"]').dataset.modifie).toBe("true");
+    expect(fetchEspion).not.toHaveBeenCalled();
+    const fin = vue.state.doc.length;
+    vue.dispatch({ changes: { from: fin - 6, to: fin } });
+    sondes.at(-1).onerror();
+    expect(document.querySelector(".ya-image img").getAttribute("src")).toBe(donnees(bleu));
+    vue.dispatch({ changes: { from: vue.state.doc.length, insert: "</svg>" } });
+    sondes.at(-1).onload();
+    expect(document.querySelector(".ya-image img").getAttribute("src")).toBe(donnees(bleu));
+    expect(fetchEspion).not.toHaveBeenCalled();
+  } finally {
+    globalThis.Image = origine;
+  }
+});

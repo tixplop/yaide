@@ -33,7 +33,7 @@ const TEXTE_IMAGE_SUPPRIMEE = "Fichier supprimé du disque.";
 const estFichier = (o) => !o.claude && !o.opencode && !o.conversationAgent;
 const estTexte = (o) => estFichier(o) && !o.image; // un onglet d'image n'a ni texte, ni disque lu, ni éditeur
 const avecHybride = (chemin) => /\.(md|markdown)$/i.test(chemin);
-const avecApercu = (chemin) => /\.(md|markdown|html|htm)$/i.test(chemin);
+const avecApercu = (chemin) => /\.(md|markdown|html|htm|svg)$/i.test(chemin);
 
 /**
  * Éditeur de V-002. `dire({ texte, variante, fermable })` affiche un bandeau ; `ouvrirRapide()` ouvre V-006.
@@ -526,7 +526,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   /** `geste` : valeur rendue par `lecture(true)`. Sans valeur, l'ouverture est elle-même un geste. Une image ne se lit pas : `contenu` est absent, la suite est asynchrone. */
   function ouvrir({ chemin, contenu, version, ligne, geste = ++dernierGeste }) {
     if (estImage(chemin) && !trouver(chemin)) return ouvrirImage(chemin, geste);
-    if (!trouver(chemin)) creer({ chemin, contenu, version, hybride: avecHybride(chemin), apercu: /\.html?$/i.test(chemin) });
+    if (!trouver(chemin)) creer({ chemin, contenu, version, hybride: avecHybride(chemin), apercu: /\.(html?|svg)$/i.test(chemin) });
     suiteOuverture({ chemin, ligne, geste });
   }
 

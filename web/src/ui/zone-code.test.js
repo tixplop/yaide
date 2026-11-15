@@ -599,3 +599,74 @@ test("REQ011_AC11_marques_markdown_sans_couleur", () => {
     for (const r of regles) expect(r, marque).not.toMatch(/color:\s*var\(--syn/);
   }
 });
+
+// ---- Aperçu SVG (REQ-121) ----
+const donnees = (t) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(t)}`;
+const SVG_ROUGE = '<svg xmlns="http://www.w3.org/2000/svg"><circle fill="red" r="5"/></svg>';
+
+function avecSondes(f) {
+  const origine = globalThis.Image;
+  const sondes = [];
+  globalThis.Image = class {
+    constructor() {
+      sondes.push(this);
+    }
+  };
+  try {
+    f(sondes);
+  } finally {
+    globalThis.Image = origine;
+  }
+}
+
+test("REQ121_AC1_AC8_AC7_apercu_svg_present_source_en_data_alt_et_aucun_focusable", () => {
+  avecSondes((sondes) => {
+    const z = zoneCode({ contenu: SVG_ROUGE, langage: "xml", nom: "logo.svg", apercu: true });
+    sondes[0].onload();
+    const ap = z.querySelector(".ya-image");
+    expect(ap.getAttribute("aria-label")).toBe("Aperçu");
+    const img = ap.querySelector("img");
+    expect(img.getAttribute("src")).toBe(donnees(SVG_ROUGE));
+    expect(img.alt).toBe("logo.svg");
+    expect(ap.hasAttribute("tabindex")).toBe(false);
+    expect(ap.querySelector("[tabindex],button,a,input")).toBeNull();
+    expect(z.querySelector(".zone-code-apercu, iframe")).toBeNull();
+  });
+});
+
+test("REQ121_AC2_nouvelle_source_des_la_frappe_sans_ecriture", () => {
+  avecSondes((sondes) => {
+    const surChangement = vi.fn();
+    const z = zoneCode({ contenu: SVG_ROUGE, langage: "xml", nom: "logo.svg", apercu: true, surChangement });
+    sondes[0].onload();
+    z.vue.dispatch({ changes: { from: SVG_ROUGE.indexOf("red"), to: SVG_ROUGE.indexOf("red") + 3, insert: "blue" } });
+    const bleu = SVG_ROUGE.replace("red", "blue");
+    expect(sondes.at(-1).src).toBe(donnees(bleu));
+    sondes.at(-1).onload();
+    expect(z.querySelector("img").getAttribute("src")).toBe(donnees(bleu));
+    expect(surChangement).toHaveBeenCalledWith(bleu);
+  });
+});
+
+test("REQ121_AC3_AC10_texte_invalide_garde_le_dessin_et_vide_n_a_pas_d_image", () => {
+  avecSondes((sondes) => {
+    const z = zoneCode({ contenu: SVG_ROUGE, langage: "xml", nom: "logo.svg", apercu: true });
+    sondes[0].onload();
+    z.vue.dispatch({ changes: { from: SVG_ROUGE.length - 6, to: SVG_ROUGE.length } });
+    sondes.at(-1).onerror();
+    expect(z.querySelector("img").getAttribute("src")).toBe(donnees(SVG_ROUGE));
+    expect(z.querySelector(".ya-image").textContent).toBe("");
+    z.vue.dispatch({ changes: { from: z.vue.state.doc.length, insert: "</svg>" } });
+    sondes.at(-1).onload();
+    expect(z.querySelector("img").getAttribute("src")).toBe(donnees(SVG_ROUGE));
+    const v = zoneCode({ contenu: "", langage: "xml", nom: "vide.svg", apercu: true });
+    sondes.at(-1).onerror();
+    expect(v.querySelector("img")).toBeNull();
+    expect(v.querySelector(".ya-image").textContent).toBe("");
+  });
+});
+
+test("REQ121_AC1_un_xml_qui_n_est_pas_svg_n_a_pas_d_apercu_image", () => {
+  const z = zoneCode({ contenu: "<a/>", langage: "xml", nom: "a.xml", apercu: true });
+  expect(z.querySelector(".ya-image")).toBeNull();
+});

@@ -5,6 +5,7 @@ import { syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { supportLangage } from "./langages.js";
 import { apercu as creerApercu } from "./apercu.js";
 import { apercuHtml } from "./apercu-html.js";
+import { image } from "./image.js";
 import { couleurs } from "./couleurs-code.js";
 import { hybride as extensionHybride, TableauRendu, tableauxHybride } from "./hybride.js";
 import { themeCourant } from "./theme.js";
@@ -149,6 +150,14 @@ const clavierTableau = Prec.high(
   ]),
 );
 
+// Aperçu d'un SVG : une image C-017 dont la source est le texte lui-même (aucun script, aucune requête).
+function apercuSvg(nom, texte) {
+  const adresse = (t) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(t)}`;
+  const z = image({ src: adresse(texte), nom, zone: "apercu" });
+  z.element.maj = (t) => z.changerSource(adresse(t));
+  return z.element;
+}
+
 export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, document: cheminDocument, ligne, nom = "", surChangement, surPosition, surLien, surSurvolLien } = {}) {
   if (!MODES.includes(mode)) throw new Error(`zoneCode : mode inconnu « ${mode} »`);
   const diff = mode === "diff";
@@ -218,8 +227,11 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   racine.contenu = () => vue.state.doc.toString();
   racine.definirApercu = (actif) => {
     if (actif && !ap) {
-      ap = langage === "html" ? apercuHtml({ adresse: adresseApercu }) : creerApercu({ document: cheminDocument, surLien });
-      ap.maj(racine.contenu());
+      if (/\.svg$/i.test(nom)) ap = apercuSvg(nom, racine.contenu());
+      else {
+        ap = langage === "html" ? apercuHtml({ adresse: adresseApercu }) : creerApercu({ document: cheminDocument, surLien });
+        ap.maj(racine.contenu());
+      }
       racine.append(ap);
     } else if (!actif && ap) {
       if (ap.retirer) ap.retirer();
