@@ -200,7 +200,7 @@ test("REQ046_AC12_rechargement_les_deux_replis_restent", async ({ page }) => {
 test("REQ046_AC14_AC17_a_800_par_480_quatre_boutons_sans_chevauchement_et_info_bulle", async ({ page }) => {
   await page.clock.install();
   await page.setViewportSize({ width: 800, height: 480 });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   const noms = ["Ouverture rapide", "Replier le panneau", "Replier les shells", "Thème clair", "Déconnexion"];
   const boites = [];
   for (const nom of noms) boites.push(await bouton(page, nom).boundingBox());

@@ -119,7 +119,7 @@ test("REQ072_parcours_36_tache_et_sous_agent", async ({ page }) => {
   fs.writeFileSync(path.join(dossier, "NOTES.md"), "ancien\n");
   yaide = await lancerYaide({ dossier, opencode: fauxOpencode("sousagent") });
   await page.setViewportSize({ width: 1280, height: 800 });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await ligne(page, "src").click();
   await ligne(page, "args.rs").click();
   await ligne(page, "NOTES.md").click();
@@ -214,7 +214,7 @@ test("REQ072_parcours_37_question_erreur_a_800_par_480", async ({ page }) => {
   const opencode = fauxOpencode("formulaire");
   yaide = await lancerYaide({ opencode, claude: fauxClaude() });
   await page.setViewportSize({ width: 800, height: 480 });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
 
   // 1. Le rail droit à sept boutons sans défilement ; l'info-bulle de « opencode » entière, à gauche du bouton.
   const rail = page.locator(".cadre-rail-droit");
@@ -297,7 +297,7 @@ test("REQ074_parcours_38_choix_recharge_et_largeurs", async ({ page }) => {
   yaide = await lancerYaide({ opencode, claude: fauxClaude() });
   relais = await lancerRelais(yaide.port);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   const modele = page.getByLabel("Modèle", { exact: true });
   const effort = page.getByLabel("Effort", { exact: true });
   const etat = () => {
@@ -368,7 +368,7 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
   yaide = await lancerYaide({ dossier, opencode, claude: fauxClaude() });
   relais = await lancerRelais(yaide.port);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   const modele = page.getByLabel("Modèle", { exact: true }).and(page.locator(":visible"));
   const effort = page.getByLabel("Effort", { exact: true }).and(page.locator(":visible"));
   const compteur = page.locator(".session-saisie:visible .agent-compteur");
@@ -487,7 +487,7 @@ test("REQ077_parcours_42_44_arrivee_rechargement_nouvel_onglet", async ({ page, 
   yaide = await lancerYaide({ opencode, claude: fauxClaude() });
   relais = await lancerRelais(yaide.port);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   const requetes = [];
   await context.route("https://exemple.org/**", (route) => {
     requetes.push(route.request().url());
@@ -541,7 +541,7 @@ test("REQ072_AC31_AC32_bords_alignes_1200", async ({ page, browserName }) => {
   yaide = await lancerYaide({ opencode, claude: fauxClaude() });
   relais = await lancerRelais(yaide.port);
   await page.setViewportSize({ width: 1600, height: 900 });
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
   await boutonOpencode(page).click();
   await expect(champ(page)).toBeFocused();
@@ -631,7 +631,7 @@ test("REQ084_parcours_55_raisonnement_opencode", async ({ page }) => {
   yaide = await lancerYaide({ opencode, claude: fauxClaude() });
   relais = await lancerRelais(yaide.port);
   await page.setViewportSize({ width: 1600, height: 900 });
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   const conversation = page.getByRole("log", { name: "Conversation" });
   const raisons = conversation.getByRole("button", { name: "Raisonnement", exact: true });
 
@@ -718,7 +718,7 @@ test("REQ088_REQ091_parcours_61_63_sessions_et_suggestions", async ({ page }) =>
   yaide = await lancerYaide({ opencode, claude: fauxClaude(), dossier });
   relais = await lancerRelais(yaide.port);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await ouvrirYaide(page, relais.origine);
+  await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   const temoin = path.join(opencode, "temoin");
   expect(fs.existsSync(temoin)).toBe(false);
 

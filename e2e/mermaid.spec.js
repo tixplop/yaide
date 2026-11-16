@@ -2,16 +2,58 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { lancerYaide, ouvrirYaide, depotExemple, nomLigne } from "./aides.js";
-import { lancerRelais } from "./relais.js";
 
-// REQ-122 AC-122-2 : mermaid dessine sous la CSP de Yaide (`script-src 'self'`, sans `unsafe-eval`).
-test("REQ122_AC2_mermaid_dessine_sous_la_csp", async ({ page }) => {
-  const yaide = await lancerYaide();
+// P-090 et P-091 : parcours dans le navigateur.
+const ecrire = (dossier, f, contenu) => {
+  fs.mkdirSync(path.dirname(path.join(dossier, f)), { recursive: true });
+  fs.writeFileSync(path.join(dossier, f), contenu);
+};
+const ligne = (page, nom) => page.getByRole("tree", { name: "Fichiers" }).getByRole("treeitem", { name: nomLigne(nom) });
+const boite = (el) => el.evaluate((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+const proche = (a, b, pres = 1) => expect(Math.abs(a - b)).toBeLessThanOrEqual(pres);
+const fond = (el) => el.evaluate((e) => getComputedStyle(e).backgroundColor);
+const BLANC = "rgb(255, 255, 255)";
+/** Texte du dessin : l'adresse `data:` de l'`img`, décodée. */
+const texteDessin = (img) => img.evaluate((i) => decodeURIComponent(i.src.replace(/^data:[^,]*,/, "")).replace(/<style>.*?<\/style>/gs, "").replace(/<[^>]+>/g, ""));
+const largeurNaturelle = (img) => img.evaluate((i) => i.naturalWidth);
+const NOEUDS_30 = "graph LR\n" + Array.from({ length: 29 }, (_, i) => `  N${i}[Noeud ${i}] --> N${i + 1}[Noeud ${i + 1}]`).join("\n") + "\n";
+const ACTIF =
+  'graph TD\n  A[<img src=https://exemple.org/x.png onerror=window.__x=1>] --> B[<script>window.__s=1</script>]\n  click A "https://exemple.org"\n  click B appel\n';
+const ARCHITECTURE = [
+  "# Architecture",
+  "",
+  "Le schéma ci-dessous montre les pièces.",
+  "",
+  "## Vue d'ensemble",
+  "",
+  "```mermaid",
+  "graph TD",
+  "  N[Navigateur] --> S[Serveur yaide]",
+  "  S --> F[Fichiers du projet]",
+  "  S --> T[Shells]",
+  "```",
+  "",
+  "Fin.",
+  "",
+].join("\n");
+
+test("REQ122_AC1_AC2_AC3_AC4_AC6_AC8_AC9_parcours_P090_diagramme_dans_apercu_markdown", async ({ page }) => {
+  const dossier = depotExemple();
+  ecrire(dossier, "docs/architecture.md", ARCHITECTURE);
+  ecrire(dossier, "docs/brouillon.md", "# Brouillon\n\n```mermaid\ngraph TD; A[Début -->\n```\n");
+  ecrire(dossier, "docs/actif.md", "# Actif\n\n```mermaid\n" + ACTIF + "```\n");
+  ecrire(dossier, "docs/grand.md", "# Grand\n\n```mermaid\n" + NOEUDS_30 + "```\n");
+  ecrire(dossier, "docs/petit.md", "# Petit\n\n```mermaid\ngraph TD; A --> B\n```\n");
+  const yaide = await lancerYaide({ dossier });
   try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const requetes = [];
+    page.on("request", (r) => /^https?:/.test(r.url()) && requetes.push(r.url()));
     const erreurs = [];
     page.on("console", (m) => m.type() === "error" && erreurs.push(m.text()));
     page.on("pageerror", (e) => erreurs.push(String(e)));
     await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+    // AC-122-2 : mermaid dessine sous la CSP de Yaide (`script-src 'self'`, sans `unsafe-eval`).
     erreurs.length = 0;
     await page.evaluate(() => {
       window.violations = [];
@@ -60,62 +102,7 @@ test("REQ122_AC2_mermaid_dessine_sous_la_csp", async ({ page }) => {
     expect(dessins.restes).toBe(0);
     expect(await page.evaluate(() => window.violations)).toEqual([]);
     expect(erreurs).toEqual([]);
-  } finally {
-    await yaide.arreter();
-  }
-});
 
-// P-090 et P-091 : parcours dans le navigateur.
-const ecrire = (dossier, f, contenu) => {
-  fs.mkdirSync(path.dirname(path.join(dossier, f)), { recursive: true });
-  fs.writeFileSync(path.join(dossier, f), contenu);
-};
-const ligne = (page, nom) => page.getByRole("tree", { name: "Fichiers" }).getByRole("treeitem", { name: nomLigne(nom) });
-const boite = (el) => el.evaluate((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
-const proche = (a, b, pres = 1) => expect(Math.abs(a - b)).toBeLessThanOrEqual(pres);
-const fond = (el) => el.evaluate((e) => getComputedStyle(e).backgroundColor);
-const BLANC = "rgb(255, 255, 255)";
-/** Texte du dessin : l'adresse `data:` de l'`img`, décodée. */
-const texteDessin = (img) => img.evaluate((i) => decodeURIComponent(i.src.replace(/^data:[^,]*,/, "")).replace(/<style>.*?<\/style>/gs, "").replace(/<[^>]+>/g, ""));
-const largeurNaturelle = (img) => img.evaluate((i) => i.naturalWidth);
-const NOEUDS_30 = "graph LR\n" + Array.from({ length: 29 }, (_, i) => `  N${i}[Noeud ${i}] --> N${i + 1}[Noeud ${i + 1}]`).join("\n") + "\n";
-const ACTIF =
-  'graph TD\n  A[<img src=https://exemple.org/x.png onerror=window.__x=1>] --> B[<script>window.__s=1</script>]\n  click A "https://exemple.org"\n  click B appel\n';
-const ARCHITECTURE = [
-  "# Architecture",
-  "",
-  "Le schéma ci-dessous montre les pièces.",
-  "",
-  "## Vue d'ensemble",
-  "",
-  "```mermaid",
-  "graph TD",
-  "  N[Navigateur] --> S[Serveur yaide]",
-  "  S --> F[Fichiers du projet]",
-  "  S --> T[Shells]",
-  "```",
-  "",
-  "Fin.",
-  "",
-].join("\n");
-
-test("REQ122_AC1_AC3_AC4_AC6_AC8_AC9_parcours_P090_diagramme_dans_apercu_markdown", async ({ page }) => {
-  const dossier = depotExemple();
-  ecrire(dossier, "docs/architecture.md", ARCHITECTURE);
-  ecrire(dossier, "docs/brouillon.md", "# Brouillon\n\n```mermaid\ngraph TD; A[Début -->\n```\n");
-  ecrire(dossier, "docs/actif.md", "# Actif\n\n```mermaid\n" + ACTIF + "```\n");
-  ecrire(dossier, "docs/grand.md", "# Grand\n\n```mermaid\n" + NOEUDS_30 + "```\n");
-  ecrire(dossier, "docs/petit.md", "# Petit\n\n```mermaid\ngraph TD; A --> B\n```\n");
-  const yaide = await lancerYaide({ dossier });
-  const relais = await lancerRelais(yaide.port);
-  try {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    const requetes = [];
-    page.on("request", (r) => /^https?:/.test(r.url()) && requetes.push(r.url()));
-    const erreurs = [];
-    page.on("console", (m) => m.type() === "error" && erreurs.push(m.text()));
-    page.on("pageerror", (e) => erreurs.push(String(e)));
-    await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
     await ligne(page, "docs").click();
     const apercu = page.locator('[role="region"][aria-label="Aperçu"]:visible');
     const dessin = apercu.getByRole("img", { name: "Diagramme" });
@@ -148,9 +135,7 @@ test("REQ122_AC1_AC3_AC4_AC6_AC8_AC9_parcours_P090_diagramme_dans_apercu_markdow
     proche(apres.h, avant.h);
     await page.getByRole("button", { name: "Thème clair" }).click();
 
-    // AC-122-3 : « Suite » en moins de 1 s, sans Ctrl+S, pendant une coupure ; le disque ne change pas.
-    relais.couper();
-    await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." })).toBeVisible({ timeout: 20000 });
+    // AC-122-3 : « Suite » en moins de 1 s, sans Ctrl+S ; le disque ne change pas (la partie « pendant une coupure » : apercu.test.js, REQ122_AC3_nouveau_dessin_contenant_Suite_pendant_une_coupure_sans_aucune_requete).
     await editeur("architecture.md").click();
     await page.keyboard.press("Control+Home");
     for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowDown");
@@ -159,8 +144,6 @@ test("REQ122_AC1_AC3_AC4_AC6_AC8_AC9_parcours_P090_diagramme_dans_apercu_markdow
     await page.keyboard.type("S --> A[Suite]");
     await expect.poll(() => texteDessin(dessin), { timeout: 1000 }).toContain("Suite");
     expect(fs.readFileSync(path.join(dossier, "docs/architecture.md"), "utf8")).toBe(ARCHITECTURE);
-    relais.retablir();
-    await expect(page.getByRole("alert").filter({ hasText: "Connexion perdue" })).toHaveCount(0, { timeout: 20000 });
 
     // AC-122-4 : un bloc jamais lisible reste en code, texte exact, sans message.
     erreurs.length = 0;
@@ -201,9 +184,8 @@ test("REQ122_AC1_AC3_AC4_AC6_AC8_AC9_parcours_P090_diagramme_dans_apercu_markdow
     proche(p.w, np.w);
     proche(p.h, np.h);
 
-    expect(requetes.filter((u) => new URL(u).origin !== relais.origine)).toEqual([]);
+    expect(requetes.filter((u) => new URL(u).origin !== yaide.origine)).toEqual([]);
   } finally {
-    relais.fermer();
     await yaide.arreter();
   }
 });

@@ -572,7 +572,7 @@ test("REQ034_AC17_a_800_x_480_le_menu_reste_entier_sur_la_derniere_ligne_visible
   await page.setViewportSize({ width: 800, height: 480 });
   const dossier = await demarrer();
   for (let i = 0; i < 40; i++) fs.writeFileSync(path.join(dossier, `f${String(i).padStart(2, "0")}.txt`), "x");
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await expect(ligne(page, "f39.txt")).toBeAttached();
   const entier = async () => {
     const b = await page.getByRole("menu").boundingBox();
@@ -712,7 +712,7 @@ test("REQ050_AC4_partie_vide_reste_atteignable_a_800x480", async ({ page }) => {
   for (let i = 10; i < 50; i++) fs.writeFileSync(path.join(dossier, "lot", `f${i}.txt`), "x");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
   await page.setViewportSize({ width: 800, height: 480 });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await parChemin(page, "lot").click();
   await expect(parChemin(page, "lot/f49.txt")).toBeAttached();
   const defile = page.locator("aside.cadre-panneau .cadre-panneau-corps");
@@ -773,6 +773,7 @@ test("REQ125_AC1_parcours_de_copie_menu_en_tete_ctrl_c_ctrl_v_refuse_et_coller_s
   const m = menu(page, "Actions sur b.txt");
   await expect(arbre(page).getByRole("treeitem", { selected: true })).toHaveCount(2);
   await expect(m.getByRole("menuitem", { name: /^Coller/ })).toHaveAttribute("aria-disabled", "true");
+  await expect(m.locator(":focus")).toHaveCount(1); // le menu a pris le focus avant les flèches
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");

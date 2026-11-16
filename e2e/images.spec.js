@@ -174,7 +174,7 @@ test("REQ120_AC1_AC4_AC6_AC9_AC11_AC12_parcours_P088_images_du_projet", async ({
     // AC-120-6 : image remplacée sur le disque → la nouvelle en moins de 5 s.
     await ligne(page, "logo.png").click();
     // Le sondage du disque (toutes les 1,5 s) a vu le logo avant qu'on le remplace.
-    for (let i = 0; i < 2; i++) await page.waitForResponse((r) => r.url().includes("/api/fichiers/versions"));
+    await (await page.waitForRequest((r) => r.url().includes("/api/fichiers/versions"))).response();
     ecrire(dossier, "img/logo.png", disque(256, [200, 0, 0]));
     await expect.poll(() => largeurNaturelle(dessin(page, "logo.png")), { timeout: 5000 }).toBe(256);
 
@@ -182,14 +182,8 @@ test("REQ120_AC1_AC4_AC6_AC9_AC11_AC12_parcours_P088_images_du_projet", async ({
     await ligne(page, "casse.png").click();
     await expect(page.getByRole("status").filter({ hasText: "casse.png ne peut pas être affiché." })).toBeVisible();
 
-    // AC-120-6 : image supprimée hors de Yaide → l'onglet reste, l'image part, le message s'affiche.
-    fs.rmSync(path.join(dossier, "img/capture.png"));
-    await onglet(page, "capture.png").click();
-    await expect(page.getByRole("alert").filter({ hasText: "Fichier supprimé du disque." })).toBeVisible({ timeout: 5000 });
-    await expect(onglet(page, "capture.png")).toBeVisible();
-    await expect(dessin(page, "capture.png")).toHaveCount(0);
-    await page.getByRole("button", { name: /Fermer capture\.png/ }).click();
-    await expect(onglet(page, "capture.png")).toHaveCount(0);
+    // AC-120-6 (seconde phrase : image supprimée hors de Yaide, onglet gardé, zone vide, « Fichier supprimé du disque. ») :
+    // editeur.test.js, REQ120_AC6_AC13_AC14_version_changee_nouvelle_source_supprime_puis_recree, et image.test.js, REQ120_AC6_absente_zone_vide_et_retour.
 
     // AC-120-9 : toutes les requêtes vont au serveur de Yaide.
     const externes = requetes().filter((u) => new URL(u).origin !== yaide.origine);

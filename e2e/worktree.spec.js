@@ -106,7 +106,7 @@ test("REQ099_AC1_AC3_AC5_AC6_AC12_AC13_AC14_AC15_parcours_69_70_menage", async (
   g(dossier, "worktree", "add", "../essai", "-b", "essai");
   const essai = path.join(parent, "essai");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await page.getByRole("tab", { name: "Git" }).click();
   const liste = page.getByRole("combobox", { name: "Worktree" });
   await expect(liste.locator("option")).toHaveText(["projet (main)", "essai (essai)"], { timeout: 5000 });

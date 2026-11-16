@@ -579,7 +579,7 @@ test("REQ080_P051_parcours_largeur_hauteur_clavier_rechargement", async ({ page 
 test("REQ080_P052_petite_fenetre_sans_place", async ({ page }) => {
   yaide = await lancerYaide();
   await page.setViewportSize({ width: 1700, height: 1000 });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await ouvrirFichiers(page, "src");
   await ouvrirFichiers(page, "main.rs", "README.md");
   await deposer(page, onglet(page, /^README\.md/), groupes(page).first(), "droite");

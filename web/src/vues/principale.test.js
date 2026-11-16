@@ -1343,6 +1343,18 @@ test("REQ124_AC1_ctrl_s_met_a_jour_le_fichier_dans_la_base_avec_les_agents", asy
   expect(appels.indexOf("PUT /api/fichier")).toBeLessThan(appels.indexOf("POST /api/connaissance/mises-a-jour"));
 });
 
+test("REQ124_AC6_le_message_de_mise_a_jour_s_affiche_sans_deplacer_le_focus_ni_le_curseur_et_la_frappe_continue", async () => {
+  const appels = await ctrlSSurNotes();
+  await vi.waitFor(() => expect(appels).toContain("POST /api/connaissance/mises-a-jour"));
+  const zone = document.querySelector(".zone-code:not([hidden])");
+  await vi.waitFor(() => expect(document.body.textContent).toContain("Mise à jour de notes.md dans la base de connaissance…"));
+  expect(document.activeElement).toBe(zone.vue.contentDOM);
+  expect(zone.vue.state.selection.main.head).toBe(0); // curseur resté où il était
+  zone.vue.dispatch({ changes: { from: 0, insert: "Y" } });
+  expect(zone.vue.state.doc.toString()).toBe("YXabc");
+  expect(document.activeElement).toBe(zone.vue.contentDOM);
+});
+
 test("REQ124_AC2_agents_desactives_ctrl_s_ne_touche_pas_a_la_base", async () => {
   const appels = await ctrlSSurNotes({ reglages: { fonctions: { agents: false } } });
   await new Promise((r) => setTimeout(r, 50));

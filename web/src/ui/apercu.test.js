@@ -194,6 +194,25 @@ test("REQ122_AC3_nouveau_dessin_apres_la_frappe_src_au_load_et_taper_ailleurs_ne
   expect(texteSvg(img)).toContain("A --> Z");
 });
 
+test("REQ122_AC3_nouveau_dessin_contenant_Suite_pendant_une_coupure_sans_aucune_requete", async () => {
+  const el = await creerDiag();
+  await passer();
+  const img = el.querySelector(".ya-diagramme img");
+  const fetchVrai = globalThis.fetch;
+  const Vrai = globalThis.Image;
+  globalThis.fetch = vi.fn(() => Promise.reject(new TypeError("coupure")));
+  globalThis.Image = class { set src(v) { setTimeout(() => this.onload()); } };
+  try {
+    el.maj(FLUX.replace("A --> B", "S --> A[Suite]"));
+    await passer();
+    expect(texteSvg(img)).toContain("Suite");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  } finally {
+    globalThis.fetch = fetchVrai;
+    globalThis.Image = Vrai;
+  }
+});
+
 test("REQ122_AC4_null_garde_le_dessin_et_bloc_jamais_lu_reste_en_pre", async () => {
   const el = await creerDiag();
   await passer();

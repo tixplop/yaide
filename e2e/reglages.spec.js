@@ -224,7 +224,7 @@ test("REQ070_parcours_33_claude_seul_a_800_par_480", async ({ page }) => {
   yaide = await lancerYaide({ dossier, claude: fauxClaude() });
   const fichier = path.join(dossier, ".yaide", "interface.json");
   await page.setViewportSize({ width: 800, height: 480 });
-  await ouvrirYaide(page, yaide.origine);
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await page.getByRole("tab", { name: "Git", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Git", exact: true })).toHaveAttribute("aria-selected", "true");
   fs.mkdirSync(path.dirname(fichier), { recursive: true });
