@@ -3,8 +3,9 @@ import { indication } from "./indication.js";
 const ZONES = ["onglet", "apercu"];
 
 // C-017 : une image entière dans sa zone, en lecture seule.
-export function image({ src, nom: nomInitial, zone = "onglet", coupe = false }) {
-  if (!src) throw new Error("image : src requis");
+/** `chargement: false` : sans `src`, l'image naît à l'état « absente » et n'affiche jamais « Chargement… » (aperçu d'un dessin calculé). */
+export function image({ src, nom: nomInitial, zone = "onglet", coupe = false, chargement = true }) {
+  if (!src && chargement) throw new Error("image : src requis");
   if (!nomInitial) throw new Error("image : nom requis");
   let nom = nomInitial;
   if (!ZONES.includes(zone)) throw new Error(`image : zone inconnue « ${zone} »`);
@@ -20,7 +21,7 @@ export function image({ src, nom: nomInitial, zone = "onglet", coupe = false }) 
   let img = null;
   let courante = "";
   let jeton = 0;
-  let premier = true; // aucune image encore affichée : « Chargement… » permis
+  let premier = chargement; // aucune image encore affichée : « Chargement… » permis
   let enCoupure = coupe;
   let echec = false; // une erreur pendant la coupure : on reprend au retour
 
@@ -67,7 +68,7 @@ export function image({ src, nom: nomInitial, zone = "onglet", coupe = false }) 
     sonde.src = adresse;
   }
 
-  charger(src);
+  if (src) charger(src);
 
   return {
     element,

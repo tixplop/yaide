@@ -6,6 +6,7 @@ import { supportLangage } from "./langages.js";
 import { apercu as creerApercu } from "./apercu.js";
 import { apercuHtml } from "./apercu-html.js";
 import { image } from "./image.js";
+import { chargerMermaid, adresseDiagramme } from "./diagramme.js";
 import { couleurs } from "./couleurs-code.js";
 import { hybride as extensionHybride, TableauRendu, tableauxHybride } from "./hybride.js";
 import { themeCourant } from "./theme.js";
@@ -158,6 +159,53 @@ function apercuSvg(nom, texte) {
   return z.element;
 }
 
+// Aperçu d'un `.mmd` : image C-017 vide tant qu'aucun dessin n'a réussi ; un texte illisible garde le dernier dessin (REQ-123).
+function apercuMmd(nom, texte) {
+  const z = image({ nom, zone: "apercu", chargement: false });
+  let minuteur = null;
+  let jeton = 0;
+  let courant = texte;
+  let aReprendre = false;
+  async function dessiner() {
+    const mon = ++jeton;
+    if (!courant.trim()) {
+      z.definirEtat("absente");
+      return;
+    }
+    let mermaid;
+    try {
+      mermaid = await chargerMermaid();
+    } catch {
+      if (mon === jeton) aReprendre = true; // coupure : dessin au retour
+      return;
+    }
+    const d = await mermaid.dessiner(courant).catch(() => null);
+    if (mon !== jeton || !d) return;
+    z.changerSource(adresseDiagramme(d.svg));
+  }
+  const el = z.element;
+  el.maj = (t) => {
+    courant = t;
+    aReprendre = false;
+    clearTimeout(minuteur);
+    minuteur = setTimeout(dessiner, 100);
+  };
+  el.definirCoupe = (oui) => {
+    z.definirCoupe(oui);
+    if (!oui && aReprendre) {
+      aReprendre = false;
+      dessiner();
+    }
+  };
+  el.retirer = () => {
+    clearTimeout(minuteur);
+    jeton++;
+    el.remove();
+  };
+  dessiner();
+  return el;
+}
+
 export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, document: cheminDocument, ligne, nom = "", surChangement, surPosition, surLien, surSurvolLien } = {}) {
   if (!MODES.includes(mode)) throw new Error(`zoneCode : mode inconnu « ${mode} »`);
   const diff = mode === "diff";
@@ -228,6 +276,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   racine.definirApercu = (actif) => {
     if (actif && !ap) {
       if (/\.svg$/i.test(nom)) ap = apercuSvg(nom, racine.contenu());
+      else if (/\.mmd$/i.test(nom)) ap = apercuMmd(nom, racine.contenu());
       else {
         ap = langage === "html" ? apercuHtml({ adresse: adresseApercu }) : creerApercu({ document: cheminDocument, surLien });
         ap.maj(racine.contenu());

@@ -209,3 +209,15 @@ test("REQ120_AC8_renommer_change_nom_accessible_alt_et_message_d_erreur", () => 
   expect(z.element.textContent).toBe("autre.png ne peut pas être affiché.");
   expect(() => z.renommer("")).toThrow();
 });
+
+test("REQ123_AC1_sans_src_et_sans_chargement_l_image_est_absente_et_n_affiche_jamais_chargement", () => {
+  const z = image({ nom: "flux.mmd", zone: "apercu", chargement: false });
+  expect(z.element.querySelector("img, .indication")).toBeNull();
+  expect(sondes).toHaveLength(0);
+  z.changerSource("data:image/svg+xml,a");
+  vi.advanceTimersByTime(500);
+  expect(z.element.querySelector(".indication")).toBeNull();
+  charge(sondes[0]);
+  expect(z.element.querySelector("img").getAttribute("src")).toBe("data:image/svg+xml,a");
+  expect(() => image({ nom: "x.png" })).toThrow();
+});

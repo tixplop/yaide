@@ -9,6 +9,11 @@ import { nomLangage } from "../ui/langages.js";
 import { choisi } from "../worktree.js";
 import { cadre } from "../ui/cadre.js";
 
+vi.mock("../ui/diagramme.js", () => ({
+  chargerMermaid: () => Promise.resolve({ dessiner: async (t) => (t.startsWith("graph") ? { svg: "<svg/>", largeur: 1, hauteur: 1 } : null) }),
+  adresseDiagramme: (svg) => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg),
+}));
+
 // Faux vueClaude : un corps avec un champ de saisie, et le journal des appels dans l'ordre.
 const faux = vi.hoisted(() => ({ vues: [], oc: [], ag: [], journal: [] }));
 vi.mock("./claude.js", () => ({
@@ -2287,5 +2292,70 @@ test("REQ121_AC2_AC3_frappe_point_de_modification_sans_ecriture_et_dessin_retabl
     expect(fetchEspion).not.toHaveBeenCalled();
   } finally {
     globalThis.Image = origine;
+  }
+});
+
+// ---- Aperçu mermaid (REQ-123) ----
+test("REQ123_AC1_AC7_mmd_ouvert_avec_apercu_seul_bouton_focus_editeur_barre_d_etat", () => {
+  const { e, surActif } = monter();
+  e.ouvrir({ chemin: "FLUX.MMD", contenu: "graph TD; A-->B", version: "1" });
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+  const ap = document.querySelector('.ya-image[aria-label="Aperçu"]');
+  expect(ap).not.toBeNull();
+  expect(ap.hasAttribute("tabindex")).toBe(false);
+  expect(ap.querySelector("[tabindex],button,a,input")).toBeNull();
+  expect(document.querySelector('button[aria-label="Mode hybride"]')).toBeNull();
+  expect(document.activeElement).toBe(e.code.querySelector(".cm-content"));
+  expect(dernier(surActif)).toEqual({ position: "Ln 1, Col 1", langage: "Texte" });
+});
+
+test("REQ123_AC1_AC6_083_AC3_seuls_les_mmd_s_ouvrent_avec_apercu", () => {
+  const { e } = monter();
+  e.ouvrir({ chemin: "notes.txt", contenu: "x", version: "1" });
+  e.ouvrir({ chemin: "main.rs", contenu: "fn main() {}", version: "1" });
+  e.ouvrir({ chemin: "style.css", contenu: "a {}", version: "1" });
+  expect(boutonApercu()).toBeNull();
+  expect(document.querySelector(".ya-image")).toBeNull();
+});
+
+test("REQ123_AC2_frappe_dans_un_mmd_point_de_modification_sans_ecriture", () => {
+  const fetchEspion = vi.fn();
+  vi.stubGlobal("fetch", fetchEspion);
+  const { e } = monter();
+  e.ouvrir({ chemin: "flux.mmd", contenu: "graph TD; A-->B", version: "1" });
+  e.code.querySelector(".zone-code").vue.dispatch({ changes: { from: 0, insert: " " } });
+  expect(document.querySelector('[role=tab][aria-label^="flux.mmd"]').dataset.modifie).toBe("true");
+  expect(fetchEspion).not.toHaveBeenCalled();
+});
+
+test("REQ123_AC5_masquer_propre_a_l_onglet_et_retour_a_l_ouverture", () => {
+  const { e } = monter();
+  e.ouvrir({ chemin: "flux.mmd", contenu: "graph TD; A-->B", version: "1" });
+  boutonApercu().click();
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
+  expect(document.querySelector(".ya-image")).toBeNull();
+  e.ouvrir({ chemin: "b.mmd", contenu: "graph TD; A-->B", version: "1" });
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+  croix("flux.mmd").click();
+  e.ouvrir({ chemin: "flux.mmd", contenu: "graph TD; A-->B", version: "1" });
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+});
+
+test("REQ123_AC5_apercu_masque_garde_au_rechargement", async () => {
+  vi.resetModules();
+  const gardee = [{ chemin: "flux.mmd", apercu: false }];
+  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder: vi.fn(), retrouver: async () => ({ liste: gardee, actif: "flux.mmd", disposition: { arbre: { id: "g1", actif: "flux.mmd" }, courant: "g1" } }) }));
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => "graph TD; A-->B" })));
+  try {
+    const { vueEditeur: neuf } = await import("./editeur.js");
+    const e = neuf({ dire: vi.fn() });
+    editeurs.push(e);
+    document.body.append(e.fil, e.barre, e.code);
+    await e.restaurer();
+    expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
+    expect(document.querySelector(".ya-image")).toBeNull();
+  } finally {
+    vi.doUnmock("../onglets-fichiers.js");
+    vi.resetModules();
   }
 });

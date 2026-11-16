@@ -7,6 +7,12 @@ import { langagePourFichier, IDENTIFIANTS } from "./langages.js";
 import { rendreMarkdown } from "./apercu.js";
 import { changerTheme } from "./theme.js";
 
+const mm = vi.hoisted(() => ({ charger: null, dessiner: null }));
+vi.mock("./diagramme.js", () => ({
+  chargerMermaid: () => mm.charger(),
+  adresseDiagramme: (svg) => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg),
+}));
+
 // jsdom n'a pas de mise en page : CodeMirror mesure avec ces deux méthodes.
 Range.prototype.getClientRects ??= () => [];
 Range.prototype.getBoundingClientRect ??= () => ({ left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 });
@@ -670,3 +676,118 @@ test("REQ121_AC1_un_xml_qui_n_est_pas_svg_n_a_pas_d_apercu_image", () => {
   const z = zoneCode({ contenu: "<a/>", langage: "xml", nom: "a.xml", apercu: true });
   expect(z.querySelector(".ya-image")).toBeNull();
 });
+
+// ---- Aperçu mermaid (REQ-123) ----
+const SVG_MMD = (n) => `<svg width="10" height="10">${n}</svg>`;
+const adrMmd = (n) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(SVG_MMD(n))}`;
+
+function avecMermaid(f) {
+  return async () => {
+    const origine = globalThis.Image;
+    const sondes = [];
+    globalThis.Image = class {
+      constructor() {
+        sondes.push(this);
+      }
+    };
+    mm.dessiner = vi.fn(async (t) => (t.startsWith("graph") && !t.includes("[") ? { svg: SVG_MMD(t), largeur: 10, hauteur: 10 } : null));
+    mm.charger = () => Promise.resolve({ dessiner: mm.dessiner });
+    vi.useFakeTimers();
+    try {
+      await f(sondes);
+    } finally {
+      vi.useRealTimers();
+      globalThis.Image = origine;
+    }
+  };
+}
+const attendre = () => vi.advanceTimersByTimeAsync(150);
+
+test("REQ123_AC1_AC8_apercu_mmd_present_dessin_en_data_et_alt", avecMermaid(async (sondes) => {
+  const z = zoneCode({ contenu: "graph TD; A-->B", nom: "flux.mmd", apercu: true });
+  await attendre();
+  sondes.at(-1).onload();
+  const ap = z.querySelector(".ya-image");
+  expect(ap.getAttribute("aria-label")).toBe("Aperçu");
+  expect(ap.hasAttribute("tabindex")).toBe(false);
+  expect(ap.querySelector("[tabindex],button,a,input")).toBeNull();
+  const img = ap.querySelector("img");
+  expect(img.getAttribute("src")).toBe(adrMmd("graph TD; A-->B"));
+  expect(img.alt).toBe("flux.mmd");
+}));
+
+test("REQ123_AC1_premier_dessin_vide_sans_chargement_pendant_le_chargement_de_mermaid", avecMermaid(async () => {
+  let fin;
+  mm.charger = () => new Promise((r) => (fin = r));
+  const z = zoneCode({ contenu: "graph TD; A-->B", nom: "flux.mmd", apercu: true });
+  await attendre();
+  expect(z.querySelector(".ya-image img")).toBeNull();
+  expect(z.querySelector(".ya-image").textContent).toBe("");
+  fin({ dessiner: mm.dessiner });
+  await attendre();
+  expect(z.querySelector(".ya-image").textContent).toBe("");
+  expect(mm.dessiner).toHaveBeenCalledTimes(1);
+}));
+
+test("REQ123_AC2_nouvelle_source_apres_la_frappe_sans_ecriture", avecMermaid(async (sondes) => {
+  const surChangement = vi.fn();
+  const z = zoneCode({ contenu: "graph TD; A-->B", nom: "flux.mmd", apercu: true, surChangement });
+  await attendre();
+  sondes.at(-1).onload();
+  z.vue.dispatch({ changes: { from: z.vue.state.doc.length, insert: "; B-->C" } });
+  z.vue.dispatch({ changes: { from: z.vue.state.doc.length, insert: "; C-->D" } });
+  await vi.advanceTimersByTimeAsync(99);
+  expect(mm.dessiner).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(5);
+  expect(mm.dessiner).toHaveBeenCalledTimes(2);
+  sondes.at(-1).onload();
+  expect(z.querySelector("img").getAttribute("src")).toBe(adrMmd("graph TD; A-->B; B-->C; C-->D"));
+  expect(surChangement).toHaveBeenCalledTimes(2);
+}));
+
+test("REQ123_AC3_texte_illisible_garde_le_dessin_vide_et_inconnu_sans_image", avecMermaid(async (sondes) => {
+  const z = zoneCode({ contenu: "graph TD; A-->B", nom: "flux.mmd", apercu: true });
+  await attendre();
+  sondes.at(-1).onload();
+  z.vue.dispatch({ changes: { from: 0, to: z.vue.state.doc.length, insert: "graph TD; A[" } });
+  await attendre();
+  expect(z.querySelector("img").getAttribute("src")).toBe(adrMmd("graph TD; A-->B"));
+  expect(z.querySelector(".ya-image").textContent).toBe("");
+  z.vue.dispatch({ changes: { from: 0, to: z.vue.state.doc.length, insert: "graph TD; C-->D" } });
+  await attendre();
+  sondes.at(-1).onload();
+  expect(z.querySelector("img").getAttribute("src")).toBe(adrMmd("graph TD; C-->D"));
+  const v = zoneCode({ contenu: "", nom: "vide.mmd", apercu: true });
+  const f = zoneCode({ contenu: "n'importe quoi", nom: "faux.mmd", apercu: true });
+  await attendre();
+  for (const x of [v, f]) {
+    expect(x.querySelector("img")).toBeNull();
+    expect(x.querySelector(".ya-image").textContent).toBe("");
+  }
+  expect(mm.dessiner).not.toHaveBeenCalledWith("");
+  z.vue.dispatch({ changes: { from: 0, to: z.vue.state.doc.length } });
+  await attendre();
+  expect(z.querySelector("img")).toBeNull();
+}));
+
+test("REQ123_AC2_coupure_avant_le_chargement_vide_puis_dessin_au_retour", avecMermaid(async (sondes) => {
+  mm.charger = () => Promise.reject(new Error("coupé"));
+  const z = zoneCode({ contenu: "graph TD; A-->B", nom: "flux.mmd", apercu: true });
+  z.definirCoupe(true);
+  await attendre();
+  expect(z.querySelector("img")).toBeNull();
+  mm.charger = () => Promise.resolve({ dessiner: mm.dessiner });
+  z.definirCoupe(false);
+  await attendre();
+  sondes.at(-1).onload();
+  expect(z.querySelector("img").getAttribute("src")).toBe(adrMmd("graph TD; A-->B"));
+}));
+
+test("REQ123_AC6_autres_fichiers_sans_apercu_mermaid", avecMermaid(async () => {
+  for (const nom of ["notes.txt", "main.rs"]) {
+    const z = zoneCode({ contenu: "graph TD; A-->B", nom });
+    await attendre();
+    expect(z.querySelector(".ya-image")).toBeNull();
+  }
+  expect(mm.dessiner).not.toHaveBeenCalled();
+}));
