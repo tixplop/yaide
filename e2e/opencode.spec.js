@@ -408,20 +408,24 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
   await expect(compteur).toHaveText("15 k / 200 k · 8 %");
   await expect(champ(page)).toBeFocused();
   const couleur8 = await compteur.evaluate((e) => getComputedStyle(e).color);
+  await expect(page.getByRole("button", { name: "Arrêter" })).toBeHidden(); // le tour est fini avant de changer de modèle
 
   // AC-076-6 : GPT-5, la fenêtre change, pas les tokens.
   await modele.selectOption({ label: "GPT-5 · openai" });
   await expect(compteur).toHaveText("15 k / 400 k · 4 %");
+  await expect.poll(() => sessions().at(-1).model?.providerID).toBe("openai"); // choix reçu par le serveur avant le suivant, sinon deux demandes peuvent se croiser
 
   // AC-076-4 (rechargement : même valeur, relue dans l'historique) retiré : web/src/opencode.test.js REQ076_AC4_relu_dans_l_historique et REQ074_AC2_valeur_de_la_session_variant_default_ou_absent.
 
   // AC-076-7 : fenêtre inconnue (openrouter) → pas de compteur, barre à 26 px.
   await modele.selectOption({ label: "Claude Sonnet 4.5 · openrouter" });
   await expect(compteur).toBeHidden();
+  await expect.poll(() => sessions().at(-1).model?.providerID).toBe("openrouter");
   expect((await barre.boundingBox()).height).toBeCloseTo(26, 0);
 
   // Retour sur un modèle à fenêtre (200 k), puis un tour qui dépasse la fenêtre : « 210 k / 200 k · 105 % », même couleur qu'à 8 %.
   await modele.selectOption({ label: "Claude Sonnet 4.5 · anthropic" });
+  await expect.poll(() => sessions().at(-1).model?.providerID).toBe("anthropic");
   await envoyer(page, "[scenario:depasse] Dis bonjour.");
   await expect(compteur).toHaveText("210 k / 200 k · 105 %");
   expect(await compteur.evaluate((e) => getComputedStyle(e).color)).toBe(couleur8);

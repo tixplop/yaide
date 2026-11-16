@@ -723,7 +723,10 @@ export async function choisirModele(sessionId, cle, variante) {
   const numero = (i.choixSeq = (i.choixSeq ?? 0) + 1);
   i.choix = choix;
   notifier(sessionId);
-  const r = await api.choisirModele(sessionId, choix);
+  // Les demandes d'une session partent l'une après l'autre : en parallèle, le serveur peut garder un choix plus ancien.
+  const appel = (i.chaineChoix ?? Promise.resolve()).then(() => api.choisirModele(sessionId, choix));
+  i.chaineChoix = appel.catch(() => {});
+  const r = await appel;
   if (numero === i.choixSeq) {
     if ("donnees" in r) {
       i.model = choix;

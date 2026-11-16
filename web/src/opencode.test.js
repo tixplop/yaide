@@ -816,11 +816,30 @@ describe("modèle et effort d'une session opencode (REQ-074)", () => {
     let fin1;
     f.refus = new Promise((r) => (fin1 = r));
     const p1 = oc.choisirModele("ses_a", cle, null);
+    await tick();
     f.refus = null;
     const p2 = oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openrouter", "claude-sonnet-4-5"), null);
-    await p2;
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ providerID: "openrouter" });
     fin1(reponse(204));
-    await p1;
+    await Promise.all([p1, p2]);
+    expect(oc.choixModele("ses_a").courant).toMatchObject({ providerID: "openrouter" });
+  });
+
+  it("REQ074_AC10_choix_rapproches_envoyes_en_serie_le_dernier_ecrit_en_dernier", async () => {
+    const f = faux();
+    await suivre("ses_a");
+    await tick();
+    let fin1;
+    f.refus = new Promise((r) => (fin1 = r));
+    const p1 = oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openai", "gpt-5"), null);
+    await tick();
+    f.refus = null;
+    const p2 = oc.choisirModele("ses_a", cleDe(oc.choixModele("ses_a"), "openrouter", "claude-sonnet-4-5"), null);
+    await tick();
+    expect(f.ecritures.map((e) => e.corps.model.providerID)).toEqual(["openai"]); // le second attend la réponse du premier
+    fin1(reponse(204));
+    await Promise.all([p1, p2]);
+    expect(f.ecritures.map((e) => e.corps.model.providerID)).toEqual(["openai", "openrouter"]);
     expect(oc.choixModele("ses_a").courant).toMatchObject({ providerID: "openrouter" });
   });
 
