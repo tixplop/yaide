@@ -126,6 +126,17 @@ async function action(chemin, options) {
 /** `type` : "fichier" ou "dossier". Rend `{}` ou `{ cause, message }` ou `{ coupure: true }`. */
 export const creerChemin = (chemin, type) => action(`/api/fichiers/creer?chemin=${q(chemin)}&type=${type}`, { method: "POST" });
 export const renommerChemin = (de, vers) => action(`/api/fichiers/renommer?de=${q(de)}&vers=${q(vers)}`, { method: "POST" });
+/** Copie `de` dans le dossier `dans`. Rend `{ chemin }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function copierChemin(de, dans) {
+  const r = await appeler(`/api/fichiers/copier?de=${q(de)}&dans=${q(dans)}`, { method: "POST" });
+  if (!r) return { coupure: true };
+  if (!r.ok) return erreurServeur(r);
+  try {
+    return { chemin: (await r.json()).chemin };
+  } catch {
+    return { coupure: true };
+  }
+}
 export const supprimerChemin = (chemin) => action(`/api/fichier?chemin=${q(chemin)}`, { method: "DELETE" });
 
 /** Écrit le fichier. `version` : celle lue ou écrite en dernier. Rend `{ version }`, `{ cause, message }` ou `{ coupure: true }`. */

@@ -295,6 +295,91 @@ pub fn renommer(racine: &Path, de: &str, vers: &str) -> Result<(), Erreur> {
     Ok(())
 }
 
+/// Nom de la copie : celui de `nom` s'il est libre dans `dossier`, sinon `<base> copie<.ext>`,
+/// `<base> copie 2<.ext>`…
+fn nom_libre(dossier: &Path, nom: &str, est_dossier: bool) -> String {
+    if !existe(&dossier.join(nom)) {
+        return nom.to_string();
+    }
+    let (base, ext) = match nom.rfind('.') {
+        Some(i) if i > 0 && !est_dossier => nom.split_at(i),
+        _ => (nom, ""),
+    };
+    (1u64..)
+        .map(|n| match n {
+            1 => format!("{base} copie{ext}"),
+            _ => format!("{base} copie {n}{ext}"),
+        })
+        .find(|c| !existe(&dossier.join(c)))
+        .unwrap_or_default()
+}
+
+fn copier_recursif(source: &Path, cible: &Path, premier: bool) -> Result<(), Erreur> {
+    let type_ = fs::symlink_metadata(source)?.file_type();
+    if type_.is_symlink() {
+        std::os::unix::fs::symlink(fs::read_link(source)?, cible)?;
+    } else if type_.is_dir() {
+        fs::create_dir(cible)?;
+        for e in fs::read_dir(source)? {
+            let e = e?;
+            copier_recursif(&e.path(), &cible.join(e.file_name()), false)?;
+        }
+    } else if premier {
+        let mut entree = fs::File::open(source)?;
+        let mut sortie = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(cible)?;
+        std::io::copy(&mut entree, &mut sortie)?;
+        fs::set_permissions(cible, fs::metadata(source)?.permissions())?;
+    } else {
+        fs::copy(source, cible)?;
+    }
+    Ok(())
+}
+
+/// Copie `de` dans le dossier `dans` (la racine si vide) sous le premier nom libre.
+/// Rend le chemin créé, au format de l'arbre.
+pub fn copier(racine: &Path, de: &str, dans: &str) -> Result<String, Erreur> {
+    let mut cache = None;
+    let (racine_de, rel_de) = aiguiller(racine, de, &mut cache)?;
+    let (racine_dans, rel_dans) = aiguiller(racine, dans, &mut cache)?;
+    let source = resoudre_lien(&racine_de, &rel_de)?;
+    // Un lien de premier niveau ne doit pas mener hors du projet.
+    resoudre(&racine_de, &rel_de)?;
+    let dossier = resoudre(&racine_dans, &rel_dans)?;
+    if source == racine_de.canonicalize()? {
+        return Err(Erreur::Invalide("Chemin invalide."));
+    }
+    let meta = fs::symlink_metadata(&source)?;
+    if !fs::metadata(&dossier)?.is_dir() {
+        return Err(Erreur::Invalide("La destination n'est pas un dossier."));
+    }
+    if meta.is_dir() {
+        if dossier == source {
+            return Err(Erreur::Invalide(
+                "Un dossier ne peut pas être copié dans lui-même.",
+            ));
+        }
+        if dossier.starts_with(&source) {
+            return Err(Erreur::Invalide(
+                "Un dossier ne peut pas être copié dans un de ses sous-dossiers.",
+            ));
+        }
+    }
+    let nom = source
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or(Erreur::Invalide("Chemin invalide."))?;
+    let nom = nom_libre(&dossier, nom, meta.is_dir());
+    copier_recursif(&source, &dossier.join(&nom), true)?;
+    Ok(if dans.is_empty() {
+        nom
+    } else {
+        format!("{}/{nom}", dans.trim_end_matches('/'))
+    })
+}
+
 pub fn supprimer(racine: &Path, rel: &str) -> Result<(), Erreur> {
     let (racine, rel) = aiguiller(racine, rel, &mut None)?;
     let (racine, rel) = (racine.as_path(), rel.as_str());

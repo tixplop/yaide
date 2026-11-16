@@ -131,6 +131,13 @@ impl Serveur {
             b"",
         )
     }
+    fn copier(&self, de: &str, dans: &str) -> Rep {
+        self.appel(
+            "POST",
+            &format!("/api/fichiers/copier?de={}&dans={}", enc(de), enc(dans)),
+            b"",
+        )
+    }
     fn supprimer(&self, c: &str) -> Rep {
         self.appel("DELETE", &format!("/api/fichier?chemin={}", enc(c)), b"")
     }
@@ -630,4 +637,167 @@ fn req013_ac1_ecritures_simultanees() {
     assert_eq!(codes, vec![200; 12]);
     let restes = std::fs::read_dir(&s.projet).unwrap().count();
     assert_eq!(restes, 1);
+}
+
+fn chemin_cree(r: &Rep) -> String {
+    assert_eq!(r.code, 200, "{}", r.corps);
+    r.corps
+        .split("\"chemin\":\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn req125_ac3_noms_libres() {
+    let s = lancer("ac125-3");
+    s.ecrire_disque("a.txt", b"a");
+    s.ecrire_disque("src/a.txt", b"dans src");
+    s.ecrire_disque("lib/x.txt", b"x");
+    s.ecrire_disque(".env", b"e");
+    s.ecrire_disque("Makefile", b"m");
+    assert_eq!(chemin_cree(&s.copier("a.txt", "")), "a copie.txt");
+    assert_eq!(chemin_cree(&s.copier("a.txt", "")), "a copie 2.txt");
+    assert_eq!(chemin_cree(&s.copier("a.txt", "src")), "src/a copie.txt");
+    assert_eq!(
+        std::fs::read_to_string(s.projet.join("src/a.txt")).unwrap(),
+        "dans src"
+    );
+    assert_eq!(
+        std::fs::read_to_string(s.projet.join("src/a copie.txt")).unwrap(),
+        "a"
+    );
+    assert_eq!(chemin_cree(&s.copier("lib", "")), "lib copie");
+    assert_eq!(chemin_cree(&s.copier(".env", "")), ".env copie");
+    assert_eq!(chemin_cree(&s.copier("Makefile", "")), "Makefile copie");
+    assert!(s.projet.join("lib copie/x.txt").is_file());
+}
+
+#[test]
+fn req125_ac4_dossier_complet_avec_ignore_et_lien() {
+    let s = lancer("ac125-4");
+    git(&s.projet, &["init", "-q"]);
+    s.ecrire_disque("a.txt", b"a");
+    s.ecrire_disque(".gitignore", b"secret.log\n");
+    s.ecrire_disque("lib/x/y.txt", b"contenu y");
+    s.ecrire_disque("lib/secret.log", b"ignore");
+    s.ecrire_disque("doc/.gardien", b"");
+    std::os::unix::fs::symlink("../a.txt", s.projet.join("lib/lien")).unwrap();
+    assert_eq!(chemin_cree(&s.copier("lib", "doc")), "doc/lib");
+    let p = &s.projet;
+    assert_eq!(
+        std::fs::read_to_string(p.join("doc/lib/x/y.txt")).unwrap(),
+        "contenu y"
+    );
+    assert_eq!(
+        std::fs::read_to_string(p.join("doc/lib/secret.log")).unwrap(),
+        "ignore"
+    );
+    assert_eq!(
+        std::fs::read_link(p.join("doc/lib/lien")).unwrap(),
+        Path::new("../a.txt")
+    );
+    assert_eq!(
+        std::fs::read_to_string(p.join("lib/x/y.txt")).unwrap(),
+        "contenu y"
+    );
+    assert!(std::fs::symlink_metadata(p.join("lib/lien")).is_ok());
+}
+
+#[test]
+fn req125_ac6_dossier_dans_lui_meme_ou_sous_dossier() {
+    let s = lancer("ac125-6");
+    s.ecrire_disque("src/lib/x.txt", b"x");
+    let r = s.copier("src", "src");
+    assert_eq!(r.code, 400, "{}", r.corps);
+    assert!(r
+        .corps
+        .contains("Un dossier ne peut pas être copié dans lui-même."));
+    let r = s.copier("src", "src/lib");
+    assert_eq!(r.code, 400, "{}", r.corps);
+    assert!(r
+        .corps
+        .contains("Un dossier ne peut pas être copié dans un de ses sous-dossiers."));
+    assert!(!s.projet.join("src/src").exists());
+    assert!(!s.projet.join("src/lib/src").exists());
+    assert!(!s.projet.join("src copie").exists());
+}
+
+#[test]
+fn req125_ac7_contenu_lu_au_moment_de_la_copie() {
+    let s = lancer("ac125-7");
+    s.ecrire_disque("a.txt", b"avant");
+    s.ecrire_disque("src/.gardien", b"");
+    s.ecrire_disque("a.txt", b"apres");
+    assert_eq!(chemin_cree(&s.copier("a.txt", "src")), "src/a.txt");
+    assert_eq!(
+        std::fs::read_to_string(s.projet.join("src/a.txt")).unwrap(),
+        "apres"
+    );
+}
+
+#[test]
+fn req125_ac8_source_absente_404() {
+    let s = lancer("ac125-8");
+    s.ecrire_disque("src/.gardien", b"");
+    let r = s.copier("a.txt", "src");
+    assert_eq!(r.code, 404, "{}", r.corps);
+    assert!(r.corps.contains("\"introuvable\""), "{}", r.corps);
+    assert!(!s.projet.join("src/a.txt").exists());
+}
+
+#[test]
+fn req125_ac11_rien_dans_l_index_git() {
+    let s = lancer("ac125-11");
+    git(&s.projet, &["init", "-q"]);
+    s.ecrire_disque("a.txt", b"a");
+    s.ecrire_disque("src/.gardien", b"");
+    assert_eq!(s.copier("a.txt", "src").code, 200);
+    let sortie = Command::new("git")
+        .arg("-C")
+        .arg(&s.projet)
+        .args(["diff", "--cached", "--name-only"])
+        .output()
+        .unwrap();
+    assert!(sortie.status.success());
+    assert!(sortie.stdout.is_empty());
+}
+
+#[test]
+fn req125_ac12_chemins_hors_projet_refuses() {
+    let s = lancer("ac125-12");
+    let hors = s.projet.parent().unwrap().join("hors");
+    std::fs::create_dir_all(&hors).unwrap();
+    std::fs::write(hors.join("secret.txt"), "secret").unwrap();
+    s.ecrire_disque("a.txt", b"a");
+    s.ecrire_disque("src/.gardien", b"");
+    std::os::unix::fs::symlink(&hors, s.projet.join("sortie")).unwrap();
+    std::os::unix::fs::symlink(hors.join("secret.txt"), s.projet.join("lien.txt")).unwrap();
+    let absolu = hors.to_str().unwrap().to_string();
+    let secret = hors.join("secret.txt").to_str().unwrap().to_string();
+    for c in [
+        "../x",
+        "../hors",
+        "/etc/passwd",
+        &absolu,
+        &secret,
+        "sortie",
+        "lien.txt",
+    ] {
+        assert_eq!(s.copier(c, "src").code, 403, "de {c}");
+        assert_eq!(s.copier("a.txt", c).code, 403, "dans {c}");
+    }
+    assert_eq!(s.copier("sortie/secret.txt", "src").code, 403);
+    assert_eq!(s.copier("a.txt", "sortie").code, 403);
+    assert_eq!(s.copier("lien.txt", "src").code, 403);
+    assert_eq!(
+        std::fs::read_dir(&hors).unwrap().count(),
+        1,
+        "rien n'est créé hors du projet"
+    );
+    assert!(!s.projet.join("src/a.txt").exists());
+    assert!(!s.projet.join("src/secret.txt").exists());
 }

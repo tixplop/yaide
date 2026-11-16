@@ -252,3 +252,11 @@ test("REQ112_icone_book_alert_au_dessin_lucide_distincte_de_book_open", () => {
   for (const d of ["M12 13h.01", "M12 6v3", "M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"]) expect(s.innerHTML).toContain(d);
   expect(s.innerHTML).not.toBe(icone("book-open", 13).innerHTML);
 });
+
+test("REQ125_icones_copy_et_clipboard_paste", () => {
+  for (const n of ["copy", "clipboard-paste"]) {
+    expect(NOMS).toContain(n);
+    expect(icone(n).getAttribute("aria-hidden")).toBe("true");
+    expect(icone(n).getAttribute("stroke-width")).toBe("1.6");
+  }
+});

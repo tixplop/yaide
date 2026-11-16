@@ -655,6 +655,18 @@ async fn renommer_fichier(State(etat): State<Partage>, Query(q): Requete) -> Res
     }
 }
 
+async fn copier_fichier(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let (de, dans) = (param(&q, "de").to_string(), param(&q, "dans").to_string());
+    match sur_disque(&etat, move |p| fichiers::copier(p, &de, &dans)).await {
+        Ok(chemin) => (
+            [(header::CONTENT_TYPE, "application/json")],
+            format!("{{\"chemin\":{}}}", json_texte(&chemin)),
+        )
+            .into_response(),
+        Err(e) => erreur_fichier(e),
+    }
+}
+
 async fn supprimer_fichier(State(etat): State<Partage>, Query(q): Requete) -> Response {
     let rel = param(&q, "chemin").to_string();
     match sur_disque(&etat, move |p| fichiers::supprimer(p, &rel)).await {
@@ -1974,6 +1986,7 @@ pub async fn servir(
         )
         .route("/api/fichiers/creer", post(creer_fichier))
         .route("/api/fichiers/renommer", post(renommer_fichier))
+        .route("/api/fichiers/copier", post(copier_fichier))
         .route("/api/fichiers/versions", post(versions_fichiers))
         .route("/api/recherche", get(chercher))
         .route("/api/chemins", get(chemins))
