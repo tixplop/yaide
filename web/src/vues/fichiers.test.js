@@ -36,6 +36,17 @@ async function monter(disque, options = {}) {
     const chemin = decodeURIComponent(new URL(url, "http://x").searchParams.get("chemin") ?? "");
     appels.push(url);
     if (typeof disque.attente === "function") await disque.attente(url);
+    if (url.includes("/api/fichiers/copier")) {
+      const p = new URL(url, "http://x").searchParams;
+      if (disque.coupure) throw new TypeError("réseau");
+      const r = disque.copier?.(p.get("de"), p.get("dans"));
+      if (r?.status) return { ok: false, status: r.status, json: async () => r.corps };
+      const nom = p.get("de").split("/").pop();
+      const cible = disque[p.get("dans")];
+      const source = disque[p.get("de").split("/").slice(0, -1).join("/")]?.find((e) => e.nom === nom);
+      if (Array.isArray(cible) && source && !cible.some((e) => e.nom === nom)) cible.push(source);
+      return { ok: true, status: 200, json: async () => ({ chemin: p.get("dans") ? `${p.get("dans")}/${nom}` : nom }) };
+    }
     if (url.includes("/api/fichiers/renommer")) {
       const p = new URL(url, "http://x").searchParams;
       if (disque.coupure) throw new TypeError("réseau");
@@ -317,16 +328,16 @@ const commande = (menu, debut) => [...menu.querySelectorAll("[role=menuitem]")].
 test("REQ034_AC1_AC14_REQ104_AC1_REQ049_AC13_menu_a_quatre_groupes_dont_la_base_de_connaissance", async () => {
   const { vue } = await monter({ "": [f("a.txt")] }, { estDepot: () => true, agents: true });
   const m = menuSur(vue, "a.txt");
-  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
-  expect(m.querySelectorAll("[role=separator]").length).toBe(3);
-  expect(m.querySelectorAll("[aria-disabled]").length).toBe(1); // Mettre à jour : aucun fichier de la base
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
+  expect(m.querySelectorAll("[role=separator]").length).toBe(4);
+  expect(m.querySelectorAll("[aria-disabled]").length).toBe(2); // Coller : rien de copié ; Mettre à jour : aucun fichier de la base
 });
 
 test("REQ034_AC21_hors_depot_deux_separateurs_avec_la_base", async () => {
   const { vue } = await monter({ "": [f("a.txt")] }, { estDepot: () => false, agents: true });
   const m = menuSur(vue, "a.txt");
-  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
-  expect(m.querySelectorAll("[role=separator]").length).toBe(2);
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
+  expect(m.querySelectorAll("[role=separator]").length).toBe(3);
 });
 
 test("REQ103_AC1_REQ104_AC12_commande_absente_sans_agents_et_dans_la_partie_vide", async () => {
@@ -334,7 +345,7 @@ test("REQ103_AC1_REQ104_AC12_commande_absente_sans_agents_et_dans_la_partie_vide
   const m = menuSur(sans.vue, "a.txt");
   expect(commande(m, "Ajouter")).toBeUndefined();
   expect(commande(m, "Mettre à jour")).toBeUndefined();
-  expect(m.querySelectorAll("[role=separator]").length).toBe(2);
+  expect(m.querySelectorAll("[role=separator]").length).toBe(3);
   document.body.replaceChildren();
   const avec = await monter({ "": [f("a.txt")] }, { estDepot: () => true, agents: true });
   avec.vue.corps.querySelector(".fichiers-arbre").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
@@ -1158,8 +1169,8 @@ test("REQ034_AC2_projet_vide_dans_un_depot_propose_aussi_commit", async () => {
   vue.corps.querySelector(".fichiers-arbre").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
   const m = document.querySelector("[role=menu]");
   expect(m.getAttribute("aria-label")).toBe("Actions sur le projet");
-  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "Commit"]);
-  expect(m.querySelectorAll("[role=separator]").length).toBe(1);
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "CollerCtrl+V", "Commit"]);
+  expect(m.querySelectorAll("[role=separator]").length).toBe(2);
 });
 
 test("REQ034_AC6_indexer_un_dossier_dit_que_le_dossier_est_indexe", async () => {
@@ -1194,4 +1205,224 @@ test("REQ008_AC1_REQ120_AC1_une_image_s_ouvre_sans_lecture_du_fichier", async ()
   expect(appels.slice(avant).some((u) => String(u).includes("/api/fichier?"))).toBe(false);
   expect(surLecture).toHaveBeenLastCalledWith(false);
   expect(vue.corps.ownerDocument.querySelector("[role=alert]")).toBeNull();
+});
+
+// ---- REQ-125 : copier et coller ----
+
+const frappe = (vue, chemin, key, opts = { ctrlKey: true }) => {
+  const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts });
+  ligne(vue, chemin).dispatchEvent(e);
+  return e;
+};
+const appelsCopier = (appels) => appels.filter((u) => typeof u === "string" && u.includes("/api/fichiers/copier")).map((u) => { const p = new URL(u, "http://x").searchParams; return `${p.get("de")}>${p.get("dans")}`; });
+const bulle = async (b) => {
+  b.parentElement.dispatchEvent(new Event("pointerenter"));
+  await vi.waitFor(() => expect(document.querySelector("[role=tooltip]")).not.toBeNull());
+  const texte = document.querySelector("[role=tooltip]").textContent;
+  b.parentElement.dispatchEvent(new Event("pointerleave"));
+  return texte;
+};
+const FILES = () => ({ "": [d("doc"), d("src"), f("a.txt"), f("b.txt")], doc: [], src: [] });
+
+test("REQ125_AC1_AC15_copier_du_menu_puis_coller_du_menu_du_dossier", async () => {
+  const disque = FILES();
+  const { vue, appels, dire } = await monter(disque);
+  disque.copier = () => {
+    disque.src = [f("a.txt")];
+  };
+  ctrl(vue, "a.txt");
+  const m = menuSur(vue, "a.txt");
+  expect(commande(m, "Coller").getAttribute("aria-disabled")).toBe("true");
+  commande(m, "Copier").click();
+  expect(document.querySelector("[role=menu]")).toBeNull();
+  expect(document.activeElement).toBe(ligne(vue, "a.txt")); // REQ125_AC15
+  expect(bouton(vue, "Coller").disabled).toBe(false);
+  expect(dire).not.toHaveBeenCalled();
+  const m2 = menuSur(vue, "src");
+  expect(commande(m2, "Coller").hasAttribute("aria-disabled")).toBe(false);
+  commande(m2, "Coller").click();
+  await vi.waitFor(() => expect(noms(vue)).toContain("src/a.txt"));
+  expect(appelsCopier(appels)).toEqual(["a.txt>src"]);
+  expect(choisies(vue)).toEqual(["src/a.txt"]);
+  expect(ligne(vue, "src").getAttribute("aria-expanded")).toBe("true");
+  expect(ligne(vue, "a.txt")).toBeDefined();
+  expect(dire).not.toHaveBeenCalled();
+});
+
+test("REQ125_AC2_AC16_boutons_et_raccourcis_clavier", async () => {
+  const disque = FILES();
+  const { vue, appels, dire } = await monter(disque);
+  expect(bouton(vue, "Copier").disabled).toBe(true);
+  expect(bouton(vue, "Coller").disabled).toBe(true);
+  expect(bouton(vue, "Copier").getAttribute("aria-keyshortcuts")).toBe("Control+C");
+  expect(bouton(vue, "Coller").getAttribute("aria-keyshortcuts")).toBe("Control+V");
+  expect(await bulle(bouton(vue, "Copier"))).toBe("Copier (Ctrl+C)"); // désactivé, il garde son info-bulle
+  expect(await bulle(bouton(vue, "Coller"))).toBe("Coller (Ctrl+V)");
+  ctrl(vue, "a.txt");
+  bouton(vue, "Copier").focus();
+  bouton(vue, "Copier").click();
+  expect(document.activeElement).toBe(bouton(vue, "Copier")); // REQ125_AC15 : le focus reste sur le bouton
+  expect(dire).not.toHaveBeenCalled();
+  expect(bouton(vue, "Coller").disabled).toBe(false);
+  ligne(vue, "src").click();
+  bouton(vue, "Coller").click();
+  await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/a.txt"]));
+  ligne(vue, "b.txt").click();
+  expect(frappe(vue, "b.txt", "c").defaultPrevented).toBe(true);
+  frappe(vue, "src", "v");
+  await vi.waitFor(() => expect(appelsCopier(appels)).toEqual(["a.txt>src", "b.txt>src"]));
+});
+
+test("REQ125_AC2_AC16_macos_simule_Cmd_copie_et_Ctrl_ne_fait_rien", async () => {
+  vi.stubGlobal("navigator", { platform: "MacIntel" });
+  const { vue, appels } = await monter(FILES());
+  expect(bouton(vue, "Copier").getAttribute("aria-keyshortcuts")).toBe("Meta+C");
+  expect(bouton(vue, "Coller").getAttribute("aria-keyshortcuts")).toBe("Meta+V");
+  expect(await bulle(bouton(vue, "Copier"))).toBe("Copier (Cmd+C)");
+  expect(await bulle(bouton(vue, "Coller"))).toBe("Coller (Cmd+V)");
+  ctrl(vue, "a.txt");
+  frappe(vue, "a.txt", "c", { ctrlKey: true });
+  frappe(vue, "src", "v", { ctrlKey: true });
+  expect(bouton(vue, "Coller").disabled).toBe(true);
+  frappe(vue, "a.txt", "c", { metaKey: true });
+  expect(bouton(vue, "Coller").disabled).toBe(false);
+  frappe(vue, "src", "v", { metaKey: true });
+  await vi.waitFor(() => expect(appelsCopier(appels)).toEqual(["a.txt>src"]));
+  const m = menuSur(vue, "a.txt");
+  expect(commande(m, "Copier").textContent).toBe("CopierCmd+C");
+});
+
+test("REQ125_AC5_plusieurs_lignes_enfant_d_un_dossier_ecarte_focus_sur_la_premiere", async () => {
+  const disque = { "": [d("doc"), d("src"), f("a.txt"), f("b.txt")], doc: [], src: [f("x.txt")] };
+  const { vue, appels } = await monter(disque);
+  ctrl(vue, "a.txt");
+  ctrl(vue, "b.txt");
+  bouton(vue, "Copier").click();
+  ligne(vue, "src").click();
+  await attendre();
+  bouton(vue, "Coller").click();
+  await vi.waitFor(() => expect(appelsCopier(appels)).toEqual(["a.txt>src", "b.txt>src"]));
+  await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/a.txt", "src/b.txt"]));
+  expect(document.activeElement).toBe(ligne(vue, "src/a.txt"));
+  // AC-049-4 : « Copier » du menu de b.txt, puis Ctrl+C, copient aussi les deux lignes.
+  for (const geste of ["menu", "clavier"]) {
+    appels.length = 0;
+    ligne(vue, "a.txt").click();
+    ctrl(vue, "b.txt");
+    if (geste === "menu") commande(menuSur(vue, "b.txt"), "Copier").click();
+    else frappe(vue, "b.txt", "c");
+    ligne(vue, "doc").click();
+    bouton(vue, "Coller").click();
+    await vi.waitFor(() => expect(appelsCopier(appels)).toEqual(["a.txt>doc", "b.txt>doc"]));
+    await vi.waitFor(() => expect(choisies(vue)).toEqual(["doc/a.txt", "doc/b.txt"]));
+    disque.doc = [];
+  }
+  appels.length = 0;
+  ligne(vue, "src/a.txt").click();
+  ctrl(vue, "src/b.txt");
+  ctrl(vue, "src"); // le dossier et ses deux enfants sont sélectionnés
+  expect(choisies(vue)).toEqual(["src", "src/a.txt", "src/b.txt"]);
+  bouton(vue, "Copier").click();
+  ligne(vue, "doc").click();
+  bouton(vue, "Coller").click();
+  await vi.waitFor(() => expect(appelsCopier(appels)).toEqual(["src>doc"]));
+});
+
+test("REQ125_AC6_AC13_AC17_refus_un_seul_message_la_selection_ne_change_pas", async () => {
+  const disque = FILES();
+  const { vue, dire } = await monter(disque);
+  disque.copier = () => ({ status: 400, corps: { cause: "invalide", message: "Un dossier ne peut pas être copié dans lui-même." } });
+  ligne(vue, "src").click();
+  bouton(vue, "Copier").click();
+  bouton(vue, "Coller").click();
+  await vi.waitFor(() => expect(dire).toHaveBeenCalled());
+  expect(dire).toHaveBeenCalledWith({ texte: "src/ n'a pas été copié : un dossier ne peut pas être copié dans lui-même.", variante: "erreur", fermable: true });
+  expect(choisies(vue)).toEqual(["src"]);
+  expect(noms(vue)).not.toContain("src/src");
+});
+
+test("REQ125_AC7_AC8_AC13_element_disparu_les_autres_sont_copies_le_message_nomme_le_fichier", async () => {
+  const disque = FILES();
+  const retire = vi.fn();
+  const { vue, dire, appels } = await monter(disque, { dire: vi.fn(() => ({ remove: retire })) });
+  disque.copier = (de) => (de === "a.txt" ? { status: 404, corps: { cause: "introuvable", message: "Introuvable." } } : undefined);
+  ctrl(vue, "a.txt");
+  ctrl(vue, "b.txt");
+  bouton(vue, "Copier").click();
+  ligne(vue, "src").click();
+  bouton(vue, "Coller").click();
+  await vi.waitFor(() => expect(dire).toHaveBeenCalled());
+  expect(appelsCopier(appels)).toEqual(["a.txt>src", "b.txt>src"]);
+  expect(dire).toHaveBeenCalledWith({ texte: "a.txt n'a pas été copié : il n'existe plus.", variante: "erreur", fermable: true });
+  await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/b.txt"]));
+  // Le contenu est lu par le serveur au collage : la vue n'écrit rien (REQ125_AC7).
+  expect(appels.some((u) => typeof u === "string" && u.startsWith("/api/fichier?"))).toBe(false);
+  disque.copier = () => ({ status: 403, corps: { cause: "interdit", message: "Ce dossier est protégé." } });
+  bouton(vue, "Coller").click();
+  await vi.waitFor(() => expect(retire).toHaveBeenCalledTimes(1));
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledTimes(2));
+  expect(dire.mock.calls[1][0]).toEqual({ texte: "2 éléments n'ont pas été copiés.", detail: "a.txt : ce dossier est protégé\nb.txt : ce dossier est protégé", variante: "erreur", fermable: true });
+  disque.copier = () => undefined;
+  bouton(vue, "Coller").click();
+  await vi.waitFor(() => expect(retire).toHaveBeenCalledTimes(2));
+  expect(dire).toHaveBeenCalledTimes(2); // un collage réussi n'affiche rien
+});
+
+test("REQ125_AC9_coupure_arret_liste_gardee_collage_au_retour", async () => {
+  const disque = FILES();
+  const { vue, dire, appels } = await monter(disque);
+  ctrl(vue, "a.txt");
+  ctrl(vue, "b.txt");
+  bouton(vue, "Copier").click();
+  ligne(vue, "src").click();
+  disque.coupure = true;
+  bouton(vue, "Coller").click();
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledWith({ texte: "Connexion perdue. Réessayez au retour.", variante: "alerte", fermable: true }));
+  expect(appelsCopier(appels)).toEqual(["a.txt>src"]); // arrêt à la première coupure
+  expect(bouton(vue, "Coller").disabled).toBe(false);
+  disque.coupure = false;
+  appels.length = 0;
+  bouton(vue, "Coller").click();
+  await vi.waitFor(() => expect(appelsCopier(appels)).toEqual(["a.txt>src", "b.txt>src"]));
+});
+
+test("REQ125_AC10_AC11_rien_de_copie_ni_presse_papiers_ni_base_ni_ouverture", async () => {
+  const lire = vi.fn();
+  const ecrire = vi.fn();
+  vi.stubGlobal("navigator", { clipboard: { readText: lire, writeText: ecrire } });
+  const surOuvrir = vi.fn();
+  const { vue, appels } = await monter(FILES(), { surOuvrir, agents: true, estDepot: () => true });
+  ligne(vue, "src").click();
+  frappe(vue, "src", "v"); // rien de copié
+  expect(appelsCopier(appels)).toEqual([]);
+  expect(bouton(vue, "Coller").disabled).toBe(true);
+  ligne(vue, "a.txt").click();
+  frappe(vue, "a.txt", "c");
+  frappe(vue, "src", "v");
+  await vi.waitFor(() => expect(appelsCopier(appels)).toEqual(["a.txt>src"]));
+  expect(lire).not.toHaveBeenCalled();
+  expect(ecrire).not.toHaveBeenCalled();
+  expect(surOuvrir).not.toHaveBeenCalled();
+  expect(appels.some((u) => typeof u === "string" && u.includes("/api/git/indexer"))).toBe(false);
+  expect(appels.some((u) => typeof u === "object")).toBe(false); // aucun POST vers la base de connaissance
+  document.body.replaceChildren();
+  const neuve = await monter(FILES());
+  expect(bouton(neuve.vue, "Coller").disabled).toBe(true);
+});
+
+test("REQ125_AC14_Ctrl_C_hors_de_l_arbre_et_sans_selection_ne_font_rien", async () => {
+  const { vue, appels } = await monter(FILES());
+  const saisie = document.createElement("input");
+  document.body.append(saisie);
+  saisie.dispatchEvent(new KeyboardEvent("keydown", { key: "c", ctrlKey: true, bubbles: true, cancelable: true }));
+  expect(bouton(vue, "Coller").disabled).toBe(true);
+  frappe(vue, "a.txt", "c"); // aucune ligne sélectionnée
+  expect(bouton(vue, "Coller").disabled).toBe(true);
+  ctrl(vue, "a.txt");
+  ligne(vue, "b.txt").focus();
+  frappe(vue, "b.txt", "c");
+  expect(document.activeElement).toBe(ligne(vue, "b.txt")); // le focus reste sur la ligne
+  expect(choisies(vue)).toEqual(["a.txt"]); // la sélection ne change pas
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(appelsCopier(appels)).toEqual([]);
 });

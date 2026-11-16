@@ -1,4 +1,4 @@
-import { creerChemin, gitIndexer, lireConnaissance, lireFichier, listerDossier, renommerChemin, supprimerChemin } from "../api.js";
+import { copierChemin, creerChemin, gitIndexer, lireConnaissance, lireFichier, listerDossier, renommerChemin, supprimerChemin } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { dialogue } from "../ui/dialogue.js";
@@ -7,6 +7,7 @@ import { liste } from "../ui/liste.js";
 import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 import { estImage } from "../onglets-fichiers.js";
+import { estMac } from "../references.js";
 import * as worktree from "../worktree.js";
 import { mettreAJourFichiers, ouvrirAjoutConnaissance } from "./ajout-connaissance.js";
 
@@ -71,16 +72,22 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   let aRedessiner = false;
   let relireEnAttente = false;
   let messageDepot = null; // bandeau du dernier dépôt
+  let messageCopie = null; // bandeau du dernier collage
+  let copies = []; // chemins copiés (REQ-125), dans l'ordre de l'arbre, sans enfant d'un dossier aussi copié
+  let collage = false; // un collage est en cours
+  const mac = estMac();
 
   const bFichier = bouton({ icone: "file-plus", variante: "discret", nomAccessible: "Nouveau fichier" });
   const bDossier = bouton({ icone: "folder-plus", variante: "discret", nomAccessible: "Nouveau dossier" });
   const bRenommer = bouton({ icone: "pencil", variante: "discret", nomAccessible: "Renommer", infoBulle: "Renommer ou déplacer", raccourci: "F2" });
   const bSupprimer = bouton({ icone: "trash", variante: "discret", nomAccessible: "Supprimer", raccourci: "Suppr", touche: "Delete" });
+  const bCopier = bouton({ icone: "copy", variante: "discret", nomAccessible: "Copier", raccourci: mac ? "Cmd+C" : "Ctrl+C", touche: mac ? "Meta+C" : "Control+C" });
+  const bColler = bouton({ icone: "clipboard-paste", variante: "discret", nomAccessible: "Coller", raccourci: mac ? "Cmd+V" : "Ctrl+V", touche: mac ? "Meta+V" : "Control+V" });
   const nomProjet = document.createElement("span");
   nomProjet.className = "fichiers-projet";
   nomProjet.textContent = projet;
   nomProjet.title = projet;
-  ligneProjet.append(nomProjet, bFichier.enveloppe, bDossier.enveloppe, bRenommer.enveloppe, bSupprimer.enveloppe);
+  ligneProjet.append(nomProjet, bFichier.enveloppe, bDossier.enveloppe, bRenommer.enveloppe, bSupprimer.enveloppe, bCopier.enveloppe, bColler.enveloppe);
 
   /** La ligne sélectionnée s'il n'y en a qu'une, sinon `null`. */
   const seule = () => (selection.length === 1 ? selection[0] : null);
@@ -92,6 +99,8 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
 
   function majBoutons() {
     bRenommer.disabled = bSupprimer.disabled = seule() === null;
+    bCopier.disabled = selection.length === 0;
+    bColler.disabled = copies.length === 0;
   }
 
   // ---- Arbre ----
@@ -390,7 +399,15 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   });
   zoneArbre.addEventListener("keydown", (e) => {
     const chemin = e.target.closest?.("[data-chemin]")?.dataset.chemin;
-    if (chemin === undefined || e.ctrlKey || e.altKey || e.metaKey) return;
+    if (chemin === undefined) return;
+    const touche = e.key.toLowerCase();
+    if ((mac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && (touche === "c" || touche === "v")) {
+      e.preventDefault();
+      if (touche === "c") copier();
+      else if (copies.length > 0) coller(types.get(chemin) ? chemin : dossierDe(chemin));
+      return;
+    }
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key === "F2") {
       e.preventDefault();
       ouvrirRenommage();
@@ -466,6 +483,64 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     ligneDe(premiere)?.scrollIntoView({ block: "nearest" });
   }
 
+  // ---- Copier, coller (REQ-125) ----
+
+  /** Retient les lignes sélectionnées : les enfants d'un dossier aussi copié sont écartés. */
+  function copier() {
+    if (selection.length === 0) return;
+    copies = selection.filter((c) => !selection.some((p) => p !== c && types.get(p) && c.startsWith(`${p}/`)));
+    majBoutons();
+  }
+
+  /** Colle dans le dossier `cible` : un élément à la fois, les refus sont réunis dans un seul message. */
+  async function coller(cible) {
+    if (collage || copies.length === 0) return;
+    collage = true;
+    generation++;
+    messageCopie?.remove();
+    messageCopie = null;
+    const creees = [];
+    const refus = [];
+    let coupure = false;
+    try {
+      for (const de of [...copies]) {
+        const r = await copierChemin(de, cible);
+        if (detruit) return;
+        if (r.coupure) {
+          coupure = true;
+          break;
+        }
+        if (r.cause) {
+          const raison = r.cause === "introuvable" ? "il n'existe plus" : sansPoint(r.message).replace(/^./, (c) => c.toLowerCase());
+          refus.push({ nom: `${nomDe(de)}${types.get(de) ? "/" : ""}`, raison });
+          continue;
+        }
+        creees.push(r.chemin);
+      }
+    } finally {
+      collage = false;
+    }
+    if (coupure) messageCopie = dire({ texte: TEXTE_COUPURE, variante: "alerte", fermable: true }) ?? null;
+    else if (refus.length === 1) messageCopie = dire({ texte: `${refus[0].nom} n'a pas été copié : ${refus[0].raison}.`, variante: "erreur", fermable: true }) ?? null;
+    else if (refus.length > 1) messageCopie = dire({ texte: `${refus.length} éléments n'ont pas été copiés.`, detail: refus.map((x) => `${x.nom} : ${x.raison}`).join("\n"), variante: "erreur", fermable: true }) ?? null;
+    if (creees.length > 0) {
+      if (cible !== vu) ouverts.add(cible);
+      selection = creees;
+      ancre = derniere = creees[0];
+      majBoutons();
+    }
+    await rafraichir();
+    if (detruit || creees.length === 0) return;
+    afficher(true);
+    ligneDe(creees[0])?.scrollIntoView({ block: "nearest" });
+  }
+
+  /** Le dossier visé par les boutons « Nouveau fichier » et « Coller » : celui de la dernière ligne cliquée. */
+  function dossierDuBouton() {
+    if (selection.length > 0 && derniere !== null) return types.get(derniere) ? derniere : dossierDe(derniere);
+    return vu;
+  }
+
   // ---- Menu ----
 
   /** `id` : la ligne visée, ou `undefined` pour la partie vide. */
@@ -486,6 +561,12 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
           { libelle: "Nouveau fichier", surChoix: () => ouvrirCreation(false, base) },
           { libelle: "Nouveau dossier", surChoix: () => ouvrirCreation(true, base) },
         ],
+        vide
+          ? [{ libelle: "Coller", touche: mac ? "Cmd+V" : "Ctrl+V", desactive: copies.length === 0, surChoix: () => coller(base) }]
+          : [
+              { libelle: "Copier", touche: mac ? "Cmd+C" : "Ctrl+C", surChoix: copier },
+              { libelle: "Coller", touche: mac ? "Cmd+V" : "Ctrl+V", desactive: copies.length === 0, surChoix: () => coller(base) },
+            ],
         vide
           ? []
           : [
@@ -632,8 +713,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
 
   function ouvrirCreation(dossier, depuisMenu) {
     origineArbre = false;
-    let base = depuisMenu ?? vu;
-    if (depuisMenu === undefined && selection.length > 0 && derniere !== null) base = types.get(derniere) ? derniere : dossierDe(derniere);
+    const base = depuisMenu ?? dossierDuBouton();
     const rel = worktree.dansWorktree(base);
     formulaire({
       titre: dossier ? "Nouveau dossier" : "Nouveau fichier",
@@ -785,6 +865,8 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   bDossier.addEventListener("click", () => ouvrirCreation(true));
   bRenommer.addEventListener("click", ouvrirRenommage);
   bSupprimer.addEventListener("click", ouvrirSuppression);
+  bCopier.addEventListener("click", copier);
+  bColler.addEventListener("click", () => coller(dossierDuBouton()));
   majBoutons();
   nommerProjet();
   afficherWorktree();
