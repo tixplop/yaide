@@ -227,6 +227,7 @@ Une valeur s'écrit `#rgb` ou `#rrggbb`.
 | Suppr | onglet de shell qui a le focus | Ferme le shell, après confirmation |
 | Suppr | ligne de l'arborescence | Supprime, après confirmation |
 | Ctrl+clic, Maj+clic | ligne de l'arborescence | Sélectionne plusieurs lignes ; les glisser sur un dossier les déplace |
+| Ctrl+C, Ctrl+V (Cmd sur macOS) | ligne de l'arborescence | Copie les lignes sélectionnées, puis les colle à côté ou dans le dossier |
 | Menu ou Maj+F10 | ligne de l'arborescence | Ouvre le menu de la ligne (comme le clic droit) |
 | Ctrl+Entrée | champ « Message » (Git) | Lance le commit |
 | Flèches gauche et droite | poignée « Largeur du panneau » | Élargit ou rétrécit le panneau |
@@ -268,6 +269,7 @@ Le bouton « Thème clair », à droite de la barre de titre, fait passer toute 
 - Le rail, à gauche, porte les panneaux Fichiers, Recherche et Git (Git y affiche le nombre de changements), puis les quatre boutons des shells en bas. La déconnexion est à droite de la barre de titre.
 - L'ouverture d'un fichier par son nom est le bouton central de la barre de titre (ou Ctrl+P) ; sa liste s'ouvre juste en dessous.
 - La branche, la position du curseur et le langage du fichier sont dans la barre d'état, en bas.
+- Copier des fichiers et des dossiers : sélectionnez des lignes de l'arborescence, puis « Copier » (menu, bouton de l'en-tête ou Ctrl+C) et « Coller » dans un dossier (menu, bouton ou Ctrl+V). Rien n'est écrasé : une copie prend le nom `a copie.txt`, `a copie 2.txt`… Un dossier se copie avec tout son contenu.
 - Le fil d'Ariane du fichier ouvert est au-dessus du code ; les statuts git (M, A, D, U, C) sont dans l'arborescence et sur les onglets.
 - Les largeurs du panneau et la hauteur des shells se règlent en tirant les poignées, ou avec les flèches quand elles ont le focus.
 - Les commandes sont des boutons à icône ; leur nom apparaît dans une info-bulle.

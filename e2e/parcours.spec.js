@@ -461,7 +461,7 @@ test("REQ048_parcours_16_replier_depuis_l_en_tete", async ({ page }) => {
   await panneauRetourne("Fichiers");
   await page.getByRole("treeitem", { name: nomLigne("src") }).click();
   await aside.getByRole("tree", { name: "Fichiers" }).locator("[tabindex='0']").focus();
-  for (const nom of ["Supprimer", "Renommer", "Nouveau dossier", "Nouveau fichier", "Replier le panneau"]) {
+  for (const nom of ["Copier", "Supprimer", "Renommer", "Nouveau dossier", "Nouveau fichier", "Replier le panneau"]) {
     await page.keyboard.press("Shift+Tab");
     await expect(aside.getByRole("button", { name: nom, exact: true })).toBeFocused();
   }

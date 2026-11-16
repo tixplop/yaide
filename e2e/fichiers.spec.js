@@ -95,7 +95,7 @@ test("REQ007_AC1_AC2_AC3_AC5_AC6_AC8_REQ008_AC5_REQ009_AC5_REQ034_AC1_AC4_AC14_A
   await expect(arbre(page)).toBeVisible();
   await expect(page.locator(".ya-status-branche")).toBeVisible();
   await test.step("REQ009_AC5_boutons_du_panneau_et_etat_sans_selection", async () => {
-    for (const nom of ["Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer"]) await expect(page.getByRole("button", { name: nom })).toBeVisible();
+    for (const nom of ["Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Copier", "Coller"]) await expect(page.getByRole("button", { name: nom })).toBeVisible();
     await expect(page.getByRole("button", { name: "Renommer" })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Supprimer" })).toBeDisabled();
     await ligne(page, "a.txt").click();
@@ -122,9 +122,9 @@ test("REQ007_AC1_AC2_AC3_AC5_AC6_AC8_REQ008_AC5_REQ009_AC5_REQ034_AC1_AC4_AC14_A
     await ligne(page, "README.md").click({ button: "right" });
     const m = menu(page, "Actions sur README.md");
     await expect(m).toBeVisible();
-    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
+    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
     await expect(m.getByRole("menuitem", { name: "Renommer", exact: true })).toBeVisible();
-    await expect(m.getByRole("separator")).toHaveCount(3);
+    await expect(m.getByRole("separator")).toHaveCount(4);
     await expect(ligne(page, "README.md")).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("tab", { name: "README.md" })).toHaveCount(0);
     await page.keyboard.press("Escape");
@@ -177,11 +177,11 @@ test("REQ007_AC4_REQ034_AC9_groupe_hors_depot_git", async ({ page }) => {
   await test.step("REQ034_AC9_hors_depot_ni_indexer_ni_commit", async () => {
     await ligne(page, "a.txt").click({ button: "right" });
     const m = menu(page, "Actions sur a.txt");
-    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
-    await expect(m.getByRole("separator")).toHaveCount(2);
+    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
+    await expect(m.getByRole("separator")).toHaveCount(3);
     await page.keyboard.press("Escape");
     await clicVide(page);
-    await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier"]);
+    await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CollerCtrl+V"]);
   });
 });
 
@@ -198,7 +198,7 @@ test("REQ007_AC7_REQ010_REQ034_AC2_groupe_projet_vide_apres_la_derniere_suppress
   });
   await test.step("REQ034_AC2_projet_vide_le_menu_s_ouvre_sur_Dossier_vide", async () => {
     await page.getByText("Dossier vide.").click({ button: "right" });
-    await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier"]);
+    await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CollerCtrl+V"]);
     await page.keyboard.press("Escape");
     await expect(menu(page, "Actions sur le projet")).toHaveCount(0);
   });
@@ -368,8 +368,8 @@ test("REQ034_AC2_AC3_AC16_AC19_REQ049_AC2_AC9_AC12_menu_du_projet_nouveau_depuis
     await expect(page.locator(".cm-content")).toBeFocused(); // la lecture du fichier est finie : elle ne prendra plus le focus au menu
     await clicVide(page);
     const m = menu(page, "Actions sur le projet");
-    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Commit"]);
-    await expect(m.getByRole("separator")).toHaveCount(1);
+    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CollerCtrl+V", "Commit"]);
+    await expect(m.getByRole("separator")).toHaveCount(2);
     await expect(ligne(page, "main.rs")).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("Enter");
     await expect(page.getByRole("dialog")).toBeVisible();
@@ -522,7 +522,7 @@ test("REQ034_AC12_REQ050_AC12_REQ009_AC9_AC10_groupe_avec_shell_menu_depot_et_en
     const entete = page.locator(".fichiers-entete");
     expect((await entete.boundingBox()).height).toBe(26);
     const boites = await entete.locator("button").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
-    expect(boites).toHaveLength(4);
+    expect(boites).toHaveLength(6);
     expect(new Set(boites.map((b) => Math.round(b.top))).size).toBe(1);
     // Tab : les boutons actifs de l'en-tête (Renommer et Supprimer sont désactivés), puis l'arbre.
     await page.getByRole("button", { name: "Nouveau fichier" }).focus();
@@ -750,4 +750,67 @@ test("REQ050_AC13_relecture_pendant_un_vrai_glisse", async ({ page }) => {
   await expect(parChemin(page, "Zeta/a.txt")).toBeVisible();
   await expect(parChemin(page, "cree-pendant.txt")).toBeVisible();
   expect(fs.existsSync(path.join(dossier, "Zeta", "a.txt"))).toBe(true);
+});
+
+test("REQ125_AC1_parcours_de_copie_menu_en_tete_ctrl_c_ctrl_v_refuse_et_coller_sur_doc", async ({ page }) => {
+  const dossier = depotExemple();
+  fs.mkdirSync(path.join(dossier, "doc"));
+  fs.writeFileSync(path.join(dossier, "doc", ".gardien"), "");
+  fs.writeFileSync(path.join(dossier, "src", "a.txt"), "dans src");
+  fs.writeFileSync(path.join(dossier, "a.txt"), "a");
+  fs.writeFileSync(path.join(dossier, "b.txt"), "b");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await expect(arbre(page)).toBeVisible();
+  const coller = page.getByRole("button", { name: "Coller" });
+  await ligne(page, "a.txt").click();
+  await ligne(page, "b.txt").click({ modifiers: ["Control"] });
+  await expect(page.getByRole("button", { name: "Copier" })).toBeEnabled();
+  await expect(coller).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Renommer" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Supprimer" })).toBeDisabled();
+  await ligne(page, "b.txt").click({ button: "right" });
+  const m = menu(page, "Actions sur b.txt");
+  await expect(arbre(page).getByRole("treeitem", { selected: true })).toHaveCount(2);
+  await expect(m.getByRole("menuitem", { name: /^Coller/ })).toHaveAttribute("aria-disabled", "true");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(m).toHaveCount(0);
+  await expect(ligne(page, "b.txt")).toBeFocused();
+  await expect(page.getByRole("alert").filter({ hasText: "copié" })).toHaveCount(0);
+  await expect(coller).toBeEnabled();
+  await ligne(page, "src").click();
+  await coller.click();
+  await expect(ligne(page, "a copie.txt")).toHaveAttribute("aria-selected", "true");
+  await expect(ligne(page, "a copie.txt")).toBeFocused();
+  await expect(arbre(page).getByRole("treeitem", { selected: true })).toHaveCount(2);
+  expect(fs.readFileSync(path.join(dossier, "src", "a copie.txt"), "utf8")).toBe("a");
+  expect(fs.readFileSync(path.join(dossier, "src", "b.txt"), "utf8")).toBe("b");
+  expect(fs.readFileSync(path.join(dossier, "src", "a.txt"), "utf8")).toBe("dans src");
+  expect(fs.existsSync(path.join(dossier, "a.txt")) && fs.existsSync(path.join(dossier, "b.txt"))).toBe(true);
+  await expect(page.getByRole("alert").filter({ hasText: "copié" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /copie|b.txt/ })).toHaveCount(0);
+  await page.keyboard.press("ArrowUp");
+  await expect(ligne(page, "src")).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Control+c");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Control+v");
+  await expect(page.getByRole("alert").filter({ hasText: "src/ n'a pas été copié : un dossier ne peut pas être copié dans lui-même." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Fermer", exact: true })).toBeVisible();
+  await expect(ligne(page, "a copie.txt")).toBeFocused();
+  await expect(arbre(page).getByRole("treeitem", { selected: true })).toHaveCount(1);
+  await expect(ligne(page, "a copie.txt")).toHaveAttribute("aria-selected", "true");
+  expect(fs.readdirSync(path.join(dossier, "src")).sort()).toEqual(["a copie.txt", "a.txt", "b.txt", "main.rs"]);
+  await ligne(page, "doc").click({ button: "right" });
+  await menu(page, "Actions sur doc/").getByRole("menuitem", { name: /^Coller/ }).click();
+  await expect(ligne(page, "doc")).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("alert").filter({ hasText: "copié" })).toHaveCount(0);
+  const copieDoc = ligne(page, "src").first();
+  await expect(copieDoc).toHaveAttribute("aria-selected", "true");
+  await expect(arbre(page).getByRole("treeitem", { selected: true })).toHaveCount(1);
+  await expect(copieDoc).toBeFocused();
+  expect(fs.readFileSync(path.join(dossier, "doc", "src", "main.rs"), "utf8")).toContain("salut");
+  expect(fs.existsSync(path.join(dossier, "doc", "src", "a copie.txt"))).toBe(true);
+  expect(indexe(dossier)).toEqual([]);
 });
