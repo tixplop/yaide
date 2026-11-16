@@ -3,6 +3,7 @@ import { highlightCode } from "@lezer/highlight";
 import { couleurs } from "./couleurs-code.js";
 import { lienDeDocument, identifiantTitre } from "../references.js";
 import { langagePourMot, supportLangage } from "./langages.js";
+import { chargerMermaid, adresseDiagramme } from "./diagramme.js";
 
 // Un seul analyseur par langage : l'aperçu se refait à chaque frappe, et `supportLangage` crée un StreamLanguage à chaque appel.
 const analyseurs = new Map();
@@ -36,6 +37,15 @@ function creerMarkdown(options) {
 }
 
 const md = creerMarkdown({ linkify: false });
+
+// Bloc ```mermaid : `pre` sans langage, marqué de son rang ; l'aperçu le remplace par le dessin (REQ-122).
+const fenceDefaut = md.renderer.rules.fence;
+md.renderer.rules.fence = (tokens, i, options, env, self) => {
+  const t = tokens[i];
+  if (t.info.trim().split(/\s+/)[0] !== "mermaid") return fenceDefaut(tokens, i, options, env, self);
+  env.rang = (env.rang ?? -1) + 1;
+  return `<pre data-diagramme="${env.rang}"><code>${md.utils.escapeHtml(t.content)}</code></pre>\n`;
+};
 
 // Lien de l'aperçu : fichier (ouvert par la page), web (nouvel onglet) ou ancre (titre du même document).
 md.renderer.rules.link_open = (tokens, i, options, env, self) => {
@@ -235,9 +245,83 @@ export function apercu({ document: cheminDocument, surLien } = {}) {
 
   let courant = cheminDocument;
 
+  // Dernier dessin valide par rang : { texte, div, img }. `actuels` : texte courant de chaque bloc.
+  const dessins = new Map();
+  let actuels = new Map();
+  const enCours = new Map();
+  const tentes = new Map();
+  let minuteur = null;
+
+  const creerDiagramme = (d) => {
+    const div = document.createElement("div");
+    div.className = "ya-diagramme";
+    const img = document.createElement("img");
+    img.alt = "Diagramme";
+    img.draggable = false;
+    img.width = d.largeur;
+    img.height = d.hauteur;
+    img.src = adresseDiagramme(d.svg);
+    div.append(img);
+    return { div, img };
+  };
+
+  // Remplace chaque `pre` dont un dessin (à jour ou ancien) existe pour son rang.
+  const poser = () => {
+    for (const pre of el.querySelectorAll("pre[data-diagramme]")) {
+      const dessin = dessins.get(Number(pre.dataset.diagramme));
+      if (dessin) pre.replaceWith(dessin.div);
+    }
+  };
+
+  const dessiner = async () => {
+    const aFaire = [...actuels].filter(([r, t]) => dessins.get(r)?.texte !== t && enCours.get(r) !== t && tentes.get(r) !== t);
+    if (!aFaire.length) return;
+    let mermaid;
+    try {
+      mermaid = await chargerMermaid();
+    } catch {
+      clearTimeout(minuteur);
+      minuteur = setTimeout(dessiner, 1500); // coupure : nouvel essai au rythme de lecture du serveur
+      return;
+    }
+    await Promise.all(aFaire.map(async ([rang, texte]) => {
+      enCours.set(rang, texte);
+      const d = await mermaid.dessiner(texte).catch(() => null);
+      enCours.delete(rang);
+      if (actuels.get(rang) !== texte) return;
+      tentes.set(rang, texte);
+      if (!d) return; // illisible : le dernier dessin reste
+      const dessin = dessins.get(rang);
+      if (!dessin) {
+        dessins.set(rang, { texte, ...creerDiagramme(d) });
+        return;
+      }
+      const src = adresseDiagramme(d.svg);
+      const neuve = new Image();
+      neuve.onload = () => {
+        if (actuels.get(rang) !== texte) return;
+        dessin.img.width = d.largeur;
+        dessin.img.height = d.hauteur;
+        dessin.img.src = src;
+        dessin.texte = texte;
+      };
+      neuve.src = src;
+    }));
+    poser();
+  };
+
+  function planifier() {
+    clearTimeout(minuteur);
+    minuteur = setTimeout(dessiner, 100);
+  }
+
   el.maj = (texte, document = courant) => {
     courant = document;
     el.innerHTML = rendreMarkdown(texte, { document });
+    actuels = new Map([...el.querySelectorAll("pre[data-diagramme]")].map((p) => [Number(p.dataset.diagramme), p.textContent]));
+    for (const r of [...dessins.keys()]) if (!actuels.has(r)) dessins.delete(r);
+    poser();
+    if (actuels.size) planifier();
   };
 
   // Clic, Ctrl/Maj+clic, Entrée (clic natif) et clic du milieu.

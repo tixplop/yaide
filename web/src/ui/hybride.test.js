@@ -590,3 +590,9 @@ test("REQ115_AC12_sans_fond_regle_aucune_marque_ya_sel_fond", () => {
 test("REQ115_AC12_composants_css_ne_donne_aucun_style_a_ya_sel_fond", () => {
   expect(readFileSync("web/src/ui/composants.css", "utf8")).not.toContain("ya-sel-fond");
 });
+
+test("REQ122_AC7_bloc_mermaid_du_mode_hybride_reste_un_bloc_de_code_sans_couleur_ni_img", () => {
+  const r = deco("```mermaid\ngraph TD; A --> B\n```");
+  expect(lignes(r, "cm-hy-bloc-code")).toEqual(["```mermaid", "graph TD; A --> B", "```"]);
+  expect(r.liste.filter((d) => /syn|img/.test(d.classe ?? ""))).toEqual([]);
+});

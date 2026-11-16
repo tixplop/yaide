@@ -880,6 +880,8 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .zone-code-apercu :is(p, li):not(blockquote *, table *) code:not(pre code, a code) { color: var(--md-code-couleur, var(--ink)); }
 .zone-code-apercu pre { margin: var(--space-3) 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font: var(--texte-code) var(--font-mono); color: var(--md-bloc-code-couleur, var(--ink)); background: var(--md-bloc-code-fond, var(--apercu-fond)); white-space: pre-wrap; overflow-wrap: anywhere; }
 .zone-code-apercu pre code { padding: 0; border-radius: 0; font: inherit; color: inherit; background: none; }
+.ya-diagramme { margin: var(--space-3) 0; }
+.ya-diagramme img { display: block; max-width: 100%; height: auto; border-radius: var(--radius-sm); background: var(--apercu-page); }
 
 .terminal { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-000); }
 .terminal-attente { flex: 0 0 auto; background: var(--bg-100); color: var(--ink-muted); font: var(--texte-base) var(--font-sans); font-family: var(--font-sans); }

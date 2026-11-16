@@ -289,3 +289,9 @@ test("REQ117_motif_grille_de_couleurs", () => {
   expect(erreur).toMatch(/font-size:\s*12px/);
   expect(erreur).toMatch(/line-height:\s*16px/);
 });
+
+test("REQ122_AC8_AC9_regles_css_de_ya_diagramme", () => {
+  expect(css).toMatch(/\.ya-diagramme \{ margin: var\(--space-3\) 0; \}/);
+  const img = /\.ya-diagramme img \{([^}]*)\}/.exec(css)[1];
+  for (const d of ["display: block", "max-width: 100%", "height: auto", "border-radius: var(--radius-sm)", "background: var(--apercu-page)"]) expect(img).toContain(d);
+});
