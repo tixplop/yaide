@@ -96,6 +96,17 @@ fn req029_ac1_le_binaire_seul_sert_toute_l_interface() {
 }
 
 #[test]
+fn req122_ac2_mermaid_js_est_servi_sans_connexion_et_la_page_ne_le_charge_pas() {
+    let (exe, d) = binaire_seul("mermaid");
+    let s = lancer(&exe, &d);
+    let r = reponse(s.port, "/mermaid.js");
+    assert_eq!(r.0, "200");
+    assert!(r.1.starts_with("text/javascript"));
+    assert!(get(s.port, "/mermaid.js").unwrap().contains("yaideMermaid"));
+    assert!(!get(s.port, "/").unwrap().contains("mermaid"));
+}
+
+#[test]
 fn req029_ac1_la_feuille_main_css_de_xterm_est_servie_dans_le_binaire() {
     let (exe, d) = binaire_seul("css");
     let s = lancer(&exe, &d);

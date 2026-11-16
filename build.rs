@@ -3,6 +3,7 @@ fn main() {
     for f in [
         "index.html",
         "main.js",
+        "mermaid.js",
         "tokens.css",
         "composants.css",
         "theme.js",

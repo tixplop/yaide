@@ -89,6 +89,7 @@ fn est_publique(m: &Method, chemin: &str) -> bool {
     let fichier_statique = matches!(
         chemin,
         "/" | "/main.js"
+            | "/mermaid.js"
             | "/main.css"
             | "/tokens.css"
             | "/composants.css"
@@ -979,6 +980,7 @@ async fn version_maj(State(etat): State<Partage>) -> Response {
 
 const INDEX: &[u8] = include_bytes!("../web/dist/index.html");
 const MAIN_JS: &[u8] = include_bytes!("../web/dist/main.js");
+const MERMAID_JS: &[u8] = include_bytes!("../web/dist/mermaid.js");
 
 async fn chercher(State(etat): State<Partage>, Query(q): Requete) -> Response {
     let requete = param(&q, "q").to_string();
@@ -1040,6 +1042,13 @@ async fn main_js() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
         MAIN_JS,
+    )
+}
+
+async fn mermaid_js() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        MERMAID_JS,
     )
 }
 
@@ -1926,6 +1935,7 @@ pub async fn servir(
     let app = Router::new()
         .route("/", get(index))
         .route("/main.js", get(main_js))
+        .route("/mermaid.js", get(mermaid_js))
         .route("/main.css", get(|| async { css(MAIN_CSS) }))
         .route("/tokens.css", get(|| async { css(TOKENS_CSS) }))
         .route("/composants.css", get(|| async { css(COMPOSANTS_CSS) }))
