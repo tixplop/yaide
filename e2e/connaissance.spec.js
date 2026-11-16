@@ -183,6 +183,24 @@ test("REQ103_parcours_75_76_base_de_connaissance", async ({ page }) => {
     await expect(bulle).toBeVisible();
     const [mq, bb] = [await faq.locator(".liste-base").boundingBox(), await bulle.boundingBox()];
     expect(bb.y).toBeGreaterThan(mq.y);
+    // REQ-124 (AC-124-1, AC-124-6), P-092 étape 1 : faq.md modifié dans l'éditeur, Ctrl+S → mise à jour de ce seul fichier, focus dans l'éditeur.
+    await faq.click();
+    await expect(page.getByRole("tab", { name: "faq.md" })).toHaveAttribute("aria-selected", "true");
+    const editeurFaq = page.getByRole("textbox", { name: "Éditeur faq.md" });
+    const avantCtrlS = faux.embeddings.length;
+    await editeurFaq.click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type("Voir LICENSE.");
+    await page.keyboard.press("Control+s");
+    await expect(page.getByText("Mise à jour de docs/faq.md dans la base de connaissance…")).toBeVisible();
+    await expect(page.getByText("Mise à jour terminée : 1 fichier mis à jour.")).toBeVisible({ timeout: 20000 });
+    expect(faux.embeddings.length).toBeGreaterThan(avantCtrlS);
+    const envoyes = faux.embeddings.slice(avantCtrlS).flatMap((c) => c.input);
+    expect(envoyes.every((t) => t.includes("licence"))).toBe(true);
+    expect(envoyes.some((t) => t.includes("Voir LICENSE."))).toBe(true);
+    await expect(editeurFaq).toBeFocused();
+    await page.keyboard.type(" Suite.");
+    await expect(editeurFaq).toContainText("Voir LICENSE. Suite.");
     // P-078 : « Mettre à jour dans la base de connaissance » et ses messages — preuves REQ111_AC5_la_commande_envoie_les_chemins_dit_le_debut_et_rend_le_focus_a_la_ligne
     // et REQ111_AC5_fin_au_singulier_et_au_pluriel (fichiers.test.js, ajout-connaissance.test.js), tests/connaissance.rs REQ111_AC1.
   } finally {

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { mettreAJourFichiers, ouvrirAjoutConnaissance, phraseAjout } from "./ajout-connaissance.js";
+import { mettreAJourApresSauvegarde, mettreAJourFichiers, ouvrirAjoutConnaissance, phraseAjout } from "./ajout-connaissance.js";
 
 const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
 for (const [, nom, val] of tokens.matchAll(/(--[\w-]+):\s*([^;]+);/g)) document.documentElement.style.setProperty(nom, val.trim());
@@ -462,4 +462,85 @@ test("REQ113_AC9_refus_400_du_serveur_sur_la_taille_ou_le_recouvrement_sous_le_c
     expect(dlg()).not.toBeNull();
     document.body.replaceChildren();
   }
+});
+
+// ---- REQ-124 : mise à jour après Ctrl+S ----
+const DANS_BASE = { "docs/a.md": { collections: ["notes", "api"], echec: null } };
+const etatBase = (extra = {}) => ({ config: CONFIG, erreur: null, collections: [], ajout: null, fichiers: DANS_BASE, ...extra });
+async function apresCtrlS(etat, ajouter = ACCEPTE, suivi = []) {
+  const appels = faux({ etat, ajouter, suivi });
+  const dire = vi.fn();
+  await mettreAJourApresSauvegarde({ chemin: "docs/a.md", nom: "docs/a.md", dire });
+  return { appels, dire, posts: appels.filter((a) => a.init?.method === "POST") };
+}
+const FIN = { config: CONFIG, collections: [], ajout: { numero: 4, genre: "mise_a_jour", collection: "", etat: "fini", ajoutes: 1, ignores: 0 } };
+
+test("REQ124_AC1_AC6_fichier_dans_la_base_poste_son_chemin_seul_puis_dit_le_debut_et_la_fin", async () => {
+  const { dire, posts } = await apresCtrlS(etatBase(), ACCEPTE, [FIN]);
+  expect(posts.length).toBe(1);
+  expect(posts[0].url).toBe("/api/connaissance/mises-a-jour");
+  expect(JSON.parse(posts[0].init.body)).toEqual({ chemins: ["docs/a.md"] });
+  expect(dire).toHaveBeenCalledTimes(1);
+  expect(dire).toHaveBeenCalledWith({ texte: "Mise à jour de docs/a.md dans la base de connaissance…", variante: "info", fermable: true });
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(dire).toHaveBeenLastCalledWith({ texte: "Mise à jour terminée : 1 fichier mis à jour.", variante: "succes", fermable: true });
+});
+
+test("REQ124_AC2_hors_collections_base_non_configuree_ou_illisible_aucune_requete_aucun_message", async () => {
+  for (const etat of [etatBase({ fichiers: {} }), etatBase({ fichiers: undefined, config: null, collections: undefined }), etatBase({ erreur: "Lecture impossible." })]) {
+    const { dire, posts } = await apresCtrlS(etat);
+    expect(posts).toEqual([]);
+    expect(dire).not.toHaveBeenCalled();
+  }
+  vi.stubGlobal("fetch", vi.fn(async () => reponse(500, { cause: "lecture", message: "Lecture impossible." })));
+  const dire = vi.fn();
+  await mettreAJourApresSauvegarde({ chemin: "docs/a.md", nom: "docs/a.md", dire });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(dire).not.toHaveBeenCalled();
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("réseau"); }));
+  await mettreAJourApresSauvegarde({ chemin: "docs/a.md", nom: "docs/a.md", dire });
+  expect(dire).not.toHaveBeenCalled();
+});
+
+test("REQ124_AC3_AC6_ajout_ou_mise_a_jour_en_cours_dit_le_bon_message_info_sans_requete", async () => {
+  for (const [genre, debut] of [["ajout", "Un ajout est"], ["mise_a_jour", "Une mise à jour est"]]) {
+    const { dire, posts } = await apresCtrlS(etatBase({ ajout: { numero: 2, genre, collection: "notes", etat: "en_cours" } }));
+    expect(posts).toEqual([]);
+    expect(dire).toHaveBeenCalledTimes(1);
+    expect(dire).toHaveBeenCalledWith({ texte: `${debut} déjà en cours : docs/a.md sera mis à jour dans la base de connaissance à sa fin.`, variante: "info", fermable: true });
+  }
+});
+
+test("REQ124_AC3_un_ajout_fini_ne_bloque_pas_la_mise_a_jour", async () => {
+  const { posts } = await apresCtrlS(etatBase({ ajout: { numero: 2, genre: "ajout", collection: "notes", etat: "fini" } }));
+  expect(posts.length).toBe(1);
+});
+
+test("REQ124_AC3_refus_encours_du_POST_donne_le_meme_message_info_pas_une_alerte", async () => {
+  const refus = reponse(409, { cause: "encours", message: "Un ajout est déjà en cours. Attendez sa fin, puis réessayez." });
+  const appels = faux({ etat: etatBase(), ajouter: refus });
+  const dire = vi.fn();
+  // la relecture après le refus montre la mise à jour qui vient de partir
+  let gets = 0;
+  const base = fetch;
+  vi.stubGlobal("fetch", vi.fn((u, i) => {
+    if (!i?.method && ++gets === 2) return Promise.resolve(reponse(200, etatBase({ ajout: { numero: 5, genre: "mise_a_jour", collection: "", etat: "en_cours" } })));
+    return base(u, i);
+  }));
+  await mettreAJourApresSauvegarde({ chemin: "docs/a.md", nom: "docs/a.md", dire });
+  expect(appels.length).toBeGreaterThan(0);
+  expect(dire).toHaveBeenCalledTimes(1);
+  expect(dire).toHaveBeenCalledWith({ texte: "Une mise à jour est déjà en cours : docs/a.md sera mis à jour dans la base de connaissance à sa fin.", variante: "info", fermable: true });
+});
+
+test("REQ124_AC4_AC6_arret_sur_401_dit_l_erreur_avec_le_detail", async () => {
+  const arret = { config: CONFIG, collections: [], ajout: { numero: 4, genre: "mise_a_jour", collection: "", etat: "arrete", cause: "OpenAI a refusé la requête (401).", detail: "Incorrect API key" } };
+  const { dire } = await apresCtrlS(etatBase(), ACCEPTE, [arret]);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(dire).toHaveBeenLastCalledWith({
+    texte: "La mise à jour s'est arrêtée. OpenAI a refusé la requête (401). Les fichiers déjà traités restent à jour.",
+    detail: "Incorrect API key",
+    variante: "erreur",
+    fermable: true,
+  });
 });

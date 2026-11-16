@@ -1308,3 +1308,43 @@ test("REQ118_AC11_commande_en_dernier_et_entree_formate_avec_le_focus_dans_l_edi
   expect(zone.vue.state.doc.toString()).toBe('{\n  "b": 1\n}\n');
   expect(document.activeElement).toBe(zone.vue.contentDOM);
 });
+
+// ---- REQ-124 : Ctrl+S met à jour le fichier dans la base, seulement avec les agents ----
+async function ctrlSSurNotes(options) {
+  const appels = [];
+  const rep = (corps, status = 200) => ({ ok: status < 400, status, json: async () => corps, text: async () => "" });
+  vi.stubGlobal("fetch", vi.fn(async (url, init = {}) => {
+    const chemin = String(url).split("?")[0];
+    appels.push(`${init.method ?? "GET"} ${chemin}`);
+    if (chemin === "/api/fichiers") return rep({ entrees: [{ nom: "notes.md", dossier: false, ignore: false }] });
+    if (chemin === "/api/fichier" && init.method === "PUT") return rep({ version: "2" });
+    if (chemin === "/api/fichier") return { ok: true, status: 200, text: async () => "abc", headers: { get: () => "1" } };
+    if (chemin === "/api/connaissance") return rep({ config: { provider: "openai", modele: "m" }, erreur: null, collections: [], ajout: null, fichiers: { "notes.md": { collections: ["notes"], echec: null } } });
+    if (chemin === "/api/connaissance/mises-a-jour") return rep({ numero: 1, total: 1 }, 202);
+    if (chemin === "/api/git/etat") return rep({ cause: "pas-depot", message: "pas un dépôt" }, 409);
+    if (chemin === "/api/session") return { status: 204 };
+    if (chemin === "/api/shells") return rep({ instance: "i1", shells: [] });
+    return rep({}, 409);
+  }));
+  const { vue } = monter(options);
+  await vi.waitFor(() => expect(ligne(vue, "notes.md")).toBeTruthy());
+  ligne(vue, "notes.md").click();
+  await vi.waitFor(() => expect(vue.querySelector(".zone-code")?.vue?.state.doc.toString()).toBe("abc"));
+  vue.querySelector(".zone-code").vue.dispatch({ changes: { from: 0, insert: "X" } });
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(appels, appels.join()).toContain("PUT /api/fichier"));
+  await attendre();
+  return appels;
+}
+
+test("REQ124_AC1_ctrl_s_met_a_jour_le_fichier_dans_la_base_avec_les_agents", async () => {
+  const appels = await ctrlSSurNotes();
+  await vi.waitFor(() => expect(appels).toContain("POST /api/connaissance/mises-a-jour"));
+  expect(appels.indexOf("PUT /api/fichier")).toBeLessThan(appels.indexOf("POST /api/connaissance/mises-a-jour"));
+});
+
+test("REQ124_AC2_agents_desactives_ctrl_s_ne_touche_pas_a_la_base", async () => {
+  const appels = await ctrlSSurNotes({ reglages: { fonctions: { agents: false } } });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(appels.filter((a) => a.includes("/api/connaissance"))).toEqual([]);
+});

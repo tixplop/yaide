@@ -53,7 +53,7 @@ const avecApercu = (chemin) => /\.(md|markdown|html|htm|svg|mmd)$/i.test(chemin)
  * Chaque onglet a un `groupe` ; `barre`, `fil`, `code` et `question` sont ceux du premier groupe, `groupes()` rend l'arbre de tous.
  * Rend `{ definirStatuts(statuts), barre, fil, code, groupes(), questions(), deplacer(id, groupe, zone), lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirAgent({ equipe }), relireReglagesAgents(), ouvrirOpencode({ sessionId, titre }), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
-export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {}, surGroupes = () => {}, surLien = () => {}, claude = true, agents = true }) {
+export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {}, surCtrlS = () => {}, surGroupes = () => {}, surLien = () => {}, claude = true, agents = true }) {
   const liste = []; // { chemin, groupe, zone, disque (texte de base), version (de base), apercu, hybride, modifie, question, supprime, avis }
   let actif = null; // l'onglet actif du groupe courant
   let diff = null; // { chemin, el, groupe } : l'onglet de diff, au plus un, jamais gardé
@@ -1081,8 +1081,13 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   }
 
   async function sauvegarderEtDire(o) {
+    const avant = o.disque;
     const echec = await sauvegarder(o);
-    if (!echec) return;
+    if (!echec) {
+      // REQ-124 : seulement si le texte écrit diffère de celui d'avant.
+      if (!detruit && o.disque !== avant) surCtrlS(o.chemin);
+      return;
+    }
     if (echec === SANS_SUITE) return garderListe(); // refus du serveur : la question remplace le Ctrl+S
     if (echec === TEXTE_COUPURE) {
       mettreEnAttente(o);

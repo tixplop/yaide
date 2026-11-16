@@ -22,7 +22,8 @@ import { ouvrirProviders } from "./providers.js";
 import { vueRecherche } from "./recherche.js";
 import { statutsDe } from "../statuts.js";
 import { suivreVersion } from "../version.js";
-import { abonner as abonnerWorktree } from "../worktree.js";
+import { abonner as abonnerWorktree, dansWorktree } from "../worktree.js";
+import { mettreAJourApresSauvegarde } from "./ajout-connaissance.js";
 import { vueShells } from "./shells.js";
 
 const PANNEAUX = [
@@ -251,6 +252,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     },
     surCourant: (chemin) => fichiers?.definirCourant(chemin),
     surSauvegarde: () => git?.rafraichir(),
+    surCtrlS: avec.agents
+      ? (chemin) => mettreAJourApresSauvegarde({ chemin, nom: dansWorktree(chemin), dire, actif: () => !detruite })
+      : undefined,
     claude: avec.claude,
     agents: avec.agents,
     surLien: (lien) => {

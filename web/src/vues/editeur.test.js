@@ -2359,3 +2359,78 @@ test("REQ123_AC5_apercu_masque_garde_au_rechargement", async () => {
     vi.resetModules();
   }
 });
+
+// ---- REQ-124 : surCtrlS après une sauvegarde qui change le fichier ----
+const pointsAuAppel = [];
+function monterCtrlS() {
+  // AC-124-4 et AC-124-7 : le point de l'onglet a disparu quand surCtrlS est appelé.
+  const surCtrlS = vi.fn(() => {
+    pointsAuAppel.push(onglet("a.md").dataset.modifie);
+  });
+  const e = vueEditeur({ dire: vi.fn(), surCtrlS });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  e.ouvrir({ chemin: "docs/a.md", contenu: "abc", version: "1" });
+  return { e, surCtrlS };
+}
+const ctrlS = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+
+test("REQ124_AC2_ctrl_s_sans_modification_n_appelle_pas_surCtrlS", async () => {
+  const appels = ecritures();
+  const { surCtrlS } = monterCtrlS();
+  ctrlS();
+  await vi.waitFor(() => expect(appels).toEqual(["docs/a.md"]));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(surCtrlS).not.toHaveBeenCalled();
+});
+
+test("REQ124_AC1_ctrl_s_apres_modification_appelle_surCtrlS_une_fois_avec_le_chemin_apres_l_ecriture", async () => {
+  const appels = ecritures();
+  pointsAuAppel.length = 0;
+  const { e, surCtrlS } = monterCtrlS();
+  modifier(e, "a.md");
+  expect(onglet("a.md").dataset.modifie).toBe("true");
+  ctrlS();
+  await vi.waitFor(() => expect(surCtrlS).toHaveBeenCalledTimes(1));
+  expect(surCtrlS).toHaveBeenCalledWith("docs/a.md");
+  expect(appels).toEqual(["docs/a.md"]);
+  expect(pointsAuAppel).toEqual([undefined]);
+});
+
+test("REQ124_AC2_sauvegarde_en_echec_n_appelle_pas_surCtrlS", async () => {
+  const appels = ecritures(true);
+  const { e, surCtrlS } = monterCtrlS();
+  modifier(e, "a.md");
+  ctrlS();
+  await vi.waitFor(() => expect(appels).toEqual(["docs/a.md"]));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(surCtrlS).not.toHaveBeenCalled();
+});
+
+test("REQ124_AC2_sauvegarder_du_dialogue_de_fermeture_n_appelle_pas_surCtrlS", async () => {
+  const appels = ecritures();
+  const { e, surCtrlS } = monterCtrlS();
+  modifier(e, "a.md");
+  clicDroit(onglet("a.md"));
+  choisirCommande("Fermer tous les onglets");
+  await vi.waitFor(() => expect(dialogueOuvert()?.textContent).toContain("Sauvegarder a.md ?"));
+  clicBouton("Sauvegarder");
+  await vi.waitFor(() => expect(onglets().length).toBe(0));
+  expect(appels).toEqual(["docs/a.md"]);
+  expect(surCtrlS).not.toHaveBeenCalled();
+});
+
+test("REQ124_AC5_ctrl_s_pendant_une_coupure_appelle_surCtrlS_une_fois_au_retour_apres_l_ecriture", async () => {
+  const appels = ecritures();
+  const { e, surCtrlS } = monterCtrlS();
+  modifier(e, "a.md");
+  e.definirEtat("coupe");
+  ctrlS();
+  await new Promise((r) => setTimeout(r, 20));
+  expect(appels).toEqual([]);
+  expect(surCtrlS).not.toHaveBeenCalled();
+  e.definirEtat("connecte");
+  await vi.waitFor(() => expect(surCtrlS).toHaveBeenCalledTimes(1));
+  expect(appels).toEqual(["docs/a.md"]);
+  expect(surCtrlS).toHaveBeenCalledWith("docs/a.md");
+});

@@ -224,3 +224,28 @@ export async function mettreAJourFichiers({ noms, chemins, dire, surRetour, acti
   dire({ texte: `Mise à jour de ${debut} dans la base de connaissance…`, variante: "info", fermable: true });
   suivre({ numero: r.numero, dire, actif });
 }
+
+/** Message `info` : le fichier sera mis à jour à la fin de l'ajout ou de la mise à jour en cours. */
+function direEnCours({ nom, genre, dire }) {
+  const quoi = genre === "mise_a_jour" ? "Une mise à jour est" : "Un ajout est";
+  dire({ texte: `${quoi} déjà en cours : ${nom} sera mis à jour dans la base de connaissance à sa fin.`, variante: "info", fermable: true });
+}
+
+/**
+ * REQ-124 : après un Ctrl+S réussi sur un fichier modifié. Rien (ni requête, ni message) si le fichier n'est dans aucune collection
+ * ou si la base est illisible ; sinon mise à jour de ce seul fichier, ou message si un ajout ou une mise à jour est en cours.
+ */
+export async function mettreAJourApresSauvegarde({ chemin, nom, dire, actif = () => true }) {
+  const etat = await lireConnaissance();
+  if (!actif() || etat.coupure || etat.cause || etat.erreur || !etat.fichiers?.[chemin]) return;
+  if (etat.ajout?.etat === "en_cours") return direEnCours({ nom, genre: etat.ajout.genre, dire });
+  const r = await mettreAJourConnaissance([chemin]);
+  if (!actif()) return;
+  if (r.cause === "encours") {
+    const a = (await lireConnaissance()).ajout;
+    return direEnCours({ nom, genre: a?.etat === "en_cours" ? a.genre : "ajout", dire });
+  }
+  if (r.coupure || r.cause) return dire({ texte: r.coupure ? TEXTE_COUPURE : r.message, variante: r.coupure ? "alerte" : "erreur", fermable: true });
+  dire({ texte: `Mise à jour de ${nom} dans la base de connaissance…`, variante: "info", fermable: true });
+  suivre({ numero: r.numero, dire, actif });
+}
