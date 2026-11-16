@@ -345,7 +345,7 @@ if (args[0] === "serve") {
   const mdp = process.env.OPENCODE_SERVER_PASSWORD ?? "";
   const temoin = process.env.FAUX_OPENCODE_TEMOIN;
   if (temoin) {
-    const ligne = { args, cwd: process.cwd(), mdp: mdp !== "", pid: process.pid };
+    const ligne = { args, cwd: process.cwd(), PWD: process.env.PWD, mdp: mdp !== "", pid: process.pid };
     fs.appendFileSync(temoin, JSON.stringify(ligne) + "\n");
     fs.writeFileSync(temoin + ".mdp", mdp);
   }

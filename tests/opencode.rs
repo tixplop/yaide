@@ -136,14 +136,10 @@ fn ecrire_script(dir: &Path, contenu: &str) {
     std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-/// Le script `opencode` du faux : `node faux-opencode.mjs`.
+/// Le script `opencode` du faux : un script `node` (et non `sh`, qui réécrit `PWD`) qui charge `faux-opencode.mjs`.
 fn script_faux() -> String {
     let faux = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/faux-opencode.mjs");
-    format!(
-        "#!/bin/sh\nexec '{}' '{}' \"$@\"\n",
-        node().display(),
-        faux.display()
-    )
+    format!("#!{}\nimport('{}');\n", node().display(), faux.display())
 }
 
 /// Lance Yaide avec un faux `opencode` en tête d'un `PATH` maîtrisé.
@@ -182,6 +178,8 @@ fn lancer_avec(nom: &str, env: &[(&str, &str)], nohup: bool) -> Serveur {
     let child = cmd
         .arg(d.join("projet"))
         .args(["--port", &port.to_string()])
+        .current_dir("/")
+        .env("PWD", "/")
         .env("XDG_CONFIG_HOME", &cfg)
         .env("HOME", &d)
         .env("PATH", format!("{}:/usr/bin:/bin", d.join("bin").display()))
@@ -300,6 +298,18 @@ fn REQ072_AC2_serve_arguments_dossier_et_mot_de_passe() {
     };
     assert_eq!(direct(&[]), "401");
     assert_eq!(direct(&["-u", &format!("opencode:{mdp}")]), "200");
+}
+
+#[test]
+fn REQ072_AC33_lance_depuis_la_racine_cwd_et_pwd_du_projet() {
+    // Yaide est lancé depuis `/` avec `PWD=/` : opencode reçoit cwd et `PWD` = dossier du projet.
+    let s = lancer("racine", &[]);
+    let (code, _, _) = http(&s, "GET", "/api/opencode/api/info", "");
+    assert_eq!(code, 200);
+    let l = s.lancements();
+    assert_eq!(l.len(), 1);
+    assert_eq!(Path::new(l[0]["cwd"].as_str().unwrap()), s.projet());
+    assert_eq!(Path::new(l[0]["PWD"].as_str().unwrap()), s.projet());
 }
 
 #[test]

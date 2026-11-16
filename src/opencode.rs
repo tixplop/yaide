@@ -180,6 +180,7 @@ async fn demarrer(projet: &Path, arret: &AtomicBool) -> Result<Lance, String> {
             &port.to_string(),
         ])
         .current_dir(projet)
+        .env("PWD", projet)
         .env("OPENCODE_SERVER_PASSWORD", &mdp)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
