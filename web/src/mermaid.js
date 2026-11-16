@@ -28,7 +28,8 @@ async function dessiner(texte) {
       .slice(0, fin)
       .replace(/\s(?:width|height)="[^"]*"/g, "")
       .replace(/\sstyle="[^"]*"/, "")
-      .replace("<svg", `<svg width="${largeur}" height="${hauteur}"`);
+      // `click` produit des `xlink:href` sans leur espace de noms : sans lui, l'image ne se charge pas.
+      .replace("<svg", `<svg width="${largeur}" height="${hauteur}"${svg.includes("xlink:") && !/xmlns:xlink=/.test(svg) ? ' xmlns:xlink="http://www.w3.org/1999/xlink"' : ""}`);
     return { svg: balise + svg.slice(fin), largeur, hauteur };
   } catch {
     return null;

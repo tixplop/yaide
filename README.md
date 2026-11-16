@@ -255,6 +255,8 @@ Les liens d'un fichier markdown se suivent dans l'aperçu (clic ou Entrée) et, 
 
 Le bouton « Aperçu » existe aussi pour les fichiers HTML (`.html` et `.htm`) : la page charge ses fichiers liés par un chemin relatif (feuilles de style, scripts, images, polices, données) et ce qu'elle lie sur Internet. Ses scripts s'exécutent dans un cadre isolé de Yaide : ils n'ont accès ni à l'interface, ni à la session, ni aux fichiers du projet. Un chemin qui commence par `/` n'est pas chargé. L'aperçu montre le fichier enregistré : il se recharge à chaque sauvegarde (Ctrl+S), pas pendant la frappe, en gardant la position de défilement.
 
+Un bloc de code `mermaid` s'affiche dans l'aperçu markdown comme le diagramme qu'il décrit (réduit pour tenir dans la largeur, sans rien exécuter ni charger), et un fichier `.mmd` s'ouvre avec son diagramme en aperçu à côté de l'éditeur. Un texte qui ne se lit pas garde le dernier dessin, ou le bloc en code s'il n'a jamais été lu.
+
 Une image (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.avif`, `.bmp`, `.ico`) s'ouvre dans son propre onglet, entière et en lecture seule, et se met à jour quand le fichier change sur le disque. Un fichier SVG s'ouvre dans l'éditeur avec son aperçu à côté, qui suit la frappe : le SVG n'y exécute aucun script et ne charge rien.
 
 ## Thème clair
