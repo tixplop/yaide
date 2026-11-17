@@ -270,6 +270,7 @@ Le bouton « Thème clair », à droite de la barre de titre, fait passer toute 
 - L'ouverture d'un fichier par son nom est le bouton central de la barre de titre (ou Ctrl+P) ; sa liste s'ouvre juste en dessous.
 - La branche, la position du curseur et le langage du fichier sont dans la barre d'état, en bas.
 - Copier des fichiers et des dossiers : sélectionnez des lignes de l'arborescence, puis « Copier » (menu, bouton de l'en-tête ou Ctrl+C) et « Coller » dans un dossier (menu, bouton ou Ctrl+V). Rien n'est écrasé : une copie prend le nom `a copie.txt`, `a copie 2.txt`… Un dossier se copie avec tout son contenu.
+- Soumettre des fichiers à un agent : sélectionnez des lignes de l'arborescence, puis « Soumettre à un agent… » dans le menu. Choisissez « Agent (profil par défaut) » ou un agent du projet : un nouvel onglet Agent s'ouvre avec le message « Consulte `docs/a.md`. ».
 - Le fil d'Ariane du fichier ouvert est au-dessus du code ; les statuts git (M, A, D, U, C) sont dans l'arborescence et sur les onglets.
 - Les largeurs du panneau et la hauteur des shells se règlent en tirant les poignées, ou avec les flèches quand elles ont le focus.
 - Les commandes sont des boutons à icône ; leur nom apparaît dans une info-bulle.

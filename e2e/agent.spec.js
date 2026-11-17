@@ -763,14 +763,24 @@ test("REQ078_parcours_46_deja_ouverte_coupure_suppr", async ({ page }) => {
 
 test("REQ067_parcours_28_demarrer_ouvre_un_onglet", async ({ page }) => {
   // AC-067-1, AC-067-15 : « Démarrer une conversation » ouvre un onglet par clic, les cases restent cochées.
-  yaide = await lancerYaide({ dossier: depotAgent() });
+  // Fin du test, P-094 : AC-126-2, AC-126-3 (« Soumettre à un agent… » sur deux notes).
+  faux = await lancerFauxProvider([
+    reponse({ outils: [{ id: "s1", nom: "read", entree: { path: "docs/a.md" } }], tokens: 1000 }),
+    reponse({ texte: "Notes relues : rien à signaler.", tokens: 1500 }),
+  ]);
+  const dossier = depotAgent();
+  fs.mkdirSync(path.join(dossier, "docs"));
+  fs.writeFileSync(path.join(dossier, "docs", "a.md"), "note-a-relue\n");
+  fs.writeFileSync(path.join(dossier, "docs", "b.md"), "note-b\n");
+  yaide = await lancerYaide({ dossier });
   for (const nom of ["Relecteur", "Testeur"]) {
     const d = path.join(yaide.dossier, ".yaide", "agents", nom.toLowerCase());
     fs.mkdirSync(d, { recursive: true });
     fs.writeFileSync(path.join(d, "agent.json"), JSON.stringify({ nom, avatar: "", couleur: nom === "Testeur" ? "orange" : "vert" }));
+    if (nom === "Relecteur") fs.writeFileSync(path.join(d, "PERSONA.md"), "persona-43\n");
   }
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await api(page, "PUT", "/api/agent/providers/anthropic", { adresse: "http://127.0.0.1:9", cle: "sk-test" });
+  await api(page, "PUT", "/api/agent/providers/anthropic", { adresse: faux.adresse, cle: "sk-test" });
   await api(page, "PUT", "/api/agent/profils", { nom: "sonnet", provider: "anthropic", modele: "claude-sonnet-4-5", fenetre: 200000, defaut: true });
   const colonne = page.locator("aside.cadre-agent");
   await page.getByRole("button", { name: "Agents", exact: true }).click();
@@ -792,6 +802,35 @@ test("REQ067_parcours_28_demarrer_ouvre_un_onglet", async ({ page }) => {
   await colonne.getByRole("button", { name: "Démarrer une conversation" }).click();
   await expect(ongletAgent(page, 2)).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tab", { name: /^Agent \d$/ })).toHaveCount(2);
+
+  // P-094 : deux notes sélectionnées, « Soumettre à un agent… », Relecteur, Tab, Tab, Entrée.
+  const arbre = page.getByRole("tree", { name: "Fichiers" });
+  const ligne = (nom) => arbre.getByRole("treeitem", { name: nomLigne(nom) });
+  await ligne("docs").click();
+  await ligne("a.md").click();
+  await ligne("b.md").click({ modifiers: ["Control"] });
+  await ligne("b.md").click({ button: "right" });
+  await page.getByRole("menu", { name: "Actions sur docs/b.md" }).getByRole("menuitem", { name: "Soumettre à un agent…" }).click();
+  const dialogue = page.getByRole("dialog", { name: "Soumettre à un agent" });
+  await expect(dialogue).toContainText("Soumettre docs/a.md et docs/b.md à un agent.");
+  await dialogue.getByLabel("Agent", { exact: true }).selectOption({ label: "Relecteur" });
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Enter");
+  await expect(dialogue).toHaveCount(0);
+  // AC-126-3 : un onglet actif, Relecteur seul en en-tête ; AC-126-2 : le message, le focus dans le champ vide.
+  await expect(ongletAgent(page, 3)).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("Consulte `docs/a.md` et `docs/b.md`.").first()).toBeVisible();
+  await expect(page.getByRole("list", { name: "Agents de la conversation" }).getByRole("listitem")).toHaveText([/Relecteur$/]);
+  await expect(champMessage(page)).toBeFocused();
+  await expect(champMessage(page)).toHaveValue("");
+  await expect(page.getByRole("button", { name: /^read docs\/a\.md, réussi$/ })).toBeVisible();
+  await expect(fil(page).getByText("Notes relues : rien à signaler.")).toBeVisible();
+  const premiere = faux.recues[0].corps;
+  expect(JSON.stringify(premiere.messages)).toContain("Consulte `docs/a.md` et `docs/b.md`.");
+  expect(premiere.model).toBe("claude-sonnet-4-5");
+  expect(JSON.stringify(premiere.system)).toContain("persona-43");
+  expect(JSON.stringify(premiere)).toContain("Relecteur");
 });
 
 test("REQ078_AC13_AC56_17_REQ078_AC23_REQ077_AC28_REQ078_AC24_REQ077_AC9_mise_en_page_de_l_agent", async ({ page, browserName }) => {
