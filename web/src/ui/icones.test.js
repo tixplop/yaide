@@ -312,3 +312,20 @@ test("REQ133_icones_de_la_boite_a_outils_rendues_et_masquees", () => {
   const src = readFileSync("web/src/ui/icones.js", "utf8");
   expect(src).toMatch(/Icônes Lucide \(ISC\) utilisées ici : [^\n]*mouse-pointer-2, circle, diamond, baseline, workflow, move-up-right, square-plus/);
 });
+
+test("REQ133_REQ138_REQ140_REQ141_quinze_icones_de_la_boite_a_outils_rendues_et_masquees", () => {
+  const nouvelles = [
+    "square-dashed", "bring-to-front", "send-to-back", "opacite-100", "opacite-75", "opacite-50", "opacite-25", "opacite-0",
+    "taille-petit", "taille-normal", "taille-grand", "taille-tres-grand", "epaisseur-fin", "epaisseur-moyen", "epaisseur-epais",
+  ];
+  expect(nouvelles).toHaveLength(15);
+  for (const n of nouvelles) {
+    expect(NOMS, n).toContain(n);
+    const s = icone(n);
+    expect(s.getAttribute("aria-hidden"), n).toBe("true");
+    expect(s.getAttribute("data-icone"), n).toBe(n);
+    expect(s.querySelector("path, rect"), n).not.toBeNull();
+  }
+  const tete = readFileSync("web/src/ui/icones.js", "utf8").split("*/")[0];
+  for (const n of nouvelles) expect(tete, n).toContain(n);
+});

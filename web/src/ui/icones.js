@@ -16,7 +16,8 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-Icônes Lucide (ISC) utilisées ici : panel-left-close, panel-left-open, panel-right-close, panel-bottom-close, panel-bottom-open, bot, message-square-plus, history, send-horizontal, circle-stop, circle-dashed, circle-check, circle-x, circle-arrow-up, type, users, user-plus, sliders-horizontal, arrow-left, asterisk, code-xml, circle-minus, brain, messages-square, server, copy, clipboard-paste, mouse-pointer-2, circle, diamond, baseline, workflow, move-up-right, square-plus, zoom-out, zoom-in, scan.
+Icônes Lucide (ISC) utilisées ici : panel-left-close, panel-left-open, panel-right-close, panel-bottom-close, panel-bottom-open, bot, message-square-plus, history, send-horizontal, circle-stop, circle-dashed, circle-check, circle-x, circle-arrow-up, type, users, user-plus, sliders-horizontal, arrow-left, asterisk, code-xml, circle-minus, brain, messages-square, server, copy, clipboard-paste, square-dashed, bring-to-front, send-to-back, mouse-pointer-2, circle, diamond, baseline, workflow, move-up-right, square-plus, zoom-out, zoom-in, scan.
+Dessinées pour Yaide : opacite-100, opacite-75, opacite-50, opacite-25, opacite-0, taille-petit, taille-normal, taille-grand, taille-tres-grand, epaisseur-fin, epaisseur-moyen, epaisseur-epais.
 
 ---
 
@@ -133,6 +134,21 @@ const CHEMINS = {
   "trait-plein": "<path d=\"M3 12h18\" stroke-width=\"2\"/>",
   "trait-tirets": "<path d=\"M3 12h4M10 12h4M17 12h4\" stroke-width=\"2\" stroke-linecap=\"butt\"/>",
   "trait-points": "<path d=\"M4 12h.01M8 12h.01M12 12h.01M16 12h.01M20 12h.01\" stroke-width=\"2.6\"/>",
+  "square-dashed": "<path d=\"M5 3a2 2 0 0 0-2 2\"/><path d=\"M19 3a2 2 0 0 1 2 2\"/><path d=\"M21 19a2 2 0 0 1-2 2\"/><path d=\"M5 21a2 2 0 0 1-2-2\"/><path d=\"M9 3h1\"/><path d=\"M9 21h1\"/><path d=\"M14 3h1\"/><path d=\"M14 21h1\"/><path d=\"M3 9v1\"/><path d=\"M21 9v1\"/><path d=\"M3 14v1\"/><path d=\"M21 14v1\"/>",
+  "bring-to-front": "<rect x=\"8\" y=\"8\" width=\"8\" height=\"8\" rx=\"2\"/><path d=\"M4 10a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2\"/><path d=\"M14 20a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2\"/>",
+  "send-to-back": "<rect x=\"14\" y=\"14\" width=\"8\" height=\"8\" rx=\"2\"/><rect x=\"2\" y=\"2\" width=\"8\" height=\"8\" rx=\"2\"/><path d=\"M7 14v1a2 2 0 0 0 2 2h1\"/><path d=\"M14 7h1a2 2 0 0 1 2 2v1\"/>",
+  "opacite-100": "<rect x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"2\" fill=\"currentColor\"/>",
+  "opacite-75": "<rect x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"2\" fill=\"currentColor\" fill-opacity=\".75\"/>",
+  "opacite-50": "<rect x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"2\" fill=\"currentColor\" fill-opacity=\".5\"/>",
+  "opacite-25": "<rect x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"2\" fill=\"currentColor\" fill-opacity=\".25\"/>",
+  "opacite-0": "<rect x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"2\"/>",
+  "taille-petit": "<path d=\"m9 19 3-8 3 8\"/><path d=\"M10.1 16.2h3.8\"/>",
+  "taille-normal": "<path d=\"m8 19 4-11 4 11\"/><path d=\"M9.5 15h5\"/>",
+  "taille-grand": "<path d=\"m7 19 5-14 5 14\"/><path d=\"M8.8 14h6.4\"/>",
+  "taille-tres-grand": "<path d=\"m5 21 7-18 7 18\"/><path d=\"M7.3 15h9.4\"/>",
+  "epaisseur-fin": "<path d=\"M4 8v8M20 8v8\"/><rect x=\"7\" y=\"11.25\" width=\"10\" height=\"1.5\" rx=\".75\" fill=\"currentColor\" stroke=\"none\"/>",
+  "epaisseur-moyen": "<path d=\"M4 8v8M20 8v8\"/><rect x=\"7\" y=\"10.5\" width=\"10\" height=\"3\" rx=\"1\" fill=\"currentColor\" stroke=\"none\"/>",
+  "epaisseur-epais": "<path d=\"M4 8v8M20 8v8\"/><rect x=\"7\" y=\"9.5\" width=\"10\" height=\"5\" rx=\"1.5\" fill=\"currentColor\" stroke=\"none\"/>",
 };
 
 export const NOMS = Object.keys(CHEMINS);

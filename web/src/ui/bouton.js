@@ -47,6 +47,7 @@ export function bouton({
   compteur,
   actif,
   pastilles,
+  inactif = false,
 }) {
   if (!libelle && !icone) throw new Error("bouton : libelle requis");
   if (!VARIANTES.includes(variante)) throw new Error(`bouton : variante inconnue « ${variante} »`);
@@ -116,6 +117,13 @@ export function bouton({
     b.classList.add("bouton-icone");
     b.append(dessiner(icone));
   }
+  // Commande inactive d'une barre d'outils : `aria-disabled` sans `disabled`, le bouton garde focus et info-bulle ;
+  // le clic et Entrée n'ont aucun effet (la capture passe avant les écouteurs de l'appelant).
+  b.definirInactif = (oui) => (oui ? b.setAttribute("aria-disabled", "true") : b.removeAttribute("aria-disabled"));
+  if (inactif) b.definirInactif(true);
+  b.addEventListener("click", (ev) => {
+    if (taille !== "barre" && b.getAttribute("aria-disabled") === "true" && !b.hasAttribute("aria-busy")) ev.stopImmediatePropagation();
+  });
   if (taille === "barre") {
     // Taille « barre » : le bouton reste actif pour garder le focus ; en cours, `aria-disabled` et un clic sans effet.
     b.addEventListener("click", (ev) => {

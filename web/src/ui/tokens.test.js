@@ -838,3 +838,38 @@ test("REQ133_contrastes_de_la_boite_a_outils_dans_les_deux_themes", () => {
     });
   }
 });
+
+// REQ-138 (AC-138-5) et REQ-140 (AC-140-1), design-system.md « Opacité, liens colorés, nouvelles icônes et rectangle de sélection ».
+test("REQ138_AC5_contrastes_du_texte_d_une_boite_a_50_et_a_0_pour_cent_dans_les_deux_themes", () => {
+  const attendu = { defaut: [9.6, 16.48], bleu: [9.35, 15.21], vert: [9.14, 15.28], jaune: [9.22, 15.47], orange: [9.42, 15.1], rouge: [9.67, 14.82], violet: [9.52, 15.06] };
+  THEMES.forEach((theme, k) => {
+    const surface = jeton(theme, "--bg-200");
+    for (const [nom, paire] of Object.entries(attendu)) {
+      const fond = poser({ ...jeton(theme, `--boite-${nom}-fond`), a: 0.5 }, surface);
+      const r = contraste(jeton(theme, "--ink"), fond);
+      egalA(r, paire[k], `--ink sur la boîte ${nom} à 50 % (${theme})`);
+      expect(r, `${nom} ${theme}`).toBeGreaterThanOrEqual(4.5);
+    }
+    const r0 = contraste(jeton(theme, "--ink"), surface);
+    egalA(r0, [10.26, 16.48][k], `--ink sur --bg-200 (${theme})`);
+    expect(r0).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+test("REQ140_AC1_contrastes_des_traits_colores_et_du_rectangle_de_selection_sur_la_surface", () => {
+  const couleursBoite = ["defaut", "bleu", "vert", "jaune", "orange", "rouge", "violet"];
+  THEMES.forEach((theme, k) => {
+    const surface = jeton(theme, "--bg-200");
+    const traits = couleursBoite.map((c) => contraste(jeton(theme, `--boite-${c}-trait`), surface));
+    for (const [i, r] of traits.entries()) expect(r, `${couleursBoite[i]} (${theme})`).toBeGreaterThanOrEqual(3);
+    // Le plus bas des traits colorés : Rouge en sombre, Vert en clair.
+    const colores = traits.slice(1);
+    expect(Math.min(...colores)).toBe(contraste(jeton(theme, k === 0 ? "--boite-rouge-trait" : "--boite-vert-trait"), surface));
+    egalA(Math.min(...colores), [6.22, 5.28][k], `trait coloré le plus bas (${theme})`);
+    egalA(contraste(jeton(theme, "--accent-fg"), surface), [6.64, 6.3][k], `--accent-fg sur --bg-200 (${theme})`);
+    const pressee = poser(jeton(theme, "--accent-soft"), jeton(theme, "--bg-300"));
+    const r = contraste(jeton(theme, "--accent-fg"), pressee);
+    egalA(r, [4.78, 5.25][k], `--accent-fg sur --accent-soft (${theme})`);
+    expect(r).toBeGreaterThanOrEqual(3);
+  });
+});

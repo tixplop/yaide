@@ -505,3 +505,40 @@ test("REQ117_AC13_bouton_pastilles_refuse_une_combinaison_invalide", () => {
   expect(() => bouton({ nomAccessible: "A", icone: "check", pastilles: trois })).toThrow();
   expect(() => bouton({ libelle: "A", pastilles: [...trois.slice(0, 2), { sombre: "red", clair: "#222" }] })).toThrow();
 });
+
+test("REQ141_AC4_bouton_inactif_de_barre_d_outils_aria_disabled_sans_disabled_focus_bulle_clic_et_entree_sans_effet", () => {
+  const b = bouton({ icone: "bring-to-front", nomAccessible: "Premier plan", inactif: true });
+  const clic = vi.fn();
+  b.addEventListener("click", clic);
+  const barre = document.createElement("div");
+  barre.setAttribute("role", "toolbar");
+  barre.append(b.enveloppe);
+  document.body.append(barre);
+  expect(b.getAttribute("aria-disabled")).toBe("true");
+  expect(b.disabled).toBe(false);
+  expect(b.hasAttribute("aria-pressed")).toBe(false);
+  b.focus();
+  expect(document.activeElement).toBe(b);
+  b.click();
+  b.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  expect(clic).not.toHaveBeenCalled();
+  vi.useFakeTimers();
+  b.enveloppe.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  expect(document.querySelector("[role=tooltip]").textContent).toBe("Premier plan");
+  b.enveloppe.dispatchEvent(new Event("pointerleave"));
+  vi.useRealTimers();
+  b.definirInactif(false);
+  expect(b.hasAttribute("aria-disabled")).toBe(false);
+  b.click();
+  expect(clic).toHaveBeenCalledTimes(1);
+  b.definirInactif(true);
+  expect(b.getAttribute("aria-disabled")).toBe("true");
+  b.click();
+  expect(clic).toHaveBeenCalledTimes(1);
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  // L'icône seule est atténuée : ni le bouton, ni son contour de focus.
+  expect(css).toMatch(/\.ya-icon-btn\[aria-disabled="true"\][^{]*>\s*svg\s*\{[^}]*opacity: \.45/);
+  expect(css).not.toMatch(/\.ya-icon-btn\[aria-disabled="true"\](:not\([^)]*\))?\s*\{[^}]*opacity/);
+  barre.remove();
+});
