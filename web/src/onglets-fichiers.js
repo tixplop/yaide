@@ -9,6 +9,9 @@ const dossierDe = (chemin) => chemin.split("/").slice(0, -1).join("/");
 /** Vrai si `chemin` est une image que le navigateur affiche (REQ-120), par son extension, sans tenir compte de la casse. `.svg` est un texte. */
 export const estImage = (chemin) => /\.(png|jpe?g|gif|webp|avif|bmp|ico)$/i.test(chemin);
 
+/** Vrai si `chemin` est un whiteboard (REQ-128), par son extension `.jdiag`, sans tenir compte de la casse. */
+export const estWhiteboard = (chemin) => /\.jdiag$/i.test(chemin);
+
 /** Vrai si `chemin` est `base` ou se trouve dessous. */
 export const estSous = (chemin, base) => chemin === base || chemin.startsWith(`${base}/`);
 

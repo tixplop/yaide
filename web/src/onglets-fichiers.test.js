@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { apresFermeture, estSous, garder, libelles, plusPetitNumeroLibre, retrouver, suivreRenommage } from "./onglets-fichiers.js";
+import { apresFermeture, estSous, estWhiteboard, garder, libelles, plusPetitNumeroLibre, retrouver, suivreRenommage } from "./onglets-fichiers.js";
 import { ecrire, lire } from "./stockage.js";
 
 vi.mock("./stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
@@ -60,4 +60,9 @@ test("REQ079_AC18_ancien_format_et_disposition_abimee", async () => {
   }
   lire.mockResolvedValueOnce(undefined);
   expect(await retrouver()).toEqual({ liste: [], actif: null, disposition: { arbre: { id: "g1", actif: null }, courant: "g1" } });
+});
+
+test("REQ128_AC1_un_whiteboard_se_reconnait_a_l_extension_jdiag_sans_tenir_compte_de_la_casse", () => {
+  expect(["plan.jdiag", "docs/PLAN.JDIAG", "a.Jdiag"].map(estWhiteboard)).toEqual([true, true, true]);
+  expect(["plan.json", "jdiag", "plan.jdiag.txt", "plan.jdiagx"].map(estWhiteboard)).toEqual([false, false, false, false]);
 });

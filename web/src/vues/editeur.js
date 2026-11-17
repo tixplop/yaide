@@ -3,12 +3,14 @@ import { decider, texteAttente } from "../brouillons.js";
 import { decisionDisque } from "../disque.js";
 import { formatable, formater as formaterTexte } from "../formatage.js";
 import { couper, feuilles, poserPart, retirerGroupe } from "../disposition.js";
-import { apresFermeture, estImage, estSous, garder, libelles, nomDe, plusPetitNumeroLibre, retrouver, suivreRenommage } from "../onglets-fichiers.js";
+import { apresFermeture, estImage, estSous, estWhiteboard, garder, libelles, nomDe, plusPetitNumeroLibre, retrouver, suivreRenommage } from "../onglets-fichiers.js";
 import { bouton } from "../ui/bouton.js";
 import { dialogue } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
 import { icone } from "../ui/icones.js";
 import { image } from "../ui/image.js";
+import { lireJdiag, ecrireJdiag } from "../jdiag.js";
+import { tableau } from "../ui/tableau.js";
 import { langagePourFichier, nomLangage } from "../ui/langages.js";
 import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
@@ -322,7 +324,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       surCourant(null);
       return surActif({});
     }
-    const etat = o.image ? undefined : (o === diff ? diff.el : o.zone).vue?.state;
+    const etat = o.image || o.whiteboard ? undefined : (o === diff ? diff.el : o.zone).vue?.state;
     let position;
     if (etat) {
       const tete = etat.selection.main.head;
@@ -330,7 +332,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       position = `Ln ${l.number}, Col ${tete - l.from + 1}`;
     }
     surCourant(o === diff ? null : o.chemin);
-    surActif({ position, langage: o === diff || o.image ? undefined : nomLangage(nomDe(o.chemin)) });
+    surActif({ position, langage: o === diff || o.image || o.whiteboard ? undefined : nomLangage(nomDe(o.chemin)) });
   }
 
   // Seuls M, A et U colorent un onglet.
@@ -382,6 +384,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       });
       actionsDroite.push(ap.enveloppe);
     }
+    if (o !== diff && o.whiteboard && !o.zone.illisible()) actionsDroite = barreWhiteboard(o);
     const ongl = onglets({
       onglets: ongletsDe(g).map((x) => x === diff ? { id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true } : x.claude ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "asterisk", titre: `Claude Code dans ${cheminProjet}`, fermable: true } : x.conversationAgent ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "bot", titre: `Agent dans ${cheminProjet}`, fermable: true } : x.opencode ? ongletOpencode(x, noms.get(x).libelle) : ({
         id: x.chemin,
@@ -435,6 +438,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       if (o && lectures > 0) g.code.prepend(indication({ texte: "Chargement…", variante: "chargement" }));
       if (g.id !== courant) remplirFil(g, o);
     }
+    for (const o of rendus.values()) if (o?.whiteboard) o.zone.initialiserVue();
     publier(rendus.get(groupes.get(courant)));
     publierGroupes();
   }
@@ -463,7 +467,14 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   function creer({ chemin, contenu, version, texte, apercu = false, hybride = false }) {
     const o = { chemin, groupe: courant, disque: contenu, version, apercu, hybride, modifie: false };
-    o.zone = zoneCode({
+    const surChangement = (t) => {
+      const m = t !== o.disque;
+      if (m === o.modifie) return garderListe();
+      o.modifie = m;
+      afficher();
+      garderListe();
+    };
+    o.zone = estWhiteboard(chemin) ? zoneWhiteboard(o, texte ?? contenu, surChangement) : zoneCode({
       contenu: texte ?? contenu,
       langage: langagePourFichier(nomDe(chemin)) ?? undefined,
       nom: nomDe(chemin),
@@ -486,17 +497,101 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       surPosition() {
         if (trouver(actif) === o) publier(o);
       },
-      surChangement(t) {
-        const m = t !== o.disque;
-        if (m === o.modifie) return garderListe();
-        o.modifie = m;
-        afficher();
-        garderListe();
-      },
+      surChangement,
     });
     o.modifie = o.zone.contenu() !== contenu;
     liste.push(o);
     return o;
+  }
+
+  /**
+   * La zone d'un onglet de whiteboard (REQ-128) : C-018 à la place de la zone de code, avec le même texte courant, `contenu()` et `remplacer(texte)`.
+   * Un texte vide est un whiteboard vide : Ctrl+S écrit alors le format complet (`pourEcriture`, `acquitter`).
+   */
+  function zoneWhiteboard(o, texteInitial, surTexte) {
+    o.whiteboard = true;
+    o.zoom = 1;
+    let courantTexte = texteInitial;
+    let vueFaite = false;
+    const t = tableau({
+      nom: nomDe(o.chemin),
+      document: lireJdiag(texteInitial),
+      surChangement(doc) {
+        courantTexte = ecrireJdiag(doc);
+        surTexte(courantTexte);
+      },
+      surVue(v) {
+        o.zoom = v.zoom;
+        majBarreWhiteboard(o);
+      },
+    });
+    const z = t.element;
+    const illisible = () => lireJdiag(courantTexte) === null;
+    // La vue de l'ouverture : toutes les boîtes, dès que la surface a une taille.
+    const initialiserVue = () => {
+      if (vueFaite || illisible()) return;
+      const r = z.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return;
+      vueFaite = true;
+      t.toutAfficher();
+    };
+    z.detruire = t.detruire;
+    z.definirCoupe = () => {};
+    z.rechargerApercu = () => {};
+    z.contenu = () => courantTexte;
+    z.illisible = illisible;
+    z.initialiserVue = initialiserVue;
+    z.pourEcriture = () => (courantTexte === "" ? ecrireJdiag(lireJdiag("")) : courantTexte);
+    z.acquitter = (texte) => {
+      if (courantTexte === "") courantTexte = texte;
+    };
+    z.remplacer = (texte) => {
+      courantTexte = texte;
+      const doc = lireJdiag(texte);
+      if (doc === null) vueFaite = false;
+      t.definirDocument(doc);
+      initialiserVue();
+    };
+    z.definirNom = t.definirNom;
+    z.ajouterBoite = t.ajouterBoite;
+    z.zoomAvant = t.zoomAvant;
+    z.zoomArriere = t.zoomArriere;
+    z.toutAfficher = t.toutAfficher;
+    z.vue = { focus: () => (z.querySelector("[role=application]") ?? z).focus() };
+    return z;
+  }
+
+  const TEXTE_ZOOM = (zoom) => `${Math.round(zoom * 100)}\u00a0%`;
+
+  /** Le zoom affiché et les bornes des boutons de zoom de l'onglet de whiteboard `o`. */
+  function majBarreWhiteboard(o) {
+    if (!o.barreWb) return;
+    o.barreWb.statut.textContent = TEXTE_ZOOM(o.zoom);
+    const borne = (b, oui) => (oui ? b.setAttribute("aria-disabled", "true") : b.removeAttribute("aria-disabled"));
+    borne(o.barreWb.avant, o.zoom >= 4 - 1e-9);
+    borne(o.barreWb.arriere, o.zoom <= 0.25 + 1e-9);
+  }
+
+  /** La barre d'outils de l'onglet de whiteboard `o` (C-005 `actionsDroite`) : une par groupe, refaite avec la barre des onglets. */
+  function barreWhiteboard(o) {
+    const commande = (icone, nomAccessible, action) => {
+      const b = bouton({ icone, variante: "discret", nomAccessible });
+      b.addEventListener("click", () => {
+        if (b.getAttribute("aria-disabled") !== "true") action();
+      });
+      return b;
+    };
+    const ajout = commande("square-plus", "Ajouter une boîte", () => o.zone.ajouterBoite());
+    ajout.enveloppe.classList.add("ya-tableau-ajout");
+    const arriere = commande("zoom-out", "Zoom arrière", () => o.zone.zoomArriere());
+    const avant = commande("zoom-in", "Zoom avant", () => o.zone.zoomAvant());
+    const tout = commande("scan", "Tout afficher", () => o.zone.toutAfficher());
+    const statut = document.createElement("span");
+    statut.className = "ya-tableau-zoom";
+    statut.setAttribute("role", "status");
+    o.barreWb = { statut, avant, arriere };
+    majBarreWhiteboard(o);
+    return [ajout.enveloppe, arriere.enveloppe, statut, avant.enveloppe, tout.enveloppe];
   }
 
   /** Un onglet d'image (REQ-120) : la zone C-017 prend la place de la zone de code ; l'image vient de la route d'aperçu. */
@@ -539,7 +634,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     }
     activer(chemin);
     afficher();
-    if (Number.isInteger(ligne) && !trouver(chemin).image) trouver(chemin).zone.aller(ligne);
+    if (Number.isInteger(ligne) && !trouver(chemin).image && !trouver(chemin).whiteboard) trouver(chemin).zone.aller(ligne);
     trouver(chemin).zone.vue.focus();
     garderListe();
   }
@@ -570,6 +665,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       o.chemin = nouveau;
       if (o.image) {
         renommerImage(o);
+        continue;
+      }
+      if (o.whiteboard) {
+        o.zone.definirNom(nomDe(nouveau));
         continue;
       }
       o.zone.vue.contentDOM.setAttribute("aria-label", `Éditeur ${nomDe(nouveau)}`);
@@ -903,7 +1002,8 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     // Une écriture en cours finit d'abord : la suivante part avec la version qu'elle rend.
     while (o.ecriture) await o.ecriture;
     if (o.question) return SANS_SUITE;
-    const texte = o.zone.contenu();
+    if (o.whiteboard && o.zone.illisible()) return SANS_SUITE; // Yaide n'écrit jamais dans un whiteboard illisible
+    const texte = o.whiteboard ? o.zone.pourEcriture() : o.zone.contenu();
     let r = await ecrire(o, texte);
     if (r.cause === "conflit" && !detruit) {
       // Le disque a changé depuis la version de base : jamais d'écrasement sans question.
@@ -924,6 +1024,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     if (r.cause) return `Sauvegarde impossible pour ${nomDe(o.chemin)} : ${r.message.replace(/\.$/, "")}. Vos modifications sont gardées.`;
     effacerAvis(o);
     surSauvegarde();
+    o.zone.acquitter?.(texte);
     o.modifie = o.zone.contenu() !== texte;
     o.alerte?.remove();
     o.alerte = null;
@@ -1104,7 +1205,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   // REQ-118 : le formatage ne s'applique qu'à un fichier de l'éditeur dont le type sait se formater.
   const langageFormatable = () => {
     const o = trouver(actif);
-    if (!o || !estTexte(o)) return null;
+    if (!o || !estTexte(o) || o.whiteboard) return null;
     const langage = langagePourFichier(nomDe(o.chemin));
     return formatable(langage) ? langage : null;
   };
