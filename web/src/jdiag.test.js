@@ -8,7 +8,7 @@ const DEUX =
 describe("jdiag", () => {
   test("REQ132_AC1 : whiteboard vide", () => {
     expect(ecrireJdiag({ version: 1, boxes: [], links: [] })).toBe(VIDE);
-    expect(lireJdiag("")).toEqual({ version: 1, boxes: [], links: [] });
+    expect(lireJdiag("")).toEqual({ version: 1, boxes: [], links: [], arrows: [] });
     expect(ecrireJdiag(lireJdiag(VIDE))).toBe(VIDE);
   });
 
@@ -57,5 +57,45 @@ describe("jdiag", () => {
     expect(avecExtensionJdiag("docs/plan")).toBe("docs/plan.jdiag");
     expect(avecExtensionJdiag("docs/plan.jdiag")).toBe("docs/plan.jdiag");
     expect(avecExtensionJdiag("docs/Plan.JDIAG")).toBe("docs/Plan.JDIAG");
+  });
+
+  const GRAND =
+    '{\n  "version": 1,\n  "boxes": [\n    {"id": "b1", "x": 40, "y": 80, "width": 100, "height": 100, "text": "Début", "shape": "ellipse", "color": "green"},\n    {"id": "b2", "x": 300, "y": 80, "width": 160, "height": 80, "text": "Fin"}\n  ],\n  "links": [\n    {"id": "l1", "from": "b1", "to": "b2", "fromSide": "right", "toSide": "left", "route": "orthogonal", "ends": "both", "line": "dashed"}\n  ],\n  "arrows": [\n    {"id": "a1", "x1": 100, "y1": 300, "x2": 300, "y2": 300, "ends": "none"}\n  ]\n}\n';
+
+  test("REQ132_AC6 : styles, côtés et flèche libre, relus à l'identique", () => {
+    const doc = lireJdiag(GRAND);
+    expect(doc.boxes[0]).toMatchObject({ shape: "ellipse", color: "green" });
+    expect(doc.boxes[1]).toMatchObject({ shape: "rectangle", color: "default" });
+    expect(doc.links[0]).toMatchObject({ fromSide: "right", toSide: "left", route: "orthogonal", ends: "both", line: "dashed" });
+    expect(doc.arrows[0]).toEqual({ id: "a1", x1: 100, y1: 300, x2: 300, y2: 300, route: "direct", ends: "none", line: "solid" });
+    expect(lireJdiag(DEUX).links[0]).toMatchObject({ fromSide: null, toSide: null, route: "direct", ends: "end", line: "solid" });
+    expect(ecrireJdiag(doc)).toBe(GRAND);
+  });
+
+  const BOITE = '{"id": "b1", "x": 0, "y": 0, "width": 1, "height": 1, "text": ""}';
+  const doc7 = (liens, arrows) => `{"version": 1, "boxes": [${BOITE}, ${BOITE.replace("b1", "b2")}], "links": [${liens}], "arrows": ${arrows}}`;
+  test.each([
+    `{"version": 1, "boxes": [{"id": "b1", "x": 0, "y": 0, "width": 1, "height": 1, "text": "", "shape": "triangle"}], "links": []}`,
+    doc7('{"id": "l1", "from": "b1", "to": "b2", "route": "zigzag"}', "[]"),
+    doc7('{"id": "l1", "from": "b1", "to": "b2", "fromSide": "right"}', "[]"),
+    doc7('{"id": "l1", "from": "b1", "to": "b2", "fromSide": "right", "toSide": "dessus"}', "[]"),
+    doc7("", "{}"),
+    doc7("", '[{"id": "a1", "x1": "1", "y1": 0, "x2": 0, "y2": 0}]'),
+    doc7("", '[{"id": "a1", "x1": 1, "y1": 0, "x2": 0}]'),
+    doc7('{"id": "l1", "from": "b1", "to": "b2"}', '[{"id": "l1", "x1": 1, "y1": 0, "x2": 0, "y2": 0}]'),
+  ])("REQ132_AC7 : illisible %s", (texte) => {
+    expect(lireJdiag(texte)).toBeNull();
+  });
+
+  test("REQ132_AC8 : valeurs par défaut non réécrites, id de flèche libre", () => {
+    const explicite = DEUX.replace('"text": "Début"', '"text": "Début", "shape": "rectangle", "color": "default"')
+      .replace('"to": "b2"', '"to": "b2", "route": "direct", "ends": "end", "line": "solid"')
+      .replace('"links": [\n    {"id": "l1", "from": "b1", "to": "b2", "route": "direct", "ends": "end", "line": "solid"}\n  ]', '"links": [\n    {"id": "l1", "from": "b1", "to": "b2", "route": "direct", "ends": "end", "line": "solid"}\n  ], "arrows": []');
+    const doc = lireJdiag(explicite);
+    expect(doc).not.toBeNull();
+    expect(ecrireJdiag(doc)).toBe(DEUX);
+    const libre = (id) => ({ id, x1: 0, y1: 0, x2: 1, y2: 1 });
+    expect(idLibre("a", { version: 1, boxes: [], links: [], arrows: [libre("a1"), libre("a3")] })).toBe("a2");
+    expect(idLibre("a", { version: 1, boxes: [], links: [] })).toBe("a1");
   });
 });
