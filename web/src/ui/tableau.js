@@ -47,7 +47,7 @@ function nomBoite(boite) {
   return texte || "Boîte vide";
 }
 
-export function tableau({ nom, document: documentInitial, vue, outils, surChangement, surVue }) {
+export function tableau({ nom, document: documentInitial, vue, outils, theme, surChangement, surVue }) {
   if (!nom) throw new Error("tableau : nom requis");
   if (typeof surChangement !== "function") throw new Error("tableau : surChangement requis");
   const prefixe = `tableau${++compteur}`;
@@ -72,6 +72,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
 
   const element = document.createElement("div");
   element.className = "ya-tableau-zone";
+  if (theme === "light" || theme === "dark") element.dataset.theme = theme;
   const fond = document.createElement("div");
   fond.className = "ya-tableau";
   element.append(fond);
@@ -758,6 +759,10 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       choisis = doc === null ? [] : choisis.filter((id) => objet(id) !== undefined);
       if (avant || doc === null) monter();
       else dessiner();
+    },
+    definirTheme(nouveau) {
+      if (nouveau === "light" || nouveau === "dark") element.dataset.theme = nouveau;
+      else delete element.dataset.theme;
     },
     definirNom(nouveau) {
       nomCourant = nouveau;

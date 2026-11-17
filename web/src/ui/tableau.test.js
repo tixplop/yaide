@@ -29,6 +29,8 @@ beforeEach(() => {
 afterEach(() => {
   t?.detruire();
   vi.restoreAllMocks();
+  vi.useRealTimers();
+  delete document.documentElement.dataset.theme;
 });
 
 const surface = () => t.element.querySelector("[role=application]");
@@ -334,4 +336,39 @@ test("C018_un_clic_sur_une_poignee_garde_la_boite_choisie", () => {
   surface().dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 270, clientY: 140 }));
   clic(t.element.querySelector("[data-connecteur=right]"));
   expect(choisieId()).toBe(obj("b1").id);
+});
+
+test("REQ143_AC1_definirTheme_pose_data_theme_sans_surChangement_ni_perte_de_focus", () => {
+  monter();
+  expect(t.element.hasAttribute("data-theme")).toBe(false);
+  clic(rect("b2"));
+  touche(surface(), "Enter");
+  const zone = t.element.querySelector("[role=textbox]");
+  zone.textContent = "Texte tapé";
+  zone.dispatchEvent(new Event("input", { bubbles: true }));
+  const avant = changements.length;
+  t.definirTheme("light");
+  expect(t.element.dataset.theme).toBe("light");
+  expect(changements).toHaveLength(avant);
+  expect(obj("b2").classList.contains("saisie")).toBe(true);
+  expect(t.element.querySelector("[role=textbox]")).toBe(zone);
+  expect(zone.textContent).toBe("Texte tapé");
+  expect(document.activeElement).toBe(zone);
+  t.definirTheme();
+  expect(t.element.hasAttribute("data-theme")).toBe(false);
+  t.detruire();
+  t = tableau({ nom: "p.jdiag", document: DOC(), theme: "dark", surChangement: () => {} });
+  expect(t.element.dataset.theme).toBe("dark");
+});
+
+test("REQ143_AC5_info_bulle_d_un_bouton_de_la_boite_a_outils_au_theme_de_la_zone", () => {
+  vi.useFakeTimers();
+  document.documentElement.dataset.theme = "dark";
+  monter();
+  t.definirTheme("light");
+  const b = t.element.querySelector(".ya-tableau-outils .bouton-enveloppe");
+  b.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  const bulle = document.querySelector('[role="tooltip"][data-ouverte="true"]');
+  expect(bulle.dataset.theme).toBe("light");
 });

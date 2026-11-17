@@ -83,6 +83,10 @@ export function infoBulle({ texte, ancre, position = "dessous", enveloppe }) {
     minuterie = null;
     if (ouverte === bulle || !ancre.isConnected || ancre.closest("[hidden]")) return;
     fermer();
+    // Posée dans `body`, la bulle prend le thème de la zone de son ancre (REQ-143), sinon celui de `<html>`.
+    const zone = ancre.parentElement?.closest("[data-theme]");
+    if (zone && zone !== document.documentElement) bulle.dataset.theme = zone.dataset.theme;
+    else delete bulle.dataset.theme;
     document.body.append(bulle);
     bulle.dataset.ouverte = "true";
     ouverte = bulle;

@@ -6,7 +6,10 @@ beforeEach(() => {
   vi.useFakeTimers();
   document.body.innerHTML = "";
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  delete document.documentElement.dataset.theme;
+});
 
 function ancre(nom = "a") {
   const b = document.createElement("button");
@@ -295,4 +298,22 @@ test("REQ112_texte_long_info_bulle_passe_a_la_ligne_au_dela_du_token", () => {
   for (const d of ["max-width: var(--largeur-info-bulle-max)", "white-space: normal", "overflow-wrap: anywhere", "width: max-content"]) expect(r, d).toContain(d);
   // L'info-bulle courte garde son aspect : la règle de base est inchangée.
   expect(css.match(/\.ya-tooltip\s*\{([^}]*)\}/)[1]).toContain("white-space: nowrap");
+});
+
+test("REQ143_AC5_la_bulle_prend_le_theme_de_la_zone_de_son_ancre_sinon_aucun", () => {
+  document.documentElement.dataset.theme = "dark";
+  const zone = document.createElement("div");
+  zone.dataset.theme = "light";
+  document.body.append(zone);
+  const dedans = document.createElement("button");
+  zone.append(dedans);
+  const dehors = ancre("dehors");
+  const b1 = infoBulle({ texte: "dedans", ancre: dedans });
+  const b2 = infoBulle({ texte: "dehors", ancre: dehors });
+  dedans.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  expect(b1.dataset.theme).toBe("light");
+  dehors.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(400);
+  expect(b2.hasAttribute("data-theme")).toBe(false);
 });

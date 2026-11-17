@@ -33,6 +33,7 @@ test("REQ036_AC6_icone_de_14_px_dans_une_action_de_ligne_et_13_px_dans_la_fermet
   expect(css).not.toContain(".onglet-fermer svg");
 });
 
+// Exception à AC-031-2 : « Thème clair » et « Thème clair du whiteboard » gardent toutes deux `sun` (REQ-143, DEC-093) ; le test compare des noms d'icônes, `sun` y figure une fois.
 test("REQ031_AC2_deux_commandes_n_ont_jamais_la_meme_icone", () => {
   const formes = NOMS.map((n) => icone(n).innerHTML);
   expect(new Set(formes).size).toBe(NOMS.length);
