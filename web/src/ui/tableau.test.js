@@ -240,7 +240,7 @@ test("C018_deux_fleches_de_sens_contraires_sont_decalees_de_8_px_l_une_de_l_autr
   expect(obj("l2").classList.contains("choisie")).toBe(true);
   // Une flèche seule n'est pas décalée : sur la droite des centres.
   monter();
-  expect(obj("l1").querySelector(".trait").getAttribute("d")).toBe("M 260 140 L 400 140");
+  expect(obj("l1").querySelector(".trait").getAttribute("d")).toBe("M 260 140 L 390 140");
 });
 
 test("C018_pointe_au_bord_de_la_boite_d_arrivee_et_traits_a_taille_fixe", () => {

@@ -109,8 +109,29 @@ const COTES = ["top", "right", "bottom", "left"];
 const NORMALES = { top: { x: 0, y: -1 }, right: { x: 1, y: 0 }, bottom: { x: 0, y: 1 }, left: { x: -1, y: 0 } };
 const SORTIE_MIN = 16; // px du dessin : segment perpendiculaire minimal à la sortie et à l'entrée
 const COURBE_MIN = 40; // px du dessin : longueur minimale des points de contrôle d'une courbe
-const POINTE_LONGUEUR = 10; // px écran
-const POINTE_LARGEUR = 8; // px écran
+// Pointes à l'écran selon l'épaisseur (`weight`) : [longueur, largeur] en px.
+const POINTES = { thin: [10, 8], medium: [14, 11], thick: [18, 14] };
+// Épaisseur dessinée e, en px à l'écran, d'une boîte et d'un lien ou d'une flèche libre.
+const EPAISSEURS = { boite: { thin: 1, medium: 2, thick: 4 }, trait: { thin: 1.5, medium: 3, thick: 5 } };
+
+export function epaisseur(sorte, weight) {
+  return EPAISSEURS[sorte][weight ?? "thin"];
+}
+
+// `stroke-dasharray` d'un contour ou d'un trait d'épaisseur e (px écran) : tirets de max(6, 3e) pour max(4, 2e),
+// ou points ronds de max(2, e) tous les 2 × max(2, e) (`0 <pas>`) ; `null` en trait plein.
+export function tirets(line, e) {
+  if (line === "dashed") return `${Math.max(6, 3 * e)} ${Math.max(4, 2 * e)}`;
+  if (line === "dotted") return `0 ${2 * Math.max(2, e)}`;
+  return null;
+}
+
+// Longueur à ôter du trait, à chaque bout qui porte une pointe, en px du dessin.
+export function retraitPointes(ends, weight, zoom) {
+  const l = POINTES[weight ?? "thin"][0] / zoom;
+  const e = ends ?? "end";
+  return { debut: e === "start" || e === "both" ? l : 0, fin: e === "end" || e === "both" ? l : 0 };
+}
 
 // Rectangle où le texte d'une boîte reste dans sa forme.
 export function zoneTexte(boite) {
@@ -219,7 +240,10 @@ function pointsCoudes(a, b, n1, n2) {
 // Tracé entre deux bouts `{ point, cote }` (`cote` à `null` : bout libre, horizontal). Renvoie le chemin SVG `d`
 // et, à chaque bout, son point et l'angle (radians) de la pointe : la direction qui sort du tracé en ce bout.
 // Longueurs en px du dessin, quel que soit le zoom.
-export function trace({ route, depart, arrivee }) {
+// `retrait` : longueur ôtée du trait à chaque bout (le trait s'arrête à la base de la pointe) ; `entier` est
+// le tracé complet, pour la zone de prise.
+export function trace({ route, depart, arrivee, retrait }) {
+  const r = { debut: 0, fin: 0, ...retrait };
   const a = depart.point;
   const b = arrivee.point;
   const sens = b.x < a.x ? -1 : 1;
@@ -230,27 +254,48 @@ export function trace({ route, depart, arrivee }) {
     const k = Math.max(COURBE_MIN, Math.hypot(b.x - a.x, b.y - a.y) / 2);
     const c1 = { x: a.x + n1.x * k, y: a.y + n1.y * k };
     const c2 = { x: b.x + n2.x * k, y: b.y + n2.y * k };
-    return {
-      d: `M ${pt(a)} C ${pt(c1)}, ${pt(c2)}, ${pt(b)}`,
-      debut: { point: a, angle: Math.atan2(a.y - c1.y, a.x - c1.x) },
-      fin: { point: b, angle: Math.atan2(b.y - c2.y, b.x - c2.x) },
-    };
+    const debut = { point: a, angle: Math.atan2(a.y - c1.y, a.x - c1.x) };
+    const fin = { point: b, angle: Math.atan2(b.y - c2.y, b.x - c2.x) };
+    const recule = (bout, l) => ({ x: bout.point.x - Math.cos(bout.angle) * l, y: bout.point.y - Math.sin(bout.angle) * l });
+    const courbe = (p, q) => `M ${pt(p)} C ${pt(c1)}, ${pt(c2)}, ${pt(q)}`;
+    return { d: courbe(recule(debut, r.debut), recule(fin, r.fin)), entier: courbe(a, b), debut, fin };
   }
   const points = route === "orthogonal" ? simplifier(pointsCoudes(a, b, n1, n2)) : [a, b];
   const n = points.length;
   const premier = points[0];
   const dernier = points[n - 1];
+  const ligne = (ps) => `M ${pt(ps[0])}${ps.slice(1).map((p) => ` L ${pt(p)}`).join("")}`;
   return {
-    d: `M ${pt(premier)}${points.slice(1).map((p) => ` L ${pt(p)}`).join("")}`,
+    d: ligne(rogner(rogner(points, r.fin).reverse(), r.debut).reverse()),
+    entier: ligne(points),
     debut: { point: a, angle: Math.atan2(premier.y - points[1].y, premier.x - points[1].x) },
     fin: { point: b, angle: Math.atan2(dernier.y - points[n - 2].y, dernier.x - points[n - 2].x) },
   };
 }
 
-// Triangle de la pointe : 10 px de long et 8 px de large à l'écran, bout sur `bout.point`, orienté selon `bout.angle`.
-export function pointe(bout, zoom) {
-  const longueur = POINTE_LONGUEUR / zoom;
-  const demi = POINTE_LARGEUR / 2 / zoom;
+// Retire `longueur` (px du dessin) à la fin d'un tracé de points, sans jamais le réduire à moins de deux points.
+function rogner(points, longueur) {
+  const p = [...points];
+  let reste = longueur;
+  while (p.length > 2 && Math.hypot(p.at(-1).x - p.at(-2).x, p.at(-1).y - p.at(-2).y) <= reste) {
+    reste -= Math.hypot(p.at(-1).x - p.at(-2).x, p.at(-1).y - p.at(-2).y);
+    p.pop();
+  }
+  const a = p.at(-2);
+  const b = p.at(-1);
+  const l = Math.hypot(b.x - a.x, b.y - a.y);
+  if (l === 0) return p;
+  const k = Math.min(reste, l) / l;
+  p[p.length - 1] = { x: b.x - (b.x - a.x) * k, y: b.y - (b.y - a.y) * k };
+  return p;
+}
+
+// Triangle de la pointe, bout sur `bout.point`, orienté selon `bout.angle` : 10 × 8, 14 × 11 ou 18 × 14 px
+// à l'écran selon `weight` (« thin » par défaut).
+export function pointe(bout, zoom, weight = "thin") {
+  const [l, w] = POINTES[weight ?? "thin"];
+  const longueur = l / zoom;
+  const demi = w / 2 / zoom;
   const { point, angle } = bout;
   const bx = point.x - Math.cos(angle) * longueur;
   const by = point.y - Math.sin(angle) * longueur;
@@ -283,8 +328,8 @@ export function geometrieLien(doc, lien, zoom) {
     depart = { point: connecteurs(de)[cotes.de], cote: cotes.de };
     arrivee = { point: connecteurs(vers)[cotes.vers], cote: cotes.vers };
   }
-  const t = trace({ route, depart, arrivee });
-  return { ...t, pointeDebut: pointe(t.debut, zoom), pointeFin: pointe(t.fin, zoom) };
+  const t = trace({ route, depart, arrivee, retrait: retraitPointes(lien.ends, lien.weight, zoom) });
+  return { ...t, pointeDebut: pointe(t.debut, zoom, lien.weight), pointeFin: pointe(t.fin, zoom, lien.weight) };
 }
 
 // Rectangle englobant les deux bouts d'une flèche libre, pour `toutAfficher` et `voirObjet`.

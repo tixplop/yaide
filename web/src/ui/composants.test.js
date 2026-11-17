@@ -329,7 +329,7 @@ test("C018_regles_css_du_whiteboard", () => {
   a(".ya-tableau .boite", "--boite-trait: var(--boite-defaut-trait)");
   a(".ya-tableau .boite .forme", "fill: var(--boite-fond)");
   a(".ya-tableau .boite .forme", "stroke: var(--boite-trait)");
-  a(".ya-tableau .boite:hover .forme", "stroke-width: var(--trait-fort)");
+  a(".ya-tableau .boite:hover .forme", "stroke-width: max(2px, var(--e))");
   a(".ya-tableau .boite.choisie .forme", "stroke: var(--accent-fg)");
   a(".ya-tableau .boite.cible .surcouche", "fill: var(--accent-soft)");
   a(".ya-tableau-texte", "white-space: pre-wrap");

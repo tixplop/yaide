@@ -165,7 +165,7 @@ test("REQ136_AC1_fleche_libre_tracee_choisie_au_style_choisi_et_provisoire_en_ti
   bouge(200, 340);
   const prov = t.element.querySelector("g.fleche.provisoire");
   expect(prov).not.toBeNull();
-  expect(prov.querySelector(".trait").getAttribute("d")).toBe("M 100 300 L 200 340");
+  expect(prov.querySelector(".trait").getAttribute("d")).toBe("M 100 300 L 190.72 336.29");
   expect(prov.querySelectorAll(".pointe")).toHaveLength(1);
   bouge(300, 380);
   lacheClic(300, 380);

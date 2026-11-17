@@ -1,4 +1,4 @@
-import { connecteurs, geometrieLien, pointe, trace, zoneTexte } from "./tableau-calculs.js";
+import { connecteurs, epaisseur, geometrieLien, pointe, retraitPointes, tirets, trace, zoneTexte } from "./tableau-calculs.js";
 
 // C-018 : le SVG d'une boîte, d'un lien, d'une flèche libre et des poignées. Fonctions sans état : le choix,
 // la saisie et les gestes restent dans `tableau.js`, qui passe ici ce qu'il faut pour dessiner.
@@ -29,13 +29,27 @@ function contour(b) {
 export function dessinBoite(b, { id, nom, classe, texte }) {
   const forme = b.shape ?? "rectangle";
   const g = svg("g", { id, "data-id": b.id, role: "group", "aria-roledescription": "boîte", "aria-label": nom });
-  g.setAttribute("class", `boite forme-${forme} couleur-${b.color ?? "default"}${classe}`);
+  const weight = b.weight ?? "thin";
+  const line = b.line ?? "solid";
+  // La forme « Texte » n'a ni contour ni fond : ni épaisseur ni trait.
+  const classes = [`boite forme-${forme} couleur-${b.color ?? "default"}${forme === "text" ? "" : ` epaisseur-${weight} ligne-${line}`}`];
+  if (b.textSize) classes.push(`taille-${b.textSize}`);
+  if (b.opacity === 0) classes.push("opacite-0");
+  g.setAttribute("class", classes.join(" ") + classe);
   const principale = contour(b);
   principale.setAttribute("class", "forme");
+  if (b.opacity !== undefined && forme !== "text") principale.setAttribute("fill-opacity", String(b.opacity / 100));
   g.append(principale);
+  let pli = null;
   if (forme === "note") {
     const c = Math.min(16, Math.min(b.width, b.height) / 3);
-    svg("path", { class: "pli", d: `M ${b.x + b.width - c} ${b.y} V ${b.y + c} H ${b.x + b.width}` }, g);
+    pli = svg("path", { class: "pli", d: `M ${b.x + b.width - c} ${b.y} V ${b.y + c} H ${b.x + b.width}` }, g);
+  }
+  const pas = tirets(line, epaisseur("boite", weight));
+  for (const e of [principale, pli]) {
+    if (!e || !pas || forme === "text") continue;
+    e.setAttribute("stroke-dasharray", pas);
+    if (line === "dotted") e.setAttribute("stroke-linecap", "round");
   }
   const sur = contour(b);
   sur.setAttribute("class", "surcouche");
@@ -45,26 +59,33 @@ export function dessinBoite(b, { id, nom, classe, texte }) {
   return g;
 }
 
-const TIRETS = { dashed: "6 4", dotted: "0 4" };
-
-// Le tracé `geo` (de `trace` ou `geometrieLien`) : zone de prise, trait, pointes selon `ends`, trait selon `line`.
+// Le tracé `geo` (de `trace` ou `geometrieLien`) : zone de prise, trait, pointes selon `ends`, trait selon `line`,
+// épaisseur et couleur par les classes `epaisseur-*` et `couleur-*`.
 function traitEtPointes(g, geo, style, avecPrise) {
   const ends = style.ends ?? "end";
   const line = style.line ?? "solid";
-  if (avecPrise) svg("path", { class: "prise", d: geo.d }, g);
+  const weight = style.weight ?? "thin";
+  if (avecPrise) svg("path", { class: "prise", d: geo.entier }, g);
   const trait = svg("path", { class: "trait", d: geo.d }, g);
-  if (TIRETS[line]) trait.setAttribute("stroke-dasharray", TIRETS[line]);
+  const pas = tirets(line, epaisseur("trait", weight));
+  if (pas) trait.setAttribute("stroke-dasharray", pas);
   if (line === "dotted") trait.setAttribute("stroke-linecap", "round");
-  g.classList.add(`ligne-${line}`);
+  g.classList.add(`ligne-${line}`, `epaisseur-${weight}`);
+  if (style.color && style.color !== "default") g.classList.add(`couleur-${style.color}`);
   const pointes = [];
   if (ends === "start" || ends === "both") pointes.push(geo.pointeDebut);
   if (ends === "end" || ends === "both") pointes.push(geo.pointeFin);
   for (const p of pointes) svg("polygon", { class: "pointe", points: p.map((q) => `${q.x},${q.y}`).join(" ") }, g);
 }
 
-function geometrie(depart, arrivee, route, zoom) {
-  const t = trace({ route: route ?? "direct", depart: { point: depart, cote: null }, arrivee: { point: arrivee, cote: null } });
-  return { ...t, pointeDebut: pointe(t.debut, zoom), pointeFin: pointe(t.fin, zoom) };
+function geometrie(depart, arrivee, style, zoom) {
+  const t = trace({
+    route: style.route ?? "direct",
+    depart: { point: depart, cote: null },
+    arrivee: { point: arrivee, cote: null },
+    retrait: retraitPointes(style.ends, style.weight, zoom),
+  });
+  return { ...t, pointeDebut: pointe(t.debut, zoom, style.weight), pointeFin: pointe(t.fin, zoom, style.weight) };
 }
 
 export function dessinLien(doc, lien, zoom, { id, nom, classe }) {
@@ -77,14 +98,14 @@ export function dessinLien(doc, lien, zoom, { id, nom, classe }) {
 export function dessinFleche(f, zoom, { id, classe }) {
   const g = svg("g", { id, "data-id": f.id, role: "group", "aria-roledescription": "flèche", "aria-label": "Flèche libre" });
   g.setAttribute("class", `fleche${classe}`);
-  traitEtPointes(g, geometrie({ x: f.x1, y: f.y1 }, { x: f.x2, y: f.y2 }, f.route, zoom), f, true);
+  traitEtPointes(g, geometrie({ x: f.x1, y: f.y1 }, { x: f.x2, y: f.y2 }, f, zoom), f, true);
   return g;
 }
 
 // Trait provisoire d'un lien ou d'une flèche en cours de tracé : du point `depart` au point `arrivee`.
 export function dessinProvisoire(depart, arrivee, zoom, style = {}) {
   const g = svg("g", { class: "fleche provisoire", "aria-hidden": "true" });
-  traitEtPointes(g, geometrie(depart, arrivee, style.route, zoom), style, false);
+  traitEtPointes(g, geometrie(depart, arrivee, style, zoom), style, false);
   return g;
 }
 

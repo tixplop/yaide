@@ -6,7 +6,9 @@ import {
   cranVoisin,
   extremitesFleche,
   geometrieLien,
+  epaisseur,
   pointe,
+  tirets,
   pointSortie,
   pointSurBord,
   rectangleFleche,
@@ -264,5 +266,32 @@ describe("tableau-calculs", () => {
     const v = voirObjet(vue, taille, f);
     expect(v).toEqual({ x: 810 - 800 + 24, y: 0, zoom: 1 });
     expect(800 - (810 - v.x)).toBeGreaterThanOrEqual(24);
+  });
+
+  test("REQ140_AC4 : pointe de 18 × 14 px au bord à 1 px près, trait arrêté à sa base", () => {
+    for (const zoom of [0.5, 2]) {
+      const de = boite(0, 0);
+      const vers = boite(400, 0);
+      const lien = { from: "a", to: "b", fromSide: "right", toSide: "left", ends: "both", weight: "thick" };
+      const g = geometrieLien({ boxes: [{ id: "a", ...de }, { id: "b", ...vers }], links: [lien] }, lien, zoom);
+      const fin = g.pointeFin;
+      expect(Math.abs(fin[0].x - 400)).toBeLessThanOrEqual(1 / zoom);
+      expect(Math.hypot(fin[1].x - fin[2].x, fin[1].y - fin[2].y) * zoom).toBeCloseTo(14, 6);
+      expect((fin[0].x - (fin[1].x + fin[2].x) / 2) * zoom).toBeCloseTo(18, 6);
+      expect(g.d).toBe(`M ${160 + 18 / zoom} 40 L ${400 - 18 / zoom} 40`);
+      expect(g.entier).toBe("M 160 40 L 400 40");
+    }
+    const p = (weight) => pointe({ point: { x: 0, y: 0 }, angle: 0 }, 1, weight);
+    expect([p("thin"), p("medium")].map((t) => [t[0].x - t[1].x, Math.abs(t[1].y - t[2].y)])).toEqual([[10, 8], [14, 11]]);
+  });
+
+  test("REQ138_AC1_REQ140_AC2 : tirets et points selon l'épaisseur dessinée", () => {
+    expect(tirets("solid", 1)).toBeNull();
+    expect([1, 2, 4].map((e) => tirets("dashed", e))).toEqual(["6 4", "6 4", "12 8"]);
+    expect([1, 2, 4].map((e) => tirets("dotted", e))).toEqual(["0 4", "0 4", "0 8"]);
+    expect([1.5, 3, 5].map((e) => tirets("dashed", e))).toEqual(["6 4", "9 6", "15 10"]);
+    expect([1.5, 3, 5].map((e) => tirets("dotted", e))).toEqual(["0 4", "0 6", "0 10"]);
+    expect(epaisseur("boite", "thick")).toBe(4);
+    expect(epaisseur("trait", undefined)).toBe(1.5);
   });
 });

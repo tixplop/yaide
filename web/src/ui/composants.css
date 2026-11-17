@@ -849,29 +849,40 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau .couleur-orange { --boite-fond: var(--boite-orange-fond); --boite-trait: var(--boite-orange-trait); }
 .ya-tableau .couleur-red { --boite-fond: var(--boite-rouge-fond); --boite-trait: var(--boite-rouge-trait); }
 .ya-tableau .couleur-purple { --boite-fond: var(--boite-violet-fond); --boite-trait: var(--boite-violet-trait); }
-.ya-tableau .boite .forme { fill: var(--boite-fond); stroke: var(--boite-trait); stroke-width: var(--trait); cursor: move; }
-.ya-tableau .boite .pli { fill: none; stroke: var(--boite-trait); stroke-width: var(--trait); pointer-events: none; }
+.ya-tableau :where(.boite) { --e: 1px; }
+.ya-tableau .boite.epaisseur-medium { --e: 2px; }
+.ya-tableau .boite.epaisseur-thick { --e: 4px; }
+.ya-tableau .boite .forme { fill: var(--boite-fond); stroke: var(--boite-trait); stroke-width: var(--e); cursor: move; }
+.ya-tableau .boite.ligne-dotted:not(.forme-text) :is(.forme, .pli) { stroke-width: max(2px, var(--e)); }
+.ya-tableau .boite.opacite-0 .forme { pointer-events: all; }
+.ya-tableau .boite .pli { fill: none; stroke: var(--boite-trait); stroke-width: var(--e); pointer-events: none; }
 .ya-tableau .boite .surcouche { fill: none; stroke: none; pointer-events: none; }
-.ya-tableau .boite:hover .forme, .ya-tableau .boite:hover .pli { stroke-width: var(--trait-fort); }
-.ya-tableau .boite.couleur-default:not(.choisie, .saisie, .glissee):hover :is(.forme, .pli) { stroke: var(--ink-muted); stroke-width: var(--trait); }
+.ya-tableau .boite:hover .forme, .ya-tableau .boite:hover .pli { stroke-width: max(2px, var(--e)); }
+.ya-tableau .boite.couleur-default:not(.choisie, .saisie, .glissee):hover :is(.forme, .pli) { stroke: var(--ink-muted); }
 .ya-tableau .boite.forme-text .forme { fill: transparent; stroke: none; }
 .ya-tableau .boite.forme-text:not(.choisie, .saisie, .glissee):hover .forme { stroke: var(--line-strong); stroke-width: var(--trait); stroke-dasharray: 4 4; }
 .ya-tableau .boite.forme-text .ya-tableau-texte { color: var(--boite-trait); }
 .ya-tableau .boite.forme-text.couleur-default .ya-tableau-texte { color: var(--ink); }
-.ya-tableau .boite.choisie .forme, .ya-tableau .boite.choisie .pli, .ya-tableau .boite.saisie .forme, .ya-tableau .boite.saisie .pli, .ya-tableau .boite.glissee .forme, .ya-tableau .boite.glissee .pli { stroke: var(--accent-fg); stroke-width: var(--trait-fort); stroke-dasharray: none; }
+.ya-tableau .boite.choisie .forme, .ya-tableau .boite.choisie .pli, .ya-tableau .boite.saisie .forme, .ya-tableau .boite.saisie .pli, .ya-tableau .boite.glissee .forme, .ya-tableau .boite.glissee .pli { stroke: var(--accent-fg); stroke-width: max(2px, var(--e)); }
 .ya-tableau .boite.glissee .forme { cursor: grabbing; }
 .ya-tableau .boite.saisie .forme { cursor: text; }
 .ya-tableau .boite.cible .surcouche { fill: var(--accent-soft); stroke: var(--accent-fg); stroke-width: var(--trait); }
 .ya-tableau-texte { box-sizing: border-box; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: safe center; padding: 6px 8px; overflow: hidden; text-align: center; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--texte-base) var(--font-sans); color: var(--ink); outline: none; }
+.ya-tableau .boite.taille-small .ya-tableau-texte { font: 11px/15px var(--font-sans); }
+.ya-tableau .boite.taille-large .ya-tableau-texte { font: 18px/24px var(--font-sans); }
+.ya-tableau .boite.taille-xlarge .ya-tableau-texte { font: 24px/30px var(--font-sans); }
 .ya-tableau-texte[contenteditable] { overflow: auto; caret-color: var(--accent-fg); cursor: text; }
-.ya-tableau :is(.lien, .fleche) .trait { stroke: var(--ink-muted); stroke-width: 1.5px; fill: none; }
-.ya-tableau :is(.lien, .fleche).ligne-dotted .trait { stroke-width: 2px; }
-.ya-tableau :is(.lien, .fleche) .pointe { fill: var(--ink-muted); stroke: none; }
-.ya-tableau :is(.lien, .fleche) .prise { stroke: transparent; stroke-width: 12px; fill: none; pointer-events: stroke; }
+.ya-tableau :where(.lien, .fleche) { --e: 1.5px; --boite-trait: var(--ink-muted); }
+.ya-tableau :is(.lien, .fleche).epaisseur-medium { --e: 3px; }
+.ya-tableau :is(.lien, .fleche).epaisseur-thick { --e: 5px; }
+.ya-tableau :is(.lien, .fleche) .trait { stroke: var(--boite-trait); stroke-width: var(--e); fill: none; }
+.ya-tableau :is(.lien, .fleche).ligne-dotted .trait { stroke-width: max(2px, var(--e)); }
+.ya-tableau :is(.lien, .fleche) .pointe { fill: var(--boite-trait); stroke: none; }
+.ya-tableau :is(.lien, .fleche) .prise { stroke: transparent; stroke-width: max(12px, calc(var(--e) + 10px)); fill: none; pointer-events: stroke; }
 .ya-tableau .fleche .prise { cursor: move; }
 .ya-tableau :is(.lien, .fleche):hover .trait { stroke: var(--ink); }
 .ya-tableau :is(.lien, .fleche):hover .pointe { fill: var(--ink); }
-.ya-tableau :is(.lien, .fleche).choisie .trait { stroke: var(--accent-fg); stroke-width: var(--trait-fort); }
+.ya-tableau :is(.lien, .fleche).choisie .trait { stroke: var(--accent-fg); stroke-width: max(2px, var(--e)); }
 .ya-tableau :is(.lien, .fleche).choisie .pointe { fill: var(--accent-fg); }
 .ya-tableau .fleche.provisoire { pointer-events: none; }
 .ya-tableau .fleche.provisoire .trait { stroke: var(--accent-fg); stroke-dasharray: 4 4; }

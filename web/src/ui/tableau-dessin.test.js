@@ -84,7 +84,7 @@ test("REQ134_AC6_forme_texte_sans_fond_cadre_en_tirets_au_survol_et_texte_teinte
   expect(regle(".ya-tableau .boite.forme-text.couleur-default .ya-tableau-texte")[0]).toContain("color: var(--ink)");
   // Choisie : trait plein de 2 px accent, tirets ôtés.
   const choisie = regle(".ya-tableau .boite.choisie .forme")[0];
-  expect(choisie).toContain("stroke: var(--accent-fg); stroke-width: var(--trait-fort); stroke-dasharray: none");
+  expect(choisie).toContain("stroke: var(--accent-fg); stroke-width: max(2px, var(--e))");
   clic(obj("b1").querySelector(".forme"));
   expect(obj("b1").classList.contains("choisie")).toBe(true);
 });
@@ -112,16 +112,16 @@ test("REQ135_AC1_AC2_lien_coude_ou_courbe_part_et_arrive_a_l_horizontale", () =>
   const b2 = boite("b2", 400, 300);
   monter(DOC({ boxes: [boite("b1", 100, 100), b2], links: [lien({ route: "orthogonal" })] }));
   const d = trait("l1").getAttribute("d");
-  expect(d).toBe("M 260 140 L 330 140 L 330 340 L 400 340");
+  expect(d).toBe("M 260 140 L 330 140 L 330 340 L 390 340");
   const segments = d.split(" L ").map((p) => p.replace("M ", "").split(" ").map(Number));
   for (let i = 1; i < segments.length; i++) expect(segments[i][0] === segments[i - 1][0] || segments[i][1] === segments[i - 1][1]).toBe(true);
   t.definirDocument(DOC({ boxes: [boite("b1", 100, 100), b2], links: [lien({ route: "curved" })] }));
   const c = trait("l1").getAttribute("d");
-  expect(c).toMatch(/^M 260 140 C [\d. ]+, [\d. ]+, 400 340$/);
+  expect(c).toMatch(/^M 260 140 C [\d. ]+, [\d. ]+, 390 340$/); // le trait s'arrête à la base de la pointe (10 px)
   expect(c.match(/C/g)).toHaveLength(1);
   // Sans côté, coudé, « Fin » en dessous : côté bas de « Début » vers côté haut de « Fin ».
   t.definirDocument(DOC({ boxes: [boite("b1", 100, 100), boite("b2", 100, 300)], links: [{ id: "l1", from: "b1", to: "b2", route: "orthogonal" }] }));
-  expect(trait("l1").getAttribute("d")).toBe("M 180 180 L 180 300");
+  expect(trait("l1").getAttribute("d")).toBe("M 180 180 L 180 290");
 });
 
 test("REQ135_AC3_les_extremites_donnent_zero_une_ou_deux_pointes_sur_les_bords", () => {
@@ -145,15 +145,15 @@ test("REQ135_AC4_le_trait_est_plein_en_tirets_ou_en_points", () => {
   t.definirDocument(DOC({ links: [lien({ line: "dotted" })] }));
   expect(trait("l1").getAttribute("stroke-dasharray")).toBe("0 4");
   expect(trait("l1").getAttribute("stroke-linecap")).toBe("round");
-  expect(regle(".ya-tableau :is(.lien, .fleche).ligne-dotted .trait")[0]).toContain("stroke-width: 2px");
+  expect(regle(".ya-tableau :is(.lien, .fleche).ligne-dotted .trait")[0]).toContain("stroke-width: max(2px, var(--e))");
 });
 
 test("REQ135_AC5_la_zone_de_prise_suit_le_meme_trace_sur_12_px", () => {
   monter(DOC({ boxes: [boite("b1", 100, 100), boite("b2", 400, 300)], links: [lien({ route: "curved" })] }));
   const prise = obj("l1").querySelector(".prise");
   expect(prise.tagName).toBe("path");
-  expect(prise.getAttribute("d")).toBe(trait("l1").getAttribute("d"));
-  expect(regle(".ya-tableau :is(.lien, .fleche) .prise")[0]).toContain("stroke-width: 12px");
+  expect(prise.getAttribute("d")).toBe("M 260 140 C 382.07 140, 277.93 340, 400 340"); // le tracé entier, pas celui du trait
+  expect(regle(".ya-tableau :is(.lien, .fleche) .prise")[0]).toContain("stroke-width: max(12px, calc(var(--e) + 10px))");
   clic(prise);
   expect(obj("l1").classList.contains("choisie")).toBe(true);
 });
@@ -164,16 +164,16 @@ test("REQ135_AC6_lien_choisi_garde_ses_tirets_et_ses_deux_pointes_en_accent", ()
   expect(obj("l1").classList.contains("choisie")).toBe(true);
   expect(trait("l1").getAttribute("stroke-dasharray")).toBe("6 4");
   expect(pointes("l1")).toHaveLength(2);
-  expect(regle(".ya-tableau :is(.lien, .fleche).choisie .trait")[0]).toContain("stroke: var(--accent-fg); stroke-width: var(--trait-fort)");
+  expect(regle(".ya-tableau :is(.lien, .fleche).choisie .trait")[0]).toContain("stroke: var(--accent-fg); stroke-width: max(2px, var(--e))");
   expect(regle(".ya-tableau :is(.lien, .fleche).choisie .pointe")[0]).toContain("fill: var(--accent-fg)");
 });
 
 test("REQ130_AC2_un_lien_avec_cotes_et_un_lien_sans_cote_suivent_la_boite_deplacee", () => {
   const doc = (y) => DOC({ boxes: [boite("b1", 100, 100), boite("b2", 400, y)], links: [lien(), { id: "l2", from: "b1", to: "b2" }] });
   monter(doc(100));
-  expect(trait("l1").getAttribute("d")).toBe("M 260 140 L 400 140");
+  expect(trait("l1").getAttribute("d")).toBe("M 260 140 L 390 140");
   t.definirDocument(doc(300));
-  expect(trait("l1").getAttribute("d")).toBe("M 260 140 L 400 340");
+  expect(trait("l1").getAttribute("d")).toMatch(/^M 260 140 L 39\d\.\d+ 3\d\d\.\d+$/);
   // Sans côté : sur la droite des centres (180, 140) – (480, 340), d'un bord à l'autre.
   const [x, y] = pointes("l2")[0].split(",").map(Number);
   expect(x).toBeCloseTo(420, 0);
@@ -227,7 +227,7 @@ test("REQ136_AC2_fleche_bas_deplace_les_deux_bouts_de_la_fleche_libre_de_10_px",
   touche("ArrowDown");
   expect(changements.at(-1).arrows).toEqual([fleche({ y1: 110, y2: 190 })]);
   expect(changements.at(-1).boxes).toEqual(DOC().boxes);
-  expect(trait("a1").getAttribute("d")).toBe("M 100 110 L 300 190");
+  expect(trait("a1").getAttribute("d")).toBe("M 100 110 L 290.72 186.29");
 });
 
 test("REQ136_AC6_fleche_choisie_a_deux_ronds_de_bout_et_reste_entiere_dans_la_vue", () => {
@@ -276,3 +276,130 @@ test("REQ134_AC2_une_ellipse_et_un_losange_se_redimensionnent_par_la_poignee_de_
   expect(changements.at(-1).boxes[1]).toMatchObject({ id: "d", width: 100, height: 60 });
   expect(obj("d").querySelector(".forme").getAttribute("d")).toBe("M 350 0 L 400 30 L 350 60 L 300 30 Z");
 });
+
+const forme = (id) => obj(id).querySelector(".forme");
+const largeur = (selecteur) => regle(selecteur)[0];
+
+test("REQ138_AC1_contour_en_tirets_ou_en_points_sur_la_forme_et_le_pli", () => {
+  monter(DOC({ boxes: [boite("b1", 0, 0, { shape: "note", line: "dashed" })] }));
+  expect([forme("b1"), obj("b1").querySelector(".pli")].map((e) => e.getAttribute("stroke-dasharray"))).toEqual(["6 4", "6 4"]);
+  t.definirDocument(DOC({ boxes: [boite("b1", 0, 0, { shape: "note", line: "dotted" })] }));
+  expect([forme("b1"), obj("b1").querySelector(".pli")].map((e) => e.getAttribute("stroke-dasharray"))).toEqual(["0 4", "0 4"]);
+  expect(forme("b1").getAttribute("stroke-linecap")).toBe("round");
+  expect(largeur(".ya-tableau .boite.ligne-dotted:not(.forme-text) :is(.forme, .pli)")).toContain("stroke-width: max(2px, var(--e))");
+  t.definirDocument(DOC({ boxes: [boite("b1", 0, 0, { shape: "note" })] }));
+  expect(forme("b1").hasAttribute("stroke-dasharray")).toBe(false);
+});
+
+test("REQ138_AC2_epaisseur_du_contour_a_l_ecran_a_tout_zoom", () => {
+  for (const [weight, e] of [["thick", "4px"], ["medium", "2px"], [undefined, "1px"]]) {
+    for (const zoom of [0.5, 2]) {
+      monter(DOC({ boxes: [boite("b1", 0, 0, weight ? { weight } : {})] }), { x: 0, y: 0, zoom });
+      expect(obj("b1").classList.contains(`epaisseur-${weight ?? "thin"}`)).toBe(true);
+      t.detruire();
+    }
+    expect(largeur(`.ya-tableau .boite.epaisseur-${weight ?? "thin"}`) ?? "--e: 1px").toContain(`--e: ${e}`);
+  }
+  expect(largeur(".ya-tableau .boite .forme")).toContain("stroke-width: var(--e)");
+  expect(css).toMatch(/\.ya-tableau-surface svg \* \{ vector-effect: non-scaling-stroke; \}/);
+  expect(largeur(".ya-tableau :where(.boite)")).toContain("--e: 1px");
+});
+
+test("REQ138_AC3_opacite_sur_la_forme_seule_et_clic_dans_une_boite_a_0_pour_cent", () => {
+  monter(DOC({ boxes: [boite("b1", 100, 100, { opacity: 50 }), boite("b2", 150, 120, { opacity: 0 })] }));
+  expect(forme("b1").getAttribute("fill-opacity")).toBe("0.5");
+  expect(forme("b2").getAttribute("fill-opacity")).toBe("0");
+  expect(obj("b1").querySelector(".ya-tableau-texte").hasAttribute("fill-opacity")).toBe(false);
+  expect(obj("b1").hasAttribute("opacity")).toBe(false);
+  expect(obj("b2").classList.contains("opacite-0")).toBe(true);
+  expect(largeur(".ya-tableau .boite.opacite-0 .forme")).toContain("pointer-events: all");
+  clic(forme("b2"));
+  expect(obj("b2").classList.contains("choisie")).toBe(true);
+  t.definirDocument(DOC({ boxes: [boite("b1", 0, 0)] }));
+  expect(forme("b1").hasAttribute("fill-opacity")).toBe(false);
+  t.definirDocument(DOC({ boxes: [boite("b1", 0, 0, { shape: "text", opacity: 25 })] }));
+  expect(forme("b1").hasAttribute("fill-opacity")).toBe(false);
+});
+
+test("REQ138_AC5_boite_choisie_ou_survolee_garde_ses_tirets_a_max_2_e_px", () => {
+  monter(DOC({ boxes: [boite("b1", 100, 100, { line: "dashed", weight: "thick" })] }));
+  clic(forme("b1"));
+  expect(obj("b1").classList.contains("choisie")).toBe(true);
+  expect(forme("b1").getAttribute("stroke-dasharray")).toBe("12 8");
+  const choisie = largeur(".ya-tableau .boite.choisie .forme");
+  expect(choisie).toContain("stroke: var(--accent-fg); stroke-width: max(2px, var(--e))");
+  expect(choisie).not.toContain("stroke-dasharray");
+  expect(largeur(".ya-tableau .boite:hover .forme")).toContain("stroke-width: max(2px, var(--e))");
+  expect(css).not.toMatch(/\.boite[^{]*\{[^}]*stroke-dasharray: none/);
+});
+
+test("REQ139_AC2_quatre_tailles_de_texte_sur_la_note_le_cercle_et_la_forme_texte", () => {
+  const tailles = { small: "11px/15px", large: "18px/24px", xlarge: "24px/30px" };
+  for (const shape of ["note", "ellipse", "text"]) {
+    for (const [textSize, font] of Object.entries(tailles)) {
+      monter(DOC({ boxes: [boite("b1", 0, 0, { shape, width: 100, height: 100, textSize })] }));
+      expect(obj("b1").classList.contains(`taille-${textSize}`)).toBe(true);
+      expect(largeur(`.ya-tableau .boite.taille-${textSize} .ya-tableau-texte`)).toContain(`font: ${font} var(--font-sans)`);
+      t.detruire();
+    }
+  }
+  monter(DOC({ boxes: [boite("b1", 0, 0, { shape: "ellipse", width: 100, height: 100, textSize: "xlarge" })] }));
+  const fo = obj("b1").querySelector("foreignObject");
+  expect([fo.getAttribute("x"), fo.getAttribute("width")]).toEqual(["14.64466094067262", "70.71067811865476"]);
+  expect(obj("b1").querySelector("ellipse").getAttribute("rx")).toBe("50");
+  // Dans la saisie, l'éditeur est dans la boîte : il prend la même taille.
+  clic(forme("b1"));
+  touche("Enter");
+  expect(obj("b1").classList.contains("saisie")).toBe(true);
+  expect(obj("b1").querySelector("[role=textbox]").className).toBe("ya-tableau-texte");
+  expect(obj("b1").classList.contains("taille-xlarge")).toBe(true);
+  t.definirDocument(DOC({ boxes: [boite("b1", 0, 0)] }));
+  expect([...obj("b1").classList].some((c) => c.startsWith("taille-"))).toBe(false);
+});
+
+test("REQ140_AC1_trait_et_pointe_d_un_lien_colore", () => {
+  monter(DOC({ links: [lien({ color: "red" })] }));
+  expect(obj("l1").classList.contains("couleur-red")).toBe(true);
+  expect(largeur(".ya-tableau .couleur-red")).toContain("--boite-trait: var(--boite-rouge-trait)");
+  expect(largeur(".ya-tableau :is(.lien, .fleche) .trait")).toContain("stroke: var(--boite-trait)");
+  expect(largeur(".ya-tableau :is(.lien, .fleche) .pointe")).toContain("fill: var(--boite-trait)");
+  expect(largeur(".ya-tableau :where(.lien, .fleche)")).toContain("--boite-trait: var(--ink-muted)");
+  t.definirDocument(DOC({ links: [lien()] }));
+  expect([...obj("l1").classList].some((c) => c.startsWith("couleur-"))).toBe(false);
+});
+
+test("REQ140_AC2_epaisseur_et_tirets_d_un_lien_et_d_une_fleche_libre", () => {
+  for (const [weight, e, tirets] of [["thick", "5px", "15 10"], ["medium", "3px", "9 6"], [undefined, "1.5px", "6 4"]]) {
+    const w = weight ? { weight } : {};
+    monter(DOC({ links: [lien({ ...w, line: "dashed" })], arrows: [fleche({ ...w, line: "dashed" })] }));
+    for (const id of ["l1", "a1"]) {
+      expect(obj(id).classList.contains(`epaisseur-${weight ?? "thin"}`)).toBe(true);
+      expect(trait(id).getAttribute("stroke-dasharray")).toBe(tirets);
+    }
+    expect(largeur(`.ya-tableau :is(.lien, .fleche).epaisseur-${weight ?? "thin"}`) ?? "--e: 1.5px").toContain(`--e: ${e}`);
+    t.detruire();
+  }
+  expect(largeur(".ya-tableau :is(.lien, .fleche) .trait")).toContain("stroke-width: var(--e)");
+});
+
+test("REQ140_AC4_lien_choisi_en_accent_a_5_px_pointes_grandes_et_prise_large", () => {
+  monter(DOC({ links: [lien({ color: "red", weight: "thick", ends: "both" })] }));
+  clic(obj("l1").querySelector(".prise"));
+  expect(obj("l1").classList.contains("choisie")).toBe(true);
+  expect(largeur(".ya-tableau :is(.lien, .fleche).choisie .trait")).toContain("stroke: var(--accent-fg); stroke-width: max(2px, var(--e))");
+  expect(largeur(".ya-tableau :is(.lien, .fleche).choisie .pointe")).toContain("fill: var(--accent-fg)");
+  expect(pointes("l1")).toHaveLength(2);
+  const [tip] = obj("l1").querySelector(".pointe").getAttribute("points").split(" ");
+  expect(tip).toBe("260,140");
+  expect(largeur(".ya-tableau :is(.lien, .fleche) .prise")).toContain("stroke-width: max(12px, calc(var(--e) + 10px))");
+});
+
+test("REQ138_AC4_forme_texte_choisie_garde_son_contour_de_2_px_malgre_weight_thick", () => {
+  monter(DOC({ boxes: [boite("b1", 0, 0, { shape: "text", weight: "thick", line: "dashed" })] }));
+  clic(forme("b1"));
+  expect(obj("b1").classList.contains("choisie")).toBe(true);
+  expect([...obj("b1").classList].some((c) => c.startsWith("epaisseur-") || c.startsWith("ligne-"))).toBe(false);
+  expect(forme("b1").hasAttribute("stroke-dasharray")).toBe(false);
+  expect(largeur(".ya-tableau :where(.boite)")).toContain("--e: 1px");
+});
+
