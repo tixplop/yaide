@@ -1,5 +1,21 @@
 import { describe, expect, test } from "vitest";
-import { cranVoisin, extremitesFleche, pointSortie, toutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
+import {
+  connecteurProche,
+  connecteurs,
+  cotesProches,
+  cranVoisin,
+  extremitesFleche,
+  geometrieLien,
+  pointe,
+  pointSortie,
+  pointSurBord,
+  rectangleFleche,
+  toutAfficher,
+  trace,
+  voirObjet,
+  zoneTexte,
+  zoomerAutour,
+} from "./tableau-calculs.js";
 
 const boite = (x, y, width = 160, height = 80) => ({ x, y, width, height });
 
@@ -77,5 +93,176 @@ describe("tableau-calculs", () => {
     expect(voirObjet(vue, taille, boite(-500, 700)).x).toBe(-524);
     expect(voirObjet(vue, taille, boite(-500, 700)).y).toBe(700 + 80 - 600 + 24);
     expect(voirObjet({ x: 0, y: 0, zoom: 2 }, taille, boite(500, 0)).x).toBe(660 - 400 + 12);
+  });
+
+  const debut = boite(40, 80);
+  const fin = boite(300, 280);
+  const doc = (links) => ({ boxes: [{ id: "b1", ...debut }, { id: "b2", ...fin }], links, arrows: [] });
+  const bouts = (de, vers, cd, ca) => ({
+    depart: { point: connecteurs(de)[cd], cote: cd },
+    arrivee: { point: connecteurs(vers)[ca], cote: ca },
+  });
+  const segmentsOrthogonaux = (d) => {
+    const pts = [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => ({ x: +m[1], y: +m[2] }));
+    return pts.slice(1).map((p, i) => ({ de: pts[i], vers: p }));
+  };
+
+  test("REQ130_AC1 : connecteurs au milieu des côtés, lien right vers left", () => {
+    const c = connecteurs(boite(40, 80));
+    expect(c).toEqual({ top: { x: 120, y: 80 }, right: { x: 200, y: 120 }, bottom: { x: 120, y: 160 }, left: { x: 40, y: 120 } });
+    expect(connecteurProche(boite(40, 80), { x: 210, y: 130 })).toBe("right");
+    expect(connecteurProche(boite(40, 80), { x: 100, y: 90 })).toBe("top");
+    const g = geometrieLien(doc([]), { id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "left" }, 1);
+    expect(g.debut.point).toEqual({ x: 200, y: 120 });
+    expect(g.fin.point).toEqual({ x: 300, y: 320 });
+    expect(g.d.startsWith("M 200 120")).toBe(true);
+  });
+
+  test("REQ130_AC7 : le décalage de 4 px des deux sens contraires est gardé", () => {
+    const b = [{ id: "b1", ...boite(40, 80) }, { id: "b2", ...boite(300, 80) }];
+    const links = [{ id: "l1", from: "b1", to: "b2" }, { id: "l2", from: "b2", to: "b1" }];
+    const d = { boxes: b, links, arrows: [] };
+    expect(geometrieLien(d, links[0], 1).debut.point).toEqual({ x: 200, y: 124 });
+    expect(geometrieLien(d, links[1], 1).debut.point).toEqual({ x: 300, y: 116 });
+    const seul = { boxes: b, links: [links[0]], arrows: [] };
+    expect(geometrieLien(seul, links[0], 1).debut.point).toEqual({ x: 200, y: 120 });
+  });
+
+  test("REQ134_AC4 : le bout d'un lien est sur le bord de l'ellipse et du losange", () => {
+    const rect = boite(0, 0, 100, 100);
+    const cercle = { ...boite(300, 0, 100, 100), shape: "ellipse" };
+    const losange = { ...boite(300, 300, 160, 100), shape: "diamond" };
+    const p = pointSurBord(cercle, { x: 50, y: 50 });
+    expect(p.x).toBeCloseTo(300, 0);
+    const c = { x: 350, y: 50 };
+    const diag = pointSurBord(cercle, { x: 350 + 100, y: 150 });
+    expect(Math.hypot((diag.x - c.x) / 50, (diag.y - c.y) / 50)).toBeCloseTo(1, 6);
+    const l = pointSurBord(losange, { x: 0, y: 350 });
+    expect(l).toEqual({ x: 300, y: 350 });
+    const l2 = pointSurBord(losange, { x: 380 + 80, y: 350 + 50 });
+    expect(Math.abs(l2.x - 380) / 80 + Math.abs(l2.y - 350) / 50).toBeCloseTo(1, 6);
+    const d = { boxes: [{ id: "r", ...rect }, { id: "c", ...cercle }, { id: "x", ...losange }], links: [], arrows: [] };
+    const g = geometrieLien(d, { id: "l", from: "r", to: "c" }, 1);
+    expect(g.fin.point.x).toBeCloseTo(300 - 0, 0);
+    const g2 = geometrieLien(d, { id: "l", from: "r", to: "x" }, 1);
+    const q = g2.fin.point;
+    expect(Math.abs(q.x - 380) / 80 + Math.abs(q.y - 350) / 50).toBeCloseTo(1, 6);
+    expect(pointSurBord(rect, { x: 200, y: 200 })).toEqual({ x: 100, y: 100 });
+    expect(pointSurBord({ ...rect, shape: "note" }, { x: 200, y: 50 })).toEqual({ x: 100, y: 50 });
+  });
+
+  test("REQ134_AC7 : zone du texte d'un cercle et d'un losange", () => {
+    const z = zoneTexte({ ...boite(0, 0, 100, 100), shape: "ellipse" });
+    expect(z.width).toBeCloseTo(70.7, 1);
+    expect(z.height).toBeCloseTo(70.7, 1);
+    expect(z.x).toBeCloseTo(14.6, 1);
+    expect(zoneTexte({ ...boite(0, 0, 160, 100), shape: "diamond" })).toEqual({ x: 40, y: 25, width: 80, height: 50 });
+    expect(zoneTexte({ ...boite(10, 20, 160, 80), shape: "rounded" })).toEqual({ x: 10, y: 20, width: 160, height: 80 });
+  });
+
+  test("REQ135_AC1 : tracé coudé, segments horizontaux et verticaux, sortie et entrée horizontales", () => {
+    const t = trace({ route: "orthogonal", ...bouts(debut, fin, "right", "left") });
+    const segs = segmentsOrthogonaux(t.d);
+    expect(segs.length).toBe(3);
+    for (const s of segs) expect(s.de.x === s.vers.x || s.de.y === s.vers.y).toBe(true);
+    expect(segs[0].de).toEqual({ x: 200, y: 120 });
+    expect(segs[0].de.y).toBe(segs[0].vers.y);
+    expect(segs[2].vers).toEqual({ x: 300, y: 320 });
+    expect(segs[2].de.y).toBe(segs[2].vers.y);
+    expect(segs[0].vers.x).toBe(250);
+    // côtés perpendiculaires : un seul coude
+    const p = trace({ route: "orthogonal", ...bouts(debut, fin, "right", "top") });
+    expect(segmentsOrthogonaux(p.d).length).toBe(2);
+    // côtés trop proches : au moins 16 px à la sortie et à l'entrée
+    const proche = trace({ route: "orthogonal", ...bouts(boite(0, 0), boite(180, 100), "right", "left") });
+    const s = segmentsOrthogonaux(proche.d);
+    expect(s[0].vers.x - s[0].de.x).toBeGreaterThanOrEqual(16);
+    const dernier = s[s.length - 1];
+    expect(dernier.vers.x - dernier.de.x).toBeGreaterThanOrEqual(16);
+  });
+
+  test("REQ135_AC1_AC7 : sortie et entrée de 16 px dans le sens de la normale, y compris en repli", () => {
+    const sens = (s, nx, ny) => (s.vers.x - s.de.x) * nx + (s.vers.y - s.de.y) * ny;
+    const cas = [
+      [{ x: 200, y: 120 }, "right", { x: 150, y: 300 }, "top", [1, 0], [0, 1]],
+      [{ x: 200, y: 120 }, "right", { x: 300, y: 60 }, "top", [1, 0], [0, 1]],
+      [{ x: 200, y: 120 }, "right", { x: 150, y: 120 }, "left", [1, 0], [1, 0]],
+    ];
+    for (const [pa, ca, pb, cb, n1, n2] of cas) {
+      const t = trace({ route: "orthogonal", depart: { point: pa, cote: ca }, arrivee: { point: pb, cote: cb } });
+      const segs = segmentsOrthogonaux(t.d);
+      for (const s of segs) expect(s.de.x === s.vers.x || s.de.y === s.vers.y).toBe(true);
+      expect(sens(segs[0], n1[0], n1[1])).toBeGreaterThanOrEqual(16);
+      // l'arrivée va dans le sens opposé à la normale sortante du côté d'arrivée
+      expect(sens(segs[segs.length - 1], n2[0], n2[1])).toBeGreaterThanOrEqual(16);
+    }
+  });
+
+  test("REQ135_AC2 : tracé courbe, et côtés les plus proches sans côté", () => {
+    const t = trace({ route: "curved", ...bouts(debut, fin, "right", "left") });
+    expect(t.d).toMatch(/^M 200 120 C .* 300 320$/);
+    expect(t.d.split("C").length).toBe(2);
+    expect(t.debut.point).toEqual({ x: 200, y: 120 });
+    expect(t.fin.point).toEqual({ x: 300, y: 320 });
+    const loin = geometrieLien(doc([]), { id: "l", from: "b1", to: "b2", route: "curved" }, 1);
+    expect(loin.d).toContain("C");
+    const dessous = [{ id: "b1", ...boite(0, 0) }, { id: "b2", ...boite(0, 300) }];
+    const d = { boxes: dessous, links: [], arrows: [] };
+    expect(cotesProches(dessous[0], dessous[1])).toEqual({ de: "bottom", vers: "top" });
+    const g = geometrieLien(d, { id: "l", from: "b1", to: "b2", route: "orthogonal" }, 1);
+    expect(g.debut.point).toEqual({ x: 80, y: 80 });
+    expect(g.fin.point).toEqual({ x: 80, y: 300 });
+    expect(geometrieLien(d, { id: "l", from: "b1", to: "b2", route: "curved" }, 1).d.startsWith("M 80 80 C 80 190")).toBe(true);
+  });
+
+  test("REQ135_AC3 : angle de chaque pointe, bout sur le bord", () => {
+    const droit = trace({ route: "direct", depart: { point: { x: 0, y: 0 }, cote: null }, arrivee: { point: { x: 100, y: 0 }, cote: null } });
+    expect(droit.fin.angle).toBeCloseTo(0, 9);
+    expect(droit.debut.angle).toBeCloseTo(Math.PI, 9);
+    const coude = trace({ route: "orthogonal", ...bouts(debut, fin, "right", "top") });
+    expect(coude.fin.angle).toBeCloseTo(Math.PI / 2, 9);
+    expect(coude.debut.angle).toBeCloseTo(Math.PI, 9);
+    const g = geometrieLien(doc([]), { id: "l", from: "b1", to: "b2", fromSide: "bottom", toSide: "left", route: "curved" }, 1);
+    expect(g.fin.angle).toBeCloseTo(0, 9);
+    expect(g.debut.angle).toBeCloseTo(-Math.PI / 2, 9);
+    expect(g.pointeFin[0]).toEqual({ x: 300, y: 320 });
+    expect(g.pointeDebut[0]).toEqual({ x: 120, y: 160 });
+  });
+
+  test("REQ135_AC7 : 16 px de sortie du dessin à 50 % et 200 %, pointe de 10 × 8 px à l'écran", () => {
+    const proche = bouts(boite(0, 0), boite(180, 100), "right", "left");
+    const a = segmentsOrthogonaux(trace({ route: "orthogonal", ...proche }).d)[0];
+    expect(a.vers.x - a.de.x).toBe(16);
+    for (const zoom of [0.5, 2]) {
+      const [tip, b1, b2] = pointe({ point: { x: 100, y: 50 }, angle: 0 }, zoom);
+      expect(tip).toEqual({ x: 100, y: 50 });
+      expect(tip.x - b1.x).toBeCloseTo(10 / zoom, 9);
+      expect(Math.hypot(b1.x - b2.x, b1.y - b2.y)).toBeCloseTo(8 / zoom, 9);
+      expect(b1.x).toBeCloseTo(b2.x, 9);
+    }
+    const courbe = trace({ route: "curved", ...bouts(boite(0, 0), boite(100, 0), "right", "left") });
+    expect(courbe.d).toContain("C 200 40, 60 40");
+  });
+
+  test("REQ136_AC4 : tout afficher montre une flèche libre jusqu'en (3000, 2000)", () => {
+    const taille = { largeur: 1200, hauteur: 900 };
+    const fleche = { id: "a1", x1: 100, y1: 100, x2: 3000, y2: 2000 };
+    expect(rectangleFleche(fleche)).toEqual({ x: 100, y: 100, width: 2900, height: 1900 });
+    expect(rectangleFleche({ x1: 300, y1: 180, x2: 100, y2: 100 })).toEqual({ x: 100, y: 100, width: 200, height: 80 });
+    const v = toutAfficher([boite(0, 0), rectangleFleche(fleche)], taille);
+    const droite = 1200 - (3000 - v.x) * v.zoom;
+    const bas = 900 - (2000 - v.y) * v.zoom;
+    expect(droite).toBeGreaterThanOrEqual(31.999);
+    expect(bas).toBeGreaterThanOrEqual(31.999);
+    expect((0 - v.x) * v.zoom).toBeGreaterThanOrEqual(31.999);
+  });
+
+  test("REQ136_AC6 : la vue se décale pour montrer une flèche libre à 24 px", () => {
+    const taille = { largeur: 800, hauteur: 600 };
+    const vue = { x: 0, y: 0, zoom: 1 };
+    const f = rectangleFleche({ x1: 700, y1: 100, x2: 810, y2: 100 });
+    const v = voirObjet(vue, taille, f);
+    expect(v).toEqual({ x: 810 - 800 + 24, y: 0, zoom: 1 });
+    expect(800 - (810 - v.x)).toBeGreaterThanOrEqual(24);
   });
 });

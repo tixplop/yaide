@@ -8,13 +8,21 @@ export const CRANS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 const MARGE_TOUT = 32;
 const MARGE_OBJET = 24;
 
-// Point où le rayon issu de (ox, oy), dans la direction (dx, dy), quitte `boite`.
+// Point où le rayon issu de (ox, oy), dans la direction (dx, dy), quitte `boite` (déplacée pour être centrée
+// sur (ox, oy)). La forme (`ellipse`, `diamond`) donne son vrai bord ; toute autre : le rectangle.
 function sortie(boite, ox, oy, dx, dy) {
   if (dx === 0 && dy === 0) return { x: ox, y: oy };
-  const t = Math.min(
-    dx === 0 ? Infinity : boite.width / 2 / Math.abs(dx),
-    dy === 0 ? Infinity : boite.height / 2 / Math.abs(dy),
-  );
+  let t;
+  if (boite.shape === "ellipse") {
+    t = 1 / Math.hypot(dx / (boite.width / 2), dy / (boite.height / 2));
+  } else if (boite.shape === "diamond") {
+    t = 1 / (Math.abs(dx) / (boite.width / 2) + Math.abs(dy) / (boite.height / 2));
+  } else {
+    t = Math.min(
+      dx === 0 ? Infinity : boite.width / 2 / Math.abs(dx),
+      dy === 0 ? Infinity : boite.height / 2 / Math.abs(dy),
+    );
+  }
   return { x: ox + dx * t, y: oy + dy * t };
 }
 
@@ -92,5 +100,199 @@ export function voirObjet(vue, taille, objet) {
     ...vue,
     x: ramener(objet.x, objet.x + objet.width, vue.x, taille.largeur / vue.zoom, m),
     y: ramener(objet.y, objet.y + objet.height, vue.y, taille.hauteur / vue.zoom, m),
+  };
+}
+
+// ---- Formes, connecteurs et tracés (REQ-130, REQ-134, REQ-135, REQ-136) ----
+
+const COTES = ["top", "right", "bottom", "left"];
+const NORMALES = { top: { x: 0, y: -1 }, right: { x: 1, y: 0 }, bottom: { x: 0, y: 1 }, left: { x: -1, y: 0 } };
+const SORTIE_MIN = 16; // px du dessin : segment perpendiculaire minimal à la sortie et à l'entrée
+const COURBE_MIN = 40; // px du dessin : longueur minimale des points de contrôle d'une courbe
+const POINTE_LONGUEUR = 10; // px écran
+const POINTE_LARGEUR = 8; // px écran
+
+// Rectangle où le texte d'une boîte reste dans sa forme.
+export function zoneTexte(boite) {
+  let r = 0;
+  if (boite.shape === "ellipse") r = (1 - Math.SQRT1_2) / 2;
+  else if (boite.shape === "diamond") r = 0.25;
+  const rx = boite.width * r;
+  const ry = boite.height * r;
+  return { x: boite.x + rx, y: boite.y + ry, width: boite.width - 2 * rx, height: boite.height - 2 * ry };
+}
+
+// Milieux des quatre côtés d'une boîte.
+export function connecteurs(boite) {
+  const mx = boite.x + boite.width / 2;
+  const my = boite.y + boite.height / 2;
+  return {
+    top: { x: mx, y: boite.y },
+    right: { x: boite.x + boite.width, y: my },
+    bottom: { x: mx, y: boite.y + boite.height },
+    left: { x: boite.x, y: my },
+  };
+}
+
+// Côté dont le connecteur est le plus proche de `point`.
+export function connecteurProche(boite, point) {
+  const c = connecteurs(boite);
+  return COTES.reduce((meilleur, cote) =>
+    Math.hypot(c[cote].x - point.x, c[cote].y - point.y) < Math.hypot(c[meilleur].x - point.x, c[meilleur].y - point.y)
+      ? cote
+      : meilleur,
+  );
+}
+
+// Point où la droite du centre de `boite` vers `vers` coupe le bord de sa forme.
+export function pointSurBord(boite, vers) {
+  return pointSortie(boite, vers.x, vers.y);
+}
+
+// Les deux côtés (`de` pour `a`, `vers` pour `b`) dont les milieux sont les plus proches.
+export function cotesProches(a, b) {
+  const ca = connecteurs(a);
+  const cb = connecteurs(b);
+  let meilleur = null;
+  for (const de of COTES) {
+    for (const vers of COTES) {
+      const dist = Math.hypot(ca[de].x - cb[vers].x, ca[de].y - cb[vers].y);
+      if (meilleur === null || dist < meilleur.dist) meilleur = { de, vers, dist };
+    }
+  }
+  return { de: meilleur.de, vers: meilleur.vers };
+}
+
+const arrondi = (n) => Number(n.toFixed(2));
+
+// Retire les points confondus et ceux qui sont au milieu d'un segment droit sans demi-tour.
+function simplifier(points) {
+  const sans = points.filter((p, i) => i === 0 || p.x !== points[i - 1].x || p.y !== points[i - 1].y);
+  return sans.filter((p, i) => {
+    if (i === 0 || i === sans.length - 1) return true;
+    const a = sans[i - 1];
+    const b = sans[i + 1];
+    const aligne = (p.x - a.x) * (b.y - p.y) - (p.y - a.y) * (b.x - p.x) === 0;
+    // Un point aligné reste s'il y a demi-tour : c'est la sortie ou l'entrée de 16 px.
+    return !(aligne && (p.x - a.x) * (b.x - p.x) + (p.y - a.y) * (b.y - p.y) > 0);
+  });
+}
+
+// Points d'un tracé coudé. `n1` et `n2` : normales sortantes des deux côtés.
+function pointsCoudes(a, b, n1, n2) {
+  const m = SORTIE_MIN;
+  const horiz1 = n1.x !== 0;
+  const produit = n1.x * n2.x + n1.y * n2.y;
+  const ecart = (b.x - a.x) * n1.x + (b.y - a.y) * n1.y;
+  if (produit === -1) {
+    // Côtés qui se font face.
+    if (ecart >= 2 * m) {
+      return horiz1
+        ? [a, { x: (a.x + b.x) / 2, y: a.y }, { x: (a.x + b.x) / 2, y: b.y }, b]
+        : [a, { x: a.x, y: (a.y + b.y) / 2 }, { x: b.x, y: (a.y + b.y) / 2 }, b];
+    }
+    const p1 = { x: a.x + n1.x * m, y: a.y + n1.y * m };
+    const p2 = { x: b.x + n2.x * m, y: b.y + n2.y * m };
+    return horiz1
+      ? [a, p1, { x: p1.x, y: (a.y + b.y) / 2 }, { x: p2.x, y: (a.y + b.y) / 2 }, p2, b]
+      : [a, p1, { x: (a.x + b.x) / 2, y: p1.y }, { x: (a.x + b.x) / 2, y: p2.y }, p2, b];
+  }
+  if (produit === 1) {
+    // Même direction : on dépasse le plus loin des deux, puis on revient.
+    if (horiz1) {
+      const x = n1.x > 0 ? Math.max(a.x, b.x) + m : Math.min(a.x, b.x) - m;
+      return [a, { x, y: a.y }, { x, y: b.y }, b];
+    }
+    const y = n1.y > 0 ? Math.max(a.y, b.y) + m : Math.min(a.y, b.y) - m;
+    return [a, { x: a.x, y }, { x: b.x, y }, b];
+  }
+  // Côtés perpendiculaires : un seul coude si les deux segments ont la longueur voulue.
+  const coin = horiz1 ? { x: b.x, y: a.y } : { x: a.x, y: b.y };
+  const sortieOk = (coin.x - a.x) * n1.x + (coin.y - a.y) * n1.y >= m;
+  const entreeOk = (b.x - coin.x) * -n2.x + (b.y - coin.y) * -n2.y >= m;
+  if (sortieOk && entreeOk) return [a, coin, b];
+  const p1 = { x: a.x + n1.x * m, y: a.y + n1.y * m };
+  const p2 = { x: b.x + n2.x * m, y: b.y + n2.y * m };
+  return [a, p1, horiz1 ? { x: p1.x, y: p2.y } : { x: p2.x, y: p1.y }, p2, b];
+}
+
+// Tracé entre deux bouts `{ point, cote }` (`cote` à `null` : bout libre, horizontal). Renvoie le chemin SVG `d`
+// et, à chaque bout, son point et l'angle (radians) de la pointe : la direction qui sort du tracé en ce bout.
+// Longueurs en px du dessin, quel que soit le zoom.
+export function trace({ route, depart, arrivee }) {
+  const a = depart.point;
+  const b = arrivee.point;
+  const sens = b.x < a.x ? -1 : 1;
+  const n1 = depart.cote ? NORMALES[depart.cote] : { x: sens, y: 0 };
+  const n2 = arrivee.cote ? NORMALES[arrivee.cote] : { x: -sens, y: 0 };
+  const pt = (p) => `${arrondi(p.x)} ${arrondi(p.y)}`;
+  if (route === "curved") {
+    const k = Math.max(COURBE_MIN, Math.hypot(b.x - a.x, b.y - a.y) / 2);
+    const c1 = { x: a.x + n1.x * k, y: a.y + n1.y * k };
+    const c2 = { x: b.x + n2.x * k, y: b.y + n2.y * k };
+    return {
+      d: `M ${pt(a)} C ${pt(c1)}, ${pt(c2)}, ${pt(b)}`,
+      debut: { point: a, angle: Math.atan2(a.y - c1.y, a.x - c1.x) },
+      fin: { point: b, angle: Math.atan2(b.y - c2.y, b.x - c2.x) },
+    };
+  }
+  const points = route === "orthogonal" ? simplifier(pointsCoudes(a, b, n1, n2)) : [a, b];
+  const n = points.length;
+  const premier = points[0];
+  const dernier = points[n - 1];
+  return {
+    d: `M ${pt(premier)}${points.slice(1).map((p) => ` L ${pt(p)}`).join("")}`,
+    debut: { point: a, angle: Math.atan2(premier.y - points[1].y, premier.x - points[1].x) },
+    fin: { point: b, angle: Math.atan2(dernier.y - points[n - 2].y, dernier.x - points[n - 2].x) },
+  };
+}
+
+// Triangle de la pointe : 10 px de long et 8 px de large à l'écran, bout sur `bout.point`, orienté selon `bout.angle`.
+export function pointe(bout, zoom) {
+  const longueur = POINTE_LONGUEUR / zoom;
+  const demi = POINTE_LARGEUR / 2 / zoom;
+  const { point, angle } = bout;
+  const bx = point.x - Math.cos(angle) * longueur;
+  const by = point.y - Math.sin(angle) * longueur;
+  return [
+    { x: point.x, y: point.y },
+    { x: bx - Math.sin(angle) * demi, y: by + Math.cos(angle) * demi },
+    { x: bx + Math.sin(angle) * demi, y: by - Math.cos(angle) * demi },
+  ];
+}
+
+// Géométrie d'un lien de `doc` : le tracé et les deux pointes. Avec côtés : les connecteurs. Sans côté et droit :
+// la droite des centres, d'un bord de forme à l'autre, décalée de 4 px si un lien de sens contraire existe.
+// Sans côté, coudé ou courbe : les côtés les plus proches.
+export function geometrieLien(doc, lien, zoom) {
+  const de = doc.boxes.find((b) => b.id === lien.from);
+  const vers = doc.boxes.find((b) => b.id === lien.to);
+  const route = lien.route ?? "direct";
+  let depart;
+  let arrivee;
+  if (lien.fromSide && lien.toSide) {
+    depart = { point: connecteurs(de)[lien.fromSide], cote: lien.fromSide };
+    arrivee = { point: connecteurs(vers)[lien.toSide], cote: lien.toSide };
+  } else if (route === "direct") {
+    const inverse = doc.links.some((l) => l.from === lien.to && l.to === lien.from);
+    const { depart: d, arrivee: a } = extremitesFleche(de, vers, inverse ? 4 : 0);
+    depart = { point: d, cote: null };
+    arrivee = { point: a, cote: null };
+  } else {
+    const cotes = cotesProches(de, vers);
+    depart = { point: connecteurs(de)[cotes.de], cote: cotes.de };
+    arrivee = { point: connecteurs(vers)[cotes.vers], cote: cotes.vers };
+  }
+  const t = trace({ route, depart, arrivee });
+  return { ...t, pointeDebut: pointe(t.debut, zoom), pointeFin: pointe(t.fin, zoom) };
+}
+
+// Rectangle englobant les deux bouts d'une flèche libre, pour `toutAfficher` et `voirObjet`.
+export function rectangleFleche(fleche) {
+  return {
+    x: Math.min(fleche.x1, fleche.x2),
+    y: Math.min(fleche.y1, fleche.y2),
+    width: Math.abs(fleche.x2 - fleche.x1),
+    height: Math.abs(fleche.y2 - fleche.y1),
   };
 }
