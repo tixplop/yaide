@@ -27,10 +27,11 @@ const glisser = async (page, de, vers) => {
   await page.mouse.up();
 };
 
-test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_parcours_P096_whiteboard", async ({ page }) => {
+test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_parcours_P096_P100_P101_whiteboard", async ({ page }) => {
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "docs"), { recursive: true });
   fs.writeFileSync(path.join(dossier, "docs/a.md"), "# A\n");
+  fs.writeFileSync(path.join(dossier, "docs/archi.jdiag"), '{\n  "version": 1,\n  "boxes": [],\n  "links": []\n}\n');
   const yaide = await lancerYaide({ dossier });
   try {
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -138,6 +139,63 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ1
     expect(r1.width).toBeGreaterThan(r0.width);
     proche(r1.x + r1.width * 0.25, p.x);
     proche(r1.y + r1.height * 0.25, p.y);
+
+    // P-100 : « Tout afficher », puis saisie de « Fin » avec un clic réel sur « Grand » (AC-139-1, AC-139-4).
+    await page.getByRole("button", { name: "Tout afficher" }).click();
+    const cf = await centre(fin);
+    await page.mouse.dblclick(cf.x, cf.y);
+    const zoneFin = page.getByRole("textbox", { name: "Texte de la boîte" });
+    await expect(zoneFin).toBeFocused();
+    await page.getByRole("button", { name: "Grand", exact: true }).click();
+    await expect(zoneFin).toBeFocused();
+    await expect(page.getByRole("button", { name: "Grand", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("End");
+    await page.keyboard.type(" du flux");
+    await page.keyboard.press("Escape");
+    await expect(surface.locator('[aria-roledescription="boîte"]').filter({ hasText: "Fin du flux" })).toHaveCount(1);
+
+    // AC-137-1 : outil « Sélection », glisser réel autour de « Début » et « Fin du flux ».
+    await page.getByRole("button", { name: "Sélection", exact: true }).click();
+    const b1 = await debut.boundingBox();
+    const b2 = await fin.boundingBox();
+    await glisser(page, { x: b1.x - 15, y: b1.y - 15 }, { x: b2.x + b2.width + 15, y: b2.y + b2.height + 15 });
+    await expect(page.getByRole("status").filter({ hasText: "objets choisis" })).toHaveText("3 objets choisis");
+
+    // AC-137-2 : flèche Bas, les deux boîtes descendent de 10 px du dessin, le lien suit.
+    const echelle = parseInt((await zoom.textContent()).replace(/\D/g, ""), 10) / 100;
+    const h1 = await debut.boundingBox();
+    const h2 = await fin.boundingBox();
+    const lien = surface.locator('[aria-roledescription="lien"]');
+    const hl = await lien.boundingBox();
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(async () => (await debut.boundingBox()).y - h1.y).toBeGreaterThan(10 * echelle - 1.5);
+    expect(Math.abs((await debut.boundingBox()).y - h1.y - 10 * echelle)).toBeLessThanOrEqual(1.5);
+    expect(Math.abs((await fin.boundingBox()).y - h2.y - 10 * echelle)).toBeLessThanOrEqual(1.5);
+    await expect(surface.getByLabel("De Début vers Fin du flux")).toHaveCount(1);
+    expect(Math.abs((await lien.boundingBox()).y - hl.y - 10 * echelle)).toBeLessThanOrEqual(1.5);
+    await expect(page.getByRole("status").filter({ hasText: "objets choisis" })).toHaveText("3 objets choisis");
+
+    // AC-137-4 : Ctrl+C, puis Ctrl+V dans un autre onglet.
+    await page.keyboard.press("Control+c");
+    await ligne(page, "archi.jdiag").click();
+    const surfaceArchi = page.getByRole("application", { name: "archi.jdiag" });
+    await expect(surfaceArchi).toBeVisible();
+    const ra = await surfaceArchi.boundingBox();
+    await page.mouse.click(ra.x + ra.width / 2, ra.y + ra.height / 2);
+    await page.keyboard.press("Control+v");
+    await expect(surfaceArchi.locator('[aria-roledescription="boîte"]')).toHaveCount(2);
+    await expect(surfaceArchi.locator('[aria-roledescription="lien"]')).toHaveCount(1);
+    await page.keyboard.press("Control+s");
+    const archi = path.join(dossier, "docs/archi.jdiag");
+    await expect.poll(() => JSON.parse(fs.readFileSync(archi, "utf8")).boxes.length).toBe(2);
+    expect(JSON.parse(fs.readFileSync(archi, "utf8")).links).toHaveLength(1);
+
+    // AC-139-1 : Ctrl+S dans l'onglet du plan, « Fin du flux » en grand.
+    await page.getByRole("tab", { name: "plan.jdiag" }).click();
+    await surface.focus();
+    await page.keyboard.press("Control+s");
+    await expect.poll(() => fs.readFileSync(fichier, "utf8")).toContain('"text": "Fin du flux"');
+    expect(fs.readFileSync(fichier, "utf8")).toContain('"textSize": "large"');
   } finally {
     await yaide.arreter();
   }
