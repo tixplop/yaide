@@ -126,10 +126,8 @@ test("REQ129_AC8_contour_et_poignees_de_la_boite_choisie_suppr_et_ctrl_s_dans_la
   expect(poignees.length).toBe(1);
   expect(poignees[0].getAttribute("aria-hidden")).toBe("true");
   expect(poignees[0].querySelector('[data-poignee="taille"]')).not.toBeNull();
-  expect(poignees[0].querySelector('[data-poignee="liaison"]')).not.toBeNull();
-  // Liaison : rond à 18 px du bord droit, au milieu du bord.
-  const rond = poignees[0].querySelector(".rond");
-  expect([rond.getAttribute("cx"), rond.getAttribute("cy"), rond.getAttribute("r")]).toEqual(["278", "140", "4"]);
+  // Plus de poignée de liaison : les connecteurs la remplacent (REQ-130).
+  expect(t.element.querySelector('[data-poignee="liaison"]')).toBeNull();
 
   touche(surface(), "Enter");
   expect(t.element.querySelector(".poignees")).toBeNull();
@@ -333,6 +331,7 @@ test("C018_un_clic_sur_une_poignee_garde_la_boite_choisie", () => {
   clic(rect("b1"));
   clic(t.element.querySelector('[data-poignee="taille"]'));
   expect(choisieId()).toBe(obj("b1").id);
-  clic(t.element.querySelector('[data-poignee="liaison"]'));
+  surface().dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 270, clientY: 140 }));
+  clic(t.element.querySelector("[data-connecteur=right]"));
   expect(choisieId()).toBe(obj("b1").id);
 });

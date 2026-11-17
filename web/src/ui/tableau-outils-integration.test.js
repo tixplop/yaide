@@ -204,13 +204,14 @@ test("REQ133_AC5_le_lien_cree_prend_les_choix_de_la_boite_a_outils", () => {
   bt("Coudé").click();
   bt("Aucune").click();
   expect(changements).toEqual([]);
-  clic(obj("b1").querySelector("rect"));
-  glisser(t.element.querySelector('[data-poignee="liaison"]'), [278, 140], [480, 140]);
-  expect(dernier().links).toEqual([{ id: "l1", from: "b1", to: "b2", route: "orthogonal", ends: "none" }]);
+  ptr(surface(), "pointermove", 270, 140);
+  glisser(t.element.querySelector('[data-boite="b1"][data-connecteur="right"]'), [260, 140], [410, 140]);
+  expect(dernier().links).toEqual([{ id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "left", route: "orthogonal", ends: "none" }]);
   // Un lien choisi passé en « Courbe » : le lien suivant l'est aussi.
   clic(obj("l1"));
   bt("Courbe").click();
   clic(obj("b2").querySelector("rect"));
-  glisser(t.element.querySelector('[data-poignee="liaison"]'), [578, 140], [180, 140]);
-  expect(dernier().links[1]).toEqual({ id: "l2", from: "b2", to: "b1", route: "curved", ends: "none" });
+  ptr(surface(), "pointermove", 390, 140);
+  glisser(t.element.querySelector('[data-boite="b2"][data-connecteur="left"]'), [400, 140], [250, 140]);
+  expect(dernier().links[1]).toEqual({ id: "l2", from: "b2", to: "b1", fromSide: "left", toSide: "right", route: "curved", ends: "none" });
 });

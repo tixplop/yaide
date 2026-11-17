@@ -1,13 +1,14 @@
 import { idLibre } from "../jdiag.js";
 import { indication } from "./indication.js";
 import { boiteOutils } from "./tableau-outils.js";
-import { cranVoisin, extremitesFleche, pointSortie, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
-import { dessinBoite, dessinFleche, dessinLien, dessinProvisoire, poigneesBoite, poigneesFleche, svg } from "./tableau-dessin.js";
+import { connecteurProche, connecteurs, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
+import { dessinBoite, dessinConnecteurs, dessinFleche, dessinLien, dessinProvisoire, poigneesBoite, poigneesFleche, svg } from "./tableau-dessin.js";
 
 // C-018 : whiteboard. Un SVG dont le `viewBox` suit la vue ; le document est celui de `jdiag.js`.
 const AIDE = "Tab : objet suivant. Entrée : écrire dans la boîte. Flèches : déplacer. Suppr : effacer. Échap : ne plus rien choisir. O : boîte à outils.";
 const PAS = 10;
 const SEUIL = 3;
+const PROCHE = 24; // px écran : distance du pointeur au bord d'une boîte pour montrer ses connecteurs
 const OUTILS_DEPART = { outil: "choisir", forme: "rectangle", couleur: "default", trace: "direct", bouts: "end", trait: "solid" };
 const TAILLES = { rectangle: [160, 80], rounded: [160, 80], ellipse: [100, 100], diamond: [160, 100], note: [160, 80], text: [160, 40] };
 const CLES_STYLE = { trace: "route", bouts: "ends", trait: "line" };
@@ -33,6 +34,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
   let geste = null; // glisser en cours : { type, id, pointerId, x0, y0, origine, actif, ... }
   let provisoire = null; // flèche en cours de tracé : { de, x, y }
   let cible = null;
+  let pointeur = null; // dernier point survolé, en coordonnées du dessin
+  let couche = null;
   const choix = { ...OUTILS_DEPART, ...outils };
   let barre = null;
 
@@ -100,6 +103,10 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     surface.addEventListener("pointermove", surMouvement);
     surface.addEventListener("pointerup", surRelache);
     surface.addEventListener("pointercancel", annulerGeste);
+    surface.addEventListener("pointerleave", () => {
+      pointeur = null;
+      dessinerConnecteurs();
+    });
     surface.addEventListener("dblclick", surDoubleClic);
     surface.addEventListener("wheel", surMolette, { passive: false });
     dessin.addEventListener("click", surClic);
@@ -126,7 +133,52 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
 
   function flecheProvisoire(z) {
     const source = boite(provisoire.de);
-    return dessinProvisoire(pointSortie(source, provisoire.x, provisoire.y), { x: provisoire.x, y: provisoire.y }, z);
+    return dessinProvisoire(connecteurs(source)[provisoire.cote], { x: provisoire.x, y: provisoire.y }, z);
+  }
+
+  // Les boîtes dont on montre les connecteurs, et ceux qui sont pleins (sous le pointeur, de départ ou le plus proche d'une cible).
+  function etatConnecteurs() {
+    const rien = { boites: [], pleins: [] };
+    if (saisie !== null || (geste && geste.type !== "liaison")) return rien;
+    if (geste) {
+      const pleins = [{ id: geste.id, cote: geste.cote }];
+      const boites = [boite(geste.id)];
+      if (cible && pointeur) {
+        boites.push(boite(cible));
+        pleins.push({ id: cible, cote: connecteurProche(boite(cible), pointeur) });
+      }
+      return { boites, pleins };
+    }
+    if (!pointeur) return rien;
+    const z = vueCourante.zoom;
+    const boites = doc.boxes.filter((b) => {
+      const dx = Math.max(b.x - pointeur.x, 0, pointeur.x - (b.x + b.width));
+      const dy = Math.max(b.y - pointeur.y, 0, pointeur.y - (b.y + b.height));
+      return Math.hypot(dx, dy) <= PROCHE / z;
+    });
+    const choisie = choisi ? boite(choisi) : null;
+    const surTaille = choisie && Math.max(Math.abs(pointeur.x - (choisie.x + choisie.width)), Math.abs(pointeur.y - (choisie.y + choisie.height))) <= 8 / z;
+    const pleins = [];
+    if (!surTaille) {
+      for (const b of boites) {
+        for (const [cote, p] of Object.entries(connecteurs(b))) {
+          if (Math.max(Math.abs(pointeur.x - p.x), Math.abs(pointeur.y - p.y)) <= 8 / z) pleins.push({ id: b.id, cote });
+        }
+      }
+    }
+    return { boites, pleins: pleins.slice(0, 1) };
+  }
+
+  // Redessine la seule couche des connecteurs quand elle change (le pointeur bouge souvent).
+  function dessinerConnecteurs() {
+    if (!dessin) return;
+    const { boites, pleins } = etatConnecteurs();
+    const signature = JSON.stringify([boites.map((b) => b.id), pleins, vueCourante.zoom]);
+    if (couche && couche.signature === signature) return;
+    const nouvelle = dessinConnecteurs(boites, pleins, vueCourante.zoom);
+    nouvelle.signature = signature;
+    if (couche?.parentNode) couche.replaceWith(nouvelle);
+    couche = nouvelle;
   }
 
   function dessiner() {
@@ -143,6 +195,9 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     for (const f of doc.arrows ?? []) dessin.append(dessinFleche(f, z, { id: idElement(f.id), classe: choisi === f.id ? " choisie" : "" }));
     const b = choisi && !saisie ? boite(choisi) : null;
     const libre = choisi && !saisie ? (doc.arrows ?? []).find((f) => f.id === choisi) : null;
+    couche = svg("g");
+    dessin.append(couche);
+    dessinerConnecteurs();
     if (b) dessin.append(poigneesBoite(b, z));
     if (libre) dessin.append(poigneesFleche(libre, z));
     if (provisoire) dessin.append(flecheProvisoire(z));
@@ -335,7 +390,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
   }
 
   function surClic(e) {
-    if (editeur?.contains(e.target) || e.target.closest?.(".poignees")) return;
+    if (editeur?.contains(e.target) || e.target.closest?.(".poignees, .connecteurs")) return;
     const g = e.target.closest?.("g.boite, g.lien, g.fleche");
     const id = g?.getAttribute("data-id") ?? null;
     if (saisie !== null && id !== saisie) finirSaisie();
@@ -368,15 +423,22 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     const base = { pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, actif: false };
     const poignee = e.target.closest?.("[data-poignee]")?.getAttribute("data-poignee");
     const b = choisi && boite(choisi);
-    if (poignee && b) {
+    if (poignee === "taille" && b) {
       capturer(e);
       surface.focus({ preventScroll: true });
-      if (poignee === "taille") geste = { ...base, type: "taille", id: b.id, origine: { width: b.width, height: b.height }, actif: true };
-      else {
-        geste = { ...base, type: "liaison", id: b.id, actif: true };
-        provisoire = { de: b.id, ...pointDessin(e) };
-        dessiner();
-      }
+      geste = { ...base, type: "taille", id: b.id, origine: { width: b.width, height: b.height }, actif: true };
+      return;
+    }
+    const connecteur = e.target.closest?.("[data-connecteur]");
+    if (connecteur) {
+      capturer(e);
+      surface.focus({ preventScroll: true });
+      const id = connecteur.getAttribute("data-boite");
+      const cote = connecteur.getAttribute("data-connecteur");
+      pointeur = pointDessin(e);
+      geste = { ...base, type: "liaison", id, cote, actif: true };
+      provisoire = { de: id, cote, ...pointeur };
+      dessiner();
       return;
     }
     const g = e.target.closest?.("g.boite, g.lien, g.fleche");
@@ -390,7 +452,13 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
   }
 
   function surMouvement(e) {
-    if (!geste || e.pointerId !== geste.pointerId) return;
+    if (doc === null) return;
+    if (!geste) {
+      pointeur = pointDessin(e);
+      dessinerConnecteurs();
+      return;
+    }
+    if (e.pointerId !== geste.pointerId) return;
     const dx = e.clientX - geste.x0;
     const dy = e.clientY - geste.y0;
     const z = vueCourante.zoom;
@@ -415,9 +483,9 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       const height = Math.max(24, Math.round(geste.origine.height + dy / z));
       appliquer({ ...doc, boxes: doc.boxes.map((b) => (b.id === geste.id ? { ...b, width, height } : b)) });
     } else {
-      const p = pointDessin(e);
-      provisoire = { de: geste.id, ...p };
-      cible = boiteSous(p, geste.id)?.id ?? null;
+      pointeur = pointDessin(e);
+      provisoire = { de: geste.id, cote: geste.cote, ...pointeur };
+      cible = boiteSous(pointeur, geste.id)?.id ?? null;
     }
     dessiner();
   }
@@ -426,9 +494,11 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     if (!geste || e.pointerId !== geste.pointerId) return;
     const fin = geste;
     if (fin.type === "liaison" && cible && !doc.links.some((l) => l.from === fin.id && l.to === cible)) {
-      const lien = { id: idLibre("l", doc), from: fin.id, to: cible };
+      const lien = { id: idLibre("l", doc), from: fin.id, to: cible, fromSide: fin.cote, toSide: connecteurProche(boite(cible), pointDessin(e)) };
       for (const [cle, clef] of Object.entries(CLES_STYLE)) if (choix[cle] !== OUTILS_DEPART[cle]) lien[clef] = choix[cle];
       appliquer({ ...doc, links: [...doc.links, lien] });
+      choisi = lien.id;
+      surface.focus({ preventScroll: true });
     }
     annulerGeste();
   }

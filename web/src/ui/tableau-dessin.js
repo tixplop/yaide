@@ -1,4 +1,4 @@
-import { geometrieLien, pointe, trace, zoneTexte } from "./tableau-calculs.js";
+import { connecteurs, geometrieLien, pointe, trace, zoneTexte } from "./tableau-calculs.js";
 
 // C-018 : le SVG d'une boîte, d'un lien, d'une flèche libre et des poignées. Fonctions sans état : le choix,
 // la saisie et les gestes restent dans `tableau.js`, qui passe ici ce qu'il faut pour dessiner.
@@ -88,17 +88,27 @@ export function dessinProvisoire(depart, arrivee, zoom, style = {}) {
   return g;
 }
 
-// Poignées de la boîte choisie : la taille, et la liaison jusqu'aux connecteurs (T-300).
+// Poignée de taille de la boîte choisie, au coin bas droit.
 export function poigneesBoite(b, z) {
   const g = svg("g", { class: "poignees", "aria-hidden": "true" });
   const cx = b.x + b.width;
   const cy = b.y + b.height;
   svg("rect", { class: "prise", "data-poignee": "taille", x: cx - 8 / z, y: cy - 8 / z, width: 16 / z, height: 16 / z }, g);
   svg("rect", { class: "carre", x: cx - 4 / z, y: cy - 4 / z, width: 8 / z, height: 8 / z }, g);
-  const my = b.y + b.height / 2;
-  svg("line", { class: "queue", x1: cx, y1: my, x2: cx + 18 / z, y2: my }, g);
-  svg("rect", { class: "prise", "data-poignee": "liaison", x: cx + 8 / z, y: my - 10 / z, width: 20 / z, height: 20 / z }, g);
-  svg("circle", { class: "rond", cx: cx + 18 / z, cy: my, r: 4 / z }, g);
+  return g;
+}
+
+// Connecteurs : un rond de 8 px (10 px, plein, pour les `pleins`) au milieu de chaque côté, et sa zone de prise de 16 px.
+// `pleins` : liste de `{ id, cote }`.
+export function dessinConnecteurs(boites, pleins, z) {
+  const g = svg("g", { class: "connecteurs", "aria-hidden": "true" });
+  for (const b of boites) {
+    for (const [cote, p] of Object.entries(connecteurs(b))) {
+      const plein = pleins.some((q) => q.id === b.id && q.cote === cote);
+      svg("rect", { class: "prise", "data-connecteur": cote, "data-boite": b.id, x: p.x - 8 / z, y: p.y - 8 / z, width: 16 / z, height: 16 / z }, g);
+      svg("circle", { class: plein ? "connecteur plein" : "connecteur", cx: p.x, cy: p.y, r: (plein ? 5 : 4) / z }, g);
+    }
+  }
   return g;
 }
 

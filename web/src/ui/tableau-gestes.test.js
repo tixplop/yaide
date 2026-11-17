@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { tableau } from "./tableau.js";
 
+const css = readFileSync("web/src/ui/composants.css", "utf8");
 const DOC = () => ({
   version: 1,
   boxes: [
@@ -107,11 +109,22 @@ test("REQ129_AC5_poignee_de_taille_agrandit_puis_ne_descend_pas_sous_40_x_24", (
   expect(boite(dernier(), "b1")).toMatchObject({ x: 100, y: 100, width: 40, height: 24 });
 });
 
-test("REQ130_AC1_AC2_poignee_de_liaison_cree_la_fleche_au_lacher_sur_une_autre_boite", () => {
+const survol = (x, y) => ptr(surface(), "pointermove", x, y);
+const connecteursDe = (id) => [...t.element.querySelectorAll(`.connecteurs [data-boite="${id}"]`)].map((c) => c.getAttribute("data-connecteur"));
+const connecteur = (id, cote) => t.element.querySelector(`.connecteurs [data-boite="${id}"][data-connecteur="${cote}"]`);
+const rond = (id, cote) => connecteur(id, cote).nextElementSibling;
+
+test("REQ130_AC1_AC2_connecteurs_proches_puis_lien_du_cote_droit_au_cote_gauche", () => {
   monter();
-  clic(obj("b1").querySelector("rect"));
-  glisser(poignee("liaison"), [278, 140], [480, 140]);
-  expect(dernier().links).toEqual([{ id: "l1", from: "b1", to: "b2" }]);
+  survol(270, 140);
+  expect(connecteursDe("b1")).toEqual(["top", "right", "bottom", "left"]);
+  expect(connecteursDe("b2")).toEqual([]);
+  expect([...t.element.querySelectorAll(".connecteurs .connecteur")].map((c) => c.getAttribute("r"))).toEqual(["4", "4", "4", "4"]);
+  survol(330, 140);
+  expect(t.element.querySelectorAll(".connecteurs *")).toHaveLength(0);
+  survol(270, 140);
+  glisser(connecteur("b1", "right"), [260, 140], [410, 140]);
+  expect(dernier().links).toEqual([{ id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "left" }]);
   expect(obj("l1").getAttribute("aria-label")).toBe("De Début vers Fin");
   const bords = (depart, arrivee) => {
     const [, x1, y1] = obj("l1").querySelector(".trait").getAttribute("d").split(" ");
@@ -121,45 +134,127 @@ test("REQ130_AC1_AC2_poignee_de_liaison_cree_la_fleche_au_lacher_sur_une_autre_b
     expect(px).toBeCloseTo(arrivee[0], 1);
     expect(py).toBeCloseTo(arrivee[1], 1);
   };
-  // Bord droit de « Début », bord gauche de « Fin ».
   bords([260, 140], [400, 140]);
-  // La flèche suit « Fin » déplacée de 200 px vers le bas et touche toujours les deux bords.
+  // « Fin » 200 px plus bas : le lien garde ses côtés.
   glisser(obj("b2").querySelector("rect"), [480, 140], [480, 340]);
   expect(boite(dernier(), "b2").y).toBe(300);
-  // Le bord haut de « Fin » et le bord bas de « Début » limitent la droite entre les centres (180, 140) et (480, 340).
-  bords([240, 180], [420, 300]);
+  bords([260, 140], [400, 340]);
 });
 
-test("REQ130_AC3_vide_boite_de_depart_et_doublon_ne_creent_rien_sens_inverse_cree", () => {
+test("REQ129_AC10_REQ130_AC8_aucun_connecteur_en_saisie_ni_pendant_un_glisser_de_boite", () => {
   monter();
-  clic(obj("b1").querySelector("rect"));
-  glisser(poignee("liaison"), [278, 140], [700, 500]);
-  glisser(poignee("liaison"), [278, 140], [150, 140]);
+  survol(270, 140);
+  expect(connecteursDe("b1")).toHaveLength(4);
+  obj("b1").querySelector("rect").dispatchEvent(new MouseEvent("dblclick", { bubbles: true, button: 0 }));
+  expect(t.element.querySelectorAll(".connecteurs *")).toHaveLength(0);
+  survol(270, 141);
+  expect(t.element.querySelectorAll(".connecteurs *")).toHaveLength(0);
+  t.element.querySelector("[role=textbox]").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  survol(270, 140);
+  ptr(obj("b1").querySelector("rect"), "pointerdown", 150, 140);
+  ptr(surface(), "pointermove", 200, 140);
+  expect(t.element.querySelectorAll(".connecteurs *")).toHaveLength(0);
+  ptr(surface(), "pointerup", 200, 140);
+  // Masqués aux lecteurs d'écran, jamais un arrêt de Tab.
+  survol(360, 140);
+  const couche = t.element.querySelector(".connecteurs");
+  expect(couche.getAttribute("aria-hidden")).toBe("true");
+  expect(couche.querySelector("[tabindex]")).toBeNull();
+});
+
+test("REQ130_AC3_vide_ou_boite_de_depart_ne_creent_rien_doublon_refuse_sens_inverse_cree", () => {
+  monter();
+  survol(270, 140);
+  glisser(connecteur("b1", "right"), [260, 140], [700, 500]);
+  survol(270, 140);
+  glisser(connecteur("b1", "right"), [260, 140], [150, 140]);
   expect(changements).toEqual([]);
-  glisser(poignee("liaison"), [278, 140], [480, 140]);
-  glisser(poignee("liaison"), [278, 140], [480, 140]);
-  expect(dernier().links).toHaveLength(1);
-  clic(obj("b2").querySelector("rect"));
-  glisser(poignee("liaison"), [578, 140], [150, 140]);
+  survol(270, 140);
+  glisser(connecteur("b1", "right"), [260, 140], [410, 140]);
+  survol(270, 140);
+  glisser(connecteur("b1", "bottom"), [180, 180], [480, 170]);
+  expect(dernier().links).toEqual([{ id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "left" }]);
+  survol(570, 140);
+  glisser(connecteur("b2", "right"), [560, 140], [250, 140]);
   expect(dernier().links).toEqual([
-    { id: "l1", from: "b1", to: "b2" },
-    { id: "l2", from: "b2", to: "b1" },
+    { id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "left" },
+    { id: "l2", from: "b2", to: "b1", fromSide: "right", toSide: "right" },
   ]);
 });
 
-test("REQ130_AC5_fleche_provisoire_et_cible_surlignee_retirees_au_lacher_hors_d_une_boite", () => {
+test("REQ130_AC5_AC6_lien_provisoire_cible_et_connecteur_le_plus_proche_surlignes", () => {
   monter();
   clic(obj("b1").querySelector("rect"));
-  ptr(poignee("liaison"), "pointerdown", 278, 140);
-  ptr(surface(), "pointermove", 480, 140);
+  survol(270, 140);
+  ptr(connecteur("b1", "right"), "pointerdown", 260, 140);
+  ptr(surface(), "pointermove", 420, 150);
   expect(t.element.querySelectorAll("g.fleche.provisoire")).toHaveLength(1);
+  const [, x1, y1] = t.element.querySelector("g.fleche.provisoire .trait").getAttribute("d").split(" ");
+  expect([Number(x1), Number(y1)]).toEqual([260, 140]);
   expect(obj("b2").classList.contains("cible")).toBe(true);
   expect(obj("b1").classList.contains("cible")).toBe(false);
+  expect(connecteursDe("b2")).toHaveLength(4);
+  const pleins = [...t.element.querySelectorAll(".connecteur.plein")];
+  expect(pleins).toHaveLength(2);
+  expect(rond("b1", "right").getAttribute("class")).toContain("plein");
+  expect(rond("b2", "left").getAttribute("class")).toContain("plein");
+  expect(rond("b2", "left").getAttribute("r")).toBe("5");
   ptr(surface(), "pointermove", 700, 500);
   expect(obj("b2").classList.contains("cible")).toBe(false);
   ptr(surface(), "pointerup", 700, 500);
   expect(t.element.querySelector("g.fleche.provisoire")).toBeNull();
   expect(changements).toEqual([]);
+});
+
+test("REQ130_AC9_connecteur_sous_le_pointeur_plein_crosshair_taille_prioritaire_sur_petite_boite", () => {
+  monter({ version: 1, boxes: [{ id: "b1", x: 100, y: 100, width: 40, height: 24, text: "" }, { id: "b2", x: 400, y: 100, width: 160, height: 80, text: "Fin" }], links: [] });
+  survol(120, 112);
+  expect(rond("b1", "right").getAttribute("r")).toBe("4");
+  survol(141, 112);
+  expect(rond("b1", "right").getAttribute("r")).toBe("5");
+  expect(rond("b1", "right").getAttribute("class")).toBe("connecteur plein");
+  expect(css).toMatch(/\.connecteurs \.prise \{[^}]*cursor: crosshair/);
+  expect(css).toMatch(/\.connecteurs \.connecteur \{[^}]*fill: var\(--bg-200\); stroke: var\(--ink-muted\)/);
+  expect(css).toMatch(/\.connecteur\.plein \{ fill: var\(--accent-fg\)/);
+  clic(obj("b1").querySelector("rect"));
+  // Boîte choisie : la poignée de taille l'emporte au coin bas droit.
+  survol(140, 112);
+  expect(poignee("taille")).not.toBeNull();
+  expect(connecteursDe("b1")).toHaveLength(4);
+  expect(rond("b1", "right").getAttribute("class")).toBe("connecteur plein");
+  survol(140, 119);
+  expect(t.element.querySelector(".connecteur.plein")).toBeNull();
+  expect(t.element.querySelector(".connecteurs").compareDocumentPosition(t.element.querySelector(".poignees")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  glisser(poignee("taille"), [140, 124], [200, 150]);
+  expect(boite(dernier(), "b1")).toMatchObject({ width: 100, height: 50 });
+  expect(dernier().links).toEqual([]);
+  // Outil « Cercle » actif : un connecteur donne un lien, aucune boîte.
+  const n = changements.length;
+  t.element.querySelector(".ya-tableau-outils [aria-label=Cercle]").click();
+  survol(141, 112);
+  glisser(connecteur("b1", "right"), [140, 112], [450, 140]);
+  expect(changements.length).toBe(n + 1);
+  expect(dernier().links).toHaveLength(1);
+  expect(dernier().boxes.some((b) => b.shape === "ellipse")).toBe(false);
+  expect(dernier().boxes).toHaveLength(2);
+});
+
+test("REQ130_AC10_lien_cree_choisi_boite_a_outils_sur_le_style_choisi_et_vide_garde_le_choix", () => {
+  monter();
+  clic(obj("b2").querySelector("rect"));
+  survol(270, 140);
+  glisser(connecteur("b1", "right"), [260, 140], [700, 500]);
+  expect(changements).toEqual([]);
+  expect(surface().getAttribute("aria-activedescendant")).toBe(obj("b2").id);
+  expect(t.element.querySelector(".ya-tableau-outils [aria-label=Tirets]")).not.toBeNull();
+  t.element.querySelector(".ya-tableau-outils [aria-label=Tirets]").click();
+  survol(270, 140);
+  glisser(connecteur("b1", "right"), [260, 140], [410, 140]);
+  expect(dernier().links).toEqual([{ id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "left", line: "dashed" }]);
+  expect(surface().getAttribute("aria-activedescendant")).toBe(obj("l1").id);
+  expect(document.activeElement).toBe(surface());
+  expect(t.element.querySelector(".ya-tableau-outils [aria-label=Tirets]").getAttribute("aria-pressed")).toBe("true");
+  expect(t.element.querySelector(".ya-tableau-outils [aria-label=Droit]").getAttribute("aria-pressed")).toBe("true");
 });
 
 test("REQ131_AC1_tirer_une_partie_vide_deplace_la_vue_sans_changer_le_document", () => {
