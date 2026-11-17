@@ -742,3 +742,27 @@ test("REQ112_contrastes_de_la_marque_de_la_base_dans_les_deux_themes", () => {
 test("REQ112_token_largeur_info_bulle_max_480px", () => {
   expect(readFileSync("web/src/ui/tokens.css", "utf8")).toMatch(/--largeur-info-bulle-max:\s*480px;/);
 });
+
+// design-system.md, « Whiteboard » (C-018, REQ-127 à REQ-131) : surface `--bg-200`, boîte `--bg-300`.
+test("REQ129_contrastes_du_whiteboard_dans_les_deux_themes", () => {
+  const paires = [
+    ["--ink", "--bg-300", null, 4.5, [8.92, 16.48]],
+    ["--line-strong", "--bg-200", null, 3, [3.47, 3.45]],
+    ["--ink-muted", "--bg-200", null, 3, [6.3, 6.68]],
+    ["--ink", "--bg-200", null, 3, [10.26, 16.48]],
+    ["--accent-fg", "--bg-200", null, 3, [6.64, 6.3]],
+    ["--accent-fg", "--bg-300", null, 3, [5.78, 6.3]],
+    ["--ink", "--accent-soft", "--bg-300", 4.5, [7.34, 13.73]],
+    ["--accent-fg", "--accent-soft", "--bg-300", 3, [4.75, 5.25]],
+    ["--ink-muted", "--bg-100", null, 4.5, [6.58, 6.29]],
+    ["--ink", "--bg-400", null, 3, [7.36, 13.25]],
+  ];
+  for (const [texte, fond, sous, seuil, attendus] of paires) {
+    THEMES.forEach((theme, k) => {
+      const r = ratio(theme, texte, fond, sous);
+      const nom = `${texte} sur ${fond} (${theme})`;
+      expect(r, nom).toBeGreaterThanOrEqual(seuil);
+      egalA(r, attendus[k], nom); // le tableau a deux décimales, `contraste` arrondit à 0,1
+    });
+  }
+});

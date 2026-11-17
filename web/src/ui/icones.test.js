@@ -260,3 +260,21 @@ test("REQ125_icones_copy_et_clipboard_paste", () => {
     expect(icone(n).getAttribute("stroke-width")).toBe("1.6");
   }
 });
+
+test("REQ131_icones_square_plus_zoom_out_zoom_in_et_scan", () => {
+  const dessins = {
+    "square-plus": ["M8 12h8", "M12 8v8"],
+    "zoom-out": ['<circle cx="11" cy="11" r="8"', 'x1="8" x2="14" y1="11" y2="11"'],
+    "zoom-in": ['x1="11" x2="11" y1="8" y2="14"', 'x1="8" x2="14" y1="11" y2="11"'],
+    scan: ["M3 7V5a2 2 0 0 1 2-2h2", "M7 21H5a2 2 0 0 1-2-2v-2"],
+  };
+  for (const [n, parties] of Object.entries(dessins)) {
+    expect(NOMS).toContain(n);
+    const s = icone(n);
+    expect(s.getAttribute("aria-hidden")).toBe("true");
+    expect(s.getAttribute("stroke-width")).toBe("1.6");
+    for (const p of parties) expect(s.innerHTML, n).toContain(p);
+  }
+  const src = readFileSync("web/src/ui/icones.js", "utf8");
+  expect(src).toMatch(/Icônes Lucide \(ISC\) utilisées ici : [^\n]*square-plus, zoom-out, zoom-in, scan\./);
+});

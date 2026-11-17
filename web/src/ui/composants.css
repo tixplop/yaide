@@ -815,6 +815,43 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-palette-sans-champ .liste-libelle { flex: 1 1 0; min-width: 0; }
 .ya-palette-sans-champ .ya-fin { flex: none; padding-left: 16px; white-space: nowrap; font: 12px/16px var(--font-sans); color: var(--ink-muted); }
 
+/* C-018 : whiteboard. Contours, traits et pointes gardent leur taille à l'écran (`vector-effect`). */
+.ya-tableau { box-sizing: border-box; flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; background: var(--bg-200); }
+.ya-tableau:focus-within { outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
+.ya-tableau[hidden] { display: none; }
+.ya-tableau-surface { flex: 1; min-width: 0; min-height: 0; position: relative; outline: none; cursor: default; }
+.ya-tableau-surface svg { display: block; width: 100%; height: 100%; }
+.ya-tableau-surface svg * { vector-effect: non-scaling-stroke; }
+.ya-tableau-illisible { margin: auto; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); text-align: center; }
+.ya-tableau-illisible .indication { align-items: center; }
+.ya-tableau-corriger { margin: 0; color: var(--ink-muted); font: var(--texte-base) var(--font-sans); }
+.ya-tableau .boite rect { fill: var(--bg-300); stroke: var(--line-strong); stroke-width: var(--trait); cursor: move; }
+.ya-tableau .boite rect.surcouche { fill: none; stroke: none; pointer-events: none; }
+.ya-tableau .boite:hover rect { stroke: var(--ink-muted); }
+.ya-tableau .boite.choisie rect, .ya-tableau .boite.saisie rect, .ya-tableau .boite.glissee rect { stroke: var(--accent-fg); stroke-width: var(--trait-fort); }
+.ya-tableau .boite.glissee rect { cursor: grabbing; }
+.ya-tableau .boite.saisie rect { cursor: text; }
+.ya-tableau .boite.cible rect.surcouche { fill: var(--accent-soft); stroke: var(--accent-fg); stroke-width: var(--trait); }
+.ya-tableau-texte { box-sizing: border-box; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: safe center; padding: 6px 8px; overflow: hidden; text-align: center; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--texte-base) var(--font-sans); color: var(--ink); outline: none; }
+.ya-tableau-texte[contenteditable] { overflow: auto; caret-color: var(--accent-fg); cursor: text; }
+.ya-tableau .fleche .trait { stroke: var(--ink-muted); stroke-width: 1.5px; fill: none; }
+.ya-tableau .fleche .pointe { fill: var(--ink-muted); stroke: none; }
+.ya-tableau .fleche .prise { stroke: transparent; stroke-width: 12px; pointer-events: stroke; }
+.ya-tableau .fleche:hover .trait { stroke: var(--ink); }
+.ya-tableau .fleche:hover .pointe { fill: var(--ink); }
+.ya-tableau .fleche.choisie .trait { stroke: var(--accent-fg); stroke-width: var(--trait-fort); }
+.ya-tableau .fleche.choisie .pointe { fill: var(--accent-fg); }
+.ya-tableau .fleche.provisoire { pointer-events: none; }
+.ya-tableau .fleche.provisoire .trait { stroke: var(--accent-fg); stroke-dasharray: 4 4; }
+.ya-tableau .fleche.provisoire .pointe { fill: var(--accent-fg); }
+.ya-tableau .poignees .carre { fill: var(--accent-fg); stroke: var(--bg-200); stroke-width: var(--trait); pointer-events: none; }
+.ya-tableau .poignees .queue { stroke: var(--accent-fg); stroke-width: var(--trait-fort); pointer-events: none; }
+.ya-tableau .poignees .rond { fill: var(--accent-fg); stroke: none; pointer-events: none; }
+.ya-tableau .poignees .prise { fill: transparent; stroke: none; pointer-events: all; }
+.ya-tableau .poignees .prise[data-poignee="taille"] { cursor: nwse-resize; }
+.ya-tableau .poignees .prise[data-poignee="liaison"] { cursor: crosshair; }
+.ya-tableau-surface.tiree { cursor: grabbing; }
+
 .zone-code {
   display: flex;
   height: 100%;

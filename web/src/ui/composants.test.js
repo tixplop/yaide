@@ -318,3 +318,26 @@ test("C001_principal_focus_hors_du_bouton_et_contraste", () => {
     expect((l1 + 0.05) / (l2 + 0.05)).toBeGreaterThanOrEqual(3);
   }
 });
+
+test("C018_regles_css_du_whiteboard", () => {
+  a(".ya-tableau", "background: var(--bg-200)");
+  a(".ya-tableau", "overflow: hidden");
+  a(".ya-tableau:focus-within", "outline: var(--trait) solid var(--accent-fg)");
+  a(".ya-tableau:focus-within", "outline-offset: calc(-1 * var(--trait))");
+  a(".ya-tableau-surface svg *", "vector-effect: non-scaling-stroke");
+  a(".ya-tableau .boite rect", "fill: var(--bg-300)");
+  a(".ya-tableau .boite rect", "stroke: var(--line-strong)");
+  a(".ya-tableau .boite:hover rect", "stroke: var(--ink-muted)");
+  a(".ya-tableau .boite.choisie rect", "stroke: var(--accent-fg)");
+  a(".ya-tableau .boite.choisie rect", "stroke-width: var(--trait-fort)");
+  a(".ya-tableau .boite.cible rect.surcouche", "fill: var(--accent-soft)");
+  a(".ya-tableau-texte", "white-space: pre-wrap");
+  a(".ya-tableau-texte", "overflow: hidden");
+  a(".ya-tableau-texte", "overflow-wrap: anywhere");
+  a(".ya-tableau-texte", "justify-content: safe center");
+  a(".ya-tableau-texte", "padding: 6px 8px");
+  a(".ya-tableau-texte[contenteditable]", "caret-color: var(--accent-fg)");
+  a(".ya-tableau .fleche:hover .trait", "stroke: var(--ink)");
+  a(".ya-tableau .fleche.choisie .trait", "stroke: var(--accent-fg)");
+  a(".ya-tableau .fleche.provisoire .trait", "stroke-dasharray: 4 4");
+});
