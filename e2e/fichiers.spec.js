@@ -715,6 +715,8 @@ test("REQ050_AC4_partie_vide_reste_atteignable_a_800x480", async ({ page }) => {
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await parChemin(page, "lot").click();
   await expect(parChemin(page, "lot/f49.txt")).toBeAttached();
+  // Les statuts git arrivent tard et redessinent l'arbre : on attend l'état stable avant de défiler.
+  await expect(parChemin(page, "lot/f49.txt").locator(".liste-statut")).toHaveText("U");
   const defile = page.locator("aside.cadre-panneau .cadre-panneau-corps");
   await defile.evaluate((e) => (e.scrollTop = e.scrollHeight));
   const derniere = arbre(page).getByRole("treeitem").last();
