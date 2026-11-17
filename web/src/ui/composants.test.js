@@ -295,3 +295,26 @@ test("REQ122_AC8_AC9_regles_css_de_ya_diagramme", () => {
   const img = /\.ya-diagramme img \{([^}]*)\}/.exec(css)[1];
   for (const d of ["display: block", "max-width: 100%", "height: auto", "border-radius: var(--radius-sm)", "background: var(--apercu-page)"]) expect(img).toContain(d);
 });
+
+test("C001_principal_focus_hors_du_bouton_et_contraste", () => {
+  a(".ya-btn:focus-visible", "outline: 2px solid var(--accent-fg)");
+  a(".ya-btn:focus-visible", "outline-offset: -2px");
+  a(".ya-btn-primary:focus-visible", "outline-offset: 2px");
+  a(".ya-btn-primary.ya-focus-garde", "outline-offset: 2px");
+  const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
+  const bloc = (debut) => {
+    const i = tokens.indexOf(debut);
+    return tokens.slice(i, tokens.indexOf("}", i));
+  };
+  const lum = (hex) => {
+    const c = [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  for (const debut of [':root, [data-theme="dark"]', '[data-theme="light"]']) {
+    const b = bloc(debut);
+    const fg = /--accent-fg:\s*(#[0-9a-f]{6})/i.exec(b)[1];
+    const fond = /--bg-300:\s*(#[0-9a-f]{6})/i.exec(b)[1];
+    const [l1, l2] = [lum(fg), lum(fond)].sort((x, y) => y - x);
+    expect((l1 + 0.05) / (l2 + 0.05)).toBeGreaterThanOrEqual(3);
+  }
+});

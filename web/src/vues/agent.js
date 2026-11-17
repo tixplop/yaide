@@ -125,7 +125,7 @@ export function saisieMessage({ libelle, surEnvoi, retenirEntree }) {
  * (rien n'est gardé ici), `ouvrirReference({ chemin, ligne }, lien)` ouvre un fichier cité par une réponse, et `surDejaOuverte(id)` rend vrai si un autre onglet affiche `id` et vient d'être activé : le menu ne charge alors rien.
  * Rend `{ corps, focuser(), relireReglages(), majListe(), detruire() }`.
  */
-export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, conversation: conversationGardee, equipe: agentsInitiaux, surConversation = () => {}, surDejaOuverte, ouvrirReference } = {}) {
+export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, conversation: conversationGardee, equipe: agentsInitiaux, surConversation = () => {}, surDejaOuverte, ouvrirReference, message: premierMessage } = {}) {
   const corps = document.createElement("div");
   corps.className = "agent-corps";
 
@@ -509,7 +509,17 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
   afficher();
   if (!conversationGardee) fixerEquipe(agentsInitiaux);
   majListe();
-  relireReglages().then(() => conversationGardee && ouvrirGardee(conversationGardee));
+  relireReglages().then(async () => {
+    if (conversationGardee) return ouvrirGardee(conversationGardee);
+    if (typeof premierMessage !== "string" || !premierMessage || detruite) return;
+    // Premier message venu de l'extérieur : il part comme un message tapé ; refusé, il reste dans le champ.
+    texteSaisi.value = premierMessage;
+    majBoutons();
+    await envoyerMessage();
+    if (detruite || !texteSaisi.value) return;
+    focuser();
+    texteSaisi.setSelectionRange(texteSaisi.value.length, texteSaisi.value.length);
+  });
 
   return {
     corps,

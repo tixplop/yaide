@@ -19,6 +19,8 @@
 .ya-icon-btn[aria-pressed="true"] { color: var(--accent-fg); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-fg); }
 .ya-btn:active, .ya-icon-btn:active { box-shadow: inset 0 0 0 1px currentColor; }
 .ya-btn:focus-visible, .ya-icon-btn:focus-visible, .ya-icon-btn.ya-focus-garde { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
+/* C-001 `principal` : le focus se dessine hors du bouton, y compris quand Yaide pose lui-même le focus. */
+.ya-btn-primary:focus-visible, .ya-btn-primary.ya-focus-garde { outline-offset: 2px; }
 .ya-btn[disabled], .ya-icon-btn[disabled] { opacity: .45; cursor: default; pointer-events: none; }
 .ya-btn[aria-busy="true"] { opacity: 1; cursor: progress; pointer-events: auto; }
 .ya-icon-btn[aria-busy="true"] { opacity: 1; cursor: progress; }

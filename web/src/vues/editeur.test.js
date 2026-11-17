@@ -1167,6 +1167,16 @@ test("REQ078_AC2_onglet_vide_rien_enregistre", async () => {
   expect(fetch).not.toHaveBeenCalled();
 });
 
+test("REQ126_AC2_ouvrirAgent_passe_le_message_a_la_vue", async () => {
+  gardes([], null);
+  const { e } = monterAg({}, true);
+  await e.restaurer();
+  e.ouvrirAgent({ equipe: [{ dossier: "a", nom: "A" }], message: "Consulte `a.md`." });
+  expect(faux.ag[0].message).toBe("Consulte `a.md`.");
+  e.ouvrirAgent();
+  expect(faux.ag[1].message).toBeUndefined();
+});
+
 test("REQ078_AC5_conversation_deja_ouverte_active_son_onglet", () => {
   const { e } = monterAg();
   e.ouvrirAgent();

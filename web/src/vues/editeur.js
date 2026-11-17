@@ -51,7 +51,7 @@ const avecApercu = (chemin) => /\.(md|markdown|html|htm|svg|mmd)$/i.test(chemin)
  * Un onglet Agent (REQ-078) l'est aussi : `{ conversationAgent: true, numero, conversation }` (`conversation` : `null` tant que rien n'est écrit).
  * Le champ `agent` d'un onglet désigne un sous-agent opencode : l'onglet Agent a son propre drapeau.
  * Chaque onglet a un `groupe` ; `barre`, `fil`, `code` et `question` sont ceux du premier groupe, `groupes()` rend l'arbre de tous.
- * Rend `{ definirStatuts(statuts), barre, fil, code, groupes(), questions(), deplacer(id, groupe, zone), lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirAgent({ equipe }), relireReglagesAgents(), ouvrirOpencode({ sessionId, titre }), renomme(…), supprime(…), restaurer(), detruire() }`.
+ * Rend `{ definirStatuts(statuts), barre, fil, code, groupes(), questions(), deplacer(id, groupe, zone), lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirAgent({ equipe, message }), relireReglagesAgents(), ouvrirOpencode({ sessionId, titre }), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
 export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {}, surCtrlS = () => {}, surGroupes = () => {}, surLien = () => {}, claude = true, agents = true }) {
   const liste = []; // { chemin, groupe, zone, disque (texte de base), version (de base), apercu, hybride, modifie, question, supprime, avis }
@@ -704,10 +704,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     await ouvrir({ chemin, contenu: lecture.contenu, version: lecture.version, ligne });
   }
 
-  function creerAgent({ numero, conversation, equipe }) {
+  function creerAgent({ numero, conversation, equipe, message }) {
     const o = { conversationAgent: true, numero, conversation: conversation ?? null, groupe: courant, chemin: AGENT + numero, modifie: false };
     o.vue = vueAgent({
-      ...(o.conversation ? { conversation: o.conversation } : { equipe }),
+      ...(o.conversation ? { conversation: o.conversation } : { equipe, message }),
       ouvrirReference: (ref, lien) => ouvrirReference(o, ref, lien),
       surConversation: (id) => {
         o.conversation = id;
@@ -740,9 +740,9 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   }
 
   /** Ouvre « Agent <n> » (plus petit numéro libre) à droite des onglets, actif, le focus dans « Message à l'agent ». `equipe` : agents de la conversation. */
-  function ouvrirAgent({ equipe } = {}) {
+  function ouvrirAgent({ equipe, message } = {}) {
     dernierGeste++;
-    const o = creerAgent({ numero: plusPetitNumeroLibre(liste.filter((x) => x.conversationAgent).map((x) => x.numero)), equipe });
+    const o = creerAgent({ numero: plusPetitNumeroLibre(liste.filter((x) => x.conversationAgent).map((x) => x.numero)), equipe, message });
     actif = o.chemin;
     afficher();
     o.zone.vue.focus();

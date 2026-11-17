@@ -20,7 +20,7 @@ const SONNET = { id: "p1", nom: "sonnet", provider: "anthropic", modele: "claude
 const RAPIDE = { id: "p2", nom: "rapide", provider: "openai", modele: "mini", defaut: false };
 
 /** `lectures` : réponses successives de `lireConversation`. */
-async function monter({ ouvrirReference, profils = [SONNET, RAPIDE], lectures = [], envoi = { conversation: "c1" }, ouvrirProfils = vi.fn(), erreur = null, conversations = [], conversation, equipe } = {}) {
+async function monter({ ouvrirReference, profils = [SONNET, RAPIDE], lectures = [], envoi = { conversation: "c1" }, ouvrirProfils = vi.fn(), erreur = null, conversations = [], conversation, equipe, message } = {}) {
   const api = {
     reglagesAgent: vi.fn(async () => ({ providers: [], profils, erreur })),
     listeConversations: vi.fn(async () => conversations),
@@ -29,7 +29,7 @@ async function monter({ ouvrirReference, profils = [SONNET, RAPIDE], lectures = 
     arreterConversation: vi.fn(async () => ({})),
   };
   const surConversation = vi.fn();
-  const vue = vueAgent({ api, ouvrirProfils, ouvrirReference, surConversation, conversation, equipe });
+  const vue = vueAgent({ api, ouvrirProfils, ouvrirReference, surConversation, conversation, equipe, message });
   vues.push(vue);
   document.body.append(vue.corps);
   vue.focuser();
@@ -1215,4 +1215,46 @@ test("REQ108_AC10_Chargement_apres_200_ms_et_Entree_retenue", async () => {
   touche(champ(vue), "Enter");
   expect(champ(vue).value).toBe("#docs-api ");
   expect(api.envoyerMessage).not.toHaveBeenCalled();
+});
+
+const MESSAGE = "Consulte `docs/a.md`.";
+
+test("REQ126_AC2_message_initial_part_une_fois_avec_le_profil_par_defaut", async () => {
+  const { vue, api } = await monter({ message: MESSAGE, lectures: [{ entrees: [], enCours: true, total: 1, tokens: 0 }] });
+  expect(api.envoyerMessage).toHaveBeenCalledTimes(1);
+  expect(api.envoyerMessage).toHaveBeenCalledWith({ conversation: null, profil: "p1", texte: MESSAGE });
+  expect(fil(vue).textContent).toContain(MESSAGE);
+  expect(champ(vue).value).toBe("");
+  expect(document.activeElement).toBe(champ(vue));
+});
+
+test("REQ126_AC3_message_initial_avec_une_equipe", async () => {
+  const { vue, api } = await monter({ equipe: [RELECTEUR], message: MESSAGE, lectures: [{ entrees: [], enCours: true, total: 1, tokens: 0 }] });
+  expect(api.envoyerMessage).toHaveBeenCalledTimes(1);
+  expect(api.envoyerMessage).toHaveBeenCalledWith({ agents: ["relecteur"], texte: MESSAGE });
+  expect(ligne(vue).hidden).toBe(false);
+  expect(profilListe(vue)).toBeNull();
+});
+
+test("REQ126_AC8_message_initial_refuse_reste_dans_le_champ", async () => {
+  const sans = await monter({ profils: [], message: MESSAGE });
+  expect(sans.api.envoyerMessage).not.toHaveBeenCalled();
+  expect(champ(sans.vue).value).toBe(MESSAGE);
+  expect(champ(sans.vue).selectionStart).toBe(MESSAGE.length);
+  expect(document.activeElement).toBe(champ(sans.vue));
+  expect(sans.vue.corps.querySelector(".agent-titre").textContent).toBe("Nouvelle conversation");
+
+  const cle = await monter({ message: MESSAGE, envoi: { refus: "sans-cle", provider: "OpenAI" } });
+  expect(cle.api.envoyerMessage).toHaveBeenCalledTimes(1);
+  expect(refus(cle.vue).textContent).toContain("Aucune clé pour OpenAI. Ajoutez-la avec Ctrl+P, puis > Providers LLM.");
+  expect(champ(cle.vue).value).toBe(MESSAGE);
+  expect(champ(cle.vue).selectionStart).toBe(MESSAGE.length);
+  expect(document.activeElement).toBe(champ(cle.vue));
+  expect(fil(cle.vue).textContent).not.toContain(MESSAGE);
+  expect(cle.vue.corps.querySelector(".agent-titre").textContent).toBe("Nouvelle conversation");
+  cle.api.envoyerMessage.mockResolvedValueOnce({ conversation: "c1" });
+  touche(champ(cle.vue), "Enter");
+  await tick(0);
+  expect(cle.api.envoyerMessage).toHaveBeenCalledTimes(2);
+  expect(champ(cle.vue).value).toBe("");
 });
