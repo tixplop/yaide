@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { poigneesLien } from "./tableau-dessin.js";
 import { tableau } from "./tableau.js";
 
 const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
@@ -218,7 +219,7 @@ test("REQ136_AC5_tab_boites_puis_liens_puis_fleches_libres_nom_et_poignees_masqu
   expect(poignees.querySelectorAll(".bout")).toHaveLength(2);
   touche("Tab", { shiftKey: true });
   expect(surface().getAttribute("aria-activedescendant")).toBe(obj("l1").id);
-  expect(t.element.querySelector(".poignees")).toBeNull();
+  expect(t.element.querySelectorAll(".poignees .bout")).toHaveLength(2); // lien choisi seul : poignées de REQ-142
 });
 
 test("REQ136_AC2_fleche_bas_deplace_les_deux_bouts_de_la_fleche_libre_de_10_px", () => {
@@ -403,3 +404,18 @@ test("REQ138_AC4_forme_texte_choisie_garde_son_contour_de_2_px_malgre_weight_thi
   expect(largeur(".ya-tableau :where(.boite)")).toContain("--e: 1px");
 });
 
+
+test("REQ142_AC6_poigneesLien_au_bord_de_depart_et_au_bout_de_la_pointe", () => {
+  const doc = {
+    boxes: [
+      { id: "b1", x: 100, y: 100, width: 160, height: 80 },
+      { id: "b2", x: 400, y: 100, width: 160, height: 80 },
+    ],
+    links: [{ id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "left" }],
+  };
+  const g = poigneesLien(doc, doc.links[0], 1);
+  expect(g.getAttribute("aria-hidden")).toBe("true");
+  const ronds = [...g.querySelectorAll(".bout")].map((c) => [c.getAttribute("cx"), c.getAttribute("cy"), c.getAttribute("r")]);
+  expect(ronds).toEqual([["260", "140", "4.5"], ["400", "140", "4.5"]]);
+  expect([...g.querySelectorAll(".prise")].map((r) => r.getAttribute("data-poignee"))).toEqual(["depart", "arrivee"]);
+});

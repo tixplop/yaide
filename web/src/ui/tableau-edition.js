@@ -1,4 +1,5 @@
 import { idLibre } from "../jdiag.js";
+import { connecteurProche, connecteurs } from "./tableau-calculs.js";
 // Calculs purs sur le document d'un whiteboard (C-018) : plan des objets.
 
 // Passe les objets de `ids` au-dessus (« premier ») ou au-dessous (« arriere ») de tous les objets de leur sorte.
@@ -54,4 +55,27 @@ export function coller(doc, copie, n) {
     courant.arrows.push({ ...structuredClone(f), id, x1: f.x1 + d, y1: f.y1 + d, x2: f.x2 + d, y2: f.y2 + d });
   }
   return { doc: courant, ids };
+}
+
+// Rattache le départ (`bout` = "depart") ou l'arrivée (`"arrivee"`) du lien `idLien` au côté `cote` de la boîte `idBoite`.
+// Le lien garde son `id`, son style et le côté de l'autre bout ; sans côté, l'autre bout prend celui dont le milieu est le
+// plus proche du connecteur atteint. Rend le même document s'il n'y a rien à changer, ou si c'est refusé : boîte de l'autre
+// bout, ou lien qui existe déjà dans ce sens.
+export function rattacher(doc, idLien, bout, idBoite, cote) {
+  if (bout !== "depart" && bout !== "arrivee") throw new Error("rattacher : « depart » ou « arrivee » attendu");
+  const lien = doc.links.find((l) => l.id === idLien);
+  const boite = doc.boxes.find((b) => b.id === idBoite);
+  if (!lien || !boite || !connecteurs(boite)[cote]) return doc;
+  const depart = bout === "depart";
+  const idAutre = depart ? lien.to : lien.from;
+  if (idBoite === idAutre) return doc;
+  const from = depart ? idBoite : lien.from;
+  const to = depart ? lien.to : idBoite;
+  if (doc.links.some((l) => l.id !== idLien && l.from === from && l.to === to)) return doc;
+  const autre = doc.boxes.find((b) => b.id === idAutre);
+  const coteAutre = lien.fromSide && lien.toSide ? (depart ? lien.toSide : lien.fromSide) : connecteurProche(autre, connecteurs(boite)[cote]);
+  const fromSide = depart ? cote : coteAutre;
+  const toSide = depart ? coteAutre : cote;
+  if (from === lien.from && to === lien.to && fromSide === lien.fromSide && toSide === lien.toSide) return doc;
+  return { ...doc, links: doc.links.map((l) => (l.id === idLien ? { ...l, from, to, fromSide, toSide } : l)) };
 }

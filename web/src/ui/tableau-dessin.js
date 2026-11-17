@@ -149,12 +149,23 @@ export function dessinConnecteurs(boites, pleins, z) {
   return g;
 }
 
-// Poignées de la flèche libre choisie : un rond de 9 px à chaque bout.
-export function poigneesFleche(f, z) {
+// Un rond de 9 px (et sa zone de prise de 16 px) à chaque bout : `depart` et `arrivee` sont des points du dessin.
+function poigneesBouts(depart, arrivee, z) {
   const g = svg("g", { class: "poignees", "aria-hidden": "true" });
-  for (const [nom, x, y] of [["depart", f.x1, f.y1], ["arrivee", f.x2, f.y2]]) {
+  for (const [nom, { x, y }] of [["depart", depart], ["arrivee", arrivee]]) {
     svg("rect", { class: "prise", "data-poignee": nom, x: x - 8 / z, y: y - 8 / z, width: 16 / z, height: 16 / z }, g);
     svg("circle", { class: "bout", cx: x, cy: y, r: 4.5 / z }, g);
   }
   return g;
+}
+
+// Poignées de la flèche libre choisie.
+export function poigneesFleche(f, z) {
+  return poigneesBouts({ x: f.x1, y: f.y1 }, { x: f.x2, y: f.y2 }, z);
+}
+
+// Poignées du lien choisi seul : au départ sur le bord de la forme, à l'arrivée au bout de la pointe ou du trait.
+export function poigneesLien(doc, lien, z) {
+  const geo = geometrieLien(doc, lien, z);
+  return poigneesBouts(geo.debut.point, geo.fin.point, z);
 }

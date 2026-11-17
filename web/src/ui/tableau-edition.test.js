@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { auPlan, coller, copier } from "./tableau-edition.js";
+import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
 
 const DOC = () => ({
   version: 1,
@@ -63,4 +63,42 @@ test("REQ137_AC4_flèche_libre_collée_et_lien_seul_ne_copie_rien", () => {
   const r = coller(CDOC(), copier(CDOC(), ["a1"]), 1);
   expect(r.ids).toEqual(["a2"]);
   expect(r.doc.arrows[1]).toMatchObject({ x1: 120, y1: 320, x2: 320, y2: 320 });
+});
+
+const DOC_LIENS = () => ({
+  version: 1,
+  boxes: [
+    { id: "b1", x: 0, y: 0, width: 160, height: 80, text: "Début" },
+    { id: "b2", x: 400, y: 0, width: 160, height: 80, text: "Fin" },
+    { id: "b3", x: 0, y: 300, width: 160, height: 80, text: "Autre" },
+  ],
+  links: [{ id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "left", color: "red" }],
+});
+
+test("REQ142_AC1_rattacher_l_arrivee_garde_id_style_et_cote_de_depart", () => {
+  const d = rattacher(DOC_LIENS(), "l1", "arrivee", "b3", "top");
+  expect(d.links).toEqual([{ id: "l1", from: "b1", to: "b3", fromSide: "right", toSide: "top", color: "red" }]);
+});
+
+test("REQ142_AC2_rattacher_le_depart_sur_sa_boite_change_le_cote_ou_passe_a_une_autre", () => {
+  expect(rattacher(DOC_LIENS(), "l1", "depart", "b1", "bottom").links[0]).toEqual({ id: "l1", from: "b1", to: "b2", fromSide: "bottom", toSide: "left", color: "red" });
+  expect(rattacher(DOC_LIENS(), "l1", "depart", "b3", "right").links[0]).toMatchObject({ from: "b3", to: "b2", fromSide: "right", toSide: "left" });
+});
+
+test("REQ142_AC3_lien_sans_cote_l_autre_bout_prend_le_cote_le_plus_proche", () => {
+  const doc = { ...DOC_LIENS(), links: [{ id: "l1", from: "b1", to: "b2" }] };
+  expect(rattacher(doc, "l1", "arrivee", "b2", "top").links[0]).toEqual({ id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "top" });
+});
+
+test("REQ142_AC4_rattacher_refuse_boite_de_l_autre_bout_lien_existant_et_rien_a_changer", () => {
+  const d = DOC_LIENS();
+  expect(rattacher(d, "l1", "arrivee", "b1", "top")).toBe(d);
+  expect(rattacher(d, "l1", "arrivee", "b2", "left")).toBe(d);
+  expect(rattacher(d, "l1", "arrivee", "inconnue", "left")).toBe(d);
+  expect(rattacher(d, "inconnu", "arrivee", "b3", "top")).toBe(d);
+  const deux = { ...d, links: [...d.links, { id: "l2", from: "b1", to: "b3" }] };
+  expect(rattacher(deux, "l1", "arrivee", "b3", "top")).toBe(deux);
+  const inverse = { ...d, links: [...d.links, { id: "l2", from: "b3", to: "b1" }] };
+  expect(rattacher(inverse, "l1", "arrivee", "b3", "top").links[0].to).toBe("b3");
+  expect(() => rattacher(d, "l1", "milieu", "b3", "top")).toThrow();
 });
