@@ -298,3 +298,18 @@ test("REQ131_AC2_ctrl_molette_zoome_autour_du_pointeur_dans_les_bornes", () => {
   expect(vues.at(-1).zoom).toBe(0.25);
   expect(changements).toEqual([]);
 });
+
+test("REQ129_AC3_double_clic_comme_le_navigateur_sur_une_boite_non_choisie_lance_la_saisie", () => {
+  monter();
+  let cible;
+  for (let i = 0; i < 2; i++) {
+    cible = obj("b1").querySelector("rect");
+    ptr(cible, "pointerdown", 150, 140);
+    ptr(cible, "pointerup", 150, 140);
+    cible.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: i + 1 }));
+  }
+  cible.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, button: 0, detail: 2 }));
+  const zone = t.element.querySelector("[role=textbox]");
+  expect(zone).not.toBeNull();
+  expect(document.activeElement).toBe(zone);
+});

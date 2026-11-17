@@ -297,6 +297,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
   }
 
   function choisir(id, avecRecadrage = false) {
+    // Même objet déjà choisi : ne pas redessiner, le second clic d'un double-clic doit garder son élément.
+    if (id === choisi && !avecRecadrage) return;
     choisi = id;
     if (id && avecRecadrage) ramener(id);
     dessiner();

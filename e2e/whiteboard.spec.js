@@ -63,6 +63,13 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ1
     await page.keyboard.press("Escape");
     const fin = surface.locator('[aria-roledescription="boîte"]').filter({ hasText: "Fin" });
     await dans(fin.getByText("Fin"), fin);
+    // Double-clic réel sur « Début » (non choisie) : la saisie se lance, curseur après le texte.
+    const cd = await centre(debut);
+    await page.mouse.dblclick(cd.x, cd.y);
+    const zoneDebut = page.getByRole("textbox", { name: "Texte de la boîte" });
+    await expect(zoneDebut).toBeFocused();
+    expect(await page.evaluate(() => getSelection().anchorOffset)).toBe(5);
+    await page.keyboard.press("Escape");
     const avant = await centre(fin);
     await glisser(page, avant, { x: avant.x + 300, y: avant.y });
     const apres = await centre(fin);
