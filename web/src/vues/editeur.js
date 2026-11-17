@@ -11,6 +11,7 @@ import { icone } from "../ui/icones.js";
 import { image } from "../ui/image.js";
 import { lireJdiag, ecrireJdiag } from "../jdiag.js";
 import { tableau } from "../ui/tableau.js";
+import { changerThemeWhiteboard, themeCourant, themeWhiteboard } from "../ui/theme.js";
 import { langagePourFichier, nomLangage } from "../ui/langages.js";
 import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
@@ -516,6 +517,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     const t = tableau({
       nom: nomDe(o.chemin),
       document: lireJdiag(texteInitial),
+      theme: themeWhiteboard() ?? undefined,
       surChangement(doc) {
         courantTexte = ecrireJdiag(doc);
         surTexte(courantTexte);
@@ -535,7 +537,18 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       vueFaite = true;
       t.toutAfficher();
     };
-    z.detruire = t.detruire;
+    // Le thème des whiteboards (REQ-143) : le choix, sinon celui de Yaide ; le bouton de la barre suit.
+    const suivreTheme = () => {
+      t.definirTheme(themeWhiteboard() ?? undefined);
+      o.barreWb?.theme.setAttribute("aria-pressed", String(themeClairWhiteboard()));
+    };
+    document.addEventListener("yaide-theme", suivreTheme);
+    document.addEventListener("yaide-theme-whiteboard", suivreTheme);
+    z.detruire = () => {
+      document.removeEventListener("yaide-theme", suivreTheme);
+      document.removeEventListener("yaide-theme-whiteboard", suivreTheme);
+      t.detruire();
+    };
     z.definirCoupe = () => {};
     z.rechargerApercu = () => {};
     z.contenu = () => courantTexte;
@@ -560,6 +573,8 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     z.vue = { focus: () => (z.querySelector("[role=application]") ?? z).focus() };
     return z;
   }
+
+  const themeClairWhiteboard = () => (themeWhiteboard() ?? themeCourant()) === "light";
 
   const TEXTE_ZOOM = (zoom) => `${Math.round(zoom * 100)}\u00a0%`;
 
@@ -586,12 +601,15 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     const arriere = commande("zoom-out", "Zoom arrière", () => o.zone.zoomArriere());
     const avant = commande("zoom-in", "Zoom avant", () => o.zone.zoomAvant());
     const tout = commande("scan", "Tout afficher", () => o.zone.toutAfficher());
+    const theme = bouton({ icone: "sun", variante: "discret", nomAccessible: "Thème clair du whiteboard", presse: themeClairWhiteboard() });
+    theme.enveloppe.classList.add("ya-tableau-theme");
+    theme.addEventListener("click", () => changerThemeWhiteboard(themeClairWhiteboard() ? "dark" : "light"));
     const statut = document.createElement("span");
     statut.className = "ya-tableau-zoom";
     statut.setAttribute("role", "status");
-    o.barreWb = { statut, avant, arriere };
+    o.barreWb = { statut, avant, arriere, theme };
     majBarreWhiteboard(o);
-    return [ajout.enveloppe, arriere.enveloppe, statut, avant.enveloppe, tout.enveloppe];
+    return [ajout.enveloppe, arriere.enveloppe, statut, avant.enveloppe, tout.enveloppe, theme.enveloppe];
   }
 
   /** Un onglet d'image (REQ-120) : la zone C-017 prend la place de la zone de code ; l'image vient de la route d'aperçu. */

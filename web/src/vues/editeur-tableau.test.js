@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { lire } from "../stockage.js";
 import { ecrireJdiag } from "../jdiag.js";
+import { themeWhiteboard } from "../ui/theme.js";
 import { vueEditeur } from "./editeur.js";
+import { cadre } from "../ui/cadre.js";
 
 vi.mock("./claude.js", () => ({ vueClaude: () => ({ corps: document.createElement("div"), focus() {}, ajuster() {}, detruire() {} }) }));
 vi.mock("./opencode.js", () => ({ vueOpencode: () => ({ corps: document.createElement("div"), focus() {}, detruire() {} }) }));
@@ -80,6 +82,8 @@ async function ouvrir(e, chemin) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
+  document.documentElement.removeAttribute("data-theme");
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({ x: 0, y: 0, left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 });
 });
 afterEach(() => {
@@ -295,11 +299,11 @@ test("REQ131_AC3_AC5_barre_d_outils_ordre_info_bulles_zoom_affiche_et_bornes", a
   const { e } = monter();
   await ouvrir(e, "plan.jdiag");
   const droite = document.querySelector(".onglets-droite");
-  expect([...droite.children].map((x) => x.querySelector("button")?.getAttribute("aria-label") ?? x.getAttribute("role"))).toEqual(["Ajouter une boîte", "Zoom arrière", "status", "Zoom avant", "Tout afficher"]);
+  expect([...droite.children].map((x) => x.querySelector("button")?.getAttribute("aria-label") ?? x.getAttribute("role"))).toEqual(["Ajouter une boîte", "Zoom arrière", "status", "Zoom avant", "Tout afficher", "Thème clair du whiteboard"]);
   expect([...droite.querySelectorAll("button")].every((b) => b.closest(".bouton-enveloppe"))).toBe(true);
   // Info-bulle de chaque bouton : son nom, sans touche.
   vi.useFakeTimers();
-  for (const nom of ["Ajouter une boîte", "Zoom arrière", "Zoom avant", "Tout afficher"]) {
+  for (const nom of ["Ajouter une boîte", "Zoom arrière", "Zoom avant", "Tout afficher", "Thème clair du whiteboard"]) {
     bouton(nom).closest(".bouton-enveloppe").dispatchEvent(new Event("pointerenter"));
     vi.advanceTimersByTime(500);
     expect(document.querySelector(".info-bulle[data-ouverte]")?.textContent, nom).toBe(nom);
@@ -354,4 +358,85 @@ test("REQ133_AC6_les_choix_de_la_boite_a_outils_ne_sont_pas_gardes_au_rechargeme
   m = monter();
   await ouvrir(m.e, "plan.jdiag");
   expect([presse("Droit"), presse("Choisir"), presse("Coudé"), presse("Cercle")]).toEqual(["true", "true", "false", "false"]);
+});
+
+const THEME = "Thème clair du whiteboard";
+const zones = () => [...document.querySelectorAll(".ya-tableau-zone")];
+
+test("REQ143_AC1_clic_zone_en_clair_html_inchange_sans_point_aria_pressed_second_clic", async () => {
+  fauxServeur({ "plan.jdiag": TEXTE });
+  document.documentElement.setAttribute("data-theme", "dark");
+  const { e } = monter();
+  await ouvrir(e, "plan.jdiag");
+  expect(zone().dataset.theme).toBeUndefined();
+  expect(bouton(THEME).getAttribute("aria-pressed")).toBe("false");
+  bouton(THEME).click();
+  expect(zone().dataset.theme).toBe("light");
+  expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+  expect(onglet("plan.jdiag").dataset.modifie).toBeUndefined();
+  expect(bouton(THEME).getAttribute("aria-pressed")).toBe("true");
+  expect(serveur.ecritures).toEqual([]);
+  bouton(THEME).click();
+  expect(zone().dataset.theme).toBe("dark");
+  expect(bouton(THEME).getAttribute("aria-pressed")).toBe("false");
+});
+
+test("REQ143_AC2_deux_groupes_ensemble_theme_de_yaide_sans_effet_apres_choix_onglet_cree_avec_le_choix", async () => {
+  fauxServeur({ "a.jdiag": TEXTE, "b.jdiag": TEXTE });
+  let c = null;
+  const { e } = monter({ surGroupes: (arbre, courant) => c?.definirGroupes(arbre, courant) });
+  c = cadre({ principal: { groupes: e.groupes() } });
+  document.body.append(c);
+  await ouvrir(e, "a.jdiag");
+  await ouvrir(e, "b.jdiag");
+  e.deplacer("b.jdiag", "g1", "droite");
+  expect(zones().length).toBe(2);
+  bouton(THEME).click();
+  expect(zones().map((z) => z.dataset.theme)).toEqual(["light", "light"]);
+  expect(themeWhiteboard()).toBe("light");
+  document.dispatchEvent(new CustomEvent("yaide-theme", { detail: "dark" }));
+  expect(zones().map((z) => z.dataset.theme)).toEqual(["light", "light"]);
+  fauxServeur2({ "c.jdiag": TEXTE });
+  await ouvrir(e, "c.jdiag");
+  expect(zones().map((z) => z.dataset.theme)).toEqual(["light", "light", "light"]);
+  bouton(THEME).click();
+  expect(zones().map((z) => z.dataset.theme)).toEqual(["dark", "dark", "dark"]);
+});
+
+test("REQ143_AC3_sans_choix_suit_le_theme_de_yaide", async () => {
+  fauxServeur({ "plan.jdiag": TEXTE });
+  document.documentElement.setAttribute("data-theme", "light");
+  const { e } = monter();
+  await ouvrir(e, "plan.jdiag");
+  expect(bouton(THEME).getAttribute("aria-pressed")).toBe("true");
+  document.documentElement.setAttribute("data-theme", "dark");
+  document.dispatchEvent(new CustomEvent("yaide-theme", { detail: "dark" }));
+  expect(bouton(THEME).getAttribute("aria-pressed")).toBe("false");
+  expect(zone().dataset.theme).toBeUndefined();
+  expect(themeWhiteboard()).toBeNull();
+});
+
+test("REQ143_AC4_nom_icone_info_bulle_tab_focus_gardé_et_pas_de_bouton_ailleurs", async () => {
+  fauxServeur({ "plan.jdiag": TEXTE, "a.txt": "x", "casse.jdiag": "pas du json" });
+  const { e } = monter();
+  await ouvrir(e, "plan.jdiag");
+  const b = bouton(THEME);
+  expect(b.querySelector("svg")).not.toBeNull();
+  expect(b.innerHTML).toContain('r="4"');
+  expect(b.tabIndex).toBe(0);
+  const boutons = [...document.querySelectorAll(".onglets-droite button")];
+  expect(boutons.at(-2).getAttribute("aria-label")).toBe("Tout afficher");
+  expect(boutons.at(-1)).toBe(b);
+  vi.useFakeTimers();
+  b.closest(".bouton-enveloppe").dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(500);
+  expect(document.querySelector(".info-bulle[data-ouverte]")?.textContent).toBe(THEME);
+  vi.useRealTimers();
+  b.focus();
+  b.click();
+  expect(document.activeElement).toBe(bouton(THEME));
+  await ouvrir(e, "a.txt");
+  expect(bouton(THEME)).toBeNull();
+  await ouvrir(e, "casse.jdiag");
+  expect(bouton(THEME)).toBeNull();
 });
