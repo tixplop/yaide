@@ -6,8 +6,18 @@ const CLES_LIBRE = ["id", "x1", "y1", "x2", "y2"];
 const ENTIERS = new Set(["x", "y", "width", "height", "x1", "y1", "x2", "y2"]);
 
 // Clés de style : la première valeur est celle par défaut.
-const STYLE_BOITE = { shape: ["rectangle", "rounded", "ellipse", "diamond", "note", "text"], color: ["default", "blue", "green", "yellow", "orange", "red", "purple"] };
-const STYLE_TRAIT = { route: ["direct", "orthogonal", "curved"], ends: ["end", "none", "start", "both"], line: ["solid", "dashed", "dotted"] };
+const COULEURS = ["default", "blue", "green", "yellow", "orange", "red", "purple"];
+const TRAITS = ["solid", "dashed", "dotted"];
+const EPAISSEURS = ["thin", "medium", "thick"];
+const STYLE_BOITE = {
+  shape: ["rectangle", "rounded", "ellipse", "diamond", "note", "text"],
+  color: COULEURS,
+  line: TRAITS,
+  weight: EPAISSEURS,
+  opacity: [100, 75, 50, 25, 0],
+  textSize: ["normal", "small", "large", "xlarge"],
+};
+const STYLE_TRAIT = { route: ["direct", "orthogonal", "curved"], ends: ["end", "none", "start", "both"], line: TRAITS, color: COULEURS, weight: EPAISSEURS };
 const COTES = ["top", "right", "bottom", "left"];
 
 function estObjet(v) {
