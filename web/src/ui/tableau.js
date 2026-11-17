@@ -1,7 +1,7 @@
 import { idLibre } from "../jdiag.js";
 import { estMac } from "../references.js";
 import { indication } from "./indication.js";
-import { auPlan } from "./tableau-edition.js";
+import { auPlan, coller, copier } from "./tableau-edition.js";
 import { boiteOutils } from "./tableau-outils.js";
 import { connecteurProche, connecteurs, dansRectangle, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
 import { dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, dessinRectangleSelection, poigneesBoite, poigneesFleche, svg } from "./tableau-dessin.js";
@@ -29,6 +29,8 @@ const CONCERNES = {
   epaisseur: ["boite", "trait"],
 };
 let compteur = 0;
+let collages = 0; // collages faits depuis la dernière copie
+let presse = null; // la copie de Ctrl+C, partagée par tous les onglets de whiteboard
 
 // Le rectangle des deux points, dans tous les sens, jamais sous 40 x 24 px, aux positions entières.
 function rectangleTrace(a, b) {
@@ -430,6 +432,20 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       e.preventDefault();
       choisis = tousLesId();
       dessiner();
+      return;
+    }
+    if (saisie === null && !e.altKey && !e.shiftKey && (estMac() ? e.metaKey : e.ctrlKey) && (e.key.toLowerCase() === "c" || e.key.toLowerCase() === "v")) {
+      e.preventDefault();
+      if (e.key.toLowerCase() === "c") {
+        presse = copier(doc, choisis);
+        collages = 0;
+      } else if (presse) {
+        const r = coller(doc, presse, ++collages);
+        appliquer(r.doc);
+        choisis = r.ids;
+        ramener(premier());
+        dessiner();
+      }
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;

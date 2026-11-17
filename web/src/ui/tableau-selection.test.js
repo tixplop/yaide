@@ -209,3 +209,45 @@ test("REQ133_AC10_outil_selection_pointeur_crosshair", () => {
   bt("Sélection").click();
   expect(surface().classList.contains("crosshair")).toBe(true);
 });
+
+test("REQ137_AC4_copier_coller_deux_fois_puis_autre_onglet_et_lien_seul", async () => {
+  monter();
+  const a = t;
+  const pa = changements;
+  choisirTrois();
+  touche("c", { ctrlKey: true });
+  const e = touche("v", { ctrlKey: true });
+  expect(e.defaultPrevented).toBe(true);
+  expect(dernier().boxes.slice(3).map((b) => [b.id, b.x, b.y])).toEqual([["b4", 60, 100], ["b5", 320, 100]]);
+  expect(choisis()).toEqual(["b4", "b5", "l2"]);
+  expect(statut().textContent).toBe("3 objets choisis");
+  touche("v", { ctrlKey: true });
+  expect(dernier().boxes.slice(5).map((b) => [b.x, b.y])).toEqual([[80, 120], [340, 120]]);
+  // autre instance : le presse-papiers est partagé
+  const b = tableau({ nom: "b.jdiag", document: { version: 1, boxes: [], links: [], arrows: [] }, vue: { x: 0, y: 0, zoom: 1 }, surChangement: (d) => changements.push(d) });
+  document.body.append(b.element);
+  t = b;
+  changements = [];
+  touche("v", { ctrlKey: true }, b.element.querySelector("[role=application]"));
+  expect(dernier().boxes.map((x) => [x.id, x.text, x.x])).toEqual([["b1", "Début", 100], ["b2", "Fin", 360]]);
+  expect(dernier().links).toHaveLength(1);
+  b.detruire();
+  t = a;
+  expect(pa.length).toBeGreaterThan(0);
+  // lien seul : rien copié, rien collé
+  await new Promise((r) => setTimeout(r, 0));
+  t.element.querySelector("[data-id=l1]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  touche("c", { ctrlKey: true });
+  expect(choisis()).toEqual(["l1"]);
+  const n = changements.length;
+  touche("v", { ctrlKey: true });
+  expect(changements).toHaveLength(n);
+});
+
+test("REQ137_AC6_ctrl_c_et_v_en_saisie_ne_sont_pas_interceptes", () => {
+  monter();
+  t.element.querySelector("g.boite rect").dispatchEvent(new MouseEvent("dblclick", { bubbles: true, button: 0 }));
+  const zone = t.element.querySelector("[role=textbox]");
+  expect(touche("v", { ctrlKey: true }, zone).defaultPrevented).toBe(false);
+  expect(touche("c", { ctrlKey: true }, zone).defaultPrevented).toBe(false);
+});
