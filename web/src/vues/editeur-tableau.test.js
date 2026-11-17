@@ -114,7 +114,7 @@ test("REQ128_AC1_AC8_AC9_ouverture_par_ouvrir_ouvrirCitee_et_reference_sans_doub
   expect(nomsOnglets()).toEqual(["plan.jdiag"]);
   expect(onglet("plan.jdiag").getAttribute("aria-selected")).toBe("true");
   expect(textes()).toEqual(["Début", "Fin"]);
-  expect(zone().querySelectorAll("[aria-roledescription=flèche]")).toHaveLength(1);
+  expect(zone().querySelectorAll("[aria-roledescription=lien]")).toHaveLength(1);
   expect(e.code.querySelector(".zone-code")).toBeNull();
   expect(document.querySelector("[role=alert], .ya-message")).toBeNull();
   // AC-128-8 et AC-128-9 : focus sur la surface, rôle, nom, fil d'Ariane, barre d'état.

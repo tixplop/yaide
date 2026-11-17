@@ -73,7 +73,7 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ128_AC2_REQ131_AC2_parcours_P096_white
     await page.mouse.click(d.x, d.y);
     const poignee = await centre(surface.locator(".poignees .rond"));
     await glisser(page, poignee, await centre(fin));
-    await expect(surface.locator('[aria-roledescription="flèche"]')).toHaveCount(1);
+    await expect(surface.locator('[aria-roledescription="lien"]')).toHaveCount(1);
     await expect(surface.getByLabel("De Début vers Fin")).toHaveCount(1);
 
     // AC-128-2 : Ctrl+S écrit le fichier au format de REQ-132.

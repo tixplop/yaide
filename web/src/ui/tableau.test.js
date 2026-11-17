@@ -194,7 +194,7 @@ test("C018_tab_et_maj_tab_dans_l_ordre_du_fichier_noms_et_aria_activedescendant"
   expect(obj("b1").getAttribute("role")).toBe("group");
   expect(obj("b3").getAttribute("aria-label")).toBe("Boîte vide");
   expect(obj("l1").getAttribute("aria-label")).toBe("De Début du flux vers Lire la config");
-  expect(obj("l1").getAttribute("aria-roledescription")).toBe("flèche");
+  expect(obj("l1").getAttribute("aria-roledescription")).toBe("lien");
 
   // Maj+Tab remonte, puis sur le premier plus rien n'est choisi, le focus reste.
   expect(touche(s, "Tab", { shiftKey: true }).defaultPrevented).toBe(true);
@@ -233,16 +233,16 @@ test("C018_deux_fleches_de_sens_contraires_sont_decalees_de_8_px_l_une_de_l_autr
   const doc = DOC();
   doc.links.push({ id: "l2", from: "b2", to: "b1" });
   monter(doc);
-  const y = (id) => Number(obj(id).querySelector(".trait").getAttribute("y1"));
+  const y = (id) => Number(obj(id).querySelector(".trait").getAttribute("d").split(" ")[2]);
   expect(Math.abs(y("l1") - y("l2"))).toBe(8);
   expect(obj("l1").querySelector(".pointe")).not.toBeNull();
   expect(obj("l2").querySelector(".pointe")).not.toBeNull();
   clic(obj("l2").querySelector(".prise"));
-  expect(t.element.querySelectorAll(".fleche.choisie").length).toBe(1);
+  expect(t.element.querySelectorAll(".lien.choisie").length).toBe(1);
   expect(obj("l2").classList.contains("choisie")).toBe(true);
   // Une flèche seule n'est pas décalée : sur la droite des centres.
   monter();
-  expect(obj("l1").querySelector(".trait").getAttribute("y1")).toBe("140");
+  expect(obj("l1").querySelector(".trait").getAttribute("d")).toBe("M 260 140 L 400 140");
 });
 
 test("C018_pointe_au_bord_de_la_boite_d_arrivee_et_traits_a_taille_fixe", () => {
@@ -254,7 +254,9 @@ test("C018_pointe_au_bord_de_la_boite_d_arrivee_et_traits_a_taille_fixe", () => 
   // À 200 %, la pointe garde 10 px à l'écran : 5 unités du dessin.
   monter(DOC(), { x: 0, y: 0, zoom: 2 });
   expect(t.element.querySelector("svg").getAttribute("viewBox")).toBe("0 0 400 300");
-  expect(Number(obj("l1").querySelector(".trait").getAttribute("x2"))).toBe(395);
+  const pts = obj("l1").querySelector(".pointe").getAttribute("points").split(" ").map((p) => p.split(",").map(Number));
+  expect(pts[0]).toEqual([400, 140]);
+  expect(pts[1][0]).toBe(395);
 });
 
 test("C018_etat_illisible_et_retour_au_dessin", () => {

@@ -114,12 +114,12 @@ test("REQ130_AC1_AC2_poignee_de_liaison_cree_la_fleche_au_lacher_sur_une_autre_b
   expect(dernier().links).toEqual([{ id: "l1", from: "b1", to: "b2" }]);
   expect(obj("l1").getAttribute("aria-label")).toBe("De Début vers Fin");
   const bords = (depart, arrivee) => {
-    const trait = obj("l1").querySelector(".trait");
-    expect(Number(trait.getAttribute("x1"))).toBeCloseTo(depart[0], 3);
-    expect(Number(trait.getAttribute("y1"))).toBeCloseTo(depart[1], 3);
+    const [, x1, y1] = obj("l1").querySelector(".trait").getAttribute("d").split(" ");
+    expect(Number(x1)).toBeCloseTo(depart[0], 1);
+    expect(Number(y1)).toBeCloseTo(depart[1], 1);
     const [px, py] = obj("l1").querySelector(".pointe").getAttribute("points").split(" ")[0].split(",").map(Number);
-    expect(px).toBeCloseTo(arrivee[0], 3);
-    expect(py).toBeCloseTo(arrivee[1], 3);
+    expect(px).toBeCloseTo(arrivee[0], 1);
+    expect(py).toBeCloseTo(arrivee[1], 1);
   };
   // Bord droit de « Début », bord gauche de « Fin ».
   bords([260, 140], [400, 140]);

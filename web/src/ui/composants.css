@@ -840,29 +840,46 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau-illisible { margin: auto; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); text-align: center; }
 .ya-tableau-illisible .indication { align-items: center; }
 .ya-tableau-corriger { margin: 0; color: var(--ink-muted); font: var(--texte-base) var(--font-sans); }
-.ya-tableau .boite rect { fill: var(--bg-300); stroke: var(--line-strong); stroke-width: var(--trait); cursor: move; }
-.ya-tableau .boite rect.surcouche { fill: none; stroke: none; pointer-events: none; }
-.ya-tableau .boite:hover rect { stroke: var(--ink-muted); }
-.ya-tableau .boite.choisie rect, .ya-tableau .boite.saisie rect, .ya-tableau .boite.glissee rect { stroke: var(--accent-fg); stroke-width: var(--trait-fort); }
-.ya-tableau .boite.glissee rect { cursor: grabbing; }
-.ya-tableau .boite.saisie rect { cursor: text; }
-.ya-tableau .boite.cible rect.surcouche { fill: var(--accent-soft); stroke: var(--accent-fg); stroke-width: var(--trait); }
+.ya-tableau .boite { --boite-fond: var(--boite-defaut-fond); --boite-trait: var(--boite-defaut-trait); }
+.ya-tableau .couleur-blue { --boite-fond: var(--boite-bleu-fond); --boite-trait: var(--boite-bleu-trait); }
+.ya-tableau .couleur-green { --boite-fond: var(--boite-vert-fond); --boite-trait: var(--boite-vert-trait); }
+.ya-tableau .couleur-yellow { --boite-fond: var(--boite-jaune-fond); --boite-trait: var(--boite-jaune-trait); }
+.ya-tableau .couleur-orange { --boite-fond: var(--boite-orange-fond); --boite-trait: var(--boite-orange-trait); }
+.ya-tableau .couleur-red { --boite-fond: var(--boite-rouge-fond); --boite-trait: var(--boite-rouge-trait); }
+.ya-tableau .couleur-purple { --boite-fond: var(--boite-violet-fond); --boite-trait: var(--boite-violet-trait); }
+.ya-tableau .boite .forme { fill: var(--boite-fond); stroke: var(--boite-trait); stroke-width: var(--trait); cursor: move; }
+.ya-tableau .boite .pli { fill: none; stroke: var(--boite-trait); stroke-width: var(--trait); pointer-events: none; }
+.ya-tableau .boite .surcouche { fill: none; stroke: none; pointer-events: none; }
+.ya-tableau .boite:hover .forme, .ya-tableau .boite:hover .pli { stroke-width: var(--trait-fort); }
+.ya-tableau .boite.couleur-default:not(.choisie, .saisie, .glissee):hover :is(.forme, .pli) { stroke: var(--ink-muted); stroke-width: var(--trait); }
+.ya-tableau .boite.forme-text .forme { fill: transparent; stroke: none; }
+.ya-tableau .boite.forme-text:not(.choisie, .saisie, .glissee):hover .forme { stroke: var(--line-strong); stroke-width: var(--trait); stroke-dasharray: 4 4; }
+.ya-tableau .boite.forme-text .ya-tableau-texte { color: var(--boite-trait); }
+.ya-tableau .boite.forme-text.couleur-default .ya-tableau-texte { color: var(--ink); }
+.ya-tableau .boite.choisie .forme, .ya-tableau .boite.choisie .pli, .ya-tableau .boite.saisie .forme, .ya-tableau .boite.saisie .pli, .ya-tableau .boite.glissee .forme, .ya-tableau .boite.glissee .pli { stroke: var(--accent-fg); stroke-width: var(--trait-fort); stroke-dasharray: none; }
+.ya-tableau .boite.glissee .forme { cursor: grabbing; }
+.ya-tableau .boite.saisie .forme { cursor: text; }
+.ya-tableau .boite.cible .surcouche { fill: var(--accent-soft); stroke: var(--accent-fg); stroke-width: var(--trait); }
 .ya-tableau-texte { box-sizing: border-box; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: safe center; padding: 6px 8px; overflow: hidden; text-align: center; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--texte-base) var(--font-sans); color: var(--ink); outline: none; }
 .ya-tableau-texte[contenteditable] { overflow: auto; caret-color: var(--accent-fg); cursor: text; }
-.ya-tableau .fleche .trait { stroke: var(--ink-muted); stroke-width: 1.5px; fill: none; }
-.ya-tableau .fleche .pointe { fill: var(--ink-muted); stroke: none; }
-.ya-tableau .fleche .prise { stroke: transparent; stroke-width: 12px; pointer-events: stroke; }
-.ya-tableau .fleche:hover .trait { stroke: var(--ink); }
-.ya-tableau .fleche:hover .pointe { fill: var(--ink); }
-.ya-tableau .fleche.choisie .trait { stroke: var(--accent-fg); stroke-width: var(--trait-fort); }
-.ya-tableau .fleche.choisie .pointe { fill: var(--accent-fg); }
+.ya-tableau :is(.lien, .fleche) .trait { stroke: var(--ink-muted); stroke-width: 1.5px; fill: none; }
+.ya-tableau :is(.lien, .fleche).ligne-dotted .trait { stroke-width: 2px; }
+.ya-tableau :is(.lien, .fleche) .pointe { fill: var(--ink-muted); stroke: none; }
+.ya-tableau :is(.lien, .fleche) .prise { stroke: transparent; stroke-width: 12px; fill: none; pointer-events: stroke; }
+.ya-tableau .fleche .prise { cursor: move; }
+.ya-tableau :is(.lien, .fleche):hover .trait { stroke: var(--ink); }
+.ya-tableau :is(.lien, .fleche):hover .pointe { fill: var(--ink); }
+.ya-tableau :is(.lien, .fleche).choisie .trait { stroke: var(--accent-fg); stroke-width: var(--trait-fort); }
+.ya-tableau :is(.lien, .fleche).choisie .pointe { fill: var(--accent-fg); }
 .ya-tableau .fleche.provisoire { pointer-events: none; }
 .ya-tableau .fleche.provisoire .trait { stroke: var(--accent-fg); stroke-dasharray: 4 4; }
 .ya-tableau .fleche.provisoire .pointe { fill: var(--accent-fg); }
 .ya-tableau .poignees .carre { fill: var(--accent-fg); stroke: var(--bg-200); stroke-width: var(--trait); pointer-events: none; }
 .ya-tableau .poignees .queue { stroke: var(--accent-fg); stroke-width: var(--trait-fort); pointer-events: none; }
 .ya-tableau .poignees .rond { fill: var(--accent-fg); stroke: none; pointer-events: none; }
+.ya-tableau .poignees .bout { fill: var(--accent-fg); stroke: var(--bg-200); stroke-width: var(--trait); pointer-events: none; }
 .ya-tableau .poignees .prise { fill: transparent; stroke: none; pointer-events: all; }
+.ya-tableau .poignees .prise[data-poignee="depart"], .ya-tableau .poignees .prise[data-poignee="arrivee"] { cursor: crosshair; }
 .ya-tableau .poignees .prise[data-poignee="taille"] { cursor: nwse-resize; }
 .ya-tableau .poignees .prise[data-poignee="liaison"] { cursor: crosshair; }
 .ya-tableau-surface.tiree { cursor: grabbing; }
