@@ -76,6 +76,7 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
   }
 
   const decrit = [];
+  let aideEl;
   if (type === "case") racine.append(saisie, label);
   else racine.append(label, saisie);
   if (aide && presentation !== "barre") {
@@ -84,7 +85,7 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
     a.id = `champ-${n}-aide`;
     a.textContent = aide;
     decrit.push(a.id);
-    racine.append(a);
+    aideEl = a;
   }
   if (erreur && presentation !== "barre") {
     const e = document.createElement("div");
@@ -96,6 +97,8 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
     saisie.setAttribute("aria-invalid", "true");
     racine.append(e);
   }
+  // Le message d'erreur vient entre le champ et l'aide.
+  if (aideEl) racine.append(aideEl);
   if (decrit.length) saisie.setAttribute("aria-describedby", decrit.join(" "));
   // Le bouton de l'action suit la liste ; il est désactivé avec elle, sinon il garde son propre état.
   if (action) {

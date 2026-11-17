@@ -328,7 +328,7 @@ const commande = (menu, debut) => [...menu.querySelectorAll("[role=menuitem]")].
 test("REQ034_AC1_AC14_REQ104_AC1_REQ049_AC13_menu_a_quatre_groupes_dont_la_base_de_connaissance", async () => {
   const { vue } = await monter({ "": [f("a.txt")] }, { estDepot: () => true, agents: true });
   const m = menuSur(vue, "a.txt");
-  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance", "Soumettre à un agent…"]);
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "Nouveau whiteboard", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance", "Soumettre à un agent…"]);
   expect(m.querySelectorAll("[role=separator]").length).toBe(4);
   expect(m.querySelectorAll("[aria-disabled]").length).toBe(2); // Coller : rien de copié ; Mettre à jour : aucun fichier de la base
 });
@@ -336,7 +336,7 @@ test("REQ034_AC1_AC14_REQ104_AC1_REQ049_AC13_menu_a_quatre_groupes_dont_la_base_
 test("REQ034_AC21_hors_depot_deux_separateurs_avec_la_base", async () => {
   const { vue } = await monter({ "": [f("a.txt")] }, { estDepot: () => false, agents: true });
   const m = menuSur(vue, "a.txt");
-  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance", "Soumettre à un agent…"]);
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "Nouveau whiteboard", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance", "Soumettre à un agent…"]);
   expect(m.querySelectorAll("[role=separator]").length).toBe(3);
 });
 
@@ -1237,7 +1237,7 @@ test("REQ034_AC2_projet_vide_dans_un_depot_propose_aussi_commit", async () => {
   vue.corps.querySelector(".fichiers-arbre").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
   const m = document.querySelector("[role=menu]");
   expect(m.getAttribute("aria-label")).toBe("Actions sur le projet");
-  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "CollerCtrl+V", "Commit"]);
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "Nouveau whiteboard", "CollerCtrl+V", "Commit"]);
   expect(m.querySelectorAll("[role=separator]").length).toBe(2);
 });
 
@@ -1493,4 +1493,159 @@ test("REQ125_AC14_Ctrl_C_hors_de_l_arbre_et_sans_selection_ne_font_rien", async 
   expect(choisies(vue)).toEqual(["a.txt"]); // la sélection ne change pas
   expect(document.querySelector("dialog")).toBeNull();
   expect(appelsCopier(appels)).toEqual([]);
+});
+
+const menuDe = (cible) => {
+  cible.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+  return document.querySelector("[role=menu]");
+};
+const commandeMenu = (m, nom) => [...m.querySelectorAll("[role=menuitem]")].find((i) => i.textContent === nom);
+
+async function montrerWhiteboard(disque, options = {}) {
+  const ecritures = [];
+  const { vue, appels, ...reste } = await monter(disque, { surOuvrir: vi.fn(), ...options });
+  const base = fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    if (init?.method === "PUT" && String(url).startsWith("/api/fichier?")) {
+      ecritures.push({ url: String(url), corps: init.body });
+      return { ok: true, status: 200, json: async () => ({ version: "v1" }) };
+    }
+    if (String(url).startsWith("/api/fichier?") && !init?.method) return { ok: true, status: 200, text: async () => "", headers: new Headers() };
+    if (init?.method === "POST" && String(url).startsWith("/api/fichiers/creer") && !disque.coupure && !disque.refus) {
+      const chemin = decodeURIComponent(new URL(url, "http://x").searchParams.get("chemin"));
+      const i = chemin.lastIndexOf("/");
+      disque[chemin.slice(0, Math.max(i, 0))]?.push(f(chemin.slice(i + 1)));
+    }
+    if (disque.refus && String(url).startsWith("/api/fichiers/creer")) return { ok: false, status: 409, json: async () => ({ cause: "existe", message: "Ce nom est déjà pris. Choisissez-en un autre." }) };
+    return base(url, init);
+  }));
+  return { vue, appels, ecritures, ...reste };
+}
+
+const VIDE = '{\n  "version": 1,\n  "boxes": [],\n  "links": []\n}\n';
+
+test("REQ127_AC1_AC6_AC7_nouveau_whiteboard_ecrit_le_fichier_vide_et_l_ouvre_sans_changer_la_selection", async () => {
+  const { vue, appels, ecritures, surOuvrir } = await montrerWhiteboard({ "": [d("docs")], docs: [f("a.md")] });
+  ligne(vue, "docs").click();
+  await attendre();
+  ligne(vue, "docs/a.md").click();
+  await attendre();
+  commandeMenu(menuDe(ligne(vue, "docs/a.md")), "Nouveau whiteboard").click();
+  const dlg = dialogue();
+  expect(dlg.querySelector(`#${dlg.getAttribute("aria-labelledby")}`).textContent).toBe("Nouveau whiteboard");
+  const saisie = dlg.querySelector("input");
+  expect(saisie.value).toBe("docs/");
+  expect(document.activeElement).toBe(saisie);
+  expect(saisie.selectionStart).toBe(5);
+  expect(dlg.querySelector("label").textContent).toBe("Chemin");
+  const aide = dlg.querySelector(".champ-aide");
+  expect(aide.textContent).toBe("L'extension .jdiag s'ajoute si elle manque.");
+  expect(saisie.getAttribute("aria-describedby")).toContain(aide.id);
+  expect([...dlg.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Annuler", "Créer"]);
+  saisir("docs/plan");
+  await attendre();
+  await attendre();
+  await attendre();
+  expect(appels).toContain("/api/fichiers/creer?chemin=docs%2Fplan.jdiag&type=fichier");
+  expect(ecritures.length).toBe(1);
+  expect(decodeURIComponent(ecritures[0].url)).toContain("chemin=docs/plan.jdiag");
+  expect(ecritures[0].corps).toBe(VIDE);
+  expect(dialogue()).toBeNull();
+  expect(ligne(vue, "docs/plan.jdiag")).toBeDefined();
+  expect(surOuvrir).toHaveBeenCalledWith(expect.objectContaining({ chemin: "docs/plan.jdiag" }));
+  expect(ligne(vue, "docs/a.md").getAttribute("aria-selected")).toBe("true");
+  expect(vue.corps.querySelectorAll("[aria-selected=true]").length).toBe(1);
+});
+
+test("REQ127_AC6_Annuler_et_Echap_ne_creent_rien_et_rendent_le_focus_a_la_ligne", async () => {
+  const { vue, appels, ecritures } = await montrerWhiteboard({ "": [d("docs")], docs: [f("a.md")] });
+  ligne(vue, "docs").click();
+  await attendre();
+  for (const fermer of ["Annuler", "Echap"]) {
+    commandeMenu(menuDe(ligne(vue, "docs/a.md")), "Nouveau whiteboard").click();
+    expect(dialogue()).not.toBeNull();
+    if (fermer === "Annuler") [...dialogue().querySelectorAll("button")].find((b) => b.textContent === "Annuler").click();
+    else dialogue().dispatchEvent(new Event("cancel", { cancelable: true }));
+    await attendre();
+    expect(dialogue()?.open ?? false).toBe(false);
+    expect(document.activeElement).toBe(ligne(vue, "docs/a.md"));
+  }
+  expect(appels.some((u) => String(u).includes("/creer"))).toBe(false);
+  expect(ecritures.length).toBe(0);
+});
+
+test("REQ127_AC2_partie_vide_champ_vide_et_extension_ajoutee_sans_casse", async () => {
+  const { vue, ecritures } = await montrerWhiteboard({ "": [f("a.md")] });
+  const chemins = [];
+  for (const [saisi, attendu] of [["schema.jdiag", "schema.jdiag"], ["Schema.JDIAG", "Schema.JDIAG"], ["notes.v2", "notes.v2.jdiag"]]) {
+    commandeMenu(menuDe(vue.corps.querySelector(".fichiers-arbre")), "Nouveau whiteboard").click();
+    expect(dialogue().querySelector("input").value).toBe("");
+    saisir(saisi);
+    await attendre();
+    await attendre();
+    await attendre();
+    chemins.push([attendu, decodeURIComponent(ecritures.at(-1).url).split("chemin=")[1]]);
+  }
+  for (const [attendu, recu] of chemins) expect(recu).toBe(attendu);
+});
+
+test("REQ127_AC3_AC7_nom_pris_refuse_dialogue_ouvert_et_rien_ecrit", async () => {
+  const disque = { "": [d("docs")], docs: [f("plan.jdiag")] };
+  const { vue, ecritures } = await montrerWhiteboard(disque);
+  ligne(vue, "docs").click();
+  await attendre();
+  commandeMenu(menuDe(ligne(vue, "docs/plan.jdiag")), "Nouveau whiteboard").click();
+  disque.refus = true;
+  saisir("docs/plan");
+  await attendre();
+  await attendre();
+  const dlg = dialogue();
+  expect(dlg).not.toBeNull();
+  expect(ecritures.length).toBe(0);
+  const saisie = dlg.querySelector("input");
+  expect(saisie.value).toBe("docs/plan");
+  expect(document.activeElement).toBe(saisie);
+  expect(saisie.getAttribute("aria-invalid")).toBe("true");
+  const alerte = dlg.querySelector("[role=alert]");
+  expect(alerte.textContent).toBe("Ce nom est déjà pris. Choisissez-en un autre.");
+  expect(alerte.compareDocumentPosition(dlg.querySelector(".champ-aide")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test("REQ127_AC4_worktree_essai_cree_dans_le_worktree", async () => {
+  const ecritures = [];
+  const { vue } = await montrerWorktree({ "../essai": [f("x.rs")] });
+  const base = fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    if (init?.method === "PUT") {
+      ecritures.push(decodeURIComponent(String(url)));
+      return { ok: true, status: 200, json: async () => ({ version: "v" }) };
+    }
+    return base(url, init);
+  }));
+  commandeMenu(menuDe(vue.corps.querySelector(".fichiers-arbre")), "Nouveau whiteboard").click();
+  expect(dialogue().querySelector("input").value).toBe("");
+  saisir("plan");
+  await attendre();
+  await attendre();
+  await attendre();
+  expect(ecritures.some((u) => u.includes("chemin=../essai/plan.jdiag"))).toBe(true);
+});
+
+test("REQ127_AC5_coupure_dit_de_reessayer_rien_cree_puis_Entree_au_retour_cree", async () => {
+  const disque = { "": [f("a.md")] };
+  const { vue, ecritures } = await montrerWhiteboard(disque);
+  disque.coupure = true;
+  commandeMenu(menuDe(vue.corps.querySelector(".fichiers-arbre")), "Nouveau whiteboard").click();
+  saisir("plan");
+  await attendre();
+  await attendre();
+  const dlg = dialogue();
+  expect(dlg.querySelector("[role=alert]").textContent).toBe("Connexion perdue. Réessayez au retour.");
+  expect(ecritures.length).toBe(0);
+  disque.coupure = false;
+  dlg.querySelector("input").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await attendre();
+  await attendre();
+  await attendre();
+  expect(ecritures.length).toBe(1);
 });

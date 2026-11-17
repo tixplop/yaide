@@ -1,4 +1,4 @@
-import { copierChemin, creerChemin, gitIndexer, lireConnaissance, lireFichier, listerDossier, renommerChemin, supprimerChemin } from "../api.js";
+import { copierChemin, creerChemin, ecrireFichier, gitIndexer, lireConnaissance, lireFichier, listerDossier, renommerChemin, supprimerChemin } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { dialogue } from "../ui/dialogue.js";
@@ -7,6 +7,7 @@ import { liste } from "../ui/liste.js";
 import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 import { estImage } from "../onglets-fichiers.js";
+import { avecExtensionJdiag, ecrireJdiag } from "../jdiag.js";
 import { estMac } from "../references.js";
 import * as worktree from "../worktree.js";
 import { mettreAJourFichiers, ouvrirAjoutConnaissance } from "./ajout-connaissance.js";
@@ -562,6 +563,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
         [
           { libelle: "Nouveau fichier", surChoix: () => ouvrirCreation(false, base) },
           { libelle: "Nouveau dossier", surChoix: () => ouvrirCreation(true, base) },
+          { libelle: "Nouveau whiteboard", surChoix: () => ouvrirWhiteboard(base) },
         ],
         vide
           ? [{ libelle: "Coller", touche: mac ? "Cmd+V" : "Ctrl+V", desactive: copies.length === 0, surChoix: () => coller(base) }]
@@ -667,10 +669,10 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   }
 
   /** Dialogue à un champ « chemin ». `envoyer(chemin)` rend `{}` si réussi, sinon l'erreur du serveur. */
-  function formulaire({ titre, libelle, valeur, libelleBouton, selectionNom, envoyer }) {
+  function formulaire({ titre, libelle, valeur, libelleBouton, selectionNom, aide, envoyer }) {
     const zone = document.createElement("div");
     const nouveauChamp = (erreur) => {
-      const c = champ({ libelle, valeur: erreur ? erreur.valeur : valeur, erreur: erreur?.texte });
+      const c = champ({ libelle, valeur: erreur ? erreur.valeur : valeur, aide, erreur: erreur?.texte });
       zone.replaceChildren(c);
       const saisie = c.querySelector("input");
       saisie.addEventListener("keydown", (e) => {
@@ -741,6 +743,30 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
         if (r.coupure || r.cause) return r;
         await terminer(chemin, dlg, { ouvrir: !dossier });
         if (!dossier) ouvrirFichier(chemin);
+        return { fait: true };
+      },
+    });
+  }
+
+  function ouvrirWhiteboard(depuisMenu) {
+    origineArbre = false;
+    const rel = worktree.dansWorktree(depuisMenu);
+    formulaire({
+      titre: "Nouveau whiteboard",
+      libelle: "Chemin",
+      valeur: rel ? `${rel}/` : "",
+      libelleBouton: "Créer",
+      aide: "L'extension .jdiag s'ajoute si elle manque.",
+      async envoyer(brut, dlg) {
+        const chemin = avecExtensionJdiag(brut);
+        const r = await creerChemin(chemin, "fichier");
+        if (r.coupure || r.cause) return r;
+        // Une coupure ici laisse un fichier vide, qui s'ouvre comme un whiteboard vide.
+        await ecrireFichier(chemin, ecrireJdiag({ boxes: [], links: [] }));
+        montrerChemin(chemin);
+        dlg.fermer({ rendreFocus: false });
+        await rafraichir();
+        ouvrirFichier(chemin);
         return { fait: true };
       },
     });

@@ -122,7 +122,7 @@ test("REQ007_AC1_AC2_AC3_AC5_AC6_AC8_REQ008_AC5_REQ009_AC5_REQ034_AC1_AC4_AC14_A
     await ligne(page, "README.md").click({ button: "right" });
     const m = menu(page, "Actions sur README.md");
     await expect(m).toBeVisible();
-    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance", "Soumettre à un agent…"]);
+    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Nouveau whiteboard", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance", "Soumettre à un agent…"]);
     await expect(m.getByRole("menuitem", { name: "Renommer", exact: true })).toBeVisible();
     await expect(m.getByRole("separator")).toHaveCount(4);
     await expect(ligne(page, "README.md")).toHaveAttribute("aria-selected", "true");
@@ -177,11 +177,11 @@ test("REQ007_AC4_REQ034_AC9_groupe_hors_depot_git", async ({ page }) => {
   await test.step("REQ034_AC9_hors_depot_ni_indexer_ni_commit", async () => {
     await ligne(page, "a.txt").click({ button: "right" });
     const m = menu(page, "Actions sur a.txt");
-    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance", "Soumettre à un agent…"]);
+    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Nouveau whiteboard", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance", "Soumettre à un agent…"]);
     await expect(m.getByRole("separator")).toHaveCount(3);
     await page.keyboard.press("Escape");
     await clicVide(page);
-    await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CollerCtrl+V"]);
+    await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Nouveau whiteboard", "CollerCtrl+V"]);
   });
 });
 
@@ -198,7 +198,7 @@ test("REQ007_AC7_REQ010_REQ034_AC2_groupe_projet_vide_apres_la_derniere_suppress
   });
   await test.step("REQ034_AC2_projet_vide_le_menu_s_ouvre_sur_Dossier_vide", async () => {
     await page.getByText("Dossier vide.").click({ button: "right" });
-    await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CollerCtrl+V"]);
+    await expect(menu(page, "Actions sur le projet").getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Nouveau whiteboard", "CollerCtrl+V"]);
     await page.keyboard.press("Escape");
     await expect(menu(page, "Actions sur le projet")).toHaveCount(0);
   });
@@ -368,7 +368,7 @@ test("REQ034_AC2_AC3_AC16_AC19_REQ049_AC2_AC9_AC12_menu_du_projet_nouveau_depuis
     await expect(page.locator(".cm-content")).toBeFocused(); // la lecture du fichier est finie : elle ne prendra plus le focus au menu
     await clicVide(page);
     const m = menu(page, "Actions sur le projet");
-    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CollerCtrl+V", "Commit"]);
+    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "Nouveau whiteboard", "CollerCtrl+V", "Commit"]);
     await expect(m.getByRole("separator")).toHaveCount(2);
     await expect(ligne(page, "main.rs")).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("Enter");
@@ -774,6 +774,7 @@ test("REQ125_AC1_parcours_de_copie_menu_en_tete_ctrl_c_ctrl_v_refuse_et_coller_s
   await expect(arbre(page).getByRole("treeitem", { selected: true })).toHaveCount(2);
   await expect(m.getByRole("menuitem", { name: /^Coller/ })).toHaveAttribute("aria-disabled", "true");
   await expect(m.locator(":focus")).toHaveCount(1); // le menu a pris le focus avant les flèches
+  await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
