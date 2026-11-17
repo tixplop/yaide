@@ -766,3 +766,75 @@ test("REQ129_contrastes_du_whiteboard_dans_les_deux_themes", () => {
     });
   }
 });
+
+// design-system.md, « Couleurs des boîtes de whiteboard » et contrastes de la boîte à outils (REQ-133, REQ-134).
+const BOITES = {
+  bleu: [["#1c3047", "#7aa7dc"], ["#e3eef9", "#2f63a3"], [8.36, 14.02], [6.58, 6.11], [5.41, 5.36]],
+  vert: [["#1d3824", "#73bf83"], ["#e1f2e4", "#2e7a3f"], [7.95, 14.14], [7.46, 5.28], [5.15, 5.41]],
+  jaune: [["#383016", "#d6b84c"], ["#faf1cc", "#7d6300"], [8.16, 14.53], [8.49, 5.74], [5.28, 5.56]],
+  orange: [["#40281a", "#e38d55"], ["#fde7d8", "#a94e12"], [8.51, 13.81], [6.44, 5.54], [5.51, 5.28]],
+  rouge: [["#43201f", "#ee7f76"], ["#fbe1df", "#bb2f24"], [8.92, 13.29], [6.22, 5.92], [5.78, 5.08]],
+  violet: [["#30264a", "#b495e3"], ["#efe7fa", "#7546b8"], [8.7, 13.72], [6.55, 6.31], [5.64, 5.25]],
+};
+
+test("REQ134_AC5_tokens_des_couleurs_de_boite_valeurs_exactes_et_defaut_en_alias", () => {
+  for (const [nom, [sombre, clair]] of Object.entries(BOITES)) {
+    expect(T.dark[`--boite-${nom}-fond`], nom).toBe(sombre[0]);
+    expect(T.dark[`--boite-${nom}-trait`], nom).toBe(sombre[1]);
+    expect(T.light[`--boite-${nom}-fond`], nom).toBe(clair[0]);
+    expect(T.light[`--boite-${nom}-trait`], nom).toBe(clair[1]);
+  }
+  for (const theme of THEMES) {
+    expect(T[theme]["--boite-defaut-fond"]).toBe("var(--bg-300)");
+    expect(T[theme]["--boite-defaut-trait"]).toBe("var(--line-strong)");
+  }
+  expect(Object.keys(T.dark).filter((k) => k.startsWith("--boite-"))).toHaveLength(14);
+});
+
+test("REQ134_AC5_AC6_contrastes_des_couleurs_de_boite_dans_les_deux_themes", () => {
+  THEMES.forEach((theme, k) => {
+    for (const [nom, , , fondInk, traitSurface, choisie] of Object.entries(BOITES).map(([n, v]) => [n, ...v])) {
+      const nomT = `${nom} (${theme})`;
+      const r1 = ratio(theme, "--ink", `--boite-${nom}-fond`);
+      expect(r1, nomT).toBeGreaterThanOrEqual(4.5);
+      egalA(r1, fondInk[k], `ink sur fond ${nomT}`);
+      const r2 = ratio(theme, `--boite-${nom}-trait`, "--bg-200");
+      expect(r2, nomT).toBeGreaterThanOrEqual(4.5); // contour (3) et texte d'une forme « Texte » (4,5)
+      egalA(r2, traitSurface[k], `trait sur bg-200 ${nomT}`);
+      const r3 = ratio(theme, "--accent-fg", `--boite-${nom}-fond`);
+      expect(r3, nomT).toBeGreaterThanOrEqual(3);
+      egalA(r3, choisie[k], `accent sur fond ${nomT}`);
+    }
+    const defaut = ratio(theme, "--boite-defaut-trait", "--bg-200");
+    expect(defaut).toBeGreaterThanOrEqual(3);
+    egalA(defaut, [3.47, 3.45][k], "défaut");
+  });
+});
+
+test("REQ133_contrastes_de_la_boite_a_outils_dans_les_deux_themes", () => {
+  const paires = [
+    ["--ink-muted", "--bg-200", null, 3, [6.3, 6.68]],
+    ["--ink-muted", "--bg-300", null, 3, [5.48, 6.68]],
+    ["--ink", "--bg-400", null, 3, [7.36, 13.25]],
+    ["--accent-fg", "--accent-soft", "--bg-300", 3, [4.78, 5.25]],
+    ["--accent-fg", "--bg-300", null, 3, [5.78, 6.3]],
+    ["--ink", "--bg-300", null, 4.5, [8.92, 16.48]],
+    ["--ink-muted", "--accent-soft", "--bg-300", 3, [4.53, 5.57]],
+  ];
+  for (const [texte, fond, sous, seuil, attendus] of paires) {
+    THEMES.forEach((theme, k) => {
+      const r = ratio(theme, texte, fond, sous);
+      expect(r, `${texte} sur ${fond} (${theme})`).toBeGreaterThanOrEqual(seuil);
+      egalA(r, attendus[k], `${texte} sur ${fond} (${theme})`);
+    });
+  }
+  // Pastille pressée : `-trait` sur `--accent-soft` posé sur `--bg-300` (3).
+  const pastilles = { bleu: [4.73, 5.09], vert: [5.37, 4.4], jaune: [6.11, 4.78], orange: [4.63, 4.62], rouge: [4.48, 4.93], violet: [4.71, 5.26] };
+  for (const [nom, attendus] of Object.entries(pastilles)) {
+    THEMES.forEach((theme, k) => {
+      const r = ratio(theme, `--boite-${nom}-trait`, "--accent-soft", "--bg-300");
+      expect(r, `${nom} ${theme}`).toBeGreaterThanOrEqual(3);
+      egalA(r, attendus[k], `pastille ${nom} ${theme}`);
+    });
+  }
+});

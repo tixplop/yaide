@@ -278,3 +278,37 @@ test("REQ131_icones_square_plus_zoom_out_zoom_in_et_scan", () => {
   const src = readFileSync("web/src/ui/icones.js", "utf8");
   expect(src).toMatch(/Icônes Lucide \(ISC\) utilisées ici : [^\n]*square-plus, zoom-out, zoom-in, scan\./);
 });
+
+test("REQ133_icones_de_la_boite_a_outils_rendues_et_masquees", () => {
+  const dessins = {
+    "mouse-pointer-2": ["M4.037 4.688"],
+    circle: ['<circle cx="12" cy="12" r="8.5"'],
+    diamond: ["M12 3 21 12 12 21 3 12z"],
+    baseline: ["M4 20h16", "m6 16 6-12 6 12", "M8 12h8"],
+    workflow: ['<rect width="8" height="8" x="3" y="3" rx="2"', "M7 11v4a2 2 0 0 0 2 2h4"],
+    "move-up-right": ["M13 5h6v6", "M19 5 5 19"],
+    "forme-rectangle": ['<rect x="3" y="6" width="18" height="12" rx="1"'],
+    "forme-arrondi": ['<rect x="3" y="6" width="18" height="12" rx="5"'],
+    "forme-note": ["M3 5h12l6 6v8H3z", "M15 5v6h6"],
+    "trace-droit": ["M6.5 17.5 17.5 6.5", '<circle cx="5" cy="19" r="1.6"', '<circle cx="19" cy="5" r="1.6"'],
+    "trace-coude": ["M6.6 19H12V5h5.4", '<circle cx="19" cy="5" r="1.6"'],
+    "trace-courbe": ["M6.6 19C14 19 10 5 17.4 5", '<circle cx="5" cy="19" r="1.6"'],
+    "bout-arrivee": ["M4 12h15", "m14 7 5 5-5 5"],
+    "bout-aucun": ["M6.6 12h10.8", '<circle cx="5" cy="12" r="1.6"', '<circle cx="19" cy="12" r="1.6"'],
+    "bout-depart": ["M5 12h15", "m10 7-5 5 5 5"],
+    "bout-deux": ["M4 12h16", "m8 8-4 4 4 4", "m16 8 4 4-4 4"],
+    "trait-plein": ['d="M3 12h18"', 'stroke-width="2"'],
+    "trait-tirets": ["M3 12h4M10 12h4M17 12h4", 'stroke-linecap="butt"'],
+    "trait-points": ["M4 12h.01M8 12h.01M12 12h.01M16 12h.01M20 12h.01", 'stroke-width="2.6"'],
+  };
+  expect(Object.keys(dessins)).toHaveLength(19);
+  for (const [n, parties] of Object.entries(dessins)) {
+    expect(NOMS).toContain(n);
+    const s = icone(n);
+    expect(s.getAttribute("aria-hidden"), n).toBe("true");
+    expect(s.getAttribute("stroke-width"), n).toBe("1.6");
+    for (const p of parties) expect(s.innerHTML, n).toContain(p);
+  }
+  const src = readFileSync("web/src/ui/icones.js", "utf8");
+  expect(src).toMatch(/Icônes Lucide \(ISC\) utilisées ici : [^\n]*mouse-pointer-2, circle, diamond, baseline, workflow, move-up-right, square-plus/);
+});

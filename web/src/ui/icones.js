@@ -16,7 +16,7 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-Icônes Lucide (ISC) utilisées ici : panel-left-close, panel-left-open, panel-right-close, panel-bottom-close, panel-bottom-open, bot, message-square-plus, history, send-horizontal, circle-stop, circle-dashed, circle-check, circle-x, circle-arrow-up, type, users, user-plus, sliders-horizontal, arrow-left, asterisk, code-xml, circle-minus, brain, messages-square, server, copy, clipboard-paste, square-plus, zoom-out, zoom-in, scan.
+Icônes Lucide (ISC) utilisées ici : panel-left-close, panel-left-open, panel-right-close, panel-bottom-close, panel-bottom-open, bot, message-square-plus, history, send-horizontal, circle-stop, circle-dashed, circle-check, circle-x, circle-arrow-up, type, users, user-plus, sliders-horizontal, arrow-left, asterisk, code-xml, circle-minus, brain, messages-square, server, copy, clipboard-paste, mouse-pointer-2, circle, diamond, baseline, workflow, move-up-right, square-plus, zoom-out, zoom-in, scan.
 
 ---
 
@@ -114,6 +114,25 @@ const CHEMINS = {
   "zoom-in": "<circle cx=\"11\" cy=\"11\" r=\"8\"/><line x1=\"21\" x2=\"16.65\" y1=\"21\" y2=\"16.65\"/><line x1=\"11\" x2=\"11\" y1=\"8\" y2=\"14\"/><line x1=\"8\" x2=\"14\" y1=\"11\" y2=\"11\"/>",
   "scan": "<path d=\"M3 7V5a2 2 0 0 1 2-2h2\"/><path d=\"M17 3h2a2 2 0 0 1 2 2v2\"/><path d=\"M21 17v2a2 2 0 0 1-2 2h-2\"/><path d=\"M7 21H5a2 2 0 0 1-2-2v-2\"/>",
   "list": "<path d=\"M3 6h.01\"/><path d=\"M3 12h.01\"/><path d=\"M3 18h.01\"/><path d=\"M8 6h13\"/><path d=\"M8 12h13\"/><path d=\"M8 18h13\"/>",
+  "mouse-pointer-2": "<path d=\"M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z\"/>",
+  "circle": "<circle cx=\"12\" cy=\"12\" r=\"8.5\"/>",
+  "diamond": "<path d=\"M12 3 21 12 12 21 3 12z\"/>",
+  "baseline": "<path d=\"M4 20h16\"/><path d=\"m6 16 6-12 6 12\"/><path d=\"M8 12h8\"/>",
+  "workflow": "<rect width=\"8\" height=\"8\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M7 11v4a2 2 0 0 0 2 2h4\"/><rect width=\"8\" height=\"8\" x=\"13\" y=\"13\" rx=\"2\"/>",
+  "move-up-right": "<path d=\"M13 5h6v6\"/><path d=\"M19 5 5 19\"/>",
+  "forme-rectangle": "<rect x=\"3\" y=\"6\" width=\"18\" height=\"12\" rx=\"1\"/>",
+  "forme-arrondi": "<rect x=\"3\" y=\"6\" width=\"18\" height=\"12\" rx=\"5\"/>",
+  "forme-note": "<path d=\"M3 5h12l6 6v8H3z\"/><path d=\"M15 5v6h6\"/>",
+  "trace-droit": "<path d=\"M6.5 17.5 17.5 6.5\"/><circle cx=\"5\" cy=\"19\" r=\"1.6\"/><circle cx=\"19\" cy=\"5\" r=\"1.6\"/>",
+  "trace-coude": "<path d=\"M6.6 19H12V5h5.4\"/><circle cx=\"5\" cy=\"19\" r=\"1.6\"/><circle cx=\"19\" cy=\"5\" r=\"1.6\"/>",
+  "trace-courbe": "<path d=\"M6.6 19C14 19 10 5 17.4 5\"/><circle cx=\"5\" cy=\"19\" r=\"1.6\"/><circle cx=\"19\" cy=\"5\" r=\"1.6\"/>",
+  "bout-arrivee": "<path d=\"M4 12h15\"/><path d=\"m14 7 5 5-5 5\"/>",
+  "bout-aucun": "<path d=\"M6.6 12h10.8\"/><circle cx=\"5\" cy=\"12\" r=\"1.6\"/><circle cx=\"19\" cy=\"12\" r=\"1.6\"/>",
+  "bout-depart": "<path d=\"M5 12h15\"/><path d=\"m10 7-5 5 5 5\"/>",
+  "bout-deux": "<path d=\"M4 12h16\"/><path d=\"m8 8-4 4 4 4\"/><path d=\"m16 8 4 4-4 4\"/>",
+  "trait-plein": "<path d=\"M3 12h18\" stroke-width=\"2\"/>",
+  "trait-tirets": "<path d=\"M3 12h4M10 12h4M17 12h4\" stroke-width=\"2\" stroke-linecap=\"butt\"/>",
+  "trait-points": "<path d=\"M4 12h.01M8 12h.01M12 12h.01M16 12h.01M20 12h.01\" stroke-width=\"2.6\"/>",
 };
 
 export const NOMS = Object.keys(CHEMINS);
