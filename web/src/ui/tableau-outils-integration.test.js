@@ -62,7 +62,7 @@ test("REQ133_AC1_AC11_boite_a_outils_apres_la_surface_choix_de_depart_et_illisib
   expect(barre().parentElement).toBe(t.element);
   expect(t.element.querySelector(".ya-tableau").nextElementSibling).toBe(barre());
   expect(t.element.querySelector(".ya-tableau").contains(barre())).toBe(false);
-  expect(["Choisir", "Par défaut", "Droit", "À l'arrivée", "Plein"].map(presse)).toEqual(["true", "true", "true", "true", "true"]);
+  expect(["Choisir", "Par défaut", "100 %", "Normal", "Droit", "À l'arrivée", "Plein", "Fin"].map(presse)).toEqual(Array(8).fill("true"));
   expect(presse("Cercle")).toBe("false");
   expect(bt("Rectangle").getAttribute("aria-current")).toBe("true");
   t.definirDocument(null);
@@ -121,15 +121,19 @@ test("REQ133_AC5_REQ133_AC6_sans_objet_aucun_changement_un_lien_choisi_change_et
   bt("Aucune").click();
   expect(changements).toEqual([]);
   clic(obj("l1"));
-  expect(["Droit", "À l'arrivée", "Plein"].map(presse)).toEqual(["true", "true", "true"]);
+  expect(["Droit", "À l'arrivée", "Plein", "Fin"].map(presse)).toEqual(["true", "true", "true", "true"]);
   bt("Courbe").click();
   expect(changements).toHaveLength(1);
   expect(dernier().links[0]).toMatchObject({ route: "curved" });
   bt("Courbe").click();
   expect(changements).toHaveLength(1);
-  // La couleur ne concerne pas un lien.
-  bt("Vert").click();
+  // L'opacité et la taille du texte ne concernent pas un lien ; la couleur, si.
+  bt("50 %").click();
+  bt("Grand").click();
   expect(changements).toHaveLength(1);
+  bt("Vert").click();
+  expect(changements).toHaveLength(2);
+  expect(dernier().links[0]).toMatchObject({ route: "curved", color: "green" });
   // Un lien déjà coudé : la boîte à outils le montre.
   t.definirDocument({ ...DOC(), links: [{ id: "l1", from: "b1", to: "b2", route: "orthogonal", ends: "both", line: "dashed" }], boxes: [{ ...DOC().boxes[0], color: "green" }, DOC().boxes[1]] });
   clic(obj("l1"));
@@ -214,4 +218,242 @@ test("REQ133_AC5_le_lien_cree_prend_les_choix_de_la_boite_a_outils", () => {
   ptr(surface(), "pointermove", 390, 140);
   glisser(t.element.querySelector('[data-boite="b2"][data-connecteur="left"]'), [400, 140], [250, 140]);
   expect(dernier().links[1]).toEqual({ id: "l2", from: "b2", to: "b1", fromSide: "left", toSide: "right", route: "curved", ends: "none" });
+});
+
+const lignes = (doc, cle) => doc[cle].map((o) => o.id);
+const DOC3 = () => ({
+  version: 1,
+  boxes: [
+    { id: "b1", x: 100, y: 100, width: 160, height: 80, text: "Début" },
+    { id: "b2", x: 150, y: 120, width: 160, height: 80, text: "Fin" },
+    { id: "b3", x: 400, y: 300, width: 160, height: 40, text: "T", shape: "text" },
+  ],
+  links: [{ id: "l1", from: "b1", to: "b2" }],
+  arrows: [{ id: "a1", x1: 0, y1: 0, x2: 50, y2: 50 }, { id: "a2", x1: 0, y1: 60, x2: 50, y2: 90 }],
+});
+
+test("REQ137_AC5_REQ133_AC6_un_choix_s_applique_a_chaque_objet_concerne_en_une_modification", () => {
+  monter(DOC3());
+  clic(obj("b1"));
+  // Ctrl+A : tout est choisi.
+  surface().focus();
+  surface().dispatchEvent(new KeyboardEvent("keydown", { key: "a", ctrlKey: true, bubbles: true, cancelable: true }));
+  bt("Rouge").click();
+  expect(changements).toHaveLength(1);
+  const d = dernier();
+  expect([...d.boxes, ...d.links, ...d.arrows].map((o) => o.color)).toEqual(Array(6).fill("red"));
+  bt("Courbe").click();
+  expect(changements).toHaveLength(2);
+  expect(dernier().links[0].route).toBe("curved");
+  expect(dernier().arrows.map((a) => a.route)).toEqual(["curved", "curved"]);
+  expect(dernier().boxes.some((b) => b.route)).toBe(false);
+  bt("Courbe").click();
+  expect(changements).toHaveLength(2);
+});
+
+test("REQ138_AC1_AC2_AC3_trait_epaisseur_opacite_ecrits_puis_retires", () => {
+  monter(DOC3());
+  clic(obj("b1"));
+  bt("Tirets").click();
+  expect(dernier().boxes[0].line).toBe("dashed");
+  expect(ecrireJdiag(dernier())).toContain('"line": "dashed"');
+  bt("Pointillés").click();
+  expect(dernier().boxes[0].line).toBe("dotted");
+  bt("Plein").click();
+  expect(ecrireJdiag(dernier())).not.toContain('"line"');
+  bt("Épais").click();
+  expect(dernier().boxes[0].weight).toBe("thick");
+  expect(ecrireJdiag(dernier())).toContain('"weight": "thick"');
+  expect(obj("b1").classList.contains("epaisseur-thick")).toBe(true);
+  bt("Moyen").click();
+  expect(ecrireJdiag(dernier())).toContain('"weight": "medium"');
+  bt("Fin").click();
+  expect(ecrireJdiag(dernier())).not.toContain('"weight"');
+  bt("50 %").click();
+  expect(dernier().boxes[0].opacity).toBe(50);
+  expect(ecrireJdiag(dernier())).toContain('"opacity": 50');
+  expect(obj("b1").querySelector("[fill-opacity]").getAttribute("fill-opacity")).toBe("0.5");
+  bt("0 %").click();
+  expect(ecrireJdiag(dernier())).toContain('"opacity": 0');
+  bt("100 %").click();
+  expect(ecrireJdiag(dernier())).not.toContain('"opacity"');
+});
+
+test("REQ138_AC4_la_forme_texte_ne_change_pas_et_les_choix_servent_a_la_boite_suivante", () => {
+  monter(DOC3());
+  clic(obj("b3"));
+  bt("Tirets").click();
+  bt("Épais").click();
+  bt("25 %").click();
+  expect(changements).toEqual([]);
+  clic(surface().querySelector("svg"));
+  bt("Tirets").click();
+  bt("Moyen").click();
+  bt("50 %").click();
+  expect(changements).toEqual([]);
+  t.ajouterBoite();
+  expect(dernier().boxes[3]).toMatchObject({ line: "dashed", weight: "medium", opacity: 50 });
+});
+
+test("REQ139_AC1_AC4_la_taille_s_applique_en_saisie_sans_la_finir_le_curseur_reste", () => {
+  monter();
+  clic(obj("b1"));
+  touche(surface(), "Enter");
+  const zone = t.element.querySelector("[role=textbox]");
+  zone.textContent = "Début 1";
+  zone.dispatchEvent(new Event("input", { bubbles: true }));
+  const sel = getSelection();
+  const r = document.createRange();
+  r.setStart(zone.firstChild, 3);
+  r.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(r);
+  bt("Grand").click();
+  expect(dernier().boxes[0]).toMatchObject({ text: "Début 1", textSize: "large" });
+  expect(ecrireJdiag(dernier())).toContain('"textSize": "large"');
+  expect(presse("Grand")).toBe("true");
+  expect(document.activeElement).toBe(t.element.querySelector("[role=textbox]"));
+  expect(getSelection().anchorOffset).toBe(3);
+  bt("Très grand").click();
+  expect(presse("Très grand")).toBe("true");
+  expect(getSelection().anchorOffset).toBe(3);
+  expect(document.activeElement).toBe(t.element.querySelector("[role=textbox]"));
+  const z2 = t.element.querySelector("[role=textbox]");
+  z2.textContent = "Début 1!";
+  z2.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(dernier().boxes[0].text).toBe("Début 1!");
+  expect(dernier().boxes[0].textSize).toBe("xlarge");
+  bt("Normal").click();
+  expect(ecrireJdiag(dernier())).not.toContain("textSize");
+  // Un outil finit la saisie.
+  bt("Cercle").click();
+  expect(t.element.querySelector("[role=textbox]")).toBeNull();
+});
+
+test("REQ139_AC4_la_saisie_montre_les_valeurs_de_la_boite", () => {
+  monter({ ...DOC(), boxes: [{ ...DOC().boxes[0], textSize: "large", color: "red" }, DOC().boxes[1]] });
+  expect(presse("Normal")).toBe("true");
+  clic(obj("b2"));
+  clic(surface().querySelector("svg"));
+  clic(obj("b1"));
+  clic(surface().querySelector("svg"));
+  surface().focus();
+  clic(obj("b1"));
+  touche(surface(), "Enter");
+  expect(t.element.querySelector("[role=textbox]")).not.toBeNull();
+  expect(presse("Grand")).toBe("true");
+  expect(presse("Normal")).toBe("false");
+  expect(presse("Rouge")).toBe("true");
+});
+
+test("REQ139_AC3_la_taille_au_clavier_sur_la_boite_choisie_puis_aux_suivantes", () => {
+  monter();
+  clic(obj("b1"));
+  surface().focus();
+  touche(surface(), "o");
+  bt("Petit").focus();
+  bt("Petit").click();
+  expect(dernier().boxes[0].textSize).toBe("small");
+  expect(document.activeElement).toBe(bt("Petit"));
+  clic(surface().querySelector("svg"));
+  const n = changements.length;
+  bt("Grand").click();
+  expect(changements).toHaveLength(n);
+  t.ajouterBoite();
+  expect(dernier().boxes[2].textSize).toBe("large");
+});
+
+test("REQ140_AC1_AC2_AC3_couleur_et_epaisseur_des_liens_et_des_fleches", () => {
+  monter(DOC3());
+  clic(obj("l1"));
+  bt("Rouge").click();
+  expect(dernier().links[0].color).toBe("red");
+  bt("Par défaut").click();
+  expect(ecrireJdiag(dernier())).not.toContain('"color"');
+  bt("Épais").click();
+  expect(dernier().links[0].weight).toBe("thick");
+  bt("Moyen").click();
+  bt("Fin").click();
+  expect(ecrireJdiag(dernier())).not.toContain('"weight"');
+  clic(obj("a1"));
+  bt("Épais").click();
+  expect(dernier().arrows[0].weight).toBe("thick");
+  clic(surface().querySelector("svg"));
+  const n = changements.length;
+  bt("Vert").click();
+  bt("Moyen").click();
+  expect(changements).toHaveLength(n);
+  bt("Flèche").click();
+  glisser(surface(), [10, 300], [100, 350]);
+  expect(dernier().arrows[2]).toMatchObject({ color: "green", weight: "medium" });
+  t.ajouterBoite();
+  expect(dernier().boxes[3]).toMatchObject({ color: "green", weight: "medium" });
+});
+
+const ordreDessin = () => [...t.element.querySelectorAll("svg [data-id]")].map((e) => e.getAttribute("data-id"));
+const DOC4 = () => ({ ...DOC3(), links: [{ id: "l1", from: "b1", to: "b2" }, { id: "l2", from: "b2", to: "b3" }] });
+
+test("REQ141_AC1_AC2_AC3_AC4_plan_des_objets_choisis", async () => {
+  monter(DOC4());
+  // Rien de choisi : inactifs, un clic ne change rien, pas d'aria-pressed.
+  for (const nom of ["Premier plan", "Arrière-plan"]) {
+    expect(bt(nom).getAttribute("aria-disabled")).toBe("true");
+    expect(bt(nom).hasAttribute("aria-pressed")).toBe(false);
+  }
+  bt("Premier plan").click();
+  expect(changements).toEqual([]);
+  expect(ordreDessin()).toEqual(["b1", "b2", "b3", "l1", "l2", "a1", "a2"]);
+  clic(obj("b1"));
+  expect(bt("Premier plan").hasAttribute("aria-disabled")).toBe(false);
+  bt("Premier plan").focus();
+  bt("Premier plan").click();
+  expect(lignes(dernier(), "boxes")).toEqual(["b2", "b3", "b1"]);
+  expect(ordreDessin()).toEqual(["b2", "b3", "b1", "l1", "l2", "a1", "a2"]);
+  expect(choisieId()).toMatch(/b1$/);
+  expect(document.activeElement).toBe(bt("Premier plan"));
+  bt("Arrière-plan").click();
+  expect(lignes(dernier(), "boxes")).toEqual(["b1", "b2", "b3"]);
+  expect(ordreDessin().slice(0, 3)).toEqual(["b1", "b2", "b3"]);
+  // Déjà au premier plan : rien.
+  clic(obj("b3"));
+  const n = changements.length;
+  bt("Premier plan").click();
+  expect(changements).toHaveLength(n);
+  // Plusieurs objets (b1, b2 et l1, sans b3) : ordre relatif gardé.
+  bt("Sélection").click();
+  glisser(surface(), [90, 90], [320, 210]);
+  expect(surface().nextElementSibling.textContent).toBe("3 objets choisis");
+  bt("Premier plan").click();
+  expect(lignes(dernier(), "boxes")).toEqual(["b3", "b1", "b2"]);
+  expect(ordreDessin()).toEqual(["b3", "b1", "b2", "l2", "l1", "a1", "a2"]);
+  // Une flèche libre : seule sa liste change (le `click` qui suit un rectangle de sélection est ignoré).
+  await new Promise((r) => setTimeout(r, 0));
+  clic(obj("a1"));
+  bt("Premier plan").click();
+  expect(lignes(dernier(), "arrows")).toEqual(["a2", "a1"]);
+  expect(lignes(dernier(), "boxes")).toEqual(["b3", "b1", "b2"]);
+  // Un lien passé à l'arrière : premier de `links`, toujours dessiné après les boîtes.
+  clic(obj("l2"));
+  bt("Arrière-plan").click();
+  expect(dernier().links[0].id).toBe("l2");
+  const o = ordreDessin();
+  expect(o.indexOf("l2")).toBeGreaterThan(o.indexOf("b2"));
+  expect(o.indexOf("l2")).toBeLessThan(o.indexOf("l1"));
+});
+
+test("REQ141_AC4_AC5_tab_suit_le_nouvel_ordre_et_la_saisie_garde_son_focus", () => {
+  monter(DOC3());
+  clic(obj("b1"));
+  bt("Premier plan").click();
+  clic(surface().querySelector("svg"));
+  surface().focus();
+  touche(surface(), "Tab");
+  expect(choisieId()).toMatch(/b2$/);
+  clic(obj("b1"));
+  touche(surface(), "Enter");
+  const zone = t.element.querySelector("[role=textbox]");
+  bt("Arrière-plan").click();
+  expect(lignes(dernier(), "boxes")).toEqual(["b1", "b2", "b3"]);
+  expect(t.element.querySelector("[role=textbox]")).toBe(zone);
+  expect(document.activeElement).toBe(zone);
 });

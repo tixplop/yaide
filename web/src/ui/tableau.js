@@ -1,6 +1,7 @@
 import { idLibre } from "../jdiag.js";
 import { estMac } from "../references.js";
 import { indication } from "./indication.js";
+import { auPlan } from "./tableau-edition.js";
 import { boiteOutils } from "./tableau-outils.js";
 import { connecteurProche, connecteurs, dansRectangle, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
 import { dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, dessinRectangleSelection, poigneesBoite, poigneesFleche, svg } from "./tableau-dessin.js";
@@ -13,9 +14,20 @@ const aide = () => {
 const PAS = 10;
 const SEUIL = 3;
 const PROCHE = 24; // px écran : distance du pointeur au bord d'une boîte pour montrer ses connecteurs
-const OUTILS_DEPART = { outil: "choisir", forme: "rectangle", couleur: "default", trace: "direct", bouts: "end", trait: "solid" };
+const OUTILS_DEPART = { outil: "choisir", forme: "rectangle", couleur: "default", trace: "direct", bouts: "end", trait: "solid", opacite: 100, taille: "normal", epaisseur: "thin" };
 const TAILLES = { rectangle: [160, 80], rounded: [160, 80], ellipse: [100, 100], diamond: [160, 100], note: [160, 80], text: [160, 40] };
-const CLES_STYLE = { trace: "route", bouts: "ends", trait: "line" };
+// Clé du document de chaque choix de la boîte à outils, et sortes d'objets qu'il concerne :
+// « boite », « texte » (la forme « Texte ») et « trait » (liens et flèches libres).
+const CLES_STYLE = { couleur: "color", opacite: "opacity", taille: "textSize", trace: "route", bouts: "ends", trait: "line", epaisseur: "weight" };
+const CONCERNES = {
+  couleur: ["boite", "texte", "trait"],
+  opacite: ["boite"],
+  taille: ["boite", "texte"],
+  trace: ["trait"],
+  bouts: ["trait"],
+  trait: ["boite", "trait"],
+  epaisseur: ["boite", "trait"],
+};
 let compteur = 0;
 
 // Le rectangle des deux points, dans tous les sens, jamais sous 40 x 24 px, aux positions entières.
@@ -239,30 +251,47 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     if (avaitFocus) placerCurseur(decalage);
   }
 
-  // Les valeurs de l'objet choisi, sinon les choix courants.
+  const sorte = (o) => (boite(o.id) ? (o.shape === "text" ? "texte" : "boite") : "trait");
+  const cibles = () => (saisie !== null ? [saisie] : choisis).map(objet).filter(Boolean);
+  // Les choix de style d'une sorte d'objet qui diffèrent de leur valeur par défaut.
+  function styleChoisi(s) {
+    const r = {};
+    for (const [cle, clef] of Object.entries(CLES_STYLE)) if (CONCERNES[cle].includes(s) && choix[cle] !== OUTILS_DEPART[cle]) r[clef] = choix[cle];
+    return r;
+  }
+
+  // Les valeurs du premier objet choisi (ou de la boîte en saisie) que chaque groupe concerne, sinon les choix courants.
   function afficherOutils() {
-    const o = premier() && !saisie ? objet(premier()) : null;
     const valeurs = { ...choix };
-    if (o && boite(o.id)) valeurs.couleur = o.color ?? "default";
-    else if (o) {
-      valeurs.trace = o.route ?? "direct";
-      valeurs.bouts = o.ends ?? "end";
-      valeurs.trait = o.line ?? "solid";
+    for (const [cle, clef] of Object.entries(CLES_STYLE)) {
+      const o = cibles()[0];
+      if (o && CONCERNES[cle].includes(sorte(o))) valeurs[cle] = o[clef] ?? OUTILS_DEPART[cle];
     }
-    barre.definir(valeurs);
+    barre.definir(valeurs, { planActif: saisie !== null || choisis.length > 0 });
     surface?.classList.toggle("crosshair", choix.outil !== "choisir");
   }
 
   function surChoixOutil(cle, valeur) {
     choix[cle] = valeur;
-    if (cle === "outil" && TAILLES[valeur]) choix.forme = valeur;
-    const o = premier() && !saisie ? objet(premier()) : null;
-    const estBoite = o && boite(o.id) !== undefined;
-    const clef = cle === "couleur" ? "color" : CLES_STYLE[cle];
-    if (o && clef && (cle === "couleur") === estBoite && (o[clef] ?? OUTILS_DEPART[cle]) !== valeur) {
-      const change = (x) => (x.id === o.id ? { ...x, [clef]: valeur } : x);
-      appliquer({ ...doc, boxes: doc.boxes.map(change), links: doc.links.map(change), ...(doc.arrows ? { arrows: doc.arrows.map(change) } : {}) });
+    if (cle === "outil") {
+      if (TAILLES[valeur]) choix.forme = valeur;
+      finirSaisie();
+    } else {
+      const clef = CLES_STYLE[cle];
+      const ids = cibles().filter((o) => CONCERNES[cle].includes(sorte(o)) && (o[clef] ?? OUTILS_DEPART[cle]) !== valeur).map((o) => o.id);
+      if (ids.length > 0) {
+        const change = (x) => (ids.includes(x.id) ? { ...x, [clef]: valeur } : x);
+        appliquer({ ...doc, boxes: doc.boxes.map(change), links: doc.links.map(change), ...(doc.arrows ? { arrows: doc.arrows.map(change) } : {}) });
+      }
     }
+    dessiner();
+  }
+
+  function surPlan(sens) {
+    const ids = saisie !== null ? [saisie] : choisis;
+    if (ids.length === 0) return;
+    const nouveau = auPlan(doc, ids, sens);
+    if (nouveau !== doc) appliquer(nouveau);
     dessiner();
   }
 
@@ -274,7 +303,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       ? { id, x: rect.x, y: rect.y, width, height, text: "" }
       : { id, x: Math.round(centreX - width / 2), y: Math.round(centreY - height / 2), width, height, text: "" };
     if (choix.forme !== "rectangle") b.shape = choix.forme;
-    if (choix.couleur !== "default") b.color = choix.couleur;
+    Object.assign(b, styleChoisi(choix.forme === "text" ? "texte" : "boite"));
     appliquer({ ...doc, boxes: [...doc.boxes, b] });
     choix.outil = "choisir";
     commencerSaisie(id);
@@ -598,7 +627,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     const fin = geste;
     if (fin.type === "liaison" && cible && !doc.links.some((l) => l.from === fin.id && l.to === cible)) {
       const lien = { id: idLibre("l", doc), from: fin.id, to: cible, fromSide: fin.cote, toSide: connecteurProche(boite(cible), pointDessin(e)) };
-      for (const [cle, clef] of Object.entries(CLES_STYLE)) if (choix[cle] !== OUTILS_DEPART[cle]) lien[clef] = choix[cle];
+      Object.assign(lien, styleChoisi("trait"));
       appliquer({ ...doc, links: [...doc.links, lien] });
       choisis = [lien.id];
       surface.focus({ preventScroll: true });
@@ -630,13 +659,13 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     } else if (fin.type === "fleche") {
       if (!fin.actif) return;
       const f = { id: idLibre("a", doc), x1: Math.round(fin.p0.x), y1: Math.round(fin.p0.y), x2: Math.round(p.x), y2: Math.round(p.y) };
-      for (const [cle, clef] of Object.entries(CLES_STYLE)) if (choix[cle] !== OUTILS_DEPART[cle]) f[clef] = choix[cle];
+      Object.assign(f, styleChoisi("trait"));
       appliquer({ ...doc, arrows: [...(doc.arrows ?? []), f] });
       choisis = [f.id];
     } else {
       if (!lieu || doc.links.some((l) => l.from === fin.id && l.to === lieu)) return;
       const lien = { id: idLibre("l", doc), from: fin.id, to: lieu };
-      for (const [cle, clef] of Object.entries(CLES_STYLE)) if (choix[cle] !== OUTILS_DEPART[cle]) lien[clef] = choix[cle];
+      Object.assign(lien, styleChoisi("trait"));
       appliquer({ ...doc, links: [...doc.links, lien] });
       choisis = [lien.id];
     }
@@ -688,6 +717,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
   barre = boiteOutils({
     valeurs: choix,
     surChoix: surChoixOutil,
+    surAction: surPlan,
     surEchap: () => surface?.focus({ preventScroll: true }),
   });
   const observateur = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => dessiner());
