@@ -27,7 +27,7 @@ const glisser = async (page, de, vers) => {
   await page.mouse.up();
 };
 
-test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_parcours_P096_P100_P101_whiteboard", async ({ page }) => {
+test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_REQ142_AC1_AC4_REQ143_AC1_AC2_AC5_parcours_P096_P100_P101_P102_P103_whiteboard", async ({ page }) => {
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "docs"), { recursive: true });
   fs.writeFileSync(path.join(dossier, "docs/a.md"), "# A\n");
@@ -196,6 +196,78 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ1
     await page.keyboard.press("Control+s");
     await expect.poll(() => fs.readFileSync(fichier, "utf8")).toContain('"text": "Fin du flux"');
     expect(fs.readFileSync(fichier, "utf8")).toContain('"textSize": "large"');
+
+    // P-102 : « Autre » sous « Fin du flux », puis le bout d'arrivée du lien déplacé à la souris (AC-142-1, AC-142-4).
+    await page.getByRole("button", { name: "Tout afficher" }).click();
+    const rfin = await fin.boundingBox();
+    const vide = { x: rfin.x + rfin.width / 2, y: rfin.y + rfin.height + 80 };
+    await page.mouse.dblclick(vide.x, vide.y);
+    await page.keyboard.type("Autre");
+    await page.keyboard.press("Escape");
+    const autre = surface.locator('[aria-roledescription="boîte"]').filter({ hasText: "Autre" });
+    await expect(autre).toHaveCount(1);
+    await page.keyboard.press("Control+s");
+    await expect.poll(() => fs.readFileSync(fichier, "utf8")).toContain('"text": "Autre"');
+    await expect(page.getByRole("tab", { name: /^plan\.jdiag.*, non sauvegardé/ })).toHaveCount(0);
+    const texteAvant = fs.readFileSync(fichier, "utf8");
+    // Clic réel sur le lien : une poignée à chaque bout ; lâcher sur une partie vide → rien ne change.
+    await surface.locator('[aria-roledescription="lien"]').click();
+    await expect(surface.locator("[data-poignee]")).toHaveCount(2);
+    const poignee = () => centre(surface.locator('[data-poignee="arrivee"]'));
+    const videBas = { x: rfin.x + rfin.width + 100, y: rfin.y + rfin.height + 160 };
+    await glisser(page, await poignee(), videBas);
+    await expect(surface.locator("[data-poignee]")).toHaveCount(2);
+    await expect(page.getByRole("tab", { name: /^plan\.jdiag.*, non sauvegardé/ })).toHaveCount(0);
+    await page.keyboard.press("Control+s");
+    expect(fs.readFileSync(fichier, "utf8")).toBe(texteAvant);
+    // Lâcher près du côté haut de « Autre » → le lien arrive sur son côté haut.
+    const ra2 = await autre.boundingBox();
+    await glisser(page, await poignee(), { x: ra2.x + ra2.width / 2, y: ra2.y + 6 });
+    await expect(page.getByRole("tab", { name: /^plan\.jdiag.*, non sauvegardé/ })).toHaveCount(1);
+    await page.keyboard.press("Control+s");
+    await expect.poll(() => JSON.parse(fs.readFileSync(fichier, "utf8")).links[0].toSide).toBe("top");
+    const docAutre = JSON.parse(fs.readFileSync(fichier, "utf8"));
+    expect(docAutre.links[0].to).toBe(docAutre.boxes.find((b) => b.text === "Autre").id);
+
+    // P-103 : thème clair propre aux whiteboards (AC-143-1, AC-143-5), conservé au rechargement (AC-143-2).
+    const zone = page.locator(".ya-tableau-zone").first();
+    const fond200 = (theme) => page.evaluate((t) => {
+      const e = document.createElement("div");
+      e.setAttribute("data-theme", t);
+      document.body.append(e);
+      e.style.background = "var(--bg-200)";
+      const v = getComputedStyle(e).backgroundColor;
+      e.remove();
+      return v;
+    }, theme);
+    const fondSurface = () => surface.evaluate((e) => getComputedStyle(e.closest(".ya-tableau-zone").querySelector(".ya-tableau")).backgroundColor);
+    const fondBarre = () => page.getByRole("tab", { name: /^plan\.jdiag/ }).evaluate((e) => getComputedStyle(e.closest("[role=tablist]")).backgroundColor);
+    const sombre200 = await fond200("dark");
+    const clair200 = await fond200("light");
+    expect(await fondSurface()).toBe(sombre200);
+    const bouton = page.getByRole("button", { name: "Thème clair du whiteboard" });
+    await expect(bouton).toHaveAttribute("aria-pressed", "false");
+    const barreAvant = await fondBarre();
+    await bouton.click();
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    expect(await fondSurface()).toBe(clair200);
+    expect(await fondBarre()).toBe(barreAvant);
+    expect(await zone.evaluate((e) => getComputedStyle(e).colorScheme)).toBe("light");
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
+    // Rechargement : clair dès que la surface est dans le DOM, sans passer par le sombre.
+    await page.addInitScript(() => {
+      window.__fonds = [];
+      new MutationObserver(() => {
+        const f = document.querySelector(".ya-tableau-zone .ya-tableau");
+        if (f) window.__fonds.push(getComputedStyle(f).backgroundColor);
+      }).observe(document, { childList: true, subtree: true });
+    });
+    await page.reload();
+    await expect(page.getByRole("application", { name: "plan.jdiag" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Thème clair du whiteboard" })).toHaveAttribute("aria-pressed", "true");
+    const fonds = await page.evaluate(() => window.__fonds);
+    expect(fonds.length).toBeGreaterThan(0);
+    expect(new Set(fonds)).toEqual(new Set([clair200]));
   } finally {
     await yaide.arreter();
   }
