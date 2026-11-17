@@ -4,6 +4,7 @@ import {
   connecteurs,
   cotesProches,
   cranVoisin,
+  dansRectangle,
   extremitesFleche,
   geometrieLien,
   epaisseur,
@@ -293,5 +294,27 @@ describe("tableau-calculs", () => {
     expect([1.5, 3, 5].map((e) => tirets("dotted", e))).toEqual(["0 4", "0 6", "0 10"]);
     expect(epaisseur("boite", "thick")).toBe(4);
     expect(epaisseur("trait", undefined)).toBe(1.5);
+  });
+});
+
+describe("dansRectangle", () => {
+  const doc = {
+    version: 1,
+    boxes: [
+      { id: "b1", x: 40, y: 80, width: 160, height: 80, text: "" },
+      { id: "b2", x: 300, y: 80, width: 160, height: 80, text: "" },
+      { id: "b3", x: 40, y: 400, width: 160, height: 80, text: "" },
+    ],
+    links: [{ id: "l1", from: "b1", to: "b2" }, { id: "l2", from: "b1", to: "b3" }],
+    arrows: [{ id: "a1", x1: 100, y1: 300, x2: 300, y2: 300 }],
+  };
+  test("REQ137_AC1_boites_entieres_liens_aux_deux_boites_dedans_fleches_aux_deux_bouts", () => {
+    expect(dansRectangle(doc, { x: 20, y: 60, width: 460, height: 120 })).toEqual(["b1", "b2", "l1"]);
+    expect(dansRectangle(doc, { x: 20, y: 60, width: 300, height: 440 })).toEqual(["b1", "b3", "l2", "a1"]);
+  });
+  test("REQ137_AC1_boite_a_demi_dedans_flèche_a_un_bout_dehors_et_rectangle_vide", () => {
+    expect(dansRectangle(doc, { x: 20, y: 60, width: 100, height: 120 })).toEqual([]);
+    expect(dansRectangle(doc, { x: 90, y: 290, width: 100, height: 20 })).toEqual([]);
+    expect(dansRectangle({ version: 1, boxes: [], links: [] }, { x: 0, y: 0, width: 9, height: 9 })).toEqual([]);
   });
 });

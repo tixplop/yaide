@@ -341,3 +341,13 @@ export function rectangleFleche(fleche) {
     height: Math.abs(fleche.y2 - fleche.y1),
   };
 }
+
+// Les `id` des objets entièrement dans `rect` ({ x, y, width, height }), dans l'ordre de Tab : les boîtes, les liens
+// dont les deux boîtes y sont, les flèches libres dont les deux bouts y sont.
+export function dansRectangle(doc, rect) {
+  const dedans = (x, y) => x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
+  const boites = doc.boxes.filter((b) => dedans(b.x, b.y) && dedans(b.x + b.width, b.y + b.height)).map((b) => b.id);
+  const liens = doc.links.filter((l) => boites.includes(l.from) && boites.includes(l.to)).map((l) => l.id);
+  const fleches = (doc.arrows ?? []).filter((f) => dedans(f.x1, f.y1) && dedans(f.x2, f.y2)).map((f) => f.id);
+  return [...boites, ...liens, ...fleches];
+}

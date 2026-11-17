@@ -118,6 +118,13 @@ export function dessinFormeProvisoire(b) {
   return g;
 }
 
+// Rectangle de sélection en cours de tracé : son contour seul, sans fond.
+export function dessinRectangleSelection(r) {
+  const g = svg("g", { class: "provisoire", "aria-hidden": "true" });
+  svg("rect", { class: "forme", x: r.x, y: r.y, width: r.width, height: r.height }, g);
+  return g;
+}
+
 // Poignée de taille de la boîte choisie, au coin bas droit.
 export function poigneesBoite(b, z) {
   const g = svg("g", { class: "poignees", "aria-hidden": "true" });

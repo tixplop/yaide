@@ -1,11 +1,15 @@
 import { idLibre } from "../jdiag.js";
+import { estMac } from "../references.js";
 import { indication } from "./indication.js";
 import { boiteOutils } from "./tableau-outils.js";
-import { connecteurProche, connecteurs, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
-import { dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, poigneesBoite, poigneesFleche, svg } from "./tableau-dessin.js";
+import { connecteurProche, connecteurs, dansRectangle, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
+import { dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, dessinRectangleSelection, poigneesBoite, poigneesFleche, svg } from "./tableau-dessin.js";
 
 // C-018 : whiteboard. Un SVG dont le `viewBox` suit la vue ; le document est celui de `jdiag.js`.
-const AIDE = "Tab : objet suivant. Entrée : écrire dans la boîte. Flèches : déplacer. Suppr : effacer. Échap : ne plus rien choisir. O : boîte à outils.";
+const aide = () => {
+  const ctrl = estMac() ? "Cmd" : "Ctrl";
+  return `Tab : objet suivant. Entrée : écrire dans la boîte. Flèches : déplacer. Suppr : effacer. ${ctrl}+A : tout choisir. ${ctrl}+C, ${ctrl}+V : copier, coller. Échap : ne plus rien choisir. O : boîte à outils.`;
+};
 const PAS = 10;
 const SEUIL = 3;
 const PROCHE = 24; // px écran : distance du pointeur au bord d'une boîte pour montrer ses connecteurs
@@ -36,7 +40,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
   let doc = documentInitial ?? null;
   let nomCourant = nom;
   let vueCourante = { x: 0, y: 0, zoom: 1, ...vue };
-  let choisi = null;
+  let choisis = []; // les `id` choisis, dans l'ordre de Tab
+  let etat = null; // zone `status`
   let saisie = null;
   let editeur = null;
   let surface = null;
@@ -62,6 +67,10 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     return { largeur: r.width, hauteur: r.height };
   };
   const idElement = (id) => `${prefixe}-${id}`;
+  const premier = () => choisis[0] ?? null;
+  const unique = () => (choisis.length === 1 ? choisis[0] : null);
+  const tousLesId = () => [...doc.boxes, ...doc.links, ...(doc.arrows ?? [])].map((o) => o.id);
+  const objet = (id) => [...doc.boxes, ...doc.links, ...(doc.arrows ?? [])].find((x) => x.id === id);
   const boite = (id) => doc.boxes.find((b) => b.id === id);
   const appliquer = (nouveau) => {
     doc = nouveau;
@@ -77,6 +86,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     barre?.element.remove();
     surface = null;
     dessin = null;
+    etat = null;
     editeur = null;
     saisie = null;
     if (doc === null) {
@@ -102,13 +112,16 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     surface.setAttribute("aria-roledescription", "whiteboard");
     surface.setAttribute("aria-label", nomCourant);
     surface.setAttribute("aria-describedby", idElement("aide"));
-    const aide = document.createElement("span");
-    aide.className = "masque";
-    aide.id = idElement("aide");
-    aide.textContent = AIDE;
+    const texteAide = document.createElement("span");
+    texteAide.className = "masque";
+    texteAide.id = idElement("aide");
+    texteAide.textContent = aide();
     dessin = svg("svg", { focusable: "false" });
-    surface.append(dessin, aide);
-    fond.append(surface);
+    surface.append(dessin, texteAide);
+    etat = document.createElement("div");
+    etat.className = "masque";
+    etat.setAttribute("role", "status");
+    fond.append(surface, etat);
     element.append(barre.element);
     surface.addEventListener("keydown", surTouche);
     surface.addEventListener("pointerdown", surAppui);
@@ -127,7 +140,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
 
   function groupeBoite(b) {
     const glissee = geste?.actif && geste.type === "boite" && geste.id === b.id;
-    const classe = `${choisi === b.id ? " choisie" : ""}${saisie === b.id ? " saisie" : ""}${glissee ? " glissee" : ""}${cible === b.id ? " cible" : ""}`;
+    const classe = `${choisis.includes(b.id) ? " choisie" : ""}${saisie === b.id ? " saisie" : ""}${glissee ? " glissee" : ""}${cible === b.id ? " cible" : ""}`;
     let texte;
     if (saisie === b.id) texte = editeur;
     else {
@@ -140,7 +153,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
 
   function groupeLien(l, z) {
     const nom = `De ${nomBoite(boite(l.from))} vers ${nomBoite(boite(l.to))}`;
-    return dessinLien(doc, l, z, { id: idElement(l.id), nom, classe: choisi === l.id ? " choisie" : "" });
+    return dessinLien(doc, l, z, { id: idElement(l.id), nom, classe: choisis.includes(l.id) ? " choisie" : "" });
   }
 
   function flecheProvisoire(z) {
@@ -167,11 +180,12 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     if (!pointeur) return rien;
     const z = vueCourante.zoom;
     const boites = doc.boxes.filter((b) => {
+      if (choisis.length > 1 && choisis.includes(b.id)) return false;
       const dx = Math.max(b.x - pointeur.x, 0, pointeur.x - (b.x + b.width));
       const dy = Math.max(b.y - pointeur.y, 0, pointeur.y - (b.y + b.height));
       return Math.hypot(dx, dy) <= PROCHE / z;
     });
-    const choisie = choisi ? boite(choisi) : null;
+    const choisie = unique() ? boite(unique()) : null;
     const surTaille = choisie && Math.max(Math.abs(pointeur.x - (choisie.x + choisie.width)), Math.abs(pointeur.y - (choisie.y + choisie.height))) <= 8 / z;
     const pleins = [];
     if (!surTaille) {
@@ -207,9 +221,9 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     dessin.replaceChildren();
     for (const b of doc.boxes) dessin.append(groupeBoite(b));
     for (const l of doc.links) dessin.append(groupeLien(l, z));
-    for (const f of doc.arrows ?? []) dessin.append(dessinFleche(f, z, { id: idElement(f.id), classe: choisi === f.id ? " choisie" : "" }));
-    const b = choisi && !saisie ? boite(choisi) : null;
-    const libre = choisi && !saisie ? (doc.arrows ?? []).find((f) => f.id === choisi) : null;
+    for (const f of doc.arrows ?? []) dessin.append(dessinFleche(f, z, { id: idElement(f.id), classe: choisis.includes(f.id) ? " choisie" : "" }));
+    const b = unique() && !saisie ? boite(unique()) : null;
+    const libre = unique() && !saisie ? (doc.arrows ?? []).find((f) => f.id === unique()) : null;
     couche = svg("g");
     dessin.append(couche);
     dessinerConnecteurs();
@@ -217,15 +231,17 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     if (libre) dessin.append(poigneesFleche(libre, z));
     if (provisoire) dessin.append(flecheProvisoire(z));
     if (formeProvisoire) dessin.append(dessinFormeProvisoire(formeProvisoire));
-    if (choisi) surface.setAttribute("aria-activedescendant", idElement(choisi));
+    if (geste?.type === "selection" && geste.actif) dessin.append(dessinRectangleSelection(geste.rect));
+    if (premier()) surface.setAttribute("aria-activedescendant", idElement(premier()));
     else surface.removeAttribute("aria-activedescendant");
+    etat.textContent = choisis.length > 1 ? `${choisis.length} objets choisis` : "";
     afficherOutils();
     if (avaitFocus) placerCurseur(decalage);
   }
 
   // Les valeurs de l'objet choisi, sinon les choix courants.
   function afficherOutils() {
-    const o = choisi && !saisie ? [...doc.boxes, ...doc.links, ...(doc.arrows ?? [])].find((x) => x.id === choisi) : null;
+    const o = premier() && !saisie ? objet(premier()) : null;
     const valeurs = { ...choix };
     if (o && boite(o.id)) valeurs.couleur = o.color ?? "default";
     else if (o) {
@@ -240,7 +256,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
   function surChoixOutil(cle, valeur) {
     choix[cle] = valeur;
     if (cle === "outil" && TAILLES[valeur]) choix.forme = valeur;
-    const o = choisi && !saisie ? [...doc.boxes, ...doc.links, ...(doc.arrows ?? [])].find((x) => x.id === choisi) : null;
+    const o = premier() && !saisie ? objet(premier()) : null;
     const estBoite = o && boite(o.id) !== undefined;
     const clef = cle === "couleur" ? "color" : CLES_STYLE[cle];
     if (o && clef && (cle === "couleur") === estBoite && (o[clef] ?? OUTILS_DEPART[cle]) !== valeur) {
@@ -298,8 +314,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
 
   function choisir(id, avecRecadrage = false) {
     // Même objet déjà choisi : ne pas redessiner, le second clic d'un double-clic doit garder son élément.
-    if (id === choisi && !avecRecadrage) return;
-    choisi = id;
+    if (!avecRecadrage && choisis.length === (id === null ? 0 : 1) && premier() === id) return;
+    choisis = id === null ? [] : [id];
     if (id && avecRecadrage) ramener(id);
     dessiner();
   }
@@ -314,7 +330,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
   function commencerSaisie(id) {
     finirSaisie();
     saisie = id;
-    choisi = id;
+    choisis = [id];
     editeur = document.createElement("div");
     editeur.className = "ya-tableau-texte";
     editeur.setAttribute("contenteditable", "plaintext-only");
@@ -335,28 +351,32 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     placerCurseur(null);
   }
 
-  function supprimer(id) {
-    const estBoite = boite(id) !== undefined;
+  function supprimer(ids) {
+    const boites = ids.filter((id) => boite(id) !== undefined);
     appliquer({
       ...doc,
-      boxes: doc.boxes.filter((b) => b.id !== id),
-      links: doc.links.filter((l) => l.id !== id && (!estBoite || (l.from !== id && l.to !== id))),
-      ...(doc.arrows ? { arrows: doc.arrows.filter((f) => f.id !== id) } : {}),
+      boxes: doc.boxes.filter((b) => !ids.includes(b.id)),
+      links: doc.links.filter((l) => !ids.includes(l.id) && !boites.includes(l.from) && !boites.includes(l.to)),
+      ...(doc.arrows ? { arrows: doc.arrows.filter((f) => !ids.includes(f.id)) } : {}),
     });
-    choisi = null;
+    choisis = [];
     dessiner();
   }
 
-  function deplacer(id, dx, dy) {
-    if (boite(id)) appliquer({ ...doc, boxes: doc.boxes.map((b) => (b.id === id ? { ...b, x: b.x + dx, y: b.y + dy } : b)) });
-    else appliquer({ ...doc, arrows: doc.arrows.map((f) => (f.id === id ? { ...f, x1: f.x1 + dx, y1: f.y1 + dy, x2: f.x2 + dx, y2: f.y2 + dy } : f)) });
-    ramener(id);
+  // Déplace les boîtes et les flèches libres de `ids` ; les liens suivent leurs boîtes.
+  function deplacer(ids, dx, dy) {
+    appliquer({
+      ...doc,
+      boxes: doc.boxes.map((b) => (ids.includes(b.id) ? { ...b, x: b.x + dx, y: b.y + dy } : b)),
+      ...(doc.arrows ? { arrows: doc.arrows.map((f) => (ids.includes(f.id) ? { ...f, x1: f.x1 + dx, y1: f.y1 + dy, x2: f.x2 + dx, y2: f.y2 + dy } : f)) } : {}),
+    });
+    ramener(premier());
     dessiner();
   }
 
   function naviguer(e) {
-    const objets = [...doc.boxes, ...doc.links, ...(doc.arrows ?? [])].map((o) => o.id);
-    const i = choisi === null ? -1 : objets.indexOf(choisi);
+    const objets = tousLesId();
+    const i = premier() === null ? -1 : objets.indexOf(premier());
     if (!e.shiftKey) {
       if (i === objets.length - 1) return;
       choisir(objets[i + 1], true);
@@ -368,7 +388,22 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
   }
 
   function surTouche(e) {
-    if (doc === null || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (doc === null) return;
+    if (geste?.type === "selection" && e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      annulerGeste();
+      choix.outil = "choisir";
+      dessiner();
+      return;
+    }
+    if (saisie === null && !e.altKey && !e.shiftKey && (estMac() ? e.metaKey : e.ctrlKey) && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      choisis = tousLesId();
+      dessiner();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (saisie !== null) {
       if (e.target !== editeur) return;
       if (e.key === "Escape") {
@@ -383,8 +418,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       }
       return;
     }
-    const estBoite = choisi !== null && boite(choisi) !== undefined;
-    const deplacable = estBoite || (doc.arrows ?? []).some((f) => f.id === choisi);
+    const estBoite = unique() !== null && boite(unique()) !== undefined;
+    const deplacable = choisis.some((id) => boite(id) !== undefined || (doc.arrows ?? []).some((f) => f.id === id));
     const fleches = { ArrowLeft: [-PAS, 0], ArrowRight: [PAS, 0], ArrowUp: [0, -PAS], ArrowDown: [0, PAS] };
     if (e.key === "Tab") naviguer(e);
     else if ((e.key === "o" || e.key === "O") && !e.shiftKey) {
@@ -397,14 +432,14 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       afficherOutils();
     } else if (e.key === "Enter" && estBoite) {
       e.preventDefault();
-      commencerSaisie(choisi);
+      commencerSaisie(unique());
     } else if (fleches[e.key] && deplacable) {
       e.preventDefault();
-      deplacer(choisi, ...fleches[e.key]);
-    } else if (e.key === "Delete" && choisi !== null) {
+      deplacer(choisis, ...fleches[e.key]);
+    } else if (e.key === "Delete" && choisis.length > 0) {
       e.preventDefault();
-      supprimer(choisi);
-    } else if (e.key === "Escape" && choisi !== null) {
+      supprimer(choisis);
+    } else if (e.key === "Escape" && choisis.length > 0) {
       e.preventDefault();
       e.stopPropagation();
       choisir(null);
@@ -441,11 +476,17 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
     }
   }
 
+  // Les positions de départ des boîtes et flèches libres que glisser `id` déplace : tous les objets choisis s'il en fait partie.
+  function origines(id) {
+    const ids = choisis.includes(id) ? choisis : [id];
+    return new Map(ids.map((x) => [x, { ...objet(x) }]).filter(([x]) => boite(x) || (doc.arrows ?? []).some((f) => f.id === x)));
+  }
+
   function surAppui(e) {
     if (doc === null || geste || e.button !== 0 || editeur?.contains(e.target)) return;
     const base = { pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, actif: false };
     const poignee = e.target.closest?.("[data-poignee]")?.getAttribute("data-poignee");
-    const b = choisi && boite(choisi);
+    const b = unique() && boite(unique());
     if (poignee === "taille" && b) {
       capturer(e);
       surface.focus({ preventScroll: true });
@@ -464,7 +505,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       dessiner();
       return;
     }
-    const libre = (doc.arrows ?? []).find((f) => f.id === choisi);
+    const libre = (doc.arrows ?? []).find((f) => f.id === unique());
     if ((poignee === "depart" || poignee === "arrivee") && libre) {
       capturer(e);
       surface.focus({ preventScroll: true });
@@ -472,7 +513,9 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       return;
     }
     const g = e.target.closest?.("g.boite, g.lien, g.fleche");
-    if (TAILLES[choix.outil] || choix.outil === "fleche") {
+    if (choix.outil === "selection") {
+      geste = { ...base, type: "selection", p0: pointDessin(e) };
+    } else if (TAILLES[choix.outil] || choix.outil === "fleche") {
       geste = { ...base, type: TAILLES[choix.outil] ? "forme" : "fleche", p0: pointDessin(e) };
     } else if (choix.outil === "lien" && g?.classList.contains("boite")) {
       geste = { ...base, type: "lien", id: g.getAttribute("data-id") };
@@ -480,12 +523,11 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       geste = { ...base, type: "vue", origine: { x: vueCourante.x, y: vueCourante.y } };
     } else if (g.classList.contains("fleche")) {
       const id = g.getAttribute("data-id");
-      geste = { ...base, type: "corps", id, origine: { ...doc.arrows.find((f) => f.id === id) } };
+      geste = { ...base, type: "corps", id, origines: origines(id) };
     } else if (g.classList.contains("boite")) {
       const id = g.getAttribute("data-id");
       if (saisie === id) return;
-      const o = boite(id);
-      geste = { ...base, type: "boite", id, origine: { x: o.x, y: o.y } };
+      geste = { ...base, type: "boite", id, origines: origines(id) };
     }
   }
 
@@ -506,26 +548,29 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       capturer(e);
       finirSaisie();
       if (geste.type === "boite" || geste.type === "corps") {
-        choisi = geste.id;
+        if (!choisis.includes(geste.id)) choisis = [geste.id];
         surface.focus({ preventScroll: true });
-      } else if (geste.type === "vue") surface.classList.add("tiree");
+      } else if (geste.type === "selection") surface.focus({ preventScroll: true });
+      else if (geste.type === "vue") surface.classList.add("tiree");
     }
     if (geste.type === "vue") {
       changerVue({ ...vueCourante, x: geste.origine.x - dx / z, y: geste.origine.y - dy / z });
-    } else if (geste.type === "boite") {
-      const x = Math.round(geste.origine.x + dx / z);
-      const y = Math.round(geste.origine.y + dy / z);
-      appliquer({ ...doc, boxes: doc.boxes.map((b) => (b.id === geste.id ? { ...b, x, y } : b)) });
+    } else if (geste.type === "boite" || geste.type === "corps") {
+      const ddx = Math.round(dx / z);
+      const ddy = Math.round(dy / z);
+      const o = geste.origines;
+      appliquer({
+        ...doc,
+        boxes: doc.boxes.map((b) => (o.has(b.id) ? { ...b, x: o.get(b.id).x + ddx, y: o.get(b.id).y + ddy } : b)),
+        ...(doc.arrows ? { arrows: doc.arrows.map((a) => (o.has(a.id) ? { ...a, x1: o.get(a.id).x1 + ddx, y1: o.get(a.id).y1 + ddy, x2: o.get(a.id).x2 + ddx, y2: o.get(a.id).y2 + ddy } : a)) } : {}),
+      });
+    } else if (geste.type === "selection") {
+      const p = pointDessin(e);
+      geste.rect = { x: Math.min(geste.p0.x, p.x), y: Math.min(geste.p0.y, p.y), width: Math.abs(p.x - geste.p0.x), height: Math.abs(p.y - geste.p0.y) };
     } else if (geste.type === "taille") {
       const width = Math.max(40, Math.round(geste.origine.width + dx / z));
       const height = Math.max(24, Math.round(geste.origine.height + dy / z));
       appliquer({ ...doc, boxes: doc.boxes.map((b) => (b.id === geste.id ? { ...b, width, height } : b)) });
-    } else if (geste.type === "corps") {
-      const ddx = Math.round(dx / z);
-      const ddy = Math.round(dy / z);
-      const o = geste.origine;
-      const f = { x1: o.x1 + ddx, y1: o.y1 + ddy, x2: o.x2 + ddx, y2: o.y2 + ddy };
-      appliquer({ ...doc, arrows: doc.arrows.map((a) => (a.id === geste.id ? { ...a, ...f } : a)) });
     } else if (geste.type === "bout") {
       const o = geste.origine;
       const [kx, ky] = geste.bout === "depart" ? ["x1", "y1"] : ["x2", "y2"];
@@ -555,8 +600,18 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       const lien = { id: idLibre("l", doc), from: fin.id, to: cible, fromSide: fin.cote, toSide: connecteurProche(boite(cible), pointDessin(e)) };
       for (const [cle, clef] of Object.entries(CLES_STYLE)) if (choix[cle] !== OUTILS_DEPART[cle]) lien[clef] = choix[cle];
       appliquer({ ...doc, links: [...doc.links, lien] });
-      choisi = lien.id;
+      choisis = [lien.id];
       surface.focus({ preventScroll: true });
+    }
+    if (fin.type === "selection") {
+      annulerGeste();
+      sansClic = true;
+      setTimeout(() => (sansClic = false), 0);
+      if (!fin.actif) return;
+      choisis = dansRectangle(doc, fin.rect);
+      choix.outil = "choisir";
+      dessiner();
+      return;
     }
     if (fin.type === "forme" || fin.type === "fleche" || fin.type === "lien") {
       const lieu = cible;
@@ -577,13 +632,13 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       const f = { id: idLibre("a", doc), x1: Math.round(fin.p0.x), y1: Math.round(fin.p0.y), x2: Math.round(p.x), y2: Math.round(p.y) };
       for (const [cle, clef] of Object.entries(CLES_STYLE)) if (choix[cle] !== OUTILS_DEPART[cle]) f[clef] = choix[cle];
       appliquer({ ...doc, arrows: [...(doc.arrows ?? []), f] });
-      choisi = f.id;
+      choisis = [f.id];
     } else {
       if (!lieu || doc.links.some((l) => l.from === fin.id && l.to === lieu)) return;
       const lien = { id: idLibre("l", doc), from: fin.id, to: lieu };
       for (const [cle, clef] of Object.entries(CLES_STYLE)) if (choix[cle] !== OUTILS_DEPART[cle]) lien[clef] = choix[cle];
       appliquer({ ...doc, links: [...doc.links, lien] });
-      choisi = lien.id;
+      choisis = [lien.id];
     }
     sansClic = true;
     setTimeout(() => (sansClic = false), 0);
@@ -654,7 +709,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, surChange
       const avant = doc === null;
       finirSaisie();
       doc = nouveau ?? null;
-      if (doc === null || !choisi || ![...doc.boxes, ...doc.links, ...(doc.arrows ?? [])].some((o) => o.id === choisi)) choisi = null;
+      choisis = doc === null ? [] : choisis.filter((id) => objet(id) !== undefined);
       if (avant || doc === null) monter();
       else dessiner();
     },
