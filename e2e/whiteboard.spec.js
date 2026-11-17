@@ -27,7 +27,7 @@ const glisser = async (page, de, vers) => {
   await page.mouse.up();
 };
 
-test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ128_AC2_REQ131_AC2_parcours_P096_whiteboard", async ({ page }) => {
+test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_parcours_P096_whiteboard", async ({ page }) => {
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "docs"), { recursive: true });
   fs.writeFileSync(path.join(dossier, "docs/a.md"), "# A\n");
@@ -68,23 +68,53 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ128_AC2_REQ131_AC2_parcours_P096_white
     const apres = await centre(fin);
     expect(Math.abs(apres.x - avant.x - 300)).toBeLessThanOrEqual(2);
 
-    // AC-130-1 : flèche depuis la poignée de liaison de « Début » jusqu'à « Fin ».
-    const d = await centre(debut);
-    await page.mouse.click(d.x, d.y);
-    const poignee = await centre(surface.locator(".poignees .rond"));
-    await glisser(page, poignee, await centre(fin));
+    // AC-130-1 : à 10 px du bord droit de « Début », quatre connecteurs ; le connecteur droit glissé près du côté gauche de « Fin ».
+    const rd = await debut.boundingBox();
+    await page.mouse.move(rd.x + rd.width + 10, rd.y + rd.height / 2);
+    await expect(surface.locator(".connecteurs .connecteur")).toHaveCount(4);
+    const rf = await fin.boundingBox();
+    await glisser(page, await centre(surface.locator('[data-connecteur="right"]')), { x: rf.x + 10, y: rf.y + rf.height / 2 });
     await expect(surface.locator('[aria-roledescription="lien"]')).toHaveCount(1);
     await expect(surface.getByLabel("De Début vers Fin")).toHaveCount(1);
+
+    // AC-133-8 : la boîte à outils est à 12 px du bord gauche et du bord bas de la surface.
+    const barre = await page.locator(".ya-tableau-outils").boundingBox();
+    const rs = await surface.boundingBox();
+    proche(barre.x - rs.x, 12);
+    proche(rs.y + rs.height - (barre.y + barre.height), 12);
+
+    // AC-134-1, AC-134-7 : « Cercle », clic sur une partie vide, texte dans le carré inscrit.
+    await page.getByRole("button", { name: "Cercle", exact: true }).click();
+    await page.mouse.click(rs.x + 700, rs.y + 150);
+    await page.keyboard.type("Départ");
+    await page.keyboard.press("Escape");
+    const cercle = surface.locator('[aria-roledescription="boîte"]').filter({ hasText: "Départ" });
+    const rc = await cercle.boundingBox();
+    const cote = rc.width * Math.SQRT1_2;
+    const carre = { x: rc.x + (rc.width - cote) / 2, y: rc.y + (rc.height - cote) / 2, width: cote, height: cote };
+    const rt = await cercle.getByText("Départ").boundingBox();
+    expect(rt.x).toBeGreaterThanOrEqual(carre.x - 1);
+    expect(rt.y).toBeGreaterThanOrEqual(carre.y - 1);
+    expect(rt.x + rt.width).toBeLessThanOrEqual(carre.x + carre.width + 1);
+    expect(rt.y + rt.height).toBeLessThanOrEqual(carre.y + carre.height + 1);
+
+    // AC-136-1 : « Flèche », glisser sur une partie vide.
+    await page.getByRole("button", { name: "Flèche", exact: true }).click();
+    await glisser(page, { x: rs.x + 500, y: rs.y + 450 }, { x: rs.x + 700, y: rs.y + 530 });
+    await expect(surface.locator('[aria-roledescription="flèche"]')).toHaveCount(1);
 
     // AC-128-2 : Ctrl+S écrit le fichier au format de REQ-132.
     await page.keyboard.press("Control+s");
     const fichier = path.join(dossier, "docs/plan.jdiag");
-    await expect.poll(() => fs.readFileSync(fichier, "utf8")).toContain('"from"');
+    await expect.poll(() => fs.readFileSync(fichier, "utf8")).toContain('"arrows"');
     const doc = JSON.parse(fs.readFileSync(fichier, "utf8"));
     expect(doc.version).toBe(1);
-    expect(doc.boxes.map((b) => b.text)).toEqual(["Début", "Fin"]);
-    expect(doc.links).toEqual([{ id: "l1", from: "b1", to: "b2" }]);
-    expect(fs.readFileSync(fichier, "utf8")).toMatch(/^ {2}"boxes": \[\n {4}\{"id": "b1", .*\},\n {4}\{"id": "b2", .*\}\n {2}\],\n/m);
+    expect(doc.boxes.map((b) => b.text)).toEqual(["Début", "Fin", "Départ"]);
+    expect(doc.boxes[2].shape).toBe("ellipse");
+    expect(doc.links).toEqual([{ id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "left" }]);
+    expect(doc.arrows).toHaveLength(1);
+    expect(fs.readFileSync(fichier, "utf8")).toContain('"fromSide": "right", "toSide": "left"');
+    expect(fs.readFileSync(fichier, "utf8")).toMatch(/^ {2}"boxes": \[\n {4}\{"id": "b1", .*\},\n {4}\{"id": "b2", .*\},\n {4}\{"id": "b3", .*\}\n {2}\],\n/m);
 
     // AC-131-2 : Ctrl+molette sur « Début », le point sous le pointeur reste en place.
     const zoom = page.getByRole("status").filter({ hasText: "%" });

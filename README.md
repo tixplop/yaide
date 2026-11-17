@@ -258,7 +258,7 @@ Le bouton « Aperçu » existe aussi pour les fichiers HTML (`.html` et `.htm`) 
 
 Un bloc de code `mermaid` s'affiche dans l'aperçu markdown comme le diagramme qu'il décrit (réduit pour tenir dans la largeur, sans rien exécuter ni charger), et un fichier `.mmd` s'ouvre avec son diagramme en aperçu à côté de l'éditeur. Un texte qui ne se lit pas garde le dernier dessin, ou le bloc en code s'il n'a jamais été lu.
 
-Un whiteboard se crée par « Nouveau whiteboard » dans le menu de l'arborescence ; il est enregistré dans un fichier `.jdiag` (JSON : boîtes et flèches, une par ligne pour des diffs git lisibles) et s'ouvre dans un onglet de dessin.
+Un whiteboard se crée par « Nouveau whiteboard » dans le menu de l'arborescence ; il est enregistré dans un fichier `.jdiag` (JSON : boîtes et flèches, une par ligne pour des diffs git lisibles) et s'ouvre dans un onglet de dessin, avec une boîte à outils (formes, couleurs, liens, flèches libres). Les connecteurs d'une boîte, au milieu de chaque côté, apparaissent quand le pointeur s'en approche : on en glisse un jusqu'à une autre boîte pour les relier.
 
 Une image (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.avif`, `.bmp`, `.ico`) s'ouvre dans son propre onglet, entière et en lecture seule, et se met à jour quand le fichier change sur le disque. Un fichier SVG s'ouvre dans l'éditeur avec son aperçu à côté, qui suit la frappe : le SVG n'y exécute aucun script et ne charge rien.
 
