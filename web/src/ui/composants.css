@@ -816,7 +816,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-palette-sans-champ .ya-fin { flex: none; padding-left: 16px; white-space: nowrap; font: 12px/16px var(--font-sans); color: var(--ink-muted); }
 
 /* C-018 : whiteboard. Contours, traits et pointes gardent leur taille à l'écran (`vector-effect`). */
-.ya-tableau { box-sizing: border-box; flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; background: var(--bg-200); }
+.ya-tableau { box-sizing: border-box; flex: 1; height: 100%; min-width: 0; min-height: 0; display: flex; overflow: hidden; background: var(--bg-200); }
 .ya-tableau:focus-within { outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
 .ya-tableau[hidden] { display: none; }
 .ya-tableau-surface { flex: 1; min-width: 0; min-height: 0; position: relative; outline: none; cursor: default; }

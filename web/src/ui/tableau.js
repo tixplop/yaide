@@ -417,11 +417,13 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
 
   function annulerGeste() {
     if (!geste) return;
+    const actif = geste.actif;
     geste = null;
     provisoire = null;
     cible = null;
     surface?.classList.remove("tiree");
-    dessiner();
+    // Un simple clic ne redessine pas : le dessin remplacé sous le pointeur ferait perdre le `click` à la boîte visée.
+    if (actif) dessiner();
   }
 
   function surDoubleClic(e) {
