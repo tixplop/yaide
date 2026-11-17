@@ -10,6 +10,7 @@ import { estImage } from "../onglets-fichiers.js";
 import { estMac } from "../references.js";
 import * as worktree from "../worktree.js";
 import { mettreAJourFichiers, ouvrirAjoutConnaissance } from "./ajout-connaissance.js";
+import { ouvrirSoumissionAgent } from "./soumission-agent.js";
 
 // Préfixe impossible dans un chemin relatif : marque les lignes qui ne sont pas des fichiers.
 const FACTICE = "\0";
@@ -34,11 +35,12 @@ function texteErreur(r) {
  * V-003. `dire({ texte, variante, fermable })` affiche un bandeau.
  * `projet` : nom affiché dans l'en-tête. `estDepot()` dit si le dossier est un dépôt git ; `surCommit()` mène au message de commit.
  * `lireEtat()` demande la lecture de l'état git, qui revient par `definirStatuts(Map | null)` (voir `statuts.js`).
- * `agents` : la fonction `agents` est active (commande « Ajouter à la base de connaissance… ») ; `surConfigurer({ surFermeture })` ouvre la configuration de la base.
+ * `agents` : la fonction `agents` est active (commande « Ajouter à la base de connaissance… ») ; `surConfigurer({ surFermeture })` ouvre la configuration de la base ;
+ * `surSoumettre({ equipe, message })` (commande « Soumettre à un agent… ») rend `{ coupure: true }` ou `{ ouvrir() }`.
  * Rappels : `surOuvrir({ chemin, contenu, version })`, `surRenomme({ de, vers })`, `surSupprime({ chemin, dossier })`, `surLecture(oui)` (début et fin d'une lecture).
  * Rend `{ corps, entete (à poser dans `panneau.entete`, à masquer avec le panneau), rafraichir(), relire() (silencieuse), definirStatuts(statuts), definirCourant(chemin | null), detruire() }`.
  */
-export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estDepot = () => false, surCommit = () => {}, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {}, agents = false, surConfigurer = () => {} }) {
+export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estDepot = () => false, surCommit = () => {}, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {}, agents = false, surConfigurer = () => {}, surSoumettre = async () => ({}) }) {
   const corps = document.createElement("div");
   corps.className = "fichiers";
   const entete = document.createElement("div"); // ligne « Worktree » (REQ-086) puis ligne du projet
@@ -578,6 +580,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
           ? [
               { libelle: "Ajouter à la base de connaissance…", surChoix: () => ajouterALaBase(id, plusieurs) },
               { libelle: "Mettre à jour dans la base de connaissance", desactive: !dansLaBase(plusieurs ? selection : [id]), surChoix: () => mettreAJourALaBase(id, plusieurs) },
+              { libelle: "Soumettre à un agent…", surChoix: () => soumettreAUnAgent(id, plusieurs) },
             ]
           : [],
       ],
@@ -595,6 +598,19 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
       noms: chemins.map((c) => `${worktree.dansWorktree(c)}${types.get(c) ? "/" : ""}`),
       dire,
       surConfigurer,
+      actif: () => !detruit,
+      surRetour: () => {
+        if (!detruit) (ligneDe(id) ?? zoneArbre.querySelector("[role=treeitem][tabindex='0']"))?.focus();
+      },
+    });
+  }
+
+  function soumettreAUnAgent(id, plusieurs) {
+    const chemins = plusieurs ? [...selection] : [id];
+    ouvrirSoumissionAgent({
+      noms: chemins.map((c) => `${worktree.dansWorktree(c)}${types.get(c) ? "/" : ""}`),
+      chemins: chemins.map((c) => `${c}${types.get(c) ? "/" : ""}`),
+      surSoumettre,
       actif: () => !detruit,
       surRetour: () => {
         if (!detruit) (ligneDe(id) ?? zoneArbre.querySelector("[role=treeitem][tabindex='0']"))?.focus();

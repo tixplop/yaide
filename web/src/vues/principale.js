@@ -147,6 +147,13 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (r.coupure) return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
     editeur.ouvrirAgent({ equipe });
   }
+  // « Soumettre à un agent… » : le dialogue attend la réponse ; une coupure y reste affichée.
+  async function soumettreAgent({ equipe, message }) {
+    const r = await reglagesAgent();
+    if (detruite) return {};
+    if (r.coupure) return { coupure: true };
+    return { ouvrir: () => editeur.ouvrirAgent({ equipe, message }) }; // après la fermeture du dialogue, sinon le focus n'entre pas dans l'onglet
+  }
   // « Agents » : déplie la colonne si besoin et relit la liste.
   function entrerDansAgents() {
     if (!avec.agents) return;
@@ -295,6 +302,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   fichiers = vueFichiers({
     dire,
     agents: avec.agents,
+    surSoumettre: soumettreAgent,
     surConfigurer: ({ surFermeture }) => baseConnaissance?.ouvrir({ configurer: true, surFermeture }),
     projet: nomDuDossier(chemin),
     lireEtat: () => git?.rafraichir(),

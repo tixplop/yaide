@@ -328,7 +328,7 @@ const commande = (menu, debut) => [...menu.querySelectorAll("[role=menuitem]")].
 test("REQ034_AC1_AC14_REQ104_AC1_REQ049_AC13_menu_a_quatre_groupes_dont_la_base_de_connaissance", async () => {
   const { vue } = await monter({ "": [f("a.txt")] }, { estDepot: () => true, agents: true });
   const m = menuSur(vue, "a.txt");
-  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance", "Soumettre à un agent…"]);
   expect(m.querySelectorAll("[role=separator]").length).toBe(4);
   expect(m.querySelectorAll("[aria-disabled]").length).toBe(2); // Coller : rien de copié ; Mettre à jour : aucun fichier de la base
 });
@@ -336,7 +336,7 @@ test("REQ034_AC1_AC14_REQ104_AC1_REQ049_AC13_menu_a_quatre_groupes_dont_la_base_
 test("REQ034_AC21_hors_depot_deux_separateurs_avec_la_base", async () => {
   const { vue } = await monter({ "": [f("a.txt")] }, { estDepot: () => false, agents: true });
   const m = menuSur(vue, "a.txt");
-  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
+  expect([...m.querySelectorAll("[role=menuitem]")].map((i) => i.textContent)).toEqual(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance", "Soumettre à un agent…"]);
   expect(m.querySelectorAll("[role=separator]").length).toBe(3);
 });
 
@@ -402,6 +402,74 @@ test("REQ104_AC1_AC13_commande_ouvre_le_dialogue_pour_les_lignes_de_la_selection
   expect(document.getElementById(dlg.getAttribute("aria-describedby")).textContent).toBe("Ajouter docs/ et b.txt à une collection.");
 });
 
+
+/** Faux `/api/agent/agents` par-dessus le faux serveur de fichiers. */
+function avecAgents() {
+  const base = fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => (String(url) === "/api/agent/agents" ? { ok: true, status: 200, json: async () => ({ agents: [], erreurs: [] }) } : base(url, init))));
+}
+const soumettre = async (m) => {
+  commande(m, "Soumettre").click();
+  await attendre();
+  [...document.querySelectorAll("dialog button")].find((b) => b.textContent === "Soumettre").click();
+  await attendre();
+};
+
+test("REQ126_AC6_commande_absente_sans_agents_et_dans_la_partie_vide", async () => {
+  const sans = await monter({ "": [f("a.txt")] }, { estDepot: () => true });
+  expect(commande(menuSur(sans.vue, "a.txt"), "Soumettre")).toBeUndefined();
+  document.body.replaceChildren();
+  const avec = await monter({ "": [f("a.txt")] }, { agents: true });
+  avec.vue.corps.querySelector(".fichiers-arbre").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+  expect(commande(document.querySelector("[role=menu]"), "Soumettre")).toBeUndefined();
+});
+
+test("REQ126_AC1_AC4_commande_derniere_jamais_desactivee_et_messages_selon_la_selection", async () => {
+  const surSoumettre = vi.fn(async () => ({}));
+  const { vue } = await monter({ "": [d("docs"), f("a.md"), f("b.md")] }, { agents: true, surSoumettre });
+  avecAgents();
+  const m0 = menuSur(vue, "a.md");
+  const items = [...m0.querySelectorAll("[role=menuitem]")];
+  expect(items.at(-1).textContent).toBe("Soumettre à un agent…");
+  expect(items.at(-1).hasAttribute("aria-disabled")).toBe(false);
+  m0.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await soumettre(menuSur(vue, "a.md"));
+  expect(surSoumettre).toHaveBeenLastCalledWith({ equipe: undefined, message: "Consulte `a.md`." });
+  ctrl(vue, "a.md");
+  ctrl(vue, "b.md");
+  await soumettre(menuSur(vue, "b.md"));
+  expect(surSoumettre).toHaveBeenLastCalledWith({ equipe: undefined, message: "Consulte `a.md` et `b.md`." });
+  ctrl(vue, "docs");
+  await soumettre(menuSur(vue, "docs"));
+  expect(surSoumettre).toHaveBeenLastCalledWith({ equipe: undefined, message: "Consulte `docs/`, `a.md` et `b.md`." });
+  // Ligne visée hors de la sélection : elle seule.
+  ctrl(vue, "docs");
+  ctrl(vue, "a.md");
+  expect(choisies(vue)).toEqual(["b.md"]);
+  await soumettre(menuSur(vue, "a.md"));
+  expect(surSoumettre).toHaveBeenLastCalledWith({ equipe: undefined, message: "Consulte `a.md`." });
+  // Annuler : le focus revient sur la ligne visée.
+  commande(menuSur(vue, "b.md"), "Soumettre").click();
+  await attendre();
+  [...document.querySelectorAll("dialog button")].find((b) => b.textContent === "Annuler").click();
+  expect(document.activeElement).toBe(ligne(vue, "b.md"));
+});
+
+test("REQ126_AC5_worktree_phrase_depuis_le_worktree_et_message_depuis_le_projet", async () => {
+  const surSoumettre = vi.fn(async () => ({}));
+  const disque = { "": [], "../essai": [d("docs"), f("a.md")] };
+  const w = await import("../worktree.js");
+  w.mettreAJour([PROJET, ESSAI]);
+  w.choisir("../essai");
+  const { vue } = await monter(disque, { agents: true, surSoumettre });
+  avecAgents();
+  commande(menuSur(vue, "../essai/docs"), "Soumettre").click();
+  await attendre();
+  expect(document.getElementById(document.querySelector("dialog").getAttribute("aria-describedby")).textContent).toBe("Soumettre docs/ à un agent.");
+  [...document.querySelectorAll("dialog button")].find((b) => b.textContent === "Soumettre").click();
+  await attendre();
+  expect(surSoumettre).toHaveBeenLastCalledWith({ equipe: undefined, message: "Consulte `../essai/docs/`." });
+});
 
 test("REQ049_AC3_clic_simple_ramene_a_une_ligne", async () => {
   const { vue } = await monter({ "": [f("a.txt"), f("b.txt")] });

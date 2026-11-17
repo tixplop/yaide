@@ -122,7 +122,7 @@ test("REQ007_AC1_AC2_AC3_AC5_AC6_AC8_REQ008_AC5_REQ009_AC5_REQ034_AC1_AC4_AC14_A
     await ligne(page, "README.md").click({ button: "right" });
     const m = menu(page, "Actions sur README.md");
     await expect(m).toBeVisible();
-    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
+    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Indexer", "Commit", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance", "Soumettre à un agent…"]);
     await expect(m.getByRole("menuitem", { name: "Renommer", exact: true })).toBeVisible();
     await expect(m.getByRole("separator")).toHaveCount(4);
     await expect(ligne(page, "README.md")).toHaveAttribute("aria-selected", "true");
@@ -177,7 +177,7 @@ test("REQ007_AC4_REQ034_AC9_groupe_hors_depot_git", async ({ page }) => {
   await test.step("REQ034_AC9_hors_depot_ni_indexer_ni_commit", async () => {
     await ligne(page, "a.txt").click({ button: "right" });
     const m = menu(page, "Actions sur a.txt");
-    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance"]);
+    await expect(m.getByRole("menuitem")).toHaveText(["Nouveau fichier", "Nouveau dossier", "CopierCtrl+C", "CollerCtrl+V", "RenommerF2", "SupprimerSuppr", "Ajouter à la base de connaissance…", "Mettre à jour dans la base de connaissance", "Soumettre à un agent…"]);
     await expect(m.getByRole("separator")).toHaveCount(3);
     await page.keyboard.press("Escape");
     await clicVide(page);
@@ -595,7 +595,7 @@ test("REQ034_AC17_a_800_x_480_le_menu_reste_entier_sur_la_derniere_ligne_visible
   // Il ne tient pas sous la ligne : il est retourné au-dessus du point.
   expect(bas.y).toBeLessThan(visibles.at(-1).b.y);
   await page.keyboard.press("Escape");
-  const haute = visibles[2];
+  const haute = visibles[0]; // le menu a une commande de plus : seule la première ligne laisse la place dessous
   await lignes.nth(haute.i).focus();
   await page.keyboard.press("ContextMenu");
   const m = await entier();

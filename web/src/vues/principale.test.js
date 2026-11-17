@@ -1360,3 +1360,59 @@ test("REQ124_AC2_agents_desactives_ctrl_s_ne_touche_pas_a_la_base", async () => 
   await new Promise((r) => setTimeout(r, 50));
   expect(appels.filter((a) => a.includes("/api/connaissance"))).toEqual([]);
 });
+
+// ---- REQ-126 : « Soumettre à un agent… » ----
+
+function serveurSoumission({ coupure = false } = {}) {
+  const corps = [];
+  const rep = (c, status = 200) => ({ ok: status < 400, status, json: async () => c, text: async () => "" });
+  vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+    const u = String(url);
+    const chemin = u.split("?")[0];
+    if (chemin === "/api/fichiers") return rep({ entrees: [{ nom: "a.md", dossier: false, ignore: false }, { nom: "b.md", dossier: false, ignore: false }] });
+    if (chemin === "/api/git/etat") return rep({ cause: "pas-depot", message: "pas un dépôt" }, 409);
+    if (chemin === "/api/shells") return rep({ instance: "i1", shells: [] });
+    if (chemin === "/api/agent/agents") return rep({ agents: [], erreurs: [] });
+    if (chemin === "/api/agent/reglages") {
+      if (coupure) throw new TypeError("réseau");
+      return rep({ providers: [], profils: [{ id: "p", nom: "m", provider: "openai", modele: "x", defaut: true }] });
+    }
+    if (chemin === "/api/agent/messages" && opts.method === "POST") {
+      corps.push(JSON.parse(opts.body));
+      return rep({ conversation: "c1" }, 202);
+    }
+    if (chemin.startsWith("/api/agent/conversations/c1")) return rep({ entrees: [{ type: "utilisateur", texte: "Consulte `a.md`." }], etat: "termine" });
+    return rep({}, 409);
+  }));
+  return corps;
+}
+
+test("REQ126_AC10_AC12_coupure_gardee_dans_le_dialogue_puis_onglet_actif_focus_dans_le_champ_selection_inchangee", async () => {
+  const coupure = serveurSoumission({ coupure: true });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(ligne(vue, "a.md")).toBeTruthy());
+  const menu = () => {
+    ligne(vue, "a.md").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    [...document.querySelectorAll("[role=menuitem]")].find((i) => i.textContent.startsWith("Soumettre")).click();
+  };
+  const soumettre = () => [...document.querySelectorAll("dialog button")].find((b) => b.textContent === "Soumettre");
+  menu();
+  await vi.waitFor(() => expect(soumettre()).toBeTruthy());
+  soumettre().click();
+  await vi.waitFor(() => expect(document.querySelector("dialog [role=alert]").textContent).toContain("Connexion perdue. Réessayez au retour."));
+  const agentsOuverts = () => [...vue.querySelectorAll("[role=tab]")].filter((t) => t.textContent === "Agent 1");
+  expect(agentsOuverts()).toHaveLength(0);
+  expect(document.activeElement).toBe(soumettre());
+  // Retour de la connexion.
+  const corps = serveurSoumission();
+  soumettre().click();
+  await vi.waitFor(() => expect(document.querySelector("dialog")).toBeNull());
+  await vi.waitFor(() => expect(corps.length).toBe(1));
+  expect(corps[0].texte).toBe("Consulte `a.md`.");
+  expect(coupure).toEqual([]);
+  expect(agentsOuverts()).toHaveLength(1);
+  expect(agentsOuverts()[0].getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement.labels?.[0]?.textContent).toBe("Message à l'agent");
+  expect(document.activeElement.value).toBe("");
+  expect(ligne(vue, "a.md").getAttribute("aria-selected")).toBe("true");
+});
