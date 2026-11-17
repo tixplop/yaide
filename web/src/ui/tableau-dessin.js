@@ -88,6 +88,15 @@ export function dessinProvisoire(depart, arrivee, zoom, style = {}) {
   return g;
 }
 
+// Forme en cours de tracé : son contour seul, du point d'appui au pointeur.
+export function dessinFormeProvisoire(b) {
+  const g = svg("g", { class: "provisoire forme-provisoire", "aria-hidden": "true" });
+  const c = contour(b);
+  c.setAttribute("class", "forme");
+  g.append(c);
+  return g;
+}
+
 // Poignée de taille de la boîte choisie, au coin bas droit.
 export function poigneesBoite(b, z) {
   const g = svg("g", { class: "poignees", "aria-hidden": "true" });

@@ -876,6 +876,8 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau .fleche.provisoire { pointer-events: none; }
 .ya-tableau .fleche.provisoire .trait { stroke: var(--accent-fg); stroke-dasharray: 4 4; }
 .ya-tableau .fleche.provisoire .pointe { fill: var(--accent-fg); }
+.ya-tableau .provisoire { pointer-events: none; }
+.ya-tableau .provisoire .forme { fill: none; stroke: var(--accent-fg); stroke-width: 1.5px; stroke-dasharray: 4 4; }
 .ya-tableau .poignees .carre { fill: var(--accent-fg); stroke: var(--bg-200); stroke-width: var(--trait); pointer-events: none; }
 .ya-tableau .connecteurs .prise { fill: transparent; stroke: none; pointer-events: all; cursor: crosshair; }
 .ya-tableau .connecteurs .connecteur { fill: var(--bg-200); stroke: var(--ink-muted); stroke-width: 1.5px; pointer-events: none; }
@@ -884,6 +886,8 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau .poignees .prise { fill: transparent; stroke: none; pointer-events: all; }
 .ya-tableau .poignees .prise[data-poignee="depart"], .ya-tableau .poignees .prise[data-poignee="arrivee"] { cursor: crosshair; }
 .ya-tableau .poignees .prise[data-poignee="taille"] { cursor: nwse-resize; }
+.ya-tableau-surface.crosshair { cursor: crosshair; }
+.ya-tableau-surface.crosshair .boite .forme { cursor: crosshair; }
 .ya-tableau-surface.tiree { cursor: grabbing; }
 
 /* Barre d'outils d'un onglet de whiteboard (C-005 `actionsDroite`, REQ-131) : 2 px entre les commandes, 8 px après « Ajouter une boîte ». */
