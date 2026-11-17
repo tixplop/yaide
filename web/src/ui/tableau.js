@@ -1,11 +1,12 @@
 import { idLibre } from "../jdiag.js";
 import { indication } from "./indication.js";
-import { cranVoisin, extremitesFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
+import { cranVoisin, extremitesFleche, pointSortie, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
 
 // C-018 : whiteboard. Un SVG dont le `viewBox` suit la vue ; le document est celui de `jdiag.js`.
 const SVG = "http://www.w3.org/2000/svg";
 const AIDE = "Tab : objet suivant. Entrée : écrire dans la boîte. Flèches : déplacer la boîte. Suppr : effacer. Échap : ne plus rien choisir.";
 const PAS = 10;
+const SEUIL = 3;
 let compteur = 0;
 
 function svg(nom, attrs, parent) {
@@ -32,6 +33,9 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
   let editeur = null;
   let surface = null;
   let dessin = null;
+  let geste = null; // glisser en cours : { type, id, pointerId, x0, y0, origine, actif, ... }
+  let provisoire = null; // flèche en cours de tracé : { de, x, y }
+  let cible = null;
 
   const element = document.createElement("div");
   element.className = "ya-tableau";
@@ -88,13 +92,20 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
     surface.append(dessin, aide);
     element.append(surface);
     surface.addEventListener("keydown", surTouche);
+    surface.addEventListener("pointerdown", surAppui);
+    surface.addEventListener("pointermove", surMouvement);
+    surface.addEventListener("pointerup", surRelache);
+    surface.addEventListener("pointercancel", annulerGeste);
+    surface.addEventListener("dblclick", surDoubleClic);
+    surface.addEventListener("wheel", surMolette, { passive: false });
     dessin.addEventListener("click", surClic);
     dessiner();
   }
 
   function groupeBoite(b) {
     const g = svg("g", { id: idElement(b.id), "data-id": b.id, role: "group", "aria-roledescription": "boîte", "aria-label": nomBoite(b) });
-    g.setAttribute("class", `boite${choisi === b.id ? " choisie" : ""}${saisie === b.id ? " saisie" : ""}`);
+    const glissee = geste?.actif && geste.type === "boite" && geste.id === b.id;
+    g.setAttribute("class", `boite${choisi === b.id ? " choisie" : ""}${saisie === b.id ? " saisie" : ""}${glissee ? " glissee" : ""}${cible === b.id ? " cible" : ""}`);
     const geo = { x: b.x, y: b.y, width: b.width, height: b.height, rx: 4 };
     svg("rect", geo, g);
     svg("rect", { ...geo, class: "surcouche" }, g);
@@ -117,6 +128,11 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
     g.setAttribute("class", `fleche${choisi === l.id ? " choisie" : ""}`);
     const oppose = doc.links.some((m) => m.from === l.to && m.to === l.from);
     const { depart, arrivee } = extremitesFleche(de, vers, oppose ? 4 / z : 0);
+    traceFleche(g, depart, arrivee, z, true);
+    return g;
+  }
+
+  function traceFleche(g, depart, arrivee, z, avecPrise) {
     const dx = arrivee.x - depart.x;
     const dy = arrivee.y - depart.y;
     const longueur = Math.hypot(dx, dy) || 1;
@@ -124,11 +140,17 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
     const uy = dy / longueur;
     const base = { x: arrivee.x - (ux * 10) / z, y: arrivee.y - (uy * 10) / z };
     const ligne = (classe, fin) => svg("line", { class: classe, x1: depart.x, y1: depart.y, x2: fin.x, y2: fin.y }, g);
-    ligne("prise", arrivee);
+    if (avecPrise) ligne("prise", arrivee);
     ligne("trait", base);
     const l4 = 4 / z;
     const points = [arrivee, { x: base.x - uy * l4, y: base.y + ux * l4 }, { x: base.x + uy * l4, y: base.y - ux * l4 }];
     svg("polygon", { class: "pointe", points: points.map((p) => `${p.x},${p.y}`).join(" ") }, g);
+  }
+
+  function flecheProvisoire(z) {
+    const g = svg("g", { class: "fleche provisoire", "aria-hidden": "true" });
+    const source = boite(provisoire.de);
+    traceFleche(g, pointSortie(source, provisoire.x, provisoire.y), { x: provisoire.x, y: provisoire.y }, z, false);
     return g;
   }
 
@@ -156,6 +178,7 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
     dessin.replaceChildren();
     for (const b of doc.boxes) dessin.append(groupeBoite(b));
     for (const l of doc.links) dessin.append(groupeFleche(l, z));
+    if (provisoire) dessin.append(flecheProvisoire(z));
     const b = choisi && !saisie ? boite(choisi) : null;
     if (b) dessin.append(poignees(b, z));
     if (choisi) surface.setAttribute("aria-activedescendant", idElement(choisi));
@@ -304,6 +327,130 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
       surface.focus({ preventScroll: true });
       choisir(id);
     }
+  }
+
+  // Conversions écran -> dessin, par la surface et la vue.
+  function pointDessin(e) {
+    const r = surface.getBoundingClientRect();
+    return { x: vueCourante.x + (e.clientX - r.left) / vueCourante.zoom, y: vueCourante.y + (e.clientY - r.top) / vueCourante.zoom };
+  }
+
+  function boiteSous(p, sauf) {
+    return [...doc.boxes].reverse().find((b) => b.id !== sauf && p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height);
+  }
+
+  function capturer(e) {
+    try {
+      surface.setPointerCapture?.(e.pointerId);
+    } catch {
+      // pointeur déjà relâché : le geste se termine seul
+    }
+  }
+
+  function surAppui(e) {
+    if (doc === null || geste || e.button !== 0 || editeur?.contains(e.target)) return;
+    const base = { pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, actif: false };
+    const poignee = e.target.closest?.("[data-poignee]")?.getAttribute("data-poignee");
+    const b = choisi && boite(choisi);
+    if (poignee && b) {
+      capturer(e);
+      surface.focus({ preventScroll: true });
+      if (poignee === "taille") geste = { ...base, type: "taille", id: b.id, origine: { width: b.width, height: b.height }, actif: true };
+      else {
+        geste = { ...base, type: "liaison", id: b.id, actif: true };
+        provisoire = { de: b.id, ...pointDessin(e) };
+        dessiner();
+      }
+      return;
+    }
+    const g = e.target.closest?.("g.boite, g.fleche");
+    if (!g) geste = { ...base, type: "vue", origine: { x: vueCourante.x, y: vueCourante.y } };
+    else if (g.classList.contains("boite")) {
+      const id = g.getAttribute("data-id");
+      if (saisie === id) return;
+      const o = boite(id);
+      geste = { ...base, type: "boite", id, origine: { x: o.x, y: o.y } };
+    }
+  }
+
+  function surMouvement(e) {
+    if (!geste || e.pointerId !== geste.pointerId) return;
+    const dx = e.clientX - geste.x0;
+    const dy = e.clientY - geste.y0;
+    const z = vueCourante.zoom;
+    if (!geste.actif) {
+      if (Math.hypot(dx, dy) <= SEUIL) return;
+      geste.actif = true;
+      capturer(e);
+      finirSaisie();
+      if (geste.type === "boite") {
+        choisi = geste.id;
+        surface.focus({ preventScroll: true });
+      } else surface.classList.add("tiree");
+    }
+    if (geste.type === "vue") {
+      changerVue({ ...vueCourante, x: geste.origine.x - dx / z, y: geste.origine.y - dy / z });
+    } else if (geste.type === "boite") {
+      const x = Math.round(geste.origine.x + dx / z);
+      const y = Math.round(geste.origine.y + dy / z);
+      appliquer({ ...doc, boxes: doc.boxes.map((b) => (b.id === geste.id ? { ...b, x, y } : b)) });
+    } else if (geste.type === "taille") {
+      const width = Math.max(40, Math.round(geste.origine.width + dx / z));
+      const height = Math.max(24, Math.round(geste.origine.height + dy / z));
+      appliquer({ ...doc, boxes: doc.boxes.map((b) => (b.id === geste.id ? { ...b, width, height } : b)) });
+    } else {
+      const p = pointDessin(e);
+      provisoire = { de: geste.id, ...p };
+      cible = boiteSous(p, geste.id)?.id ?? null;
+    }
+    dessiner();
+  }
+
+  function surRelache(e) {
+    if (!geste || e.pointerId !== geste.pointerId) return;
+    const fin = geste;
+    if (fin.type === "liaison" && cible && !doc.links.some((l) => l.from === fin.id && l.to === cible)) {
+      appliquer({ ...doc, links: [...doc.links, { id: idLibre("l", doc), from: fin.id, to: cible }] });
+    }
+    annulerGeste();
+  }
+
+  function annulerGeste() {
+    if (!geste) return;
+    geste = null;
+    provisoire = null;
+    cible = null;
+    surface?.classList.remove("tiree");
+    dessiner();
+  }
+
+  function surDoubleClic(e) {
+    if (doc === null || e.button !== 0 || editeur?.contains(e.target)) return;
+    const g = e.target.closest?.("g.fleche");
+    if (g) return;
+    const b = e.target.closest?.("g.boite");
+    if (b) {
+      commencerSaisie(b.getAttribute("data-id"));
+      return;
+    }
+    const p = pointDessin(e);
+    const id = idLibre("b", doc);
+    appliquer({ ...doc, boxes: [...doc.boxes, { id, x: Math.round(p.x - 80), y: Math.round(p.y - 40), width: 160, height: 80, text: "" }] });
+    commencerSaisie(id);
+  }
+
+  function surMolette(e) {
+    if (doc === null || (!e.ctrlKey && editeur?.contains(e.target))) return;
+    e.preventDefault();
+    const z = vueCourante.zoom;
+    if (e.ctrlKey) {
+      const r = surface.getBoundingClientRect();
+      const zoom = Math.min(4, Math.max(0.25, z * 1.1 ** (-e.deltaY / 100)));
+      if (zoom === z) return;
+      changerVue(zoomerAutour(vueCourante, zoom, e.clientX - r.left, e.clientY - r.top));
+    } else if (e.shiftKey) changerVue({ ...vueCourante, x: vueCourante.x + (e.deltaX || e.deltaY) / z });
+    else changerVue({ ...vueCourante, x: vueCourante.x + e.deltaX / z, y: vueCourante.y + e.deltaY / z });
+    dessiner();
   }
 
   const observateur = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => dessiner());
