@@ -93,8 +93,8 @@ afterEach(() => {
 const onglets = () => [...document.querySelectorAll("[role=tab]")];
 const nomsOnglets = () => onglets().map((t) => t.querySelector(".onglet-nom").textContent);
 const onglet = (nom) => onglets().find((t) => t.querySelector(".onglet-nom").textContent === nom);
-const surface = () => document.querySelector(".ya-tableau:not([hidden]) [role=application]");
-const zone = () => document.querySelector(".ya-tableau:not([hidden])");
+const surface = () => document.querySelector(".ya-tableau-zone:not([hidden]) [role=application]");
+const zone = () => document.querySelector(".ya-tableau-zone:not([hidden])");
 const textes = () => [...zone().querySelectorAll("[data-id] .ya-tableau-texte")].map((x) => x.textContent);
 const touche = (cible, key) => cible.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
 const ctrlS = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
@@ -338,4 +338,20 @@ test("REQ131_AC3_AC5_barre_d_outils_ordre_info_bulles_zoom_affiche_et_bornes", a
   await ouvrir(e, "a.txt");
   expect(document.querySelector(".onglets-droite [role=status]")).toBeNull();
   expect(bouton("Zoom avant")).toBeNull();
+});
+
+test("REQ133_AC6_les_choix_de_la_boite_a_outils_ne_sont_pas_gardes_au_rechargement", async () => {
+  fauxServeur({ "plan.jdiag": TEXTE });
+  let m = monter();
+  await ouvrir(m.e, "plan.jdiag");
+  const presse = (nom) => zone().querySelector(`[role=toolbar] button[aria-label="${nom}"]`).getAttribute("aria-pressed");
+  zone().querySelector('[role=toolbar] button[aria-label="Coudé"]').click();
+  zone().querySelector('[role=toolbar] button[aria-label="Cercle"]').click();
+  expect([presse("Coudé"), presse("Cercle")]).toEqual(["true", "true"]);
+  m.e.detruire();
+  editeurs.pop();
+  document.body.replaceChildren();
+  m = monter();
+  await ouvrir(m.e, "plan.jdiag");
+  expect([presse("Droit"), presse("Choisir"), presse("Coudé"), presse("Cercle")]).toEqual(["true", "true", "false", "false"]);
 });

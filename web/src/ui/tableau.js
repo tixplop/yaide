@@ -1,12 +1,16 @@
 import { idLibre } from "../jdiag.js";
 import { indication } from "./indication.js";
+import { boiteOutils } from "./tableau-outils.js";
 import { cranVoisin, extremitesFleche, pointSortie, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
 import { dessinBoite, dessinFleche, dessinLien, dessinProvisoire, poigneesBoite, poigneesFleche, svg } from "./tableau-dessin.js";
 
 // C-018 : whiteboard. Un SVG dont le `viewBox` suit la vue ; le document est celui de `jdiag.js`.
-const AIDE = "Tab : objet suivant. Entrée : écrire dans la boîte. Flèches : déplacer la boîte. Suppr : effacer. Échap : ne plus rien choisir.";
+const AIDE = "Tab : objet suivant. Entrée : écrire dans la boîte. Flèches : déplacer. Suppr : effacer. Échap : ne plus rien choisir. O : boîte à outils.";
 const PAS = 10;
 const SEUIL = 3;
+const OUTILS_DEPART = { outil: "choisir", forme: "rectangle", couleur: "default", trace: "direct", bouts: "end", trait: "solid" };
+const TAILLES = { rectangle: [160, 80], rounded: [160, 80], ellipse: [100, 100], diamond: [160, 100], note: [160, 80], text: [160, 40] };
+const CLES_STYLE = { trace: "route", bouts: "ends", trait: "line" };
 let compteur = 0;
 
 function nomBoite(boite) {
@@ -14,7 +18,7 @@ function nomBoite(boite) {
   return texte || "Boîte vide";
 }
 
-export function tableau({ nom, document: documentInitial, vue, surChangement, surVue }) {
+export function tableau({ nom, document: documentInitial, vue, outils, surChangement, surVue }) {
   if (!nom) throw new Error("tableau : nom requis");
   if (typeof surChangement !== "function") throw new Error("tableau : surChangement requis");
   const prefixe = `tableau${++compteur}`;
@@ -29,9 +33,14 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
   let geste = null; // glisser en cours : { type, id, pointerId, x0, y0, origine, actif, ... }
   let provisoire = null; // flèche en cours de tracé : { de, x, y }
   let cible = null;
+  const choix = { ...OUTILS_DEPART, ...outils };
+  let barre = null;
 
   const element = document.createElement("div");
-  element.className = "ya-tableau";
+  element.className = "ya-tableau-zone";
+  const fond = document.createElement("div");
+  fond.className = "ya-tableau";
+  element.append(fond);
 
   const taille = () => {
     const r = element.getBoundingClientRect();
@@ -49,7 +58,8 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
   };
 
   function monter() {
-    element.replaceChildren();
+    fond.replaceChildren();
+    barre?.element.remove();
     surface = null;
     dessin = null;
     editeur = null;
@@ -64,7 +74,7 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
       const zone = document.createElement("div");
       zone.className = "ya-tableau-illisible";
       zone.append(indication({ texte: `${nomCourant} n'est pas un whiteboard lisible.`, variante: "vide" }), p);
-      element.append(zone);
+      fond.append(zone);
       return;
     }
     element.removeAttribute("role");
@@ -83,7 +93,8 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
     aide.textContent = AIDE;
     dessin = svg("svg", { focusable: "false" });
     surface.append(dessin, aide);
-    element.append(surface);
+    fond.append(surface);
+    element.append(barre.element);
     surface.addEventListener("keydown", surTouche);
     surface.addEventListener("pointerdown", surAppui);
     surface.addEventListener("pointermove", surMouvement);
@@ -137,7 +148,45 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
     if (provisoire) dessin.append(flecheProvisoire(z));
     if (choisi) surface.setAttribute("aria-activedescendant", idElement(choisi));
     else surface.removeAttribute("aria-activedescendant");
+    afficherOutils();
     if (avaitFocus) placerCurseur(decalage);
+  }
+
+  // Les valeurs de l'objet choisi, sinon les choix courants.
+  function afficherOutils() {
+    const o = choisi && !saisie ? [...doc.boxes, ...doc.links, ...(doc.arrows ?? [])].find((x) => x.id === choisi) : null;
+    const valeurs = { ...choix };
+    if (o && boite(o.id)) valeurs.couleur = o.color ?? "default";
+    else if (o) {
+      valeurs.trace = o.route ?? "direct";
+      valeurs.bouts = o.ends ?? "end";
+      valeurs.trait = o.line ?? "solid";
+    }
+    barre.definir(valeurs);
+  }
+
+  function surChoixOutil(cle, valeur) {
+    choix[cle] = valeur;
+    if (cle === "outil" && TAILLES[valeur]) choix.forme = valeur;
+    const o = choisi && !saisie ? [...doc.boxes, ...doc.links, ...(doc.arrows ?? [])].find((x) => x.id === choisi) : null;
+    const estBoite = o && boite(o.id) !== undefined;
+    const clef = cle === "couleur" ? "color" : CLES_STYLE[cle];
+    if (o && clef && (cle === "couleur") === estBoite && (o[clef] ?? OUTILS_DEPART[cle]) !== valeur) {
+      const change = (x) => (x.id === o.id ? { ...x, [clef]: valeur } : x);
+      appliquer({ ...doc, boxes: doc.boxes.map(change), links: doc.links.map(change), ...(doc.arrows ? { arrows: doc.arrows.map(change) } : {}) });
+    }
+    dessiner();
+  }
+
+  function nouvelleBoite(centreX, centreY) {
+    const [width, height] = TAILLES[choix.forme];
+    const id = idLibre("b", doc);
+    const b = { id, x: Math.round(centreX - width / 2), y: Math.round(centreY - height / 2), width, height, text: "" };
+    if (choix.forme !== "rectangle") b.shape = choix.forme;
+    if (choix.couleur !== "default") b.color = choix.couleur;
+    appliquer({ ...doc, boxes: [...doc.boxes, b] });
+    choix.outil = "choisir";
+    commencerSaisie(id);
   }
 
   function placerCurseur(decalage) {
@@ -261,7 +310,15 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
     const deplacable = estBoite || (doc.arrows ?? []).some((f) => f.id === choisi);
     const fleches = { ArrowLeft: [-PAS, 0], ArrowRight: [PAS, 0], ArrowUp: [0, -PAS], ArrowDown: [0, PAS] };
     if (e.key === "Tab") naviguer(e);
-    else if (e.key === "Enter" && estBoite) {
+    else if ((e.key === "o" || e.key === "O") && !e.shiftKey) {
+      e.preventDefault();
+      barre.element.querySelector('button[tabindex="0"]')?.focus();
+    } else if (e.key === "Escape" && choix.outil !== "choisir") {
+      e.preventDefault();
+      e.stopPropagation();
+      choix.outil = "choisir";
+      afficherOutils();
+    } else if (e.key === "Enter" && estBoite) {
       e.preventDefault();
       commencerSaisie(choisi);
     } else if (fleches[e.key] && deplacable) {
@@ -369,7 +426,9 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
     if (!geste || e.pointerId !== geste.pointerId) return;
     const fin = geste;
     if (fin.type === "liaison" && cible && !doc.links.some((l) => l.from === fin.id && l.to === cible)) {
-      appliquer({ ...doc, links: [...doc.links, { id: idLibre("l", doc), from: fin.id, to: cible }] });
+      const lien = { id: idLibre("l", doc), from: fin.id, to: cible };
+      for (const [cle, clef] of Object.entries(CLES_STYLE)) if (choix[cle] !== OUTILS_DEPART[cle]) lien[clef] = choix[cle];
+      appliquer({ ...doc, links: [...doc.links, lien] });
     }
     annulerGeste();
   }
@@ -394,9 +453,7 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
       return;
     }
     const p = pointDessin(e);
-    const id = idLibre("b", doc);
-    appliquer({ ...doc, boxes: [...doc.boxes, { id, x: Math.round(p.x - 80), y: Math.round(p.y - 40), width: 160, height: 80, text: "" }] });
-    commencerSaisie(id);
+    nouvelleBoite(p.x, p.y);
   }
 
   function surMolette(e) {
@@ -413,6 +470,11 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
     dessiner();
   }
 
+  barre = boiteOutils({
+    valeurs: choix,
+    surChoix: surChoixOutil,
+    surEchap: () => surface?.focus({ preventScroll: true }),
+  });
   const observateur = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => dessiner());
   observateur?.observe(element);
   monter();
@@ -445,11 +507,7 @@ export function tableau({ nom, document: documentInitial, vue, surChangement, su
       if (doc === null) return;
       finirSaisie();
       const t = taille();
-      const id = idLibre("b", doc);
-      const x = Math.round(vueCourante.x + t.largeur / 2 / vueCourante.zoom - 80);
-      const y = Math.round(vueCourante.y + t.hauteur / 2 / vueCourante.zoom - 40);
-      appliquer({ ...doc, boxes: [...doc.boxes, { id, x, y, width: 160, height: 80, text: "" }] });
-      commencerSaisie(id);
+      nouvelleBoite(vueCourante.x + t.largeur / 2 / vueCourante.zoom, vueCourante.y + t.hauteur / 2 / vueCourante.zoom);
     },
     zoomAvant: () => changerZoom(1),
     zoomArriere: () => changerZoom(-1),
