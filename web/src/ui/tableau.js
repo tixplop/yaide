@@ -501,6 +501,13 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
 
   function finirSaisie() {
     if (saisie === null) return;
+    // Un texte blanc vaut « sans texte » (AC-147-10).
+    const o = objet(saisie);
+    if (o && estLien(saisie) && /^\s*$/.test(o.text ?? "") && (o.text || (o.spans ?? []).length > 0)) {
+      doc = avecTexteDe(saisie, "", []);
+      surChangement(doc);
+      dessin.querySelector(`[data-id="${saisie}"]`)?.setAttribute("aria-label", nomLien(objet(saisie)));
+    }
     clore(editeur);
     saisie = null;
     editeur = null;

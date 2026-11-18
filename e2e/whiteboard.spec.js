@@ -411,6 +411,16 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1
     proche(cs.x, m0.x);
     proche(cs.y, m0.y);
     await page.keyboard.press("Escape");
+    // AC-147-10 : tout effacer au clavier réel → plus d'étiquette ; Ctrl+Z la rend.
+    const ee = await centre(etiquette);
+    await page.mouse.dblclick(ee.x, ee.y);
+    await expect(saisieLien).toBeFocused();
+    await page.keyboard.press("Control+a");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.press("Escape");
+    await expect(lien1.locator("foreignObject")).toHaveCount(0);
+    await page.keyboard.press("Control+z");
+    await expect(etiquette).toHaveText("si erreur");
 
     // AC-146-9, AC-146-4, AC-146-5, AC-145-3 : styles du texte d'une boîte, au clavier et à la souris réels.
     await page.getByRole("button", { name: "Tout afficher" }).click();

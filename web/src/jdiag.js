@@ -140,6 +140,10 @@ export function lireJdiag(texte) {
     if (typeof lien.text !== "string" || !TAILLES_TEXTE.includes(lien.textSize)) return null;
     lien.spans = normaliserSpans(lien.text, l.spans);
     if (!lien.spans) return null;
+    if (/^\s*$/.test(lien.text)) {
+      lien.text = "";
+      lien.spans = [];
+    }
     ids.add(lien.id);
     if (!idsBoites.has(lien.from) || !idsBoites.has(lien.to)) return null;
     links.push(lien);
@@ -197,8 +201,9 @@ function ligneBoite(o) {
 function ligneLien(o) {
   const l = spansEcrits(o);
   const cles = clesEcrites(l, CLES_LIEN, STYLE_TRAIT, true);
-  if (l.text) cles.push("text");
-  if (l.text && l.spans.length > 0) cles.push("spans");
+  const texte = !/^\s*$/.test(l.text ?? "");
+  if (texte) cles.push("text");
+  if (texte && l.spans.length > 0) cles.push("spans");
   if (l.textSize !== undefined && l.textSize !== TAILLES_TEXTE[0]) cles.push("textSize");
   return ligne(l, cles);
 }

@@ -1165,6 +1165,34 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn REQ147_AC10_texte_de_lien_blanc_ecrit_sans_texte() {
+        let d = dossier("wb147");
+        let c = ctx(&d);
+        let blanc = r#"{"version":1,"boxes":[{"id":"b1","x":40,"y":80,"width":160,"height":80,"text":"Début"},{"id":"b2","x":300,"y":80,"width":160,"height":80,"text":"Fin"}],"links":[{"id":"l1","from":"b1","to":"b2","text":"  \n","spans":[{"start":0,"end":1,"bold":true}]}]}"#;
+        let r = lancer_outil(
+            &c,
+            "whiteboard_write",
+            json!({"path": "a.jdiag", "whiteboard": serde_json::from_str::<Value>(blanc).unwrap()}),
+        )
+        .await;
+        assert!(!r.echec, "{r:?}");
+        let f = fs::read_to_string(d.join("a.jdiag")).unwrap();
+        assert!(
+            f.contains(r#"{"id": "l1", "from": "b1", "to": "b2"}"#),
+            "{f}"
+        );
+        assert!(!f.contains("spans") && !f.contains("\"text\": \"  "), "{f}");
+        fs::write(d.join("b.jdiag"), blanc).unwrap();
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "b.jdiag"})).await;
+        assert_eq!(r, ok(f));
+        // Texte avec espaces autour : gardé.
+        let garde = blanc.replace(r#""text":"  \n""#, r#""text":" par mail ""#);
+        let (t, _) =
+            crate::agent::jdiag::en_texte(&serde_json::from_str::<Value>(&garde).unwrap()).unwrap();
+        assert!(t.contains(r#""text": " par mail ""#), "{t}");
+    }
+
     /// Les objets illisibles d'AC-132-4, -7 et -10, avec la cause attendue.
     fn illisibles() -> Vec<(&'static str, &'static str)> {
         vec![

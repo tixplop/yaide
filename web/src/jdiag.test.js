@@ -199,3 +199,26 @@ describe("jdiag", () => {
     expect(lireJdiag(texte)).toBeNull();
   });
 });
+
+describe("REQ147_AC10 : texte de lien blanc", () => {
+  const doc = (text) =>
+    `{"version": 1, "boxes": [{"id": "b1", "x": 0, "y": 0, "width": 1, "height": 1, "text": ""}, {"id": "b2", "x": 9, "y": 0, "width": 1, "height": 1, "text": ""}], "links": [{"id": "l1", "from": "b1", "to": "b2", "text": ${JSON.stringify(text)}, "spans": [{"start": 0, "end": 1, "bold": true}]}]}`;
+  test("lireJdiag rend un texte vide et aucune partie", () => {
+    for (const t of ["  \n", "\t \n"]) {
+      const l = lireJdiag(doc(t)).links[0];
+      expect(l.text).toBe("");
+      expect(l.spans).toEqual([]);
+    }
+    expect(lireJdiag(doc(" par mail ")).links[0].text).toBe(" par mail ");
+  });
+  test("ecrireJdiag n'écrit ni text ni spans", () => {
+    const d = lireJdiag(doc(" par mail "));
+    d.links[0].text = "  \n";
+    d.links[0].spans = [{ start: 0, end: 1, bold: true }];
+    const f = ecrireJdiag(d);
+    expect(f).toContain('{"id": "l1", "from": "b1", "to": "b2"}');
+    expect(f).not.toContain("spans");
+    d.links[0].text = " par mail ";
+    expect(ecrireJdiag(d)).toContain('"text": " par mail "');
+  });
+});

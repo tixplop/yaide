@@ -312,7 +312,7 @@ pub fn en_texte(brut: &Value) -> Result<(String, [usize; 3]), String> {
             }
             Some(_) => return Err(format!("links[{i}]: invalid textSize.")),
         };
-        if !texte.is_empty() {
+        if !texte.trim().is_empty() {
             o.push(("text".into(), json!(texte)));
             if !parties.is_empty() {
                 o.push(("spans".into(), Value::Array(parties)));

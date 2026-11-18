@@ -224,3 +224,35 @@ test("REQ139_AC6_taille_du_texte_du_lien_pendant_la_saisie_focus_et_curseur_gard
   expect(centre("l1")).toEqual([330, 140]);
   expect(bt("Très grand").getAttribute("aria-pressed")).toBe("true");
 });
+
+test("REQ147_AC10_texte_blanc_de_lien_vaut_sans_texte", () => {
+  monter();
+  dbl(() => prise("l1"));
+  editeur().replaceChildren(document.createElement("br"));
+  editeur().dispatchEvent(new Event("input", { bubbles: true }));
+  touche("Escape", {}, editeur());
+  expect(obj("l1").querySelector(".ya-tableau-lien-texte")).toBeNull();
+  expect(obj("l1").querySelector("foreignObject")).toBeNull();
+  expect(obj("l1").getAttribute("aria-label")).toBe("De Début vers Fin");
+  expect(ecrireJdiag(dernier())).toContain('{"id": "l1", "from": "b1", "to": "b2"}');
+  expect(lien().text).toBe("");
+  // Pas de pas d'annulation : le lien n'avait pas de texte.
+  const n = changements.length;
+  dbl(() => prise("l1"));
+  expect(editeur().textContent).toBe("");
+  touche("Escape", {}, editeur());
+  expect(changements).toHaveLength(n);
+  // Deux espaces et un retour à la ligne.
+  dbl(() => prise("l1"));
+  taper(editeur(), "  \n");
+  touche("Escape", {}, editeur());
+  expect(obj("l1").querySelector(".ya-tableau-lien-texte")).toBeNull();
+  expect(obj("l1").getAttribute("aria-label")).toBe("De Début vers Fin");
+  expect(ecrireJdiag(dernier())).toContain('{"id": "l1", "from": "b1", "to": "b2"}');
+  expect(ecrireJdiag(dernier())).not.toContain("spans");
+  // Texte gardé tel quel.
+  dbl(() => prise("l1"));
+  taper(editeur(), " par mail ");
+  touche("Escape", {}, editeur());
+  expect(lien().text).toBe(" par mail ");
+});
