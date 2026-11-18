@@ -491,7 +491,7 @@ test("REQ146_AC2_le_texte_d_une_boite_et_d_un_lien_porte_ses_styles", () => {
 
 test("REQ146_AC6_une_partie_rouge_garde_sa_couleur_dans_une_boite_verte", () => {
   monter(DOC({ boxes: [boite("b1", 100, 100, { color: "green", text: "Début du flux", spans: [{ start: 0, end: 5, color: "red" }] }), boite("b2", 400, 100)] }));
-  const texte = obj("b1").querySelector(".ya-tableau-texte");
+  const texte = obj("b1").querySelector(".ya-tableau-texte > div");
   expect(obj("b1").classList.contains("couleur-green")).toBe(true);
   expect(texte.querySelector("span").style.color).toBe("var(--boite-rouge-trait)");
   expect(texte.lastChild.nodeType).toBe(3);

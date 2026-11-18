@@ -881,6 +881,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau .boite.taille-large .ya-tableau-texte { font: 18px/24px var(--font-sans); }
 .ya-tableau .boite.taille-xlarge .ya-tableau-texte { font: 24px/30px var(--font-sans); }
 .ya-tableau-texte[contenteditable] { overflow: auto; caret-color: var(--accent-fg); cursor: text; }
+.ya-tableau-texte[contenteditable] > div::after { content: "\200B"; }
 .ya-tableau :where(.lien, .fleche) { --e: 1.5px; --boite-trait: var(--ink-muted); }
 .ya-tableau :is(.lien, .fleche).epaisseur-medium { --e: 3px; }
 .ya-tableau :is(.lien, .fleche).epaisseur-thick { --e: 5px; }

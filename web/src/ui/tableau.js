@@ -4,7 +4,7 @@ import { indication } from "./indication.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
 import { boiteOutils } from "./tableau-outils.js";
 import { connecteurProcheAffiche, connecteursAffiches, connecteurs, dansRectangle, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
-import { rendreTexte } from "./tableau-texte.js";
+import { basculer, colorer, decalages, etatTexte, inserer, lireTexte, pointA, rendreZone } from "./tableau-texte.js";
 import { dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, dessinRectangleSelection, poigneesBoite, poigneesFleche, poigneesLien, svg } from "./tableau-dessin.js";
 
 // C-018 : whiteboard. Un SVG dont le `viewBox` suit la vue ; le document est celui de `jdiag.js`.
@@ -42,6 +42,11 @@ function rectangleTrace(a, b) {
     height: Math.max(24, Math.round(Math.abs(b.y - a.y))),
   };
 }
+
+const compter = (texte) => Array.from(texte).length;
+const memeSpans = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// L'objet avec son texte et ses parties ; `spans` n'est écrit que s'il y en a ou s'il y en avait.
+const avecTexte = (o, text, spans) => (spans.length > 0 || o.spans ? { ...o, text, spans } : { ...o, text });
 
 function nomBoite(boite) {
   const texte = boite.text.split("\n").map((l) => l.trim()).filter(Boolean).join(" ");
@@ -213,7 +218,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     else {
       texte = document.createElement("div");
       texte.className = "ya-tableau-texte";
-      rendreTexte(texte, b.text, b.spans);
+      rendreZone(texte, b.text, b.spans);
     }
     return dessinBoite(b, { id: idElement(b.id), nom: nomBoite(b), classe, texte });
   }
@@ -299,8 +304,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     const t = taille();
     dessin.setAttribute("viewBox", `${vueCourante.x} ${vueCourante.y} ${t.largeur / z} ${t.hauteur / z}`);
     const avaitFocus = editeur !== null && document.activeElement === editeur;
-    const sel = globalThis.getSelection?.();
-    const decalage = avaitFocus && sel?.rangeCount && editeur.contains(sel.anchorNode) ? sel.anchorOffset : null;
+    const sel = avaitFocus ? selectionSaisie() : null;
     dessin.replaceChildren();
     for (const b of doc.boxes) dessin.append(groupeBoite(b));
     for (const l of doc.links) if (!(geste?.actif && geste.type === "boutLien" && geste.id === l.id)) dessin.append(groupeLien(l, z));
@@ -321,8 +325,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     else surface.removeAttribute("aria-activedescendant");
     if (annonce && annonce.choix !== choisis.join(",")) annonce = null;
     etat.textContent = annonce ? annonce.texte : choisis.length > 1 ? `${choisis.length} objets choisis` : "";
+    if (avaitFocus) placerSelection(sel?.debut ?? null, sel?.fin);
     afficherOutils();
-    if (avaitFocus) placerCurseur(decalage);
   }
 
   const sorte = (o) => (boite(o.id) ? (o.shape === "text" ? "texte" : "boite") : "trait");
@@ -341,7 +345,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       const o = cibles()[0];
       if (o && CONCERNES[cle].includes(sorte(o))) valeurs[cle] = o[clef] ?? OUTILS_DEPART[cle];
     }
-    barre.definir(valeurs, { planActif: saisie !== null || choisis.length > 0 });
+    barre.definir(valeurs, { planActif: saisie !== null || choisis.length > 0, texte: texteOutils() });
     surface?.classList.toggle("crosshair", choix.outil !== "choisir" || geste?.type === "boutLien");
   }
 
@@ -383,17 +387,81 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     commencerSaisie(id);
   }
 
-  function placerCurseur(decalage) {
+  const selectionSaisie = () => (editeur ? decalages(editeur, globalThis.getSelection?.()) : null);
+
+  // Focus dans la saisie, sélection de `debut` à `fin` (en caractères) ; `null` : curseur à la fin du texte.
+  function placerSelection(debut, fin = debut) {
     editeur.focus();
     const sel = globalThis.getSelection?.();
     if (!sel) return;
+    if (debut === null) debut = fin = compter(lireTexte(editeur).text);
     const r = document.createRange();
-    const noeud = editeur.firstChild;
-    if (noeud) r.setStart(noeud, Math.min(decalage ?? noeud.length, noeud.length));
-    else r.setStart(editeur, 0);
-    r.collapse(true);
+    r.setStart(...pointA(editeur, debut));
+    r.setEnd(...pointA(editeur, fin));
     sel.removeAllRanges();
     sel.addRange(r);
+  }
+
+  // Les objets dont le texte se met en forme (boîtes et liens choisis, ou boîte en saisie), avec leur texte et la plage visée :
+  // la sélection de la saisie si elle n'est pas vide, sinon tout le texte.
+  function plages() {
+    return cibles()
+      .filter((o) => boite(o.id) || doc.links.some((l) => l.id === o.id))
+      .map((o) => {
+        const { text, spans } = o.id === saisie ? lireTexte(editeur) : { text: o.text ?? "", spans: o.spans ?? [] };
+        const sel = o.id === saisie ? selectionSaisie() : null;
+        const [d, f] = sel && sel.fin > sel.debut ? [sel.debut, sel.fin] : [0, compter(text)];
+        return { o, text, spans, d, f };
+      });
+  }
+
+  // État du texte visé pour la boîte à outils : styles que tout le texte non vide a, couleur commune ou `null`.
+  function texteOutils() {
+    const ps = plages();
+    if (ps.length === 0) return { actif: false };
+    const etats = ps.filter((p) => p.f > p.d).map((p) => etatTexte(p.text, p.spans, p.d, p.f));
+    if (etats.length === 0) return { actif: true, styles: [], couleur: "default" };
+    return {
+      actif: true,
+      styles: etats[0].styles.filter((s) => etats.every((e) => e.styles.includes(s))),
+      couleur: etats.every((e) => e.couleur === etats[0].couleur) ? etats[0].couleur : null,
+    };
+  }
+
+  // « Gras », « Italique », « Souligné », « Barré » (`cle` : le style) ou la couleur du texte (`cle` = « color »).
+  function surTexte(cle, couleur) {
+    const visees = plages().filter((p) => p.f > p.d);
+    const valeur = cle === "color" ? null : !visees.every((p) => etatTexte(p.text, p.spans, p.d, p.f).styles.includes(cle));
+    const nouveaux = new Map();
+    for (const p of visees) {
+      const spans = cle === "color" ? colorer(p.text, p.spans, p.d, p.f, couleur) : basculer(p.text, p.spans, p.d, p.f, cle, valeur);
+      if (!memeSpans(spans, p.spans)) nouveaux.set(p.o.id, { text: p.text, spans });
+    }
+    if (nouveaux.size === 0) return;
+    const sel = selectionSaisie();
+    const change = (x) => (nouveaux.has(x.id) ? { ...x, ...nouveaux.get(x.id) } : x);
+    appliquer({ ...doc, boxes: doc.boxes.map(change), links: doc.links.map(change) });
+    if (saisie !== null) {
+      const n = nouveaux.get(saisie);
+      rendreZone(editeur, n.text, n.spans);
+      placerSelection(sel?.debut ?? null, sel?.fin);
+    }
+    dessiner();
+  }
+
+  // Remplace la sélection de la saisie (ou `plage`, en caractères) par `ajout`, sans balise : le texte prend les styles d'avant.
+  function insererDansSaisie(ajout, plage) {
+    const id = saisie;
+    const { text, spans } = lireTexte(editeur);
+    const fin = compter(text);
+    const p = plage ?? selectionSaisie() ?? { debut: fin, fin };
+    const r = inserer(text, spans, p.debut, p.fin, ajout);
+    if (r.text === text && memeSpans(r.spans, spans)) return;
+    appliquer({ ...doc, boxes: doc.boxes.map((x) => (x.id === id ? avecTexte(x, r.text, r.spans) : x)) }, editeur);
+    rendreZone(editeur, r.text, r.spans);
+    placerSelection(p.debut + compter(ajout));
+    dessin.querySelector(`[data-id="${id}"]`)?.setAttribute("aria-label", nomBoite({ text: r.text }));
+    afficherOutils();
   }
 
   function limites(id) {
@@ -437,22 +505,40 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     choisis = [id];
     editeur = document.createElement("div");
     editeur.className = "ya-tableau-texte";
-    editeur.setAttribute("contenteditable", "plaintext-only");
+    editeur.setAttribute("contenteditable", "true");
     editeur.setAttribute("role", "textbox");
     editeur.setAttribute("aria-multiline", "true");
     editeur.setAttribute("aria-label", "Texte de la boîte");
     editeur.tabIndex = -1;
-    editeur.textContent = boite(id).text;
+    rendreZone(editeur, boite(id).text, boite(id).spans);
     const mon = editeur;
+    // Le navigateur ne met jamais de balise : retours à la ligne et collages passent par `insererDansSaisie`, les `format*` ne font rien.
+    editeur.addEventListener("beforeinput", (e) => {
+      if (mon !== editeur) return;
+      const type = e.inputType ?? "";
+      if (type.startsWith("format")) {
+        e.preventDefault();
+      } else if (type === "insertParagraph" || type === "insertLineBreak") {
+        e.preventDefault();
+        insererDansSaisie("\n");
+      } else if (type === "insertFromPaste" || type === "insertFromDrop") {
+        e.preventDefault();
+        const cible = e.getTargetRanges?.()[0];
+        insererDansSaisie(e.dataTransfer?.getData("text/plain") ?? e.data ?? "", cible ? decalages(editeur, cible) : null);
+      }
+    });
+    // Le DOM de la saisie n'est jamais réécrit ici : l'annulation du navigateur en dépend.
     editeur.addEventListener("input", () => {
       const b = boite(id);
-      if (!b || mon !== editeur || mon.textContent === b.text) return;
-      const texte = mon.textContent;
-      appliquer({ ...doc, boxes: doc.boxes.map((x) => (x.id === id ? { ...x, text: texte } : x)) }, mon);
-      dessin.querySelector(`[data-id="${id}"]`)?.setAttribute("aria-label", nomBoite({ text: texte }));
+      if (!b || mon !== editeur) return;
+      const { text, spans } = lireTexte(mon);
+      if (text === b.text && memeSpans(spans, b.spans ?? [])) return;
+      appliquer({ ...doc, boxes: doc.boxes.map((x) => (x.id === id ? avecTexte(x, text, spans) : x)) }, mon);
+      dessin.querySelector(`[data-id="${id}"]`)?.setAttribute("aria-label", nomBoite({ text }));
+      afficherOutils();
     });
     dessiner();
-    placerCurseur(null);
+    placerSelection(null);
   }
 
   function supprimer(ids) {
@@ -521,6 +607,14 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
         dessiner();
       }
       return;
+    }
+    if (saisie !== null && e.target === editeur && !e.altKey && !e.shiftKey && (estMac() ? e.metaKey : e.ctrlKey)) {
+      const style = { b: "bold", i: "italic", u: "underline" }[e.key.toLowerCase()];
+      if (style) {
+        e.preventDefault();
+        surTexte(style);
+        return;
+      }
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (saisie !== null) {
@@ -851,9 +945,14 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     valeurs: choix,
     surChoix: surChoixOutil,
     surAction: surPlan,
+    surTexte,
     surEchap: () => surface?.focus({ preventScroll: true }),
   });
   barre.element.addEventListener("keydown", surHistorique);
+  const surSelection = () => {
+    if (saisie !== null) afficherOutils();
+  };
+  document.addEventListener("selectionchange", surSelection);
   const observateur = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => dessiner());
   observateur?.observe(element);
   monter();
@@ -904,6 +1003,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     },
     detruire() {
       observateur?.disconnect();
+      document.removeEventListener("selectionchange", surSelection);
       element.remove();
     },
   };

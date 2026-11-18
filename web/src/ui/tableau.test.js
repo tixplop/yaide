@@ -50,7 +50,7 @@ test("REQ129_AC2_ajouter_une_boite_au_centre_de_la_vue_en_saisie_au_dessus_des_a
   t.ajouterBoite();
   expect(dernier().boxes).toEqual([{ id: "b1", x: 320, y: 260, width: 160, height: 80, text: "" }]);
   const zone = t.element.querySelector("[role=textbox]");
-  expect(zone.getAttribute("contenteditable")).toBe("plaintext-only");
+  expect(zone.getAttribute("contenteditable")).toBe("true");
   expect(document.activeElement).toBe(zone);
 
   // Une boîte occupe déjà le centre : la nouvelle est la dernière dessinée, donc au-dessus.
