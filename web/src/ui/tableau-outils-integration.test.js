@@ -96,7 +96,7 @@ test("REQ129_AC12_AC13_la_forme_et_la_couleur_choisies_servent_au_double_clic_et
   expect(presse("Losange")).toBe("false");
   expect(bt("Losange").getAttribute("aria-current")).toBe("true");
   expect(document.getElementById(surface().getAttribute("aria-describedby")).textContent).toBe(
-    "Tab : objet suivant. Entrée : écrire dans la boîte. Flèches : déplacer. Suppr : effacer. Ctrl+A : tout choisir. Ctrl+C, Ctrl+V : copier, coller. Échap : ne plus rien choisir. O : boîte à outils.",
+    "Tab : objet suivant. Entrée : écrire dans la boîte. Flèches : déplacer. Suppr : effacer. Ctrl+A : tout choisir. Ctrl+C, Ctrl+V : copier, coller. Ctrl+Z, Ctrl+Y : annuler, rétablir. Échap : ne plus rien choisir. O : boîte à outils.",
   );
 });
 

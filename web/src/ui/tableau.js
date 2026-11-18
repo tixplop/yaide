@@ -1,4 +1,4 @@
-import { idLibre } from "../jdiag.js";
+import { ecrireJdiag, idLibre } from "../jdiag.js";
 import { estMac } from "../references.js";
 import { indication } from "./indication.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
@@ -9,7 +9,7 @@ import { dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, de
 // C-018 : whiteboard. Un SVG dont le `viewBox` suit la vue ; le document est celui de `jdiag.js`.
 const aide = () => {
   const ctrl = estMac() ? "Cmd" : "Ctrl";
-  return `Tab : objet suivant. Entrée : écrire dans la boîte. Flèches : déplacer. Suppr : effacer. ${ctrl}+A : tout choisir. ${ctrl}+C, ${ctrl}+V : copier, coller. Échap : ne plus rien choisir. O : boîte à outils.`;
+  return `Tab : objet suivant. Entrée : écrire dans la boîte. Flèches : déplacer. Suppr : effacer. ${ctrl}+A : tout choisir. ${ctrl}+C, ${ctrl}+V : copier, coller. ${ctrl}+Z, ${ctrl}+Y : annuler, rétablir. Échap : ne plus rien choisir. O : boîte à outils.`;
 };
 const PAS = 10;
 const SEUIL = 3;
@@ -87,10 +87,61 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   const tousLesId = () => [...doc.boxes, ...doc.links, ...(doc.arrows ?? [])].map((o) => o.id);
   const objet = (id) => [...doc.boxes, ...doc.links, ...(doc.arrows ?? [])].find((x) => x.id === id);
   const boite = (id) => doc.boxes.find((b) => b.id === id);
-  const appliquer = (nouveau) => {
+  // Historique (REQ-145) : les documents d'avant (100 au plus) et ceux à refaire.
+  let passes = [];
+  let aRefaire = [];
+  let dernierGroupe = null; // le groupe du dernier pas : ses appels suivants le prolongent
+  let annonce = null; // { texte, choix } : message de Ctrl+Z / Ctrl+Y dans la zone status
+  const appliquer = (nouveau, groupe = null) => {
+    if (groupe === null || groupe !== dernierGroupe) {
+      passes.push(doc);
+      if (passes.length > 100) passes.shift();
+      aRefaire = [];
+    }
+    dernierGroupe = groupe;
     doc = nouveau;
     surChangement(nouveau);
   };
+  // Fin d'un geste ou d'une saisie : un pas qui ne change pas le texte du document ne compte pas.
+  const clore = (groupe) => {
+    if (groupe === null || dernierGroupe !== groupe) return;
+    dernierGroupe = null;
+    if (ecrireJdiag(passes.at(-1)) === ecrireJdiag(doc)) passes.pop();
+  };
+  const annoncer = (texte) => {
+    const a = { texte: "", choix: choisis.join(",") };
+    annonce = a;
+    if (etat) etat.textContent = "";
+    setTimeout(() => {
+      if (annonce !== a) return;
+      a.texte = texte;
+      if (etat) etat.textContent = texte;
+    }, 0);
+  };
+  function historique(sens) {
+    if (saisie !== null || geste || doc === null) return;
+    const pile = sens < 0 ? passes : aRefaire;
+    if (pile.length === 0) {
+      annoncer(sens < 0 ? "Rien à annuler." : "Rien à rétablir.");
+      return;
+    }
+    (sens < 0 ? aRefaire : passes).push(doc);
+    doc = pile.pop();
+    dernierGroupe = null;
+    choisis = choisis.filter((id) => objet(id) !== undefined);
+    surChangement(doc);
+    dessiner();
+    annoncer(sens < 0 ? "Modification annulée." : "Modification rétablie.");
+  }
+  // Ctrl+Z, Ctrl+Y (Cmd sur macOS), sans Alt ni Maj ; hors saisie, jamais l'effet du navigateur.
+  function surHistorique(e) {
+    if (saisie !== null || e.altKey || e.shiftKey || !(estMac() ? e.metaKey : e.ctrlKey)) return false;
+    const k = e.key.toLowerCase();
+    if (k !== "z" && k !== "y") return false;
+    e.preventDefault();
+    historique(k === "z" ? -1 : 1);
+    return true;
+  }
   const changerVue = (nouvelle) => {
     vueCourante = nouvelle;
     surVue?.({ ...vueCourante });
@@ -267,7 +318,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     if (geste?.type === "selection" && geste.actif) dessin.append(dessinRectangleSelection(geste.rect));
     if (premier()) surface.setAttribute("aria-activedescendant", idElement(premier()));
     else surface.removeAttribute("aria-activedescendant");
-    etat.textContent = choisis.length > 1 ? `${choisis.length} objets choisis` : "";
+    if (annonce && annonce.choix !== choisis.join(",")) annonce = null;
+    etat.textContent = annonce ? annonce.texte : choisis.length > 1 ? `${choisis.length} objets choisis` : "";
     afficherOutils();
     if (avaitFocus) placerCurseur(decalage);
   }
@@ -372,6 +424,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
 
   function finirSaisie() {
     if (saisie === null) return;
+    clore(editeur);
     saisie = null;
     editeur = null;
     dessiner();
@@ -394,7 +447,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       const b = boite(id);
       if (!b || mon !== editeur || mon.textContent === b.text) return;
       const texte = mon.textContent;
-      appliquer({ ...doc, boxes: doc.boxes.map((x) => (x.id === id ? { ...x, text: texte } : x)) });
+      appliquer({ ...doc, boxes: doc.boxes.map((x) => (x.id === id ? { ...x, text: texte } : x)) }, mon);
       dessin.querySelector(`[data-id="${id}"]`)?.setAttribute("aria-label", nomBoite({ text: texte }));
     });
     dessiner();
@@ -447,6 +500,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       dessiner();
       return;
     }
+    if (surHistorique(e)) return;
     if (saisie === null && !e.altKey && !e.shiftKey && (estMac() ? e.metaKey : e.ctrlKey) && e.key.toLowerCase() === "a") {
       e.preventDefault();
       choisis = tousLesId();
@@ -643,19 +697,19 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
         ...doc,
         boxes: doc.boxes.map((b) => (o.has(b.id) ? { ...b, x: o.get(b.id).x + ddx, y: o.get(b.id).y + ddy } : b)),
         ...(doc.arrows ? { arrows: doc.arrows.map((a) => (o.has(a.id) ? { ...a, x1: o.get(a.id).x1 + ddx, y1: o.get(a.id).y1 + ddy, x2: o.get(a.id).x2 + ddx, y2: o.get(a.id).y2 + ddy } : a)) } : {}),
-      });
+      }, geste);
     } else if (geste.type === "selection") {
       const p = pointDessin(e);
       geste.rect = { x: Math.min(geste.p0.x, p.x), y: Math.min(geste.p0.y, p.y), width: Math.abs(p.x - geste.p0.x), height: Math.abs(p.y - geste.p0.y) };
     } else if (geste.type === "taille") {
       const width = Math.max(40, Math.round(geste.origine.width + dx / z));
       const height = Math.max(24, Math.round(geste.origine.height + dy / z));
-      appliquer({ ...doc, boxes: doc.boxes.map((b) => (b.id === geste.id ? { ...b, width, height } : b)) });
+      appliquer({ ...doc, boxes: doc.boxes.map((b) => (b.id === geste.id ? { ...b, width, height } : b)) }, geste);
     } else if (geste.type === "bout") {
       const o = geste.origine;
       const [kx, ky] = geste.bout === "depart" ? ["x1", "y1"] : ["x2", "y2"];
       const f = { [kx]: Math.round(o[kx] + dx / z), [ky]: Math.round(o[ky] + dy / z) };
-      appliquer({ ...doc, arrows: doc.arrows.map((a) => (a.id === geste.id ? { ...a, ...f } : a)) });
+      appliquer({ ...doc, arrows: doc.arrows.map((a) => (a.id === geste.id ? { ...a, ...f } : a)) }, geste);
     } else if (geste.type === "boutLien") {
       pointeur = pointDessin(e);
       const autre = geste.bout === "depart" ? doc.links.find((l) => l.id === geste.id).to : doc.links.find((l) => l.id === geste.id).from;
@@ -746,6 +800,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   function annulerGeste() {
     if (!geste) return;
     const actif = geste.actif;
+    clore(geste);
     geste = null;
     provisoire = null;
     formeProvisoire = null;
@@ -797,6 +852,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     surAction: surPlan,
     surEchap: () => surface?.focus({ preventScroll: true }),
   });
+  barre.element.addEventListener("keydown", surHistorique);
   const observateur = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => dessiner());
   observateur?.observe(element);
   monter();
@@ -815,6 +871,9 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     definirDocument(nouveau) {
       const avant = doc === null;
       finirSaisie();
+      passes = [];
+      aRefaire = [];
+      dernierGroupe = null;
       doc = nouveau ?? null;
       choisis = doc === null ? [] : choisis.filter((id) => objet(id) !== undefined);
       if (avant || doc === null) monter();
