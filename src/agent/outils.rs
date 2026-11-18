@@ -78,8 +78,8 @@ fn def(nom: &str, description: &str, proprietes: Value, requis: &[&str]) -> DefO
     }
 }
 
-const DESCRIPTION_WHITEBOARD: &str = "Create or replace a whiteboard file (.jdiag), with its parent folders. The whiteboard is refused, and nothing written, if it is not valid. Required keys: version (1), boxes, links; arrows (free arrows) is optional. Box: id, x, y (top-left corner, integer pixels), width, height (integers), text (lines separated by \\n). Link: id, from, to (box ids). Free arrow: id, x1, y1 (start), x2, y2 (end), integers. Ids are unique across all objects: b<n> for boxes, l<n> for links, a<n> for arrows, n starting at 1. Optional keys and their allowed values, the first one being the default: ";
-const FIN_DESCRIPTION_WHITEBOARD: &str = ". A new box is 160x80 (circle 100x100, diamond 160x100, text 160x40). A link may give fromSide and toSide together (top, right, bottom, left, center (the box center; the line stops at its border)). Lists go from the lowest object to the highest. To change a whiteboard, read it with whiteboard_read, then write it whole.";
+const DESCRIPTION_WHITEBOARD: &str = "Create or replace a whiteboard file (.jdiag), with its parent folders. The whiteboard is refused, and nothing written, if it is not valid. Required keys: version (1), boxes, links; arrows (free arrows) is optional. Box: id, x, y (top-left corner, integer pixels), width, height (integers), text (lines separated by \\n), spans (optional parts of the text with their own style). Link: id, from, to (box ids), text (optional label shown on the link, with spans and textSize). Free arrow: id, x1, y1 (start), x2, y2 (end), integers. Ids are unique across all objects: b<n> for boxes, l<n> for links, a<n> for arrows, n starting at 1. Optional keys and their allowed values, the first one being the default: ";
+const FIN_DESCRIPTION_WHITEBOARD: &str = ". A new box is 160x80 (circle 100x100, diamond 160x100, text 160x40). A link may give fromSide and toSide together (top, right, bottom, left, center (the box center; the line stops at its border)). A span is {start, end, bold, italic, underline, strike, color}: start and end are positions in characters (not bytes), end excluded, spans must not overlap, and a link label needs a text before its spans. Lists go from the lowest object to the highest. To change a whiteboard, read it with whiteboard_read, then write it whole.";
 
 fn valeurs_texte(style: &jdiag::Style) -> String {
     style
@@ -105,6 +105,20 @@ fn description_whiteboard_write() -> String {
 
 fn schema_whiteboard() -> Value {
     let cote = json!({"type": "string", "enum": jdiag::COTES});
+    let partie = json!({
+        "type": "object",
+        "properties": {
+            "start": {"type": "integer"},
+            "end": {"type": "integer"},
+            "bold": {"type": "boolean"},
+            "italic": {"type": "boolean"},
+            "underline": {"type": "boolean"},
+            "strike": {"type": "boolean"},
+            "color": {"type": "string", "enum": jdiag::couleurs()},
+        },
+        "required": ["start", "end"],
+    });
+    let spans = json!({"type": "array", "items": partie});
     let objet = |entiers: &[&str], textes: &[&str], style: jdiag::Style, extra: Value| {
         let mut p = serde_json::Map::new();
         for c in textes {
@@ -134,13 +148,19 @@ fn schema_whiteboard() -> Value {
         &["x", "y", "width", "height"],
         &["id", "text"],
         jdiag::style_boite(),
-        json!({}),
+        json!({"spans": spans}),
     );
     let lien = objet(
         &[],
         &["id", "from", "to"],
         jdiag::style_trait(),
-        json!({"fromSide": cote, "toSide": cote}),
+        json!({
+            "fromSide": cote,
+            "toSide": cote,
+            "text": {"type": "string"},
+            "spans": spans,
+            "textSize": {"type": "string", "enum": jdiag::style_boite()[5].1},
+        }),
     );
     let libre = objet(
         &["x1", "y1", "x2", "y2"],
@@ -1252,6 +1272,176 @@ mod tests {
         let r = lancer_outil(&c, "whiteboard_read", json!({"path": "m.jdiag"})).await;
         assert_eq!(r, echec("The file is not valid JSON."));
         assert_eq!(fs::read_to_string(d.join("a.jdiag")).unwrap(), DEUX);
+    }
+
+    const SPANS12: &str = "{\n  \"version\": 1,\n  \"boxes\": [\n    {\"id\": \"b1\", \"x\": 40, \"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Début du flux\", \"spans\": [{\"start\": 0, \"end\": 5, \"bold\": true, \"color\": \"red\"}, {\"start\": 9, \"end\": 13, \"italic\": true, \"underline\": true, \"strike\": true}]},\n    {\"id\": \"b2\", \"x\": 300, \"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Fin\"}\n  ],\n  \"links\": [\n    {\"id\": \"l1\", \"from\": \"b1\", \"to\": \"b2\", \"color\": \"red\", \"text\": \"par mail\", \"spans\": [{\"start\": 4, \"end\": 8, \"bold\": true}], \"textSize\": \"large\"}\n  ]\n}\n";
+
+    fn boite_spans(texte: &str, spans: Value) -> String {
+        json!({"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":texte,"spans":spans}],"links":[]}).to_string()
+    }
+
+    fn lien_avec(extra: Value) -> String {
+        let mut l = json!({"id":"l1","from":"b1","to":"b2"});
+        l.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        json!({"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":""},{"id":"b2","x":1,"y":1,"width":1,"height":1,"text":""}],"links":[l]}).to_string()
+    }
+
+    #[test]
+    fn REQ144_AC8_schema_des_parties_du_texte() {
+        let defs = definitions();
+        let ecriture = defs.iter().find(|d| d.nom == "whiteboard_write").unwrap();
+        let wb = &ecriture.schema["properties"]["whiteboard"]["properties"];
+        let couleurs = json!(["default", "blue", "green", "yellow", "orange", "red", "purple"]);
+        for objets in ["boxes", "links"] {
+            let spans = &wb[objets]["items"]["properties"]["spans"];
+            assert_eq!(spans["type"], "array", "{objets}");
+            let p = &spans["items"]["properties"];
+            assert_eq!(p["start"]["type"], "integer");
+            assert_eq!(p["end"]["type"], "integer");
+            for b in ["bold", "italic", "underline", "strike"] {
+                assert_eq!(p[b]["type"], "boolean", "{b}");
+            }
+            assert_eq!(p["color"]["enum"], couleurs);
+        }
+        let lien = &wb["links"]["items"]["properties"];
+        assert_eq!(lien["text"]["type"], "string");
+        assert_eq!(
+            lien["textSize"]["enum"],
+            json!(["normal", "small", "large", "xlarge"])
+        );
+        assert!(wb["boxes"]["items"]["properties"].get("text").is_some());
+        assert!(wb["arrows"]["items"]["properties"].get("text").is_none());
+        assert!(ecriture.description.contains("positions in characters"));
+        assert!(ecriture.description.contains("end excluded"));
+    }
+
+    #[tokio::test]
+    async fn REQ144_AC8_ecriture_et_lecture_des_parties_du_texte() {
+        let d = dossier("wb8");
+        let c = ctx(&d);
+        ecrire_wb(&c, "a.jdiag", SPANS12).await;
+        assert_eq!(fs::read_to_string(d.join("a.jdiag")).unwrap(), SPANS12);
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "a.jdiag"})).await;
+        assert!(!r.echec);
+        assert_eq!(r.contenu, SPANS12);
+        // AC-132-13 : autre ordre, parties qui se touchent, défauts, partie sans style, liste vide.
+        let autre = SPANS12
+            .replace(
+                "\"spans\": [{\"start\": 0, \"end\": 5, \"bold\": true, \"color\": \"red\"}, {\"start\": 9, \"end\": 13, \"italic\": true, \"underline\": true, \"strike\": true}]",
+                "\"spans\": [{\"start\": 9, \"end\": 13, \"strike\": true, \"italic\": true, \"underline\": true, \"bold\": false, \"color\": \"default\"}, {\"start\": 6, \"end\": 8, \"italic\": false}, {\"start\": 2, \"end\": 5, \"bold\": true, \"color\": \"red\"}, {\"start\": 0, \"end\": 2, \"color\": \"red\", \"bold\": true, \"inconnue\": 1}]",
+            )
+            .replace("\"text\": \"Fin\"}", "\"text\": \"Fin\", \"spans\": []}");
+        let w: Value = serde_json::from_str(&autre).unwrap();
+        let r = lancer_outil(
+            &c,
+            "whiteboard_write",
+            json!({"path": "b.jdiag", "whiteboard": w}),
+        )
+        .await;
+        assert!(!r.echec, "{r:?}");
+        assert_eq!(fs::read_to_string(d.join("b.jdiag")).unwrap(), SPANS12);
+        fs::write(d.join("c.jdiag"), &autre).unwrap();
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "c.jdiag"})).await;
+        assert_eq!(r.contenu, SPANS12);
+        // Un lien sans texte est réécrit sans `text`.
+        let r = ecrire_wb(&c, "d.jdiag", &lien_avec(json!({"text": ""}))).await;
+        assert!(!r.echec, "{r:?}");
+        assert!(fs::read_to_string(d.join("d.jdiag"))
+            .unwrap()
+            .contains("\"to\": \"b2\"}"));
+        // Positions en caractères Unicode.
+        let emoji = boite_spans("A😀B", json!([{"start": 2, "end": 3, "bold": true}]));
+        let r = ecrire_wb(&c, "e.jdiag", &emoji).await;
+        assert!(!r.echec, "{r:?}");
+        assert!(fs::read_to_string(d.join("e.jdiag")).unwrap().contains(
+            "\"text\": \"A😀B\", \"spans\": [{\"start\": 2, \"end\": 3, \"bold\": true}]}"
+        ));
+        // Une flèche libre qui porte text, spans ou textSize les voit ignorés.
+        let libre = r#"{"version":1,"boxes":[],"links":[],"arrows":[{"id":"a1","x1":1,"y1":1,"x2":2,"y2":2,"text":3,"spans":{},"textSize":"tiny"}]}"#;
+        let r = ecrire_wb(&c, "f.jdiag", libre).await;
+        assert!(!r.echec, "{r:?}");
+        assert!(!fs::read_to_string(d.join("f.jdiag"))
+            .unwrap()
+            .contains("text"));
+    }
+
+    #[tokio::test]
+    async fn REQ144_AC8_refus_des_parties_du_texte() {
+        let d = dossier("wb8r");
+        let c = ctx(&d);
+        fs::write(d.join("a.jdiag"), DEUX).unwrap();
+        let t = "Début du flux";
+        let refus = [
+            (
+                boite_spans(t, json!([{"start": 0, "end": 14, "bold": true}])),
+                "boxes[0]: invalid spans.",
+            ),
+            (
+                boite_spans(t, json!([{"start": 5, "end": 5, "bold": true}])),
+                "boxes[0]: invalid spans.",
+            ),
+            (
+                boite_spans(t, json!([{"start": -1, "end": 3, "bold": true}])),
+                "boxes[0]: invalid spans.",
+            ),
+            (
+                boite_spans(
+                    t,
+                    json!([{"start": 0, "end": 5, "bold": true}, {"start": 3, "end": 8, "italic": true}]),
+                ),
+                "boxes[0]: invalid spans.",
+            ),
+            (
+                boite_spans(t, json!([{"start": 0, "end": 5, "bold": "yes"}])),
+                "boxes[0]: invalid spans.",
+            ),
+            (
+                boite_spans(t, json!([{"start": 0, "end": 5, "color": "pink"}])),
+                "boxes[0]: invalid spans.",
+            ),
+            (
+                boite_spans(t, json!([{"start": 1.5, "end": 5, "bold": true}])),
+                "boxes[0]: invalid spans.",
+            ),
+            (boite_spans(t, json!({})), "boxes[0]: invalid spans."),
+            (boite_spans(t, json!([3])), "boxes[0]: invalid spans."),
+            (
+                boite_spans("A😀B", json!([{"start": 0, "end": 4}])),
+                "boxes[0]: invalid spans.",
+            ),
+            (
+                lien_avec(json!({"text": 3})),
+                "links[0]: missing or invalid text.",
+            ),
+            (
+                lien_avec(json!({"text": "mail", "textSize": "tiny"})),
+                "links[0]: invalid textSize.",
+            ),
+            (
+                lien_avec(json!({"spans": [{"start": 0, "end": 1, "bold": true}]})),
+                "links[0]: invalid spans.",
+            ),
+            (
+                lien_avec(json!({"text": "mail", "spans": [{"start": 0, "end": 5}]})),
+                "links[0]: invalid spans.",
+            ),
+        ];
+        for (texte, cause) in refus {
+            let w: Value = serde_json::from_str(&texte).unwrap();
+            let r = lancer_outil(
+                &c,
+                "whiteboard_write",
+                json!({"path": "a.jdiag", "whiteboard": w}),
+            )
+            .await;
+            assert!(r.echec && r.contenu.starts_with(cause), "{texte} -> {r:?}");
+            assert_eq!(fs::read_to_string(d.join("a.jdiag")).unwrap(), DEUX);
+            fs::write(d.join("m.jdiag"), &texte).unwrap();
+            let r = lancer_outil(&c, "whiteboard_read", json!({"path": "m.jdiag"})).await;
+            assert!(r.echec && r.contenu.starts_with(cause), "{texte} -> {r:?}");
+        }
     }
 
     #[tokio::test]

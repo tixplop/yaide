@@ -18,6 +18,8 @@ const STYLE_BOITE = {
   textSize: ["normal", "small", "large", "xlarge"],
 };
 const STYLE_TRAIT = { route: ["direct", "orthogonal", "curved"], ends: ["end", "none", "start", "both"], line: TRAITS, color: COULEURS, weight: EPAISSEURS };
+const STYLES_PARTIE = ["bold", "italic", "underline", "strike"];
+const TAILLES_TEXTE = STYLE_BOITE.textSize;
 const COTES = ["top", "right", "bottom", "left", "center"];
 
 function estObjet(v) {
@@ -42,6 +44,51 @@ function copier(objet, cles, styles) {
     copie[cle] = v;
   }
   return copie;
+}
+
+function longueur(texte) {
+  return Array.from(texte).length;
+}
+
+// Parties du texte d'un objet → liste normalisée (triée, parties qui se touchent avec les mêmes styles
+// fondues, styles par défaut et parties sans style retirés), ou `null` si la liste est refusée.
+// Une partie : `start`, `end` (en caractères Unicode, fin exclue), puis les styles non par défaut.
+export function normaliserSpans(text, spans) {
+  if (spans === undefined) return [];
+  if (!Array.isArray(spans)) return null;
+  const fin = longueur(text);
+  const parties = [];
+  for (const p of spans) {
+    if (!estObjet(p) || !Number.isInteger(p.start) || !Number.isInteger(p.end)) return null;
+    if (p.start < 0 || p.start >= p.end || p.end > fin) return null;
+    const partie = { start: p.start, end: p.end };
+    for (const cle of STYLES_PARTIE) {
+      if (p[cle] === undefined) continue;
+      if (typeof p[cle] !== "boolean") return null;
+      if (p[cle]) partie[cle] = true;
+    }
+    if (p.color !== undefined) {
+      if (!COULEURS.includes(p.color)) return null;
+      if (p.color !== COULEURS[0]) partie.color = p.color;
+    }
+    parties.push(partie);
+  }
+  parties.sort((a, b) => a.start - b.start);
+  const sortie = [];
+  let precedent = null;
+  for (const p of parties) {
+    if (precedent && p.start < precedent.end) return null;
+    if (Object.keys(p).length === 2) {
+      precedent = p;
+      continue;
+    }
+    const dernier = sortie[sortie.length - 1];
+    const memes = (a, b) => [...STYLES_PARTIE, "color"].every((c) => a[c] === b[c]);
+    if (dernier && dernier.end === p.start && memes(dernier, p)) dernier.end = p.end;
+    else sortie.push({ ...p });
+    precedent = p;
+  }
+  return sortie;
 }
 
 function lireCotes(objet, copie) {
@@ -78,6 +125,8 @@ export function lireJdiag(texte) {
   for (const b of brut.boxes) {
     const boite = copier(b, CLES_BOITE, STYLE_BOITE);
     if (!boite || ids.has(boite.id)) return null;
+    boite.spans = normaliserSpans(boite.text, b.spans);
+    if (!boite.spans) return null;
     ids.add(boite.id);
     boxes.push(boite);
   }
@@ -86,6 +135,11 @@ export function lireJdiag(texte) {
   for (const l of brut.links) {
     const lien = copier(l, CLES_LIEN, STYLE_TRAIT);
     if (!lien || ids.has(lien.id) || !lireCotes(l, lien)) return null;
+    lien.text = l.text === undefined ? "" : l.text;
+    lien.textSize = l.textSize === undefined ? TAILLES_TEXTE[0] : l.textSize;
+    if (typeof lien.text !== "string" || !TAILLES_TEXTE.includes(lien.textSize)) return null;
+    lien.spans = normaliserSpans(lien.text, l.spans);
+    if (!lien.spans) return null;
     ids.add(lien.id);
     if (!idsBoites.has(lien.from) || !idsBoites.has(lien.to)) return null;
     links.push(lien);
@@ -112,8 +166,14 @@ function clesEcrites(objet, requises, styles, cotes) {
   return cles;
 }
 
+// Les parties s'écrivent sur la ligne de leur objet : `{"start": 0, "end": 5, "bold": true}`.
+function valeur(cle, v) {
+  if (cle !== "spans") return JSON.stringify(v);
+  return "[" + v.map((p) => "{" + Object.entries(p).map(([c, x]) => `${JSON.stringify(c)}: ${JSON.stringify(x)}`).join(", ") + "}").join(", ") + "]";
+}
+
 function ligne(objet, cles) {
-  return "    {" + cles.map((c) => `${JSON.stringify(c)}: ${JSON.stringify(objet[c])}`).join(", ") + "}";
+  return "    {" + cles.map((c) => `${JSON.stringify(c)}: ${valeur(c, objet[c])}`).join(", ") + "}";
 }
 
 function liste(nom, objets) {
@@ -121,10 +181,32 @@ function liste(nom, objets) {
   return `  "${nom}": [\n${objets.join(",\n")}\n  ]`;
 }
 
+function spansEcrits(o) {
+  const spans = normaliserSpans(o.text ?? "", o.spans ?? []);
+  if (!spans) throw new Error("ecrireJdiag : parties du texte invalides");
+  return { ...o, spans };
+}
+
+function ligneBoite(o) {
+  const b = spansEcrits(o);
+  const cles = clesEcrites(b, CLES_BOITE, STYLE_BOITE, false);
+  if (b.spans.length > 0) cles.splice(CLES_BOITE.length, 0, "spans");
+  return ligne(b, cles);
+}
+
+function ligneLien(o) {
+  const l = spansEcrits(o);
+  const cles = clesEcrites(l, CLES_LIEN, STYLE_TRAIT, true);
+  if (l.text) cles.push("text");
+  if (l.text && l.spans.length > 0) cles.push("spans");
+  if (l.textSize !== undefined && l.textSize !== TAILLES_TEXTE[0]) cles.push("textSize");
+  return ligne(l, cles);
+}
+
 // Document → texte du fichier, toujours écrit de la même façon.
 export function ecrireJdiag(doc) {
-  const boites = doc.boxes.map((o) => ligne(o, clesEcrites(o, CLES_BOITE, STYLE_BOITE, false)));
-  const liens = doc.links.map((o) => ligne(o, clesEcrites(o, CLES_LIEN, STYLE_TRAIT, true)));
+  const boites = doc.boxes.map(ligneBoite);
+  const liens = doc.links.map(ligneLien);
   const parties = [liste("boxes", boites), liste("links", liens)];
   const libres = (doc.arrows ?? []).map((o) => ligne(o, clesEcrites(o, CLES_LIBRE, STYLE_TRAIT, false)));
   if (libres.length > 0) parties.push(liste("arrows", libres));

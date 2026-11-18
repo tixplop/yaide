@@ -18,7 +18,7 @@ fn textes(l: &[&str]) -> Vec<Value> {
     l.iter().map(|s| json!(s)).collect()
 }
 
-fn couleurs() -> Vec<Value> {
+pub fn couleurs() -> Vec<Value> {
     textes(&[
         "default", "blue", "green", "yellow", "orange", "red", "purple",
     ])
@@ -107,6 +107,105 @@ fn objet(
     Ok(sortie)
 }
 
+type Partie = (i64, i64, [bool; 4], String);
+const STYLES_PARTIE: [&str; 4] = ["bold", "italic", "underline", "strike"];
+const CLES_PARTIE: [&str; 7] = [
+    "start",
+    "end",
+    "bold",
+    "italic",
+    "underline",
+    "strike",
+    "color",
+];
+
+/// Parties du texte → liste normalisée (triée, parties qui se touchent avec les mêmes styles
+/// fondues, styles par défaut et parties sans style retirés), ou `None` si elle est refusée.
+/// Les positions comptent en caractères Unicode, fin exclue.
+fn spans(brut: Option<&Value>, texte: &str) -> Option<Vec<Value>> {
+    let Some(brut) = brut else {
+        return Some(vec![]);
+    };
+    let fin = texte.chars().count() as i64;
+    let mut parties: Vec<Partie> = Vec::new();
+    for p in brut.as_array()? {
+        let o = p.as_object()?;
+        let (start, end) = (entier(o.get("start")?)?, entier(o.get("end")?)?);
+        if start < 0 || start >= end || end > fin {
+            return None;
+        }
+        let mut styles = [false; 4];
+        for (i, cle) in STYLES_PARTIE.iter().enumerate() {
+            match o.get(*cle) {
+                None => {}
+                Some(Value::Bool(b)) => styles[i] = *b,
+                Some(_) => return None,
+            }
+        }
+        let couleur = match o.get("color") {
+            None => "default".to_string(),
+            Some(Value::String(c)) if couleurs().contains(&json!(c)) => c.clone(),
+            Some(_) => return None,
+        };
+        parties.push((start, end, styles, couleur));
+    }
+    parties.sort_by_key(|p| p.0);
+    let mut fondues: Vec<Partie> = Vec::new();
+    let mut fin_precedente = 0;
+    for p in parties {
+        if p.0 < fin_precedente {
+            return None;
+        }
+        fin_precedente = p.1;
+        if p.2 == [false; 4] && p.3 == "default" {
+            continue;
+        }
+        match fondues.last_mut() {
+            Some(d) if d.1 == p.0 && d.2 == p.2 && d.3 == p.3 => d.1 = p.1,
+            _ => fondues.push(p),
+        }
+    }
+    Some(
+        fondues
+            .into_iter()
+            .map(|(start, end, styles, couleur)| {
+                let mut o = serde_json::Map::new();
+                o.insert("start".into(), json!(start));
+                o.insert("end".into(), json!(end));
+                for (cle, v) in STYLES_PARTIE.iter().zip(styles) {
+                    if v {
+                        o.insert(cle.to_string(), json!(true));
+                    }
+                }
+                if couleur != "default" {
+                    o.insert("color".into(), json!(couleur));
+                }
+                Value::Object(o)
+            })
+            .collect(),
+    )
+}
+
+/// Une liste de parties, sur la ligne de son objet : `[{"start": 0, "end": 5, "bold": true}]`.
+fn ecrire_spans(parties: &Value) -> String {
+    let objets: Vec<String> = parties
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|p| {
+            let champs: Vec<String> = CLES_PARTIE
+                .iter()
+                .filter_map(|c| {
+                    p.get(c)
+                        .map(|v| format!("\"{c}\": {}", serde_json::to_string(v).unwrap()))
+                })
+                .collect();
+            format!("{{{}}}", champs.join(", "))
+        })
+        .collect();
+    format!("[{}]", objets.join(", "))
+}
+
 fn identifiant(o: &Objet) -> &str {
     o[0].1.as_str().unwrap_or("")
 }
@@ -127,11 +226,12 @@ fn ligne(o: &Objet) -> String {
     let champs: Vec<String> = o
         .iter()
         .map(|(c, v)| {
-            format!(
-                "{}: {}",
-                serde_json::to_string(c).unwrap(),
+            let v = if c == "spans" {
+                ecrire_spans(v)
+            } else {
                 serde_json::to_string(v).unwrap()
-            )
+            };
+            format!("{}: {}", serde_json::to_string(c).unwrap(), v)
         })
         .collect();
     format!("    {{{}}}", champs.join(", "))
@@ -172,7 +272,13 @@ pub fn en_texte(brut: &Value) -> Result<(String, [usize; 3]), String> {
     let style_t = style_trait();
     let mut boites = Vec::new();
     for (i, v) in b.iter().enumerate() {
-        let o = objet("boxes", i, v, &CLES_BOITE, &style_b)?;
+        let mut o = objet("boxes", i, v, &CLES_BOITE, &style_b)?;
+        let texte = o[5].1.as_str().unwrap_or("").to_string();
+        let parties =
+            spans(v.get("spans"), &texte).ok_or_else(|| format!("boxes[{i}]: invalid spans."))?;
+        if !parties.is_empty() {
+            o.insert(6, ("spans".into(), Value::Array(parties)));
+        }
         verifier(&o)?;
         boites.push(o);
     }
@@ -190,6 +296,30 @@ pub fn en_texte(brut: &Value) -> Result<(String, [usize; 3]), String> {
             };
             o.insert(3, ("fromSide".into(), json!(de)));
             o.insert(4, ("toSide".into(), json!(vers)));
+        }
+        // Le texte, ses parties et sa taille ne valent que pour les liens, après les styles.
+        let texte = match v.get("text") {
+            None => String::new(),
+            Some(Value::String(t)) => t.clone(),
+            Some(_) => return Err(format!("links[{i}]: missing or invalid text.")),
+        };
+        let parties =
+            spans(v.get("spans"), &texte).ok_or_else(|| format!("links[{i}]: invalid spans."))?;
+        let taille = match v.get("textSize") {
+            None => None,
+            Some(t) if style_b[5].1.contains(t) => {
+                Some(t.clone()).filter(|t| *t != style_b[5].1[0])
+            }
+            Some(_) => return Err(format!("links[{i}]: invalid textSize.")),
+        };
+        if !texte.is_empty() {
+            o.push(("text".into(), json!(texte)));
+            if !parties.is_empty() {
+                o.push(("spans".into(), Value::Array(parties)));
+            }
+        }
+        if let Some(t) = taille {
+            o.push(("textSize".into(), t));
         }
         for cle in [1, 2] {
             let boite = o[cle].1.as_str().unwrap_or("");

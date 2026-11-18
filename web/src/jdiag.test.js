@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { avecExtensionJdiag, ecrireJdiag, idLibre, lireJdiag } from "./jdiag.js";
+import { avecExtensionJdiag, ecrireJdiag, idLibre, lireJdiag, normaliserSpans } from "./jdiag.js";
 
 const VIDE = '{\n  "version": 1,\n  "boxes": [],\n  "links": []\n}\n';
 const DEUX =
@@ -136,6 +136,66 @@ describe("jdiag", () => {
     doc7('{"id": "l1", "from": "b1", "to": "b2", "color": "pink"}', "[]"),
     doc7("", '[{"id": "a1", "x1": 0, "y1": 0, "x2": 0, "y2": 0, "weight": 2}]'),
   ])("REQ132_AC10 : lien ou flèche illisible %s", (texte) => {
+    expect(lireJdiag(texte)).toBeNull();
+  });
+
+  const SPANS =
+    '{\n  "version": 1,\n  "boxes": [\n    {"id": "b1", "x": 40, "y": 80, "width": 160, "height": 80, "text": "Début du flux", "spans": [{"start": 0, "end": 5, "bold": true, "color": "red"}, {"start": 9, "end": 13, "italic": true, "underline": true, "strike": true}]},\n    {"id": "b2", "x": 300, "y": 80, "width": 160, "height": 80, "text": "Fin"}\n  ],\n  "links": [\n    {"id": "l1", "from": "b1", "to": "b2", "color": "red", "text": "par mail", "spans": [{"start": 4, "end": 8, "bold": true}], "textSize": "large"}\n  ]\n}\n';
+
+  test("REQ132_AC12 : parties du texte et texte d'un lien, texte exact, relu et réécrit à l'identique", () => {
+    const doc = lireJdiag(SPANS);
+    expect(doc.boxes[0].spans).toEqual([
+      { start: 0, end: 5, bold: true, color: "red" },
+      { start: 9, end: 13, italic: true, underline: true, strike: true },
+    ]);
+    expect(doc.boxes[1].spans).toEqual([]);
+    expect(doc.links[0]).toMatchObject({ text: "par mail", textSize: "large", spans: [{ start: 4, end: 8, bold: true }] });
+    expect(lireJdiag(DEUX).links[0]).toMatchObject({ text: "", spans: [], textSize: "normal" });
+    expect(ecrireJdiag(doc)).toBe(SPANS);
+  });
+
+  test("REQ132_AC13 : normalisation, lien sans texte, caractères hors plan de base", () => {
+    const autre = SPANS.replace(
+      '"spans": [{"start": 0, "end": 5, "bold": true, "color": "red"}, {"start": 9, "end": 13, "italic": true, "underline": true, "strike": true}]',
+      '"spans": [{"start": 9, "end": 13, "strike": true, "italic": true, "underline": true, "bold": false, "color": "default"}, {"start": 6, "end": 8, "italic": false}, {"start": 2, "end": 5, "bold": true, "color": "red"}, {"start": 0, "end": 2, "color": "red", "bold": true, "color2": 1}]',
+    )
+      .replace('"text": "Fin"}', '"text": "Fin", "spans": []}')
+      .replace('"color": "red", "text": "par mail"', '"color": "red", "text": "par mail", "color": "red"');
+    expect(autre).not.toBe(SPANS);
+    const doc = lireJdiag(autre);
+    expect(doc).not.toBeNull();
+    expect(ecrireJdiag(doc)).toBe(SPANS);
+    const vide = lireJdiag(SPANS.replace('"text": "par mail", "spans": [{"start": 4, "end": 8, "bold": true}]', '"text": ""'));
+    expect(vide.links[0].text).toBe("");
+    expect(ecrireJdiag(vide)).not.toContain('"text": ""');
+    expect(ecrireJdiag(vide)).not.toContain('"spans": [{"start": 4');
+    const emoji = '{"version": 1, "boxes": [{"id": "b1", "x": 0, "y": 0, "width": 1, "height": 1, "text": "A😀B", "spans": [{"start": 2, "end": 3, "bold": true}]}], "links": []}';
+    const d = lireJdiag(emoji);
+    expect(d.boxes[0].spans).toEqual([{ start: 2, end: 3, bold: true }]);
+    expect(ecrireJdiag(d)).toBe('{\n  "version": 1,\n  "boxes": [\n    {"id": "b1", "x": 0, "y": 0, "width": 1, "height": 1, "text": "A😀B", "spans": [{"start": 2, "end": 3, "bold": true}]}\n  ],\n  "links": []\n}\n');
+    expect(normaliserSpans("A😀B", [{ start: 0, end: 4 }])).toBeNull();
+    expect(normaliserSpans("abcd", [{ start: 2, end: 4, bold: true }, { start: 0, end: 2, bold: true }])).toEqual([{ start: 0, end: 4, bold: true }]);
+    expect(normaliserSpans("abcd", undefined)).toEqual([]);
+  });
+
+  test.each([
+    ["boîte", '"text": "Début du flux", "spans": [{"start": 0, "end": 14, "bold": true}]'],
+    ["boîte", '"text": "Début du flux", "spans": [{"start": 5, "end": 5, "bold": true}]'],
+    ["boîte", '"text": "Début du flux", "spans": [{"start": -1, "end": 3, "bold": true}]'],
+    ["boîte", '"text": "Début du flux", "spans": [{"start": 0, "end": 5, "bold": true}, {"start": 3, "end": 8, "italic": true}]'],
+    ["boîte", '"text": "Début du flux", "spans": [{"start": 0, "end": 5, "bold": "yes"}]'],
+    ["boîte", '"text": "Début du flux", "spans": [{"start": 0, "end": 5, "color": "pink"}]'],
+    ["boîte", '"text": "Début du flux", "spans": [{"start": 1.5, "end": 5, "bold": true}]'],
+    ["boîte", '"text": "Début du flux", "spans": {}'],
+    ["boîte", '"text": "Début du flux", "spans": [3]'],
+    ["lien", '"text": 3'],
+    ["lien", '"text": "mail", "textSize": "tiny"'],
+    ["lien", '"spans": [{"start": 0, "end": 1, "bold": true}]'],
+  ])("REQ132_AC14 : %s illisible %s", (genre, extra) => {
+    const boite = (id, e) => `{"id": "${id}", "x": 0, "y": 0, "width": 1, "height": 1, ${e}}`;
+    const b1 = genre === "boîte" ? boite("b1", extra) : boite("b1", '"text": ""');
+    const lien = genre === "lien" ? `{"id": "l1", "from": "b1", "to": "b2", ${extra}}` : "";
+    const texte = `{"version": 1, "boxes": [${b1}, ${boite("b2", '"text": ""')}], "links": [${lien}]}`;
     expect(lireJdiag(texte)).toBeNull();
   });
 });

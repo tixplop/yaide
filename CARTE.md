@@ -49,7 +49,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/reglages-interface.js — `.yaide/interface.json` — analyser, charger, serialiser
 - web/src/couleurs-markdown.js — couleurs réglables du rendu markdown — analyser, appliquer, charger
 - web/src/formatage.js — formatage du document ouvert — formatable, formater
-- web/src/jdiag.js — lecture et écriture du format `.jdiag` — lireJdiag, ecrireJdiag
+- web/src/jdiag.js — lecture et écriture du format `.jdiag` — lireJdiag, ecrireJdiag, normaliserSpans
 - web/src/mermaid.js — bibliothèque mermaid, bundle à part chargé au premier diagramme
 - web/src/ui/ — design system : composants (`bouton`, `champ`, `menu`, `dialogue`, `onglets`, `liste`, `message`, `cadre`, `poignee`, `info-bulle`, `indication`, `compteur`, `avatar`, `image`) ; `icones.js` ; `tokens.css`, `composants.css`, `theme.js`, `polices/`
 - web/src/ui/apercu.js, apercu-html.js, hybride.js, diagramme.js — rendu markdown, aperçu HTML, mode hybride, mermaid — rendreMarkdown, apercuHtml, decorationsHybride
@@ -108,4 +108,4 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-126 soumettre des fichiers à un agent → web/src/vues/soumission-agent.js
 - REQ-118 formater le document → web/src/formatage.js, vues/principale.js
 - REQ-122, REQ-123 mermaid → web/src/mermaid.js, ui/diagramme.js, ui/apercu.js
-- REQ-127 à REQ-145 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, outils.rs
+- REQ-127 à REQ-147 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, outils.rs
