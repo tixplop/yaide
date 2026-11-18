@@ -440,3 +440,87 @@ test("REQ143_AC4_nom_icone_info_bulle_tab_focus_gardé_et_pas_de_bouton_ailleurs
   await ouvrir(e, "casse.jdiag");
   expect(bouton(THEME)).toBeNull();
 });
+
+const ctrl = (cible, key) => {
+  const ev = new KeyboardEvent("keydown", { key, ctrlKey: true, bubbles: true, cancelable: true });
+  cible.dispatchEvent(ev);
+  return ev;
+};
+// Position de `b1` : le `y` de sa forme (une flèche Bas la descend de 10).
+const posB1 = () => Number(zone().querySelector('[data-id="b1"] rect.forme').getAttribute("y"));
+
+test("REQ145_AC1_ctrl_z_defait_le_deplacement_sans_point_ctrl_y_le_refait_ctrl_s_ne_vide_pas", async () => {
+  fauxServeur({ "plan.jdiag": TEXTE });
+  const { e } = monter();
+  await ouvrir(e, "plan.jdiag");
+  const initial = posB1();
+  deplacerBoite();
+  const deplace = posB1();
+  expect(deplace).not.toBe(initial);
+  expect(onglet("plan.jdiag").dataset.modifie).toBe("true");
+  ctrl(surface(), "z");
+  expect(posB1()).toBe(initial);
+  expect(onglet("plan.jdiag").dataset.modifie).toBeUndefined();
+  ctrl(surface(), "y");
+  expect(posB1()).toBe(deplace);
+  expect(onglet("plan.jdiag").dataset.modifie).toBe("true");
+  ctrlS();
+  await vi.waitFor(() => expect(onglet("plan.jdiag").dataset.modifie).toBeUndefined());
+  expect(JSON.parse(serveur.ecritures.at(-1)[1]).boxes[0].y).toBe(110);
+  ctrl(surface(), "z");
+  expect(posB1()).toBe(initial);
+  expect(onglet("plan.jdiag").dataset.modifie).toBe("true");
+});
+
+test("REQ145_AC6_dessin_repris_du_disque_vide_l_historique_et_100_pas_au_plus", async () => {
+  fauxServeur({ "plan.jdiag": TEXTE });
+  const { e } = monter();
+  await e.restaurer();
+  await ouvrir(e, "plan.jdiag");
+  // Un pas dans l'historique, enregistré : sans vidage, Ctrl+Z le défairait après la reprise.
+  deplacerBoite();
+  ctrlS();
+  await vi.waitFor(() => expect(onglet("plan.jdiag").dataset.modifie).toBeUndefined());
+  const autre = ecrireJdiag({ ...DOC, boxes: [{ ...DOC.boxes[0], text: "Ailleurs" }], links: [] });
+  changerSurDisque("plan.jdiag", autre);
+  await e.relireDisque();
+  await vi.waitFor(() => expect(textes()).toEqual(["Ailleurs"]));
+  const repris = posB1();
+  ctrl(surface(), "z");
+  expect(textes()).toEqual(["Ailleurs"]);
+  expect(posB1()).toBe(repris);
+  expect(onglet("plan.jdiag").dataset.modifie).toBeUndefined();
+  // 101 déplacements au clavier, 101 Ctrl+Z : 100 sont défaits.
+  touche(surface(), "Tab");
+  const depart = posB1();
+  for (let i = 0; i < 101; i++) touche(surface(), "ArrowDown");
+  const fin = posB1();
+  for (let i = 0; i < 101; i++) ctrl(surface(), "z");
+  expect(fin - depart).toBe(1010);
+  expect(posB1() - depart).toBe(10); // 100 défaits, le premier reste
+  expect(onglet("plan.jdiag").dataset.modifie).toBe("true");
+});
+
+test("REQ145_AC9_ctrl_z_hors_de_la_surface_ne_change_pas_le_dessin", async () => {
+  fauxServeur({ "plan.jdiag": TEXTE });
+  const { e } = monter();
+  await ouvrir(e, "plan.jdiag");
+  deplacerBoite();
+  const deplace = posB1();
+  // Barre de l'onglet : « Zoom avant » a le focus.
+  bouton("Zoom avant").focus();
+  ctrl(bouton("Zoom avant"), "z");
+  expect(posB1()).toBe(deplace);
+  // Ligne d'arborescence.
+  const arbre = document.createElement("div");
+  arbre.setAttribute("role", "tree");
+  const ligneArbre = document.createElement("div");
+  ligneArbre.setAttribute("role", "treeitem");
+  ligneArbre.tabIndex = 0;
+  arbre.append(ligneArbre);
+  document.body.append(arbre);
+  ligneArbre.focus();
+  ctrl(ligneArbre, "z");
+  expect(posB1()).toBe(deplace);
+  expect(onglet("plan.jdiag").dataset.modifie).toBe("true");
+});

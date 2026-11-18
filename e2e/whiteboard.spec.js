@@ -27,7 +27,7 @@ const glisser = async (page, de, vers) => {
   await page.mouse.up();
 };
 
-test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_REQ142_AC1_AC4_REQ143_AC1_AC2_AC5_parcours_P096_P100_P101_P102_P103_whiteboard", async ({ page }) => {
+test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_REQ142_AC1_AC4_REQ143_AC1_AC2_AC5_REQ145_AC1_AC3_parcours_P096_P100_P101_P102_P103_whiteboard", async ({ page }) => {
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "docs"), { recursive: true });
   fs.writeFileSync(path.join(dossier, "docs/a.md"), "# A\n");
@@ -326,6 +326,38 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1
     await page.keyboard.press("Control+s");
     await expect.poll(() => fs.readFileSync(fichier, "utf8")).toContain('"fromSide": "center", "toSide": "center"');
     expect(JSON.parse(fs.readFileSync(fichier, "utf8")).links.at(-1)).toMatchObject({ fromSide: "center", toSide: "center" });
+
+    // AC-145-1, AC-145-3 : Ctrl+Z et Ctrl+Y au clavier réel ; Ctrl+Z dans la saisie agit sur le texte.
+    const point = page.getByRole("tab", { name: /^plan\.jdiag.*, non sauvegardé/ });
+    await expect(point).toHaveCount(0);
+    await page.getByRole("button", { name: "Tout afficher" }).click();
+    const x1 = await xDe(bDebut);
+    const k = await centre(bDebut);
+    await glisser(page, { x: k.x + 20, y: k.y + 25 }, { x: k.x + 120, y: k.y + 25 });
+    const x2 = await xDe(bDebut);
+    expect(x2 - x1).toBeGreaterThan(60);
+    await expect(point).toHaveCount(1);
+    await page.keyboard.press("Control+z");
+    expect(Math.abs((await xDe(bDebut)) - x1)).toBeLessThanOrEqual(1);
+    await expect(point).toHaveCount(0);
+    await page.keyboard.press("Control+y");
+    expect(Math.abs((await xDe(bDebut)) - x2)).toBeLessThanOrEqual(1);
+    await expect(point).toHaveCount(1);
+    const k2 = await centre(bDebut);
+    await page.mouse.dblclick(k2.x + 20, k2.y + 25);
+    const saisie = page.getByRole("textbox", { name: "Texte de la boîte" });
+    await expect(saisie).toBeFocused();
+    await page.keyboard.press("End");
+    await page.keyboard.type(" par mail");
+    await expect(saisie).toContainText("par mail");
+    for (let i = 0; i < 40 && /par mail/.test((await saisie.textContent()) ?? ""); i++) await page.keyboard.press("Control+z");
+    await expect(saisie).not.toContainText("par mail");
+    await expect(saisie).toBeFocused();
+    expect(Math.abs((await xDe(bDebut)) - x2)).toBeLessThanOrEqual(1);
+    await page.keyboard.press("Escape");
+    await expect(bDebut.getByText("Début", { exact: true })).toBeVisible();
+    await page.keyboard.press("Control+z");
+    expect(Math.abs((await xDe(bDebut)) - x1)).toBeLessThanOrEqual(1);
   } finally {
     await yaide.arreter();
   }
