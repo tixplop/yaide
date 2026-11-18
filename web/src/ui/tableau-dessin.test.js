@@ -442,6 +442,7 @@ test("REQ147_AC1_AC2_AC9_etiquette_au_milieu_dans_le_groupe_du_lien_et_prise", (
   expect(regle(".ya-tableau-lien-texte")[0]).toMatch(/white-space: pre/);
   expect(regle(".ya-tableau-lien-texte")[0]).toMatch(/pointer-events: auto/);
   expect(regle(".ya-tableau .lien .ya-tableau-lien-cadre")[0]).toMatch(/pointer-events: none/);
+  expect(regle(".ya-tableau .lien foreignObject")[0]).toMatch(/pointer-events: none/);
 });
 
 test("REQ147_AC1_sans_texte_rien_n_est_dessine", () => {

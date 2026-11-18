@@ -27,7 +27,7 @@ const glisser = async (page, de, vers) => {
   await page.mouse.up();
 };
 
-test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_REQ142_AC1_AC4_REQ143_AC1_AC2_AC5_REQ145_AC1_AC3_parcours_P096_P100_P101_P102_P103_whiteboard", async ({ page }) => {
+test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_REQ142_AC1_AC4_REQ143_AC1_AC2_AC5_REQ145_AC1_AC3_REQ133_AC13_REQ147_AC1_AC9_REQ139_AC6_REQ146_AC4_AC5_AC9_parcours_P096_P100_P101_P102_P103_P106_whiteboard", async ({ page }) => {
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "docs"), { recursive: true });
   fs.writeFileSync(path.join(dossier, "docs/a.md"), "# A\n");
@@ -358,6 +358,122 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1
     await expect(bDebut.getByText("Début", { exact: true })).toBeVisible();
     await page.keyboard.press("Control+z");
     expect(Math.abs((await xDe(bDebut)) - x1)).toBeLessThanOrEqual(1);
+
+    // P-106, AC-133-13 : boîte à outils de 298 × 172 px ; O puis Bas depuis « Normal » → « Texte vert » ; Bas depuis « Texte rouge » → « Aux deux bouts ».
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.getByRole("button", { name: "Tout afficher" }).click();
+    await surf2.focus();
+    const outils = await page.locator(".ya-tableau-outils:visible").boundingBox();
+    proche(outils.width, 298);
+    proche(outils.height, 172);
+    await page.keyboard.press("o");
+    await expect(page.locator(".ya-tableau-outils:visible button:focus")).toHaveCount(1);
+    await page.getByRole("button", { name: "Normal", exact: true }).first().focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("button", { name: "Texte vert", exact: true })).toBeFocused();
+    await page.getByRole("button", { name: "Texte rouge", exact: true }).focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("button", { name: "Aux deux bouts", exact: true })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(surf2).toBeFocused();
+
+    // AC-147-1, AC-147-9, AC-139-6 : double-clic réel sur le trait d'un lien, texte, centre et marges.
+    const lien1 = surf2.locator('[aria-roledescription="lien"]').first();
+    const milieu = () => lien1.locator("path.prise").evaluate((p) => {
+      const m = p.getScreenCTM();
+      const q = p.getPointAtLength(p.getTotalLength() / 2);
+      return { x: m.a * q.x + m.c * q.y + m.e, y: m.b * q.x + m.d * q.y + m.f };
+    });
+    const m0 = await milieu();
+    await page.mouse.dblclick(m0.x, m0.y);
+    const saisieLien = page.getByRole("textbox", { name: "Texte du lien" });
+    await expect(saisieLien).toBeFocused();
+    await expect(surf2.locator('[aria-roledescription="boîte"]')).toHaveCount(4);
+    await page.keyboard.type("si erreur");
+    await page.keyboard.press("Escape");
+    const etiquette = lien1.locator(".ya-tableau-lien-texte");
+    await expect(etiquette).toHaveText("si erreur");
+    const ce = await centre(etiquette);
+    proche(ce.x, m0.x);
+    proche(ce.y, m0.y);
+    const marges = await etiquette.evaluate((e) => {
+      const c = getComputedStyle(e);
+      return [c.paddingTop, c.paddingBottom, c.paddingLeft, c.paddingRight];
+    });
+    expect(marges).toEqual(["2px", "2px", "4px", "4px"]);
+    await expect(page.getByRole("tab", { name: /^plan\.jdiag.*, non sauvegardé/ })).toHaveCount(1);
+    // « Très grand » en saisie : le centre ne bouge pas, le focus reste.
+    await page.keyboard.press("Enter");
+    await expect(saisieLien).toBeFocused();
+    await page.getByRole("button", { name: "Très grand", exact: true }).click();
+    await expect(saisieLien).toBeFocused();
+    const cs = await centre(saisieLien);
+    proche(cs.x, m0.x);
+    proche(cs.y, m0.y);
+    await page.keyboard.press("Escape");
+
+    // AC-146-9, AC-146-4, AC-146-5, AC-145-3 : styles du texte d'une boîte, au clavier et à la souris réels.
+    await page.getByRole("button", { name: "Tout afficher" }).click();
+    const cb = await centre(bFin);
+    await page.mouse.dblclick(cb.x, cb.y);
+    const zb = page.getByRole("textbox", { name: "Texte de la boîte" });
+    await expect(zb).toBeFocused();
+    // Double-clic réel sur le mot « Fin » (hors du connecteur du centre) : le mot est choisi.
+    const mot = await page.evaluate(() => {
+      const w = document.createTreeWalker(document.activeElement, NodeFilter.SHOW_TEXT);
+      const n = w.nextNode();
+      const r = document.createRange();
+      r.setStart(n, 0);
+      r.setEnd(n, 3);
+      const q = r.getBoundingClientRect();
+      return { x: q.x + q.width / 2, y: q.y + q.height / 2 };
+    });
+    await page.mouse.dblclick(mot.x, mot.y);
+    expect((await page.evaluate(() => getSelection().toString())).trim()).toBe("Fin");
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(zb).toBeFocused();
+    expect((await page.evaluate(() => getSelection().toString())).trim()).toBe("Fin");
+    await expect(page.getByRole("button", { name: "Gras", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const poids = () => page.evaluate(() => {
+      const n = getSelection().getRangeAt(0).startContainer;
+      return getComputedStyle(n.nodeType === 3 ? n.parentElement : n).fontWeight;
+    });
+    // Texte tapé juste après le mot en gras : en gras.
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.type("X");
+    await expect(zb).toContainText("FinX");
+    expect(await poids()).toBe("700");
+    // Ctrl+B réel : bascule le gras, sans balise `b` ni `strong`.
+    const choisirDebut = async () => {
+      await page.keyboard.press("Control+Home");
+      for (let i = 0; i < 4; i++) await page.keyboard.press("Shift+ArrowRight");
+    };
+    await choisirDebut();
+    await page.keyboard.press("Control+b");
+    await expect(page.getByRole("button", { name: "Gras", exact: true })).toHaveAttribute("aria-pressed", "false");
+    await expect(zb.locator("b, strong")).toHaveCount(0);
+    // Collé : texte brut, sans les styles de la page copiée.
+    await page.keyboard.press("Control+End");
+    await page.evaluate(() => navigator.clipboard.write([new ClipboardItem({
+      "text/html": new Blob(["<b>gras</b>"], { type: "text/html" }),
+      "text/plain": new Blob(["gras"], { type: "text/plain" }),
+    })]));
+    await page.keyboard.press("Control+v");
+    await expect(zb).toContainText("fluxgras");
+    await expect(zb.locator("b, strong")).toHaveCount(0);
+    expect(await poids()).toBe("400");
+    await choisirDebut();
+    await page.keyboard.press("Control+b");
+    await expect(page.getByRole("button", { name: "Gras", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(zb.locator("b, strong")).toHaveCount(0);
+    // Ctrl+Z dans la saisie : celui du navigateur, sur le texte tapé.
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type(" zzz");
+    await expect(zb).toContainText("zzz");
+    for (let i = 0; i < 40 && /zzz/.test((await zb.textContent()) ?? ""); i++) await page.keyboard.press("Control+z");
+    await expect(zb).not.toContainText("zzz");
+    await expect(zb).toBeFocused();
+    await page.keyboard.press("Escape");
   } finally {
     await yaide.arreter();
   }
