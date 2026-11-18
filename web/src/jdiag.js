@@ -18,7 +18,7 @@ const STYLE_BOITE = {
   textSize: ["normal", "small", "large", "xlarge"],
 };
 const STYLE_TRAIT = { route: ["direct", "orthogonal", "curved"], ends: ["end", "none", "start", "both"], line: TRAITS, color: COULEURS, weight: EPAISSEURS };
-const COTES = ["top", "right", "bottom", "left"];
+const COTES = ["top", "right", "bottom", "left", "center"];
 
 function estObjet(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);

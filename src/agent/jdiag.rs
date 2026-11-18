@@ -9,7 +9,7 @@ const CLES_BOITE: [&str; 6] = ["id", "x", "y", "width", "height", "text"];
 const CLES_LIEN: [&str; 3] = ["id", "from", "to"];
 const CLES_LIBRE: [&str; 5] = ["id", "x1", "y1", "x2", "y2"];
 const ENTIERS: [&str; 8] = ["x", "y", "width", "height", "x1", "y1", "x2", "y2"];
-pub const COTES: [&str; 4] = ["top", "right", "bottom", "left"];
+pub const COTES: [&str; 5] = ["top", "right", "bottom", "left", "center"];
 
 /// Clés de style et valeurs admises ; la première valeur est celle par défaut.
 pub type Style = Vec<(&'static str, Vec<Value>)>;
@@ -185,7 +185,7 @@ pub fn en_texte(brut: &Value) -> Result<(String, [usize; 3]), String> {
         if v.get("fromSide").is_some() || v.get("toSide").is_some() {
             let (Some(de), Some(vers)) = (de, vers) else {
                 return Err(format!(
-                    "links[{i}]: fromSide and toSide go together, each one of top, right, bottom, left."
+                    "links[{i}]: fromSide and toSide go together, each one of top, right, bottom, left, center (the box center; the line stops at its border)."
                 ));
             };
             o.insert(3, ("fromSide".into(), json!(de)));

@@ -79,7 +79,7 @@ fn def(nom: &str, description: &str, proprietes: Value, requis: &[&str]) -> DefO
 }
 
 const DESCRIPTION_WHITEBOARD: &str = "Create or replace a whiteboard file (.jdiag), with its parent folders. The whiteboard is refused, and nothing written, if it is not valid. Required keys: version (1), boxes, links; arrows (free arrows) is optional. Box: id, x, y (top-left corner, integer pixels), width, height (integers), text (lines separated by \\n). Link: id, from, to (box ids). Free arrow: id, x1, y1 (start), x2, y2 (end), integers. Ids are unique across all objects: b<n> for boxes, l<n> for links, a<n> for arrows, n starting at 1. Optional keys and their allowed values, the first one being the default: ";
-const FIN_DESCRIPTION_WHITEBOARD: &str = ". A new box is 160x80 (circle 100x100, diamond 160x100, text 160x40). A link may give fromSide and toSide together (top, right, bottom, left). Lists go from the lowest object to the highest. To change a whiteboard, read it with whiteboard_read, then write it whole.";
+const FIN_DESCRIPTION_WHITEBOARD: &str = ". A new box is 160x80 (circle 100x100, diamond 160x100, text 160x40). A link may give fromSide and toSide together (top, right, bottom, left, center (the box center; the line stops at its border)). Lists go from the lowest object to the highest. To change a whiteboard, read it with whiteboard_read, then write it whole.";
 
 fn valeurs_texte(style: &jdiag::Style) -> String {
     style
@@ -1029,7 +1029,7 @@ mod tests {
         );
         assert_eq!(
             lien["fromSide"]["enum"],
-            json!(["top", "right", "bottom", "left"])
+            json!(["top", "right", "bottom", "left", "center"])
         );
         let libre = &wb["properties"]["arrows"]["items"];
         assert_eq!(libre["required"], json!(["id", "x1", "y1", "x2", "y2"]));
@@ -1096,6 +1096,34 @@ mod tests {
         assert!(fs::read_to_string(d.join("b.jdiag"))
             .unwrap()
             .contains(r#""text": "a\"b\\c\nd""#));
+    }
+
+    #[tokio::test]
+    async fn REQ132_AC11_bout_de_lien_au_centre() {
+        let d = dossier("wb11");
+        let c = ctx(&d);
+        let centre = STYLES6.replace(
+            "\"fromSide\": \"right\", \"toSide\": \"left\"",
+            "\"fromSide\": \"center\", \"toSide\": \"center\"",
+        );
+        assert_ne!(centre, STYLES6);
+        let r = ecrire_wb(&c, "c.jdiag", &centre).await;
+        assert!(!r.echec, "{r:?}");
+        assert_eq!(fs::read_to_string(d.join("c.jdiag")).unwrap(), centre);
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "c.jdiag"})).await;
+        assert_eq!(r, ok(centre.clone()));
+        let milieu = STYLES6.replace("\"toSide\": \"left\"", "\"toSide\": \"middle\"");
+        let r = ecrire_wb(&c, "m.jdiag", &milieu).await;
+        assert!(
+            r.echec
+                && r.contenu
+                    .starts_with("links[0]: fromSide and toSide go together"),
+            "{r:?}"
+        );
+        assert!(r
+            .contenu
+            .contains("center (the box center; the line stops at its border)"));
+        assert!(!d.join("m.jdiag").exists());
     }
 
     #[tokio::test]

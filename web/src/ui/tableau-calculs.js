@@ -306,7 +306,7 @@ export function pointe(bout, zoom, weight = "thin") {
   ];
 }
 
-// Géométrie d'un lien de `doc` : le tracé et les deux pointes. Avec côtés : les connecteurs. Sans côté et droit :
+// Géométrie d'un lien de `doc` : le tracé et les deux pointes. Avec côtés : les connecteurs ; un bout `center` vise le centre de sa boîte et s'arrête sur le bord de sa forme (droit), ou prend le côté le plus proche de l'autre bout (coudé, courbe). Sans côté et droit :
 // la droite des centres, d'un bord de forme à l'autre, décalée de 4 px si un lien de sens contraire existe.
 // Sans côté, coudé ou courbe : les côtés les plus proches.
 export function geometrieLien(doc, lien, zoom) {
@@ -315,18 +315,37 @@ export function geometrieLien(doc, lien, zoom) {
   const route = lien.route ?? "direct";
   let depart;
   let arrivee;
-  if (lien.fromSide && lien.toSide) {
-    depart = { point: connecteurs(de)[lien.fromSide], cote: lien.fromSide };
-    arrivee = { point: connecteurs(vers)[lien.toSide], cote: lien.toSide };
-  } else if (route === "direct") {
+  const { fromSide, toSide } = lien;
+  const sansCote = !fromSide || !toSide || (fromSide === "center" && toSide === "center");
+  if (sansCote && route === "direct") {
     const inverse = doc.links.some((l) => l.from === lien.to && l.to === lien.from);
     const { depart: d, arrivee: a } = extremitesFleche(de, vers, inverse ? 4 : 0);
     depart = { point: d, cote: null };
     arrivee = { point: a, cote: null };
-  } else {
+  } else if (sansCote) {
     const cotes = cotesProches(de, vers);
     depart = { point: connecteurs(de)[cotes.de], cote: cotes.de };
     arrivee = { point: connecteurs(vers)[cotes.vers], cote: cotes.vers };
+  } else if (fromSide === "center" || toSide === "center") {
+    // Un seul bout au centre : il vise l'autre bout (son connecteur de côté).
+    const centreDe = fromSide === "center";
+    const fixe = centreDe ? vers : de;
+    const cote = centreDe ? toSide : fromSide;
+    const pointFixe = connecteurs(fixe)[cote];
+    const boite = centreDe ? de : vers;
+    let bout;
+    if (route === "direct") {
+      bout = { point: pointSurBord(boite, pointFixe), cote: null };
+    } else {
+      const proche = connecteurProche(boite, pointFixe);
+      bout = { point: connecteurs(boite)[proche], cote: proche };
+    }
+    const autre = { point: pointFixe, cote };
+    depart = centreDe ? bout : autre;
+    arrivee = centreDe ? autre : bout;
+  } else {
+    depart = { point: connecteurs(de)[fromSide], cote: fromSide };
+    arrivee = { point: connecteurs(vers)[toSide], cote: toSide };
   }
   const t = trace({ route, depart, arrivee, retrait: retraitPointes(lien.ends, lien.weight, zoom) });
   return { ...t, pointeDebut: pointe(t.debut, zoom, lien.weight), pointeFin: pointe(t.fin, zoom, lien.weight) };

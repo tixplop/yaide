@@ -218,6 +218,74 @@ describe("tableau-calculs", () => {
     expect(geometrieLien(d, { id: "l", from: "b1", to: "b2", route: "curved" }, 1).d.startsWith("M 80 80 C 80 190")).toBe(true);
   });
 
+  test("REQ130_AC11 : bout au centre, droit : pointe sur le bord, sur la droite du départ au centre", () => {
+    const d = doc([]);
+    const g = geometrieLien(d, { id: "l", from: "b1", to: "b2", fromSide: "right", toSide: "center" }, 1);
+    // départ : milieu du côté droit de « Début » (200, 120) ; arrivée : sur le bord de « Fin », vers son centre (380, 320)
+    expect(g.debut.point).toEqual({ x: 200, y: 120 });
+    const p = g.fin.point;
+    const cx = 380;
+    const cy = 320;
+    expect((p.x - 200) * (cy - 120) - (p.y - 120) * (cx - 200)).toBeCloseTo(0, 6);
+    expect(Math.abs(p.x - 300) < 1e-6 || Math.abs(p.y - 280) < 1e-6 || Math.abs(p.y - 360) < 1e-6).toBe(true);
+    const dedans = (q) => q.x > 300 + 1e-6 && q.x < 460 - 1e-6 && q.y > 280 + 1e-6 && q.y < 360 - 1e-6;
+    const pts = [...g.entier.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => ({ x: +m[1], y: +m[2] }));
+    expect(pts.some(dedans)).toBe(false);
+    const depuis = geometrieLien(d, { id: "l", from: "b1", to: "b2", fromSide: "center", toSide: "top" }, 1);
+    const h = depuis.debut.point;
+    expect(h.y).toBeCloseTo(160, 6);
+    expect((h.x - 120) * (280 - 120) - (h.y - 120) * (380 - 120)).toBeCloseTo(0, 6);
+    expect(depuis.fin.point).toEqual({ x: 380, y: 280 });
+    // « Fin » déplacée en (300, 480), puis en ellipse : la pointe est sur la droite de (200, 120) au centre, sur le bord
+    for (const shape of [undefined, "ellipse"]) {
+      const f = { id: "b2", x: 300, y: 480, width: 160, height: 80, shape };
+      const dd = { boxes: [{ id: "b1", ...debut }, f], links: [], arrows: [] };
+      const q = geometrieLien(dd, { id: "l", from: "b1", to: "b2", fromSide: "right", toSide: "center" }, 1).fin.point;
+      expect((q.x - 200) * (520 - 120) - (q.y - 120) * (380 - 200)).toBeCloseTo(0, 6);
+      const sur = shape ? ((q.x - 380) / 80) ** 2 + ((q.y - 520) / 40) ** 2 : null;
+      if (shape) expect(Math.sqrt(sur)).toBeCloseTo(1, 2);
+      else expect(Math.abs(q.x - 300) < 1 || Math.abs(q.y - 480) < 1).toBe(true);
+    }
+    // cercle
+    const cercle = { boxes: [{ id: "b1", x: 0, y: 0, width: 100, height: 100, shape: "ellipse" }, { id: "b2", ...fin }], links: [], arrows: [] };
+    const gc = geometrieLien(cercle, { id: "l", from: "b1", to: "b2", fromSide: "center", toSide: "left" }, 1);
+    expect(Math.hypot(gc.debut.point.x - 50, gc.debut.point.y - 50)).toBeCloseTo(50, 6);
+  });
+
+  test("REQ130_AC12 : center/center = lien sans côté ; coudé : côté le plus proche de l'autre bout", () => {
+    const d = doc([{ id: "l", from: "b1", to: "b2" }, { id: "m", from: "b2", to: "b1" }]);
+    const centre = { id: "l", from: "b1", to: "b2", fromSide: "center", toSide: "center" };
+    expect(geometrieLien(d, centre, 1)).toEqual(geometrieLien(d, { id: "l", from: "b1", to: "b2" }, 1));
+    expect(geometrieLien(d, { ...centre, route: "orthogonal" }, 1)).toEqual(geometrieLien(d, { id: "l", from: "b1", to: "b2", route: "orthogonal" }, 1));
+    expect(geometrieLien(d, { ...centre, route: "curved" }, 1)).toEqual(geometrieLien(d, { id: "l", from: "b1", to: "b2", route: "curved" }, 1));
+    const dessousCentre = { boxes: [{ id: "b1", ...boite(0, 0) }, { id: "b2", ...boite(0, 300) }], links: [], arrows: [] };
+    const ortho = { id: "l", from: "b1", to: "b2", route: "orthogonal", fromSide: "center", toSide: "center" };
+    const coudeD = geometrieLien(doc([]), ortho, 1);
+    expect([coudeD.debut.point, coudeD.fin.point]).toEqual([{ x: 200, y: 120 }, { x: 300, y: 320 }]);
+    const coudeB = geometrieLien(dessousCentre, ortho, 1);
+    expect([coudeB.debut.point, coudeB.fin.point]).toEqual([{ x: 80, y: 80 }, { x: 80, y: 300 }]);
+    const sans = doc([]);
+    const a = geometrieLien(sans, { id: "l", from: "b1", to: "b2", route: "orthogonal", fromSide: "center", toSide: "left" }, 1);
+    const b = geometrieLien(sans, { id: "l", from: "b1", to: "b2", route: "orthogonal", fromSide: "right", toSide: "left" }, 1);
+    expect(a).toEqual(b);
+    const c = geometrieLien(sans, { id: "l", from: "b1", to: "b2", route: "curved", fromSide: "bottom", toSide: "center" }, 1);
+    const e = geometrieLien(sans, { id: "l", from: "b1", to: "b2", route: "curved", fromSide: "bottom", toSide: "left" }, 1);
+    expect(c.fin.point).toEqual({ x: 300, y: 320 });
+    expect(c.d).toBe(e.d);
+    const dessous = { boxes: [{ id: "b1", ...boite(0, 0) }, { id: "b2", ...boite(0, 300) }], links: [], arrows: [] };
+    const g = geometrieLien(dessous, { id: "l", from: "b1", to: "b2", route: "orthogonal", fromSide: "center", toSide: "top" }, 1);
+    expect(g.debut.point).toEqual({ x: 80, y: 80 });
+  });
+
+  test("REQ130_AC16 : lien au centre d'une boîte de 160 × 80, même point à tout zoom", () => {
+    const d = { boxes: [{ id: "b1", ...boite(0, 0) }, { id: "b2", ...boite(400, 0) }], links: [], arrows: [] };
+    for (const zoom of [0.25, 1, 4]) {
+      const g = geometrieLien(d, { id: "l", from: "b1", to: "b2", fromSide: "center", toSide: "left" }, zoom);
+      expect(g.debut.point).toEqual({ x: 160, y: 40 });
+      expect(g.fin.point).toEqual({ x: 400, y: 40 });
+    }
+  });
+
   test("REQ135_AC3 : angle de chaque pointe, bout sur le bord", () => {
     const droit = trace({ route: "direct", depart: { point: { x: 0, y: 0 }, cote: null }, arrivee: { point: { x: 100, y: 0 }, cote: null } });
     expect(droit.fin.angle).toBeCloseTo(0, 9);

@@ -72,6 +72,15 @@ describe("jdiag", () => {
     expect(ecrireJdiag(doc)).toBe(GRAND);
   });
 
+  test("REQ132_AC11 : center admis pour fromSide et toSide, middle refusé", () => {
+    const centre = GRAND.replace('"fromSide": "right", "toSide": "left"', '"fromSide": "center", "toSide": "center"');
+    expect(centre).not.toBe(GRAND);
+    const doc = lireJdiag(centre);
+    expect(doc.links[0]).toMatchObject({ fromSide: "center", toSide: "center" });
+    expect(ecrireJdiag(doc)).toBe(centre);
+    expect(lireJdiag(centre.replace('"toSide": "center"', '"toSide": "middle"'))).toBeNull();
+  });
+
   const BOITE = '{"id": "b1", "x": 0, "y": 0, "width": 1, "height": 1, "text": ""}';
   const doc7 = (liens, arrows) => `{"version": 1, "boxes": [${BOITE}, ${BOITE.replace("b1", "b2")}], "links": [${liens}], "arrows": ${arrows}}`;
   test.each([
