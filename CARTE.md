@@ -30,6 +30,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/agent/mcp.rs — serveurs MCP (rmcp, stdio), `mcp.json` — preparer, appeler, lister_serveurs
 - src/agent/web.rs — recherche web (DuckDuckGo) et récupération de pages — chercher, recuperer, html_en_texte
 - src/agent/jdiag.rs — lecture et écriture des whiteboards par l'agent — relire, en_texte
+- src/agent/jdiag_trace.rs — tracé à 100 % d'un lien de whiteboard (même calcul que `geometrieLien`), cas communs dans `jdiag_traces.json` — trace, milieu
 
 ## Interface (JavaScript, `web/src/`)
 - web/index.html — page unique ; web/dist/ est produit par esbuild
@@ -109,4 +110,4 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-126 soumettre des fichiers à un agent → web/src/vues/soumission-agent.js
 - REQ-118 formater le document → web/src/formatage.js, vues/principale.js
 - REQ-122, REQ-123 mermaid → web/src/mermaid.js, ui/diagramme.js, ui/apercu.js
-- REQ-127 à REQ-147 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, outils.rs
+- REQ-127 à REQ-148 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, jdiag_trace.rs, outils.rs

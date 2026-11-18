@@ -1,0 +1,1522 @@
+[
+ {
+  "nom": "droit horizontal sans lien inverse",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 40,
+    "y": 80,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 80,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    200,
+    120
+   ],
+   [
+    300,
+    120
+   ]
+  ],
+  "milieu": [
+   250,
+   120
+  ]
+ },
+ {
+  "nom": "droit horizontal avec lien inverse (décalage de 4 px)",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 40,
+    "y": 80,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 80,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b"
+   },
+   {
+    "id": "l2",
+    "from": "b",
+    "to": "a"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    200,
+    124
+   ],
+   [
+    300,
+    124
+   ]
+  ],
+  "milieu": [
+   250,
+   124
+  ]
+ },
+ {
+  "nom": "droit en diagonale",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 200,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    140,
+    80
+   ],
+   [
+    320,
+    200
+   ]
+  ],
+  "milieu": [
+   230,
+   140
+  ]
+ },
+ {
+  "nom": "droit vers la gauche",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 400,
+    "y": 100,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    400,
+    120
+   ],
+   [
+    160,
+    60
+   ]
+  ],
+  "milieu": [
+   280,
+   90
+  ]
+ },
+ {
+  "nom": "droit entre ellipses avec lien inverse",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": "",
+    "shape": "ellipse"
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 120,
+    "width": 160,
+    "height": 80,
+    "text": "",
+    "shape": "ellipse"
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b"
+   },
+   {
+    "id": "l2",
+    "from": "b",
+    "to": "a"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    140.98,
+    68.7
+   ],
+   [
+    316.04,
+    138.73
+   ]
+  ],
+  "milieu": [
+   228.51,
+   103.715
+  ]
+ },
+ {
+  "nom": "droit entre losanges",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": "",
+    "shape": "diamond"
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 150,
+    "width": 160,
+    "height": 80,
+    "text": "",
+    "shape": "diamond"
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    120,
+    60
+   ],
+   [
+    340,
+    170
+   ]
+  ],
+  "milieu": [
+   230,
+   115
+  ]
+ },
+ {
+  "nom": "droit, côtés imposés",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 200,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "fromSide": "bottom",
+    "toSide": "left"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    80,
+    80
+   ],
+   [
+    300,
+    240
+   ]
+  ],
+  "milieu": [
+   190,
+   160
+  ]
+ },
+ {
+  "nom": "droit, centre des deux côtés",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 200,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "fromSide": "center",
+    "toSide": "center"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    140,
+    80
+   ],
+   [
+    320,
+    200
+   ]
+  ],
+  "milieu": [
+   230,
+   140
+  ]
+ },
+ {
+  "nom": "droit, un seul côté donné (sans côté)",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "fromSide": "right"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    160,
+    40
+   ],
+   [
+    300,
+    40
+   ]
+  ],
+  "milieu": [
+   230,
+   40
+  ]
+ },
+ {
+  "nom": "droit, centre au départ",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": "",
+    "shape": "ellipse"
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 200,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "fromSide": "center",
+    "toSide": "left"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    118.55,
+    75.05
+   ],
+   [
+    300,
+    240
+   ]
+  ],
+  "milieu": [
+   209.27499999999998,
+   157.52499999999998
+  ]
+ },
+ {
+  "nom": "droit, centre à l'arrivée",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 200,
+    "width": 160,
+    "height": 80,
+    "text": "",
+    "shape": "diamond"
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "fromSide": "bottom",
+    "toSide": "center"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    80,
+    80
+   ],
+   [
+    341.29,
+    219.35
+   ]
+  ],
+  "milieu": [
+   210.645,
+   149.675
+  ]
+ },
+ {
+  "nom": "coudé sans côté, côtés en face, loin",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 400,
+    "y": 150,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    160,
+    40
+   ],
+   [
+    280,
+    40
+   ],
+   [
+    280,
+    190
+   ],
+   [
+    400,
+    190
+   ]
+  ],
+  "milieu": [
+   280,
+   115
+  ]
+ },
+ {
+  "nom": "coudé en face vertical, loin",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 100,
+    "y": 300,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "bottom",
+    "toSide": "top"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    80,
+    80
+   ],
+   [
+    80,
+    190
+   ],
+   [
+    180,
+    190
+   ],
+   [
+    180,
+    300
+   ]
+  ],
+  "milieu": [
+   130,
+   190
+  ]
+ },
+ {
+  "nom": "coudé en face, proche",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 180,
+    "y": 50,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "right",
+    "toSide": "left"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    160,
+    40
+   ],
+   [
+    176,
+    40
+   ],
+   [
+    176,
+    65
+   ],
+   [
+    164,
+    65
+   ],
+   [
+    164,
+    90
+   ],
+   [
+    180,
+    90
+   ]
+  ],
+  "milieu": [
+   170,
+   65
+  ]
+ },
+ {
+  "nom": "coudé en face vertical, proche",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 40,
+    "y": 100,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "bottom",
+    "toSide": "top"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    80,
+    80
+   ],
+   [
+    80,
+    96
+   ],
+   [
+    100,
+    96
+   ],
+   [
+    100,
+    84
+   ],
+   [
+    120,
+    84
+   ],
+   [
+    120,
+    100
+   ]
+  ],
+  "milieu": [
+   100,
+   90
+  ]
+ },
+ {
+  "nom": "coudé en face, alignés (points confondus retirés)",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "right",
+    "toSide": "left"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    160,
+    40
+   ],
+   [
+    300,
+    40
+   ]
+  ],
+  "milieu": [
+   230,
+   40
+  ]
+ },
+ {
+  "nom": "coudé en face, proche et alignés (demi-tour gardé)",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 180,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "right",
+    "toSide": "left"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    160,
+    40
+   ],
+   [
+    176,
+    40
+   ],
+   [
+    164,
+    40
+   ],
+   [
+    180,
+    40
+   ]
+  ],
+  "milieu": [
+   170,
+   40
+  ]
+ },
+ {
+  "nom": "coudé même direction horizontale",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 200,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "right",
+    "toSide": "right"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    160,
+    40
+   ],
+   [
+    476,
+    40
+   ],
+   [
+    476,
+    240
+   ],
+   [
+    460,
+    240
+   ]
+  ],
+  "milieu": [
+   426,
+   40
+  ]
+ },
+ {
+  "nom": "coudé même direction vers le haut",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 300,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "top",
+    "toSide": "top"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    80,
+    300
+   ],
+   [
+    80,
+    -16
+   ],
+   [
+    380,
+    -16
+   ],
+   [
+    380,
+    0
+   ]
+  ],
+  "milieu": [
+   80,
+   -16
+  ]
+ },
+ {
+  "nom": "coudé même direction vers la gauche",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 300,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 0,
+    "y": 200,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "left",
+    "toSide": "left"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    300,
+    40
+   ],
+   [
+    -16,
+    40
+   ],
+   [
+    -16,
+    240
+   ],
+   [
+    0,
+    240
+   ]
+  ],
+  "milieu": [
+   34,
+   40
+  ]
+ },
+ {
+  "nom": "coudé perpendiculaire, un coude",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 200,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "right",
+    "toSide": "top"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    160,
+    40
+   ],
+   [
+    380,
+    40
+   ],
+   [
+    380,
+    200
+   ]
+  ],
+  "milieu": [
+   350,
+   40
+  ]
+ },
+ {
+  "nom": "coudé perpendiculaire vertical, un coude",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 300,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "bottom",
+    "toSide": "left"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    80,
+    80
+   ],
+   [
+    80,
+    340
+   ],
+   [
+    300,
+    340
+   ]
+  ],
+  "milieu": [
+   80,
+   320
+  ]
+ },
+ {
+  "nom": "coudé perpendiculaire, trois coudes",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 300,
+    "y": 200,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "right",
+    "toSide": "top"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    460,
+    240
+   ],
+   [
+    476,
+    240
+   ],
+   [
+    476,
+    -16
+   ],
+   [
+    80,
+    -16
+   ],
+   [
+    80,
+    0
+   ]
+  ],
+  "milieu": [
+   406,
+   -16
+  ]
+ },
+ {
+  "nom": "coudé perpendiculaire vertical, trois coudes",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 300,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 300,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "top",
+    "toSide": "left"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    80,
+    300
+   ],
+   [
+    80,
+    40
+   ],
+   [
+    300,
+    40
+   ]
+  ],
+  "milieu": [
+   80,
+   60
+  ]
+ },
+ {
+  "nom": "coudé, centre au départ",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 400,
+    "y": 100,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "center",
+    "toSide": "left"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    160,
+    40
+   ],
+   [
+    280,
+    40
+   ],
+   [
+    280,
+    140
+   ],
+   [
+    400,
+    140
+   ]
+  ],
+  "milieu": [
+   280,
+   90
+  ]
+ },
+ {
+  "nom": "coudé, centre à l'arrivée",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 100,
+    "y": 300,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "bottom",
+    "toSide": "center"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    80,
+    80
+   ],
+   [
+    80,
+    190
+   ],
+   [
+    180,
+    190
+   ],
+   [
+    180,
+    300
+   ]
+  ],
+  "milieu": [
+   130,
+   190
+  ]
+ },
+ {
+  "nom": "coudé, centre des deux côtés",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 400,
+    "y": 150,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "orthogonal",
+    "fromSide": "center",
+    "toSide": "center"
+   }
+  ],
+  "lien": "l1",
+  "points": [
+   [
+    160,
+    40
+   ],
+   [
+    280,
+    40
+   ],
+   [
+    280,
+    190
+   ],
+   [
+    400,
+    190
+   ]
+  ],
+  "milieu": [
+   280,
+   115
+  ]
+ },
+ {
+  "nom": "courbe avec côtés",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 400,
+    "y": 300,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "curved",
+    "fromSide": "bottom",
+    "toSide": "bottom"
+   }
+  ],
+  "lien": "l1",
+  "courbe": [
+   [
+    80,
+    80
+   ],
+   [
+    80,
+    330
+   ],
+   [
+    480,
+    630
+   ],
+   [
+    480,
+    380
+   ]
+  ],
+  "milieu": [
+   231.47600932921284,
+   376.10906325310344
+  ]
+ },
+ {
+  "nom": "courbe sans côté, courte (points de contrôle à 40 px)",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 200,
+    "y": 20,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "curved"
+   }
+  ],
+  "lien": "l1",
+  "courbe": [
+   [
+    160,
+    40
+   ],
+   [
+    200,
+    40
+   ],
+   [
+    160,
+    60
+   ],
+   [
+    200,
+    60
+   ]
+  ],
+  "milieu": [
+   180,
+   50.00000000000001
+  ]
+ },
+ {
+  "nom": "courbe, centre d'un côté",
+  "boxes": [
+   {
+    "id": "a",
+    "x": 0,
+    "y": 0,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   },
+   {
+    "id": "b",
+    "x": 500,
+    "y": 100,
+    "width": 160,
+    "height": 80,
+    "text": ""
+   }
+  ],
+  "links": [
+   {
+    "id": "l1",
+    "from": "a",
+    "to": "b",
+    "route": "curved",
+    "fromSide": "top",
+    "toSide": "center"
+   }
+  ],
+  "lien": "l1",
+  "courbe": [
+   [
+    80,
+    0
+   ],
+   [
+    80,
+    -221.36
+   ],
+   [
+    278.64,
+    140
+   ],
+   [
+    500,
+    140
+   ]
+  ],
+  "milieu": [
+   260.17651490616674,
+   29.83246111534233
+  ]
+ }
+]

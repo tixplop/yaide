@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import {
   connecteurProche,
@@ -426,5 +427,24 @@ describe("milieuTrace", () => {
     const p = milieuTrace(d, d.links[0]);
     const q = milieuTrace(d, d.links[1]);
     expect(Math.abs(p.y - q.y)).toBeCloseTo(8, 0);
+  });
+});
+
+describe("cas communs avec le tracé Rust (src/agent/jdiag_traces.json)", () => {
+  const cas = JSON.parse(readFileSync("src/agent/jdiag_traces.json", "utf8"));
+  const nombres = (d) => d.match(/-?\d+(?:\.\d+)?/g).map(Number);
+  test("REQ148_AC2_AC3_tous_les_cas_ont_le_meme_trace_et_le_meme_milieu", () => {
+    expect(cas.length).toBeGreaterThanOrEqual(20);
+    for (const c of cas) {
+      const doc = { boxes: c.boxes, links: c.links };
+      const lien = c.links.find((l) => l.id === c.lien);
+      const attendu = (c.points ?? c.courbe).flat();
+      const obtenu = nombres(geometrieLien(doc, lien, 1).entier);
+      expect(obtenu.length, c.nom).toBe(attendu.length);
+      obtenu.forEach((n, i) => expect(Math.abs(n - attendu[i]), c.nom).toBeLessThanOrEqual(0.01));
+      const m = milieuTrace(doc, lien);
+      expect(Math.abs(m.x - c.milieu[0]), c.nom).toBeLessThanOrEqual(0.01);
+      expect(Math.abs(m.y - c.milieu[1]), c.nom).toBeLessThanOrEqual(0.01);
+    }
   });
 });
