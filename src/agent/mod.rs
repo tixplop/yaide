@@ -1,6 +1,7 @@
 pub mod agents;
 pub mod conversation;
 pub mod jdiag;
+pub mod jdiag_controle;
 pub mod jdiag_trace;
 pub mod mcp;
 pub mod outils;

@@ -3,6 +3,7 @@
 
 use super::agents::{Agents, COULEURS};
 use super::jdiag;
+use super::jdiag_controle;
 use super::outils_config;
 use super::provider::DefOutil;
 use super::reglages::{self, Erreur, Reglages};
@@ -79,7 +80,7 @@ fn def(nom: &str, description: &str, proprietes: Value, requis: &[&str]) -> DefO
 }
 
 const DESCRIPTION_WHITEBOARD: &str = "Create or replace a whiteboard file (.jdiag), with its parent folders. The whiteboard is refused, and nothing written, if it is not valid. Required keys: version (1), boxes, links; arrows (free arrows) is optional. Box: id, x, y (top-left corner, integer pixels), width, height (integers), text (lines separated by \\n), spans (optional parts of the text with their own style). Link: id, from, to (box ids), text (optional label shown on the link, with spans and textSize). Free arrow: id, x1, y1 (start), x2, y2 (end), integers. Ids are unique across all objects: b<n> for boxes, l<n> for links, a<n> for arrows, n starting at 1. Optional keys and their allowed values, the first one being the default: ";
-const FIN_DESCRIPTION_WHITEBOARD: &str = ". A new box is 160x80 (circle 100x100, diamond 160x100, text 160x40). A link may give fromSide and toSide together (top, right, bottom, left, center (the box center; the line stops at its border)). A span is {start, end, bold, italic, underline, strike, color}: start and end are positions in characters (not bytes), end excluded, spans must not overlap, and a link label needs a text before its spans. Lists go from the lowest object to the highest. To change a whiteboard, read it with whiteboard_read, then write it whole.";
+const FIN_DESCRIPTION_WHITEBOARD: &str = ". A new box is 160x80 (circle 100x100, diamond 160x100, text 160x40). A link may give fromSide and toSide together (top, right, bottom, left, center (the box center; the line stops at its border)). A span is {start, end, bold, italic, underline, strike, color}: start and end are positions in characters (not bytes), end excluded, spans must not overlap, and a link label needs a text before its spans. Lists go from the lowest object to the highest. To change a whiteboard, read it with whiteboard_read, then write it whole. The result of whiteboard_write lists layout warnings (estimated sizes; the file is written anyway): overlapping boxes, links over boxes, crossing or overlapping links, texts that overlap or overflow; fix them by moving or enlarging boxes or changing fromSide, toSide or route, then write again.";
 
 fn valeurs_texte(style: &jdiag::Style) -> String {
     style
@@ -432,8 +433,11 @@ async fn lancer(nom: &str, a: &Value, ctx: &Contexte) -> Result<Resultat, String
                 return Err("The path is a directory.".into());
             }
             fichiers::ecrire(projet, chemin, None, texte.as_bytes()).map_err(phrase)?;
+            let avertissements = serde_json::from_str::<Value>(&texte)
+                .map(|w| jdiag_controle::bloc(&w))
+                .unwrap_or_default();
             Ok(ok(format!(
-                "Wrote {chemin}: {b} boxes, {l} links, {f} free arrows."
+                "Wrote {chemin}: {b} boxes, {l} links, {f} free arrows.{avertissements}"
             )))
         }
         "bash" => Ok(bash(projet, requis(a, "command")?, ctx.limites.bash).await),
@@ -1064,6 +1068,30 @@ mod tests {
         ] {
             assert!(ecriture.description.contains(m), "{m}");
         }
+    }
+
+    #[tokio::test]
+    async fn REQ148_AC1_avertissements_dans_le_resultat() {
+        let d = dossier("wb148");
+        let c = ctx(&d);
+        let proche = DEUX.replace("\"x\": 300", "\"x\": 150").replace(
+            "\"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Fin",
+            "\"y\": 100, \"width\": 160, \"height\": 80, \"text\": \"Fin",
+        );
+        let r = ecrire_wb(&c, "docs/plan.jdiag", &proche).await;
+        assert_eq!(
+            r,
+            ok("Wrote docs/plan.jdiag: 2 boxes, 1 links, 0 free arrows.\nLayout warnings (estimated sizes; the file was written):\n- Boxes b1 and b2 overlap.".into())
+        );
+        assert_eq!(
+            fs::read_to_string(d.join("docs/plan.jdiag")).unwrap(),
+            proche
+        );
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "docs/plan.jdiag"})).await;
+        assert_eq!(r.contenu, proche);
+        let d = description_whiteboard_write();
+        assert!(d.contains("layout warnings (estimated sizes; the file is written anyway)"));
+        assert!(d.contains("fromSide, toSide or route"));
     }
 
     #[tokio::test]
