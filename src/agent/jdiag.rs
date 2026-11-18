@@ -1,0 +1,224 @@
+//! Format `.jdiag` (REQ-132) côté Rust, pour les outils `whiteboard_read` et `whiteboard_write`
+//! (REQ-144). Calqué sur `web/src/jdiag.js` : mêmes clés dans le même ordre, mêmes valeurs
+//! admises, défauts non écrits, `arrows` vide non écrite, mêmes refus ; chaque refus dit sa cause.
+
+use serde_json::{json, Value};
+use std::collections::HashSet;
+
+const CLES_BOITE: [&str; 6] = ["id", "x", "y", "width", "height", "text"];
+const CLES_LIEN: [&str; 3] = ["id", "from", "to"];
+const CLES_LIBRE: [&str; 5] = ["id", "x1", "y1", "x2", "y2"];
+const ENTIERS: [&str; 8] = ["x", "y", "width", "height", "x1", "y1", "x2", "y2"];
+pub const COTES: [&str; 4] = ["top", "right", "bottom", "left"];
+
+/// Clés de style et valeurs admises ; la première valeur est celle par défaut.
+pub type Style = Vec<(&'static str, Vec<Value>)>;
+
+fn textes(l: &[&str]) -> Vec<Value> {
+    l.iter().map(|s| json!(s)).collect()
+}
+
+fn couleurs() -> Vec<Value> {
+    textes(&[
+        "default", "blue", "green", "yellow", "orange", "red", "purple",
+    ])
+}
+
+fn traits() -> Vec<Value> {
+    textes(&["solid", "dashed", "dotted"])
+}
+
+fn epaisseurs() -> Vec<Value> {
+    textes(&["thin", "medium", "thick"])
+}
+
+pub fn style_boite() -> Style {
+    vec![
+        (
+            "shape",
+            textes(&["rectangle", "rounded", "ellipse", "diamond", "note", "text"]),
+        ),
+        ("color", couleurs()),
+        ("line", traits()),
+        ("weight", epaisseurs()),
+        (
+            "opacity",
+            vec![json!(100), json!(75), json!(50), json!(25), json!(0)],
+        ),
+        ("textSize", textes(&["normal", "small", "large", "xlarge"])),
+    ]
+}
+
+pub fn style_trait() -> Style {
+    vec![
+        ("route", textes(&["direct", "orthogonal", "curved"])),
+        ("ends", textes(&["end", "none", "start", "both"])),
+        ("line", traits()),
+        ("color", couleurs()),
+        ("weight", epaisseurs()),
+    ]
+}
+
+/// Un nombre entier, écrit `40` ou `40.0` ; `None` sinon.
+fn entier(v: &Value) -> Option<i64> {
+    if let Some(n) = v.as_i64() {
+        return Some(n);
+    }
+    let f = v.as_f64()?;
+    (f.fract() == 0.0 && f.abs() < 9e15).then_some(f as i64)
+}
+
+type Objet = Vec<(String, Value)>;
+
+fn objet(
+    nom: &str,
+    i: usize,
+    v: &Value,
+    requises: &[&str],
+    styles: &Style,
+) -> Result<Objet, String> {
+    let pre = format!("{nom}[{i}]");
+    let o = v
+        .as_object()
+        .ok_or_else(|| format!("{pre}: not an object."))?;
+    let mut sortie: Objet = Vec::new();
+    for cle in requises {
+        let x = o.get(*cle);
+        let valeur = if ENTIERS.contains(cle) {
+            x.and_then(entier).map(|n| json!(n))
+        } else {
+            x.filter(|x| x.is_string()).cloned()
+        };
+        sortie.push((
+            cle.to_string(),
+            valeur.ok_or_else(|| format!("{pre}: missing or invalid {cle}."))?,
+        ));
+    }
+    for (cle, valeurs) in styles {
+        let Some(x) = o.get(*cle) else { continue };
+        let x = entier(x).map(|n| json!(n)).unwrap_or_else(|| x.clone());
+        if !valeurs.contains(&x) {
+            return Err(format!("{pre}: invalid {cle}."));
+        }
+        if x != valeurs[0] {
+            sortie.push((cle.to_string(), x));
+        }
+    }
+    Ok(sortie)
+}
+
+fn identifiant(o: &Objet) -> &str {
+    o[0].1.as_str().unwrap_or("")
+}
+
+fn cote<'a>(v: &'a Value, cle: &str) -> Option<&'a str> {
+    v.get(cle)?.as_str().filter(|c| COTES.contains(c))
+}
+
+fn liste<'a>(brut: &'a Value, cle: &str, facultative: bool) -> Result<&'a [Value], String> {
+    match brut.get(cle) {
+        Some(Value::Array(l)) => Ok(l),
+        None if facultative => Ok(&[]),
+        _ => Err(format!("{cle} must be a list.")),
+    }
+}
+
+fn ligne(o: &Objet) -> String {
+    let champs: Vec<String> = o
+        .iter()
+        .map(|(c, v)| {
+            format!(
+                "{}: {}",
+                serde_json::to_string(c).unwrap(),
+                serde_json::to_string(v).unwrap()
+            )
+        })
+        .collect();
+    format!("    {{{}}}", champs.join(", "))
+}
+
+fn partie(nom: &str, objets: &[Objet]) -> String {
+    if objets.is_empty() {
+        return format!("  \"{nom}\": []");
+    }
+    let lignes: Vec<String> = objets.iter().map(ligne).collect();
+    format!("  \"{nom}\": [\n{}\n  ]", lignes.join(",\n"))
+}
+
+/// Un whiteboard (valeur JSON) → texte du fichier, écrit comme Yaide l'écrit, et le nombre de
+/// boîtes, de liens et de flèches libres. Le refus dit l'objet et la clé en cause.
+pub fn en_texte(brut: &Value) -> Result<(String, [usize; 3]), String> {
+    if !brut.is_object() {
+        return Err("The whiteboard must be an object.".into());
+    }
+    if brut.get("version").and_then(entier) != Some(1) {
+        return Err("version must be 1.".into());
+    }
+    let (b, l, a) = (
+        liste(brut, "boxes", false)?,
+        liste(brut, "links", false)?,
+        liste(brut, "arrows", true)?,
+    );
+    let mut ids: HashSet<String> = HashSet::new();
+    let mut verifier = |o: &Objet| -> Result<(), String> {
+        let id = identifiant(o);
+        if ids.insert(id.to_string()) {
+            Ok(())
+        } else {
+            Err(format!("duplicate id {id}."))
+        }
+    };
+    let style_b = style_boite();
+    let style_t = style_trait();
+    let mut boites = Vec::new();
+    for (i, v) in b.iter().enumerate() {
+        let o = objet("boxes", i, v, &CLES_BOITE, &style_b)?;
+        verifier(&o)?;
+        boites.push(o);
+    }
+    let ids_boites: HashSet<String> = boites.iter().map(|o| identifiant(o).to_string()).collect();
+    let mut liens = Vec::new();
+    for (i, v) in l.iter().enumerate() {
+        let mut o = objet("links", i, v, &CLES_LIEN, &style_t)?;
+        verifier(&o)?;
+        let (de, vers) = (cote(v, "fromSide"), cote(v, "toSide"));
+        if v.get("fromSide").is_some() || v.get("toSide").is_some() {
+            let (Some(de), Some(vers)) = (de, vers) else {
+                return Err(format!(
+                    "links[{i}]: fromSide and toSide go together, each one of top, right, bottom, left."
+                ));
+            };
+            o.insert(3, ("fromSide".into(), json!(de)));
+            o.insert(4, ("toSide".into(), json!(vers)));
+        }
+        for cle in [1, 2] {
+            let boite = o[cle].1.as_str().unwrap_or("");
+            if !ids_boites.contains(boite) {
+                return Err(format!("links[{i}]: unknown box {boite}."));
+            }
+        }
+        liens.push(o);
+    }
+    let mut libres = Vec::new();
+    for (i, v) in a.iter().enumerate() {
+        let o = objet("arrows", i, v, &CLES_LIBRE, &style_t)?;
+        verifier(&o)?;
+        libres.push(o);
+    }
+    let mut parties = vec![partie("boxes", &boites), partie("links", &liens)];
+    if !libres.is_empty() {
+        parties.push(partie("arrows", &libres));
+    }
+    let texte = format!("{{\n  \"version\": 1,\n{}\n}}\n", parties.join(",\n"));
+    Ok((texte, [boites.len(), liens.len(), libres.len()]))
+}
+
+/// Texte d'un fichier → texte tel que Yaide l'écrit. Un texte vide est le whiteboard vide.
+pub fn relire(texte: &str) -> Result<String, String> {
+    if texte.trim().is_empty() {
+        return en_texte(&json!({"version": 1, "boxes": [], "links": []})).map(|r| r.0);
+    }
+    let brut: Value =
+        serde_json::from_str(texte).map_err(|_| "The file is not valid JSON.".to_string())?;
+    en_texte(&brut).map(|r| r.0)
+}

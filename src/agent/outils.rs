@@ -1,7 +1,8 @@
-//! Les quinze outils de l'agent (REQ-057, REQ-097, REQ-098, REQ-100). Une erreur d'outil n'est pas une erreur Rust :
+//! Les dix-sept outils de l'agent (REQ-057, REQ-097, REQ-098, REQ-100, REQ-144). Une erreur d'outil n'est pas une erreur Rust :
 //! elle part au modèle comme résultat (`echec`), en une phrase courte en anglais.
 
 use super::agents::{Agents, COULEURS};
+use super::jdiag;
 use super::outils_config;
 use super::provider::DefOutil;
 use super::reglages::{self, Erreur, Reglages};
@@ -77,6 +78,89 @@ fn def(nom: &str, description: &str, proprietes: Value, requis: &[&str]) -> DefO
     }
 }
 
+const DESCRIPTION_WHITEBOARD: &str = "Create or replace a whiteboard file (.jdiag), with its parent folders. The whiteboard is refused, and nothing written, if it is not valid. Required keys: version (1), boxes, links; arrows (free arrows) is optional. Box: id, x, y (top-left corner, integer pixels), width, height (integers), text (lines separated by \\n). Link: id, from, to (box ids). Free arrow: id, x1, y1 (start), x2, y2 (end), integers. Ids are unique across all objects: b<n> for boxes, l<n> for links, a<n> for arrows, n starting at 1. Optional keys and their allowed values, the first one being the default: ";
+const FIN_DESCRIPTION_WHITEBOARD: &str = ". A new box is 160x80 (circle 100x100, diamond 160x100, text 160x40). A link may give fromSide and toSide together (top, right, bottom, left). Lists go from the lowest object to the highest. To change a whiteboard, read it with whiteboard_read, then write it whole.";
+
+fn valeurs_texte(style: &jdiag::Style) -> String {
+    style
+        .iter()
+        .map(|(cle, valeurs)| {
+            let v: Vec<String> = valeurs
+                .iter()
+                .map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_string))
+                .collect();
+            format!("{cle}: {}", v.join(" | "))
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn description_whiteboard_write() -> String {
+    format!(
+        "{DESCRIPTION_WHITEBOARD}box {}; link and free arrow {}{FIN_DESCRIPTION_WHITEBOARD}",
+        valeurs_texte(&jdiag::style_boite()),
+        valeurs_texte(&jdiag::style_trait())
+    )
+}
+
+fn schema_whiteboard() -> Value {
+    let cote = json!({"type": "string", "enum": jdiag::COTES});
+    let objet = |entiers: &[&str], textes: &[&str], style: jdiag::Style, extra: Value| {
+        let mut p = serde_json::Map::new();
+        for c in textes {
+            p.insert(c.to_string(), json!({"type": "string"}));
+        }
+        for c in entiers {
+            p.insert(c.to_string(), json!({"type": "integer"}));
+        }
+        let mut requis: Vec<&str> = textes.iter().chain(entiers).copied().collect();
+        requis.sort_by_key(|c| {
+            [
+                "id", "x", "y", "width", "height", "text", "from", "to", "x1", "y1", "x2", "y2",
+            ]
+            .iter()
+            .position(|n| n == c)
+        });
+        for (c, v) in style {
+            let type_ = if c == "opacity" { "integer" } else { "string" };
+            p.insert(c.to_string(), json!({"type": type_, "enum": v}));
+        }
+        if let Value::Object(e) = extra {
+            p.extend(e);
+        }
+        json!({"type": "object", "properties": p, "required": requis})
+    };
+    let boite = objet(
+        &["x", "y", "width", "height"],
+        &["id", "text"],
+        jdiag::style_boite(),
+        json!({}),
+    );
+    let lien = objet(
+        &[],
+        &["id", "from", "to"],
+        jdiag::style_trait(),
+        json!({"fromSide": cote, "toSide": cote}),
+    );
+    let libre = objet(
+        &["x1", "y1", "x2", "y2"],
+        &["id"],
+        jdiag::style_trait(),
+        json!({}),
+    );
+    json!({
+        "type": "object",
+        "description": "The whole whiteboard",
+        "properties": {
+            "version": {"type": "integer", "enum": [1]},
+            "boxes": {"type": "array", "items": boite},
+            "links": {"type": "array", "items": lien},
+            "arrows": {"type": "array", "items": libre},
+        },
+        "required": ["version", "boxes", "links"],
+    })
+}
+
 pub fn definitions() -> Vec<DefOutil> {
     let texte = |d: &str| json!({"type": "string", "description": d});
     let entier = |d: &str| json!({"type": "integer", "description": d});
@@ -98,6 +182,18 @@ pub fn definitions() -> Vec<DefOutil> {
             "Replace a passage that appears exactly once in a file.",
             json!({"path": texte("File path, relative to the project"), "old": texte("Passage to replace, unique in the file"), "new": texte("Replacement")}),
             &["path", "old", "new"],
+        ),
+        def(
+            "whiteboard_read",
+            "Read a whiteboard file (.jdiag) of the project and return it in the whiteboard format (see whiteboard_write), as Yaide writes it. An empty file is an empty whiteboard.",
+            json!({"path": texte("Whiteboard path, relative to the project, ending with .jdiag")}),
+            &["path"],
+        ),
+        def(
+            "whiteboard_write",
+            &description_whiteboard_write(),
+            json!({"path": texte("Whiteboard path, relative to the project, ending with .jdiag"), "whiteboard": schema_whiteboard()}),
+            &["path", "whiteboard"],
         ),
         def(
             "bash",
@@ -224,7 +320,7 @@ pub fn argument_principal(nom: &str, arguments: &Value) -> String {
         };
     }
     let cle = match nom {
-        "read" | "write" | "edit" => "path",
+        "read" | "write" | "edit" | "whiteboard_read" | "whiteboard_write" => "path",
         "bash" => "command",
         "glob" => "pattern",
         "websearch" => "query",
@@ -249,6 +345,14 @@ fn requis<'a>(arguments: &'a Value, cle: &str) -> Result<&'a str, String> {
     arguments[cle]
         .as_str()
         .ok_or_else(|| format!("Missing or invalid argument: {cle}."))
+}
+
+fn chemin_jdiag(arguments: &Value) -> Result<&str, String> {
+    let chemin = requis(arguments, "path")?;
+    if !chemin.to_lowercase().ends_with(".jdiag") {
+        return Err("The path must end with .jdiag.".into());
+    }
+    Ok(chemin)
 }
 
 fn entier(arguments: &Value, cle: &str) -> Result<Option<usize>, String> {
@@ -293,6 +397,25 @@ async fn lancer(nom: &str, a: &Value, ctx: &Contexte) -> Result<Resultat, String
             requis(a, "new")?,
         )
         .map(ok),
+        "whiteboard_read" => {
+            let chemin = chemin_jdiag(a)?;
+            let (texte, _) = fichiers::lire(projet, chemin).map_err(phrase)?;
+            jdiag::relire(&texte).map(ok)
+        }
+        "whiteboard_write" => {
+            let chemin = chemin_jdiag(a)?;
+            if a["whiteboard"].is_null() {
+                return Err("Missing or invalid argument: whiteboard.".into());
+            }
+            let (texte, [b, l, f]) = jdiag::en_texte(&a["whiteboard"])?;
+            if fichiers::resoudre(projet, chemin).map_err(phrase)?.is_dir() {
+                return Err("The path is a directory.".into());
+            }
+            fichiers::ecrire(projet, chemin, None, texte.as_bytes()).map_err(phrase)?;
+            Ok(ok(format!(
+                "Wrote {chemin}: {b} boxes, {l} links, {f} free arrows."
+            )))
+        }
         "bash" => Ok(bash(projet, requis(a, "command")?, ctx.limites.bash).await),
         "glob" => glob(projet, requis(a, "pattern")?).await.map(ok),
         "websearch" => web::chercher(
@@ -824,6 +947,8 @@ mod tests {
                 "read",
                 "write",
                 "edit",
+                "whiteboard_read",
+                "whiteboard_write",
                 "bash",
                 "glob",
                 "websearch",
@@ -863,6 +988,289 @@ mod tests {
         );
         assert_eq!(a("save_agent", json!({"folder": "relecteur"})), "relecteur");
         assert_eq!(a("list_agents", json!({})), "");
+    }
+
+    const DEUX: &str = "{\n  \"version\": 1,\n  \"boxes\": [\n    {\"id\": \"b1\", \"x\": 40, \"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Début\"},\n    {\"id\": \"b2\", \"x\": 300, \"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Fin\"}\n  ],\n  \"links\": [\n    {\"id\": \"l1\", \"from\": \"b1\", \"to\": \"b2\"}\n  ]\n}\n";
+    const STYLES6: &str = "{\n  \"version\": 1,\n  \"boxes\": [\n    {\"id\": \"b1\", \"x\": 40, \"y\": 80, \"width\": 100, \"height\": 100, \"text\": \"Début\", \"shape\": \"ellipse\", \"color\": \"green\"},\n    {\"id\": \"b2\", \"x\": 300, \"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Fin\"}\n  ],\n  \"links\": [\n    {\"id\": \"l1\", \"from\": \"b1\", \"to\": \"b2\", \"fromSide\": \"right\", \"toSide\": \"left\", \"route\": \"orthogonal\", \"ends\": \"both\", \"line\": \"dashed\"}\n  ],\n  \"arrows\": [\n    {\"id\": \"a1\", \"x1\": 100, \"y1\": 300, \"x2\": 300, \"y2\": 300, \"ends\": \"none\"}\n  ]\n}\n";
+    const STYLES9: &str = "{\n  \"version\": 1,\n  \"boxes\": [\n    {\"id\": \"b1\", \"x\": 40, \"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Début\", \"color\": \"blue\", \"line\": \"dashed\", \"weight\": \"thick\", \"opacity\": 50, \"textSize\": \"large\"},\n    {\"id\": \"b2\", \"x\": 300, \"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Fin\"}\n  ],\n  \"links\": [\n    {\"id\": \"l1\", \"from\": \"b1\", \"to\": \"b2\", \"color\": \"red\", \"weight\": \"medium\"}\n  ],\n  \"arrows\": [\n    {\"id\": \"a1\", \"x1\": 100, \"y1\": 300, \"x2\": 300, \"y2\": 300, \"line\": \"dotted\", \"color\": \"green\", \"weight\": \"thick\"}\n  ]\n}\n";
+
+    async fn ecrire_wb(c: &Contexte, chemin: &str, texte: &str) -> Resultat {
+        let w: Value = serde_json::from_str(texte).unwrap();
+        lancer_outil(
+            c,
+            "whiteboard_write",
+            json!({"path": chemin, "whiteboard": w}),
+        )
+        .await
+    }
+
+    #[test]
+    fn REQ144_AC1_definitions_des_outils_whiteboard() {
+        let defs = definitions();
+        let noms: Vec<&str> = defs.iter().map(|d| d.nom.as_str()).collect();
+        assert_eq!(noms[3..5], ["whiteboard_read", "whiteboard_write"]);
+        let lecture = &defs[3];
+        assert_eq!(lecture.schema["required"], json!(["path"]));
+        let ecriture = &defs[4];
+        assert_eq!(ecriture.schema["required"], json!(["path", "whiteboard"]));
+        let wb = &ecriture.schema["properties"]["whiteboard"];
+        assert_eq!(wb["required"], json!(["version", "boxes", "links"]));
+        let boite = &wb["properties"]["boxes"]["items"]["properties"];
+        assert_eq!(boite["opacity"]["enum"], json!([100, 75, 50, 25, 0]));
+        assert_eq!(
+            boite["textSize"]["enum"],
+            json!(["normal", "small", "large", "xlarge"])
+        );
+        assert_eq!(boite["shape"]["enum"][5], "text");
+        let lien = &wb["properties"]["links"]["items"]["properties"];
+        assert_eq!(
+            lien["route"]["enum"],
+            json!(["direct", "orthogonal", "curved"])
+        );
+        assert_eq!(
+            lien["fromSide"]["enum"],
+            json!(["top", "right", "bottom", "left"])
+        );
+        let libre = &wb["properties"]["arrows"]["items"];
+        assert_eq!(libre["required"], json!(["id", "x1", "y1", "x2", "y2"]));
+        for m in [
+            "160x80",
+            "b<n>",
+            "l<n>",
+            "a<n>",
+            "read it with whiteboard_read, then write it whole",
+            "top-left",
+            "ends: end | none | start | both",
+        ] {
+            assert!(ecriture.description.contains(m), "{m}");
+        }
+    }
+
+    #[tokio::test]
+    async fn REQ144_AC2_ecriture_exacte_et_resultat() {
+        let d = dossier("wb2");
+        let c = ctx(&d);
+        let r = ecrire_wb(&c, "docs/plan.jdiag", DEUX).await;
+        assert_eq!(
+            r,
+            ok("Wrote docs/plan.jdiag: 2 boxes, 1 links, 0 free arrows.".into())
+        );
+        assert_eq!(fs::read_to_string(d.join("docs/plan.jdiag")).unwrap(), DEUX);
+        let r = ecrire_wb(&c, "docs/plan.jdiag", STYLES6).await;
+        assert_eq!(
+            r,
+            ok("Wrote docs/plan.jdiag: 2 boxes, 1 links, 1 free arrows.".into())
+        );
+        assert_eq!(
+            fs::read_to_string(d.join("docs/plan.jdiag")).unwrap(),
+            STYLES6
+        );
+        ecrire_wb(&c, "docs/plan.jdiag", STYLES9).await;
+        assert_eq!(
+            fs::read_to_string(d.join("docs/plan.jdiag")).unwrap(),
+            STYLES9
+        );
+    }
+
+    #[tokio::test]
+    async fn REQ144_AC3_defauts_ordre_et_cle_inconnue() {
+        let d = dossier("wb3");
+        let c = ctx(&d);
+        let desordre = r#"{"links":[{"to":"b2","from":"b1","id":"l1","route":"direct","ends":"end","line":"solid","couleur":"x"}],
+            "arrows":[],"boxes":[{"text":"Début","couleur":"rose","height":80,"width":160,"y":80,"x":40,"id":"b1","shape":"rectangle","opacity":100},
+            {"id":"b2","x":300,"y":80,"width":160,"height":80,"text":"Fin","weight":"thin","textSize":"normal","color":"default"}],"version":1}"#;
+        let r = ecrire_wb(&c, "a.jdiag", desordre).await;
+        assert!(!r.echec, "{r:?}");
+        assert_eq!(fs::read_to_string(d.join("a.jdiag")).unwrap(), DEUX);
+        let texte = "a\"b\\c\nd";
+        let w = json!({"version": 1, "boxes": [{"id": "b1", "x": 1, "y": 2, "width": 3, "height": 4, "text": texte}], "links": []});
+        lancer_outil(
+            &c,
+            "whiteboard_write",
+            json!({"path": "b.jdiag", "whiteboard": w}),
+        )
+        .await;
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "b.jdiag"})).await;
+        let relu: Value = serde_json::from_str(&r.contenu).unwrap();
+        assert_eq!(relu["boxes"][0]["text"], texte);
+        assert!(fs::read_to_string(d.join("b.jdiag"))
+            .unwrap()
+            .contains(r#""text": "a\"b\\c\nd""#));
+    }
+
+    #[tokio::test]
+    async fn REQ144_AC4_lecture_normalisee_et_fichier_vide() {
+        let d = dossier("wb4");
+        let c = ctx(&d);
+        fs::write(d.join("a.jdiag"), DEUX).unwrap();
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "a.jdiag"})).await;
+        assert_eq!(r, ok(DEUX.into()));
+        let ligne = r#"{"version":1,"boxes":[{"id":"b1","x":40,"y":80,"width":160,"height":80,"text":"Début","couleur":"x"},{"id":"b2","x":300,"y":80,"width":160,"height":80,"text":"Fin"}],"links":[{"id":"l1","from":"b1","to":"b2"}]}"#;
+        fs::write(d.join("b.jdiag"), ligne).unwrap();
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "b.jdiag"})).await;
+        assert_eq!(r, ok(DEUX.into()));
+        fs::write(d.join("vide.jdiag"), "").unwrap();
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "vide.jdiag"})).await;
+        assert_eq!(
+            r,
+            ok("{\n  \"version\": 1,\n  \"boxes\": [],\n  \"links\": []\n}\n".into())
+        );
+    }
+
+    /// Les objets illisibles d'AC-132-4, -7 et -10, avec la cause attendue.
+    fn illisibles() -> Vec<(&'static str, &'static str)> {
+        vec![
+            (
+                r#"{"version":2,"boxes":[],"links":[]}"#,
+                "version must be 1.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"height":1,"text":""}],"links":[]}"#,
+                "boxes[0]: missing or invalid width.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":"40","y":1,"width":1,"height":1,"text":""}],"links":[]}"#,
+                "boxes[0]: missing or invalid x.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":""},{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":""}],"links":[]}"#,
+                "duplicate id b1.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":""}],"links":[{"id":"l1","from":"b1","to":"b9"}]}"#,
+                "links[0]: unknown box b9.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":"","shape":"triangle"}],"links":[]}"#,
+                "boxes[0]: invalid shape.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":""}],"links":[{"id":"l1","from":"b1","to":"b1","route":"zigzag"}]}"#,
+                "links[0]: invalid route.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":""}],"links":[{"id":"l1","from":"b1","to":"b1","fromSide":"right"}]}"#,
+                "links[0]: fromSide and toSide go together",
+            ),
+            (
+                r#"{"version":1,"boxes":[],"links":[],"arrows":{}}"#,
+                "arrows must be a list.",
+            ),
+            (
+                r#"{"version":1,"boxes":[],"links":[],"arrows":[{"id":"a1","x1":"1","y1":1,"x2":1,"y2":1}]}"#,
+                "arrows[0]: missing or invalid x1.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":""}],"links":[{"id":"l1","from":"b1","to":"b1"}],"arrows":[{"id":"l1","x1":1,"y1":1,"x2":1,"y2":1}]}"#,
+                "duplicate id l1.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":"","weight":"huge"}],"links":[]}"#,
+                "boxes[0]: invalid weight.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":"","opacity":30}],"links":[]}"#,
+                "boxes[0]: invalid opacity.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":"","opacity":"50"}],"links":[]}"#,
+                "boxes[0]: invalid opacity.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":"","textSize":"tiny"}],"links":[]}"#,
+                "boxes[0]: invalid textSize.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":""}],"links":[{"id":"l1","from":"b1","to":"b1","color":"pink"}]}"#,
+                "links[0]: invalid color.",
+            ),
+            (
+                r#"{"version":1,"boxes":[],"links":[],"arrows":[{"id":"a1","x1":1,"y1":1,"x2":1,"y2":1,"weight":2}]}"#,
+                "arrows[0]: invalid weight.",
+            ),
+            ("[]", "The whiteboard must be an object."),
+        ]
+    }
+
+    #[tokio::test]
+    async fn REQ144_AC5_refus_de_whiteboards_illisibles() {
+        let d = dossier("wb5");
+        let c = ctx(&d);
+        fs::write(d.join("a.jdiag"), DEUX).unwrap();
+        for (texte, cause) in illisibles() {
+            let w: Value = serde_json::from_str(texte).unwrap();
+            let r = lancer_outil(
+                &c,
+                "whiteboard_write",
+                json!({"path": "a.jdiag", "whiteboard": w}),
+            )
+            .await;
+            assert!(r.echec && r.contenu.starts_with(cause), "{texte} -> {r:?}");
+            assert_eq!(fs::read_to_string(d.join("a.jdiag")).unwrap(), DEUX);
+            fs::write(d.join("m.jdiag"), texte).unwrap();
+            let r = lancer_outil(&c, "whiteboard_read", json!({"path": "m.jdiag"})).await;
+            assert!(r.echec && r.contenu.starts_with(cause), "{texte} -> {r:?}");
+        }
+        for w in [json!([]), json!("pas du json")] {
+            let r = lancer_outil(
+                &c,
+                "whiteboard_write",
+                json!({"path": "a.jdiag", "whiteboard": w}),
+            )
+            .await;
+            assert_eq!(r, echec("The whiteboard must be an object."));
+        }
+        fs::write(d.join("m.jdiag"), "pas du json").unwrap();
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "m.jdiag"})).await;
+        assert_eq!(r, echec("The file is not valid JSON."));
+        assert_eq!(fs::read_to_string(d.join("a.jdiag")).unwrap(), DEUX);
+    }
+
+    #[tokio::test]
+    async fn REQ144_AC6_refus_de_chemin() {
+        let d = dossier("wb6");
+        fs::create_dir_all(d.join("dossier.jdiag")).unwrap();
+        fs::write(d.join("gros.jdiag"), vec![b' '; 5 * 1024 * 1024 + 1]).unwrap();
+        let c = ctx(&d);
+        let w = json!({"version": 1, "boxes": [], "links": []});
+        for nom in ["whiteboard_read", "whiteboard_write"] {
+            let r = lancer_outil(&c, nom, json!({"whiteboard": w})).await;
+            assert_eq!(r, echec("Missing or invalid argument: path."), "{nom}");
+            let r = lancer_outil(&c, nom, json!({"path": "plan.json", "whiteboard": w})).await;
+            assert_eq!(r, echec("The path must end with .jdiag."), "{nom}");
+            let r = lancer_outil(&c, nom, json!({"path": "../x.jdiag", "whiteboard": w})).await;
+            assert_eq!(r, echec("The path is outside the project."), "{nom}");
+            let r = lancer_outil(&c, nom, json!({"path": "dossier.jdiag", "whiteboard": w})).await;
+            assert!(r.echec, "{nom} {r:?}");
+        }
+        assert!(!d.parent().unwrap().join("x.jdiag").exists());
+        assert!(!d.join("plan.json").exists());
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "absent.jdiag"})).await;
+        assert_eq!(r, echec("File not found."));
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "gros.jdiag"})).await;
+        assert_eq!(r, echec("The file is larger than 5 MB."));
+        let r = lancer_outil(&c, "whiteboard_write", json!({"path": "sans.jdiag"})).await;
+        assert_eq!(r, echec("Missing or invalid argument: whiteboard."));
+        assert!(!d.join("sans.jdiag").exists());
+        let r = lancer_outil(
+            &c,
+            "whiteboard_write",
+            json!({"path": "PLAN.JDIAG", "whiteboard": w}),
+        )
+        .await;
+        assert!(!r.echec, "{r:?}");
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "PLAN.JDIAG"})).await;
+        assert!(!r.echec, "{r:?}");
+    }
+
+    #[test]
+    fn REQ144_AC7_argument_principal_des_outils_whiteboard() {
+        for nom in ["whiteboard_read", "whiteboard_write"] {
+            assert_eq!(
+                argument_principal(nom, &json!({"path": "docs/plan.jdiag"})),
+                "docs/plan.jdiag"
+            );
+        }
     }
 
     #[tokio::test]
