@@ -178,8 +178,8 @@ test("REQ142_AC6_depart_glisse_sur_la_boite_de_l_autre_bout_n_est_pas_surligne",
   ptr(surface(), "pointermove", 480, 140);
   expect(obj("b2").classList.contains("cible")).toBe(false);
   expect(t.element.querySelector(".connecteur.plein")).toBeNull();
-  ptr(surface(), "pointermove", 180, 330);
+  ptr(surface(), "pointermove", 180, 312);
   expect(obj("b3").classList.contains("cible")).toBe(true);
-  ptr(surface(), "pointerup", 180, 330);
+  ptr(surface(), "pointerup", 180, 312);
   expect(dernier().links[0]).toMatchObject({ from: "b3", fromSide: "top", to: "b2" });
 });

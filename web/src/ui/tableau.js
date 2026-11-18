@@ -3,7 +3,7 @@ import { estMac } from "../references.js";
 import { indication } from "./indication.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
 import { boiteOutils } from "./tableau-outils.js";
-import { connecteurProche, connecteurs, dansRectangle, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
+import { connecteurProcheAffiche, connecteursAffiches, connecteurs, dansRectangle, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
 import { dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, dessinRectangleSelection, poigneesBoite, poigneesFleche, poigneesLien, svg } from "./tableau-dessin.js";
 
 // C-018 : whiteboard. Un SVG dont le `viewBox` suit la vue ; le document est celui de `jdiag.js`.
@@ -176,7 +176,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     const arrivee = { x: provisoire.x, y: provisoire.y };
     if (provisoire.libre) return dessinProvisoire(provisoire.depart, arrivee, z, { route: choix.trace, ends: choix.bouts, line: choix.trait });
     const source = boite(provisoire.de);
-    const depart = provisoire.cote ? connecteurs(source)[provisoire.cote] : pointSurBord(source, arrivee);
+    const depart = provisoire.cote && provisoire.cote !== "center" ? connecteurs(source)[provisoire.cote] : pointSurBord(source, arrivee);
     return dessinProvisoire(depart, arrivee, z);
   }
 
@@ -192,14 +192,14 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     if (saisie !== null || (geste && geste.type !== "liaison" && geste.type !== "boutLien")) return rien;
     if (geste?.type === "boutLien") {
       if (!cible || !pointeur) return rien;
-      return { boites: [boite(cible)], pleins: [{ id: cible, cote: connecteurProche(boite(cible), pointeur) }] };
+      return { boites: [boite(cible)], pleins: [{ id: cible, cote: connecteurProcheAffiche(boite(cible), pointeur, vueCourante.zoom) }] };
     }
     if (geste) {
       const pleins = [{ id: geste.id, cote: geste.cote }];
       const boites = [boite(geste.id)];
       if (cible && pointeur) {
         boites.push(boite(cible));
-        pleins.push({ id: cible, cote: connecteurProche(boite(cible), pointeur) });
+        pleins.push({ id: cible, cote: connecteurProcheAffiche(boite(cible), pointeur, vueCourante.zoom) });
       }
       return { boites, pleins };
     }
@@ -218,12 +218,15 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     const pleins = [];
     if (!surTaille && !surBout) {
       for (const b of boites) {
-        for (const [cote, p] of Object.entries(connecteurs(b))) {
-          if (Math.max(Math.abs(pointeur.x - p.x), Math.abs(pointeur.y - p.y)) <= 8 / z) pleins.push({ id: b.id, cote });
+        for (const [cote, p] of Object.entries(connecteursAffiches(b, z))) {
+          if (Math.max(Math.abs(pointeur.x - p.x), Math.abs(pointeur.y - p.y)) <= 8 / z) {
+            pleins.push({ id: b.id, cote, dist: Math.hypot(pointeur.x - p.x, pointeur.y - p.y) });
+          }
         }
       }
+      pleins.sort((a, c) => a.dist - c.dist);
     }
-    return { boites, pleins: pleins.slice(0, 1) };
+    return { boites, pleins: pleins.slice(0, 1).map(({ id, cote }) => ({ id, cote })) };
   }
 
   // Redessine la seule couche des connecteurs quand elle change (le pointeur bouge souvent).
@@ -509,9 +512,11 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
 
   function surClic(e) {
     if (sansClic) return;
-    if (editeur?.contains(e.target) || e.target.closest?.(".poignees, .connecteurs")) return;
+    // Le connecteur du centre se comporte comme sa boîte : un clic dessus la choisit.
+    const centre = e.target.closest?.('[data-connecteur="center"]');
+    if (editeur?.contains(e.target) || (!centre && e.target.closest?.(".poignees, .connecteurs"))) return;
     const g = e.target.closest?.("g.boite, g.lien, g.fleche");
-    const id = g?.getAttribute("data-id") ?? null;
+    const id = centre ? centre.getAttribute("data-boite") : g?.getAttribute("data-id") ?? null;
     if (saisie !== null && id !== saisie) finirSaisie();
     if (saisie === null) {
       surface.focus({ preventScroll: true });
@@ -559,8 +564,14 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       capturer(e);
       surface.focus({ preventScroll: true });
       const id = connecteur.getAttribute("data-boite");
-      const cote = connecteur.getAttribute("data-connecteur");
       pointeur = pointDessin(e);
+      // Là où deux zones se touchent, le connecteur le plus proche du pointeur l'emporte.
+      const cote = connecteurProcheAffiche(boite(id), pointeur, vueCourante.zoom);
+      // Au centre, le geste attend : moins de 3 px, il agit comme un appui sur la boîte.
+      if (cote === "center") {
+        geste = { ...base, type: "liaison", id, cote };
+        return;
+      }
       geste = { ...base, type: "liaison", id, cote, actif: true };
       provisoire = { de: id, cote, ...pointeur };
       dessiner();
@@ -672,16 +683,21 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     if (!geste || e.pointerId !== geste.pointerId) return;
     const fin = geste;
     if (fin.type === "liaison" && cible && !doc.links.some((l) => l.from === fin.id && l.to === cible)) {
-      const lien = { id: idLibre("l", doc), from: fin.id, to: cible, fromSide: fin.cote, toSide: connecteurProche(boite(cible), pointDessin(e)) };
+      const lien = { id: idLibre("l", doc), from: fin.id, to: cible, fromSide: fin.cote, toSide: connecteurProcheAffiche(boite(cible), pointDessin(e), vueCourante.zoom) };
       Object.assign(lien, styleChoisi("trait"));
       appliquer({ ...doc, links: [...doc.links, lien] });
       choisis = [lien.id];
       surface.focus({ preventScroll: true });
     }
     if (fin.type === "boutLien" && fin.actif && cible) {
-      const nouveau = rattacher(doc, fin.id, fin.bout, cible, connecteurProche(boite(cible), pointDessin(e)));
+      const nouveau = rattacher(doc, fin.id, fin.bout, cible, connecteurProcheAffiche(boite(cible), pointDessin(e), vueCourante.zoom));
       if (nouveau !== doc) appliquer(nouveau);
       surface.focus({ preventScroll: true });
+    }
+    if (fin.type === "liaison" && !fin.actif) {
+      // Appui sans mouvement sur le connecteur du centre : le `click` qui suit choisit la boîte (surClic).
+      annulerGeste();
+      return;
     }
     if (fin.type === "selection") {
       annulerGeste();
@@ -742,12 +758,22 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   function surDoubleClic(e) {
     if (doc === null || e.button !== 0 || editeur?.contains(e.target)) return;
     if (e.target.closest?.("g.lien, g.fleche")) return;
+    // Le connecteur du centre laisse passer le double-clic : la saisie de sa boîte.
+    const p = pointDessin(e);
+    const z = vueCourante.zoom;
+    const centre = doc.boxes.find((x) => {
+      const c = connecteursAffiches(x, z).center;
+      return c && Math.max(Math.abs(p.x - c.x), Math.abs(p.y - c.y)) <= 8 / z;
+    });
+    if (centre) {
+      commencerSaisie(centre.id);
+      return;
+    }
     const b = e.target.closest?.("g.boite");
     if (b) {
       commencerSaisie(b.getAttribute("data-id"));
       return;
     }
-    const p = pointDessin(e);
     nouvelleBoite(p.x, p.y);
   }
 

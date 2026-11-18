@@ -27,7 +27,7 @@ const glisser = async (page, de, vers) => {
   await page.mouse.up();
 };
 
-test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_REQ142_AC1_AC4_REQ143_AC1_AC2_AC5_parcours_P096_P100_P101_P102_P103_whiteboard", async ({ page }) => {
+test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_REQ142_AC1_AC4_REQ143_AC1_AC2_AC5_parcours_P096_P100_P101_P102_P103_whiteboard", async ({ page }) => {
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "docs"), { recursive: true });
   fs.writeFileSync(path.join(dossier, "docs/a.md"), "# A\n");
@@ -72,14 +72,14 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ1
     expect(await page.evaluate(() => getSelection().anchorOffset)).toBe(5);
     await page.keyboard.press("Escape");
     const avant = await centre(fin);
-    await glisser(page, avant, { x: avant.x + 300, y: avant.y });
+    await glisser(page, { x: avant.x + 20, y: avant.y }, { x: avant.x + 320, y: avant.y });
     const apres = await centre(fin);
     expect(Math.abs(apres.x - avant.x - 300)).toBeLessThanOrEqual(2);
 
     // AC-130-1 : à 10 px du bord droit de « Début », quatre connecteurs ; le connecteur droit glissé près du côté gauche de « Fin ».
     const rd = await debut.boundingBox();
     await page.mouse.move(rd.x + rd.width + 10, rd.y + rd.height / 2);
-    await expect(surface.locator(".connecteurs .connecteur")).toHaveCount(4);
+    await expect(surface.locator(".connecteurs .connecteur")).toHaveCount(5);
     const rf = await fin.boundingBox();
     await glisser(page, await centre(surface.locator('[data-connecteur="right"]')), { x: rf.x + 10, y: rf.y + rf.height / 2 });
     await expect(surface.locator('[aria-roledescription="lien"]')).toHaveCount(1);
@@ -276,7 +276,7 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ1
     const sansSelection = async () => expect(await page.evaluate(() => window.getSelection().isCollapsed)).toBe(true);
     const bDebut = boite("Début");
     const xDe = async (b) => (await b.boundingBox()).x;
-    await bDebut.click();
+    await bDebut.click({ position: { x: 20, y: 20 } });
     const hp = await centre(surf2.locator('[data-poignee="taille"]'));
     const l0 = (await bDebut.boundingBox()).width;
     await glisser(page, hp, { x: hp.x + 60, y: hp.y });
@@ -284,7 +284,8 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ1
     await sansSelection();
     const x0 = await xDe(bDebut);
     const c0 = await centre(bDebut);
-    await glisser(page, c0, { x: c0.x + 100, y: c0.y });
+    // Hors du connecteur du centre (REQ-130) : à 20 px du centre, un glisser déplace la boîte.
+    await glisser(page, { x: c0.x + 20, y: c0.y }, { x: c0.x + 120, y: c0.y });
     expect(Math.abs((await xDe(bDebut)) - x0 - 100)).toBeLessThanOrEqual(3);
     await sansSelection();
     // Rectangle de sélection autour de « Début » et « Fin du flux », puis deux glisser de suite.
@@ -300,7 +301,7 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ1
     const xb = await xDe(bFin);
     for (let i = 0; i < 2; i++) {
       const c = await centre(bDebut);
-      await glisser(page, c, { x: c.x + 100, y: c.y });
+      await glisser(page, { x: c.x + 20, y: c.y }, { x: c.x + 120, y: c.y });
       await sansSelection();
     }
     expect(Math.abs((await xDe(bDebut)) - xa - 200)).toBeLessThanOrEqual(4);
@@ -312,6 +313,19 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ1
     await page.keyboard.press("Control+a");
     expect(await page.evaluate(() => window.getSelection().toString())).toContain("Début");
     await page.keyboard.press("Escape");
+    // AC-130-13 : le connecteur du centre, à la souris réelle. Clic → boîte choisie ; double-clic → saisie ;
+    // glisser du centre de « Fin du flux » au centre de « Début » → un lien de centre à centre.
+    await page.getByRole("button", { name: "Tout afficher" }).click();
+    const cc = await centre(bDebut);
+    await page.mouse.click(cc.x, cc.y);
+    await expect(surf2).toHaveAttribute("aria-activedescendant", (await bDebut.getAttribute("id")) ?? "");
+    await page.mouse.dblclick(cc.x, cc.y);
+    await expect(page.getByRole("textbox", { name: "Texte de la boîte" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await glisser(page, await centre(bFin), await centre(bDebut));
+    await page.keyboard.press("Control+s");
+    await expect.poll(() => fs.readFileSync(fichier, "utf8")).toContain('"fromSide": "center", "toSide": "center"');
+    expect(JSON.parse(fs.readFileSync(fichier, "utf8")).links.at(-1)).toMatchObject({ fromSide: "center", toSide: "center" });
   } finally {
     await yaide.arreter();
   }

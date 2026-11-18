@@ -1,4 +1,4 @@
-import { connecteurs, epaisseur, geometrieLien, pointe, retraitPointes, tirets, trace, zoneTexte } from "./tableau-calculs.js";
+import { connecteursAffiches, epaisseur, geometrieLien, pointe, retraitPointes, tirets, trace, zoneTexte } from "./tableau-calculs.js";
 
 // C-018 : le SVG d'une boîte, d'un lien, d'une flèche libre et des poignées. Fonctions sans état : le choix,
 // la saisie et les gestes restent dans `tableau.js`, qui passe ici ce qu'il faut pour dessiner.
@@ -135,12 +135,12 @@ export function poigneesBoite(b, z) {
   return g;
 }
 
-// Connecteurs : un rond de 8 px (10 px, plein, pour les `pleins`) au milieu de chaque côté, et sa zone de prise de 16 px.
+// Connecteurs : un rond de 8 px (10 px, plein, pour les `pleins`) au milieu de chaque côté et au centre (si la boîte est assez grande), et sa zone de prise de 16 px.
 // `pleins` : liste de `{ id, cote }`.
 export function dessinConnecteurs(boites, pleins, z) {
   const g = svg("g", { class: "connecteurs", "aria-hidden": "true" });
   for (const b of boites) {
-    for (const [cote, p] of Object.entries(connecteurs(b))) {
+    for (const [cote, p] of Object.entries(connecteursAffiches(b, z))) {
       const plein = pleins.some((q) => q.id === b.id && q.cote === cote);
       svg("rect", { class: "prise", "data-connecteur": cote, "data-boite": b.id, x: p.x - 8 / z, y: p.y - 8 / z, width: 16 / z, height: 16 / z }, g);
       svg("circle", { class: plein ? "connecteur plein" : "connecteur", cx: p.x, cy: p.y, r: (plein ? 5 : 4) / z }, g);

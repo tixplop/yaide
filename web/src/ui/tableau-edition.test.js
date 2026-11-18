@@ -102,3 +102,14 @@ test("REQ142_AC4_rattacher_refuse_boite_de_l_autre_bout_lien_existant_et_rien_a_
   expect(rattacher(inverse, "l1", "arrivee", "b3", "top").links[0].to).toBe("b3");
   expect(() => rattacher(d, "l1", "milieu", "b3", "top")).toThrow();
 });
+
+test("REQ130_AC12_rattacher_au_centre_et_lien_sans_cote_l_autre_bout_prend_le_cote_le_plus_proche", () => {
+  const doc = {
+    version: 1,
+    boxes: [{ id: "b1", x: 100, y: 100, width: 160, height: 80 }, { id: "b2", x: 400, y: 100, width: 160, height: 80 }],
+    links: [{ id: "l1", from: "b1", to: "b2" }],
+  };
+  expect(rattacher(doc, "l1", "arrivee", "b2", "center").links[0]).toEqual({ id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "center" });
+  const deux = { ...doc, links: [{ id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "left" }] };
+  expect(rattacher(deux, "l1", "depart", "b1", "center").links[0]).toMatchObject({ fromSide: "center", toSide: "left" });
+});

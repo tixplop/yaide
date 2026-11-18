@@ -1,5 +1,5 @@
 import { idLibre } from "../jdiag.js";
-import { connecteurProche, connecteurs } from "./tableau-calculs.js";
+import { connecteurProche, connecteursAffiches } from "./tableau-calculs.js";
 // Calculs purs sur le document d'un whiteboard (C-018) : plan des objets.
 
 // Passe les objets de `ids` au-dessus (« premier ») ou au-dessous (« arriere ») de tous les objets de leur sorte.
@@ -65,7 +65,7 @@ export function rattacher(doc, idLien, bout, idBoite, cote) {
   if (bout !== "depart" && bout !== "arrivee") throw new Error("rattacher : « depart » ou « arrivee » attendu");
   const lien = doc.links.find((l) => l.id === idLien);
   const boite = doc.boxes.find((b) => b.id === idBoite);
-  if (!lien || !boite || !connecteurs(boite)[cote]) return doc;
+  if (!lien || !boite || !connecteursAffiches(boite, Infinity)[cote]) return doc;
   const depart = bout === "depart";
   const idAutre = depart ? lien.to : lien.from;
   if (idBoite === idAutre) return doc;
@@ -73,7 +73,7 @@ export function rattacher(doc, idLien, bout, idBoite, cote) {
   const to = depart ? lien.to : idBoite;
   if (doc.links.some((l) => l.id !== idLien && l.from === from && l.to === to)) return doc;
   const autre = doc.boxes.find((b) => b.id === idAutre);
-  const coteAutre = lien.fromSide && lien.toSide ? (depart ? lien.toSide : lien.fromSide) : connecteurProche(autre, connecteurs(boite)[cote]);
+  const coteAutre = lien.fromSide && lien.toSide ? (depart ? lien.toSide : lien.fromSide) : connecteurProche(autre, connecteursAffiches(boite, Infinity)[cote]);
   const fromSide = depart ? cote : coteAutre;
   const toSide = depart ? coteAutre : cote;
   if (from === lien.from && to === lien.to && fromSide === lien.fromSide && toSide === lien.toSide) return doc;

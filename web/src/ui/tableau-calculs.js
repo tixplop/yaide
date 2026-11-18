@@ -155,6 +155,21 @@ export function connecteurs(boite) {
   };
 }
 
+// Les connecteurs d'une boîte au zoom courant : les quatre côtés, plus `center` si la boîte fait au moins 64 px de large
+// ou de haut à l'écran. Seule fonction qui décide de cette liste (affichage, cible, lâcher, poignées de bout).
+export function connecteursAffiches(boite, zoom) {
+  const c = connecteurs(boite);
+  if (boite.width * zoom >= 64 || boite.height * zoom >= 64) c.center = { x: boite.x + boite.width / 2, y: boite.y + boite.height / 2 };
+  return c;
+}
+
+// Connecteur affiché (`connecteursAffiches`) le plus proche de `point`.
+export function connecteurProcheAffiche(boite, point, zoom) {
+  const c = connecteursAffiches(boite, zoom);
+  const dist = (k) => Math.hypot(c[k].x - point.x, c[k].y - point.y);
+  return Object.keys(c).reduce((meilleur, k) => (dist(k) < dist(meilleur) ? k : meilleur));
+}
+
 // Côté dont le connecteur est le plus proche de `point`.
 export function connecteurProche(boite, point) {
   const c = connecteurs(boite);
