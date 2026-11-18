@@ -893,6 +893,11 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau :is(.lien, .fleche):hover .pointe { fill: var(--ink); }
 .ya-tableau :is(.lien, .fleche).choisie .trait { stroke: var(--accent-fg); stroke-width: max(2px, var(--e)); }
 .ya-tableau :is(.lien, .fleche).choisie .pointe { fill: var(--accent-fg); }
+.ya-tableau .lien .ya-tableau-lien-cadre { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.ya-tableau-lien-texte { box-sizing: border-box; padding: 2px 4px; border-radius: var(--radius-xs); background: var(--bg-200); color: var(--ink); white-space: pre; text-align: center; font: var(--texte-base) var(--font-sans); pointer-events: auto; cursor: pointer; }
+.ya-tableau .lien.taille-small .ya-tableau-lien-texte { font: 11px/15px var(--font-sans); }
+.ya-tableau .lien.taille-large .ya-tableau-lien-texte { font: 18px/24px var(--font-sans); }
+.ya-tableau .lien.taille-xlarge .ya-tableau-lien-texte { font: 24px/30px var(--font-sans); }
 .ya-tableau .fleche.provisoire { pointer-events: none; }
 .ya-tableau .fleche.provisoire .trait { stroke: var(--accent-fg); stroke-dasharray: 4 4; }
 .ya-tableau .fleche.provisoire .pointe { fill: var(--accent-fg); }

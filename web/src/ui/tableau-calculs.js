@@ -366,6 +366,38 @@ export function geometrieLien(doc, lien, zoom) {
   return { ...t, pointeDebut: pointe(t.debut, zoom, lien.weight), pointeFin: pointe(t.fin, zoom, lien.weight) };
 }
 
+// Point à mi-longueur du tracé complet d'un lien (décalage de 4 px compris) : le tracé droit ou coudé est
+// une polyligne, la courbe de Bézier est échantillonnée finement.
+export function milieuTrace(doc, lien) {
+  const entier = geometrieLien(doc, lien, 1).entier;
+  const nombres = entier.match(/-?\d+(?:\.\d+)?/g).map(Number);
+  const points = [];
+  if (entier.includes("C")) {
+    const [x0, y0, x1, y1, x2, y2, x3, y3] = nombres;
+    for (let i = 0; i <= 200; i++) {
+      const u = i / 200;
+      const k = 1 - u;
+      const a = k * k * k;
+      const b = 3 * k * k * u;
+      const c = 3 * k * u * u;
+      const d = u * u * u;
+      points.push({ x: a * x0 + b * x1 + c * x2 + d * x3, y: a * y0 + b * y1 + c * y2 + d * y3 });
+    }
+  } else {
+    for (let i = 0; i < nombres.length; i += 2) points.push({ x: nombres[i], y: nombres[i + 1] });
+  }
+  const longueurs = points.slice(1).map((p, i) => Math.hypot(p.x - points[i].x, p.y - points[i].y));
+  let reste = longueurs.reduce((a, b) => a + b, 0) / 2;
+  for (let i = 0; i < longueurs.length; i++) {
+    if (reste <= longueurs[i] || i === longueurs.length - 1) {
+      const k = longueurs[i] === 0 ? 0 : reste / longueurs[i];
+      return { x: points[i].x + (points[i + 1].x - points[i].x) * k, y: points[i].y + (points[i + 1].y - points[i].y) * k };
+    }
+    reste -= longueurs[i];
+  }
+  return points[0];
+}
+
 // Rectangle englobant les deux bouts d'une flèche libre, pour `toutAfficher` et `voirObjet`.
 export function rectangleFleche(fleche) {
   return {

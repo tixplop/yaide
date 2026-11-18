@@ -419,3 +419,82 @@ test("REQ142_AC6_poigneesLien_au_bord_de_depart_et_au_bout_de_la_pointe", () => 
   expect(ronds).toEqual([["260", "140", "4.5"], ["400", "140", "4.5"]]);
   expect([...g.querySelectorAll(".prise")].map((r) => r.getAttribute("data-poignee"))).toEqual(["depart", "arrivee"]);
 });
+
+const etiquette = (id) => obj(id).querySelector(".ya-tableau-lien-texte");
+
+test("REQ147_AC1_AC2_AC9_etiquette_au_milieu_dans_le_groupe_du_lien_et_prise", () => {
+  monter(DOC({ links: [lien({ text: "par mail\nou tél" })] }));
+  const e = etiquette("l1");
+  expect(e).not.toBeNull();
+  expect(e.closest("g.lien")).toBe(obj("l1"));
+  expect(e.textContent).toBe("par mail\nou tél");
+  // Après le trait et les pointes ; cadre centré sur le milieu (330, 140).
+  const fo = obj("l1").querySelector("foreignObject");
+  expect(obj("l1").lastElementChild).toBe(fo);
+  expect(Number(fo.getAttribute("x")) + Number(fo.getAttribute("width")) / 2).toBeCloseTo(330, 0);
+  expect(Number(fo.getAttribute("y")) + Number(fo.getAttribute("height")) / 2).toBeCloseTo(140, 0);
+  // Clic sur l'étiquette : le lien est choisi.
+  clic(e);
+  expect(obj("l1").classList.contains("choisie")).toBe(true);
+  // Classes et marges (le centrage réel est prouvé en navigateur).
+  expect(regle(".ya-tableau-lien-texte")[0]).toMatch(/padding: 2px 4px/);
+  expect(regle(".ya-tableau-lien-texte")[0]).toMatch(/border-radius: var\(--radius-xs\)/);
+  expect(regle(".ya-tableau-lien-texte")[0]).toMatch(/white-space: pre/);
+  expect(regle(".ya-tableau-lien-texte")[0]).toMatch(/pointer-events: auto/);
+  expect(regle(".ya-tableau .lien .ya-tableau-lien-cadre")[0]).toMatch(/pointer-events: none/);
+});
+
+test("REQ147_AC1_sans_texte_rien_n_est_dessine", () => {
+  monter(DOC({ links: [lien()] }));
+  expect(obj("l1").querySelector("foreignObject")).toBeNull();
+});
+
+test("REQ147_AC1_etiquette_suit_le_deplacement_d_une_boite", () => {
+  monter(DOC({ boxes: [boite("b1", 100, 100), boite("b2", 400, 300)], links: [lien({ text: "x" })] }));
+  const fo = obj("l1").querySelector("foreignObject");
+  expect(Number(fo.getAttribute("y")) + Number(fo.getAttribute("height")) / 2).toBeCloseTo(240, 0);
+});
+
+test("REQ147_AC7_nom_du_lien_avec_et_sans_texte", () => {
+  monter(DOC({ links: [lien({ text: "par mail\nou tél" })] }));
+  expect(obj("l1").getAttribute("aria-label")).toBe("De b1 vers b2 : par mail ou tél");
+  t.detruire();
+  document.body.innerHTML = "";
+  monter(DOC({ links: [lien()] }));
+  expect(obj("l1").getAttribute("aria-label")).toBe("De b1 vers b2");
+});
+
+test("REQ147_AC8_fond_texte_et_lien_choisi", () => {
+  monter(DOC({ links: [lien({ text: "x" })] }));
+  expect(regle(".ya-tableau-lien-texte")[0]).toMatch(/background: var\(--bg-200\)/);
+  expect(regle(".ya-tableau-lien-texte")[0]).toMatch(/color: var\(--ink\)/);
+  clic(etiquette("l1"));
+  expect(obj("l1").classList.contains("choisie")).toBe(true);
+  expect(regle(".ya-tableau :is(.lien, .fleche).choisie .trait")[0]).toMatch(/stroke: var\(--accent-fg\)/);
+  expect(regle(".ya-tableau .lien.choisie .ya-tableau-lien-texte").length).toBe(0);
+});
+
+test("REQ139_REQ147_taille_du_texte_du_lien_par_classe", () => {
+  monter(DOC({ links: [lien({ text: "x", textSize: "xlarge" })] }));
+  expect(obj("l1").classList.contains("taille-xlarge")).toBe(true);
+  expect(regle(".ya-tableau .lien.taille-xlarge .ya-tableau-lien-texte")[0]).toMatch(/24px\/30px/);
+});
+
+test("REQ146_AC2_le_texte_d_une_boite_et_d_un_lien_porte_ses_styles", () => {
+  monter(DOC({ boxes: [boite("b1", 100, 100, { text: "Début fin", spans: [{ start: 0, end: 5, bold: true, color: "red" }] }), boite("b2", 400, 100)], links: [lien({ text: "ab", spans: [{ start: 1, end: 2, italic: true }] })] }));
+  const s = obj("b1").querySelector(".ya-tableau-texte span");
+  expect(s.textContent).toBe("Début");
+  expect(s.style.color).toBe("var(--boite-rouge-trait)");
+  expect(obj("b1").querySelector(".ya-tableau-texte").textContent).toBe("Début fin");
+  expect(etiquette("l1").querySelector("span").style.fontStyle).toBe("italic");
+});
+
+test("REQ146_AC6_une_partie_rouge_garde_sa_couleur_dans_une_boite_verte", () => {
+  monter(DOC({ boxes: [boite("b1", 100, 100, { color: "green", text: "Début du flux", spans: [{ start: 0, end: 5, color: "red" }] }), boite("b2", 400, 100)] }));
+  const texte = obj("b1").querySelector(".ya-tableau-texte");
+  expect(obj("b1").classList.contains("couleur-green")).toBe(true);
+  expect(texte.querySelector("span").style.color).toBe("var(--boite-rouge-trait)");
+  expect(texte.lastChild.nodeType).toBe(3);
+  expect(texte.lastChild.textContent).toBe(" du flux");
+  expect(texte.style.color).toBe("");
+});

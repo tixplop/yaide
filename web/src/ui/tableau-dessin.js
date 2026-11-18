@@ -1,8 +1,10 @@
-import { connecteursAffiches, epaisseur, geometrieLien, pointe, retraitPointes, tirets, trace, zoneTexte } from "./tableau-calculs.js";
+import { rendreTexte } from "./tableau-texte.js";
+import { connecteursAffiches, epaisseur, geometrieLien, milieuTrace, pointe, retraitPointes, tirets, trace, zoneTexte } from "./tableau-calculs.js";
 
 // C-018 : le SVG d'une boîte, d'un lien, d'une flèche libre et des poignées. Fonctions sans état : le choix,
 // la saisie et les gestes restent dans `tableau.js`, qui passe ici ce qu'il faut pour dessiner.
 const SVG = "http://www.w3.org/2000/svg";
+const CADRE = 2000;
 
 export function svg(nom, attrs, parent) {
   const e = document.createElementNS(SVG, nom);
@@ -90,8 +92,19 @@ function geometrie(depart, arrivee, style, zoom) {
 
 export function dessinLien(doc, lien, zoom, { id, nom, classe }) {
   const g = svg("g", { id, "data-id": lien.id, role: "group", "aria-roledescription": "lien", "aria-label": nom });
-  g.setAttribute("class", `lien${classe}`);
+  g.setAttribute("class", `lien${lien.textSize && lien.textSize !== "normal" ? ` taille-${lien.textSize}` : ""}${classe}`);
   traitEtPointes(g, geometrieLien(doc, lien, zoom), lien, true);
+  if (lien.text) {
+    // Grand cadre centré sur le milieu du tracé : l'étiquette est centrée dedans sans mesurer le texte.
+    const m = milieuTrace(doc, lien);
+    const cadre = document.createElement("div");
+    cadre.className = "ya-tableau-lien-cadre";
+    const etiquette = document.createElement("div");
+    etiquette.className = "ya-tableau-lien-texte";
+    rendreTexte(etiquette, lien.text, lien.spans);
+    cadre.append(etiquette);
+    svg("foreignObject", { x: m.x - CADRE / 2, y: m.y - CADRE / 2, width: CADRE, height: CADRE }, g).append(cadre);
+  }
   return g;
 }
 

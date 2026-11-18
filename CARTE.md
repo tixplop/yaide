@@ -58,7 +58,8 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/ui/terminal.js — terminal xterm.js — terminal
 - web/src/ui/palettes.js — palettes de couleurs markdown suggérées — PALETTES
 - web/src/ui/tableau.js — composant whiteboard : surface, gestes, clavier, historique Ctrl+Z/Ctrl+Y — tableau
-- web/src/ui/tableau-calculs.js, tableau-dessin.js, tableau-edition.js, tableau-outils.js — géométrie, rendu SVG, copier/coller/plan/rattachement, boîte à outils — extremitesFleche, dessinBoite, coller, boiteOutils
+- web/src/ui/tableau-texte.js — texte d'une boîte ou d'un lien avec les styles d'une partie du texte (REQ-146) — rendreTexte
+- web/src/ui/tableau-calculs.js, tableau-dessin.js, tableau-edition.js, tableau-outils.js — géométrie, rendu SVG, copier/coller/plan/rattachement, boîte à outils — extremitesFleche, milieuTrace, dessinBoite, coller, boiteOutils
 - web/src/vues/principale.js — fenêtre : rails, panneaux, zones, Ctrl+P — vuePrincipale
 - web/src/vues/principale.aides.js — aides des tests de la vue principale
 - web/src/vues/editeur.js — groupes d'onglets : fichiers, images, whiteboards (zoneWhiteboard), sessions — vueEditeur

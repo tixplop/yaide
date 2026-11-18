@@ -4,6 +4,7 @@ import { indication } from "./indication.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
 import { boiteOutils } from "./tableau-outils.js";
 import { connecteurProcheAffiche, connecteursAffiches, connecteurs, dansRectangle, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
+import { rendreTexte } from "./tableau-texte.js";
 import { dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, dessinRectangleSelection, poigneesBoite, poigneesFleche, poigneesLien, svg } from "./tableau-dessin.js";
 
 // C-018 : whiteboard. Un SVG dont le `viewBox` suit la vue ; le document est celui de `jdiag.js`.
@@ -212,13 +213,13 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     else {
       texte = document.createElement("div");
       texte.className = "ya-tableau-texte";
-      texte.textContent = b.text;
+      rendreTexte(texte, b.text, b.spans);
     }
     return dessinBoite(b, { id: idElement(b.id), nom: nomBoite(b), classe, texte });
   }
 
   function groupeLien(l, z) {
-    const nom = `De ${nomBoite(boite(l.from))} vers ${nomBoite(boite(l.to))}`;
+    const nom = `De ${nomBoite(boite(l.from))} vers ${nomBoite(boite(l.to))}${l.text ? ` : ${l.text.split("\n").join(" ")}` : ""}`;
     return dessinLien(doc, l, z, { id: idElement(l.id), nom, classe: choisis.includes(l.id) ? " choisie" : "" });
   }
 

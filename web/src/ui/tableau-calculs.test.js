@@ -7,6 +7,7 @@ import {
   dansRectangle,
   extremitesFleche,
   geometrieLien,
+  milieuTrace,
   epaisseur,
   pointe,
   tirets,
@@ -384,5 +385,46 @@ describe("dansRectangle", () => {
     expect(dansRectangle(doc, { x: 20, y: 60, width: 100, height: 120 })).toEqual([]);
     expect(dansRectangle(doc, { x: 90, y: 290, width: 100, height: 20 })).toEqual([]);
     expect(dansRectangle({ version: 1, boxes: [], links: [] }, { x: 0, y: 0, width: 9, height: 9 })).toEqual([]);
+  });
+});
+
+describe("milieuTrace", () => {
+  const doc = (b2y = 0, extra = {}) => ({
+    boxes: [{ id: "b1", x: 0, y: 0, width: 100, height: 100 }, { id: "b2", x: 400, y: b2y, width: 100, height: 100 }],
+    links: [{ id: "l1", from: "b1", to: "b2", fromSide: "right", toSide: "left", ...extra }],
+  });
+  const proche = (p, x, y) => {
+    expect(Math.abs(p.x - x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(p.y - y)).toBeLessThanOrEqual(1);
+  };
+  test("REQ147_AC3_droit_puis_apres_deplacement", () => {
+    const d = doc();
+    proche(milieuTrace(d, d.links[0]), 250, 50);
+    const d2 = doc(200);
+    // (100,50) -> (400,250) : milieu (250,150)
+    proche(milieuTrace(d2, d2.links[0]), 250, 150);
+  });
+  test("REQ147_AC3_coude_a_mi_longueur", () => {
+    const d = doc(200, { route: "orthogonal" });
+    // 100,50 -> 250,50 -> 250,250 -> 400,250 : longueur 150+200+150 = 500, milieu au point (250,150)
+    proche(milieuTrace(d, d.links[0]), 250, 150);
+    const e = doc(0, { route: "orthogonal" });
+    proche(milieuTrace(e, e.links[0]), 250, 50);
+  });
+  test("REQ147_AC3_coude_non_symetrique_de_quatre_points", () => {
+    const d = doc(200, { route: "orthogonal", fromSide: "right", toSide: "right" });
+    // (100,50) -> x = 516 -> (516,250) -> (500,250) : longueur 416 + 200 + 16 = 632, milieu à 316 : (416,50)
+    proche(milieuTrace(d, d.links[0]), 416, 50);
+  });
+  test("REQ147_AC3_courbe_a_mi_longueur", () => {
+    const d = doc(200, { route: "curved" });
+    // courbe symétrique : le milieu est au centre des bouts
+    proche(milieuTrace(d, d.links[0]), 250, 150);
+  });
+  test("REQ147_AC3_decalage_de_4_px_si_lien_inverse", () => {
+    const d = { boxes: [{ id: "b1", x: 0, y: 0, width: 100, height: 100 }, { id: "b2", x: 400, y: 0, width: 100, height: 100 }], links: [{ id: "l1", from: "b1", to: "b2" }, { id: "l2", from: "b2", to: "b1" }] };
+    const p = milieuTrace(d, d.links[0]);
+    const q = milieuTrace(d, d.links[1]);
+    expect(Math.abs(p.y - q.y)).toBeCloseTo(8, 0);
   });
 });
