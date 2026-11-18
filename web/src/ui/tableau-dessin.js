@@ -90,18 +90,22 @@ function geometrie(depart, arrivee, style, zoom) {
   return { ...t, pointeDebut: pointe(t.debut, zoom, style.weight), pointeFin: pointe(t.fin, zoom, style.weight) };
 }
 
-export function dessinLien(doc, lien, zoom, { id, nom, classe }) {
+// `texte` : le nœud de la saisie du texte du lien, mis à la place de l'étiquette.
+export function dessinLien(doc, lien, zoom, { id, nom, classe, texte = null }) {
   const g = svg("g", { id, "data-id": lien.id, role: "group", "aria-roledescription": "lien", "aria-label": nom });
   g.setAttribute("class", `lien${lien.textSize && lien.textSize !== "normal" ? ` taille-${lien.textSize}` : ""}${classe}`);
   traitEtPointes(g, geometrieLien(doc, lien, zoom), lien, true);
-  if (lien.text) {
+  if (lien.text || texte) {
     // Grand cadre centré sur le milieu du tracé : l'étiquette est centrée dedans sans mesurer le texte.
     const m = milieuTrace(doc, lien);
     const cadre = document.createElement("div");
     cadre.className = "ya-tableau-lien-cadre";
-    const etiquette = document.createElement("div");
-    etiquette.className = "ya-tableau-lien-texte";
-    rendreTexte(etiquette, lien.text, lien.spans);
+    let etiquette = texte;
+    if (!etiquette) {
+      etiquette = document.createElement("div");
+      etiquette.className = "ya-tableau-lien-texte";
+      rendreTexte(etiquette, lien.text, lien.spans);
+    }
     cadre.append(etiquette);
     svg("foreignObject", { x: m.x - CADRE / 2, y: m.y - CADRE / 2, width: CADRE, height: CADRE }, g).append(cadre);
   }

@@ -127,13 +127,15 @@ test("REQ133_AC5_REQ133_AC6_sans_objet_aucun_changement_un_lien_choisi_change_et
   expect(dernier().links[0]).toMatchObject({ route: "curved" });
   bt("Courbe").click();
   expect(changements).toHaveLength(1);
-  // L'opacité et la taille du texte ne concernent pas un lien ; la couleur, si.
+  // L'opacité ne concerne pas un lien ; la taille du texte (REQ-147) et la couleur, si.
   bt("50 %").click();
-  bt("Grand").click();
   expect(changements).toHaveLength(1);
-  bt("Vert").click();
+  bt("Grand").click();
   expect(changements).toHaveLength(2);
-  expect(dernier().links[0]).toMatchObject({ route: "curved", color: "green" });
+  expect(dernier().links[0]).toMatchObject({ route: "curved", textSize: "large" });
+  bt("Vert").click();
+  expect(changements).toHaveLength(3);
+  expect(dernier().links[0]).toMatchObject({ route: "curved", color: "green", textSize: "large" });
   // Un lien déjà coudé : la boîte à outils le montre.
   t.definirDocument({ ...DOC(), links: [{ id: "l1", from: "b1", to: "b2", route: "orthogonal", ends: "both", line: "dashed" }], boxes: [{ ...DOC().boxes[0], color: "green" }, DOC().boxes[1]] });
   clic(obj("l1"));

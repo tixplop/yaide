@@ -822,7 +822,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau:focus-within { outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
 .ya-tableau[hidden] { display: none; }
 .ya-tableau-surface { flex: 1; min-width: 0; min-height: 0; position: relative; outline: none; cursor: default; -webkit-user-select: none; user-select: none; }
-.ya-tableau-surface .ya-tableau-texte[contenteditable] { -webkit-user-select: text; user-select: text; }
+.ya-tableau-surface :is(.ya-tableau-texte, .ya-tableau-lien-texte)[contenteditable] { -webkit-user-select: text; user-select: text; }
 .ya-tableau-surface svg { display: block; width: 100%; height: 100%; }
 /* Boîte à outils d'un whiteboard (C-018, REQ-133) */
 .ya-tableau-outils { box-sizing: border-box; position: absolute; left: var(--space-3); bottom: var(--space-3); width: 298px; max-height: calc(100% - 24px); overflow-x: hidden; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; gap: 4px; background: var(--bg-300); border-radius: var(--radius-md); box-shadow: var(--shadow-popover); }
@@ -881,7 +881,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau .boite.taille-large .ya-tableau-texte { font: 18px/24px var(--font-sans); }
 .ya-tableau .boite.taille-xlarge .ya-tableau-texte { font: 24px/30px var(--font-sans); }
 .ya-tableau-texte[contenteditable] { overflow: auto; caret-color: var(--accent-fg); cursor: text; }
-.ya-tableau-texte[contenteditable] > div::after { content: "\200B"; }
+.ya-tableau :is(.ya-tableau-texte, .ya-tableau-lien-texte)[contenteditable] > div::after { content: "\200B"; }
 .ya-tableau :where(.lien, .fleche) { --e: 1.5px; --boite-trait: var(--ink-muted); }
 .ya-tableau :is(.lien, .fleche).epaisseur-medium { --e: 3px; }
 .ya-tableau :is(.lien, .fleche).epaisseur-thick { --e: 5px; }
@@ -896,6 +896,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau :is(.lien, .fleche).choisie .pointe { fill: var(--accent-fg); }
 .ya-tableau .lien .ya-tableau-lien-cadre { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .ya-tableau-lien-texte { box-sizing: border-box; padding: 2px 4px; border-radius: var(--radius-xs); background: var(--bg-200); color: var(--ink); white-space: pre; text-align: center; font: var(--texte-base) var(--font-sans); pointer-events: auto; cursor: pointer; }
+.ya-tableau-lien-texte[contenteditable] { min-width: 24px; border: 1px solid var(--accent-fg); caret-color: var(--accent-fg); cursor: text; outline: none; }
 .ya-tableau .lien.taille-small .ya-tableau-lien-texte { font: 11px/15px var(--font-sans); }
 .ya-tableau .lien.taille-large .ya-tableau-lien-texte { font: 18px/24px var(--font-sans); }
 .ya-tableau .lien.taille-xlarge .ya-tableau-lien-texte { font: 24px/30px var(--font-sans); }

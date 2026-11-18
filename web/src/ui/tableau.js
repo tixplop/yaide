@@ -18,16 +18,16 @@ const PROCHE = 24; // px écran : distance du pointeur au bord d'une boîte pour
 const OUTILS_DEPART = { outil: "choisir", forme: "rectangle", couleur: "default", trace: "direct", bouts: "end", trait: "solid", opacite: 100, taille: "normal", epaisseur: "thin" };
 const TAILLES = { rectangle: [160, 80], rounded: [160, 80], ellipse: [100, 100], diamond: [160, 100], note: [160, 80], text: [160, 40] };
 // Clé du document de chaque choix de la boîte à outils, et sortes d'objets qu'il concerne :
-// « boite », « texte » (la forme « Texte ») et « trait » (liens et flèches libres).
+// « boite », « texte » (la forme « Texte »), « lien » et « trait » (flèches libres, et choix d'un nouveau lien).
 const CLES_STYLE = { couleur: "color", opacite: "opacity", taille: "textSize", trace: "route", bouts: "ends", trait: "line", epaisseur: "weight" };
 const CONCERNES = {
-  couleur: ["boite", "texte", "trait"],
+  couleur: ["boite", "texte", "trait", "lien"],
   opacite: ["boite"],
-  taille: ["boite", "texte"],
-  trace: ["trait"],
-  bouts: ["trait"],
-  trait: ["boite", "trait"],
-  epaisseur: ["boite", "trait"],
+  taille: ["boite", "texte", "lien"],
+  trace: ["trait", "lien"],
+  bouts: ["trait", "lien"],
+  trait: ["boite", "trait", "lien"],
+  epaisseur: ["boite", "trait", "lien"],
 };
 let compteur = 0;
 let collages = 0; // collages faits depuis la dernière copie
@@ -93,6 +93,15 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   const tousLesId = () => [...doc.boxes, ...doc.links, ...(doc.arrows ?? [])].map((o) => o.id);
   const objet = (id) => [...doc.boxes, ...doc.links, ...(doc.arrows ?? [])].find((x) => x.id === id);
   const boite = (id) => doc.boxes.find((b) => b.id === id);
+  const nomLien = (l) => `De ${nomBoite(boite(l.from))} vers ${nomBoite(boite(l.to))}${l.text ? ` : ${l.text.split("\n").join(" ")}` : ""}`;
+  const estLien = (id) => doc.links.some((l) => l.id === id);
+  // Remplace le texte de la boîte ou du lien `id`.
+  const avecTexteDe = (id, text, spans) => ({
+    ...doc,
+    boxes: doc.boxes.map((x) => (x.id === id ? avecTexte(x, text, spans) : x)),
+    links: doc.links.map((x) => (x.id === id ? avecTexte(x, text, spans) : x)),
+  });
+  const nomSaisie = (o, text) => (boite(o.id) ? nomBoite({ text }) : nomLien({ ...o, text }));
   // Historique (REQ-145) : les documents d'avant (100 au plus) et ceux à refaire.
   let passes = [];
   let aRefaire = [];
@@ -224,8 +233,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   }
 
   function groupeLien(l, z) {
-    const nom = `De ${nomBoite(boite(l.from))} vers ${nomBoite(boite(l.to))}${l.text ? ` : ${l.text.split("\n").join(" ")}` : ""}`;
-    return dessinLien(doc, l, z, { id: idElement(l.id), nom, classe: choisis.includes(l.id) ? " choisie" : "" });
+    return dessinLien(doc, l, z, { id: idElement(l.id), nom: nomLien(l), classe: choisis.includes(l.id) ? " choisie" : "", texte: saisie === l.id ? editeur : null });
   }
 
   function flecheProvisoire(z) {
@@ -329,7 +337,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     afficherOutils();
   }
 
-  const sorte = (o) => (boite(o.id) ? (o.shape === "text" ? "texte" : "boite") : "trait");
+  const sorte = (o) => (boite(o.id) ? (o.shape === "text" ? "texte" : "boite") : estLien(o.id) ? "lien" : "trait");
   const cibles = () => (saisie !== null ? [saisie] : choisis).map(objet).filter(Boolean);
   // Les choix de style d'une sorte d'objet qui diffèrent de leur valeur par défaut.
   function styleChoisi(s) {
@@ -457,10 +465,10 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     const p = plage ?? selectionSaisie() ?? { debut: fin, fin };
     const r = inserer(text, spans, p.debut, p.fin, ajout);
     if (r.text === text && memeSpans(r.spans, spans)) return;
-    appliquer({ ...doc, boxes: doc.boxes.map((x) => (x.id === id ? avecTexte(x, r.text, r.spans) : x)) }, editeur);
+    appliquer(avecTexteDe(id, r.text, r.spans), editeur);
     rendreZone(editeur, r.text, r.spans);
     placerSelection(p.debut + compter(ajout));
-    dessin.querySelector(`[data-id="${id}"]`)?.setAttribute("aria-label", nomBoite({ text: r.text }));
+    dessin.querySelector(`[data-id="${id}"]`)?.setAttribute("aria-label", nomSaisie(objet(id), r.text));
     afficherOutils();
   }
 
@@ -508,9 +516,11 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     editeur.setAttribute("contenteditable", "true");
     editeur.setAttribute("role", "textbox");
     editeur.setAttribute("aria-multiline", "true");
-    editeur.setAttribute("aria-label", "Texte de la boîte");
+    const lien = estLien(id);
+    if (lien) editeur.className = "ya-tableau-lien-texte";
+    editeur.setAttribute("aria-label", lien ? "Texte du lien" : "Texte de la boîte");
     editeur.tabIndex = -1;
-    rendreZone(editeur, boite(id).text, boite(id).spans);
+    rendreZone(editeur, objet(id).text ?? "", objet(id).spans);
     const mon = editeur;
     // Le navigateur ne met jamais de balise : retours à la ligne et collages passent par `insererDansSaisie`, les `format*` ne font rien.
     editeur.addEventListener("beforeinput", (e) => {
@@ -529,12 +539,12 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     });
     // Le DOM de la saisie n'est jamais réécrit ici : l'annulation du navigateur en dépend.
     editeur.addEventListener("input", () => {
-      const b = boite(id);
-      if (!b || mon !== editeur) return;
+      const o = objet(id);
+      if (!o || mon !== editeur) return;
       const { text, spans } = lireTexte(mon);
-      if (text === b.text && memeSpans(spans, b.spans ?? [])) return;
-      appliquer({ ...doc, boxes: doc.boxes.map((x) => (x.id === id ? avecTexte(x, text, spans) : x)) }, mon);
-      dessin.querySelector(`[data-id="${id}"]`)?.setAttribute("aria-label", nomBoite({ text }));
+      if (text === (o.text ?? "") && memeSpans(spans, o.spans ?? [])) return;
+      appliquer(avecTexteDe(id, text, spans), mon);
+      dessin.querySelector(`[data-id="${id}"]`)?.setAttribute("aria-label", nomSaisie(objet(id), text));
       afficherOutils();
     });
     dessiner();
@@ -631,7 +641,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       }
       return;
     }
-    const estBoite = unique() !== null && boite(unique()) !== undefined;
+    const estBoite = unique() !== null && (boite(unique()) !== undefined || estLien(unique()));
     const deplacable = choisis.some((id) => boite(id) !== undefined || (doc.arrows ?? []).some((f) => f.id === id));
     const fleches = { ArrowLeft: [-PAS, 0], ArrowRight: [PAS, 0], ArrowUp: [0, -PAS], ArrowDown: [0, PAS] };
     if (e.key === "Tab") naviguer(e);
@@ -907,7 +917,12 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
 
   function surDoubleClic(e) {
     if (doc === null || e.button !== 0 || editeur?.contains(e.target)) return;
-    if (e.target.closest?.("g.lien, g.fleche")) return;
+    if (e.target.closest?.("g.fleche")) return;
+    const l = e.target.closest?.("g.lien");
+    if (l) {
+      commencerSaisie(l.getAttribute("data-id"));
+      return;
+    }
     // Le connecteur du centre laisse passer le double-clic : la saisie de sa boîte.
     const p = pointDessin(e);
     const z = vueCourante.zoom;
