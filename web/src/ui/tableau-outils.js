@@ -1,4 +1,5 @@
 import { bouton } from "./bouton.js";
+import { estMac } from "../references.js";
 
 // Rangs, groupes et boutons de la boîte à outils (C-018). `cle` : la valeur de `valeurs` que le groupe règle.
 const RANGS = [
@@ -73,6 +74,34 @@ const RANGS = [
   ],
   [
     {
+      nom: "Style du texte",
+      cle: "style",
+      texte: true,
+      boutons: [
+        ["Gras", "bold", "bold", "Ctrl+B"],
+        ["Italique", "italic", "italic", "Ctrl+I"],
+        ["Souligné", "underline", "underline", "Ctrl+U"],
+        ["Barré", "strike", "strikethrough"],
+      ],
+    },
+    {
+      nom: "Couleur du texte",
+      cle: "couleurTexte",
+      texte: true,
+      bulle: "Couleur du texte",
+      boutons: [
+        ["Texte par défaut", "default", "couleur-texte", null, "Par défaut"],
+        ["Texte bleu", "blue", "couleur-texte", null, "Bleu"],
+        ["Texte vert", "green", "couleur-texte", null, "Vert"],
+        ["Texte jaune", "yellow", "couleur-texte", null, "Jaune"],
+        ["Texte orange", "orange", "couleur-texte", null, "Orange"],
+        ["Texte rouge", "red", "couleur-texte", null, "Rouge"],
+        ["Texte violet", "purple", "couleur-texte", null, "Violet"],
+      ],
+    },
+  ],
+  [
+    {
       nom: "Tracé",
       cle: "trace",
       bulle: "Tracé",
@@ -129,9 +158,11 @@ const RANGS = [
 const COULEURS_CSS = { default: "defaut", blue: "bleu", green: "vert", yellow: "jaune", orange: "orange", red: "rouge", purple: "violet" };
 
 // Boîte à outils d'un whiteboard : `surChoix(cle, valeur)` à chaque bouton pressé, `surAction("premier" | "arriere")`
-// pour « Plan », `surEchap()` sur Échap. `definir(valeurs, { planActif })` montre les valeurs d'un objet choisi
-// ou les choix courants, et active ou non « Plan ».
-export function boiteOutils({ valeurs, surChoix, surAction, surEchap }) {
+// pour « Plan », `surTexte("bold" | "italic" | "underline" | "strike")` ou `surTexte("color", couleur)` pour le style
+// et la couleur du texte, `surEchap()` sur Échap. `definir(valeurs, { planActif, texte })` montre les valeurs d'un objet
+// choisi ou les choix courants, active ou non « Plan », et donne l'état du texte visé :
+// `texte = { actif, styles: ["bold", …], couleur: "red" | null }` (inactif : les onze boutons du texte sont inactifs).
+export function boiteOutils({ valeurs, surChoix, surAction, surTexte, surEchap }) {
   const etat = { ...valeurs };
   const racine = document.createElement("div");
   racine.className = "ya-tableau-outils";
@@ -139,6 +170,8 @@ export function boiteOutils({ valeurs, surChoix, surAction, surEchap }) {
   racine.setAttribute("aria-label", "Outils du whiteboard");
   const liste = [];
   let planActif = false;
+  let texte = { actif: false, styles: [], couleur: null };
+  const ctrl = estMac() ? "Cmd" : "Ctrl";
 
   for (const groupes of RANGS) {
     const rang = document.createElement("div");
@@ -148,8 +181,16 @@ export function boiteOutils({ valeurs, surChoix, surAction, surEchap }) {
       el.className = "ya-tableau-outils-groupe";
       el.setAttribute("role", "group");
       el.setAttribute("aria-label", g.nom);
-      for (const [nom, valeur, icone] of g.boutons) {
-        const b = bouton({ icone: icone ?? "circle", nomAccessible: nom, infoBulle: g.bulle ? `${g.bulle} : ${nom}` : nom, positionInfoBulle: "dessus", presse: g.action ? undefined : false });
+      for (const [nom, valeur, icone, raccourci, court] of g.boutons) {
+        const b = bouton({
+          icone: icone ?? "circle",
+          nomAccessible: nom,
+          infoBulle: g.bulle ? `${g.bulle} : ${court ?? nom}` : nom,
+          raccourci: raccourci ? `${ctrl}+${raccourci.slice(-1)}` : undefined,
+          positionInfoBulle: "dessus",
+          presse: g.action ? undefined : false,
+        });
+        if (g.cle === "couleurTexte") b.classList.add(`ya-texte-${COULEURS_CSS[valeur]}`);
         b.dataset.indice = String(liste.length);
         if (!icone) {
           const pastille = document.createElement("span");
@@ -163,6 +204,11 @@ export function boiteOutils({ valeurs, surChoix, surAction, surEchap }) {
         b.addEventListener("click", () => {
           if (g.action) {
             surAction?.(valeur);
+            return;
+          }
+          // Style et couleur du texte : pas un choix pour les objets suivants.
+          if (g.texte) {
+            surTexte?.(g.cle === "style" ? valeur : "color", ...(g.cle === "style" ? [] : [valeur]));
             return;
           }
           // Un clic sur un outil pose le focus (Safari ne le fait pas pour un bouton).
@@ -187,6 +233,12 @@ export function boiteOutils({ valeurs, surChoix, surAction, surEchap }) {
     for (const { b, g, valeur } of liste) {
       if (g.action) {
         b.definirInactif(!planActif);
+        continue;
+      }
+      if (g.texte) {
+        b.definirInactif(!texte.actif);
+        const presse = g.cle === "style" ? texte.styles.includes(valeur) : texte.couleur === valeur;
+        b.setAttribute("aria-pressed", String(texte.actif && presse));
         continue;
       }
       b.setAttribute("aria-pressed", String(etat[g.cle] === valeur));
@@ -244,6 +296,7 @@ export function boiteOutils({ valeurs, surChoix, surAction, surEchap }) {
     definir(v, options = {}) {
       Object.assign(etat, v);
       if (options.planActif !== undefined) planActif = options.planActif;
+      if (options.texte !== undefined) texte = { actif: Boolean(options.texte.actif), styles: options.texte.styles ?? [], couleur: options.texte.couleur ?? null };
       afficher();
     },
   };

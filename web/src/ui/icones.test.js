@@ -277,7 +277,7 @@ test("REQ131_icones_square_plus_zoom_out_zoom_in_et_scan", () => {
     for (const p of parties) expect(s.innerHTML, n).toContain(p);
   }
   const src = readFileSync("web/src/ui/icones.js", "utf8");
-  expect(src).toMatch(/Icônes Lucide \(ISC\) utilisées ici : [^\n]*square-plus, zoom-out, zoom-in, scan\./);
+  expect(src).toMatch(/Icônes Lucide \(ISC\) utilisées ici : [^\n]*square-plus, zoom-out, zoom-in, scan, bold, italic, underline, strikethrough\./);
 });
 
 test("REQ133_icones_de_la_boite_a_outils_rendues_et_masquees", () => {
@@ -329,4 +329,22 @@ test("REQ133_REQ138_REQ140_REQ141_quinze_icones_de_la_boite_a_outils_rendues_et_
   }
   const tete = readFileSync("web/src/ui/icones.js", "utf8").split("*/")[0];
   for (const n of nouvelles) expect(tete, n).toContain(n);
+});
+
+test("REQ146_AC10_AC031_2_icones_du_style_du_texte_distinctes_de_baseline_et_taille_normal", () => {
+  const dessins = {
+    bold: ["M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8"],
+    italic: ["M19 4h-9", "M14 20H5", "M15 4 9 20"],
+    underline: ["M6 4v6a6 6 0 0 0 12 0V4", "M4 20h16"],
+    strikethrough: ["M16 4H9a3 3 0 0 0-2.83 4", "M14 12a4 4 0 0 1 0 8H6", "M4 12h16"],
+    "couleur-texte": ["m7 15 5-11 5 11", "M8.8 11h6.4", '<rect class="ya-barre-texte" x="4" y="18" width="16" height="3.5" rx="1" stroke="none"'],
+  };
+  for (const [n, parties] of Object.entries(dessins)) {
+    expect(NOMS).toContain(n);
+    for (const p of parties) expect(icone(n).innerHTML, n).toContain(p);
+  }
+  const formes = [...Object.keys(dessins), "baseline", "taille-normal"].map((n) => icone(n).innerHTML);
+  expect(new Set(formes).size).toBe(7);
+  const tete = readFileSync("web/src/ui/icones.js", "utf8").split("*/")[0];
+  for (const n of Object.keys(dessins)) expect(tete, n).toContain(n);
 });

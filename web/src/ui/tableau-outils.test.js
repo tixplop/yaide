@@ -4,10 +4,10 @@ import { boiteOutils } from "./tableau-outils.js";
 
 const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
 const DEPART = () => ({ outil: "choisir", forme: "rectangle", couleur: "default", opacite: 100, taille: "normal", trace: "direct", bouts: "end", trait: "solid", epaisseur: "thin" });
-const NOMS = ["Choisir", "Sélection", "Rectangle", "Rectangle arrondi", "Cercle", "Losange", "Note", "Texte", "Lien", "Flèche", "Par défaut", "Bleu", "Vert", "Jaune", "Orange", "Rouge", "Violet", "100 %", "75 %", "50 %", "25 %", "0 %", "Petit", "Normal", "Grand", "Très grand", "Droit", "Coudé", "Courbe", "À l'arrivée", "Aucune", "Au départ", "Aux deux bouts", "Plein", "Tirets", "Pointillés", "Fin", "Moyen", "Épais", "Premier plan", "Arrière-plan"];
-const GROUPES = ["Outil", "Forme", "Relier", "Couleur", "Opacité", "Taille du texte", "Tracé", "Extrémités", "Trait", "Épaisseur", "Plan"];
-const RANGS = [10, 7, 9, 7, 8];
-const DEBUTS = [0, 10, 17, 26, 33];
+const NOMS = ["Choisir", "Sélection", "Rectangle", "Rectangle arrondi", "Cercle", "Losange", "Note", "Texte", "Lien", "Flèche", "Par défaut", "Bleu", "Vert", "Jaune", "Orange", "Rouge", "Violet", "100 %", "75 %", "50 %", "25 %", "0 %", "Petit", "Normal", "Grand", "Très grand", "Gras", "Italique", "Souligné", "Barré", "Texte par défaut", "Texte bleu", "Texte vert", "Texte jaune", "Texte orange", "Texte rouge", "Texte violet", "Droit", "Coudé", "Courbe", "À l'arrivée", "Aucune", "Au départ", "Aux deux bouts", "Plein", "Tirets", "Pointillés", "Fin", "Moyen", "Épais", "Premier plan", "Arrière-plan"];
+const GROUPES = ["Outil", "Forme", "Relier", "Couleur", "Opacité", "Taille du texte", "Style du texte", "Couleur du texte", "Tracé", "Extrémités", "Trait", "Épaisseur", "Plan"];
+const RANGS = [10, 7, 9, 11, 7, 8];
+const DEBUTS = [0, 10, 17, 26, 37, 44];
 
 let b;
 let choix;
@@ -17,7 +17,7 @@ function monter(valeurs = DEPART()) {
   choix = [];
   echaps = 0;
   actions = [];
-  // Cinq rangs de hauteur 28 ; chaque bouton est à sa place dans son rang et son groupe (8 px entre groupes, 2 entre boutons).
+  // Six rangs de hauteur 28 ; chaque bouton est à sa place dans son rang et son groupe (8 px entre groupes, 2 entre boutons).
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function () {
     const i = this.dataset?.indice;
     if (i === undefined) return { x: 0, y: 0, left: 0, top: 0, width: 24, height: 24, right: 24, bottom: 24 };
@@ -62,7 +62,7 @@ test("REQ133_AC8_noms_groupes_et_info_bulles_dans_l_ordre", () => {
   expect(boutons().map((x) => x.getAttribute("aria-label"))).toEqual(NOMS);
   const groupes = [...b.element.querySelectorAll('[role="group"]')];
   expect(groupes.map((g) => g.getAttribute("aria-label"))).toEqual(GROUPES);
-  expect(groupes.map((g) => g.querySelectorAll("button").length)).toEqual([2, 6, 2, 7, 5, 4, 3, 4, 3, 3, 2]);
+  expect(groupes.map((g) => g.querySelectorAll("button").length)).toEqual([2, 6, 2, 7, 5, 4, 4, 7, 3, 4, 3, 3, 2]);
   vi.useFakeTimers();
   const texte = (nom) => {
     par(nom).enveloppe.dispatchEvent(new MouseEvent("pointerenter"));
@@ -80,7 +80,7 @@ test("REQ133_AC8_noms_groupes_et_info_bulles_dans_l_ordre", () => {
   expect(texte("Épais")).toBe("Épaisseur : Épais");
   expect(texte("Premier plan")).toBe("Premier plan");
   vi.useRealTimers();
-  // Les cinq rangs ; une pastille au lieu d'une icône pour les couleurs.
+  // Les six rangs ; une pastille au lieu d'une icône pour les couleurs.
   const rangs = [...b.element.children];
   expect(rangs.map((r) => r.querySelectorAll("button").length)).toEqual(RANGS);
   expect(par("Vert").querySelector(".ya-pastille-couleur")).not.toBeNull();
@@ -127,10 +127,19 @@ test("REQ133_AC9_un_arret_de_tab_et_fleches", () => {
   expect(document.activeElement).toBe(par("100 %"));
   touche(par("100 %"), "ArrowUp");
   expect(document.activeElement).toBe(par("Par défaut"));
-  // Grand, Bas : « Aux deux bouts » ; Bas : « Premier plan ».
+  // Bas depuis « Grand » : « Texte jaune » du rang 4 ; depuis « Normal » : « Texte vert » ; depuis « Texte rouge » : « Aux deux bouts ».
   par("Grand").focus();
   touche(par("Grand"), "ArrowDown");
+  expect(document.activeElement).toBe(par("Texte jaune"));
+  par("Normal").focus();
+  touche(par("Normal"), "ArrowDown");
+  expect(document.activeElement).toBe(par("Texte vert"));
+  par("Texte rouge").focus();
+  touche(par("Texte rouge"), "ArrowDown");
   expect(document.activeElement).toBe(par("Aux deux bouts"));
+  touche(par("Aux deux bouts"), "ArrowUp");
+  expect(document.activeElement).toBe(par("Texte vert"));
+  par("Aux deux bouts").focus();
   touche(par("Aux deux bouts"), "ArrowDown");
   expect(document.activeElement).toBe(par("Premier plan"));
   par("Par défaut").focus();
@@ -176,10 +185,10 @@ test("REQ133_AC10_courant_et_presse_apres_un_choix_de_forme", () => {
   expect(css).toMatch(/\.ya-tableau-outils \.ya-icon-btn\[aria-current="true"\]::after/);
 });
 
-test("REQ133_AC11_pas_de_defilement_horizontal_a_278px", () => {
+test("REQ133_AC11_pas_de_defilement_horizontal_a_298px", () => {
   const regle = css.match(/\.ya-tableau-outils\s*\{([^}]*)\}/)[1];
   expect(regle).toMatch(/overflow-x:\s*hidden/);
-  expect(regle).toMatch(/width:\s*278px/);
+  expect(regle).toMatch(/width:\s*298px/);
 });
 
 test("REQ133_AC1_valeurs_de_depart_et_plan_inactif", () => {
@@ -230,4 +239,102 @@ test("REQ141_AC4_plan_inactif_garde_focus_et_info_bulle_actif_appelle_surAction"
   expect(choix).toEqual([]);
   b.definir(DEPART(), { planActif: false });
   expect(par("Premier plan").getAttribute("aria-disabled")).toBe("true");
+});
+
+const TEXTE = ["Gras", "Italique", "Souligné", "Barré", "Texte par défaut", "Texte bleu", "Texte vert", "Texte jaune", "Texte orange", "Texte rouge", "Texte violet"];
+const infoBulle = (nom) => {
+  vi.useFakeTimers();
+  par(nom).enveloppe.dispatchEvent(new MouseEvent("pointerenter"));
+  vi.advanceTimersByTime(400);
+  const t = document.querySelector("[role=tooltip]")?.textContent;
+  par(nom).enveloppe.dispatchEvent(new MouseEvent("pointerleave"));
+  vi.useRealTimers();
+  return t;
+};
+
+test("REQ133_AC8_AC12_REQ146_AC10_info_bulles_du_texte_non_mac_et_mac", async () => {
+  monter();
+  expect(infoBulle("Gras")).toBe("Gras (Ctrl+B)");
+  expect(infoBulle("Italique")).toBe("Italique (Ctrl+I)");
+  expect(infoBulle("Souligné")).toBe("Souligné (Ctrl+U)");
+  expect(infoBulle("Barré")).toBe("Barré");
+  expect(infoBulle("Texte rouge")).toBe("Couleur du texte : Rouge");
+  expect(infoBulle("Texte par défaut")).toBe("Couleur du texte : Par défaut");
+  document.body.replaceChildren();
+  const ua = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  monter();
+  expect(infoBulle("Gras")).toBe("Gras (Cmd+B)");
+  expect(infoBulle("Souligné")).toBe("Souligné (Cmd+U)");
+  expect(infoBulle("Barré")).toBe("Barré");
+  ua.mockRestore();
+});
+
+test("REQ133_AC13_six_rangs_barre_de_298px_et_pas_de_scroll_horizontal", () => {
+  monter();
+  expect([...b.element.children].map((r) => r.querySelectorAll("button").length)).toEqual(RANGS);
+  const regle = css.match(/\.ya-tableau-outils\s*\{([^}]*)\}/)[1];
+  expect(regle).toMatch(/width:\s*298px/);
+  expect(regle).toMatch(/overflow-y:\s*auto/);
+  expect(regle).toMatch(/max-height:\s*calc\(100% - 24px\)/);
+  // Rang 4 : onze boutons de 24 px, 2 px entre eux, 8 px entre groupes, marges de 4 px : 4 + 11 × 24 + 9 × 2 + 8 + 4 = 298.
+  expect(4 + 11 * 24 + 9 * 2 + 8 + 4).toBe(298);
+  expect(298 + 12).toBeLessThanOrEqual(320);
+});
+
+test("REQ146_AC8_texte_inactif_onze_boutons_aria_disabled_et_clic_sans_effet", () => {
+  monter();
+  const textes = [];
+  b = null;
+  document.body.replaceChildren();
+  b = boiteOutils({ valeurs: DEPART(), surChoix: (c, v) => choix.push([c, v]), surTexte: (...a) => textes.push(a) });
+  document.body.append(b.element);
+  for (const n of TEXTE) {
+    expect(par(n).getAttribute("aria-disabled"), n).toBe("true");
+    expect(par(n).getAttribute("aria-pressed"), n).toBe("false");
+    par(n).focus();
+    expect(document.activeElement).toBe(par(n));
+    par(n).click();
+  }
+  expect(textes).toEqual([]);
+  expect(choix).toEqual([]);
+  expect(css).toMatch(/\.ya-icon-btn\[aria-disabled="true"\]:not\(\[aria-busy="true"\]\) > svg \{ opacity: \.45/);
+  // Actif : bascules indépendantes, une seule couleur.
+  b.definir(DEPART(), { texte: { actif: true, styles: ["bold", "underline"], couleur: "red" } });
+  const presses = () => boutons().filter((x) => TEXTE.includes(x.getAttribute("aria-label")) && x.getAttribute("aria-pressed") === "true").map((x) => x.getAttribute("aria-label"));
+  expect(presses()).toEqual(["Gras", "Souligné", "Texte rouge"]);
+  for (const n of TEXTE) expect(par(n).hasAttribute("aria-disabled"), n).toBe(false);
+  // Plusieurs couleurs : aucune pressée.
+  b.definir(DEPART(), { texte: { actif: true, styles: [], couleur: null } });
+  expect(presses()).toEqual([]);
+  b.definir(DEPART(), { texte: { actif: true, styles: ["strike", "italic", "bold"], couleur: "default" } });
+  expect(presses()).toEqual(["Gras", "Italique", "Barré", "Texte par défaut"]);
+  // Un clic actif appelle surTexte, pas surChoix, et ne change pas l'état tant que `definir` ne le dit pas.
+  par("Gras").click();
+  par("Barré").click();
+  par("Texte vert").click();
+  par("Texte par défaut").click();
+  expect(textes).toEqual([["bold"], ["strike"], ["color", "green"], ["color", "default"]]);
+  expect(choix).toEqual([]);
+  expect(presses()).toEqual(["Gras", "Italique", "Barré", "Texte par défaut"]);
+  // Les autres appels de `definir` gardent l'état du texte.
+  b.definir({ ...DEPART(), couleur: "red" }, { planActif: true });
+  expect(presses()).toEqual(["Gras", "Italique", "Barré", "Texte par défaut"]);
+  // Inactif de nouveau.
+  b.definir(DEPART(), { texte: { actif: false } });
+  expect(par("Gras").getAttribute("aria-disabled")).toBe("true");
+  expect(presses()).toEqual([]);
+  // mousedown sans défaut : la saisie garde le focus.
+  for (const n of TEXTE) expect(par(n).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true })), n).toBe(false);
+});
+
+test("REQ146_AC10_barre_de_couleur_des_boutons_de_couleur_du_texte", () => {
+  monter();
+  expect(par("Texte vert").classList.contains("ya-texte-vert")).toBe(true);
+  expect(par("Texte par défaut").classList.contains("ya-texte-defaut")).toBe(true);
+  expect(par("Texte vert").querySelector("svg").dataset.icone).toBe("couleur-texte");
+  expect(par("Texte vert").querySelector(".ya-barre-texte")).not.toBeNull();
+  expect(css).toMatch(/\.ya-texte-vert \{ --barre-texte: var\(--boite-vert-trait\)/);
+  expect(css).toMatch(/\.ya-texte-defaut \{ --barre-texte: var\(--ink\)/);
+  expect(css).toMatch(/\.ya-barre-texte \{ fill: var\(--barre-texte/);
+  for (const c of ["bleu", "jaune", "orange", "rouge", "violet"]) expect(css).toContain(`--barre-texte: var(--boite-${c}-trait)`);
 });
