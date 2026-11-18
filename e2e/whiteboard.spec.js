@@ -268,6 +268,50 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ1
     const fonds = await page.evaluate(() => window.__fonds);
     expect(fonds.length).toBeGreaterThan(0);
     expect(new Set(fonds)).toEqual(new Set([clair200]));
+
+    // AC-129-14, AC-137-10 : glisser réels de suite, sans sélection de texte native qui annule le geste.
+    const surf2 = page.getByRole("application", { name: "plan.jdiag" });
+    const boite = (t) => surf2.locator('[aria-roledescription="boîte"]').filter({ hasText: t });
+    await page.getByRole("button", { name: "Tout afficher" }).click();
+    const sansSelection = async () => expect(await page.evaluate(() => window.getSelection().isCollapsed)).toBe(true);
+    const bDebut = boite("Début");
+    const xDe = async (b) => (await b.boundingBox()).x;
+    await bDebut.click();
+    const hp = await centre(surf2.locator('[data-poignee="taille"]'));
+    const l0 = (await bDebut.boundingBox()).width;
+    await glisser(page, hp, { x: hp.x + 60, y: hp.y });
+    expect((await bDebut.boundingBox()).width).toBeGreaterThan(l0 + 30);
+    await sansSelection();
+    const x0 = await xDe(bDebut);
+    const c0 = await centre(bDebut);
+    await glisser(page, c0, { x: c0.x + 100, y: c0.y });
+    expect(Math.abs((await xDe(bDebut)) - x0 - 100)).toBeLessThanOrEqual(3);
+    await sansSelection();
+    // Rectangle de sélection autour de « Début » et « Fin du flux », puis deux glisser de suite.
+    await page.getByRole("button", { name: "Sélection", exact: true }).click();
+    const bFin = boite("Fin du flux");
+    const q1 = await bDebut.boundingBox();
+    const q2 = await bFin.boundingBox();
+    const gx = Math.min(q1.x, q2.x) - 12;
+    const gy = Math.min(q1.y, q2.y) - 12;
+    await glisser(page, { x: gx, y: gy }, { x: Math.max(q1.x + q1.width, q2.x + q2.width) + 12, y: Math.max(q1.y + q1.height, q2.y + q2.height) + 12 });
+    await sansSelection();
+    const xa = await xDe(bDebut);
+    const xb = await xDe(bFin);
+    for (let i = 0; i < 2; i++) {
+      const c = await centre(bDebut);
+      await glisser(page, c, { x: c.x + 100, y: c.y });
+      await sansSelection();
+    }
+    expect(Math.abs((await xDe(bDebut)) - xa - 200)).toBeLessThanOrEqual(4);
+    expect(Math.abs((await xDe(bFin)) - xb - 200)).toBeLessThanOrEqual(4);
+    // Ctrl+A en saisie : le texte de la boîte reste sélectionnable.
+    const cdb = await centre(bDebut);
+    await page.mouse.dblclick(cdb.x, cdb.y);
+    await expect(page.getByRole("textbox", { name: "Texte de la boîte" })).toBeFocused();
+    await page.keyboard.press("Control+a");
+    expect(await page.evaluate(() => window.getSelection().toString())).toContain("Début");
+    await page.keyboard.press("Escape");
   } finally {
     await yaide.arreter();
   }
