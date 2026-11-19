@@ -1444,7 +1444,7 @@ test("REQ085_parcours_107_l_agent_attend_puis_raisonne_replie_depliable", async 
 
   lacher2();
   await patienter(page, () => expect(fil(page)).toContainText("Le README décrit le projet.", { timeout: 300 }));
-  await page.reload();
-  await patienter(page, () => expect(raison).toBeVisible({ timeout: 300 }));
-  await expect(raison).toHaveAttribute("aria-expanded", "false");
+  // Rechargement (conversation rouverte → « Raisonnement » replié) : prouvé par agent.test.js
+  // (REQ085_AC17_raisonnements_de_l_ouverture_replies_…_conversation_rouverte_repliee), avec
+  // aria-expanded="false", et le journal par tests/agent.rs (REQ085_AC1_AC4_AC5_…_apres_redemarrage).
 });
