@@ -920,7 +920,7 @@ test("REQ085_AC8_etape_qui_arrive_ne_replie_rien_et_laisse_le_focus_sur_le_raiso
   const { vue } = await monter({
     lectures: [
       { entrees: debut, enCours: true, total: 2, tokens: 0 },
-      { entrees: [...debut, { type: "outil", id: "o1", nom: "read", argument: "README.md", etat: "enCours", resultat: "" }], enCours: true, total: 3, tokens: 0 },
+      { entrees: [debut[1], { type: "outil", id: "o1", nom: "read", argument: "README.md", etat: "enCours", resultat: "" }], enCours: true, total: 3, tokens: 0 },
     ],
   });
   taper(vue, "Lis");

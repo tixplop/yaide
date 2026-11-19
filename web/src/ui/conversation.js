@@ -45,7 +45,7 @@ function texteZone(zone, e) {
   zone.append(arg, `\n${e.etat === "enCours" ? "En cours…" : (e.resultat ?? "")}`);
 }
 
-function rendreOutil(e, surDeplier) {
+function rendreOutil(e, ctx) {
   const etat = ETATS[e.etat];
   if (!etat) throw new Error(`conversation : état inconnu « ${e.etat} »`);
   const racine = document.createElement("div");
@@ -90,25 +90,26 @@ function rendreOutil(e, surDeplier) {
     const ouvert = b.getAttribute("aria-expanded") !== "true";
     b.setAttribute("aria-expanded", String(ouvert));
     zone.hidden = !ouvert;
-    surDeplier?.(e.id);
+    ctx.surDeplier?.(e.id);
   });
   racine.append(b, zone);
-  majOutil(racine, e, surDeplier);
+  majOutil(racine, e, ctx);
   return racine;
 }
 
-// Étapes du sous-agent : mêmes mises à jour que le fil, sans auteur ni groupe ; l'attente et le résultat d'un échec restent en fin de zone.
-function majEtapes(zone, e, surDeplier) {
-  majRendus(zone.rendus, e.etapes, surDeplier, "Sous-agent");
+// Étapes du sous-agent : mêmes mises à jour que le fil, sans auteur ni groupe ; le résultat d'un échec reste en fin de zone.
+function majEtapes(zone, e, ctx) {
+  majRendus(zone.rendus, e.etapes, ctx, "Sous-agent");
   zone.attente?.remove();
   zone.resultat?.remove();
-  ajouterRendus(zone.rendus, e.etapes, surDeplier, undefined, "Sous-agent", (n) => zone.append(n));
+  ajouterRendus(zone.rendus, e.etapes, ctx, undefined, "Sous-agent", (n) => zone.append(n));
   if (e.etat === "echec") {
     zone.resultat ??= Object.assign(document.createElement("div"), { className: "ya-step-res" });
     zone.resultat.textContent = e.resultat ?? "";
     zone.append(zone.resultat);
   }
-  const travaille = e.etat === "enCours" && !e.etapes.some((x) => x.type === "outil" && x.etat === "enCours");
+  // Ancien texte, tant que la vue ne donne pas `attente` (T-335).
+  const travaille = !ctx.avecAttente && e.etat === "enCours" && !e.etapes.some((x) => x.type === "outil" && x.etat === "enCours");
   if (!travaille) zone.attente = null;
   else {
     zone.attente ??= indication({ texte: "Le sous-agent travaille…", variante: "chargement" });
@@ -116,7 +117,7 @@ function majEtapes(zone, e, surDeplier) {
   }
 }
 
-function majOutil(racine, e, surDeplier) {
+function majOutil(racine, e, ctx) {
   const etat = ETATS[e.etat];
   if (!etat) throw new Error(`conversation : état inconnu « ${e.etat} »`);
   const b = racine.querySelector("button");
@@ -134,18 +135,18 @@ function majOutil(racine, e, surDeplier) {
   } else b.setAttribute("aria-label", `${e.nom} ${arg}, ${etat.nom}`);
   const zone = racine.querySelector(":scope > .ya-step-res, :scope > .ya-sous-zone");
   if (zone.rendus) {
-    if (Array.isArray(e.etapes)) majEtapes(zone, e, surDeplier);
+    if (Array.isArray(e.etapes)) majEtapes(zone, e, ctx);
   } else texteZone(zone, e);
 }
 
-function rendreRaison(e, surDeplier, nom) {
+function rendreRaison(e, ctx, nom) {
   const racine = document.createElement("div");
-  majRaison(racine, e, surDeplier, nom);
+  majRaison(racine, e, ctx, nom);
   return racine;
 }
 
 // La ligne n'existe qu'à partir du premier caractère qui n'est pas un espace.
-function majRaison(racine, e, surDeplier, nom) {
+function majRaison(racine, e, ctx, nom) {
   if (!String(e.markdown ?? "").trim()) {
     const avaitFocus = racine.contains(document.activeElement);
     racine.textContent = "";
@@ -157,15 +158,23 @@ function majRaison(racine, e, surDeplier, nom) {
   racine.hidden = false;
   racine.classList.add("ya-steps");
   let zone = racine.querySelector(".ya-raison-zone");
+  if (zone && racine.dataset.id !== String(e.id)) {
+    // Autre raisonnement à la même place : son état est celui de son id.
+    const ouvert = ctx.etats.has(String(e.id)) ? ctx.etats.get(String(e.id)) : !!e.enDirect;
+    zone.hidden = !ouvert;
+    racine.querySelector("button").setAttribute("aria-expanded", String(ouvert));
+  }
+  racine.dataset.id = String(e.id);
   if (!zone) {
     zone = document.createElement("div");
     zone.id = `ya-conv-${++compteur}`;
     zone.className = "ya-raison-zone ya-chat-agent";
-    zone.hidden = true;
     const b = document.createElement("button");
     b.type = "button";
     b.className = "ya-raison";
-    b.setAttribute("aria-expanded", "false");
+    const ouvert0 = ctx.etats.has(String(e.id)) ? ctx.etats.get(String(e.id)) : !!e.enDirect;
+    zone.hidden = !ouvert0;
+    b.setAttribute("aria-expanded", String(ouvert0));
     b.setAttribute("aria-controls", zone.id);
     const t = document.createElement("span");
     t.className = "ya-raison-nom";
@@ -176,7 +185,9 @@ function majRaison(racine, e, surDeplier, nom) {
       const ouvert = b.getAttribute("aria-expanded") !== "true";
       b.setAttribute("aria-expanded", String(ouvert));
       zone.hidden = !ouvert;
-      surDeplier?.(e.id);
+      const id = racine.dataset.id;
+      ctx.etats.set(id, ouvert);
+      ctx.surDeplier?.(id);
     });
     racine.append(b, zone);
   }
@@ -216,7 +227,7 @@ function majSousAgent(ligne, e) {
   ligne.querySelector("button").setAttribute("aria-label", `Ouvrir ${e.agent}`);
 }
 
-function rendreEntree(e, surDeplier, surOuvrir, nom) {
+function rendreEntree(e, ctx, surOuvrir, nom) {
   let n;
   switch (e.type) {
     case "utilisateur":
@@ -232,9 +243,9 @@ function rendreEntree(e, surDeplier, surOuvrir, nom) {
     case "sousAgent":
       return rendreSousAgent(e, surOuvrir);
     case "outil":
-      return rendreOutil(e, surDeplier);
+      return rendreOutil(e, ctx);
     case "raisonnement":
-      return rendreRaison(e, surDeplier, nom);
+      return rendreRaison(e, ctx, nom);
     case "fin":
       n = document.createElement("div");
       n.className = "ya-fin";
@@ -270,17 +281,33 @@ function majAgent(n, e, nom, sansNom = false) {
   else n.closest(".ya-chat")?.focus({ preventScroll: true });
 }
 
-// Met à jour sur place les entrées déjà rendues ; `rendus` : { entree, noeud }.
-function majRendus(rendus, liste, surDeplier, nom) {
+// Retire les entrées rendues à partir de `depuis` ; le focus qu'elles avaient va sur la conversation.
+function retirer(rendus, depuis) {
+  for (const { noeud, groupe } of rendus.splice(depuis)) {
+    const chat = noeud.closest(".ya-chat");
+    if (noeud.contains(document.activeElement)) chat?.focus({ preventScroll: true });
+    noeud.remove();
+    if (groupe && !groupe.corps.childElementCount) groupe.el.remove();
+  }
+}
+
+// Met à jour sur place les entrées déjà rendues ; `rendus` : { entree, noeud }. Un raisonnement qui n'est plus à sa place (disparu, remplacé par une autre entrée, ou à la place d'une autre) retire aussi ce qui le suit.
+function majRendus(rendus, liste, ctx, nom) {
+  const fin = rendus.findIndex(({ entree: a }, i) => {
+    const b = liste[i];
+    if (!b) return a.type === "raisonnement";
+    return (a.type === "raisonnement" || b.type === "raisonnement") && a.type !== b.type;
+  });
+  if (fin >= 0) retirer(rendus, fin);
   for (let i = 0; i < rendus.length && i < liste.length; i++) {
     const { entree, noeud } = rendus[i];
     const e = liste[i];
     if (e.type === "outil" && entree.type === "outil") {
-      if (e.etat !== entree.etat || e.resultat !== entree.resultat || e.argument !== entree.argument || JSON.stringify(e.etapes) !== JSON.stringify(entree.etapes)) majOutil(noeud, e, surDeplier);
+      if (e.etat !== entree.etat || e.resultat !== entree.resultat || e.argument !== entree.argument || JSON.stringify(e.etapes) !== JSON.stringify(entree.etapes)) majOutil(noeud, e, ctx);
     } else if (e.type === "agent" && entree.type === "agent" && e.markdown !== entree.markdown) {
       majAgent(noeud, e, nom);
-    } else if (e.type === "raisonnement" && entree.type === "raisonnement" && e.markdown !== entree.markdown) {
-      majRaison(noeud, e, surDeplier, nom);
+    } else if (e.type === "raisonnement" && entree.type === "raisonnement" && (e.markdown !== entree.markdown || e.id !== entree.id)) {
+      majRaison(noeud, e, ctx, nom);
     } else if (e.type === "sousAgent" && entree.type === "sousAgent" && JSON.stringify(e) !== JSON.stringify(entree)) {
       majSousAgent(noeud, e);
     }
@@ -289,10 +316,10 @@ function majRendus(rendus, liste, surDeplier, nom) {
 }
 
 // Rend les entrées nouvelles à la suite ; `placer(noeud, e)` les met dans le DOM et rend leur groupe éventuel.
-function ajouterRendus(rendus, liste, surDeplier, surOuvrir, nom, placer) {
+function ajouterRendus(rendus, liste, ctx, surOuvrir, nom, placer) {
   for (let i = rendus.length; i < liste.length; i++) {
     const e = liste[i];
-    const noeud = rendreEntree(e, surDeplier, surOuvrir, nom);
+    const noeud = rendreEntree(e, ctx, surOuvrir, nom);
     rendus.push({ entree: e, noeud, groupe: placer(noeud, e) });
   }
 }
@@ -316,7 +343,7 @@ function creerGroupe(auteur) {
   return { auteur, el, corps };
 }
 
-export function conversation({ entrees = [], enAttente = false, vide, surDeplier, surOuvrir, surOuvrirFichier, nom = "Agent" } = {}) {
+export function conversation({ entrees = [], enAttente = false, attente: attenteInitiale = null, vide, surDeplier, surOuvrir, surOuvrirFichier, nom = "Agent" } = {}) {
   const el = document.createElement("div");
   el.className = "ya-chat";
   el.setAttribute("role", "log");
@@ -335,9 +362,11 @@ export function conversation({ entrees = [], enAttente = false, vide, surDeplier
   el.addEventListener("click", ouvrirFichier);
   el.addEventListener("auxclick", ouvrirFichier);
 
+  const ctx = { surDeplier, etats: new Map(), avecAttente: false }; // etats : id d'un raisonnement → déplié par l'utilisateur ou à l'arrivée
   let rendus = []; // { entree, noeud }
-  let attente = null;
   let cleAttente = "";
+  let attente = null; // opencode : « … travaille… » après 200 ms
+  let ligneAttente = null; // agent de Yaide : une seule ligne, dont le texte change en place
   let groupeAttente = null; // groupe ouvert pour la seule attente
   let blocVide = null;
 
@@ -346,14 +375,24 @@ export function conversation({ entrees = [], enAttente = false, vide, surDeplier
     el.scrollTop = el.scrollHeight;
   };
 
-  function appliquer(liste, enAttenteNouveau) {
-    majRendus(rendus, liste, surDeplier, nom);
+  function texteAttente(a) {
+    const sujet = a.auteur ? a.auteur.nom : a.sousAgent ? "Le sous-agent" : "L'agent";
+    if (a.phase === "attend") return `${sujet} attend ${a.provider}…`;
+    if (a.phase === "raisonne") return `${sujet} raisonne…`;
+    if (a.phase === "repond") return `${sujet} répond…`;
+    throw new Error(`conversation : phase d'attente inconnue « ${a.phase} »`);
+  }
+
+  function appliquer(liste, enAttenteNouveau, attenteNouvelle) {
+    ctx.avecAttente = !!attenteNouvelle;
+    ligneAttente?.remove();
+    majRendus(rendus, liste, ctx, nom);
     attente?.remove();
     if (groupeAttente) {
       groupeAttente.el.remove();
       groupeAttente = null;
     }
-    ajouterRendus(rendus, liste, surDeplier, surOuvrir, nom, (noeud, e) => {
+    ajouterRendus(rendus, liste, ctx, surOuvrir, nom, (noeud, e) => {
       if (!e.auteur || e.type === "utilisateur" || e.type === "message") {
         el.append(noeud);
         return null;
@@ -370,7 +409,7 @@ export function conversation({ entrees = [], enAttente = false, vide, surDeplier
     const cle = enAttenteNouveau ? JSON.stringify(auteurAttente) : "";
     if (attente && cle !== cleAttente) attente = null;
     if (enAttenteNouveau && !attente) {
-      attente = indication({ texte: auteurAttente ? `${auteurAttente.nom} travaille…` : nom === "Agent" ? "L'agent travaille…" : `${nom} travaille…`, variante: "chargement" });
+      attente = indication({ texte: auteurAttente || nom !== "Agent" ? `${auteurAttente ? auteurAttente.nom : nom} travaille…` : "L'agent travaille…", variante: "chargement" });
     } else if (!enAttenteNouveau) {
       attente = null;
     }
@@ -382,8 +421,30 @@ export function conversation({ entrees = [], enAttente = false, vide, surDeplier
         el.append(groupe.el);
       }
       groupe.corps.append(attente);
-    } else if (attente) {
-      el.append(attente);
+    } else if (attente) el.append(attente);
+
+    if (!attenteNouvelle) ligneAttente = null;
+    else {
+      if (!ligneAttente) {
+        ligneAttente = document.createElement("div");
+        ligneAttente.className = "ya-requete";
+        ligneAttente.setAttribute("role", "status");
+      }
+      const texte = texteAttente(attenteNouvelle);
+      if (ligneAttente.textContent !== texte) ligneAttente.textContent = texte;
+      if (attenteNouvelle.sousAgent) {
+        const appel = rendus.find((r) => r.entree.type === "outil" && r.entree.id === attenteNouvelle.sousAgent);
+        const zone = appel?.noeud.querySelector(":scope > .ya-sous-zone");
+        if (zone) zone.append(ligneAttente);
+        else ligneAttente = null;
+      } else if (attenteNouvelle.auteur) {
+        let groupe = rendus.at(-1)?.groupe;
+        if (!memeAuteur(groupe?.auteur, attenteNouvelle.auteur)) {
+          groupe = groupeAttente = creerGroupe(attenteNouvelle.auteur);
+          el.append(groupe.el);
+        }
+        groupe.corps.append(ligneAttente);
+      } else el.append(ligneAttente);
     }
     if (liste.length && blocVide) {
       blocVide.remove();
@@ -396,13 +457,13 @@ export function conversation({ entrees = [], enAttente = false, vide, surDeplier
     }
   }
 
-  el.mettreAJour = (liste, enAttenteNouveau = false) => {
+  el.mettreAJour = (liste, enAttenteNouveau = false, attenteNouvelle = null) => {
     const bas = auBas();
-    appliquer(liste, enAttenteNouveau);
+    appliquer(liste, enAttenteNouveau, attenteNouvelle);
     if (bas) descendre();
   };
 
-  appliquer(entrees, enAttente);
+  appliquer(entrees, enAttente, attenteInitiale);
   descendre();
   // Tant que le fil n'est pas dans la page, la hauteur est nulle : on redescend à l'affichage.
   if (typeof requestAnimationFrame === "function") requestAnimationFrame(descendre);

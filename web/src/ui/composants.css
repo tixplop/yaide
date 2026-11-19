@@ -776,6 +776,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 /* C-015 attentes (REQ-072) */
 .ya-attentes { display: flex; flex-direction: column; gap: var(--space-2); }
 .ya-attente { display: flex; flex-direction: column; gap: var(--space-2); }
+.ya-requete { color: var(--ink-muted); font: 13px/20px var(--font-sans); }
 
 /* C-015 `agent` : valeurs propres à la réponse, `.ya-chat` en plus pour passer devant les règles partagées avec l'aperçu, plus bas. */
 .ya-chat .ya-chat-agent table { margin: 0 0 var(--space-2); }

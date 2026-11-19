@@ -89,10 +89,10 @@ test("REQ056_AC11_bash_code_non_nul_en_echec", () => {
   expect(icones).toEqual(["circle-x", "circle-check", "circle-dashed"]);
 });
 
-test("REQ055_AC11_l_agent_travaille_apres_200_ms_puis_disparait", () => {
-  const c = conversation({ entrees: [{ type: "utilisateur", texte: "a" }], enAttente: true });
+test("REQ055_AC11_opencode_travaille_apres_200_ms_puis_disparait", () => {
+  const c = conversation({ nom: "opencode", entrees: [{ type: "utilisateur", texte: "a" }], enAttente: true });
   const att = c.querySelector(".indication");
-  expect(att.textContent).toBe("L'agent travaille…");
+  expect(att.textContent).toBe("opencode travaille…");
   expect(att.getAttribute("role")).toBe("status");
   expect(att.hidden).toBe(true);
   vi.advanceTimersByTime(200);
@@ -235,41 +235,34 @@ test("REQ067_AC16_nouveau_groupe_apres_un_message_de_l_utilisateur", () => {
   expect(c.children[1].className).toBe("ya-chat-user");
 });
 
-test("REQ067_AC17_travaille_dans_le_groupe_de_l_agent_puis_du_suivant", () => {
+test("REQ067_AC17_REQ085_AC14_attente_dans_le_groupe_de_l_agent_puis_du_suivant", () => {
   const u = { type: "utilisateur", texte: "a" };
-  const c = conversation({ entrees: [u], enAttente: rel });
+  const c = conversation({ entrees: [u], attente: { phase: "attend", provider: "Anthropic", auteur: rel } });
   let g = groupes(c);
   expect(g.length).toBe(1);
-  const att = g[0].querySelector(".indication");
-  expect(att.textContent).toBe("Relecteur travaille…");
-  expect(att.getAttribute("role")).toBe("status");
-  expect(att.hidden).toBe(true);
-  vi.advanceTimersByTime(200);
+  const att = g[0].querySelector("[role=status]");
+  expect(att.textContent).toBe("Relecteur attend Anthropic…");
   expect(att.hidden).toBe(false);
   expect(g[0].querySelector(".ya-tour-corps").lastElementChild).toBe(att);
 
   const e1 = { type: "agent", markdown: "x", auteur: rel };
-  c.mettreAJour([u, e1], rel);
+  c.mettreAJour([u, e1], false, { phase: "raisonne", provider: "Anthropic", auteur: rel });
   g = groupes(c);
   expect(g.length).toBe(1);
   expect(g[0].querySelector(".ya-tour-corps").children.length).toBe(2);
-  expect(g[0].querySelector(".indication")).toBe(att);
+  expect(g[0].querySelector("[role=status]")).toBe(att);
+  expect(att.textContent).toBe("Relecteur raisonne…");
 
-  c.mettreAJour([u, e1], aut);
+  c.mettreAJour([u, e1], false, { phase: "repond", provider: "Anthropic", auteur: aut });
   g = groupes(c);
   expect(g.length).toBe(2);
-  expect(g[0].querySelector(".indication")).toBeNull();
-  expect(g[1].querySelector(".indication").textContent).toBe("Auteur travaille…");
+  expect(g[0].querySelector("[role=status]")).toBeNull();
+  expect(g[1].querySelector("[role=status]").textContent).toBe("Auteur répond…");
 
-  c.mettreAJour([u, e1, { type: "agent", markdown: "y", auteur: aut }], false);
-  g = groupes(c);
-  expect(g.length).toBe(2);
-  expect(c.querySelector(".indication")).toBeNull();
-
-  c.mettreAJour([u, e1, { type: "agent", markdown: "y", auteur: aut }], rel);
-  expect(groupes(c).length).toBe(3);
-  c.mettreAJour([u, e1, { type: "agent", markdown: "y", auteur: aut }], false);
+  const e2 = { type: "agent", markdown: "y", auteur: aut };
+  c.mettreAJour([u, e1, e2], false, null);
   expect(groupes(c).length).toBe(2);
+  expect(c.querySelector("[role=status]")).toBeNull();
 });
 
 test("REQ067_message_d_erreur_hors_du_filet", () => {
@@ -397,7 +390,6 @@ test("REQ072_AC20_opencode_travaille", () => {
   expect(c.querySelector(".indication").textContent).toBe("opencode travaille…");
   const e = conversation({ nom: "explore", enAttente: true });
   expect(e.querySelector(".indication").textContent).toBe("explore travaille…");
-  expect(conversation({ enAttente: true }).querySelector(".indication").textContent).toBe("L'agent travaille…");
 });
 
 const AGENT = (markdown) => ({ type: "agent", markdown });
@@ -746,20 +738,23 @@ test("REQ100_AC11_ancien_appel_sans_etapes_garde_la_zone_de_resultat", () => {
   expect(c.querySelector(".ya-step-res").textContent).toContain("Trois tests.");
 });
 
-test("REQ100_AC12_attente_du_sous_agent_apres_200_ms_et_retiree_si_une_etape_tourne", () => {
-  const c = conversation({ entrees: [ligneSub({ etat: "enCours", etapes: ETAPES.slice(0, 1) })] });
+test("REQ100_AC12_REQ085_AC14_attente_du_sous_agent_en_derniere_entree_du_deroulement", () => {
+  const att = (phase) => ({ phase, provider: "Anthropic", sousAgent: "s1" });
+  const c = conversation({ entrees: [ligneSub({ etat: "enCours", etapes: ETAPES.slice(0, 1) })], attente: att("attend") });
   const zone = zoneSub(c);
   const attente = () => zone.querySelector("[role=status]");
-  expect(attente().textContent).toBe("Le sous-agent travaille…");
-  expect(attente().hidden).toBe(true);
-  vi.advanceTimersByTime(200);
+  expect(attente().textContent).toBe("Le sous-agent attend Anthropic…");
   expect(attente().hidden).toBe(false);
   expect(zone.lastElementChild).toBe(attente());
+  expect([...c.children].filter((n) => n.getAttribute("role") === "status")).toHaveLength(0);
   const noeud = attente();
-  c.mettreAJour([ligneSub({ etat: "enCours", etapes: ETAPES.slice(0, 3) })]);
+  c.mettreAJour([ligneSub({ etat: "enCours", etapes: ETAPES.slice(0, 3) })], false, att("raisonne"));
   expect(attente()).toBe(noeud);
+  expect(noeud.textContent).toBe("Le sous-agent raisonne…");
   expect(zone.lastElementChild).toBe(noeud);
   expect(zone.children).toHaveLength(4);
+  c.mettreAJour([ligneSub({ etat: "enCours", etapes: ETAPES.slice(0, 3) })], false, att("repond"));
+  expect(noeud.textContent).toBe("Le sous-agent répond…");
   c.mettreAJour([ligneSub({ etat: "enCours", etapes: [...ETAPES.slice(0, 2), { type: "outil", id: "r1", nom: "bash", argument: "sleep 3", etat: "enCours" }] })]);
   expect(attente()).toBeNull();
   c.mettreAJour([ligneSub({ etapes: ETAPES })]);
@@ -804,4 +799,157 @@ test("REQ100_AC12_reponse_du_sous_agent_mise_a_jour_garde_son_prefixe_et_le_focu
   const reponse = zoneSub(c).children[1];
   expect(reponse.textContent.trim()).toBe("Sous-agent : Voir la doc et la suite.");
   expect(document.activeElement).toBe(reponse.querySelector("a"));
+});
+
+const attenteFil = (c) => [...c.querySelectorAll("[role=status]")];
+
+test("REQ085_AC14_trois_phases_provider_et_texte_change_en_place", () => {
+  const c = conversation({ entrees: [{ type: "utilisateur", texte: "a" }], attente: { phase: "attend", provider: "Anthropic" } });
+  const el = attenteFil(c);
+  expect(el).toHaveLength(1);
+  expect(el[0].textContent).toBe("L'agent attend Anthropic…");
+  expect(c.lastElementChild).toBe(el[0]);
+  expect(el[0].hidden).toBe(false);
+  c.mettreAJour([{ type: "utilisateur", texte: "a" }, raison()], false, { phase: "raisonne", provider: "Anthropic" });
+  expect(attenteFil(c)[0]).toBe(el[0]);
+  expect(el[0].textContent).toBe("L'agent raisonne…");
+  expect(c.lastElementChild).toBe(el[0]);
+  c.mettreAJour([{ type: "utilisateur", texte: "a" }, { type: "agent", markdown: "x" }], false, { phase: "repond", provider: "Anthropic" });
+  expect(attenteFil(c)[0]).toBe(el[0]);
+  expect(el[0].textContent).toBe("L'agent répond…");
+  c.mettreAJour([{ type: "utilisateur", texte: "a" }, { type: "agent", markdown: "x" }], false, { phase: "attend", provider: "Ollama" });
+  expect(el[0].textContent).toBe("L'agent attend Ollama…");
+  expect(c.lastElementChild).toBe(el[0]);
+  expect(() => conversation({ attente: { phase: "x", provider: "A" } })).toThrow(/phase/);
+});
+
+test("REQ085_AC16_une_ligne_sans_icone_ni_animation_rien_pendant_un_outil_opencode_garde_travaille", () => {
+  const c = conversation({ entrees: [], attente: { phase: "attend", provider: "Anthropic" } });
+  document.body.append(c);
+  const l = attenteFil(c)[0];
+  expect(l.querySelector("svg, img")).toBeNull();
+  expect(l.children).toHaveLength(0);
+  expect(l.className).toBe("ya-requete");
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  const regle = css.match(/^\.ya-requete \{[^}]*\}/m)[0];
+  expect(regle).not.toMatch(/animation|transition/);
+  expect(regle).toContain("var(--ink-muted)");
+  expect(regle).toContain("13px/20px");
+  expect(getComputedStyle(l).animationName === "none" || getComputedStyle(l).animationName === "").toBe(true);
+  c.mettreAJour([outil({ etat: "enCours" })], false, null);
+  expect(attenteFil(c)).toHaveLength(0);
+  expect(conversation({ nom: "opencode", enAttente: true }).querySelector(".indication").textContent).toBe("opencode travaille…");
+});
+
+test("REQ095_AC14_REQ100_AC15_l_alerte_vient_avant_l_attente", () => {
+  const m = { type: "message", variante: "alerte", texte: "Le serveur MCP docs n'a pas démarré." };
+  const c = conversation({ entrees: [m], attente: { phase: "attend", provider: "Anthropic" } });
+  expect(c.children[0].getAttribute("role")).toBe("alert");
+  expect(c.lastElementChild.getAttribute("role")).toBe("status");
+  c.mettreAJour([m, { type: "agent", markdown: "x" }], false, { phase: "repond", provider: "Anthropic" });
+  expect(c.lastElementChild.getAttribute("role")).toBe("status");
+  expect(c.children[0].getAttribute("role")).toBe("alert");
+});
+
+test("REQ100_AC11_REQ085_AC15_raisonnement_en_direct_deplie_et_s_allonge_sans_deplacer_le_focus", () => {
+  const c = conversation({ entrees: [raison({ markdown: "voir [a](https://x.test/a)", enDirect: true })] });
+  document.body.append(c);
+  const b = bRaison(c);
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(c.querySelector(".ya-raison-zone").hidden).toBe(false);
+  c.querySelector(".ya-raison-zone a").focus();
+  c.mettreAJour([raison({ markdown: "voir [a](https://x.test/a) puis la suite", enDirect: true })]);
+  expect(bRaison(c)).toBe(b);
+  expect(document.activeElement).toBe(c.querySelector(".ya-raison-zone a"));
+  expect(c.querySelector(".ya-raison-zone").textContent).toContain("la suite");
+  b.focus();
+  c.mettreAJour([raison({ markdown: "voir [a](https://x.test/a) puis la suite et plus", enDirect: true })]);
+  expect(document.activeElement).toBe(b);
+});
+
+test("REQ085_AC15_replie_par_l_utilisateur_reste_replie_et_suit_l_id_meme_si_l_entree_change", () => {
+  const c = conversation({ entrees: [raison({ enDirect: true })] });
+  document.body.append(c);
+  bRaison(c).click();
+  expect(bRaison(c).getAttribute("aria-expanded")).toBe("false");
+  c.mettreAJour([raison({ markdown: "Je lis **README** et plus.", enDirect: true })]);
+  expect(bRaison(c).getAttribute("aria-expanded")).toBe("false");
+  expect(c.querySelector(".ya-raison-zone").textContent).toContain("et plus");
+  // la fin de l'étape : même id, le raisonnement garde l'indice 0 et une entrée le suit
+  c.mettreAJour([raison({ markdown: "Je lis **README** et plus.", enDirect: true }), outil()]);
+  expect(bRaison(c).getAttribute("aria-expanded")).toBe("false");
+  // l'entrée disparaît puis revient avec le même id : l'état choisi est gardé
+  c.mettreAJour([{ type: "agent", markdown: "x" }]);
+  c.mettreAJour([raison({ enDirect: true })]);
+  expect(bRaison(c).getAttribute("aria-expanded")).toBe("false");
+  // déplié par l'utilisateur sur un raisonnement qui n'était pas en direct
+  const d = conversation({ entrees: [raison({ id: "r2" })] });
+  expect(bRaison(d).getAttribute("aria-expanded")).toBe("false");
+  bRaison(d).click();
+  d.mettreAJour([raison({ id: "r2", markdown: "plus" })]);
+  expect(bRaison(d).getAttribute("aria-expanded")).toBe("true");
+});
+
+test("REQ085_AC15_sans_enDirect_replie_et_ligne_absente_tant_que_le_texte_est_blanc", () => {
+  const c = conversation({ entrees: [raison({ markdown: "  \n", enDirect: true })] });
+  expect(bRaison(c)).toBeNull();
+  c.mettreAJour([raison({ markdown: " idée", enDirect: true })]);
+  expect(bRaison(c).getAttribute("aria-expanded")).toBe("true");
+  const d = conversation({ entrees: [raison({ enDirect: false })] });
+  expect(bRaison(d).getAttribute("aria-expanded")).toBe("false");
+  expect(d.querySelector(".ya-raison-zone").hidden).toBe(true);
+});
+
+test("REQ085_AC18_raisonnement_qui_disparait_avec_le_focus_va_sur_la_conversation", () => {
+  const fin = { type: "message", variante: "erreur", texte: "Le provider a coupé la réponse." };
+  const avec = (focus) => {
+    const c = conversation({ entrees: [{ type: "utilisateur", texte: "a" }, raison({ markdown: "voir [a](https://x.test/a)", enDirect: true })] });
+    document.body.append(c);
+    focus(c).focus();
+    c.mettreAJour([{ type: "utilisateur", texte: "a" }, fin]);
+    return c;
+  };
+  for (const f of [(c) => bRaison(c), (c) => c.querySelector(".ya-raison-zone a")]) {
+    const c = avec(f);
+    expect(bRaison(c)).toBeNull();
+    expect(document.activeElement).toBe(c);
+    expect(c.lastElementChild.textContent).toContain("Le provider a coupé");
+    c.remove();
+  }
+  // sans le focus : il ne bouge pas, et la liste raccourcie retire l'entrée
+  const d = conversation({ entrees: [{ type: "utilisateur", texte: "a" }, raison({ enDirect: true })] });
+  document.body.append(d);
+  d.mettreAJour([{ type: "utilisateur", texte: "a" }]);
+  expect(bRaison(d)).toBeNull();
+  expect(document.activeElement).toBe(document.body);
+  // dans le groupe d'un agent, le groupe vide disparaît aussi
+  const g = conversation({ entrees: [raison({ auteur: rel, enDirect: true })] });
+  g.mettreAJour([]);
+  expect(groupes(g)).toHaveLength(0);
+});
+
+test("REQ100_AC11_REQ085_AC15_raisonnement_du_deroulement_d_un_sous_agent_en_direct", () => {
+  const ligne = (etapes) => ligneSub({ etat: "enCours", etapes });
+  const dir = (md, o = {}) => ({ type: "raisonnement", id: "rsn:0:1", markdown: md, enDirect: true, ...o });
+  const c = conversation({ entrees: [ligne([ETAPES[0], dir("Je [cherche](https://x.test/a)")])] });
+  document.body.append(c);
+  bouton(c).click();
+  const zone = zoneSub(c);
+  const b = zone.querySelector("button.ya-raison");
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(zone.querySelector(".ya-raison-zone").hidden).toBe(false);
+  zone.querySelector(".ya-raison-zone a").focus();
+  c.mettreAJour([ligne([ETAPES[0], dir("Je [cherche](https://x.test/a) encore")])]);
+  expect(zone.querySelector("button.ya-raison")).toBe(b);
+  expect(zone.querySelector(".ya-raison-zone").textContent).toContain("encore");
+  expect(document.activeElement).toBe(zone.querySelector(".ya-raison-zone a"));
+  b.click();
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  c.mettreAJour([ligne([ETAPES[0], dir("Je [cherche](https://x.test/a) encore et encore")])]);
+  expect(zone.querySelector("button.ya-raison")).toBe(b);
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  expect(zone.querySelector(".ya-raison-zone").hidden).toBe(true);
+  expect(zone.querySelector(".ya-raison-zone").textContent).toContain("et encore");
+  const d = conversation({ entrees: [ligne([ETAPES[0], dir("Sans direct", { id: "rsn:0:2", enDirect: false })])] });
+  expect(d.querySelector("button.ya-raison").getAttribute("aria-expanded")).toBe("false");
 });
