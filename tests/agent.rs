@@ -1826,6 +1826,20 @@ enum M {
     Fin,
     /// Une pause, en millisecondes, avant le morceau suivant.
     Pause(u64),
+    /// Retient le morceau suivant jusqu'à ce que le fichier témoin existe : le test le crée
+    /// après avoir lu la phase qu'il voulait voir.
+    Attendre(std::path::PathBuf),
+}
+
+/// Un fichier témoin neuf, propre au test `nom`, pour `M::Attendre`.
+fn temoin(nom: &str) -> std::path::PathBuf {
+    let p = std::env::temp_dir().join(format!("temoin-{nom}"));
+    let _ = std::fs::remove_file(&p);
+    p
+}
+
+fn lacher(p: &std::path::Path) {
+    std::fs::write(p, "").unwrap();
 }
 
 /// Faux provider en flux (`text/event-stream`) : chaque requête de conversation reçoit la
@@ -1890,6 +1904,11 @@ fn faux_flux(scenario: Vec<Vec<M>>) -> (String, Recues) {
                                 let _ = s.write_all(b"data: [DONE]\n\n").await;
                             }
                             M::Pause(ms) => tokio::time::sleep(Duration::from_millis(ms)).await,
+                            M::Attendre(p) => {
+                                while !p.exists() {
+                                    tokio::time::sleep(Duration::from_millis(10)).await;
+                                }
+                            }
                         }
                         let _ = s.flush().await;
                     }
@@ -1954,12 +1973,18 @@ fn phase(v: &Value, p: &str) -> bool {
 
 #[test]
 fn REQ085_AC10_etape_attend_raisonne_repond_puis_rien() {
+    let (t1, t2, t3, t4) = (
+        temoin("attend"),
+        temoin("raisonne"),
+        temoin("repond"),
+        temoin("attend2"),
+    );
     let (adresse, _) = faux_flux(vec![
         {
             let mut m = vec![
-                M::Pause(700),
+                M::Attendre(t1.clone()),
                 oa_raison("Je lis"),
-                M::Pause(1500),
+                M::Attendre(t2.clone()),
                 oa_raison(" README.md."),
             ];
             m.extend(oa_appel(
@@ -1967,10 +1992,15 @@ fn REQ085_AC10_etape_attend_raisonne_repond_puis_rien() {
                 "bash",
                 "{\"command\":\"while [ ! -e go ]; do sleep 0.05; done\"}",
             ));
-            m.extend([M::Pause(700), oa_usage(5, 1), M::Fin]);
+            m.extend([M::Attendre(t3.clone()), oa_usage(5, 1), M::Fin]);
             m
         },
-        vec![M::Pause(700), oa_texte("fini"), oa_usage(7, 1), M::Fin],
+        vec![
+            M::Attendre(t4.clone()),
+            oa_texte("fini"),
+            oa_usage(7, 1),
+            M::Fin,
+        ],
     ]);
     let s = lancer("etape-flux");
     std::fs::write(s.projet.join("README.md"), "bonjour").unwrap();
@@ -1983,6 +2013,7 @@ fn REQ085_AC10_etape_attend_raisonne_repond_puis_rien() {
     assert_eq!(v["etape"]["raisonnement"], "");
     assert_eq!(v["etape"]["rang"], 1);
     assert!(v["etape"].get("sousAgent").is_none());
+    lacher(&t1);
 
     let v = attendre_conv(&s, &id, |v| phase(v, "raisonne"));
     assert_eq!(v["etape"]["raisonnement"], "Je lis");
@@ -1990,10 +2021,12 @@ fn REQ085_AC10_etape_attend_raisonne_repond_puis_rien() {
     // pendant l'arrivée, le journal n'a pas l'entrée de l'étape
     assert_eq!(v["entrees"].as_array().unwrap().len(), 1, "{v}");
     assert!(!v.to_string().contains("README.md.\""));
+    lacher(&t2);
 
     let v = attendre_conv(&s, &id, |v| phase(v, "repond"));
     assert_eq!(v["etape"]["raisonnement"], "Je lis README.md.");
     assert_eq!(v["entrees"].as_array().unwrap().len(), 1, "{v}");
+    lacher(&t3);
 
     // pendant l'outil, aucune étape en cours
     let v = attendre_conv(&s, &id, |v| {
@@ -2009,6 +2042,7 @@ fn REQ085_AC10_etape_attend_raisonne_repond_puis_rien() {
     });
     assert_eq!(v["etape"]["rang"], 3);
     assert_eq!(v["entrees"][1]["raisonnement"], "Je lis README.md.");
+    lacher(&t4);
 
     let v = attendre_fin(&s, &id);
     assert!(v.get("etape").is_none(), "{v}");
@@ -2018,6 +2052,7 @@ fn REQ085_AC10_etape_attend_raisonne_repond_puis_rien() {
 
 #[test]
 fn REQ085_AC10_sous_agent_et_auteur_marquent_l_etape() {
+    let t = temoin("sous-agent");
     let (adresse, _) = faux_flux(vec![
         {
             let mut m = oa_appel("s1", "subagent", "{\"prompt\":\"cherche\"}");
@@ -2025,9 +2060,8 @@ fn REQ085_AC10_sous_agent_et_auteur_marquent_l_etape() {
             m
         },
         vec![
-            M::Pause(500),
             oa_raison("Sous-pensée"),
-            M::Pause(1200),
+            M::Attendre(t.clone()),
             oa_texte("trouvé"),
             M::Fin,
         ],
@@ -2063,6 +2097,7 @@ fn REQ085_AC10_sous_agent_et_auteur_marquent_l_etape() {
     assert_eq!(e["raisonnement"], "Sous-pensée");
     // le journal ne montre que l'appel, et l'étape du sous-agent n'y est pas
     assert!(!v["entrees"].to_string().contains("Sous-pensée"));
+    lacher(&t);
     let v = attendre_fin(&s, &id);
     assert!(v.get("etape").is_none(), "{v}");
 }
@@ -2168,10 +2203,11 @@ fn REQ085_AC12_erreur_dans_le_flux_et_flux_coupe() {
 
 #[test]
 fn REQ085_AC13_sans_raisonnement_attend_puis_repond() {
+    let (t1, t2) = (temoin("ollama-attend"), temoin("ollama-repond"));
     let (adresse, _) = faux_flux(vec![vec![
-        M::Pause(600),
+        M::Attendre(t1.clone()),
         oa_texte("Bon"),
-        M::Pause(1000),
+        M::Attendre(t2.clone()),
         oa_texte("jour"),
         oa_usage(4, 1),
         M::Fin,
@@ -2187,6 +2223,7 @@ fn REQ085_AC13_sans_raisonnement_attend_puis_repond() {
             if vues.last().map(String::as_str) != Some(p) {
                 vues.push(p.to_string());
             }
+            lacher(if p == "attend" { &t1 } else { &t2 });
         }
         if v["enCours"] == false {
             break;
