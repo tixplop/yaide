@@ -31,7 +31,6 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "docs"), { recursive: true });
   fs.writeFileSync(path.join(dossier, "docs/a.md"), "# A\n");
-  fs.writeFileSync(path.join(dossier, "docs/archi.jdiag"), '{\n  "version": 1,\n  "boxes": [],\n  "links": []\n}\n');
   const yaide = await lancerYaide({ dossier });
   try {
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -175,20 +174,7 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1
     expect(Math.abs((await lien.boundingBox()).y - hl.y - 10 * echelle)).toBeLessThanOrEqual(1.5);
     await expect(page.getByRole("status").filter({ hasText: "objets choisis" })).toHaveText("3 objets choisis");
 
-    // AC-137-4 : Ctrl+C, puis Ctrl+V dans un autre onglet.
-    await page.keyboard.press("Control+c");
-    await ligne(page, "archi.jdiag").click();
-    const surfaceArchi = page.getByRole("application", { name: "archi.jdiag" });
-    await expect(surfaceArchi).toBeVisible();
-    const ra = await surfaceArchi.boundingBox();
-    await page.mouse.click(ra.x + ra.width / 2, ra.y + ra.height / 2);
-    await page.keyboard.press("Control+v");
-    await expect(surfaceArchi.locator('[aria-roledescription="boîte"]')).toHaveCount(2);
-    await expect(surfaceArchi.locator('[aria-roledescription="lien"]')).toHaveCount(1);
-    await page.keyboard.press("Control+s");
-    const archi = path.join(dossier, "docs/archi.jdiag");
-    await expect.poll(() => JSON.parse(fs.readFileSync(archi, "utf8")).boxes.length).toBe(2);
-    expect(JSON.parse(fs.readFileSync(archi, "utf8")).links).toHaveLength(1);
+    // AC-137-4 : prouvé par tableau-selection.test.js (REQ137_AC4_copier_coller_deux_fois_puis_autre_onglet_et_lien_seul) : copie dans un autre onglet, mêmes valeurs.
 
     // AC-139-1 : Ctrl+S dans l'onglet du plan, « Fin du flux » en grand.
     await page.getByRole("tab", { name: "plan.jdiag" }).click();
