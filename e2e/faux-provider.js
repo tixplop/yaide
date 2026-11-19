@@ -10,6 +10,39 @@ export function reponse({ texte = "", outils = [], tokens = 100, raisonnement, s
   return { statut: 200, corps: { id: "msg", type: "message", role: "assistant", content, stop_reason: outils.length ? "tool_use" : "end_turn", usage: { input_tokens: tokens - 10, output_tokens: 10 } } };
 }
 
+/**
+ * Réponse Anthropic en flux d'événements (`message_start`, `content_block_*`, `message_delta`, `message_stop`, `error`).
+ * `morceaux` : `{ raisonnement }`, `{ texte }`, `{ outil: { id, nom, entree } }` ou `{ erreur: { type, message } }`, dans l'ordre ;
+ * un morceau portant `retenir` (une promesse) n'est envoyé qu'une fois la promesse tenue.
+ */
+export function reponseFlux({ morceaux = [], tokens = 100 } = {}) {
+  const sse = (e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
+  const envois = [];
+  let index = -1;
+  let genre = null;
+  const fermer = () => (genre ? [{ type: "content_block_stop", index }] : []);
+  for (const m of morceaux) {
+    const evenements = envois.length ? [] : [{ type: "message_start", message: { id: "msg", type: "message", role: "assistant", content: [], usage: { input_tokens: tokens - 10, output_tokens: 1 } } }];
+    if (m.erreur) {
+      evenements.push({ type: "error", error: m.erreur });
+    } else if (m.outil) {
+      evenements.push(...fermer(), { type: "content_block_start", index: ++index, content_block: { type: "tool_use", id: m.outil.id, name: m.outil.nom, input: {} } }, { type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(m.outil.entree) } });
+      genre = "outil";
+    } else {
+      const nouveau = m.raisonnement !== undefined ? "raisonnement" : "texte";
+      if (genre !== nouveau) {
+        evenements.push(...fermer(), { type: "content_block_start", index: ++index, content_block: nouveau === "texte" ? { type: "text", text: "" } : { type: "thinking", thinking: "", signature: "" } });
+        genre = nouveau;
+      }
+      evenements.push({ type: "content_block_delta", index, delta: nouveau === "texte" ? { type: "text_delta", text: m.texte } : { type: "thinking_delta", thinking: m.raisonnement } });
+    }
+    envois.push({ retenir: m.retenir, texte: evenements.map(sse).join("") });
+  }
+  const fin = [...fermer(), { type: "message_delta", delta: { stop_reason: morceaux.some((m) => m.outil) ? "tool_use" : "end_turn" }, usage: { output_tokens: 10 } }, { type: "message_stop" }];
+  if (!morceaux.at(-1)?.erreur) envois.push({ texte: fin.map(sse).join("") });
+  return { statut: 200, flux: envois };
+}
+
 /** Réponse d'erreur du provider (par exemple 429). */
 export function erreur(statut, type, message) {
   return { statut, corps: { type: "error", error: { type, message } } };
@@ -29,7 +62,7 @@ export function vecteurDeTexte(texte) {
 
 /**
  * Faux provider au format Anthropic, sur un port libre. `etapes` : les réponses, servies dans l'ordre
- * (la dernière est répétée) ; une étape peut porter `retenir` (une promesse) : la réponse attend qu'elle soit tenue. Sa route `/embeddings` (format OpenAI) rend un vecteur par texte (`vecteurDeTexte`) ; `embeddings` garde ses corps. Rend `{ adresse, recues, embeddings, arreter }` ; `recues` garde `{ chemin, entetes, corps }`.
+ * (la dernière est répétée) ; une étape peut porter `retenir` (une promesse) : la réponse attend qu'elle soit tenue ; `reponseFlux` donne une étape en flux d'événements. Sa route `/embeddings` (format OpenAI) rend un vecteur par texte (`vecteurDeTexte`) ; `embeddings` garde ses corps. Rend `{ adresse, recues, embeddings, arreter }` ; `recues` garde `{ chemin, entetes, corps }`.
  */
 export async function lancerFauxProvider(etapes = []) {
   const recues = [];
@@ -59,6 +92,16 @@ export async function lancerFauxProvider(etapes = []) {
       }
       if (etape.retenir) await etape.retenir;
       if (res.destroyed) return;
+      if (etape.flux) {
+        for (const envoi of etape.flux) {
+          if (envoi.retenir) await envoi.retenir;
+          if (res.destroyed) return;
+          if (!res.headersSent) res.writeHead(200, { "content-type": "text/event-stream" });
+          res.write(envoi.texte);
+        }
+        res.end();
+        return;
+      }
       res.writeHead(etape.statut, { "content-type": "application/json" }).end(JSON.stringify(etape.corps));
     });
   });

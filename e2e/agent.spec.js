@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { lancerYaide, ouvrirYaide, depotExemple, nomLigne, tailleStable, temoin, attendre, avancer } from "./aides.js";
-import { lancerFauxProvider, reponse } from "./faux-provider.js";
+import { lancerFauxProvider, reponse, reponseFlux } from "./faux-provider.js";
 
 let yaide;
 let faux;
@@ -570,7 +570,7 @@ test("REQ067_parcours_28_29_deux_agents_relisent_puis_arret", async ({ page, bro
   // 4 : « Arrêter » pendant Relecteur ; Testeur ne répond pas (AC-067-7).
   await champMessage(page).fill("Ajoute un test pour --sortie sans valeur.");
   await page.keyboard.press("Enter");
-  await expect(fil(page).getByText("Relecteur travaille…")).toBeVisible();
+  await patienter(page, () => expect(fil(page).getByText("Relecteur attend Anthropic…")).toBeVisible({ timeout: 300 }));
   await arreter(page).click();
   await expect(fil(page).getByRole("group", { name: "Relecteur" }).last()).toContainText("Arrêté.");
   await expect(arreter(page)).toBeHidden();
@@ -1311,12 +1311,14 @@ test("REQ085_parcours_56_un_agent_raisonne_l_autre_non", async ({ page }) => {
   const raisons = (nom) => groupe(nom).getByRole("button", { name: "Raisonnement", exact: true });
   await expect(raisons("Relecteur")).toHaveCount(2);
   await expect(raisons("Testeur")).toHaveCount(0);
-  await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "false");
+  await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "true"); // arrivé pendant le tour suivi (AC-085-17)
 
-  // AC-085-8 : Tab jusqu'au premier, Entrée le déplie ; le filet de Relecteur le longe.
+  // AC-085-8 : Tab jusqu'au premier, Entrée le replie puis le déplie ; le filet de Relecteur le longe.
   await fil(page).focus();
   await page.keyboard.press("Tab");
   await expect(raisons("Relecteur").first()).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "false");
   await page.keyboard.press("Enter");
   await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "true");
   const zone = groupe("Relecteur").locator(".ya-raison-zone").first();
@@ -1370,9 +1372,9 @@ test("REQ100_parcours_71_suivre_un_sous_agent", async ({ page }) => {
   await patienter(page, () => expect(lecture).toBeVisible({ timeout: 300 }));
   await expect(zone).toContainText("Consigne : Résume le README.");
   await expect(zone).toContainText("Sous-agent : Je lis le README.");
-  await expect(raison).toHaveAttribute("aria-expanded", "false");
+  await expect(raison).toHaveAttribute("aria-expanded", "true");
   await expect(lecture).toHaveAttribute("aria-expanded", "false");
-  await patienter(page, () => expect(zone.getByText("Le sous-agent travaille…")).toBeVisible({ timeout: 300 }));
+  await patienter(page, () => expect(zone.getByText("Le sous-agent attend Anthropic…")).toBeVisible({ timeout: 300 }));
 
   // AC-100-12 : la réponse finale s'ajoute en moins de 2 s, sans replier la ligne ni déplacer le focus.
   tenir();
@@ -1382,7 +1384,61 @@ test("REQ100_parcours_71_suivre_un_sous_agent", async ({ page }) => {
   await patienter(page, () => expect(ligne).toHaveAccessibleName("subagent Résume le README., réussi", { timeout: 300 }));
   await expect(ligne).toHaveAttribute("aria-expanded", "true");
   await expect(ligne).toBeFocused();
-  await expect(zone.getByText("Le sous-agent travaille…")).toHaveCount(0);
+  await expect(zone.getByText(/^Le sous-agent (attend|raisonne|répond)/)).toHaveCount(0);
   await patienter(page, () => expect(fil(page)).toContainText("Le sous-agent a fini.", { timeout: 300 }));
   // Rechargement (AC-100-12 : ligne repliée, mêmes étapes une fois dépliée) retiré : web/src/vues/agent.test.js REQ100_AC12_etapes_ajoutees_a_la_relecture_et_conversation_rouverte_repliee.
+});
+
+test("REQ085_parcours_107_l_agent_attend_puis_raisonne_en_direct", async ({ page }) => {
+  // P-107 : AC-085-14, AC-085-15.
+  let lacher1;
+  let lacher0;
+  let lacher2;
+  faux = await lancerFauxProvider([
+    reponseFlux({
+      morceaux: [{ raisonnement: "Je regarde ", retenir: new Promise((ok) => (lacher0 = ok)) }, { raisonnement: "le README.", retenir: new Promise((ok) => (lacher1 = ok)) }, { outil: { id: "r1", nom: "read", entree: { path: "README.md" } } }],
+      tokens: 1000,
+    }),
+    reponseFlux({ morceaux: [{ texte: "Le README décrit le projet.", retenir: new Promise((ok) => (lacher2 = ok)) }], tokens: 2000 }),
+  ]);
+  await page.clock.install();
+  yaide = await lancerYaide({ dossier: depotAgent() });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await reglerAnthropic(page);
+  await page.reload();
+  await rail(page, "Agent").click();
+  await expect(profil(page)).toBeEnabled();
+  await champMessage(page).fill("Lis le README.");
+  await page.keyboard.press("Enter");
+
+  const raison = fil(page).getByRole("button", { name: "Raisonnement", exact: true });
+  const zone = fil(page).locator(".ya-raison-zone");
+  await patienter(page, () => expect(fil(page).getByText("L'agent attend Anthropic…")).toBeVisible({ timeout: 300 }));
+  await expect(raison).toHaveCount(0);
+  lacher0();
+  await patienter(page, () => expect(raison).toBeVisible({ timeout: 300 }));
+  await expect(raison).toHaveAttribute("aria-expanded", "true");
+  await expect(zone).toContainText("Je regarde");
+  await expect(zone).not.toContainText("le README.");
+  await expect(fil(page).getByText("L'agent raisonne…")).toBeVisible();
+
+  lacher1();
+  await patienter(page, () => expect(zone).toContainText("Je regarde le README.", { timeout: 300 }));
+  await patienter(page, () => expect(fil(page).getByText("L'agent attend Anthropic…")).toBeVisible({ timeout: 300 }));
+  await expect(fil(page).getByRole("button", { name: "read README.md, réussi", exact: true })).toBeVisible();
+  await expect(raison).toHaveAttribute("aria-expanded", "true");
+  await expect(zone).toBeVisible();
+
+  await fil(page).focus();
+  await page.keyboard.press("Tab");
+  await expect(raison).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(raison).toHaveAttribute("aria-expanded", "false");
+  await expect(raison).toBeFocused();
+
+  lacher2();
+  await patienter(page, () => expect(fil(page)).toContainText("Le README décrit le projet.", { timeout: 300 }));
+  await page.reload();
+  await patienter(page, () => expect(raison).toBeVisible({ timeout: 300 }));
+  await expect(raison).toHaveAttribute("aria-expanded", "false");
 });

@@ -100,20 +100,12 @@ function rendreOutil(e, ctx) {
 // Étapes du sous-agent : mêmes mises à jour que le fil, sans auteur ni groupe ; le résultat d'un échec reste en fin de zone.
 function majEtapes(zone, e, ctx) {
   majRendus(zone.rendus, e.etapes, ctx, "Sous-agent");
-  zone.attente?.remove();
   zone.resultat?.remove();
   ajouterRendus(zone.rendus, e.etapes, ctx, undefined, "Sous-agent", (n) => zone.append(n));
   if (e.etat === "echec") {
     zone.resultat ??= Object.assign(document.createElement("div"), { className: "ya-step-res" });
     zone.resultat.textContent = e.resultat ?? "";
     zone.append(zone.resultat);
-  }
-  // Ancien texte, tant que la vue ne donne pas `attente` (T-335).
-  const travaille = !ctx.avecAttente && e.etat === "enCours" && !e.etapes.some((x) => x.type === "outil" && x.etat === "enCours");
-  if (!travaille) zone.attente = null;
-  else {
-    zone.attente ??= indication({ texte: "Le sous-agent travaille…", variante: "chargement" });
-    zone.append(zone.attente);
   }
 }
 
@@ -362,9 +354,8 @@ export function conversation({ entrees = [], enAttente = false, attente: attente
   el.addEventListener("click", ouvrirFichier);
   el.addEventListener("auxclick", ouvrirFichier);
 
-  const ctx = { surDeplier, etats: new Map(), avecAttente: false }; // etats : id d'un raisonnement → déplié par l'utilisateur ou à l'arrivée
+  const ctx = { surDeplier, etats: new Map() }; // etats : id d'un raisonnement → déplié par l'utilisateur ou à l'arrivée
   let rendus = []; // { entree, noeud }
-  let cleAttente = "";
   let attente = null; // opencode : « … travaille… » après 200 ms
   let ligneAttente = null; // agent de Yaide : une seule ligne, dont le texte change en place
   let groupeAttente = null; // groupe ouvert pour la seule attente
@@ -384,7 +375,6 @@ export function conversation({ entrees = [], enAttente = false, attente: attente
   }
 
   function appliquer(liste, enAttenteNouveau, attenteNouvelle) {
-    ctx.avecAttente = !!attenteNouvelle;
     ligneAttente?.remove();
     majRendus(rendus, liste, ctx, nom);
     attente?.remove();
@@ -405,23 +395,9 @@ export function conversation({ entrees = [], enAttente = false, attente: attente
       groupe.corps.append(noeud);
       return groupe;
     });
-    const auteurAttente = enAttenteNouveau && typeof enAttenteNouveau === "object" ? enAttenteNouveau : null;
-    const cle = enAttenteNouveau ? JSON.stringify(auteurAttente) : "";
-    if (attente && cle !== cleAttente) attente = null;
-    if (enAttenteNouveau && !attente) {
-      attente = indication({ texte: auteurAttente || nom !== "Agent" ? `${auteurAttente ? auteurAttente.nom : nom} travaille…` : "L'agent travaille…", variante: "chargement" });
-    } else if (!enAttenteNouveau) {
-      attente = null;
-    }
-    cleAttente = cle;
-    if (attente && auteurAttente) {
-      let groupe = rendus.at(-1)?.groupe;
-      if (!memeAuteur(groupe?.auteur, auteurAttente)) {
-        groupe = groupeAttente = creerGroupe(auteurAttente);
-        el.append(groupe.el);
-      }
-      groupe.corps.append(attente);
-    } else if (attente) el.append(attente);
+    if (enAttenteNouveau && !attente) attente = indication({ texte: `${nom} travaille…`, variante: "chargement" });
+    else if (!enAttenteNouveau) attente = null;
+    if (attente) el.append(attente);
 
     if (!attenteNouvelle) ligneAttente = null;
     else {

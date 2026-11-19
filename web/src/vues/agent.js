@@ -56,6 +56,21 @@ export function quand(ms, maintenant = new Date(), avecAnnee = false) {
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", ...(autreAnnee ? { year: "numeric" } : {}) });
 }
 
+function idsRaisonnement(liste, ids) {
+  for (const e of liste) {
+    if (e.type === "raisonnement") ids.add(e.id);
+    if (Array.isArray(e.etapes)) idsRaisonnement(e.etapes, ids);
+  }
+}
+
+/** `enDirect` : vrai pour un raisonnement qui n'était pas là à l'ouverture de la conversation. */
+function marquerEnDirect(liste, ouverture) {
+  return liste.map((e) => {
+    if (e.type === "raisonnement") return { ...e, enDirect: !ouverture.has(e.id) };
+    return Array.isArray(e.etapes) ? { ...e, etapes: marquerEnDirect(e.etapes, ouverture) } : e;
+  });
+}
+
 /**
  * Le serveur donne le texte de l'agent en `texte` ; le fil le rend en markdown. Le raisonnement d'une étape
  * (`raisonnement`, non vide) devient une entrée avant la réponse, du même auteur ; la réponse vide n'est pas montrée.
@@ -137,6 +152,8 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
   let entrees = [];
   let entreesBrutes = [];
   let enCours = false;
+  let attente = null; // étape de requête en cours : { phase, provider, auteur, sousAgent }
+  let ouverture = new Set(); // ids des raisonnements présents à l'ouverture de la conversation dans cet onglet
   let envoi = false; // un envoi attend la réponse du serveur
   let chargements = 0; // change à chaque ouverture de conversation demandée
   let refus = null; // C-003 de refus d'envoi
@@ -145,7 +162,6 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
   let minuteur = null;
   let detruite = false;
   let equipe = null; // agents de la conversation (copie du serveur), ou null sans agent personnalisé
-  let actif = null; // dossier de l'agent dont c'est le tour
   let dernierDossier = null; // dernier agent qui a répondu
 
   let retour = null; // nouvelle tentative d'ouverture de la conversation gardée, après une coupure
@@ -179,9 +195,24 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     return { ...e, auteur: auteurDe(e.auteur) };
   }
   // `brutes` : les entrées du serveur (la relecture compte en elles) ; `entrees` : ce que le fil montre.
-  function fixerEntrees(brutes) {
+  // `etapeLue` : l'étape de requête du serveur (REQ-085) ; son raisonnement est placé en fin de fil, ou des étapes de l'appel `subagent`.
+  // `ouvrir` : ouverture d'une conversation, dont les raisonnements présents ne sont pas « en direct ».
+  function fixerEntrees(brutes, etapeLue = null, ouvrir = false) {
     entreesBrutes = brutes;
-    entrees = brutes.flatMap((e, i) => pourLeFil(e, i));
+    let liste = brutes.flatMap((e, i) => pourLeFil(e, i));
+    const auteur = typeof etapeLue?.auteur === "string" ? auteurDe(etapeLue.auteur) : undefined;
+    if (typeof etapeLue?.raisonnement === "string" && etapeLue.raisonnement.trim()) {
+      const sous = etapeLue.sousAgent;
+      const rsn = { type: "raisonnement", id: sous ? `rsn:${etapeLue.rang}:${etapeLue.rangEtape}` : `rsn:${etapeLue.rang}`, markdown: etapeLue.raisonnement, ...(auteur ? { auteur } : {}) };
+      if (!sous) liste.push(rsn);
+      else liste = liste.map((e) => (e.type === "outil" && e.id === sous && Array.isArray(e.etapes) ? { ...e, etapes: [...e.etapes, rsn] } : e));
+    }
+    if (ouvrir) {
+      ouverture = new Set();
+      idsRaisonnement(liste, ouverture);
+    }
+    entrees = marquerEnDirect(liste, ouverture);
+    attente = etapeLue ? { phase: etapeLue.phase, provider: etapeLue.provider, ...(auteur ? { auteur } : {}), ...(etapeLue.sousAgent ? { sousAgent: etapeLue.sousAgent } : {}) } : null;
   }
   function fixerEquipe(agents) {
     equipe = Array.isArray(agents) && agents.length ? agents.map((a) => ({ ...a })) : null;
@@ -320,9 +351,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
   function afficher() {
     zoneTitre.textContent = titre || "Nouvelle conversation";
     zoneTitre.classList.toggle("vide", !titre);
-    const dernier = entrees[entrees.length - 1];
-    const attend = enCours && !(dernier?.type === "outil" && dernier.etat === "enCours");
-    fil.mettreAJour(entrees, equipe ? attend && actif != null && auteurDe(actif) : attend);
+    fil.mettreAJour(entrees, false, enCours ? attente : null);
     majCompteur();
     majBoutons();
   }
@@ -353,8 +382,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
       return;
     }
     if (Array.isArray(r.agents) && r.agents.length && !equipe) fixerEquipe(r.agents);
-    actif = r.actif ?? null;
-    fixerEntrees([...entreesBrutes.slice(0, depuis), ...r.entrees.map(pourLeFilAgents)]);
+    fixerEntrees([...entreesBrutes.slice(0, depuis), ...r.entrees.map(pourLeFilAgents)], r.etape);
     titre = r.titre ?? titre;
     tokens = r.tokens ?? tokens;
     enCours = Boolean(r.enCours);
@@ -396,7 +424,6 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     fixerEntrees([...entreesBrutes, { type: "utilisateur", texte }]);
     texteSaisi.value = "";
     enCours = true;
-    if (equipe) actif = equipe[0].dossier;
     afficher();
     focuser();
     clearTimeout(minuteur);
@@ -434,8 +461,7 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     tokens = r.tokens ?? 0;
     dernierDossier = null;
     fixerEquipe(r.agents);
-    actif = r.actif ?? null;
-    fixerEntrees(r.entrees.map(pourLeFilAgents));
+    fixerEntrees(r.entrees.map(pourLeFilAgents), r.etape, true);
     enCours = Boolean(r.enCours);
     profilId = r.profil ?? null;
     effacerRefus();
@@ -494,9 +520,8 @@ export function vueAgent({ api = apiReelle, ouvrirProfils = ouvrirProfilsReel, c
     surConversation(null);
     titre = null;
     tokens = 0;
-    fixerEntrees([]);
+    fixerEntrees([], null, true);
     enCours = false;
-    actif = null;
     dernierDossier = null;
     profilId = defaut()?.id ?? null;
     fixerEquipe(null);

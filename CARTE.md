@@ -100,7 +100,8 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-079, REQ-080 groupes de l'éditeur → web/src/disposition.js, vues/depot-onglets.js, vues/editeur.js
 - REQ-029, REQ-030, REQ-060, REQ-082, REQ-092, REQ-093 binaire, aide, mise à jour → build.rs, esbuild.mjs, src/cli.rs, version.rs, web/src/version.js
 - REQ-051, REQ-069 à REQ-071, REQ-116 `.yaide/`, interface, Configuration → web/src/reglages-interface.js, vues/configuration.js, src/agent/outils_config.rs
-- REQ-052 à REQ-057, REQ-067, REQ-078, REQ-085 providers, profils, agent, outils → src/agent/provider.rs, reglages.rs, conversation.rs, outils.rs, web/src/vues/providers.js, profils.js, agent.js
+- REQ-085 état de la requête et raisonnement en direct → src/agent/provider.rs, conversation.rs, web/src/ui/conversation.js, vues/agent.js
+- REQ-052 à REQ-057, REQ-067, REQ-078 providers, profils, agent, outils → src/agent/provider.rs, reglages.rs, conversation.rs, outils.rs, web/src/vues/providers.js, profils.js, agent.js
 - REQ-064 à REQ-066, REQ-097 à REQ-100, REQ-119 agents et sous-agents → src/agent/agents.rs, conversation.rs, outils.rs, web/src/vues/agents.js
 - REQ-081 réglages communs à tous les projets → src/agent/reglages.rs
 - REQ-095, REQ-096 serveurs MCP → src/agent/mcp.rs, web/src/vues/serveurs-mcp.js

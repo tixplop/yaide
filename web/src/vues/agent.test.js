@@ -588,10 +588,11 @@ test("REQ067_second_envoi_porte_la_conversation_sans_profil", async () => {
 test("REQ067_AC6_AC17_auteurs_et_travaille_selon_actif", async () => {
   const { vue, api } = await monter({ equipe: AGENTS(),
     lectures: [
-      { agents: AGENTS(), actif: "relecteur", entrees: [], enCours: true, total: 1, tokens: 0 },
+      { agents: AGENTS(), actif: "relecteur", entrees: [], enCours: true, total: 1, tokens: 0, etape: { phase: "attend", provider: "OpenAI", auteur: "relecteur", raisonnement: "", rang: 1 } },
       {
         agents: AGENTS(),
         actif: "testeur",
+        etape: { phase: "raisonne", provider: "OpenAI", auteur: "testeur", raisonnement: "", rang: 2 },
         entrees: [
           { type: "utilisateur", texte: "Relisez" },
           { type: "agent", texte: "Tout va bien.", auteur: "relecteur" },
@@ -605,19 +606,19 @@ test("REQ067_AC6_AC17_auteurs_et_travaille_selon_actif", async () => {
   taper(vue, "Relisez");
   touche(champ(vue), "Enter");
   await tick(0);
-  // Avant la première lecture : le premier agent travaille, dans son groupe.
+  await tick(500);
+  // Première lecture : le premier agent attend le provider, dans son groupe.
   let groupes = [...fil(vue).querySelectorAll("[role=group]")];
   expect(groupes.map((g) => g.getAttribute("aria-label"))).toEqual(["Relecteur"]);
-  expect(groupes[0].querySelector("[role=status]").textContent).toBe("Relecteur travaille…");
-  await tick(500);
+  expect(groupes[0].querySelector("[role=status]").textContent).toBe("Relecteur attend OpenAI…");
   await tick(500);
   groupes = [...fil(vue).querySelectorAll("[role=group]")];
   expect(groupes.map((g) => g.getAttribute("aria-label"))).toEqual(["Relecteur", "Testeur"]);
   expect(groupes[0].querySelector("[role=status]")).toBeNull();
   expect(groupes[0].textContent).toContain("Relecteur : Tout va bien.");
   expect(groupes[0].querySelector(".ya-tour-corps").style.getPropertyValue("--c")).toBe("var(--agent-vert)");
-  expect(groupes[1].querySelector("[role=status]").textContent).toBe("Testeur travaille…");
-  expect(fil(vue).textContent).not.toContain("L'agent travaille");
+  expect(groupes[1].querySelector("[role=status]").textContent).toBe("Testeur raisonne…");
+  expect(fil(vue).textContent).not.toContain("travaille…");
   expect(api.lireConversation).toHaveBeenCalled();
 });
 
@@ -646,6 +647,7 @@ test("REQ067_AC11_AC12_reouverture_avec_la_copie_des_agents", async () => {
         enCours: true,
         total: 3,
         tokens: 0,
+        etape: { phase: "repond", provider: "Anthropic", auteur: "testeur", raisonnement: "", rang: 3 },
       },
     ],
   });
@@ -655,7 +657,7 @@ test("REQ067_AC11_AC12_reouverture_avec_la_copie_des_agents", async () => {
   const groupes = [...fil(vue).querySelectorAll("[role=group]")];
   expect(groupes.map((g) => g.getAttribute("aria-label"))).toEqual(["Relecteur", "Testeur"]);
   expect(groupes[0].querySelector(".ya-tour-corps").style.getPropertyValue("--c")).toBe("var(--agent-rose)");
-  expect(groupes[1].querySelector("[role=status]").textContent).toBe("Testeur travaille…");
+  expect(groupes[1].querySelector("[role=status]").textContent).toBe("Testeur répond…");
   expect(groupes[1].querySelector("[aria-label='bash ls, réussi']")).not.toBeNull();
 });
 
@@ -859,13 +861,12 @@ test("REQ085_AC1_AC8_raisonnement_replie_avant_l_appel_puis_la_reponse_etape_san
   await tick(500);
   const b = boutonsRaison(vue);
   expect(b).toHaveLength(1);
-  expect(b[0].getAttribute("aria-expanded")).toBe("false");
+  expect(b[0].getAttribute("aria-expanded")).toBe("true"); // arrivé pendant le tour suivi (REQ-085 AC17)
   // Ordre : raisonnement, appel, réponse ; la réponse vide de l'étape n'est pas montrée.
   const ordre = [...fil(vue).querySelectorAll(".ya-raison, .ya-step, .ya-chat-agent:not(.ya-raison-zone)")].map((n) => n.className.split(" ")[0]);
   expect(ordre).toEqual(["ya-raison", "ya-step", "ya-chat-agent"]);
   expect(fil(vue).textContent).toContain("fini");
   expect(document.activeElement).toBe(champ(vue));
-  b[0].click();
   expect(document.getElementById(b[0].getAttribute("aria-controls")).textContent).toContain("Je lis README.md.");
 });
 
@@ -928,7 +929,6 @@ test("REQ085_AC8_etape_qui_arrive_ne_replie_rien_et_laisse_le_focus_sur_le_raiso
   await tick(0);
   await tick(500);
   const b = boutonsRaison(vue)[0];
-  b.click();
   b.focus();
   expect(b.getAttribute("aria-expanded")).toBe("true");
   await tick(500);
@@ -979,7 +979,7 @@ test("REQ095_AC14_messages_des_serveurs_avant_le_travail_sans_prendre_le_focus",
   const alerte = (texte) => ({ type: "message", variante: "alerte", texte });
   const { vue } = await monter({
     lectures: [
-      { entrees: [{ type: "utilisateur", texte: "go" }, alerte("Le serveur MCP docs n'a pas démarré : la commande mcp-docs est introuvable."), alerte("Le serveur MCP b n'a pas démarré : il s'est arrêté (code 1).")], enCours: true, total: 3, tokens: 0 },
+      { entrees: [{ type: "utilisateur", texte: "go" }, alerte("Le serveur MCP docs n'a pas démarré : la commande mcp-docs est introuvable."), alerte("Le serveur MCP b n'a pas démarré : il s'est arrêté (code 1).")], enCours: true, total: 3, tokens: 0, etape: { phase: "attend", provider: "Anthropic", raisonnement: "", rang: 3 } },
       { entrees: [{ type: "agent", markdown: "Fini." }], enCours: false, total: 4, tokens: 0 },
     ],
   });
@@ -996,7 +996,7 @@ test("REQ095_AC14_messages_des_serveurs_avant_le_travail_sans_prendre_le_focus",
   expect(f.querySelector("[role=alert] button")).toBeNull();
   const texte = f.textContent;
   expect(texte.indexOf("go")).toBeLessThan(texte.indexOf("docs"));
-  expect(texte.indexOf("docs")).toBeLessThan(texte.indexOf("L'agent travaille"));
+  expect(texte.indexOf("docs")).toBeLessThan(texte.indexOf("L'agent attend Anthropic"));
   expect(document.activeElement).toBe(champ(vue));
   await tick(500);
   expect(document.activeElement).toBe(champ(vue));
@@ -1007,8 +1007,8 @@ test("REQ095_AC14_messages_avant_le_premier_groupe_d_agent", async () => {
   const alerte = { type: "message", variante: "alerte", texte: "Le serveur MCP docs n'a pas démarré : la commande mcp-docs est introuvable." };
   const { vue } = await monter({ equipe: AGENTS(),
     lectures: [
-      { agents: AGENTS(), actif: "relecteur", entrees: [{ type: "utilisateur", texte: "go" }, alerte], enCours: true, total: 2, tokens: 0 },
-      { agents: AGENTS(), actif: "relecteur", entrees: [{ type: "agent", texte: "Ok.", auteur: "relecteur" }], enCours: true, total: 3, tokens: 0 },
+      { agents: AGENTS(), actif: "relecteur", entrees: [{ type: "utilisateur", texte: "go" }, alerte], enCours: true, total: 2, tokens: 0, etape: { phase: "attend", provider: "Anthropic", auteur: "relecteur", raisonnement: "", rang: 2 } },
+      { agents: AGENTS(), actif: "relecteur", entrees: [alerte, { type: "agent", texte: "Ok.", auteur: "relecteur" }], enCours: true, total: 3, tokens: 0 },
     ],
   });
   taper(vue, "go");
@@ -1053,17 +1053,19 @@ test("REQ100_AC11_la_consigne_du_serveur_sans_drapeau_se_lit_Consigne", async ()
   expect(fil(vue).querySelector(".ya-sous-zone").firstElementChild.textContent.trim()).toBe("Consigne : Liste les tests lents.");
 });
 
-test("REQ100_AC12_pas_d_attente_de_l_agent_tant_que_l_appel_subagent_est_le_dernier_et_en_cours", async () => {
-  const { vue } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }, APPEL_SUB()], enCours: true, total: 2, tokens: 0 }] });
+test("REQ100_AC12_REQ085_AC14_attente_du_sous_agent_dans_sa_zone_et_non_dans_le_fil", async () => {
+  const etape = { phase: "attend", provider: "Ollama", raisonnement: "", rang: 1, sousAgent: "s1", rangEtape: 2 };
+  const { vue } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }, APPEL_SUB()], enCours: true, total: 2, tokens: 0, etape }] });
   await tick(300);
-  expect(fil(vue).textContent).not.toContain("L'agent travaille…");
-  expect(fil(vue).querySelector(".ya-sous-zone [role=status]").textContent).toBe("Le sous-agent travaille…");
+  expect(fil(vue).textContent).not.toContain("L'agent attend");
+  expect(fil(vue).querySelector(".ya-sous-zone [role=status]").textContent).toBe("Le sous-agent attend Ollama…");
 });
 
 test("REQ100_AC12_etapes_ajoutees_a_la_relecture_et_conversation_rouverte_repliee", async () => {
-  const debut = { entrees: [{ type: "utilisateur", texte: "go" }, APPEL_SUB()], enCours: true, total: 2, tokens: 0 };
-  const suite = { entrees: [APPEL_SUB({ etapes: ETAPES_SUB })], enCours: true, total: 2, tokens: 0 };
-  const { vue } = await monter({ conversation: "c1", lectures: [debut, suite] });
+  const etape = { phase: "attend", provider: "Ollama", raisonnement: "", rang: 1, sousAgent: "s1", rangEtape: 4 };
+  const debut = { entrees: [{ type: "utilisateur", texte: "go" }, APPEL_SUB()], enCours: true, total: 2, tokens: 0, etape };
+  const suite = { entrees: [APPEL_SUB({ etapes: ETAPES_SUB })], enCours: true, total: 2, tokens: 0, etape };
+  const { vue } = await monter({ conversation: "c1", lectures: [debut, suite, suite, suite] });
   await tick();
   const b = fil(vue).querySelector("button.ya-step");
   b.click();
@@ -1220,20 +1222,27 @@ test("REQ108_AC10_Chargement_apres_200_ms_et_Entree_retenue", async () => {
 const MESSAGE = "Consulte `docs/a.md`.";
 
 test("REQ126_AC2_message_initial_part_une_fois_avec_le_profil_par_defaut", async () => {
-  const { vue, api } = await monter({ message: MESSAGE, lectures: [{ entrees: [], enCours: true, total: 1, tokens: 0 }] });
+  const { vue, api } = await monter({ message: MESSAGE, lectures: [{ entrees: [{ type: "utilisateur", texte: MESSAGE }], enCours: true, total: 1, tokens: 0, etape: { phase: "attend", provider: "Anthropic", raisonnement: "", rang: 1 } }] });
   expect(api.envoyerMessage).toHaveBeenCalledTimes(1);
   expect(api.envoyerMessage).toHaveBeenCalledWith({ conversation: null, profil: "p1", texte: MESSAGE });
   expect(fil(vue).textContent).toContain(MESSAGE);
   expect(champ(vue).value).toBe("");
   expect(document.activeElement).toBe(champ(vue));
+  await tick(500);
+  expect(fil(vue).textContent).toContain(MESSAGE);
+  expect(statut(vue)).toEqual(["L'agent attend Anthropic…"]);
 });
 
 test("REQ126_AC3_message_initial_avec_une_equipe", async () => {
-  const { vue, api } = await monter({ equipe: [RELECTEUR], message: MESSAGE, lectures: [{ entrees: [], enCours: true, total: 1, tokens: 0 }] });
+  const { vue, api } = await monter({ equipe: [RELECTEUR], message: MESSAGE, lectures: [{ agents: [RELECTEUR], actif: "relecteur", entrees: [{ type: "utilisateur", texte: MESSAGE }], enCours: true, total: 1, tokens: 0, etape: { phase: "attend", provider: "Anthropic", auteur: "relecteur", raisonnement: "", rang: 1 } }] });
   expect(api.envoyerMessage).toHaveBeenCalledTimes(1);
   expect(api.envoyerMessage).toHaveBeenCalledWith({ agents: ["relecteur"], texte: MESSAGE });
   expect(ligne(vue).hidden).toBe(false);
   expect(profilListe(vue)).toBeNull();
+  await tick(500);
+  expect(fil(vue).textContent).toContain(MESSAGE);
+  expect(fil(vue).querySelector("[role=group]").getAttribute("aria-label")).toBe("Relecteur");
+  expect(statut(vue)).toEqual(["Relecteur attend Anthropic…"]);
 });
 
 test("REQ126_AC8_message_initial_refuse_reste_dans_le_champ", async () => {
@@ -1257,4 +1266,117 @@ test("REQ126_AC8_message_initial_refuse_reste_dans_le_champ", async () => {
   await tick(0);
   expect(cle.api.envoyerMessage).toHaveBeenCalledTimes(2);
   expect(champ(cle.vue).value).toBe("");
+});
+
+// ---- REQ-085 : état de la requête et raisonnement en direct (étape de la relecture) ----
+
+const ETAPE = (o = {}) => ({ phase: "raisonne", provider: "Anthropic", raisonnement: "", rang: 1, ...o });
+const statut = (vue) => [...fil(vue).querySelectorAll("[role=status]")].map((n) => n.textContent);
+
+test("REQ085_AC14_AC15_etape_donne_l_attente_et_un_raisonnement_deplie_en_fin_de_fil_de_meme_id_que_l_entree", async () => {
+  const go = { type: "utilisateur", texte: "go" };
+  const { vue } = await monter({
+    conversation: "c1",
+    lectures: [
+      { entrees: [go], enCours: true, total: 1, tokens: 0 }, // ouverture, sans étape
+      { entrees: [], enCours: true, total: 1, tokens: 0, etape: ETAPE({ raisonnement: "Je lis." }) },
+      { entrees: [], enCours: true, total: 1, tokens: 0, etape: ETAPE({ raisonnement: "Je lis. Puis je cherche." }) },
+      { entrees: [{ type: "agent", texte: "", raisonnement: "Je lis. Puis je cherche." }, { type: "outil", id: "o1", nom: "read", argument: "a", etat: "reussi", resultat: "x" }], enCours: true, total: 3, tokens: 0, etape: ETAPE({ phase: "attend", rang: 3 }) },
+    ],
+  });
+  await tick(0);
+  expect(statut(vue)).toEqual([]);
+  await tick(500);
+  let b = boutonsRaison(vue);
+  expect(b).toHaveLength(1);
+  expect(b[0].getAttribute("aria-expanded")).toBe("true");
+  expect(document.getElementById(b[0].getAttribute("aria-controls")).textContent.trim()).toBe("Je lis.");
+  expect(statut(vue)).toEqual(["L'agent raisonne…"]);
+  await tick(500);
+  expect(boutonsRaison(vue)[0]).toBe(b[0]);
+  expect(document.getElementById(b[0].getAttribute("aria-controls")).textContent.trim()).toBe("Je lis. Puis je cherche.");
+  await tick(500);
+  // Le raisonnement devient l'entrée de l'étape : même bouton, toujours déplié.
+  expect(boutonsRaison(vue)).toHaveLength(1);
+  expect(boutonsRaison(vue)[0]).toBe(b[0]);
+  expect(b[0].getAttribute("aria-expanded")).toBe("true");
+  expect(statut(vue)).toEqual(["L'agent attend Anthropic…"]);
+});
+
+test("REQ085_AC15_raisonnement_et_attente_d_un_agent_dans_son_groupe", async () => {
+  const { vue } = await monter({
+    equipe: AGENTS(),
+    conversation: "c1",
+    lectures: [{ agents: AGENTS(), actif: "relecteur", entrees: [{ type: "utilisateur", texte: "go" }], enCours: true, total: 1, tokens: 0, etape: ETAPE({ auteur: "relecteur", raisonnement: "Je relis." }) }],
+  });
+  await tick(0);
+  const groupe = fil(vue).querySelector("[role=group]");
+  expect(groupe.getAttribute("aria-label")).toBe("Relecteur");
+  expect(groupe.querySelectorAll(".ya-raison")).toHaveLength(1);
+  expect(groupe.querySelector("[role=status]").textContent).toBe("Relecteur raisonne…");
+});
+
+test("REQ085_AC14_raisonnement_du_sous_agent_en_fin_de_ses_etapes_id_rsn_rang_rangEtape", async () => {
+  const etape = ETAPE({ phase: "repond", rang: 1, sousAgent: "s1", rangEtape: 2, raisonnement: "Je compare." });
+  const { vue } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }, APPEL_SUB()], enCours: true, total: 2, tokens: 0 }, { entrees: [APPEL_SUB()], enCours: true, total: 2, tokens: 0, etape }] });
+  await tick(500);
+  const zone = fil(vue).querySelector(".ya-sous-zone");
+  const raisons = [...zone.querySelectorAll(".ya-raison")];
+  expect(raisons).toHaveLength(2); // celui de l'étape 1, puis celui en direct
+  expect(raisons[0].getAttribute("aria-expanded")).toBe("false"); // déjà là à l'ouverture
+  expect(raisons[1].getAttribute("aria-expanded")).toBe("true");
+  expect(zone.lastElementChild.textContent).toBe("Le sous-agent répond…");
+  expect(raisons[1].nextElementSibling.textContent.trim()).toBe("Je compare.");
+});
+
+test("REQ085_AC17_raisonnements_de_l_ouverture_replies_ceux_d_apres_deplies_et_conversation_rouverte_repliee", async () => {
+  const ancien = { type: "agent", texte: "Salut", raisonnement: "Avant." };
+  const { vue } = await monter({
+    conversation: "c1",
+    lectures: [
+      { entrees: [{ type: "utilisateur", texte: "go" }, ancien], enCours: true, total: 2, tokens: 0 },
+      { entrees: [ancien, { type: "agent", texte: "Fin.", raisonnement: "Réponse entière." }], enCours: false, total: 3, tokens: 0 },
+    ],
+  });
+  await tick(0);
+  expect(boutonsRaison(vue).map((b) => b.getAttribute("aria-expanded"))).toEqual(["false"]);
+  await tick(500);
+  expect(boutonsRaison(vue).map((b) => b.getAttribute("aria-expanded"))).toEqual(["false", "true"]);
+  vue.detruire();
+  document.body.replaceChildren();
+  const { vue: autre } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }, ancien, { type: "agent", texte: "Fin.", raisonnement: "Réponse entière." }], enCours: false, total: 3, tokens: 0 }] });
+  await tick(0);
+  expect(boutonsRaison(autre).map((b) => b.getAttribute("aria-expanded"))).toEqual(["false", "false"]);
+});
+
+test("REQ085_AC18_etape_effacee_par_une_erreur_le_raisonnement_disparait_et_le_focus_va_sur_le_log", async () => {
+  const go = { type: "utilisateur", texte: "go" };
+  const { vue } = await monter({
+    conversation: "c1",
+    lectures: [
+      { entrees: [go], enCours: true, total: 1, tokens: 0, etape: ETAPE({ raisonnement: "Hum." }) },
+      { entrees: [go, { type: "message", variante: "erreur", texte: "Le provider a coupé la réponse." }], enCours: false, total: 2, tokens: 0 },
+    ],
+  });
+  await tick(0);
+  const b = boutonsRaison(vue)[0];
+  b.focus();
+  expect(document.activeElement).toBe(b);
+  await tick(500);
+  expect(boutonsRaison(vue)).toHaveLength(0);
+  expect(statut(vue)).toEqual([]);
+  expect(document.activeElement).toBe(fil(vue));
+  const dernier = fil(vue).lastElementChild;
+  expect(dernier.textContent).toContain("Le provider a coupé la réponse.");
+});
+
+test("REQ085_AC13_sans_raisonnement_l_agent_repond_sans_bouton_Raisonnement", async () => {
+  const { vue } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }], enCours: true, total: 1, tokens: 0, etape: ETAPE({ phase: "repond", provider: "Ollama" }) }] });
+  await tick(0);
+  expect(boutonsRaison(vue)).toHaveLength(0);
+  expect(fil(vue).textContent).not.toContain("Raisonnement");
+  expect(statut(vue)).toEqual(["L'agent répond…"]);
+  const { vue: attend } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }], enCours: true, total: 1, tokens: 0, etape: ETAPE({ phase: "attend", provider: "Ollama" }) }] });
+  await tick(0);
+  expect(statut(attend)).toEqual(["L'agent attend Ollama…"]);
 });
