@@ -152,7 +152,7 @@ function majRaison(racine, e, ctx, nom) {
   let zone = racine.querySelector(".ya-raison-zone");
   if (zone && racine.dataset.id !== String(e.id)) {
     // Autre raisonnement à la même place : son état est celui de son id.
-    const ouvert = ctx.etats.has(String(e.id)) ? ctx.etats.get(String(e.id)) : !!e.enDirect;
+    const ouvert = ctx.etats.has(String(e.id)) ? ctx.etats.get(String(e.id)) : false;
     zone.hidden = !ouvert;
     racine.querySelector("button").setAttribute("aria-expanded", String(ouvert));
   }
@@ -164,7 +164,7 @@ function majRaison(racine, e, ctx, nom) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "ya-raison";
-    const ouvert0 = ctx.etats.has(String(e.id)) ? ctx.etats.get(String(e.id)) : !!e.enDirect;
+    const ouvert0 = ctx.etats.has(String(e.id)) ? ctx.etats.get(String(e.id)) : false;
     zone.hidden = !ouvert0;
     b.setAttribute("aria-expanded", String(ouvert0));
     b.setAttribute("aria-controls", zone.id);

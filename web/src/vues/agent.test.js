@@ -861,7 +861,10 @@ test("REQ085_AC1_AC8_raisonnement_replie_avant_l_appel_puis_la_reponse_etape_san
   await tick(500);
   const b = boutonsRaison(vue);
   expect(b).toHaveLength(1);
-  expect(b[0].getAttribute("aria-expanded")).toBe("true"); // arrivé pendant le tour suivi (REQ-085 AC17)
+  expect(b[0].getAttribute("aria-expanded")).toBe("false"); // arrivé pendant le tour suivi : replié (REQ-085 AC17)
+  b[0].click();
+  expect(b[0].getAttribute("aria-expanded")).toBe("true");
+  expect(document.getElementById(b[0].getAttribute("aria-controls")).hidden).toBe(false);
   // Ordre : raisonnement, appel, réponse ; la réponse vide de l'étape n'est pas montrée.
   const ordre = [...fil(vue).querySelectorAll(".ya-raison, .ya-step, .ya-chat-agent:not(.ya-raison-zone)")].map((n) => n.className.split(" ")[0]);
   expect(ordre).toEqual(["ya-raison", "ya-step", "ya-chat-agent"]);
@@ -930,6 +933,8 @@ test("REQ085_AC8_etape_qui_arrive_ne_replie_rien_et_laisse_le_focus_sur_le_raiso
   await tick(500);
   const b = boutonsRaison(vue)[0];
   b.focus();
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  b.click();
   expect(b.getAttribute("aria-expanded")).toBe("true");
   await tick(500);
   expect(fil(vue).querySelector(".ya-step")).not.toBeNull();
@@ -1273,15 +1278,15 @@ test("REQ126_AC8_message_initial_refuse_reste_dans_le_champ", async () => {
 const ETAPE = (o = {}) => ({ phase: "raisonne", provider: "Anthropic", raisonnement: "", rang: 1, ...o });
 const statut = (vue) => [...fil(vue).querySelectorAll("[role=status]")].map((n) => n.textContent);
 
-test("REQ085_AC14_AC15_etape_donne_l_attente_et_un_raisonnement_deplie_en_fin_de_fil_de_meme_id_que_l_entree", async () => {
+test("REQ085_AC14_AC15_etape_donne_l_attente_et_un_raisonnement_replie_en_fin_de_fil_de_meme_id_que_l_entree", async () => {
   const go = { type: "utilisateur", texte: "go" };
   const { vue } = await monter({
     conversation: "c1",
     lectures: [
       { entrees: [go], enCours: true, total: 1, tokens: 0 }, // ouverture, sans étape
-      { entrees: [], enCours: true, total: 1, tokens: 0, etape: ETAPE({ raisonnement: "Je lis." }) },
-      { entrees: [], enCours: true, total: 1, tokens: 0, etape: ETAPE({ raisonnement: "Je lis. Puis je cherche." }) },
-      { entrees: [{ type: "agent", texte: "", raisonnement: "Je lis. Puis je cherche." }, { type: "outil", id: "o1", nom: "read", argument: "a", etat: "reussi", resultat: "x" }], enCours: true, total: 3, tokens: 0, etape: ETAPE({ phase: "attend", rang: 3 }) },
+      { entrees: [go], enCours: true, total: 1, tokens: 0, etape: ETAPE({ raisonnement: "Je lis." }) },
+      { entrees: [go], enCours: true, total: 1, tokens: 0, etape: ETAPE({ raisonnement: "Je lis. Puis je cherche." }) },
+      { entrees: [go, { type: "agent", texte: "", raisonnement: "Je lis. Puis je cherche." }, { type: "outil", id: "o1", nom: "read", argument: "a", etat: "reussi", resultat: "x" }], enCours: true, total: 3, tokens: 0, etape: ETAPE({ phase: "attend", rang: 3 }) },
     ],
   });
   await tick(0);
@@ -1289,6 +1294,8 @@ test("REQ085_AC14_AC15_etape_donne_l_attente_et_un_raisonnement_deplie_en_fin_de
   await tick(500);
   let b = boutonsRaison(vue);
   expect(b).toHaveLength(1);
+  expect(b[0].getAttribute("aria-expanded")).toBe("false");
+  b[0].click();
   expect(b[0].getAttribute("aria-expanded")).toBe("true");
   expect(document.getElementById(b[0].getAttribute("aria-controls")).textContent.trim()).toBe("Je lis.");
   expect(statut(vue)).toEqual(["L'agent raisonne…"]);
@@ -1324,12 +1331,14 @@ test("REQ085_AC14_raisonnement_du_sous_agent_en_fin_de_ses_etapes_id_rsn_rang_ra
   const raisons = [...zone.querySelectorAll(".ya-raison")];
   expect(raisons).toHaveLength(2); // celui de l'étape 1, puis celui en direct
   expect(raisons[0].getAttribute("aria-expanded")).toBe("false"); // déjà là à l'ouverture
+  expect(raisons[1].getAttribute("aria-expanded")).toBe("false");
+  raisons[1].click();
   expect(raisons[1].getAttribute("aria-expanded")).toBe("true");
   expect(zone.lastElementChild.textContent).toBe("Le sous-agent répond…");
   expect(raisons[1].nextElementSibling.textContent.trim()).toBe("Je compare.");
 });
 
-test("REQ085_AC17_raisonnements_de_l_ouverture_replies_ceux_d_apres_deplies_et_conversation_rouverte_repliee", async () => {
+test("REQ085_AC17_raisonnements_de_l_ouverture_replies_ceux_d_apres_replies_depliables_et_conversation_rouverte_repliee", async () => {
   const ancien = { type: "agent", texte: "Salut", raisonnement: "Avant." };
   const { vue } = await monter({
     conversation: "c1",
@@ -1341,7 +1350,10 @@ test("REQ085_AC17_raisonnements_de_l_ouverture_replies_ceux_d_apres_deplies_et_c
   await tick(0);
   expect(boutonsRaison(vue).map((b) => b.getAttribute("aria-expanded"))).toEqual(["false"]);
   await tick(500);
+  expect(boutonsRaison(vue).map((b) => b.getAttribute("aria-expanded"))).toEqual(["false", "false"]);
+  boutonsRaison(vue)[1].click();
   expect(boutonsRaison(vue).map((b) => b.getAttribute("aria-expanded"))).toEqual(["false", "true"]);
+  expect(document.getElementById(boutonsRaison(vue)[1].getAttribute("aria-controls")).textContent).toContain("Réponse entière.");
   vue.detruire();
   document.body.replaceChildren();
   const { vue: autre } = await monter({ conversation: "c1", lectures: [{ entrees: [{ type: "utilisateur", texte: "go" }, ancien, { type: "agent", texte: "Fin.", raisonnement: "Réponse entière." }], enCours: false, total: 3, tokens: 0 }] });

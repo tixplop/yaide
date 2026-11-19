@@ -851,38 +851,44 @@ test("REQ095_AC14_REQ100_AC15_l_alerte_vient_avant_l_attente", () => {
   expect(c.children[0].getAttribute("role")).toBe("alert");
 });
 
-test("REQ100_AC11_REQ085_AC15_raisonnement_en_direct_deplie_et_s_allonge_sans_deplacer_le_focus", () => {
-  const c = conversation({ entrees: [raison({ markdown: "voir [a](https://x.test/a)", enDirect: true })] });
+test("REQ100_AC11_REQ085_AC15_raisonnement_replie_a_l_arrivee_deplie_par_clic_s_allonge_sans_deplacer_le_focus", () => {
+  const c = conversation({ entrees: [raison({ markdown: "voir [a](https://x.test/a)" })] });
   document.body.append(c);
   const b = bRaison(c);
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  expect(c.querySelector(".ya-raison-zone").hidden).toBe(true);
+  b.click();
   expect(b.getAttribute("aria-expanded")).toBe("true");
   expect(c.querySelector(".ya-raison-zone").hidden).toBe(false);
   c.querySelector(".ya-raison-zone a").focus();
-  c.mettreAJour([raison({ markdown: "voir [a](https://x.test/a) puis la suite", enDirect: true })]);
+  c.mettreAJour([raison({ markdown: "voir [a](https://x.test/a) puis la suite" })]);
   expect(bRaison(c)).toBe(b);
   expect(document.activeElement).toBe(c.querySelector(".ya-raison-zone a"));
   expect(c.querySelector(".ya-raison-zone").textContent).toContain("la suite");
   b.focus();
-  c.mettreAJour([raison({ markdown: "voir [a](https://x.test/a) puis la suite et plus", enDirect: true })]);
+  c.mettreAJour([raison({ markdown: "voir [a](https://x.test/a) puis la suite et plus" })]);
   expect(document.activeElement).toBe(b);
 });
 
 test("REQ085_AC15_replie_par_l_utilisateur_reste_replie_et_suit_l_id_meme_si_l_entree_change", () => {
-  const c = conversation({ entrees: [raison({ enDirect: true })] });
+  const c = conversation({ entrees: [raison()] });
   document.body.append(c);
-  bRaison(c).click();
   expect(bRaison(c).getAttribute("aria-expanded")).toBe("false");
-  c.mettreAJour([raison({ markdown: "Je lis **README** et plus.", enDirect: true })]);
+  c.mettreAJour([raison({ markdown: "Je lis **README** et plus." })]);
   expect(bRaison(c).getAttribute("aria-expanded")).toBe("false");
   expect(c.querySelector(".ya-raison-zone").textContent).toContain("et plus");
   // la fin de l'étape : même id, le raisonnement garde l'indice 0 et une entrée le suit
-  c.mettreAJour([raison({ markdown: "Je lis **README** et plus.", enDirect: true }), outil()]);
+  c.mettreAJour([raison({ markdown: "Je lis **README** et plus." }), outil()]);
   expect(bRaison(c).getAttribute("aria-expanded")).toBe("false");
+  // déplié par clic pendant l'arrivée : l'état suit l'id à la fin de l'étape
+  bRaison(c).click();
+  c.mettreAJour([raison({ markdown: "Je lis **README** et plus encore." }), outil()]);
+  expect(bRaison(c).getAttribute("aria-expanded")).toBe("true");
   // l'entrée disparaît puis revient avec le même id : l'état choisi est gardé
   c.mettreAJour([{ type: "agent", markdown: "x" }]);
-  c.mettreAJour([raison({ enDirect: true })]);
-  expect(bRaison(c).getAttribute("aria-expanded")).toBe("false");
-  // déplié par l'utilisateur sur un raisonnement qui n'était pas en direct
+  c.mettreAJour([raison()]);
+  expect(bRaison(c).getAttribute("aria-expanded")).toBe("true");
+  // déplié par l'utilisateur, à la souris puis à Entrée (bouton natif)
   const d = conversation({ entrees: [raison({ id: "r2" })] });
   expect(bRaison(d).getAttribute("aria-expanded")).toBe("false");
   bRaison(d).click();
@@ -890,22 +896,22 @@ test("REQ085_AC15_replie_par_l_utilisateur_reste_replie_et_suit_l_id_meme_si_l_e
   expect(bRaison(d).getAttribute("aria-expanded")).toBe("true");
 });
 
-test("REQ085_AC15_sans_enDirect_replie_et_ligne_absente_tant_que_le_texte_est_blanc", () => {
-  const c = conversation({ entrees: [raison({ markdown: "  \n", enDirect: true })] });
+test("REQ085_AC15_ligne_absente_tant_que_le_texte_est_blanc_puis_repliee", () => {
+  const c = conversation({ entrees: [raison({ markdown: "  \n" })] });
   expect(bRaison(c)).toBeNull();
-  c.mettreAJour([raison({ markdown: " idée", enDirect: true })]);
-  expect(bRaison(c).getAttribute("aria-expanded")).toBe("true");
-  const d = conversation({ entrees: [raison({ enDirect: false })] });
-  expect(bRaison(d).getAttribute("aria-expanded")).toBe("false");
-  expect(d.querySelector(".ya-raison-zone").hidden).toBe(true);
+  c.mettreAJour([raison({ markdown: " idée" })]);
+  expect(bRaison(c).getAttribute("aria-expanded")).toBe("false");
+  expect(c.querySelector(".ya-raison-zone").hidden).toBe(true);
 });
 
 test("REQ085_AC18_raisonnement_qui_disparait_avec_le_focus_va_sur_la_conversation", () => {
   const fin = { type: "message", variante: "erreur", texte: "Le provider a coupé la réponse." };
   const avec = (focus) => {
-    const c = conversation({ entrees: [{ type: "utilisateur", texte: "a" }, raison({ markdown: "voir [a](https://x.test/a)", enDirect: true })] });
+    const c = conversation({ entrees: [{ type: "utilisateur", texte: "a" }, raison({ markdown: "voir [a](https://x.test/a)" })] });
     document.body.append(c);
+    bRaison(c).click();
     focus(c).focus();
+    expect(document.activeElement).toBe(focus(c));
     c.mettreAJour([{ type: "utilisateur", texte: "a" }, fin]);
     return c;
   };
@@ -917,25 +923,28 @@ test("REQ085_AC18_raisonnement_qui_disparait_avec_le_focus_va_sur_la_conversatio
     c.remove();
   }
   // sans le focus : il ne bouge pas, et la liste raccourcie retire l'entrée
-  const d = conversation({ entrees: [{ type: "utilisateur", texte: "a" }, raison({ enDirect: true })] });
+  const d = conversation({ entrees: [{ type: "utilisateur", texte: "a" }, raison()] });
   document.body.append(d);
   d.mettreAJour([{ type: "utilisateur", texte: "a" }]);
   expect(bRaison(d)).toBeNull();
   expect(document.activeElement).toBe(document.body);
   // dans le groupe d'un agent, le groupe vide disparaît aussi
-  const g = conversation({ entrees: [raison({ auteur: rel, enDirect: true })] });
+  const g = conversation({ entrees: [raison({ auteur: rel })] });
   g.mettreAJour([]);
   expect(groupes(g)).toHaveLength(0);
 });
 
-test("REQ100_AC11_REQ085_AC15_raisonnement_du_deroulement_d_un_sous_agent_en_direct", () => {
+test("REQ100_AC11_REQ085_AC15_raisonnement_du_deroulement_d_un_sous_agent_replie_puis_deplie", () => {
   const ligne = (etapes) => ligneSub({ etat: "enCours", etapes });
-  const dir = (md, o = {}) => ({ type: "raisonnement", id: "rsn:0:1", markdown: md, enDirect: true, ...o });
+  const dir = (md, o = {}) => ({ type: "raisonnement", id: "rsn:0:1", markdown: md, ...o });
   const c = conversation({ entrees: [ligne([ETAPES[0], dir("Je [cherche](https://x.test/a)")])] });
   document.body.append(c);
   bouton(c).click();
   const zone = zoneSub(c);
   const b = zone.querySelector("button.ya-raison");
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  expect(zone.querySelector(".ya-raison-zone").hidden).toBe(true);
+  b.click();
   expect(b.getAttribute("aria-expanded")).toBe("true");
   expect(zone.querySelector(".ya-raison-zone").hidden).toBe(false);
   zone.querySelector(".ya-raison-zone a").focus();
@@ -950,6 +959,4 @@ test("REQ100_AC11_REQ085_AC15_raisonnement_du_deroulement_d_un_sous_agent_en_dir
   expect(b.getAttribute("aria-expanded")).toBe("false");
   expect(zone.querySelector(".ya-raison-zone").hidden).toBe(true);
   expect(zone.querySelector(".ya-raison-zone").textContent).toContain("et encore");
-  const d = conversation({ entrees: [ligne([ETAPES[0], dir("Sans direct", { id: "rsn:0:2", enDirect: false })])] });
-  expect(d.querySelector("button.ya-raison").getAttribute("aria-expanded")).toBe("false");
 });

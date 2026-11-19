@@ -1311,19 +1311,21 @@ test("REQ085_parcours_56_un_agent_raisonne_l_autre_non", async ({ page }) => {
   const raisons = (nom) => groupe(nom).getByRole("button", { name: "Raisonnement", exact: true });
   await expect(raisons("Relecteur")).toHaveCount(2);
   await expect(raisons("Testeur")).toHaveCount(0);
-  await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "true"); // arrivé pendant le tour suivi (AC-085-17)
+  await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "false"); // arrivé pendant le tour suivi : replié (AC-085-17)
 
-  // AC-085-8 : Tab jusqu'au premier, Entrée le replie puis le déplie ; le filet de Relecteur le longe.
+  // AC-085-8 : Tab jusqu'au premier, Entrée le déplie puis le replie ; le filet de Relecteur le longe.
   await fil(page).focus();
   await page.keyboard.press("Tab");
   await expect(raisons("Relecteur").first()).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "false");
   await page.keyboard.press("Enter");
   await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "true");
   const zone = groupe("Relecteur").locator(".ya-raison-zone").first();
   await expect(zone).toBeVisible();
   await expect(zone).toContainText("Je lis args.rs d'abord.");
+  await page.keyboard.press("Enter");
+  await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("Enter");
+  await expect(raisons("Relecteur").first()).toHaveAttribute("aria-expanded", "true");
   const vert = await page.evaluate(() => { const d = document.createElement("i"); d.style.color = "var(--agent-vert)"; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; });
   const filet = groupe("Relecteur").locator(".ya-tour-corps");
   expect(await filet.evaluate((e) => getComputedStyle(e).borderLeftColor)).toBe(vert);
@@ -1372,7 +1374,7 @@ test("REQ100_parcours_71_suivre_un_sous_agent", async ({ page }) => {
   await patienter(page, () => expect(lecture).toBeVisible({ timeout: 300 }));
   await expect(zone).toContainText("Consigne : Résume le README.");
   await expect(zone).toContainText("Sous-agent : Je lis le README.");
-  await expect(raison).toHaveAttribute("aria-expanded", "true");
+  await expect(raison).toHaveAttribute("aria-expanded", "false");
   await expect(lecture).toHaveAttribute("aria-expanded", "false");
   await patienter(page, () => expect(zone.getByText("Le sous-agent attend Anthropic…")).toBeVisible({ timeout: 300 }));
 
@@ -1389,7 +1391,7 @@ test("REQ100_parcours_71_suivre_un_sous_agent", async ({ page }) => {
   // Rechargement (AC-100-12 : ligne repliée, mêmes étapes une fois dépliée) retiré : web/src/vues/agent.test.js REQ100_AC12_etapes_ajoutees_a_la_relecture_et_conversation_rouverte_repliee.
 });
 
-test("REQ085_parcours_107_l_agent_attend_puis_raisonne_en_direct", async ({ page }) => {
+test("REQ085_parcours_107_l_agent_attend_puis_raisonne_replie_depliable", async ({ page }) => {
   // P-107 : AC-085-14, AC-085-15.
   let lacher1;
   let lacher0;
@@ -1417,10 +1419,14 @@ test("REQ085_parcours_107_l_agent_attend_puis_raisonne_en_direct", async ({ page
   await expect(raison).toHaveCount(0);
   lacher0();
   await patienter(page, () => expect(raison).toBeVisible({ timeout: 300 }));
+  await expect(raison).toHaveAttribute("aria-expanded", "false");
+  await expect(zone).toBeHidden();
+  await expect(champMessage(page)).toBeFocused();
+  await expect(fil(page).getByText("L'agent raisonne…")).toBeVisible();
+  await raison.click();
   await expect(raison).toHaveAttribute("aria-expanded", "true");
   await expect(zone).toContainText("Je regarde");
   await expect(zone).not.toContainText("le README.");
-  await expect(fil(page).getByText("L'agent raisonne…")).toBeVisible();
 
   lacher1();
   await patienter(page, () => expect(zone).toContainText("Je regarde le README.", { timeout: 300 }));
