@@ -595,11 +595,15 @@ test("REQ034_AC17_a_800_x_480_le_menu_reste_entier_sur_la_derniere_ligne_visible
   // Il ne tient pas sous la ligne : il est retourné au-dessus du point.
   expect(bas.y).toBeLessThan(visibles.at(-1).b.y);
   await page.keyboard.press("Escape");
-  const haute = visibles[0]; // le menu a une commande de plus : seule la première ligne laisse la place dessous
-  await lignes.nth(haute.i).focus();
+  // Le clic droit sur la dernière ligne a pu faire défiler l'arbre : on remonte en haut, puis on attend que la première ligne y soit.
+  await lignes.first().scrollIntoViewIfNeeded();
+  await lignes.first().focus();
+  await expect.poll(async () => (await lignes.first().boundingBox())?.y).toBe(zone.y);
+  // Le menu a une commande de plus : seule la première ligne laisse la place dessous.
+  const hauteB = await lignes.first().boundingBox();
   await page.keyboard.press("ContextMenu");
   const m = await entier();
-  expect(Math.abs(m.y - (haute.b.y + haute.b.height))).toBeLessThanOrEqual(2);
+  expect(Math.abs(m.y - (hauteB.y + hauteB.height))).toBeLessThanOrEqual(2);
 });
 
 // ---- T-037 : statut git dans l'arborescence et les onglets (REQ-039) ----
