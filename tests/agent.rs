@@ -1815,3 +1815,429 @@ fn REQ108_AC7_collections_de_la_conversation_apres_redemarrage_et_suppression() 
         &format!("{NOTE} api. ")
     ));
 }
+
+// ---- REQ-085 : étape en cours d'une requête en flux (DEC-098) ----
+
+/// Un morceau d'une réponse en flux du faux provider.
+enum M {
+    /// Une ligne `data:` suivie d'une ligne vide.
+    D(Value),
+    /// `data: [DONE]`.
+    Fin,
+    /// Une pause, en millisecondes, avant le morceau suivant.
+    Pause(u64),
+}
+
+/// Faux provider en flux (`text/event-stream`) : chaque requête de conversation reçoit la
+/// réponse suivante du scénario, morceau après morceau. La connexion se ferme à la fin
+/// de la liste, avec ou sans `Fin`.
+fn faux_flux(scenario: Vec<Vec<M>>) -> (String, Recues) {
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    ecoute.set_nonblocking(true).unwrap();
+    let adresse = format!("http://{}", ecoute.local_addr().unwrap());
+    let recues: Recues = Default::default();
+    let reste = Arc::new(Mutex::new(VecDeque::from(scenario)));
+    let notees = recues.clone();
+    std::thread::spawn(move || {
+        tokio::runtime::Runtime::new().unwrap().block_on(async move {
+            let ecoute = tokio::net::TcpListener::from_std(ecoute).unwrap();
+            loop {
+                let (mut s, _) = ecoute.accept().await.unwrap();
+                let (reste, notees) = (reste.clone(), notees.clone());
+                tokio::spawn(async move {
+                    let mut tampon = Vec::new();
+                    let mut buf = [0u8; 4096];
+                    let (debut, longueur) = loop {
+                        let n = s.read(&mut buf).await.unwrap_or(0);
+                        if n == 0 {
+                            return;
+                        }
+                        tampon.extend_from_slice(&buf[..n]);
+                        let texte = String::from_utf8_lossy(&tampon).to_lowercase();
+                        if let Some(p) = texte.find("\r\n\r\n") {
+                            let l = texte
+                                .lines()
+                                .find_map(|l| l.strip_prefix("content-length: "))
+                                .and_then(|l| l.trim().parse::<usize>().ok())
+                                .unwrap_or(0);
+                            break (p + 4, l);
+                        }
+                    };
+                    while tampon.len() < debut + longueur {
+                        let n = s.read(&mut buf).await.unwrap_or(0);
+                        if n == 0 {
+                            return;
+                        }
+                        tampon.extend_from_slice(&buf[..n]);
+                    }
+                    notees.lock().unwrap().push(json!({
+                        "corps": serde_json::from_slice::<Value>(&tampon[debut..]).unwrap_or(Value::Null),
+                    }));
+                    let morceaux = reste.lock().unwrap().pop_front().unwrap_or_default();
+                    let tete = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n";
+                    if s.write_all(tete.as_bytes()).await.is_err() {
+                        return;
+                    }
+                    for m in morceaux {
+                        match m {
+                            M::D(v) => {
+                                let _ = s.write_all(format!("data: {v}\n\n").as_bytes()).await;
+                            }
+                            M::Fin => {
+                                let _ = s.write_all(b"data: [DONE]\n\n").await;
+                            }
+                            M::Pause(ms) => tokio::time::sleep(Duration::from_millis(ms)).await,
+                        }
+                        let _ = s.flush().await;
+                    }
+                    let _ = s.shutdown().await;
+                });
+            }
+        });
+    });
+    (adresse, recues)
+}
+
+fn oa_texte(t: &str) -> M {
+    M::D(json!({"choices": [{"delta": {"content": t}}]}))
+}
+
+fn oa_raison(t: &str) -> M {
+    M::D(json!({"choices": [{"delta": {"reasoning_content": t}}]}))
+}
+
+/// Un appel d'outil au format OpenAI, dont les arguments arrivent en trois morceaux.
+fn oa_appel(id: &str, nom: &str, arguments: &str) -> Vec<M> {
+    let (a, reste) = arguments.split_at(arguments.len() / 3);
+    let (b, c) = reste.split_at(reste.len() / 2);
+    let delta = |f: Value| M::D(json!({"choices": [{"delta": {"tool_calls": [f]}}]}));
+    vec![
+        delta(json!({"index": 0, "id": id, "type": "function",
+                     "function": {"name": nom, "arguments": a}})),
+        delta(json!({"index": 0, "function": {"arguments": b}})),
+        delta(json!({"index": 0, "function": {"arguments": c}})),
+    ]
+}
+
+fn oa_usage(entree: u64, sortie: u64) -> M {
+    M::D(json!({"choices": [], "usage": {"prompt_tokens": entree, "completion_tokens": sortie}}))
+}
+
+fn lire_conv(s: &Serveur, id: &str) -> Value {
+    let r = s.appel(
+        "GET",
+        &format!("/api/agent/conversations/{id}"),
+        &Value::Null,
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    r.json()
+}
+
+/// Relit la route jusqu'à ce que `ok` accepte la conversation ; rend la dernière lecture.
+fn attendre_conv(s: &Serveur, id: &str, ok: impl Fn(&Value) -> bool) -> Value {
+    for _ in 0..500 {
+        let v = lire_conv(s, id);
+        if ok(&v) {
+            return v;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    panic!("état attendu jamais vu : {}", lire_conv(s, id));
+}
+
+fn phase(v: &Value, p: &str) -> bool {
+    v["etape"]["phase"] == p
+}
+
+#[test]
+fn REQ085_AC10_etape_attend_raisonne_repond_puis_rien() {
+    let (adresse, _) = faux_flux(vec![
+        {
+            let mut m = vec![
+                M::Pause(700),
+                oa_raison("Je lis"),
+                M::Pause(1500),
+                oa_raison(" README.md."),
+            ];
+            m.extend(oa_appel(
+                "c1",
+                "bash",
+                "{\"command\":\"while [ ! -e go ]; do sleep 0.05; done\"}",
+            ));
+            m.extend([M::Pause(700), oa_usage(5, 1), M::Fin]);
+            m
+        },
+        vec![M::Pause(700), oa_texte("fini"), oa_usage(7, 1), M::Fin],
+    ]);
+    let s = lancer("etape-flux");
+    std::fs::write(s.projet.join("README.md"), "bonjour").unwrap();
+    let profil = configurer(&s, "openai", &adresse);
+    let id = message(&s, &profil, "lis le README");
+
+    let v = attendre_conv(&s, &id, |v| !v["etape"].is_null());
+    assert_eq!(v["etape"]["phase"], "attend");
+    assert_eq!(v["etape"]["provider"], "OpenAI");
+    assert_eq!(v["etape"]["raisonnement"], "");
+    assert_eq!(v["etape"]["rang"], 1);
+    assert!(v["etape"].get("sousAgent").is_none());
+
+    let v = attendre_conv(&s, &id, |v| phase(v, "raisonne"));
+    assert_eq!(v["etape"]["raisonnement"], "Je lis");
+    assert_eq!(v["etape"]["provider"], "OpenAI");
+    // pendant l'arrivée, le journal n'a pas l'entrée de l'étape
+    assert_eq!(v["entrees"].as_array().unwrap().len(), 1, "{v}");
+    assert!(!v.to_string().contains("README.md.\""));
+
+    let v = attendre_conv(&s, &id, |v| phase(v, "repond"));
+    assert_eq!(v["etape"]["raisonnement"], "Je lis README.md.");
+    assert_eq!(v["entrees"].as_array().unwrap().len(), 1, "{v}");
+
+    // pendant l'outil, aucune étape en cours
+    let v = attendre_conv(&s, &id, |v| {
+        v["entrees"].as_array().unwrap().len() == 3 && v["entrees"][2]["etat"] == "enCours"
+    });
+    assert_eq!(v["entrees"][2]["type"], "outil");
+    assert!(v.get("etape").is_none(), "{v}");
+    std::fs::write(s.projet.join("go"), "").unwrap();
+
+    // après l'outil, la requête suivante repart en « attend », à son rang
+    let v = attendre_conv(&s, &id, |v| {
+        phase(v, "attend") && v["entrees"].as_array().unwrap().len() == 3
+    });
+    assert_eq!(v["etape"]["rang"], 3);
+    assert_eq!(v["entrees"][1]["raisonnement"], "Je lis README.md.");
+
+    let v = attendre_fin(&s, &id);
+    assert!(v.get("etape").is_none(), "{v}");
+    assert_eq!(v["entrees"][3]["texte"], "fini");
+    assert!(lire_conv(&s, &id).get("etape").is_none());
+}
+
+#[test]
+fn REQ085_AC10_sous_agent_et_auteur_marquent_l_etape() {
+    let (adresse, _) = faux_flux(vec![
+        {
+            let mut m = oa_appel("s1", "subagent", "{\"prompt\":\"cherche\"}");
+            m.extend([oa_usage(5, 1), M::Fin]);
+            m
+        },
+        vec![
+            M::Pause(500),
+            oa_raison("Sous-pensée"),
+            M::Pause(1200),
+            oa_texte("trouvé"),
+            M::Fin,
+        ],
+        vec![oa_texte("revu"), oa_usage(9, 1), M::Fin],
+    ]);
+    let s = lancer("etape-sous-agent");
+    let profil = configurer(&s, "openai", &adresse);
+    let r = s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "nom": "Relecteur", "couleur": "vert", "profil": profil }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "agents": ["relecteur"], "texte": "go" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let id = r.json()["conversation"].as_str().unwrap().to_string();
+
+    let v = attendre_conv(&s, &id, |v| {
+        phase(v, "raisonne") && !v["etape"]["sousAgent"].is_null()
+    });
+    let e = &v["etape"];
+    assert_eq!(e["sousAgent"], "s1");
+    assert_eq!(e["rangEtape"], 1);
+    assert_eq!(
+        e["rang"], 2,
+        "rang de l'appel subagent dans le journal : {v}"
+    );
+    assert_eq!(e["auteur"], "relecteur");
+    assert_eq!(e["raisonnement"], "Sous-pensée");
+    // le journal ne montre que l'appel, et l'étape du sous-agent n'y est pas
+    assert!(!v["entrees"].to_string().contains("Sous-pensée"));
+    let v = attendre_fin(&s, &id);
+    assert!(v.get("etape").is_none(), "{v}");
+}
+
+#[test]
+fn REQ085_AC11_arreter_pendant_la_pause_efface_l_etape_et_le_message_suivant_marche() {
+    let (adresse, _) = faux_flux(vec![
+        vec![
+            oa_raison("Je lis"),
+            M::Pause(4000),
+            oa_texte("jamais"),
+            M::Fin,
+        ],
+        vec![oa_texte("repris"), oa_usage(4, 1), M::Fin],
+    ]);
+    let s = lancer("etape-arret");
+    let profil = configurer(&s, "openai", &adresse);
+    let id = message(&s, &profil, "un");
+    attendre_conv(&s, &id, |v| phase(v, "raisonne"));
+    let r = s.appel(
+        "POST",
+        &format!("/api/agent/conversations/{id}/arreter"),
+        &Value::Null,
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let v = lire_conv(&s, &id);
+    assert_eq!(v["enCours"], false);
+    assert!(v.get("etape").is_none(), "{v}");
+    let e = v["entrees"].as_array().unwrap();
+    assert_eq!(e.len(), 2, "{e:?}");
+    assert_eq!(e[1]["type"], "fin");
+    assert_eq!(e[1]["texte"], "Arrêté.");
+    assert!(!v.to_string().contains("Je lis"));
+
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({"profil": profil, "conversation": id, "texte": "deux"}),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let v = attendre_fin(&s, &id);
+    assert_eq!(
+        v["entrees"].as_array().unwrap().last().unwrap()["texte"],
+        "repris"
+    );
+}
+
+#[test]
+fn REQ085_AC12_erreur_dans_le_flux_et_flux_coupe() {
+    let erreur =
+        json!({"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}});
+    let (adresse, _) = faux_flux(vec![
+        vec![
+            M::D(json!({"type": "message_start", "message": {"usage": {"input_tokens": 3}}})),
+            M::D(json!({"type": "content_block_start", "index": 0,
+                        "content_block": {"type": "thinking", "thinking": ""}})),
+            M::D(json!({"type": "content_block_delta", "index": 0,
+                        "delta": {"type": "thinking_delta", "thinking": "Je lis"}})),
+            M::Pause(100),
+            M::D(erreur.clone()),
+        ],
+        // flux coupé avant sa fin
+        vec![
+            M::D(json!({"type": "message_start", "message": {"usage": {"input_tokens": 3}}})),
+            M::D(json!({"type": "content_block_start", "index": 0,
+                        "content_block": {"type": "text", "text": ""}})),
+            M::D(json!({"type": "content_block_delta", "index": 0,
+                        "delta": {"type": "text_delta", "text": "début"}})),
+        ],
+    ]);
+    let s = lancer("etape-erreur");
+    let profil = configurer(&s, "anthropic", &adresse);
+    let id = message(&s, &profil, "un");
+    let v = attendre_fin(&s, &id);
+    let e = v["entrees"].as_array().unwrap();
+    assert_eq!(e.len(), 2, "{e:?}");
+    assert_eq!(e[1]["variante"], "erreur");
+    assert_eq!(e[1]["texte"], "Anthropic a interrompu sa réponse.");
+    assert_eq!(e[1]["detail"], erreur.to_string());
+    assert!(v.get("etape").is_none(), "{v}");
+    assert!(!v.to_string().contains("Je lis"));
+
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({"profil": profil, "conversation": id, "texte": "deux"}),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let v = attendre_fin(&s, &id);
+    let e = v["entrees"].as_array().unwrap();
+    let derniere = e.last().unwrap();
+    assert_eq!(derniere["variante"], "erreur");
+    assert!(
+        derniere["texte"]
+            .as_str()
+            .unwrap()
+            .starts_with("Anthropic est injoignable : "),
+        "{derniere}"
+    );
+    assert!(v.get("etape").is_none(), "{v}");
+    assert!(!v.to_string().contains("début"));
+}
+
+#[test]
+fn REQ085_AC13_sans_raisonnement_attend_puis_repond() {
+    let (adresse, _) = faux_flux(vec![vec![
+        M::Pause(600),
+        oa_texte("Bon"),
+        M::Pause(1000),
+        oa_texte("jour"),
+        oa_usage(4, 1),
+        M::Fin,
+    ]]);
+    let s = lancer("etape-ollama");
+    let profil = configurer(&s, "ollama", &adresse);
+    let id = message(&s, &profil, "salut");
+    let mut vues: Vec<String> = Vec::new();
+    for _ in 0..500 {
+        let v = lire_conv(&s, &id);
+        if let Some(p) = v["etape"]["phase"].as_str() {
+            assert_eq!(v["etape"]["provider"], "Ollama");
+            if vues.last().map(String::as_str) != Some(p) {
+                vues.push(p.to_string());
+            }
+        }
+        if v["enCours"] == false {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(vues, ["attend", "repond"]);
+    let v = attendre_fin(&s, &id);
+    assert_eq!(v["entrees"][1]["texte"], "Bonjour");
+    assert!(v["entrees"][1].get("raisonnement").is_none());
+}
+
+#[test]
+fn REQ085_AC9_un_tour_en_flux_donne_le_meme_journal_la_meme_requete_et_les_memes_tokens() {
+    // en JSON entier
+    let (adresse, recues) = faux_provider(vec![rep_lire_openai(0), rep_texte("fini")]);
+    let s = lancer("flux-ref");
+    std::fs::write(s.projet.join("README.md"), "bonjour").unwrap();
+    let profil = configurer(&s, "openai", &adresse);
+    let id = message(&s, &profil, "lis");
+    let entier = attendre_fin(&s, &id);
+    let requete_entiere = recues.lock().unwrap()[1]["corps"]["messages"]
+        .as_array()
+        .unwrap()[1..]
+        .to_vec();
+    assert!(recues.lock().unwrap()[0]["corps"]["stream"] == true);
+
+    // en flux
+    let (adresse, recues) = faux_flux(vec![
+        {
+            let mut m = oa_appel("c1", "read", "{\"path\":\"README.md\"}");
+            m.extend([oa_usage(5, 1), M::Fin]);
+            m
+        },
+        vec![oa_texte("fi"), oa_texte("ni"), oa_usage(7, 1), M::Fin],
+    ]);
+    let s = lancer("flux-test");
+    std::fs::write(s.projet.join("README.md"), "bonjour").unwrap();
+    let profil = configurer(&s, "openai", &adresse);
+    let id = message(&s, &profil, "lis");
+    let flux = attendre_fin(&s, &id);
+    assert_eq!(flux["entrees"], entier["entrees"]);
+    assert_eq!(flux["tokens"], entier["tokens"]);
+    let r = recues.lock().unwrap();
+    assert_eq!(
+        r[1]["corps"]["messages"].as_array().unwrap()[1..],
+        requete_entiere
+    );
+    assert_eq!(r[0]["corps"]["stream"], true);
+    assert_eq!(
+        r[0]["corps"]["stream_options"],
+        json!({"include_usage": true})
+    );
+}

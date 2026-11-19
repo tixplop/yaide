@@ -82,6 +82,23 @@ pub struct Conversation {
     /// Appels demandés par le provider et pas encore commencés ; jamais écrits.
     #[serde(skip)]
     restants: Vec<(Appel, Option<String>, Option<String>)>,
+    /// Étape de requête en cours (REQ-085) ; jamais écrite.
+    #[serde(skip)]
+    etape: Option<Etape>,
+}
+
+/// Ce que le provider est en train d'envoyer, relu par la route (REQ-085).
+#[derive(Clone, Debug)]
+struct Etape {
+    /// `attend`, `raisonne` ou `repond`.
+    phase: &'static str,
+    provider: &'static str,
+    auteur: Option<String>,
+    raisonnement: String,
+    /// Index que prendra l'entrée de l'étape dans le journal.
+    rang: usize,
+    /// Pour un sous-agent : l'`id` de l'appel `subagent` et le rang de l'étape dans ses `etapes`.
+    sous_agent: Option<(String, usize)>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -264,6 +281,7 @@ fn messages_pour(entrees: &[Entree], moi: Option<&str>, noms: &[(String, String)
 /// Remet le journal en ordre après un arrêt : chaque appel a un résultat, puis `fin` ou l'alerte.
 fn ranger(c: &mut Conversation, yaide_arrete: bool) {
     let auteur = c.actif.take();
+    c.etape = None;
     for e in &mut c.entrees {
         if let Entree::Outil {
             etat,
@@ -605,6 +623,7 @@ Always give file paths relative to the project root.",
                     agents: equipe,
                     actif: None,
                     restants: Vec::new(),
+                    etape: None,
                 };
                 self.sauver(&c).map_err(ErreurEnvoi::Systeme)?;
                 Arc::new(Mutex::new(c))
@@ -687,6 +706,7 @@ Always give file paths relative to the project root.",
             if c.en_cours {
                 c.en_cours = false;
                 c.actif = None;
+                c.etape = None;
                 c.maj = maintenant();
                 self.sauver_ou_dire(&c);
             }
@@ -702,8 +722,31 @@ Always give file paths relative to the project root.",
         instructions: &str,
         historique: &[Message],
         definitions: &[provider::DefOutil],
+        conv: &Mutex<Conversation>,
+        (auteur, sous_agent): (Option<String>, Option<(&str, usize)>),
     ) -> Option<(&'static str, Result<provider::Reponse, ErreurProvider>)> {
         let prov = reglages::provider(&p.provider)?;
+        {
+            let mut c = verrou(conv);
+            if c.en_cours {
+                let rang = match sous_agent {
+                    None => c.entrees.len(),
+                    Some((id, _)) => c
+                        .entrees
+                        .iter()
+                        .rposition(|e| matches!(e, Entree::Outil { id: i, .. } if i == id))
+                        .unwrap_or(c.entrees.len()),
+                };
+                c.etape = Some(Etape {
+                    phase: "attend",
+                    provider: prov.nom(),
+                    auteur,
+                    raisonnement: String::new(),
+                    rang,
+                    sous_agent: sous_agent.map(|(id, r)| (id.to_string(), r)),
+                });
+            }
+        }
         let reglage = Reglage {
             modele: p.modele.clone(),
             effort: p.effort.as_deref().and_then(|e| match e {
@@ -729,7 +772,18 @@ Always give file paths relative to the project root.",
             instructions,
             historique,
             definitions,
-            &mut |_| {},
+            &mut |progres| {
+                if let Some(e) = verrou(conv).etape.as_mut() {
+                    match progres {
+                        provider::Progres::Raisonne(t) if e.phase != "repond" => {
+                            e.phase = "raisonne";
+                            e.raisonnement = t;
+                        }
+                        provider::Progres::Raisonne(_) => {}
+                        provider::Progres::Repond => e.phase = "repond",
+                    }
+                }
+            },
         )
         .await;
         Some((prov.nom(), res))
@@ -781,13 +835,21 @@ Always give file paths relative to the project root.",
         let mut journal = vec![Entree::Utilisateur {
             texte: consigne.to_string(),
         }];
+        let auteur = verrou(conv).actif.clone();
         let arret_tour = || arret("the turn was stopped.".into());
         if !self.copier_etapes(conv, id_appel, &journal) {
             return arret_tour();
         }
         loop {
             let Some((nom, res)) = self
-                .requete(p, &instructions, &messages(&journal), &definitions)
+                .requete(
+                    p,
+                    &instructions,
+                    &messages(&journal),
+                    &definitions,
+                    conv,
+                    (auteur.clone(), Some((id_appel, journal.len()))),
+                )
                 .await
             else {
                 return arret("its profile has no provider.".into());
@@ -872,6 +934,7 @@ Always give file paths relative to the project root.",
         journal: &[Entree],
     ) -> bool {
         self.modifier(conv, |c| {
+            c.etape = None;
             let entree = c.entrees.iter_mut().rev().find(
                 |e| matches!(e, Entree::Outil { id, etat, .. } if id == id_appel && etat == "enCours"),
             );
@@ -935,7 +998,14 @@ Always give file paths relative to the project root.",
                 return false;
             };
             let Some((nom, res)) = self
-                .requete(&p, &instructions, &historique, definitions)
+                .requete(
+                    &p,
+                    &instructions,
+                    &historique,
+                    definitions,
+                    conv,
+                    (agent.clone(), None),
+                )
                 .await
             else {
                 self.modifier(conv, |c| {
@@ -959,7 +1029,10 @@ Always give file paths relative to the project root.",
                             String::new(),
                         ),
                     };
-                    self.modifier(conv, |c| c.entrees.push(entree));
+                    self.modifier(conv, |c| {
+                        c.etape = None;
+                        c.entrees.push(entree)
+                    });
                     return false;
                 }
             };
@@ -974,6 +1047,7 @@ Always give file paths relative to the project root.",
             }
             let restants = appels.clone();
             let continuer = self.modifier(conv, |c| {
+                c.etape = None;
                 c.tokens = rep.tokens;
                 if let Some(a) = c
                     .agents
@@ -1031,6 +1105,7 @@ Always give file paths relative to the project root.",
                     self.executer_appel(&ctx, &appel).await
                 };
                 let fini = self.modifier(conv, |c| {
+                    c.etape = None;
                     let entree = c.entrees.iter_mut().rev().find(
                         |e| matches!(e, Entree::Outil { id, etat, .. } if *id == appel.id && etat == "enCours"),
                     );
@@ -1087,7 +1162,7 @@ Always give file paths relative to the project root.",
         };
         drop(registre);
         let total = c.entrees.len();
-        Some(json!({
+        let mut lu = json!({
             "titre": c.titre, "profil": c.profil, "enCours": c.en_cours,
             "tokens": c.tokens, "total": total, "actif": c.actif,
             "agents": c.agents.iter().map(|a| json!({
@@ -1095,7 +1170,19 @@ Always give file paths relative to the project root.",
                 "couleur": a.couleur, "profil": a.profil, "tokens": a.tokens,
             })).collect::<Vec<_>>(),
             "entrees": c.entrees[depuis.min(total)..],
-        }))
+        });
+        if let Some(e) = &c.etape {
+            let mut etape = json!({
+                "phase": e.phase, "provider": e.provider, "auteur": e.auteur,
+                "raisonnement": e.raisonnement, "rang": e.rang,
+            });
+            if let Some((id, rang)) = &e.sous_agent {
+                etape["sousAgent"] = json!(id);
+                etape["rangEtape"] = json!(rang);
+            }
+            lu["etape"] = etape;
+        }
+        Some(lu)
     }
 
     /// `[{ id, titre, maj }]`, le plus récent en premier.
@@ -1544,6 +1631,7 @@ mod tests {
             agents: vec![],
             actif: None,
             restants: vec![],
+            etape: None,
         };
         b.g.sauver(&c).unwrap();
         let v = b.g.lire("abc", 0).unwrap();
@@ -1562,6 +1650,44 @@ mod tests {
         assert_eq!(disque["entrees"].as_array().unwrap().len(), 4);
         assert_eq!(b.g.lire("abc", 4).unwrap()["entrees"], json!([]));
         assert!(b.g.lire("../x", 0).is_none());
+    }
+
+    #[tokio::test]
+    async fn REQ085_AC11_yaide_arrete_pendant_l_arrivee_sans_le_raisonnement() {
+        let b = banc("ac85-11", true, None).await;
+        let c = Conversation {
+            id: "abc".into(),
+            titre: "t".into(),
+            profil: b.profil.clone(),
+            cree: 1,
+            maj: 1,
+            en_cours: true,
+            instructions: String::new(),
+            tokens: 0,
+            entrees: vec![Entree::Utilisateur { texte: "u".into() }],
+            agents: vec![],
+            actif: None,
+            restants: vec![],
+            etape: Some(Etape {
+                phase: "raisonne",
+                provider: "OpenAI",
+                auteur: None,
+                raisonnement: "pensée secrète".into(),
+                rang: 1,
+                sous_agent: None,
+            }),
+        };
+        b.g.sauver(&c).unwrap();
+        let brut = std::fs::read_to_string(b.fichier("abc")).unwrap();
+        assert!(
+            !brut.contains("pensée secrète") && !brut.contains("etape"),
+            "{brut}"
+        );
+        let v = b.g.lire("abc", 0).unwrap();
+        assert!(v.get("etape").is_none());
+        assert_eq!(v["enCours"], false);
+        assert_eq!(v["entrees"][1]["texte"], "Interrompu : Yaide a été arrêté.");
+        assert!(!v.to_string().contains("pensée secrète"));
     }
 
     #[tokio::test]
@@ -2775,6 +2901,7 @@ mod tests {
             agents: vec![],
             actif: None,
             restants: vec![],
+            etape: None,
         };
         b.g.sauver(&c).unwrap();
         let neuf = gestionnaire(&b.dir, &b.reglages);

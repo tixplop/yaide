@@ -25,7 +25,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/agent/secrets.rs — clés d'API chiffrées (AES-256-GCM) — lire, ecrire
 - src/agent/reglages.rs — providers, profils, réglages du projet et communs — provider, vue, reprendre_du_projet
 - src/agent/agents.rs — agents personnalisés (AGENTS.md, PERSONA.md) — lister, lire, enregistrer
-- src/agent/conversation.rs — boucle de l'agent, conversations, sous-agents, flux — envoyer, envoyer_avec, arreter
+- src/agent/conversation.rs — boucle de l'agent, conversations, sous-agents, étape de requête en cours en mémoire (REQ-085) — envoyer, envoyer_avec, arreter
 - src/agent/outils.rs — outils de l'agent (fichiers, shell, connaissance, agents) — definitions, executer
 - src/agent/outils_config.rs — outils de l'agent qui modifient la configuration de Yaide — definitions, lancer, lire_interface
 - src/agent/mcp.rs — serveurs MCP (rmcp, stdio), `mcp.json` — preparer, appeler, lister_serveurs
