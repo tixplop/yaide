@@ -729,6 +729,7 @@ Always give file paths relative to the project root.",
             instructions,
             historique,
             definitions,
+            &mut |_| {},
         )
         .await;
         Some((prov.nom(), res))
@@ -795,6 +796,9 @@ Always give file paths relative to the project root.",
                 Ok(r) => r,
                 Err(ErreurProvider::Refus { code, corps }) => {
                     return arret(format!("{nom} refused the request ({code}). {corps}"));
+                }
+                Err(ErreurProvider::Interrompue { corps }) => {
+                    return arret(format!("{nom} interrupted its response. {corps}"));
                 }
                 Err(ErreurProvider::Injoignable(cause)) => {
                     return arret(format!("{nom} is unreachable: {cause}."));
@@ -946,6 +950,9 @@ Always give file paths relative to the project root.",
                     let entree = match e {
                         ErreurProvider::Refus { code, corps } => {
                             message_erreur(format!("{nom} a refusé la requête ({code})."), corps)
+                        }
+                        ErreurProvider::Interrompue { corps } => {
+                            message_erreur(format!("{nom} a interrompu sa réponse."), corps)
                         }
                         ErreurProvider::Injoignable(cause) => message_erreur(
                             format!("{nom} est injoignable : {cause}."),

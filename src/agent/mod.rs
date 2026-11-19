@@ -7,6 +7,7 @@ pub mod mcp;
 pub mod outils;
 pub mod outils_config;
 pub mod provider;
+mod provider_flux;
 pub mod reglages;
 pub mod secrets;
 pub mod web;

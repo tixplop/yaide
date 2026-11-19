@@ -132,12 +132,22 @@ pub struct Reponse {
     pub tokens: u64,
 }
 
+/// Avancement d'une réponse en flux.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Progres {
+    /// Tout le raisonnement reçu jusque-là.
+    Raisonne(String),
+    Repond,
+}
+
 #[derive(Debug)]
 pub enum ErreurProvider {
     /// Statut hors de 2xx, ou réponse 2xx illisible ; le corps est tel quel.
     Refus { code: u16, corps: String },
     /// Connexion impossible ou délai dépassé.
     Injoignable(String),
+    /// Erreur au milieu d'un flux ; la ligne `data` est telle quelle.
+    Interrompue { corps: String },
 }
 
 /// Le client partagé : 10 s pour se connecter, 600 s au total.
@@ -160,6 +170,7 @@ pub async fn envoyer(
     instructions: &str,
     messages: &[Message],
     outils: &[DefOutil],
+    suivi: &mut (dyn FnMut(Progres) + Send),
 ) -> Result<Reponse, ErreurProvider> {
     let base = adresse.trim_end_matches('/');
     let (url, corps) = match provider.format() {
@@ -178,6 +189,15 @@ pub async fn envoyer(
         .await
         .map_err(|e| ErreurProvider::Injoignable(cause(&e)))?;
     let code = reponse.status().as_u16();
+    let en_flux = (200..300).contains(&code)
+        && reponse
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.starts_with("text/event-stream"));
+    if en_flux {
+        return super::provider_flux::lire(reponse, provider.format(), suivi).await;
+    }
     let texte = reponse
         .text()
         .await
@@ -258,7 +278,7 @@ fn lire_embeddings(brut: &str, attendus: usize) -> Option<Vec<Vec<f32>>> {
     Some(rangs.into_iter().map(|(_, v)| v).collect())
 }
 
-fn cause(e: &reqwest::Error) -> String {
+pub(super) fn cause(e: &reqwest::Error) -> String {
     let mut s = e.to_string();
     let mut source = std::error::Error::source(e);
     while let Some(c) = source {
@@ -270,7 +290,7 @@ fn cause(e: &reqwest::Error) -> String {
 }
 
 /// Les arguments d'un appel : une chaîne JSON valide devient une valeur, sinon on garde la chaîne.
-fn lire_arguments(brut: &str) -> Value {
+pub(super) fn lire_arguments(brut: &str) -> Value {
     serde_json::from_str(brut).unwrap_or_else(|_| Value::String(brut.to_string()))
 }
 
@@ -319,6 +339,8 @@ fn corps_openai(
     let mut c = Map::new();
     c.insert("model".into(), reglage.modele.clone().into());
     c.insert("messages".into(), liste.into());
+    c.insert("stream".into(), true.into());
+    c.insert("stream_options".into(), json!({"include_usage": true}));
     if !outils.is_empty() {
         let t: Vec<Value> = outils
             .iter()
@@ -401,6 +423,7 @@ fn corps_anthropic(
         reglage.sortie_max.unwrap_or(8192).into(),
     );
     c.insert("messages".into(), liste.into());
+    c.insert("stream".into(), true.into());
     if !instructions.is_empty() {
         c.insert("system".into(), instructions.into());
     }
@@ -424,7 +447,7 @@ fn corps_anthropic(
     Value::Object(c)
 }
 
-fn lire_openai(v: &Value) -> Option<Reponse> {
+pub(super) fn lire_openai(v: &Value) -> Option<Reponse> {
     let message = v.pointer("/choices/0/message")?;
     let texte = message["content"].as_str().unwrap_or("").to_string();
     let appels = message["tool_calls"]
@@ -469,7 +492,7 @@ fn lire_openai(v: &Value) -> Option<Reponse> {
     })
 }
 
-fn lire_anthropic(v: &Value) -> Option<Reponse> {
+pub(super) fn lire_anthropic(v: &Value) -> Option<Reponse> {
     let blocs = v["content"].as_array()?;
     let mut texte = String::new();
     let mut appels = Vec::new();
@@ -599,6 +622,7 @@ mod tests {
             "sois bref",
             messages,
             outils,
+            &mut |_| {},
         )
         .await
     }

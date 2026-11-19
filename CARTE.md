@@ -20,7 +20,8 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/connaissance.rs — base de connaissance vectorielle (collections, pointeurs, mise à jour) — valider, lire_config, ecrire_config
 - src/decoupage.rs — découpage des fichiers en passages — decouper, valider
 - src/agent/mod.rs — déclare les modules de l'agent
-- src/agent/provider.rs — providers LLM (formats OpenAI et Anthropic), embeddings — client, envoyer, embeddings
+- src/agent/provider.rs — providers LLM (formats OpenAI et Anthropic, requêtes en `stream`), embeddings — client, envoyer, embeddings
+- src/agent/provider_flux.rs — lecture des réponses en flux Server-Sent Events (REQ-085), suivi `Progres` — lire
 - src/agent/secrets.rs — clés d'API chiffrées (AES-256-GCM) — lire, ecrire
 - src/agent/reglages.rs — providers, profils, réglages du projet et communs — provider, vue, reprendre_du_projet
 - src/agent/agents.rs — agents personnalisés (AGENTS.md, PERSONA.md) — lister, lire, enregistrer

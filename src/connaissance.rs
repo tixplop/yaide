@@ -180,6 +180,10 @@ pub fn erreur_provider(provider: Provider, e: ErreurProvider) -> Erreur {
             cause: format!("{} a refusé la requête ({code}).", provider.nom()),
             detail: corps,
         },
+        ErreurProvider::Interrompue { corps } => Erreur {
+            cause: format!("{} a interrompu sa réponse.", provider.nom()),
+            detail: corps,
+        },
         ErreurProvider::Injoignable(cause) => {
             format!("{} est injoignable : {cause}.", provider.nom()).into()
         }
