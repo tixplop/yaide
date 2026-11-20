@@ -40,3 +40,16 @@ test("REQ122_adresseDiagramme_data_url_encodee", () => {
   expect(decodeURIComponent(a.slice(a.indexOf(",") + 1))).toBe(svg);
   expect(a).not.toContain("<");
 });
+
+test("REQ152_dessinerTexte_un_seul_appel_par_texte_et_dessinConnu", async () => {
+  const dessiner = vi.fn(async (t) => (t === "mauvais" ? null : { svg: "<svg/>", largeur: 1, hauteur: 2 }));
+  const mermaid = { dessiner };
+  expect(m.dessinConnu("a")).toBeUndefined();
+  const [x, y] = await Promise.all([m.dessinerTexte(mermaid, "a"), m.dessinerTexte(mermaid, "a")]);
+  expect(x).toBe(y);
+  expect(dessiner).toHaveBeenCalledTimes(1);
+  expect(m.dessinConnu("a")).toEqual({ svg: "<svg/>", largeur: 1, hauteur: 2 });
+  expect(await m.dessinerTexte(mermaid, "mauvais")).toBeNull();
+  expect(m.dessinConnu("mauvais")).toBeNull();
+  expect(await m.dessinerTexte({ dessiner: async () => { throw new Error("x"); } }, "b")).toBeNull();
+});

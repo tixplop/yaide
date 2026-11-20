@@ -2,8 +2,10 @@ import { EditorState } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorView } from "@codemirror/view";
 import { readFileSync } from "node:fs";
-import { expect, test, vi } from "vitest";
-import { debutCellule, fondsRegles, decorationsHybride, hybride, lienA, tableauxHybride } from "./hybride.js";
+import { history, undo } from "@codemirror/commands";
+import { afterEach, expect, test, vi } from "vitest";
+import { apercu } from "./apercu.js";
+import { diagrammesHybride, debutCellule, fondsRegles, decorationsHybride, hybride, lienA, tableauxHybride } from "./hybride.js";
 
 // Le curseur est en fin de document : une dernière ligne « fin » le tient loin des lignes testées.
 function deco(texte, { curseur, plages } = {}) {
@@ -591,8 +593,198 @@ test("REQ115_AC12_composants_css_ne_donne_aucun_style_a_ya_sel_fond", () => {
   expect(readFileSync("web/src/ui/composants.css", "utf8")).not.toContain("ya-sel-fond");
 });
 
-test("REQ122_AC7_bloc_mermaid_du_mode_hybride_reste_un_bloc_de_code_sans_couleur_ni_img", () => {
-  const r = deco("```mermaid\ngraph TD; A --> B\n```");
-  expect(lignes(r, "cm-hy-bloc-code")).toEqual(["```mermaid", "graph TD; A --> B", "```"]);
-  expect(r.liste.filter((d) => /syn|img/.test(d.classe ?? ""))).toEqual([]);
+
+// --- Diagrammes mermaid rendus (REQ-152) ---
+const chargerMock = vi.hoisted(() => vi.fn());
+vi.mock("./diagramme.js", async (orig) => ({ ...(await orig()), chargerMermaid: chargerMock }));
+
+const BLOC_D = "```mermaid\ngraph TD; A[Début] --> B[Fin]\n```";
+const DOCD = `avant\n\n${BLOC_D}\n\nfin`;
+const texteSvg = (img) => decodeURIComponent(img.src.replace(/^data:image\/svg\+xml;charset=utf-8,/, ""));
+let dessinerMock;
+let vuesD = [];
+function mermaidFactice() {
+  dessinerMock = vi.fn(async (t) => ({ svg: `<svg>${t}</svg>`, largeur: 120, hauteur: 80 }));
+  return { dessiner: dessinerMock };
+}
+async function monterD(doc, { anchor, mermaid = mermaidFactice(), extensions = [hybride()], attendre = true, sansMarkdown = false } = {}) {
+  vi.useFakeTimers();
+  chargerMock.mockReset().mockResolvedValue(mermaid);
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  const vue = new EditorView({ doc, selection: { anchor: anchor ?? doc.length }, parent, extensions: [...(sansMarkdown ? [] : [markdown({ base: markdownLanguage })]), ...extensions] });
+  vuesD.push({ vue, parent });
+  if (attendre) await vi.advanceTimersByTimeAsync(150);
+  return { vue, parent, imgs: () => [...parent.querySelectorAll(".ya-diagramme img")] };
+}
+afterEach(() => {
+  for (const { vue, parent } of vuesD) (vue.destroy(), parent.remove());
+  vuesD = [];
+  vi.useRealTimers();
+});
+
+test("REQ152_AC1_img_a_la_place_des_lignes_du_bloc_sans_texte_ni_cloture", async () => {
+  const m = await monterD(DOCD);
+  expect(m.imgs().length).toBe(1);
+  expect(texteSvg(m.imgs()[0])).toContain("A[Début] --> B[Fin]");
+  const texte = m.vue.contentDOM.textContent;
+  expect(texte).not.toContain("graph TD");
+  expect(texte).not.toContain("```");
+  expect(diagrammesHybride(m.vue.state)).toEqual([{ debut: DOCD.indexOf("```"), fin: DOCD.indexOf("\n\nfin"), texte: "graph TD; A[Début] --> B[Fin]\n" }]);
+});
+
+test("REQ152_AC2_curseur_sur_une_ligne_du_bloc_ou_ctrl_a_donne_le_bloc_de_code_ailleurs_l_img", async () => {
+  const m = await monterD(DOCD);
+  const debut = DOCD.indexOf("```");
+  for (const pos of [debut, DOCD.indexOf("graph"), DOCD.indexOf("```", debut + 3) + 3]) {
+    m.vue.dispatch({ selection: { anchor: pos } });
+    expect(m.imgs().length).toBe(0);
+    expect(m.vue.contentDOM.textContent).toContain("graph TD");
+  }
+  m.vue.dispatch({ selection: { anchor: 0 } });
+  expect(m.imgs().length).toBe(1);
+  m.vue.dispatch({ selection: { anchor: 0, head: DOCD.length } });
+  expect(m.imgs().length).toBe(0);
+  expect(m.vue.contentDOM.textContent).toContain("graph TD");
+  m.vue.dispatch({ selection: { anchor: DOCD.length } });
+  expect(m.imgs().length).toBe(1);
+});
+
+test("REQ152_AC3_texte_modifie_puis_curseur_hors_du_bloc_donne_le_nouveau_dessin_sans_ecriture_meme_sans_reseau", async () => {
+  const fetchMock = vi.fn(() => Promise.reject(new Error("coupé")));
+  vi.stubGlobal("fetch", fetchMock);
+  const m = await monterD(DOCD, { anchor: DOCD.indexOf("graph") });
+  expect(m.imgs().length).toBe(0);
+  const fin = DOCD.indexOf("\n```", DOCD.indexOf("graph"));
+  m.vue.dispatch({ changes: { from: fin, insert: "\nB --> C[Suite]" } });
+  expect(m.imgs().length).toBe(0);
+  m.vue.dispatch({ selection: { anchor: 0 } });
+  await vi.advanceTimersByTimeAsync(150);
+  expect(m.imgs().length).toBe(1);
+  expect(texteSvg(m.imgs()[0])).toContain("Suite");
+  expect(dessinerMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(m.vue.state.doc.toString()).toContain("B --> C[Suite]\n```");
+  vi.unstubAllGlobals();
+});
+
+test("REQ152_AC4_bloc_illisible_reste_un_bloc_de_code_sans_message", async () => {
+  const doc = "avant\n\n```mermaid\ngraph TD; A[Début -->\n```\n\nfin";
+  const m = await monterD(doc, { mermaid: { dessiner: vi.fn(async () => null) } });
+  expect(m.imgs().length).toBe(0);
+  expect(m.vue.state.doc.toString()).toBe(doc);
+  const texte = m.vue.contentDOM.textContent;
+  expect(texte).toContain("graph TD; A[Début -->");
+  expect(texte).not.toMatch(/erreur|Chargement|Syntax/i);
+  expect(m.parent.querySelector(".ya-diagramme")).toBeNull();
+});
+
+test("REQ152_AC5_mousedown_sur_l_img_place_le_curseur_apres_la_ligne_mermaid_et_repasse_en_texte", async () => {
+  const m = await monterD(DOCD);
+  const e = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+  m.imgs()[0].dispatchEvent(e);
+  expect(e.defaultPrevented).toBe(true);
+  expect(m.vue.state.selection.main.head).toBe(DOCD.indexOf("graph"));
+  expect(m.imgs().length).toBe(0);
+  expect(m.vue.contentDOM.textContent).toContain("graph TD");
+});
+
+test("REQ152_AC6_aucun_lien_script_ni_foreignObject_dans_le_widget_et_le_clic_n_ouvre_rien", async () => {
+  const ouvrir = vi.spyOn(window, "open").mockImplementation(() => null);
+  const m = await monterD(DOCD);
+  const widget = m.parent.querySelector(".ya-diagramme");
+  expect(widget.querySelector("a, script, foreignObject")).toBeNull();
+  expect(widget.children.length).toBe(1);
+  m.imgs()[0].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  expect(ouvrir).not.toHaveBeenCalled();
+  ouvrir.mockRestore();
+});
+
+test("REQ152_AC7_deux_img_dans_l_ordre_et_bloc_rust_colore", async () => {
+  const doc = "```mermaid\ngraph TD; A --> B\n```\n\n```rust\nfn main() {}\n```\n\n```mermaid\ngraph LR; C --> D\n```\n\nfin";
+  const m = await monterD(doc);
+  const imgs = m.imgs();
+  expect(imgs.length).toBe(2);
+  expect(texteSvg(imgs[0])).toContain("graph TD");
+  expect(texteSvg(imgs[1])).toContain("graph LR");
+  expect(m.vue.contentDOM.textContent).toContain("fn main()");
+  expect(m.vue.contentDOM.textContent).not.toContain("graph");
+  // `fn` du bloc rust porte la couleur des mots-clés (AC-062-6), dans l'éditeur monté.
+  const { supportLangage } = await import("./langages.js");
+  const { couleurs } = await import("./couleurs-code.js");
+  const { syntaxHighlighting } = await import("@codemirror/language");
+  const r = await monterD(doc, { sansMarkdown: true, extensions: [supportLangage("markdown"), syntaxHighlighting(couleurs), hybride()] });
+  const fn = [...r.parent.querySelectorAll(".cm-line span")].find((e) => e.textContent === "fn");
+  expect(fn).toBeTruthy();
+  const classes = fn.className.split(/\s+/).filter(Boolean);
+  const regles = [...document.querySelectorAll("style")].map((e) => e.textContent).join("\n");
+  expect(classes.some((c) => new RegExp(`\\.${c}[^{]*\\{[^}]*var\\(--syn-keyword\\)`).test(regles))).toBe(true);
+});
+
+test("REQ152_AC8_mode_eteint_sans_img_doc_et_annulation_intacts_puis_aperçu_et_hybride_un_seul_dessin", async () => {
+  const eteint = await monterD(DOCD, { extensions: [history()] });
+  expect(eteint.imgs().length).toBe(0);
+  expect(eteint.vue.state.doc.toString()).toBe(DOCD);
+  eteint.vue.dispatch({ changes: { from: 0, insert: "x" }, userEvent: "input.type" });
+  undo(eteint.vue);
+  expect(eteint.vue.state.doc.toString()).toBe(DOCD);
+  expect(eteint.vue.contentDOM.textContent).toContain("graph TD");
+
+  const neuf = DOCD.replace("Fin", "Fin partagée"); // texte neuf : jamais dessiné par un test précédent
+  const mermaid = mermaidFactice();
+  const m = await monterD(neuf, { mermaid, extensions: [history(), hybride()] });
+  expect(m.imgs().length).toBe(1);
+  expect(dessinerMock).toHaveBeenCalledTimes(1);
+  expect(m.vue.state.doc.toString()).toBe(neuf);
+  m.vue.dispatch({ changes: { from: 0, insert: "x" }, userEvent: "input.type" });
+  undo(m.vue);
+  expect(m.vue.state.doc.toString()).toBe(neuf);
+  const ap = apercu({ document: "a.md" });
+  document.body.append(ap);
+  ap.maj(neuf);
+  await vi.advanceTimersByTimeAsync(150);
+  expect(ap.querySelectorAll(".ya-diagramme img").length).toBe(1);
+  expect(m.imgs().length).toBe(1);
+  expect(dessinerMock).toHaveBeenCalledTimes(1);
+  ap.remove();
+});
+
+test("REQ152_AC12_img_nommee_Diagramme_non_glissable_sans_title_ni_tabindex_rien_de_focusable", async () => {
+  const m = await monterD(DOCD);
+  const img = m.imgs()[0];
+  expect(img.getAttribute("alt")).toBe("Diagramme");
+  expect(img.getAttribute("draggable")).toBe("false");
+  expect(img.hasAttribute("title")).toBe(false);
+  expect(img.hasAttribute("tabindex")).toBe(false);
+  const widget = m.parent.querySelector(".ya-diagramme");
+  expect(widget.hasAttribute("tabindex")).toBe(false);
+  expect(widget.querySelectorAll("a, button, input, select, textarea, [tabindex]").length).toBe(0);
+});
+
+test("REQ152_AC13_chargement_en_attente_bloc_de_code_sans_message_puis_img_sans_action_et_nouvel_essai_apres_echec", async () => {
+  const doc = DOCD.replace("Fin", "Fin lente"); // texte neuf : la table des dessins vit autant que le module
+  vi.useFakeTimers();
+  let ouvrir;
+  const mermaid = mermaidFactice();
+  const m = await monterD(doc, { mermaid, attendre: false });
+  chargerMock.mockReset().mockReturnValue(new Promise((r) => (ouvrir = r)));
+  m.vue.dispatch({ selection: { anchor: doc.indexOf("graph") } });
+  m.vue.dispatch({ selection: { anchor: 0 } });
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(m.imgs().length).toBe(0);
+  expect(m.vue.contentDOM.textContent).toContain("graph TD");
+  expect(m.vue.contentDOM.textContent).not.toMatch(/Chargement/);
+  ouvrir(mermaid);
+  await vi.advanceTimersByTimeAsync(10);
+  expect(m.imgs().length).toBe(1);
+
+  // Échec puis nouvel essai : l'img revient à 1,5 s sans autre action.
+  const n = await monterD("```mermaid\ngraph LR; Z --> Y\n```\n\nfin", { attendre: false });
+  chargerMock.mockReset().mockRejectedValueOnce(new Error("coupé")).mockResolvedValue(mermaid);
+  n.vue.dispatch({ selection: { anchor: 0 } });
+  n.vue.dispatch({ selection: { anchor: n.vue.state.doc.length } });
+  await vi.advanceTimersByTimeAsync(150);
+  expect(n.imgs().length).toBe(0);
+  await vi.advanceTimersByTimeAsync(1600);
+  expect(n.imgs().length).toBe(1);
 });

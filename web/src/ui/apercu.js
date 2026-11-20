@@ -3,7 +3,7 @@ import { highlightCode } from "@lezer/highlight";
 import { couleurs } from "./couleurs-code.js";
 import { lienDeDocument, identifiantTitre } from "../references.js";
 import { langagePourMot, supportLangage } from "./langages.js";
-import { chargerMermaid, adresseDiagramme } from "./diagramme.js";
+import { chargerMermaid, adresseDiagramme, dessinerTexte } from "./diagramme.js";
 
 // Un seul analyseur par langage : l'aperçu se refait à chaque frappe, et `supportLangage` crée un StreamLanguage à chaque appel.
 const analyseurs = new Map();
@@ -286,7 +286,7 @@ export function apercu({ document: cheminDocument, surLien } = {}) {
     }
     await Promise.all(aFaire.map(async ([rang, texte]) => {
       enCours.set(rang, texte);
-      const d = await mermaid.dessiner(texte).catch(() => null);
+      const d = await dessinerTexte(mermaid, texte);
       enCours.delete(rang);
       if (actuels.get(rang) !== texte) return;
       tentes.set(rang, texte);

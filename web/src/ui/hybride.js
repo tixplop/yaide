@@ -1,8 +1,9 @@
 import { Decoration, EditorView, ViewPlugin, WidgetType } from "@codemirror/view";
-import { StateField } from "@codemirror/state";
+import { StateEffect, StateField } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { rendreMarkdown } from "./apercu.js";
 import { estMac, lienDeDocument } from "../references.js";
+import { chargerMermaid, adresseDiagramme, dessinConnu, dessinerTexte } from "./diagramme.js";
 
 // Mode hybride (REQ-062, DEC-041) : le markdown est mis en forme dans l'éditeur, d'après l'arbre de
 // @codemirror/lang-markdown. Les marques sont retirées du DOM, sauf sur les lignes que touche la sélection.
@@ -291,6 +292,126 @@ function construireTableaux(etat) {
   );
 }
 
+// Diagrammes mermaid rendus (REQ-152) : les blocs fermés dont aucune ligne, clôtures comprises, n'est touchée.
+// `texte` : les lignes du bloc, chacune terminée par un saut de ligne (comme l'aperçu, qui partage le dessin).
+export function diagrammesHybride(etat) {
+  const doc = etat.doc;
+  const actives = new Set();
+  for (const r of etat.selection.ranges) for (let n = doc.lineAt(r.from).number; n <= doc.lineAt(r.to).number; n++) actives.add(n);
+  const sortie = [];
+  syntaxTree(etat).iterate({
+    enter: (n) => {
+      if (n.name !== "FencedCode") return;
+      const marques = n.node.getChildren("CodeMark");
+      const info = n.node.getChild("CodeInfo");
+      if (marques.length < 2 || !info || doc.sliceString(info.from, info.to).trim().split(/\s+/)[0] !== "mermaid") return false;
+      const [a, b] = [doc.lineAt(n.from), doc.lineAt(marques[marques.length - 1].from)];
+      if (b.number <= a.number) return false;
+      for (let i = a.number; i <= b.number; i++) if (actives.has(i)) return false;
+      const interieur = b.number - a.number > 1 ? doc.sliceString(doc.line(a.number + 1).from, doc.line(b.number - 1).to) + "\n" : "";
+      sortie.push({ debut: a.from, fin: b.to, texte: interieur });
+      return false;
+    },
+  });
+  return sortie;
+}
+
+export class DiagrammeRendu extends WidgetType {
+  constructor(texte, dessin) {
+    super();
+    this.texte = texte;
+    this.dessin = dessin;
+  }
+  eq(autre) {
+    return autre.texte === this.texte;
+  }
+  toDOM(vue) {
+    const el = document.createElement("div");
+    el.className = "ya-diagramme";
+    el.setAttribute("contenteditable", "false");
+    const img = document.createElement("img");
+    img.alt = "Diagramme";
+    img.draggable = false;
+    img.width = this.dessin.largeur;
+    img.height = this.dessin.hauteur;
+    img.src = adresseDiagramme(this.dessin.svg);
+    el.append(img);
+    el.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      const debut = vue.posAtDOM(el);
+      const haut = el.getBoundingClientRect().top;
+      vue.dispatch({ selection: { anchor: Math.min(vue.state.doc.lineAt(debut).to + 1, vue.state.doc.length) } });
+      vue.focus();
+      const ecart = vue.lineBlockAt(debut).top + vue.documentTop - haut;
+      if (ecart) vue.scrollDOM.scrollTop += ecart;
+    });
+    return el;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
+
+const dessinPret = StateEffect.define();
+
+// Un StateField (décorations de bloc) ; seuls les blocs dont le dessin est prêt sont remplacés.
+const champDiagrammes = StateField.define({
+  create: (etat) => construireDiagrammes(etat),
+  update(valeur, tr) {
+    if (tr.docChanged || tr.selection || tr.effects.some((e) => e.is(dessinPret)) || syntaxTree(tr.state) !== syntaxTree(tr.startState)) return construireDiagrammes(tr.state);
+    return valeur;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+function construireDiagrammes(etat) {
+  const sortie = [];
+  for (const d of diagrammesHybride(etat)) {
+    const dessin = dessinConnu(d.texte);
+    if (dessin) sortie.push(Decoration.replace({ block: true, widget: new DiagrammeRendu(d.texte, dessin) }).range(d.debut, d.fin));
+  }
+  return Decoration.set(sortie, true);
+}
+
+// Dessine, au plus 100 ms après, les blocs hors du curseur qui n'ont pas de dessin ; coupure : nouvel essai à 1,5 s.
+const pluginDiagrammes = ViewPlugin.fromClass(
+  class {
+    constructor(vue) {
+      this.vue = vue;
+      this.minuteur = null;
+      this.fini = false;
+      this.planifier(100);
+    }
+    update(u) {
+      if (u.docChanged || u.selectionSet || syntaxTree(u.state) !== syntaxTree(u.startState)) this.planifier(100);
+    }
+    planifier(delai) {
+      clearTimeout(this.minuteur);
+      this.minuteur = setTimeout(() => this.dessiner(), delai);
+    }
+    async dessiner() {
+      const blocs = diagrammesHybride(this.vue.state);
+      if (!blocs.length) return;
+      const textes = [...new Set(blocs.map((d) => d.texte))].filter((t) => dessinConnu(t) === undefined);
+      if (textes.length) {
+        let mermaid;
+        try {
+          mermaid = await chargerMermaid();
+        } catch {
+          if (!this.fini) this.planifier(1500);
+          return;
+        }
+        await Promise.all(textes.map((t) => dessinerTexte(mermaid, t)));
+      }
+      if (!this.fini) this.vue.dispatch({ effects: dessinPret.of(null) });
+    }
+    destroy() {
+      this.fini = true;
+      clearTimeout(this.minuteur);
+    }
+  },
+);
+
 // Lien en ligne `[texte](adresse)`, autolien ou adresse seule qui couvre `pos` : { de, a, adresse }, ou rien.
 export function lienA(etat, pos) {
   let trouve;
@@ -417,5 +538,5 @@ export function hybride({ surLien, surSurvol } = {}) {
     },
     { decorations: (p) => p.decorations },
   );
-  return [plugin, suiviDesLiens({ surLien, surSurvol }), champTableaux, EditorView.editorAttributes.of({ class: "cm-hybride" })];
+  return [plugin, suiviDesLiens({ surLien, surSurvol }), champTableaux, champDiagrammes, pluginDiagrammes, EditorView.editorAttributes.of({ class: "cm-hybride" })];
 }

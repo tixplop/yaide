@@ -1104,6 +1104,7 @@ body { margin: 0; }
 .cm-line.cm-hy-citation.cm-activeLine, .cm-line.cm-hy-bloc-code.cm-activeLine { background-image: linear-gradient(var(--ligne-active), var(--ligne-active)); }
 .cm-hy-tableau { margin: var(--space-1) 0; padding-left: calc(var(--space-2) - var(--space-1) / 2); /* bord gauche du texte des lignes (celui de cm-line) */ font: var(--texte-lecture) var(--font-sans); color: var(--ink); cursor: text; }
 .cm-hy-tableau table { margin: 0; }
+.cm-hybride .ya-diagramme { margin: var(--space-1) 0; padding-left: calc(var(--space-2) - var(--space-1) / 2); /* bord gauche du texte des lignes */ cursor: text; }
 .cm-hy-puce { color: var(--md-puce-couleur, var(--ink-muted)); }
 .cm-hy-trait { display: inline-block; width: 100%; height: 0; vertical-align: middle; border-top: var(--trait) solid var(--md-separateur-couleur, var(--line-strong)); }
 .cm-gutterElement.cm-hy-numero-titre1 { font: var(--texte-titre) var(--font-mono); font-size: inherit; }
