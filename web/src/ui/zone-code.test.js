@@ -8,7 +8,8 @@ import { rendreMarkdown } from "./apercu.js";
 import { changerTheme } from "./theme.js";
 
 const mm = vi.hoisted(() => ({ charger: null, dessiner: null }));
-vi.mock("./diagramme.js", () => ({
+vi.mock("./diagramme.js", async (orig) => ({
+  ...(await orig()),
   chargerMermaid: () => mm.charger(),
   adresseDiagramme: (svg) => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg),
 }));
@@ -449,6 +450,48 @@ test("REQ063_AC8_numero_du_tableau_seul_avec_sa_classe_puis_celui_de_la_ligne_su
   z.detruire();
   z.remove();
 });
+
+test("REQ152_AC9_numero_du_diagramme_seul_celui_de_la_ligne_mermaid_avec_sa_classe_puis_celui_de_la_ligne_suivante", avecMermaid(async () => {
+  const z = zoneCode({ contenu: "# T\n\n```mermaid\ngraph TD\n  A --> B\n```\n\nfin", langage: "markdown", hybride: true });
+  document.body.append(z);
+  ensureSyntaxTree(z.vue.state, z.vue.state.doc.length, 5000);
+  z.vue.dispatch({});
+  await attendre();
+  expect(z.querySelector(".ya-diagramme img")).not.toBeNull();
+  const nums = () => [...z.vue.dom.querySelectorAll(".cm-lineNumbers .cm-gutterElement")].filter((e) => /^\d+$/.test(e.textContent));
+  const texte = nums().map((e) => e.textContent);
+  expect(texte).toContain("3");
+  for (const n of ["4", "5", "6"]) expect(texte).not.toContain(n);
+  expect(texte).toContain("7");
+  expect(nums().find((e) => e.textContent === "3").className).toContain("cm-hy-numero-diagramme");
+  expect(nums().find((e) => e.textContent === "7").className).not.toContain("cm-hy-numero-diagramme");
+  z.vue.dispatch({ selection: { anchor: z.vue.state.doc.line(4).from } });
+  expect(z.vue.dom.querySelector(".cm-hy-numero-diagramme")).toBeNull();
+  z.detruire();
+  z.remove();
+}));
+
+test("REQ152_AC5_bas_depuis_la_ligne_au_dessus_entre_sur_la_ligne_mermaid_haut_depuis_celle_en_dessous_sur_la_cloture", avecMermaid(async () => {
+  const z = zoneCode({ contenu: "# T\n\n```mermaid\ngraph TD\n  A --> B\n```\nfin", langage: "markdown", hybride: true });
+  document.body.append(z);
+  ensureSyntaxTree(z.vue.state, z.vue.state.doc.length, 5000);
+  z.vue.dispatch({ selection: { anchor: z.vue.state.doc.line(2).from } });
+  await attendre();
+  expect(z.querySelector(".ya-diagramme img")).not.toBeNull();
+  const touche = (key) => z.vue.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  const ligne = () => z.vue.state.doc.lineAt(z.vue.state.selection.main.head).number;
+  touche("ArrowDown");
+  expect(ligne()).toBe(3);
+  expect(z.querySelector(".ya-diagramme")).toBeNull();
+  z.vue.dispatch({ selection: { anchor: z.vue.state.doc.line(7).from } });
+  await attendre();
+  expect(z.querySelector(".ya-diagramme img")).not.toBeNull();
+  touche("ArrowUp");
+  expect(ligne()).toBe(6);
+  expect(z.querySelector(".ya-diagramme")).toBeNull();
+  z.detruire();
+  z.remove();
+}));
 
 // Suivre un lien en mode hybride (REQ-101)
 const DOC_LIENS = "# Début\n\n[Tests](#lancer-les-tests) [web](https://exemple.org/a) [f](docs/x.md#L3) [absent](#absent)\n\n" + "ligne\n".repeat(30) + "## Lancer les tests !\n\nfin";

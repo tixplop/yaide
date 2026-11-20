@@ -12,7 +12,9 @@ test.beforeAll(async () => {
   writeFileSync(
     resolve(dossier, "entree.js"),
     `import { zoneCode } from ${JSON.stringify(resolve("web/src/ui/zone-code.js"))};
-window.zoneCode = zoneCode;`,
+import { dessinerTexte } from ${JSON.stringify(resolve("web/src/ui/diagramme.js"))};
+window.zoneCode = zoneCode;
+window.dessinerTexte = dessinerTexte;`,
   );
   await build({ entryPoints: [resolve(dossier, "entree.js")], bundle: true, outfile: resolve(dossier, "page.js") });
   copyFileSync("web/src/ui/tokens.css", resolve(dossier, "tokens.css"));
@@ -667,4 +669,62 @@ test("REQ063_AC8_AC13_AC14_AC15_AC16_AC18_tableau_rendu_comme_l_apercu", async (
     await ligne(4).click();
     const muet = await valeur(page, "color", "--ink-muted");
     for (const i of [3, 5]) expect(await ligne(i).locator(".cm-hy-marque").first().evaluate((e) => getComputedStyle(e).color)).toBe(muet);
+});
+
+// T-350 : bascule et clic autour d'un diagramme mermaid rendu (REQ-152). Le dessin est mis dans la table de `diagramme.js` d'avance.
+const BLOC_MERMAID = "graph TD\n  A --> B\n  B --> C\n  C --> D\n";
+function docMermaid() {
+  const l = Array.from({ length: 80 }, (_, i) => `ligne ${i + 1}`);
+  l.splice(4, 6, "```mermaid", ...BLOC_MERMAID.trimEnd().split("\n"), "```");
+  return l.join("\n");
+}
+async function ouvrirMermaid(page, hybride) {
+  await page.goto(pathToFileURL(resolve(dossier, "index.html")).href);
+  await page.evaluate(
+    async ([c, h, bloc]) => {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><rect width="300" height="200" fill="white"/></svg>';
+      await window.dessinerTexte({ dessiner: async () => ({ svg, largeur: 300, hauteur: 200 }) }, bloc);
+      document.getElementById("h").append(window.zoneCode({ contenu: c, langage: "markdown", nom: "a.md", hybride: h }));
+    },
+    [docMermaid(), hybride, BLOC_MERMAID],
+  );
+}
+const attendreMesure = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+test("REQ152_AC5_bascule_avec_une_ligne_du_bloc_en_haut_met_le_haut_du_diagramme_au_bord_haut", async ({ page }) => {
+  await ouvrirMermaid(page, false);
+  await page.evaluate(() => {
+    const v = document.querySelector(".zone-code").vue;
+    v.scrollDOM.scrollTop = v.lineBlockAt(v.state.doc.line(7).from).top;
+  });
+  await attendreMesure(page);
+  await page.evaluate(() => document.querySelector(".zone-code").definirHybride(true));
+  const img = page.locator(".cm-content .ya-diagramme img");
+  await expect(img).toHaveCount(1);
+  await expect
+    .poll(async () => Math.abs((await page.locator(".ya-diagramme").boundingBox()).y - (await page.locator(".cm-scroller").boundingBox()).y))
+    .toBeLessThanOrEqual(1);
+});
+
+test("REQ152_AC16_clic_sur_la_ligne_45_dessine_le_bloc_et_garde_la_ligne_40_en_haut", async ({ page }) => {
+  await ouvrirMermaid(page, true);
+  await page.evaluate(() => {
+    const v = document.querySelector(".zone-code").vue;
+    v.dispatch({ selection: { anchor: v.state.doc.line(6).from } });
+    v.focus();
+  });
+  await expect(page.locator(".ya-diagramme")).toHaveCount(0);
+  await page.evaluate(() => {
+    const v = document.querySelector(".zone-code").vue;
+    v.scrollDOM.scrollTop = v.lineBlockAt(v.state.doc.line(40).from).top;
+  });
+  await attendreMesure(page);
+  const l40 = page.locator(".cm-line").filter({ hasText: /^ligne 40$/ });
+  const avant = (await l40.boundingBox()).y;
+  const hauteurAvant = await page.evaluate(() => document.querySelector(".zone-code").vue.contentHeight);
+  await page.locator(".cm-line").filter({ hasText: /^ligne 45$/ }).click();
+  // Le bloc, au-dessus de la partie visible, n'est pas dans le DOM : le dessin se voit à la hauteur du document (elle change).
+  await expect.poll(() => page.evaluate(() => document.querySelector(".zone-code").vue.contentHeight)).not.toBe(hauteurAvant);
+  await attendreMesure(page);
+  expect(Math.abs((await l40.boundingBox()).y - avant)).toBeLessThanOrEqual(1);
 });

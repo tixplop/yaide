@@ -316,6 +316,11 @@ export function diagrammesHybride(etat) {
   return sortie;
 }
 
+// Les blocs de `diagrammesHybride` dont le dessin est prêt : ceux que l'éditeur remplace par une image.
+export function diagrammesRendus(etat) {
+  return diagrammesHybride(etat).filter((d) => dessinConnu(d.texte));
+}
+
 export class DiagrammeRendu extends WidgetType {
   constructor(texte, dessin) {
     super();

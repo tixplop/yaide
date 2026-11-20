@@ -8,7 +8,7 @@ import { apercuHtml } from "./apercu-html.js";
 import { image } from "./image.js";
 import { chargerMermaid, adresseDiagramme } from "./diagramme.js";
 import { couleurs } from "./couleurs-code.js";
-import { hybride as extensionHybride, TableauRendu, tableauxHybride } from "./hybride.js";
+import { hybride as extensionHybride, TableauRendu, DiagrammeRendu, tableauxHybride, diagrammesRendus } from "./hybride.js";
 import { themeCourant } from "./theme.js";
 import { lienDeDocument, ligneDuTitre } from "../references.js";
 
@@ -123,9 +123,18 @@ class NumeroTableau extends GutterMarker {
 }
 const numerosDesTableaux = lineNumberWidgetMarker.of((vue, widget, bloc) => (widget instanceof TableauRendu ? new NumeroTableau(vue.state.doc.lineAt(bloc.from).number) : null));
 
-// Haut et Bas : CodeMirror ne sait pas entrer dans un tableau rendu (le curseur saute ailleurs).
+// Diagramme rendu : un seul numéro, celui de la ligne ```mermaid, décalé de --space-1 comme le diagramme (composants.css).
+class NumeroDiagramme extends NumeroTableau {
+  constructor(numero) {
+    super(numero);
+    this.elementClass = "cm-hy-numero-diagramme";
+  }
+}
+const numerosDesDiagrammes = lineNumberWidgetMarker.of((vue, widget, bloc) => (widget instanceof DiagrammeRendu ? new NumeroDiagramme(vue.state.doc.lineAt(bloc.from).number) : null));
+
+// Haut et Bas : CodeMirror ne sait pas entrer dans un tableau ou un diagramme rendu (le curseur saute ailleurs).
 // Depuis la dernière rangée affichée de la ligne au-dessus (ou la première de celle en dessous), le curseur va
-// sur la première (ou la dernière) ligne du tableau, à la même colonne si elle existe.
+// sur la première (ou la dernière) ligne du bloc, à la même colonne si elle existe.
 function entrerDansTableau(bas) {
   return (vue) => {
     const sel = vue.state.selection.main;
@@ -136,7 +145,7 @@ function entrerDansTableau(bas) {
     const voisine = bas ? ligne.number + 1 : ligne.number - 1;
     if (voisine < 1 || voisine > doc.lines) return false;
     const cible = doc.line(voisine);
-    const tableau = tableauxHybride(vue.state).find((t) => (bas ? t.debut === cible.from : t.fin === cible.to));
+    const tableau = [...tableauxHybride(vue.state), ...diagrammesRendus(vue.state)].find((t) => (bas ? t.debut === cible.from : t.fin === cible.to));
     if (!tableau) return false;
     const colonne = sel.head - ligne.from;
     const arrivee = bas ? doc.lineAt(tableau.debut) : doc.lineAt(tableau.fin);
@@ -231,7 +240,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   const compartimentLangage = new Compartment();
   const compartimentHybride = new Compartment();
   const hybridePossible = langage === "markdown" && !diff;
-  const extensionsHybride = () => [extensionHybride({ surLien: suivreLien, surSurvol: surSurvolLien }), numerosDesTitres, numerosDesTableaux, clavierTableau, EditorView.lineWrapping];
+  const extensionsHybride = () => [extensionHybride({ surLien: suivreLien, surSurvol: surSurvolLien }), numerosDesTitres, numerosDesTableaux, numerosDesDiagrammes, clavierTableau, EditorView.lineWrapping];
   const extensions = [
     compartiment.of(themeCourant() === "dark" ? themeSombre : themeClair),
     lineNumbers(),
@@ -298,8 +307,8 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     if (actif === hybrideActif) return;
     hybrideActif = actif;
     const haut = vue.lineBlockAtHeight(vue.scrollDOM.scrollTop);
-    // Première ligne visible dans un tableau : c'est le haut du tableau rendu qui va au bord haut, sans la marge de 5 px.
-    const tableau = actif && tableauxHybride(vue.state).find((t) => t.debut <= haut.from && haut.from <= t.fin);
+    // Première ligne visible dans un tableau ou un diagramme dessiné : c'est le haut du bloc rendu qui va au bord haut, sans la marge de 5 px.
+    const tableau = actif && [...tableauxHybride(vue.state), ...diagrammesRendus(vue.state)].find((t) => t.debut <= haut.from && haut.from <= t.fin);
     vue.dispatch({
       effects: [
         compartimentHybride.reconfigure(actif ? extensionsHybride() : []),
