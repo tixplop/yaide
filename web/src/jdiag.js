@@ -144,7 +144,7 @@ function lireCotes(objet, copie) {
   return true;
 }
 
-// Texte du fichier → `{ version, boxes, links, arrows }`, ou `null` si ce n'est pas un whiteboard lisible.
+// Texte du fichier → `{ version, model?, boxes, links, arrows }`, ou `null` si ce n'est pas un whiteboard lisible.
 // Un texte vide donne un whiteboard vide ; les clés inconnues sont ignorées ; une clé de style absente
 // prend sa valeur par défaut.
 export function lireJdiag(texte) {
@@ -159,6 +159,7 @@ export function lireJdiag(texte) {
   if (!estObjet(brut) || brut.version !== 1) return null;
   if (!Array.isArray(brut.boxes) || !Array.isArray(brut.links)) return null;
   if (brut.arrows !== undefined && !Array.isArray(brut.arrows)) return null;
+  if (brut.model !== undefined && typeof brut.model !== "string") return null;
   const ids = new Set();
   const boxes = [];
   for (const b of brut.boxes) {
@@ -194,7 +195,7 @@ export function lireJdiag(texte) {
     ids.add(fleche.id);
     arrows.push(fleche);
   }
-  return { version: 1, boxes, links, arrows };
+  return { version: 1, ...(brut.model === undefined ? {} : { model: brut.model }), boxes, links, arrows };
 }
 
 // Clés à écrire : les requises, puis chaque clé facultative qui diffère de sa valeur par défaut.
@@ -254,7 +255,8 @@ export function ecrireJdiag(doc) {
   const parties = [liste("boxes", boites), liste("links", liens)];
   const libres = (doc.arrows ?? []).map((o) => ligne(o, clesEcrites(o, CLES_LIBRE, STYLE_TRAIT, false)));
   if (libres.length > 0) parties.push(liste("arrows", libres));
-  return `{\n  "version": 1,\n${parties.join(",\n")}\n}\n`;
+  const modele = typeof doc.model === "string" && doc.model.trim() !== "" ? `  "model": ${JSON.stringify(doc.model)},\n` : "";
+  return `{\n  "version": 1,\n${modele}${parties.join(",\n")}\n}\n`;
 }
 
 // Plus petit `b<n>`, `l<n>` ou `a<n>` (n ≥ 1) qui n'est pas pris.

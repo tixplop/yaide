@@ -296,6 +296,12 @@ pub fn en_texte(brut: &Value) -> Result<(String, [usize; 3]), String> {
     if brut.get("version").and_then(entier) != Some(1) {
         return Err("version must be 1.".into());
     }
+    let modele = match brut.get("model") {
+        None => None,
+        Some(Value::String(t)) if !t.trim().is_empty() => Some(t.as_str()),
+        Some(Value::String(_)) => None,
+        Some(_) => return Err("model must be a text.".into()),
+    };
     let (b, l, a) = (
         liste(brut, "boxes", false)?,
         liste(brut, "links", false)?,
@@ -381,7 +387,16 @@ pub fn en_texte(brut: &Value) -> Result<(String, [usize; 3]), String> {
     if !libres.is_empty() {
         parties.push(partie("arrows", &libres));
     }
-    let texte = format!("{{\n  \"version\": 1,\n{}\n}}\n", parties.join(",\n"));
+    let modele = modele.map_or(String::new(), |m| {
+        format!(
+            "  \"model\": {},\n",
+            serde_json::to_string(m).unwrap_or_default()
+        )
+    });
+    let texte = format!(
+        "{{\n  \"version\": 1,\n{modele}{}\n}}\n",
+        parties.join(",\n")
+    );
     Ok((texte, [boites.len(), liens.len(), libres.len()]))
 }
 
@@ -393,4 +408,37 @@ pub fn relire(texte: &str) -> Result<String, String> {
     let brut: Value =
         serde_json::from_str(texte).map_err(|_| "The file is not valid JSON.".to_string())?;
     en_texte(&brut).map(|r| r.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const VIDE: &str = "{\n  \"version\": 1,\n  \"boxes\": [],\n  \"links\": []\n}\n";
+
+    #[test]
+    fn req151_ac1_model_apres_version_echappements_et_relecture() {
+        let m = "Flux \"A\" \\ 😀\nSuite.";
+        let brut = json!({"links": [], "boxes": [], "model": m, "version": 1});
+        let (texte, _) = en_texte(&brut).unwrap();
+        let attendu = format!(
+            "{{\n  \"version\": 1,\n  \"model\": {},\n  \"boxes\": [],\n  \"links\": []\n}}\n",
+            serde_json::to_string(m).unwrap()
+        );
+        assert_eq!(texte, attendu);
+        assert_eq!(relire(&texte).unwrap(), texte);
+        assert_eq!(relire(VIDE).unwrap(), VIDE);
+    }
+
+    #[test]
+    fn req151_ac3_model_non_texte_refuse_vide_non_reecrit() {
+        for m in [json!(3), json!(["a"])] {
+            let brut = json!({"version": 1, "model": m, "boxes": [], "links": []});
+            assert_eq!(en_texte(&brut).unwrap_err(), "model must be a text.");
+        }
+        for m in ["", "  \n "] {
+            let brut = json!({"version": 1, "model": m, "boxes": [], "links": []});
+            assert_eq!(en_texte(&brut).unwrap().0, VIDE);
+        }
+    }
 }

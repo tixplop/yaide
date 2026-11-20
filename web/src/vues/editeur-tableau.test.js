@@ -524,3 +524,44 @@ test("REQ145_AC9_ctrl_z_hors_de_la_surface_ne_change_pas_le_dessin", async () =>
   expect(posB1()).toBe(deplace);
   expect(onglet("plan.jdiag").dataset.modifie).toBe("true");
 });
+
+const MODELE = "Flux : Début → Fin.\nUne seule étape.";
+const AVEC_MODELE = ecrireJdiag({ ...DOC, model: MODELE });
+
+test("REQ151_AC3_model_non_texte_message_illisible_model_vide_ouvert", async () => {
+  fauxServeur({ "a.jdiag": '{"version": 1, "model": 3, "boxes": [], "links": []}', "b.jdiag": '{"version": 1, "model": "", "boxes": [], "links": []}' });
+  const { e } = monter();
+  await ouvrir(e, "a.jdiag");
+  expect(surface()).toBeNull();
+  expect(zone().querySelector("[role=status]").textContent).toBe("a.jdiag n'est pas un whiteboard lisible.");
+  await ouvrir(e, "b.jdiag");
+  expect(surface()).not.toBeNull();
+});
+
+test("REQ151_AC6_modele_invisible_garde_au_deplacement_ctrl_z_a_l_octet_pres_copie_sans_modele", async () => {
+  fauxServeur({ "plan.jdiag": AVEC_MODELE, "sans.jdiag": TEXTE });
+  const { e } = monter();
+  await ouvrir(e, "plan.jdiag");
+  expect(document.body.textContent).not.toContain("Une seule étape");
+  deplacerBoite();
+  ctrlS();
+  await vi.waitFor(() => expect(serveur.ecritures).toHaveLength(1));
+  const ecrit = serveur.ecritures[0][1];
+  expect(ecrit).toContain(`  "version": 1,\n  "model": ${JSON.stringify(MODELE)},\n  "boxes"`);
+  expect(ecrit).not.toBe(AVEC_MODELE);
+  ctrl(surface(), "z");
+  ctrlS();
+  await vi.waitFor(() => expect(serveur.ecritures).toHaveLength(2));
+  expect(serveur.ecritures[1][1]).toBe(AVEC_MODELE);
+  // Copier b1 (choisie par Tab), coller dans un whiteboard sans modèle.
+  touche(surface(), "Tab");
+  ctrl(surface(), "c");
+  await ouvrir(e, "sans.jdiag");
+  touche(surface(), "Tab");
+  ctrl(surface(), "v");
+  ctrlS();
+  await vi.waitFor(() => expect(serveur.ecritures).toHaveLength(3));
+  expect(serveur.ecritures[2][0]).toBe("sans.jdiag");
+  expect(serveur.ecritures[2][1]).not.toContain("model");
+  expect(JSON.parse(serveur.ecritures[2][1]).boxes).toHaveLength(3);
+});

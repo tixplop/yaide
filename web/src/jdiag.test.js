@@ -273,4 +273,25 @@ describe("REQ147_AC10 : texte de lien blanc", () => {
     expect(doc).not.toBeNull();
     expect(ecrireJdiag(doc)).not.toContain("align");
   });
+
+  test("REQ151_AC1_model_apres_version_echappements_et_relecture", () => {
+    const model = 'Flux : "Début" \\ 😀\nSuite.';
+    const texte = ecrireJdiag({ ...lireJdiag(DEUX), model });
+    expect(texte).toBe(DEUX.replace('"version": 1,\n', `"version": 1,\n  "model": ${JSON.stringify(model)},\n`));
+    expect(lireJdiag(texte).model).toBe(model);
+    expect(ecrireJdiag(lireJdiag(texte))).toBe(texte);
+    const apres = '{"boxes": [], "links": [], "model": "m", "version": 1}';
+    expect(ecrireJdiag(lireJdiag(apres))).toBe('{\n  "version": 1,\n  "model": "m",\n  "boxes": [],\n  "links": []\n}\n');
+    expect(lireJdiag(DEUX)).not.toHaveProperty("model");
+  });
+
+  test("REQ151_AC3_model_non_texte_refuse_vide_non_reecrit", () => {
+    expect(lireJdiag('{"version": 1, "model": 3, "boxes": [], "links": []}')).toBeNull();
+    expect(lireJdiag('{"version": 1, "model": ["a"], "boxes": [], "links": []}')).toBeNull();
+    for (const m of ["", "  \n "]) {
+      const doc = lireJdiag(`{"version": 1, "model": ${JSON.stringify(m)}, "boxes": [], "links": []}`);
+      expect(doc).not.toBeNull();
+      expect(ecrireJdiag(doc)).toBe(VIDE);
+    }
+  });
 });
