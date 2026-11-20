@@ -371,3 +371,21 @@ test("REQ149_AC1_les_vingt_dessins_de_symboles_existent_et_sont_distincts_et_sha
   expect(icone("shapes").innerHTML).toContain("M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3");
   expect(readFileSync("web/src/ui/icones.js", "utf8")).toContain("shapes");
 });
+
+test("REQ150_icones_du_rang_5_text_align_de_Lucide_et_position_dessinees_pour_Yaide", () => {
+  const dessins = {
+    "text-align-start": ["M21 5H3", "M15 12H3", "M17 19H3"],
+    "text-align-center": ["M21 5H3", "M17 12H7", "M19 19H5"],
+    "text-align-end": ["M21 5H3", "M21 12H9", "M21 19H7"],
+    "position-haut": ["M7.5 7.5h9", "M9.5 11h5"],
+    "position-milieu": ["M7.5 10.25h9", "M9.5 13.75h5"],
+    "position-bas": ["M7.5 13h9", "M9.5 16.5h5"],
+  };
+  const tete = readFileSync("web/src/ui/icones.js", "utf8").split("*/")[0];
+  for (const [n, parties] of Object.entries(dessins)) {
+    expect(NOMS).toContain(n);
+    for (const p of parties) expect(icone(n).innerHTML, n).toContain(p);
+    expect(tete, n).toContain(n);
+  }
+  expect(new Set(Object.keys(dessins).map((n) => icone(n).innerHTML)).size).toBe(6);
+});

@@ -27,7 +27,7 @@ const glisser = async (page, de, vers) => {
   await page.mouse.up();
 };
 
-test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_REQ142_AC1_AC4_REQ143_AC1_AC2_AC5_REQ145_AC1_AC3_REQ133_AC13_REQ147_AC1_AC9_REQ139_AC6_REQ146_AC4_AC5_AC9_REQ149_AC1_AC2_AC6_AC9_parcours_P096_P100_P101_P102_P103_P106_P109_P110_whiteboard", async ({ page }) => {
+test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_REQ142_AC1_AC4_REQ143_AC1_AC2_AC5_REQ145_AC1_AC3_REQ133_AC13_REQ147_AC1_AC9_REQ139_AC6_REQ146_AC4_AC5_AC9_REQ149_AC1_AC2_AC6_AC9_REQ150_AC1_AC4_REQ133_AC14_parcours_P096_P100_P101_P102_P103_P106_P109_P110_P111_P112_whiteboard", async ({ page }) => {
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "docs"), { recursive: true });
   fs.writeFileSync(path.join(dossier, "docs/a.md"), "# A\n");
@@ -345,21 +345,23 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1
     await page.keyboard.press("Control+z");
     expect(Math.abs((await xDe(bDebut)) - x1)).toBeLessThanOrEqual(1);
 
-    // P-106, AC-133-13 : boîte à outils de 304 × 172 px ; O puis Bas depuis « Normal » → « Texte vert » ; Bas depuis « Texte rouge » → « Aux deux bouts ».
+    // P-106, AC-133-13 : boîte à outils de 304 × 200 px ; O puis Bas depuis « Normal » → « Texte vert » ; Bas depuis « Texte vert » et depuis « Texte rouge » → « En bas ».
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.getByRole("button", { name: "Tout afficher" }).click();
     await surf2.focus();
     const outils = await page.locator(".ya-tableau-outils:visible").boundingBox();
     proche(outils.width, 304);
-    proche(outils.height, 172);
+    proche(outils.height, 200);
     await page.keyboard.press("o");
     await expect(page.locator(".ya-tableau-outils:visible button:focus")).toHaveCount(1);
     await page.getByRole("button", { name: "Normal", exact: true }).first().focus();
     await page.keyboard.press("ArrowDown");
     await expect(page.getByRole("button", { name: "Texte vert", exact: true })).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("button", { name: "En bas", exact: true })).toBeFocused();
     await page.getByRole("button", { name: "Texte rouge", exact: true }).focus();
     await page.keyboard.press("ArrowDown");
-    await expect(page.getByRole("button", { name: "Aux deux bouts", exact: true })).toBeFocused();
+    await expect(page.getByRole("button", { name: "En bas", exact: true })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(surf2).toBeFocused();
 
@@ -503,6 +505,53 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1
     await expect.poll(() => JSON.parse(fs.readFileSync(fichier, "utf8")).boxes.some((x) => x.shape === "database")).toBe(true);
     expect(JSON.parse(fs.readFileSync(fichier, "utf8")).boxes.find((x) => x.shape === "database")).toMatchObject({ width: 100, height: 100, shape: "database" });
     expect(JSON.parse(fs.readFileSync(fichier, "utf8")).boxes.find((x) => x.shape === "database").text).toMatch(/^Clients/);
+
+    // P-111 (étapes 1 et 2), AC-150-1 : « À gauche » puis « En haut » sur une boîte, mesure réelle (8 px du bord gauche, 6 px du haut).
+    await page.getByRole("button", { name: "Choisir", exact: true }).click();
+    await bDebut.click({ position: { x: 12, y: 12 } });
+    const btn = (nom) => page.getByRole("button", { name: nom, exact: true });
+    await expect(btn("Au centre")).toHaveAttribute("aria-pressed", "true");
+    await expect(btn("Au milieu")).toHaveAttribute("aria-pressed", "true");
+    await btn("À gauche").click();
+    await btn("En haut").click();
+    await expect(btn("À gauche")).toHaveAttribute("aria-pressed", "true");
+    await expect(btn("En haut")).toHaveAttribute("aria-pressed", "true");
+    const cadreD = await bDebut.boundingBox();
+    const premier = await bDebut.locator(".ya-tableau-texte").evaluate((e) => {
+      const r = document.createRange();
+      r.selectNodeContents(e);
+      const b = r.getBoundingClientRect();
+      return { x: b.left, y: b.top };
+    });
+    expect(Math.abs(premier.x - cadreD.x - 8)).toBeLessThanOrEqual(2);
+    expect(premier.y - cadreD.y).toBeGreaterThanOrEqual(5);
+    expect(premier.y - cadreD.y).toBeLessThanOrEqual(8);
+
+    // P-112 (étape 4), AC-150-4 : le symbole « Au milieu », texte centré dans la bande des 40 px du bas, dessin immobile.
+    await page.keyboard.press("Escape");
+    await boiteSymbole().click({ position: { x: 12, y: 12 } });
+    await expect(btn("En haut")).toHaveAttribute("aria-pressed", "true");
+    // Un texte court, pour que le contenu tienne dans la bande.
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Control+a");
+    await page.keyboard.type("Clients");
+    await page.keyboard.press("Escape");
+    const dessinAvant = await boiteSymbole().locator("svg, path").first().boundingBox();
+    await btn("Au milieu").click();
+    await expect(btn("Au milieu")).toHaveAttribute("aria-pressed", "true");
+    const cadreS = await boiteSymbole().boundingBox();
+    const centreTexte = await boiteSymbole().locator(".ya-tableau-texte").evaluate((e) => {
+      const r = document.createRange();
+      r.selectNodeContents(e);
+      const b = r.getBoundingClientRect();
+      return b.top + b.height / 2;
+    });
+    expect(Math.abs(centreTexte - (cadreS.y + 0.8 * cadreS.height))).toBeLessThanOrEqual(2);
+    const dessinApres = await boiteSymbole().locator("svg, path").first().boundingBox();
+    expect(dessinApres).toEqual(dessinAvant);
+    await page.keyboard.press("Control+s");
+    await expect.poll(() => JSON.parse(fs.readFileSync(fichier, "utf8")).boxes.find((x) => x.shape === "database")?.valign).toBe("middle");
+    expect(JSON.parse(fs.readFileSync(fichier, "utf8")).boxes.find((x) => /^Début/.test(x.text))).toMatchObject({ align: "left", valign: "top" });
   } finally {
     await yaide.arreter();
   }

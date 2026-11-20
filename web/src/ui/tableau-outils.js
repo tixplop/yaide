@@ -106,6 +106,30 @@ const RANGS = [
   ],
   [
     {
+      nom: "Alignement du texte",
+      cle: "align",
+      position: true,
+      bulle: "Alignement du texte",
+      boutons: [
+        ["À gauche", "left", "text-align-start"],
+        ["Au centre", "center", "text-align-center"],
+        ["À droite", "right", "text-align-end"],
+      ],
+    },
+    {
+      nom: "Position verticale du texte",
+      cle: "valign",
+      position: true,
+      bulle: "Position verticale du texte",
+      boutons: [
+        ["En haut", "top", "position-haut"],
+        ["Au milieu", "middle", "position-milieu"],
+        ["En bas", "bottom", "position-bas"],
+      ],
+    },
+  ],
+  [
+    {
       nom: "Tracé",
       cle: "trace",
       bulle: "Tracé",
@@ -166,7 +190,8 @@ const COULEURS_CSS = { default: "defaut", blue: "bleu", green: "vert", yellow: "
 // et la couleur du texte, `surEchap()` sur Échap. `definir(valeurs, { planActif, texte })` montre les valeurs d'un objet
 // choisi ou les choix courants, active ou non « Plan », et donne l'état du texte visé :
 // `texte = { actif, styles: ["bold", …], couleur: "red" | null }` (inactif : les onze boutons du texte sont inactifs).
-export function boiteOutils({ valeurs, surChoix, surAction, surTexte, surEchap }) {
+// `surPosition("align" | "valign", valeur)` pour le rang 5 ; `position = { actif, align, valign }` (valeur commune ou `null`).
+export function boiteOutils({ valeurs, surChoix, surAction, surTexte, surPosition, surEchap }) {
   const etat = { ...valeurs };
   const racine = document.createElement("div");
   racine.className = "ya-tableau-outils";
@@ -175,6 +200,7 @@ export function boiteOutils({ valeurs, surChoix, surAction, surTexte, surEchap }
   const liste = [];
   let planActif = false;
   let texte = { actif: false, styles: [], couleur: null };
+  let position = { actif: false, align: null, valign: null };
   const ctrl = estMac() ? "Cmd" : "Ctrl";
 
   for (const groupes of RANGS) {
@@ -216,6 +242,11 @@ export function boiteOutils({ valeurs, surChoix, surAction, surTexte, surEchap }
           }
           if (g.action) {
             surAction?.(valeur);
+            return;
+          }
+          // Position du texte : une modification des boîtes visées, pas un choix pour les suivantes.
+          if (g.position) {
+            surPosition?.(g.cle, valeur);
             return;
           }
           // Style et couleur du texte : pas un choix pour les objets suivants.
@@ -272,6 +303,11 @@ export function boiteOutils({ valeurs, surChoix, surAction, surTexte, surEchap }
       }
       if (g.action) {
         b.definirInactif(!planActif);
+        continue;
+      }
+      if (g.position) {
+        b.definirInactif(!position.actif);
+        b.setAttribute("aria-pressed", String(position.actif && position[g.cle] === valeur));
         continue;
       }
       if (g.texte) {
@@ -336,6 +372,7 @@ export function boiteOutils({ valeurs, surChoix, surAction, surTexte, surEchap }
       Object.assign(etat, v);
       if (options.planActif !== undefined) planActif = options.planActif;
       if (options.texte !== undefined) texte = { actif: Boolean(options.texte.actif), styles: options.texte.styles ?? [], couleur: options.texte.couleur ?? null };
+      if (options.position !== undefined) position = { actif: Boolean(options.position.actif), align: options.position.align ?? null, valign: options.position.valign ?? null };
       afficher();
     },
   };

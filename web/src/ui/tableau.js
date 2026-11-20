@@ -1,4 +1,4 @@
-import { ecrireJdiag, idLibre, SYMBOLES } from "../jdiag.js";
+import { ecrireJdiag, idLibre, positionTexte, SYMBOLES } from "../jdiag.js";
 import { estMac } from "../references.js";
 import { indication } from "./indication.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
@@ -355,7 +355,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       const o = cibles()[0];
       if (o && CONCERNES[cle].includes(sorte(o))) valeurs[cle] = o[clef] ?? OUTILS_DEPART[cle];
     }
-    barre.definir(valeurs, { planActif: saisie !== null || choisis.length > 0, texte: texteOutils() });
+    barre.definir(valeurs, { planActif: saisie !== null || choisis.length > 0, texte: texteOutils(), position: positionOutils() });
     surface?.classList.toggle("crosshair", choix.outil !== "choisir" || geste?.type === "boutLien");
   }
 
@@ -372,6 +372,29 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
         appliquer({ ...doc, boxes: doc.boxes.map(change), links: doc.links.map(change), ...(doc.arrows ? { arrows: doc.arrows.map(change) } : {}) });
       }
     }
+    dessiner();
+  }
+
+  // Les boîtes visées par « Alignement du texte » et « Position verticale du texte » : la boîte en saisie, sinon les boîtes choisies.
+  const boitesVisees = () => cibles().filter((o) => boite(o.id));
+  function positionOutils() {
+    const bs = boitesVisees();
+    if (bs.length === 0) return { actif: false };
+    const commun = (cle) => (bs.every((o) => positionTexte(o)[cle] === positionTexte(bs[0])[cle]) ? positionTexte(bs[0])[cle] : null);
+    return { actif: true, align: commun("align"), valign: commun("valign") };
+  }
+
+  // Une modification pour toutes les boîtes visées, sans choix pour les suivantes ; la valeur par défaut de la forme retire la clé.
+  function surPosition(cle, valeur) {
+    const ids = boitesVisees().filter((o) => positionTexte(o)[cle] !== valeur).map((o) => o.id);
+    if (ids.length === 0) return;
+    const change = (x) => {
+      if (!ids.includes(x.id)) return x;
+      const reste = { ...x };
+      delete reste[cle];
+      return valeur === positionTexte(reste)[cle] ? reste : { ...reste, [cle]: valeur };
+    };
+    appliquer({ ...doc, boxes: doc.boxes.map(change) });
     dessiner();
   }
 
@@ -970,6 +993,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     surChoix: surChoixOutil,
     surAction: surPlan,
     surTexte,
+    surPosition,
     surEchap: () => surface?.focus({ preventScroll: true }),
   });
   barre.element.addEventListener("keydown", surHistorique);

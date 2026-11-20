@@ -62,7 +62,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/ui/palettes.js — palettes de couleurs markdown suggérées — PALETTES
 - web/src/ui/tableau.js — composant whiteboard : surface, gestes, clavier, historique Ctrl+Z/Ctrl+Y — tableau
 - web/src/ui/tableau-texte.js — texte d'une boîte ou d'un lien et styles d'une partie du texte : rendu, lecture du DOM de la saisie, bascule, couleur, insertion (REQ-146) — rendreTexte, lireTexte, basculer
-- web/src/ui/tableau-calculs.js, tableau-dessin.js, tableau-edition.js, tableau-outils.js — géométrie (dont la zone de texte des symboles), rendu SVG (dont le dessin des symboles, REQ-149, et les classes `align-*` `valign-*` du texte des boîtes, REQ-150), copier/coller/plan/rattachement, boîte à outils (dont le bouton « Symboles » et son dialogue, REQ-149) — extremitesFleche, milieuTrace, dessinBoite, coller, boiteOutils
+- web/src/ui/tableau-calculs.js, tableau-dessin.js, tableau-edition.js, tableau-outils.js — géométrie (dont la zone de texte des symboles), rendu SVG (dont le dessin des symboles, REQ-149, et les classes `align-*` `valign-*` du texte des boîtes, REQ-150), copier/coller/plan/rattachement, boîte à outils (dont le bouton « Symboles » et son dialogue, REQ-149, et le rang « Alignement » et « Position verticale du texte », REQ-133, REQ-150) — extremitesFleche, milieuTrace, dessinBoite, coller, boiteOutils
 - web/src/vues/principale.js — fenêtre : rails, panneaux, zones, Ctrl+P — vuePrincipale
 - web/src/vues/principale.aides.js — aides des tests de la vue principale
 - web/src/vues/editeur.js — groupes d'onglets : fichiers, images, whiteboards (zoneWhiteboard), sessions — vueEditeur
@@ -113,4 +113,4 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-126 soumettre des fichiers à un agent → web/src/vues/soumission-agent.js
 - REQ-118 formater le document → web/src/formatage.js, vues/principale.js
 - REQ-122, REQ-123 mermaid → web/src/mermaid.js, ui/diagramme.js, ui/apercu.js
-- REQ-127 à REQ-149 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, jdiag_trace.rs, jdiag_controle.rs, outils.rs
+- REQ-127 à REQ-150 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, jdiag_trace.rs, jdiag_controle.rs, outils.rs

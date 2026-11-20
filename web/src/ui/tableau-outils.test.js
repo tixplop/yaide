@@ -4,10 +4,10 @@ import { boiteOutils } from "./tableau-outils.js";
 
 const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
 const DEPART = () => ({ outil: "choisir", forme: "rectangle", couleur: "default", opacite: 100, taille: "normal", trace: "direct", bouts: "end", trait: "solid", epaisseur: "thin" });
-const NOMS = ["Choisir", "Sélection", "Rectangle", "Rectangle arrondi", "Cercle", "Losange", "Note", "Texte", "Symboles", "Lien", "Flèche", "Par défaut", "Bleu", "Vert", "Jaune", "Orange", "Rouge", "Violet", "100 %", "75 %", "50 %", "25 %", "0 %", "Petit", "Normal", "Grand", "Très grand", "Gras", "Italique", "Souligné", "Barré", "Texte par défaut", "Texte bleu", "Texte vert", "Texte jaune", "Texte orange", "Texte rouge", "Texte violet", "Droit", "Coudé", "Courbe", "À l'arrivée", "Aucune", "Au départ", "Aux deux bouts", "Plein", "Tirets", "Pointillés", "Fin", "Moyen", "Épais", "Premier plan", "Arrière-plan"];
-const GROUPES = ["Outil", "Forme", "Relier", "Couleur", "Opacité", "Taille du texte", "Style du texte", "Couleur du texte", "Tracé", "Extrémités", "Trait", "Épaisseur", "Plan"];
-const RANGS = [11, 7, 9, 11, 7, 8];
-const DEBUTS = [0, 11, 18, 27, 38, 45];
+const NOMS = ["Choisir", "Sélection", "Rectangle", "Rectangle arrondi", "Cercle", "Losange", "Note", "Texte", "Symboles", "Lien", "Flèche", "Par défaut", "Bleu", "Vert", "Jaune", "Orange", "Rouge", "Violet", "100 %", "75 %", "50 %", "25 %", "0 %", "Petit", "Normal", "Grand", "Très grand", "Gras", "Italique", "Souligné", "Barré", "Texte par défaut", "Texte bleu", "Texte vert", "Texte jaune", "Texte orange", "Texte rouge", "Texte violet", "À gauche", "Au centre", "À droite", "En haut", "Au milieu", "En bas", "Droit", "Coudé", "Courbe", "À l'arrivée", "Aucune", "Au départ", "Aux deux bouts", "Plein", "Tirets", "Pointillés", "Fin", "Moyen", "Épais", "Premier plan", "Arrière-plan"];
+const GROUPES = ["Outil", "Forme", "Relier", "Couleur", "Opacité", "Taille du texte", "Style du texte", "Couleur du texte", "Alignement du texte", "Position verticale du texte", "Tracé", "Extrémités", "Trait", "Épaisseur", "Plan"];
+const RANGS = [11, 7, 9, 11, 6, 7, 8];
+const DEBUTS = [0, 11, 18, 27, 38, 44, 51];
 
 let b;
 let choix;
@@ -17,7 +17,7 @@ function monter(valeurs = DEPART()) {
   choix = [];
   echaps = 0;
   actions = [];
-  // Six rangs de hauteur 28 ; chaque bouton est à sa place dans son rang et son groupe (8 px entre groupes, 2 entre boutons).
+  // Sept rangs de hauteur 28 ; chaque bouton est à sa place dans son rang et son groupe (8 px entre groupes, 2 entre boutons).
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function () {
     const i = this.dataset?.indice;
     if (i === undefined) return { x: 0, y: 0, left: 0, top: 0, width: 24, height: 24, right: 24, bottom: 24 };
@@ -62,7 +62,7 @@ test("REQ133_AC8_noms_groupes_et_info_bulles_dans_l_ordre", () => {
   expect(boutons().map((x) => x.getAttribute("aria-label"))).toEqual(NOMS);
   const groupes = [...b.element.querySelectorAll('[role="group"]')];
   expect(groupes.map((g) => g.getAttribute("aria-label"))).toEqual(GROUPES);
-  expect(groupes.map((g) => g.querySelectorAll("button").length)).toEqual([2, 7, 2, 7, 5, 4, 4, 7, 3, 4, 3, 3, 2]);
+  expect(groupes.map((g) => g.querySelectorAll("button").length)).toEqual([2, 7, 2, 7, 5, 4, 4, 7, 3, 3, 3, 4, 3, 3, 2]);
   vi.useFakeTimers();
   const texte = (nom) => {
     par(nom).enveloppe.dispatchEvent(new MouseEvent("pointerenter"));
@@ -79,8 +79,10 @@ test("REQ133_AC8_noms_groupes_et_info_bulles_dans_l_ordre", () => {
   expect(texte("50 %")).toBe("Opacité : 50 %");
   expect(texte("Épais")).toBe("Épaisseur : Épais");
   expect(texte("Premier plan")).toBe("Premier plan");
+  expect(texte("À gauche")).toBe("Alignement du texte : À gauche");
+  expect(texte("En bas")).toBe("Position verticale du texte : En bas");
   vi.useRealTimers();
-  // Les six rangs ; une pastille au lieu d'une icône pour les couleurs.
+  // Les sept rangs ; une pastille au lieu d'une icône pour les couleurs.
   const rangs = [...b.element.children];
   expect(rangs.map((r) => r.querySelectorAll("button").length)).toEqual(RANGS);
   expect(par("Vert").querySelector(".ya-pastille-couleur")).not.toBeNull();
@@ -127,18 +129,38 @@ test("REQ133_AC9_un_arret_de_tab_et_fleches", () => {
   expect(document.activeElement).toBe(par("100 %"));
   touche(par("100 %"), "ArrowUp");
   expect(document.activeElement).toBe(par("Par défaut"));
-  // Bas depuis « Grand » : « Texte jaune » du rang 4 ; depuis « Normal » : « Texte vert » ; depuis « Texte rouge » : « Aux deux bouts ».
+  // Bas depuis « Grand » : « Texte jaune » du rang 4 ; depuis « Normal » : « Texte vert ».
   par("Grand").focus();
   touche(par("Grand"), "ArrowDown");
   expect(document.activeElement).toBe(par("Texte jaune"));
   par("Normal").focus();
   touche(par("Normal"), "ArrowDown");
   expect(document.activeElement).toBe(par("Texte vert"));
+  // Rang 5 (REQ-150) : Gras ↔ À gauche ↔ Droit, Barré ↔ En haut ↔ À l'arrivée, Texte vert → En bas, Aux deux bouts, Haut → En bas.
+  par("Gras").focus();
+  touche(par("Gras"), "ArrowDown");
+  expect(document.activeElement).toBe(par("À gauche"));
+  touche(par("À gauche"), "ArrowUp");
+  expect(document.activeElement).toBe(par("Gras"));
+  par("À gauche").focus();
+  touche(par("À gauche"), "ArrowDown");
+  expect(document.activeElement).toBe(par("Droit"));
+  par("Barré").focus();
+  touche(par("Barré"), "ArrowDown");
+  expect(document.activeElement).toBe(par("En haut"));
+  touche(par("En haut"), "ArrowDown");
+  expect(document.activeElement).toBe(par("À l'arrivée"));
+  touche(par("À l'arrivée"), "ArrowUp");
+  expect(document.activeElement).toBe(par("En haut"));
+  par("Texte vert").focus();
+  touche(par("Texte vert"), "ArrowDown");
+  expect(document.activeElement).toBe(par("En bas"));
   par("Texte rouge").focus();
   touche(par("Texte rouge"), "ArrowDown");
-  expect(document.activeElement).toBe(par("Aux deux bouts"));
+  expect(document.activeElement).toBe(par("En bas"));
+  par("Aux deux bouts").focus();
   touche(par("Aux deux bouts"), "ArrowUp");
-  expect(document.activeElement).toBe(par("Texte vert"));
+  expect(document.activeElement).toBe(par("En bas"));
   par("Aux deux bouts").focus();
   touche(par("Aux deux bouts"), "ArrowDown");
   expect(document.activeElement).toBe(par("Premier plan"));
@@ -269,7 +291,7 @@ test("REQ133_AC8_AC12_REQ146_AC10_info_bulles_du_texte_non_mac_et_mac", async ()
   ua.mockRestore();
 });
 
-test("REQ133_AC13_six_rangs_barre_de_304px_et_pas_de_scroll_horizontal", () => {
+test("REQ133_AC13_AC14_sept_rangs_barre_de_304px_et_pas_de_scroll_horizontal", () => {
   monter();
   expect([...b.element.children].map((r) => r.querySelectorAll("button").length)).toEqual(RANGS);
   const regle = css.match(/\.ya-tableau-outils\s*\{([^}]*)\}/)[1];
@@ -279,6 +301,10 @@ test("REQ133_AC13_six_rangs_barre_de_304px_et_pas_de_scroll_horizontal", () => {
   // Rang 1 : onze boutons de 24 px, 8 écarts de 2 px dans les groupes, 2 écarts de 8 px entre groupes, marges de 4 px : 304.
   expect(4 + 11 * 24 + 8 * 2 + 2 * 8 + 4).toBe(304);
   expect(304 + 12).toBeLessThanOrEqual(320);
+  // REQ133_AC14 : sept rangs de 24 px, 6 écarts de 4 px, marges de 4 px : 200 de haut.
+  expect(css).toMatch(/\.ya-tableau-outils \{[^}]*padding: 4px; display: flex; flex-direction: column; gap: 4px;/);
+  expect(b.element.children).toHaveLength(7);
+  expect(css).toMatch(/\.ya-tableau-outils-rang \{ display: flex; gap: 8px; \}/);
 });
 
 test("REQ146_AC8_texte_inactif_onze_boutons_aria_disabled_et_clic_sans_effet", () => {
