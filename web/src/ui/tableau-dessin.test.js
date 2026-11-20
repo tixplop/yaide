@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { ecrireJdiag } from "../jdiag.js";
 import { poigneesLien } from "./tableau-dessin.js";
 import { tableau } from "./tableau.js";
 
@@ -12,11 +13,11 @@ const DOC = (extra = {}) => ({ version: 1, boxes: [boite("b1", 100, 100), boite(
 let t;
 let changements;
 let vues;
-function monter(doc = DOC(), vue = { x: 0, y: 0, zoom: 1 }) {
+function monter(doc = DOC(), vue = { x: 0, y: 0, zoom: 1 }, outils = undefined) {
   changements = [];
   vues = [];
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({ x: 0, y: 0, left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 });
-  t = tableau({ nom: "plan.jdiag", document: doc, vue, surChangement: (d) => changements.push(d), surVue: (v) => vues.push(v) });
+  t = tableau({ nom: "plan.jdiag", document: doc, vue, outils, surChangement: (d) => changements.push(d), surVue: (v) => vues.push(v) });
   document.body.append(t.element);
 }
 beforeEach(() => {
@@ -498,4 +499,112 @@ test("REQ146_AC6_une_partie_rouge_garde_sa_couleur_dans_une_boite_verte", () => 
   expect(texte.lastChild.nodeType).toBe(3);
   expect(texte.lastChild.textContent).toBe(" du flux");
   expect(texte.style.color).toBe("");
+});
+
+// Symboles (REQ-149)
+const SYM = (id, x, y, extra = {}) => ({ id, x, y, width: 100, height: 100, text: "", shape: "database", ...extra });
+const ptr = (cible, type, x, y) => {
+  const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 });
+  Object.defineProperty(e, "pointerId", { value: 1 });
+  cible.dispatchEvent(e);
+};
+function glisser(cible, de, vers) {
+  ptr(cible, "pointerdown", de[0], de[1]);
+  ptr(surface(), "pointermove", (de[0] + vers[0]) / 2, (de[1] + vers[1]) / 2);
+  ptr(surface(), "pointermove", vers[0], vers[1]);
+  ptr(surface(), "pointerup", vers[0], vers[1]);
+}
+const dessinDe = (id) => obj(id).querySelector("svg.symbole-dessin");
+const bt = (nom) => [...t.element.querySelectorAll("[role=toolbar] button")].find((b) => b.getAttribute("aria-label") === nom);
+
+test("REQ149_AC3_symbole_trace_au_glisser_puis_poignee_agrandit_et_ne_descend_pas_sous_40_x_24", () => {
+  monter(DOC({ boxes: [] }), { x: 0, y: 0, zoom: 1 }, { outil: "person", forme: "person" });
+  glisser(surface(), [100, 100], [220, 260]);
+  expect(changements.at(-1).boxes.at(-1)).toMatchObject({ x: 100, y: 100, width: 120, height: 160, shape: "person" });
+  t.detruire();
+  document.body.innerHTML = "";
+  monter(DOC({ boxes: [SYM("b1", 100, 100, { shape: "person", width: 120, height: 160 })] }));
+  clic(obj("b1").querySelector(".forme"));
+  expect(Number(dessinDe("b1").getAttribute("width"))).toBeCloseTo(76.8, 5);
+  glisser(t.element.querySelector('[data-poignee="taille"]'), [220, 260], [260, 260]);
+  expect(changements.at(-1).boxes[0]).toMatchObject({ width: 160, height: 160 });
+  expect(Number(dessinDe("b1").getAttribute("width"))).toBeCloseTo(76.8, 5);
+  glisser(t.element.querySelector('[data-poignee="taille"]'), [260, 260], [-500, -500]);
+  expect(changements.at(-1).boxes[0]).toMatchObject({ width: 40, height: 24 });
+  expect(Number(dessinDe("b1").getAttribute("width"))).toBeCloseTo(11.52, 5);
+});
+
+test("REQ149_AC4_couleur_teint_le_dessin_sans_fond_et_par_defaut_retire_la_cle", () => {
+  monter(DOC({ boxes: [SYM("b1", 100, 100, { shape: "server" })] }));
+  const g = obj("b1");
+  expect(g.classList.contains("forme-symbole")).toBe(true);
+  expect(g.querySelector(".forme").getAttribute("fill-opacity")).toBeNull();
+  expect(dessinDe("b1").getAttribute("data-icone")).toBe("symbole-server");
+  expect(regle(".ya-tableau .boite .symbole-dessin")[0]).toMatch(/color: var\(--boite-trait\)/);
+  expect(regle(".ya-tableau .boite.forme-symbole .forme")[0]).toMatch(/fill: transparent; stroke: none/);
+  expect(css).toMatch(/\.boite\.forme-symbole\.couleur-default \.symbole-dessin \{ color: var\(--ink\)/);
+  clic(obj("b1").querySelector(".forme"));
+  bt("Vert").click();
+  expect(changements.at(-1).boxes[0].color).toBe("green");
+  expect(obj("b1").classList.contains("couleur-green")).toBe(true);
+  expect(css).toMatch(/\.couleur-green \{ --boite-fond: var\(--boite-vert-fond\); --boite-trait: var\(--boite-vert-trait\)/);
+  bt("Par défaut").click();
+  expect(ecrireJdiag(changements.at(-1))).not.toContain("color");
+});
+
+test("REQ149_AC5_cinq_connecteurs_lien_du_cote_droit_qui_suit_et_pointe_sur_le_bord", () => {
+  monter(DOC({ boxes: [SYM("b1", 100, 100, { shape: "cloud" }), boite("b2", 400, 100, { text: "Fin" })] }));
+  ptr(surface(), "pointermove", 205, 150);
+  const c = [...t.element.querySelectorAll(".connecteurs .connecteur")].map((x) => [x.getAttribute("cx"), x.getAttribute("cy")]);
+  expect(c).toEqual([["150", "100"], ["200", "150"], ["150", "200"], ["100", "150"], ["150", "150"]]);
+  glisser(t.element.querySelector('[data-boite="b1"][data-connecteur="right"]'), [200, 150], [410, 140]);
+  expect(changements.at(-1).links[0]).toMatchObject({ from: "b1", fromSide: "right", to: "b2" });
+  glisser(obj("b1").querySelector(".forme"), [150, 130], [150, 230]);
+  expect(changements.at(-1).boxes[0].y).toBe(200);
+  expect(obj("l1").querySelector(".trait").getAttribute("d")).toMatch(/^M 200 250/);
+});
+
+test("REQ149_AC5_lien_sans_cote_vers_un_symbole_touche_le_bord_du_rectangle_a_1_px", () => {
+  monter(DOC({ boxes: [SYM("b1", 100, 100, { shape: "cloud" }), boite("b2", 400, 300, { text: "Fin" })], links: [{ id: "l1", from: "b2", to: "b1" }] }));
+  const [px, py] = pointes("l1")[0].split(",").map(Number);
+  // Le rectangle de la boîte est coupé par la droite des centres en (200, 178,9) ; une ellipse l'aurait été ailleurs.
+  expect(Math.abs(px - 200)).toBeLessThanOrEqual(1);
+  expect(Math.abs(py - 178.9)).toBeLessThanOrEqual(1);
+});
+
+test("REQ149_AC6_texte_dans_la_bande_du_bas_gras_annule_copie_et_effacement", () => {
+  monter(DOC({ boxes: [SYM("b1", 100, 100, { text: "Clients", color: "red" }), boite("b2", 400, 100, { text: "Fin" })], links: [{ id: "l1", from: "b1", to: "b2" }] }));
+  const fo = obj("b1").querySelector("foreignObject");
+  expect(["x", "y", "width", "height"].map((a) => fo.getAttribute(a))).toEqual(["108", "160", "84", "40"]);
+  expect(regle(".ya-tableau-texte")[0]).toMatch(/overflow: hidden/);
+  expect(css).toMatch(/\.boite\.forme-symbole \.ya-tableau-texte \{[^}]*justify-content: flex-start; padding: 0/);
+  clic(obj("b1").querySelector(".forme"));
+  bt("Gras").click();
+  expect(changements.at(-1).boxes[0].spans).toEqual([{ start: 0, end: 7, bold: true }]);
+  touche("z", { ctrlKey: true });
+  expect(changements.at(-1).boxes[0].spans).toBeUndefined();
+  touche("c", { ctrlKey: true });
+  touche("v", { ctrlKey: true });
+  expect(changements.at(-1).boxes.at(-1)).toMatchObject({ shape: "database", color: "red", text: "Clients" });
+  touche("Delete");
+  expect(changements.at(-1).boxes.map((b) => b.id)).toEqual(["b1", "b2"]);
+  clic(obj("b1").querySelector(".forme"));
+  touche("Delete");
+  expect(changements.at(-1).boxes.map((b) => b.id)).toEqual(["b2"]);
+  expect(changements.at(-1).links).toEqual([]);
+});
+
+test("REQ149_AC9_nom_du_symbole_avec_son_texte_et_saisie_dans_la_bande_du_bas", () => {
+  monter(DOC({ boxes: [SYM("b1", 100, 100, { text: "Clients" }), SYM("b2", 400, 100)] }));
+  expect(obj("b1").getAttribute("aria-roledescription")).toBe("boîte");
+  expect(obj("b1").getAttribute("aria-label")).toBe("Base de données : Clients");
+  expect(obj("b2").getAttribute("aria-label")).toBe("Base de données");
+  expect(dessinDe("b1").getAttribute("aria-hidden")).toBe("true");
+  clic(obj("b1").querySelector(".forme"));
+  touche("Enter");
+  const zone = t.element.querySelector("[role=textbox]");
+  expect(zone.getAttribute("aria-label")).toBe("Texte de la boîte");
+  const fo = zone.closest("foreignObject");
+  expect([fo.getAttribute("y"), fo.getAttribute("height")]).toEqual(["160", "40"]);
+  expect(dessinDe("b1")).not.toBeNull();
 });

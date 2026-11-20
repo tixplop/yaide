@@ -870,9 +870,14 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau .boite:hover .forme, .ya-tableau .boite:hover .pli { stroke-width: max(2px, var(--e)); }
 .ya-tableau .boite.couleur-default:not(.choisie, .saisie, .glissee):hover :is(.forme, .pli) { stroke: var(--ink-muted); }
 .ya-tableau .boite.forme-text .forme { fill: transparent; stroke: none; }
+.ya-tableau .boite.forme-symbole .forme { fill: transparent; stroke: none; }
 .ya-tableau .boite.forme-text:not(.choisie, .saisie, .glissee):hover .forme { stroke: var(--line-strong); stroke-width: var(--trait); stroke-dasharray: 4 4; }
 .ya-tableau .boite.forme-text .ya-tableau-texte { color: var(--boite-trait); }
 .ya-tableau .boite.forme-text.couleur-default .ya-tableau-texte { color: var(--ink); }
+.ya-tableau .boite.forme-symbole:not(.choisie, .saisie, .glissee):hover .forme { stroke: var(--line-strong); stroke-width: var(--trait); stroke-dasharray: 4 4; }
+.ya-tableau .boite .symbole-dessin { color: var(--boite-trait); pointer-events: none; }
+.ya-tableau .boite.forme-symbole.couleur-default .symbole-dessin { color: var(--ink); }
+.ya-tableau .boite.forme-symbole .ya-tableau-texte { justify-content: flex-start; padding: 0; }
 .ya-tableau .boite.choisie .forme, .ya-tableau .boite.choisie .pli, .ya-tableau .boite.saisie .forme, .ya-tableau .boite.saisie .pli, .ya-tableau .boite.glissee .forme, .ya-tableau .boite.glissee .pli { stroke: var(--accent-fg); stroke-width: max(2px, var(--e)); }
 .ya-tableau .boite.glissee .forme { cursor: grabbing; }
 .ya-tableau .boite.saisie .forme { cursor: text; }

@@ -1,9 +1,9 @@
-import { ecrireJdiag, idLibre } from "../jdiag.js";
+import { ecrireJdiag, idLibre, SYMBOLES } from "../jdiag.js";
 import { estMac } from "../references.js";
 import { indication } from "./indication.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
 import { boiteOutils } from "./tableau-outils.js";
-import { connecteurProcheAffiche, connecteursAffiches, connecteurs, dansRectangle, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
+import { connecteurProcheAffiche, connecteursAffiches, connecteurs, dansRectangle, estSymbole, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
 import { basculer, colorer, decalages, etatTexte, inserer, lireTexte, pointA, rendreZone } from "./tableau-texte.js";
 import { dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, dessinRectangleSelection, poigneesBoite, poigneesFleche, poigneesLien, svg } from "./tableau-dessin.js";
 
@@ -16,7 +16,7 @@ const PAS = 10;
 const SEUIL = 3;
 const PROCHE = 24; // px écran : distance du pointeur au bord d'une boîte pour montrer ses connecteurs
 const OUTILS_DEPART = { outil: "choisir", forme: "rectangle", couleur: "default", trace: "direct", bouts: "end", trait: "solid", opacite: 100, taille: "normal", epaisseur: "thin" };
-const TAILLES = { rectangle: [160, 80], rounded: [160, 80], ellipse: [100, 100], diamond: [160, 100], note: [160, 80], text: [160, 40] };
+const TAILLES = { rectangle: [160, 80], rounded: [160, 80], ellipse: [100, 100], diamond: [160, 100], note: [160, 80], text: [160, 40], ...Object.fromEntries(SYMBOLES.map((s) => [s.shape, [100, 100]])) };
 // Clé du document de chaque choix de la boîte à outils, et sortes d'objets qu'il concerne :
 // « boite », « texte » (la forme « Texte »), « lien » et « trait » (flèches libres, et choix d'un nouveau lien).
 const CLES_STYLE = { couleur: "color", opacite: "opacity", taille: "textSize", trace: "route", bouts: "ends", trait: "line", epaisseur: "weight" };
@@ -50,6 +50,8 @@ const avecTexte = (o, text, spans) => (spans.length > 0 || o.spans ? { ...o, tex
 
 function nomBoite(boite) {
   const texte = boite.text.split("\n").map((l) => l.trim()).filter(Boolean).join(" ");
+  const symbole = SYMBOLES.find((s) => s.shape === boite.shape);
+  if (symbole) return texte ? `${symbole.nom} : ${texte}` : symbole.nom;
   return texte || "Boîte vide";
 }
 
@@ -101,7 +103,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     boxes: doc.boxes.map((x) => (x.id === id ? avecTexte(x, text, spans) : x)),
     links: doc.links.map((x) => (x.id === id ? avecTexte(x, text, spans) : x)),
   });
-  const nomSaisie = (o, text) => (boite(o.id) ? nomBoite({ text }) : nomLien({ ...o, text }));
+  const nomSaisie = (o, text) => (boite(o.id) ? nomBoite({ ...boite(o.id), text }) : nomLien({ ...o, text }));
   // Historique (REQ-145) : les documents d'avant (100 au plus) et ceux à refaire.
   let passes = [];
   let aRefaire = [];
@@ -337,7 +339,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     afficherOutils();
   }
 
-  const sorte = (o) => (boite(o.id) ? (o.shape === "text" ? "texte" : "boite") : estLien(o.id) ? "lien" : "trait");
+  const sorte = (o) => (boite(o.id) ? (o.shape === "text" || estSymbole(o) ? "texte" : "boite") : estLien(o.id) ? "lien" : "trait");
   const cibles = () => (saisie !== null ? [saisie] : choisis).map(objet).filter(Boolean);
   // Les choix de style d'une sorte d'objet qui diffèrent de leur valeur par défaut.
   function styleChoisi(s) {
@@ -389,7 +391,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       ? { id, x: rect.x, y: rect.y, width, height, text: "" }
       : { id, x: Math.round(centreX - width / 2), y: Math.round(centreY - height / 2), width, height, text: "" };
     if (choix.forme !== "rectangle") b.shape = choix.forme;
-    Object.assign(b, styleChoisi(choix.forme === "text" ? "texte" : "boite"));
+    Object.assign(b, styleChoisi(choix.forme === "text" || estSymbole({ shape: choix.forme }) ? "texte" : "boite"));
     appliquer({ ...doc, boxes: [...doc.boxes, b] });
     choix.outil = "choisir";
     commencerSaisie(id);

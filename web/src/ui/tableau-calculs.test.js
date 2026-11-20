@@ -448,3 +448,7 @@ describe("cas communs avec le tracé Rust (src/agent/jdiag_traces.json)", () => 
     }
   });
 });
+
+test("REQ149_AC6_zone_de_texte_d_un_symbole_bande_des_deux_cinquiemes_du_bas_marges_de_8_px", () => {
+  expect(zoneTexte({ ...boite(10, 20, 100, 100), shape: "database" })).toEqual({ x: 18, y: 80, width: 84, height: 40 });
+});

@@ -1,5 +1,6 @@
 import { rendreTexte } from "./tableau-texte.js";
-import { connecteursAffiches, epaisseur, geometrieLien, milieuTrace, pointe, retraitPointes, tirets, trace, zoneTexte } from "./tableau-calculs.js";
+import { icone } from "./icones.js";
+import { connecteursAffiches, epaisseur, estSymbole, geometrieLien, milieuTrace, pointe, retraitPointes, tirets, trace, zoneTexte } from "./tableau-calculs.js";
 
 // C-018 : le SVG d'une boîte, d'un lien, d'une flèche libre et des poignées. Fonctions sans état : le choix,
 // la saisie et les gestes restent dans `tableau.js`, qui passe ici ce qu'il faut pour dessiner.
@@ -30,17 +31,18 @@ function contour(b) {
 // `texte` : le nœud du texte (affiché ou en saisie), posé sur la zone inscrite de la forme.
 export function dessinBoite(b, { id, nom, classe, texte }) {
   const forme = b.shape ?? "rectangle";
+  const symbole = estSymbole(b);
   const g = svg("g", { id, "data-id": b.id, role: "group", "aria-roledescription": "boîte", "aria-label": nom });
   const weight = b.weight ?? "thin";
   const line = b.line ?? "solid";
   // La forme « Texte » n'a ni contour ni fond : ni épaisseur ni trait.
-  const classes = [`boite forme-${forme} couleur-${b.color ?? "default"}${forme === "text" ? "" : ` epaisseur-${weight} ligne-${line}`}`];
+  const classes = [`boite forme-${forme}${symbole ? " forme-symbole" : ""} couleur-${b.color ?? "default"}${forme === "text" || symbole ? "" : ` epaisseur-${weight} ligne-${line}`}`];
   if (b.textSize) classes.push(`taille-${b.textSize}`);
   if (b.opacity === 0) classes.push("opacite-0");
   g.setAttribute("class", classes.join(" ") + classe);
   const principale = contour(b);
   principale.setAttribute("class", "forme");
-  if (b.opacity !== undefined && forme !== "text") principale.setAttribute("fill-opacity", String(b.opacity / 100));
+  if (b.opacity !== undefined && forme !== "text" && !symbole) principale.setAttribute("fill-opacity", String(b.opacity / 100));
   g.append(principale);
   let pli = null;
   if (forme === "note") {
@@ -49,13 +51,23 @@ export function dessinBoite(b, { id, nom, classe, texte }) {
   }
   const pas = tirets(line, epaisseur("boite", weight));
   for (const e of [principale, pli]) {
-    if (!e || !pas || forme === "text") continue;
+    if (!e || !pas || forme === "text" || symbole) continue;
     e.setAttribute("stroke-dasharray", pas);
     if (line === "dotted") e.setAttribute("stroke-linecap", "round");
   }
   const sur = contour(b);
   sur.setAttribute("class", "surcouche");
   g.append(sur);
+  if (symbole) {
+    // Le dessin : un carré dans la bande des trois cinquièmes du haut, à ses proportions, centré.
+    const cote = 0.8 * Math.min(b.width, 0.6 * b.height);
+    const d = icone(`symbole-${forme}`, cote);
+    d.setAttribute("class", "symbole-dessin");
+    d.setAttribute("x", String(b.x + (b.width - cote) / 2));
+    d.setAttribute("y", String(b.y + 0.3 * b.height - cote / 2));
+    d.setAttribute("stroke-width", "1.5");
+    g.append(d);
+  }
   const zone = zoneTexte(b);
   svg("foreignObject", { x: zone.x, y: zone.y, width: zone.width, height: zone.height }, g).append(texte);
   return g;
