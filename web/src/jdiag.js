@@ -39,10 +39,26 @@ const STYLE_BOITE = {
   weight: EPAISSEURS,
   opacity: [100, 75, 50, 25, 0],
   textSize: ["normal", "small", "large", "xlarge"],
+  align: ["center", "left", "right"],
+  valign: ["middle", "top", "bottom"],
 };
 const STYLE_TRAIT = { route: ["direct", "orthogonal", "curved"], ends: ["end", "none", "start", "both"], line: TRAITS, color: COULEURS, weight: EPAISSEURS };
 const STYLES_PARTIE = ["bold", "italic", "underline", "strike"];
 const TAILLES_TEXTE = STYLE_BOITE.textSize;
+const NOMS_SYMBOLES = new Set(SYMBOLES.map((s) => s.shape));
+
+// Valeur par défaut d'une clé de style d'une boîte : la première, sauf `valign` d'un symbole (REQ-150).
+function defautBoite(objet, cle, valeurs) {
+  return cle === "valign" && NOMS_SYMBOLES.has(objet.shape) ? "top" : valeurs[0];
+}
+
+// Position effective du texte d'une boîte : `{ align, valign }`, défaut de sa forme compris (REQ-150).
+export function positionTexte(boite) {
+  return {
+    align: boite.align ?? STYLE_BOITE.align[0],
+    valign: boite.valign ?? defautBoite(boite, "valign", STYLE_BOITE.valign),
+  };
+}
 const COTES = ["top", "right", "bottom", "left", "center"];
 
 function estObjet(v) {
@@ -54,7 +70,7 @@ function typeOk(cle, v) {
   return typeof v === "string";
 }
 
-function copier(objet, cles, styles) {
+function copier(objet, cles, styles, defaut = (o, c, v) => v[0]) {
   if (!estObjet(objet)) return null;
   const copie = {};
   for (const cle of cles) {
@@ -62,7 +78,7 @@ function copier(objet, cles, styles) {
     copie[cle] = objet[cle];
   }
   for (const [cle, valeurs] of Object.entries(styles)) {
-    const v = objet[cle] === undefined ? valeurs[0] : objet[cle];
+    const v = objet[cle] === undefined ? defaut(copie, cle, valeurs) : objet[cle];
     if (!valeurs.includes(v)) return null;
     copie[cle] = v;
   }
@@ -146,7 +162,7 @@ export function lireJdiag(texte) {
   const ids = new Set();
   const boxes = [];
   for (const b of brut.boxes) {
-    const boite = copier(b, CLES_BOITE, STYLE_BOITE);
+    const boite = copier(b, CLES_BOITE, STYLE_BOITE, defautBoite);
     if (!boite || ids.has(boite.id)) return null;
     boite.spans = normaliserSpans(boite.text, b.spans);
     if (!boite.spans) return null;
@@ -182,10 +198,10 @@ export function lireJdiag(texte) {
 }
 
 // Clés à écrire : les requises, puis chaque clé facultative qui diffère de sa valeur par défaut.
-function clesEcrites(objet, requises, styles, cotes) {
+function clesEcrites(objet, requises, styles, cotes, defaut = (o, c, v) => v[0]) {
   const cles = [...requises];
   for (const cle of Object.keys(styles)) {
-    if (objet[cle] !== undefined && objet[cle] !== styles[cle][0]) cles.push(cle);
+    if (objet[cle] !== undefined && objet[cle] !== defaut(objet, cle, styles[cle])) cles.push(cle);
   }
   if (cotes && objet.fromSide && objet.toSide) {
     cles.splice(requises.length, 0, "fromSide", "toSide");
@@ -216,7 +232,7 @@ function spansEcrits(o) {
 
 function ligneBoite(o) {
   const b = spansEcrits(o);
-  const cles = clesEcrites(b, CLES_BOITE, STYLE_BOITE, false);
+  const cles = clesEcrites(b, CLES_BOITE, STYLE_BOITE, false, defautBoite);
   if (b.spans.length > 0) cles.splice(CLES_BOITE.length, 0, "spans");
   return ligne(b, cles);
 }

@@ -80,7 +80,7 @@ fn def(nom: &str, description: &str, proprietes: Value, requis: &[&str]) -> DefO
 }
 
 const DESCRIPTION_WHITEBOARD: &str = "Create or replace a whiteboard file (.jdiag), with its parent folders. The whiteboard is refused, and nothing written, if it is not valid. Required keys: version (1), boxes, links; arrows (free arrows) is optional. Box: id, x, y (top-left corner, integer pixels), width, height (integers), text (lines separated by \\n), spans (optional parts of the text with their own style). Link: id, from, to (box ids), text (optional label shown on the link, with spans and textSize). Free arrow: id, x1, y1 (start), x2, y2 (end), integers. Ids are unique across all objects: b<n> for boxes, l<n> for links, a<n> for arrows, n starting at 1. Optional keys and their allowed values, the first one being the default: ";
-const FIN_DESCRIPTION_WHITEBOARD: &str = ". A new box is 160x80 (circle 100x100, diamond 160x100, text 160x40). A link may give fromSide and toSide together (top, right, bottom, left, center (the box center; the line stops at its border)). A span is {start, end, bold, italic, underline, strike, color}: start and end are positions in characters (not bytes), end excluded, spans must not overlap, and a link label needs a text before its spans. Lists go from the lowest object to the highest. To change a whiteboard, read it with whiteboard_read, then write it whole. The result of whiteboard_write lists layout warnings (estimated sizes; the file is written anyway): overlapping boxes, links over boxes, crossing or overlapping links, texts that overlap or overflow; fix them by moving or enlarging boxes or changing fromSide, toSide or route, then write again.";
+const FIN_DESCRIPTION_WHITEBOARD: &str = ". align places the box text horizontally and valign vertically; the default valign is middle, except top for symbol shapes (database to firewall); they apply to boxes only. A new box is 160x80 (circle 100x100, diamond 160x100, text 160x40). A link may give fromSide and toSide together (top, right, bottom, left, center (the box center; the line stops at its border)). A span is {start, end, bold, italic, underline, strike, color}: start and end are positions in characters (not bytes), end excluded, spans must not overlap, and a link label needs a text before its spans. Lists go from the lowest object to the highest. To change a whiteboard, read it with whiteboard_read, then write it whole. The result of whiteboard_write lists layout warnings (estimated sizes; the file is written anyway): overlapping boxes, links over boxes, crossing or overlapping links, texts that overlap or overflow; fix them by moving or enlarging boxes or changing fromSide, toSide or route, then write again.";
 
 fn valeurs_texte(style: &jdiag::Style) -> String {
     style
@@ -1045,6 +1045,12 @@ mod tests {
             boite["textSize"]["enum"],
             json!(["normal", "small", "large", "xlarge"])
         );
+        assert_eq!(boite["align"]["enum"], json!(["center", "left", "right"]));
+        assert_eq!(boite["valign"]["enum"], json!(["middle", "top", "bottom"]));
+        assert!(ecriture
+            .description
+            .contains("align: center | left | right"));
+        assert!(ecriture.description.contains("top for symbol shapes"));
         assert_eq!(boite["shape"]["enum"][5], "text");
         let formes = boite["shape"]["enum"].as_array().unwrap();
         assert_eq!(formes.len(), 26);
@@ -1122,6 +1128,51 @@ mod tests {
             fs::read_to_string(d.join("docs/plan.jdiag")).unwrap(),
             STYLES9
         );
+    }
+
+    #[tokio::test]
+    async fn REQ150_AC7_position_du_texte() {
+        let d = dossier("wb150");
+        let c = ctx(&d);
+        let boite = |id: &str, extra: &str| {
+            format!(
+                "{{\"id\": \"{id}\", \"x\": 0, \"y\": 0, \"width\": 100, \"height\": 100, \"text\": \"a\"{extra}}}"
+            )
+        };
+        let attendu = |boites: Vec<String>| {
+            format!(
+                "{{\n  \"version\": 1,\n  \"boxes\": [\n    {}\n  ],\n  \"links\": []\n}}\n",
+                boites.join(",\n    ")
+            )
+        };
+        let entree = r#"{"version":1,"links":[],"boxes":[
+            {"id":"b1","x":0,"y":0,"width":100,"height":100,"text":"a","valign":"bottom","align":"right","textSize":"large"},
+            {"id":"b2","x":0,"y":0,"width":100,"height":100,"text":"a","shape":"database","valign":"top","align":"center"},
+            {"id":"b3","x":0,"y":0,"width":100,"height":100,"text":"a","shape":"database","valign":"middle"},
+            {"id":"b4","x":0,"y":0,"width":100,"height":100,"text":"a","valign":"middle","align":"center"}]}"#;
+        let r = ecrire_wb(&c, "p.jdiag", entree).await;
+        assert!(!r.echec, "{r:?}");
+        let voulu = attendu(vec![
+            boite(
+                "b1",
+                ", \"textSize\": \"large\", \"align\": \"right\", \"valign\": \"bottom\"",
+            ),
+            boite("b2", ", \"shape\": \"database\""),
+            boite("b3", ", \"shape\": \"database\", \"valign\": \"middle\""),
+            boite("b4", ""),
+        ]);
+        assert_eq!(fs::read_to_string(d.join("p.jdiag")).unwrap(), voulu);
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "p.jdiag"})).await;
+        assert_eq!(r.contenu, voulu);
+        // Sur un lien ou une flèche libre, les deux clés sont ignorées et non réécrites.
+        let avec = r#"{"version":1,"boxes":[{"id":"b1","x":40,"y":80,"width":160,"height":80,"text":"Début"},
+            {"id":"b2","x":300,"y":80,"width":160,"height":80,"text":"Fin"}],
+            "links":[{"id":"l1","from":"b1","to":"b2","align":"left","valign":"top"}],
+            "arrows":[{"id":"a1","x1":1,"y1":1,"x2":2,"y2":2,"align":"left","valign":"bottom"}]}"#;
+        let r = ecrire_wb(&c, "q.jdiag", avec).await;
+        assert!(!r.echec, "{r:?}");
+        let ecrit = fs::read_to_string(d.join("q.jdiag")).unwrap();
+        assert!(!ecrit.contains("align"), "{ecrit}");
     }
 
     #[tokio::test]
@@ -1314,6 +1365,14 @@ mod tests {
             (
                 r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":"","textSize":"tiny"}],"links":[]}"#,
                 "boxes[0]: invalid textSize.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":"","align":"justify"}],"links":[]}"#,
+                "boxes[0]: invalid align.",
+            ),
+            (
+                r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":"","valign":3}],"links":[]}"#,
+                "boxes[0]: invalid valign.",
             ),
             (
                 r#"{"version":1,"boxes":[{"id":"b1","x":1,"y":1,"width":1,"height":1,"text":""}],"links":[{"id":"l1","from":"b1","to":"b1","color":"pink"}]}"#,

@@ -73,7 +73,17 @@ pub fn style_boite() -> Style {
             vec![json!(100), json!(75), json!(50), json!(25), json!(0)],
         ),
         ("textSize", textes(&["normal", "small", "large", "xlarge"])),
+        ("align", textes(&["center", "left", "right"])),
+        ("valign", textes(&["middle", "top", "bottom"])),
     ]
+}
+
+/// Un symbole : sa position verticale par défaut est `"top"` (REQ-150).
+fn est_symbole(shape: Option<&Value>) -> bool {
+    let formes = &style_boite()[0].1;
+    shape
+        .and_then(|s| formes.iter().position(|f| f == s))
+        .is_some_and(|i| i >= 6)
 }
 
 pub fn style_trait() -> Style {
@@ -127,7 +137,12 @@ fn objet(
         if !valeurs.contains(&x) {
             return Err(format!("{pre}: invalid {cle}."));
         }
-        if x != valeurs[0] {
+        let defaut = if *cle == "valign" && est_symbole(o.get("shape")) {
+            json!("top")
+        } else {
+            valeurs[0].clone()
+        };
+        if x != defaut {
             sortie.push((cle.to_string(), x));
         }
     }

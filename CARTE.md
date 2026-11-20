@@ -30,7 +30,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/agent/outils_config.rs — outils de l'agent qui modifient la configuration de Yaide — definitions, lancer, lire_interface
 - src/agent/mcp.rs — serveurs MCP (rmcp, stdio), `mcp.json` — preparer, appeler, lister_serveurs
 - src/agent/web.rs — recherche web (DuckDuckGo) et récupération de pages — chercher, recuperer, html_en_texte
-- src/agent/jdiag.rs — lecture et écriture des whiteboards par l'agent — relire, en_texte
+- src/agent/jdiag.rs — lecture et écriture des whiteboards par l'agent (dont `align`/`valign`, REQ-150) — relire, en_texte
 - src/agent/jdiag_controle.rs — avertissements de mise en page de `whiteboard_write` (boîtes, liens, textes, zone de texte des symboles ; REQ-148, REQ-149) — avertissements, bloc
 - src/agent/jdiag_trace.rs — tracé à 100 % d'un lien de whiteboard (même calcul que `geometrieLien`), cas communs dans `jdiag_traces.json` — trace, milieu
 
@@ -52,7 +52,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/reglages-interface.js — `.yaide/interface.json` — analyser, charger, serialiser
 - web/src/couleurs-markdown.js — couleurs réglables du rendu markdown — analyser, appliquer, charger
 - web/src/formatage.js — formatage du document ouvert — formatable, formater
-- web/src/jdiag.js — lecture et écriture du format `.jdiag` — lireJdiag, ecrireJdiag, SYMBOLES (les vingt symboles, REQ-149)
+- web/src/jdiag.js — lecture et écriture du format `.jdiag` — lireJdiag, ecrireJdiag, positionTexte (clés `align`/`valign`, REQ-150), SYMBOLES (les vingt symboles, REQ-149)
 - web/src/mermaid.js — bibliothèque mermaid, bundle à part chargé au premier diagramme
 - web/src/ui/ — design system : composants (`bouton`, `champ`, `menu`, `dialogue`, `onglets`, `liste`, `message`, `cadre`, `poignee`, `info-bulle`, `indication`, `compteur`, `avatar`, `image`) ; `dialogueChoix` (dialogue « Choix sans bouton principal » avec la `grille` de `liste`, REQ-149) ; `icones.js` (dont `shapes` et les vingt `symbole-<shape>`, REQ-149) ; `tokens.css`, `composants.css`, `theme.js`, `polices/`
 - web/src/ui/apercu.js, apercu-html.js, hybride.js, diagramme.js — rendu markdown, aperçu HTML, mode hybride, mermaid — rendreMarkdown, apercuHtml, decorationsHybride

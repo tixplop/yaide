@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { avecExtensionJdiag, ecrireJdiag, idLibre, lireJdiag, normaliserSpans, SYMBOLES } from "./jdiag.js";
+import { avecExtensionJdiag, ecrireJdiag, idLibre, lireJdiag, normaliserSpans, positionTexte, SYMBOLES } from "./jdiag.js";
 
 const VIDE = '{\n  "version": 1,\n  "boxes": [],\n  "links": []\n}\n';
 const DEUX =
@@ -234,5 +234,43 @@ describe("REQ147_AC10 : texte de lien blanc", () => {
     expect(f).not.toContain("spans");
     d.links[0].text = " par mail ";
     expect(ecrireJdiag(d)).toContain('"text": " par mail "');
+  });
+
+  const boiteJ = (extra) => `{"id": "b1", "x": 0, "y": 0, "width": 100, "height": 100, "text": "a"${extra}}`;
+  const docJ = (...boites) => `{\n  "version": 1,\n  "boxes": [\n    ${boites.join(",\n    ")}\n  ],\n  "links": []\n}\n`;
+
+  test("REQ150_AC7 : align et valign, défaut selon la forme, écriture à l'identique", () => {
+    const ecrit = docJ(boiteJ(', "textSize": "large", "align": "right", "valign": "bottom"'), boiteJ(', "shape": "database"').replace("b1", "b2"), boiteJ(', "shape": "database", "valign": "middle"').replace("b1", "b3"));
+    const doc = lireJdiag(ecrit);
+    expect(doc.boxes[0]).toMatchObject({ align: "right", valign: "bottom" });
+    expect(doc.boxes[1]).toMatchObject({ align: "center", valign: "top" });
+    expect(doc.boxes[2]).toMatchObject({ align: "center", valign: "middle" });
+    expect(ecrireJdiag(doc)).toBe(ecrit);
+    // Valeur par défaut de la forme écrite à la main : relue, non réécrite.
+    const explicite = docJ(boiteJ(', "align": "center", "valign": "middle"'), boiteJ(', "shape": "cloud", "valign": "top"').replace("b1", "b2"));
+    expect(ecrireJdiag(lireJdiag(explicite))).toBe(docJ(boiteJ(""), boiteJ(', "shape": "cloud"').replace("b1", "b2")));
+    // Un rectangle en haut écrit "top", un symbole en bas écrit "bottom".
+    expect(ecrireJdiag(lireJdiag(docJ(boiteJ(', "valign": "top"'))))).toContain('"valign": "top"');
+    expect(ecrireJdiag({ version: 1, links: [], boxes: [{ id: "b1", x: 0, y: 0, width: 1, height: 1, text: "", shape: "cloud", valign: "top" }] })).not.toContain("valign");
+  });
+
+  test("REQ150_AC7 : positionTexte donne la position effective", () => {
+    expect(positionTexte({ shape: "rectangle" })).toEqual({ align: "center", valign: "middle" });
+    expect(positionTexte({})).toEqual({ align: "center", valign: "middle" });
+    expect(positionTexte({ shape: "server" })).toEqual({ align: "center", valign: "top" });
+    expect(positionTexte({ shape: "server", valign: "middle", align: "left" })).toEqual({ align: "left", valign: "middle" });
+    expect(positionTexte({ shape: "ellipse", valign: "bottom", align: "right" })).toEqual({ align: "right", valign: "bottom" });
+  });
+
+  test.each([['"align": "justify"'], ['"align": 1'], ['"valign": "center"'], ['"valign": null']])("REQ150_AC7 : boîte illisible %s", (extra) => {
+    expect(lireJdiag(docJ(boiteJ(", " + extra)))).toBeNull();
+  });
+
+  test("REQ150_AC7 : align et valign d'un lien ou d'une flèche libre sont ignorés", () => {
+    const texte =
+      '{"version": 1, "boxes": [{"id": "b1", "x": 0, "y": 0, "width": 1, "height": 1, "text": ""}], "links": [{"id": "l1", "from": "b1", "to": "b1", "align": "left", "valign": "top"}], "arrows": [{"id": "a1", "x1": 0, "y1": 0, "x2": 1, "y2": 1, "align": "zzz"}]}';
+    const doc = lireJdiag(texte);
+    expect(doc).not.toBeNull();
+    expect(ecrireJdiag(doc)).not.toContain("align");
   });
 });

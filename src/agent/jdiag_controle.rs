@@ -452,6 +452,20 @@ mod tests {
     }
 
     #[test]
+    fn REQ150_AC7_position_sans_effet_sur_les_avertissements() {
+        let avec = json!({"valign": "bottom", "align": "right"});
+        assert_eq!(
+            texte(160, 80, "a\nb\nc\nd", avec.clone()),
+            texte(160, 80, "a\nb\nc\nd", json!({}))
+        );
+        assert_eq!(
+            texte(160, 80, "a\nb\nc\nd", avec),
+            ["- Box b1: text overflows (4 lines, 3 fit); a height of 84 would fit it."]
+        );
+        assert!(texte(160, 80, "a\nb", json!({"valign": "top", "align": "left"})).is_empty());
+    }
+
+    #[test]
     fn REQ148_AC5_texte_des_boites() {
         let nul = json!({});
         assert_eq!(
