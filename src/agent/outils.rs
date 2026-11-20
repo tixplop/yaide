@@ -79,7 +79,7 @@ fn def(nom: &str, description: &str, proprietes: Value, requis: &[&str]) -> DefO
     }
 }
 
-const DESCRIPTION_WHITEBOARD: &str = "Create or replace a whiteboard file (.jdiag), with its parent folders. The whiteboard is refused, and nothing written, if it is not valid. Required keys: version (1), boxes, links; arrows (free arrows) is optional. Box: id, x, y (top-left corner, integer pixels), width, height (integers), text (lines separated by \\n), spans (optional parts of the text with their own style). Link: id, from, to (box ids), text (optional label shown on the link, with spans and textSize). Free arrow: id, x1, y1 (start), x2, y2 (end), integers. Ids are unique across all objects: b<n> for boxes, l<n> for links, a<n> for arrows, n starting at 1. Optional keys and their allowed values, the first one being the default: ";
+const DESCRIPTION_WHITEBOARD: &str = "Create or replace a whiteboard file (.jdiag), with its parent folders. The whiteboard is refused, and nothing written, if it is not valid. Required keys: version (1), model, boxes, links; arrows (free arrows) is optional. model is a short text that says the essentials of the diagram: one line per element, then one line per relation (name the boxes by their id if useful), with no position and no style; it is required and must be updated at every write, so that it matches the drawing. Box: id, x, y (top-left corner, integer pixels), width, height (integers), text (lines separated by \\n), spans (optional parts of the text with their own style). Link: id, from, to (box ids), text (optional label shown on the link, with spans and textSize). Free arrow: id, x1, y1 (start), x2, y2 (end), integers. Ids are unique across all objects: b<n> for boxes, l<n> for links, a<n> for arrows, n starting at 1. Optional keys and their allowed values, the first one being the default: ";
 const FIN_DESCRIPTION_WHITEBOARD: &str = ". align places the box text horizontally and valign vertically; the default valign is middle, except top for symbol shapes (database to firewall); they apply to boxes only. A new box is 160x80 (circle 100x100, diamond 160x100, text 160x40). A link may give fromSide and toSide together (top, right, bottom, left, center (the box center; the line stops at its border)). A span is {start, end, bold, italic, underline, strike, color}: start and end are positions in characters (not bytes), end excluded, spans must not overlap, and a link label needs a text before its spans. Lists go from the lowest object to the highest. To change a whiteboard, read it with whiteboard_read, then write it whole. The result of whiteboard_write lists layout warnings (estimated sizes; the file is written anyway): overlapping boxes, links over boxes, crossing or overlapping links, texts that overlap or overflow; fix them by moving or enlarging boxes or changing fromSide, toSide or route, then write again.";
 
 fn valeurs_texte(style: &jdiag::Style) -> String {
@@ -174,11 +174,12 @@ fn schema_whiteboard() -> Value {
         "description": "The whole whiteboard",
         "properties": {
             "version": {"type": "integer", "enum": [1]},
+            "model": {"type": "string", "description": "Short text model of the diagram: one line per element, then one per relation; no position, no style"},
             "boxes": {"type": "array", "items": boite},
             "links": {"type": "array", "items": lien},
             "arrows": {"type": "array", "items": libre},
         },
-        "required": ["version", "boxes", "links"],
+        "required": ["version", "model", "boxes", "links"],
     })
 }
 
@@ -206,8 +207,8 @@ pub fn definitions() -> Vec<DefOutil> {
         ),
         def(
             "whiteboard_read",
-            "Read a whiteboard file (.jdiag) of the project and return it in the whiteboard format (see whiteboard_write), as Yaide writes it. An empty file is an empty whiteboard.",
-            json!({"path": texte("Whiteboard path, relative to the project, ending with .jdiag")}),
+            "Read a whiteboard file (.jdiag) of the project and return it in the whiteboard format (see whiteboard_write), as Yaide writes it. An empty file is an empty whiteboard. To understand a diagram, first read its model alone with model_only: true; read the whole whiteboard to change it. The model may be older than a change made by hand in Yaide.",
+            json!({"path": texte("Whiteboard path, relative to the project, ending with .jdiag"), "model_only": json!({"type": "boolean", "description": "true to return only the text model (default false: the whole whiteboard)"})}),
             &["path"],
         ),
         def(
@@ -421,6 +422,10 @@ async fn lancer(nom: &str, a: &Value, ctx: &Contexte) -> Result<Resultat, String
         "whiteboard_read" => {
             let chemin = chemin_jdiag(a)?;
             let (texte, _) = fichiers::lire(projet, chemin).map_err(phrase)?;
+            if a["model_only"].as_bool() == Some(true) {
+                return Ok(ok(jdiag::modele_seul(&texte)?
+                    .unwrap_or_else(|| format!("{chemin} has no model."))));
+            }
             jdiag::relire(&texte).map(ok)
         }
         "whiteboard_write" => {
@@ -429,6 +434,14 @@ async fn lancer(nom: &str, a: &Value, ctx: &Contexte) -> Result<Resultat, String
                 return Err("Missing or invalid argument: whiteboard.".into());
             }
             let (texte, [b, l, f]) = jdiag::en_texte(&a["whiteboard"])?;
+            if a["whiteboard"]["model"]
+                .as_str()
+                .is_none_or(|m| m.trim().is_empty())
+            {
+                return Err(
+                    "model: missing or empty; give a short text model of the diagram.".into(),
+                );
+            }
             if fichiers::resoudre(projet, chemin).map_err(phrase)?.is_dir() {
                 return Err("The path is a directory.".into());
             }
@@ -1018,8 +1031,20 @@ mod tests {
     const STYLES6: &str = "{\n  \"version\": 1,\n  \"boxes\": [\n    {\"id\": \"b1\", \"x\": 40, \"y\": 80, \"width\": 100, \"height\": 100, \"text\": \"Début\", \"shape\": \"ellipse\", \"color\": \"green\"},\n    {\"id\": \"b2\", \"x\": 300, \"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Fin\"}\n  ],\n  \"links\": [\n    {\"id\": \"l1\", \"from\": \"b1\", \"to\": \"b2\", \"fromSide\": \"right\", \"toSide\": \"left\", \"route\": \"orthogonal\", \"ends\": \"both\", \"line\": \"dashed\"}\n  ],\n  \"arrows\": [\n    {\"id\": \"a1\", \"x1\": 100, \"y1\": 300, \"x2\": 300, \"y2\": 300, \"ends\": \"none\"}\n  ]\n}\n";
     const STYLES9: &str = "{\n  \"version\": 1,\n  \"boxes\": [\n    {\"id\": \"b1\", \"x\": 40, \"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Début\", \"color\": \"blue\", \"line\": \"dashed\", \"weight\": \"thick\", \"opacity\": 50, \"textSize\": \"large\"},\n    {\"id\": \"b2\", \"x\": 300, \"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Fin\"}\n  ],\n  \"links\": [\n    {\"id\": \"l1\", \"from\": \"b1\", \"to\": \"b2\", \"color\": \"red\", \"weight\": \"medium\"}\n  ],\n  \"arrows\": [\n    {\"id\": \"a1\", \"x1\": 100, \"y1\": 300, \"x2\": 300, \"y2\": 300, \"line\": \"dotted\", \"color\": \"green\", \"weight\": \"thick\"}\n  ]\n}\n";
 
+    /// Le texte attendu d'un fichier écrit par `whiteboard_write` : le modèle `m` après `version`.
+    fn avec_m(s: &str) -> String {
+        s.replacen(
+            "\"version\": 1,\n",
+            "\"version\": 1,\n  \"model\": \"m\",\n",
+            1,
+        )
+    }
+
     async fn ecrire_wb(c: &Contexte, chemin: &str, texte: &str) -> Resultat {
-        let w: Value = serde_json::from_str(texte).unwrap();
+        let mut w: Value = serde_json::from_str(texte).unwrap();
+        if w.get("model").is_none() {
+            w["model"] = json!("m");
+        }
         lancer_outil(
             c,
             "whiteboard_write",
@@ -1038,7 +1063,10 @@ mod tests {
         let ecriture = &defs[4];
         assert_eq!(ecriture.schema["required"], json!(["path", "whiteboard"]));
         let wb = &ecriture.schema["properties"]["whiteboard"];
-        assert_eq!(wb["required"], json!(["version", "boxes", "links"]));
+        assert_eq!(
+            wb["required"],
+            json!(["version", "model", "boxes", "links"])
+        );
         let boite = &wb["properties"]["boxes"]["items"]["properties"];
         assert_eq!(boite["opacity"]["enum"], json!([100, 75, 50, 25, 0]));
         assert_eq!(
@@ -1080,6 +1108,171 @@ mod tests {
         }
     }
 
+    const MODELE: &str = "Flux : Début → Fin.\nUne seule étape.";
+
+    async fn ecrire_avec(c: &Contexte, chemin: &str, modele: Value) -> Resultat {
+        let mut w: Value = serde_json::from_str(DEUX).unwrap();
+        w.as_object_mut().unwrap().remove("model");
+        if !modele.is_null() {
+            w["model"] = modele;
+        }
+        lancer_outil(
+            c,
+            "whiteboard_write",
+            json!({"path": chemin, "whiteboard": w}),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn REQ151_AC1_model_ecrit_apres_version_et_relu() {
+        let d = dossier("wb151a");
+        let c = ctx(&d);
+        let attendu = avec_m(DEUX).replace("\"m\"", &serde_json::to_string(MODELE).unwrap());
+        assert!(attendu.contains("\"model\": \"Flux : Début → Fin.\\nUne seule étape.\","));
+        let r = ecrire_avec(&c, "a.jdiag", json!(MODELE)).await;
+        assert!(!r.echec, "{r:?}");
+        assert_eq!(fs::read_to_string(d.join("a.jdiag")).unwrap(), attendu);
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "a.jdiag"})).await;
+        assert_eq!(r, ok(attendu));
+        // `model` donné après `links`, avec guillemet, antislash et émoji.
+        let special = "a\"b\\c 😀";
+        let mut w: Value = serde_json::from_str(DEUX).unwrap();
+        w.as_object_mut().unwrap().remove("model");
+        let mut texte = serde_json::to_string(&w).unwrap();
+        texte.pop();
+        texte.push_str(&format!(
+            ",\"model\":{}}}",
+            serde_json::to_string(special).unwrap()
+        ));
+        let w: Value = serde_json::from_str(&texte).unwrap();
+        let r = lancer_outil(
+            &c,
+            "whiteboard_write",
+            json!({"path": "b.jdiag", "whiteboard": w}),
+        )
+        .await;
+        assert!(!r.echec, "{r:?}");
+        let ecrit = fs::read_to_string(d.join("b.jdiag")).unwrap();
+        assert!(ecrit.starts_with(&format!(
+            "{{\n  \"version\": 1,\n  \"model\": {},\n  \"boxes\"",
+            serde_json::to_string(special).unwrap()
+        )));
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "b.jdiag"})).await;
+        assert_eq!(r.contenu, ecrit);
+    }
+
+    #[tokio::test]
+    async fn REQ151_AC2_model_obligatoire_a_l_ecriture() {
+        let d = dossier("wb151b");
+        let c = ctx(&d);
+        fs::write(d.join("a.jdiag"), DEUX).unwrap();
+        let cause = "model: missing or empty; give a short text model of the diagram.";
+        for m in [Value::Null, json!(""), json!("  \n ")] {
+            let r = ecrire_avec(&c, "a.jdiag", m.clone()).await;
+            assert_eq!(r, echec(cause), "{m}");
+            assert_eq!(fs::read_to_string(d.join("a.jdiag")).unwrap(), DEUX);
+        }
+        let r = lancer_outil(
+            &c,
+            "whiteboard_write",
+            json!({"path": "b.jdiag", "whiteboard": {"version": 1, "boxes": [{"id": "b1", "x": 1, "y": 1, "height": 1, "text": ""}], "links": []}}),
+        )
+        .await;
+        assert_eq!(r, echec("boxes[0]: missing or invalid width."));
+        assert!(!d.join("b.jdiag").exists());
+    }
+
+    #[tokio::test]
+    async fn REQ151_AC3_model_non_texte_refuse_par_les_deux_outils() {
+        let d = dossier("wb151c");
+        let c = ctx(&d);
+        fs::write(d.join("a.jdiag"), DEUX).unwrap();
+        for m in [json!(3), json!(["a"])] {
+            let r = ecrire_avec(&c, "a.jdiag", m.clone()).await;
+            assert_eq!(r, echec("model must be a text."), "{m}");
+            assert_eq!(fs::read_to_string(d.join("a.jdiag")).unwrap(), DEUX);
+            let mut w: Value = serde_json::from_str(DEUX).unwrap();
+            w["model"] = m;
+            fs::write(d.join("m.jdiag"), w.to_string()).unwrap();
+            for a in [
+                json!({"path": "m.jdiag"}),
+                json!({"path": "m.jdiag", "model_only": true}),
+            ] {
+                let r = lancer_outil(&c, "whiteboard_read", a).await;
+                assert_eq!(r, echec("model must be a text."));
+            }
+        }
+        let vide = avec_m(DEUX).replace("\"m\"", "\"\"");
+        fs::write(d.join("v.jdiag"), vide).unwrap();
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "v.jdiag"})).await;
+        assert_eq!(r, ok(DEUX.into()));
+    }
+
+    #[tokio::test]
+    async fn REQ151_AC4_model_only() {
+        let d = dossier("wb151d");
+        let c = ctx(&d);
+        ecrire_avec(&c, "docs/a.jdiag", json!(MODELE)).await;
+        let lire = |a: Value| lancer_outil(&c, "whiteboard_read", a);
+        assert_eq!(
+            lire(json!({"path": "docs/a.jdiag", "model_only": true})).await,
+            ok(MODELE.into())
+        );
+        let entier = fs::read_to_string(d.join("docs/a.jdiag")).unwrap();
+        for a in [
+            json!({"path": "docs/a.jdiag", "model_only": false}),
+            json!({"path": "docs/a.jdiag"}),
+        ] {
+            assert_eq!(lire(a).await, ok(entier.clone()));
+        }
+        let sans = DEUX;
+        fs::write(d.join("docs/plan.jdiag"), sans).unwrap();
+        assert_eq!(
+            lire(json!({"path": "docs/plan.jdiag", "model_only": true})).await,
+            ok("docs/plan.jdiag has no model.".into())
+        );
+        fs::write(d.join("vide.jdiag"), "").unwrap();
+        assert_eq!(
+            lire(json!({"path": "vide.jdiag", "model_only": true})).await,
+            ok("vide.jdiag has no model.".into())
+        );
+        fs::write(d.join("x.jdiag"), r#"{"version":2,"boxes":[],"links":[]}"#).unwrap();
+        assert_eq!(
+            lire(json!({"path": "x.jdiag", "model_only": true})).await,
+            echec("version must be 1.")
+        );
+    }
+
+    #[test]
+    fn REQ151_AC5_definitions_model_et_descriptions() {
+        let defs = definitions();
+        let lecture = defs.iter().find(|d| d.nom == "whiteboard_read").unwrap();
+        assert_eq!(lecture.schema["required"], json!(["path"]));
+        assert_eq!(
+            lecture.schema["properties"]["model_only"]["type"],
+            "boolean"
+        );
+        for m in ["model_only", "older than a change made by hand"] {
+            assert!(lecture.description.contains(m), "{m}");
+        }
+        let ecriture = defs.iter().find(|d| d.nom == "whiteboard_write").unwrap();
+        let wb = &ecriture.schema["properties"]["whiteboard"];
+        assert_eq!(wb["properties"]["model"]["type"], "string");
+        assert_eq!(
+            wb["required"],
+            json!(["version", "model", "boxes", "links"])
+        );
+        for m in [
+            "model is a short text",
+            "one line per element",
+            "no position and no style",
+            "required and must be updated at every write",
+        ] {
+            assert!(ecriture.description.contains(m), "{m}");
+        }
+    }
+
     #[tokio::test]
     async fn REQ148_AC1_avertissements_dans_le_resultat() {
         let d = dossier("wb148");
@@ -1095,10 +1288,10 @@ mod tests {
         );
         assert_eq!(
             fs::read_to_string(d.join("docs/plan.jdiag")).unwrap(),
-            proche
+            avec_m(&proche)
         );
         let r = lancer_outil(&c, "whiteboard_read", json!({"path": "docs/plan.jdiag"})).await;
-        assert_eq!(r.contenu, proche);
+        assert_eq!(r.contenu, avec_m(&proche));
         let d = description_whiteboard_write();
         assert!(d.contains("layout warnings (estimated sizes; the file is written anyway)"));
         assert!(d.contains("fromSide, toSide or route"));
@@ -1113,7 +1306,10 @@ mod tests {
             r,
             ok("Wrote docs/plan.jdiag: 2 boxes, 1 links, 0 free arrows.".into())
         );
-        assert_eq!(fs::read_to_string(d.join("docs/plan.jdiag")).unwrap(), DEUX);
+        assert_eq!(
+            fs::read_to_string(d.join("docs/plan.jdiag")).unwrap(),
+            avec_m(DEUX)
+        );
         let r = ecrire_wb(&c, "docs/plan.jdiag", STYLES6).await;
         assert_eq!(
             r,
@@ -1121,12 +1317,12 @@ mod tests {
         );
         assert_eq!(
             fs::read_to_string(d.join("docs/plan.jdiag")).unwrap(),
-            STYLES6
+            avec_m(STYLES6)
         );
         ecrire_wb(&c, "docs/plan.jdiag", STYLES9).await;
         assert_eq!(
             fs::read_to_string(d.join("docs/plan.jdiag")).unwrap(),
-            STYLES9
+            avec_m(STYLES9)
         );
     }
 
@@ -1141,7 +1337,7 @@ mod tests {
         };
         let attendu = |boites: Vec<String>| {
             format!(
-                "{{\n  \"version\": 1,\n  \"boxes\": [\n    {}\n  ],\n  \"links\": []\n}}\n",
+                "{{\n  \"version\": 1,\n  \"model\": \"m\",\n  \"boxes\": [\n    {}\n  ],\n  \"links\": []\n}}\n",
                 boites.join(",\n    ")
             )
         };
@@ -1184,9 +1380,9 @@ mod tests {
             {"id":"b2","x":300,"y":80,"width":160,"height":80,"text":"Fin","weight":"thin","textSize":"normal","color":"default"}],"version":1}"#;
         let r = ecrire_wb(&c, "a.jdiag", desordre).await;
         assert!(!r.echec, "{r:?}");
-        assert_eq!(fs::read_to_string(d.join("a.jdiag")).unwrap(), DEUX);
+        assert_eq!(fs::read_to_string(d.join("a.jdiag")).unwrap(), avec_m(DEUX));
         let texte = "a\"b\\c\nd";
-        let w = json!({"version": 1, "boxes": [{"id": "b1", "x": 1, "y": 2, "width": 3, "height": 4, "text": texte}], "links": []});
+        let w = json!({"version": 1, "model": "m", "boxes": [{"id": "b1", "x": 1, "y": 2, "width": 3, "height": 4, "text": texte}], "links": []});
         lancer_outil(
             &c,
             "whiteboard_write",
@@ -1205,7 +1401,7 @@ mod tests {
     async fn REQ132_AC15_symboles_lus_et_ecrits_a_l_identique() {
         let d = dossier("wb15");
         let c = ctx(&d);
-        let fichier = "{\n  \"version\": 1,\n  \"boxes\": [\n    {\"id\": \"b1\", \"x\": 1, \"y\": 2, \"width\": 100, \"height\": 100, \"text\": \"Clients\", \"shape\": \"database\", \"color\": \"green\"}\n  ],\n  \"links\": []\n}\n";
+        let fichier = "{\n  \"version\": 1,\n  \"model\": \"m\",\n  \"boxes\": [\n    {\"id\": \"b1\", \"x\": 1, \"y\": 2, \"width\": 100, \"height\": 100, \"text\": \"Clients\", \"shape\": \"database\", \"color\": \"green\"}\n  ],\n  \"links\": []\n}\n";
         fs::write(d.join("s.jdiag"), fichier).unwrap();
         let r = lancer_outil(&c, "whiteboard_read", json!({"path": "s.jdiag"})).await;
         let w: Value = serde_json::from_str(&r.contenu).unwrap();
@@ -1239,9 +1435,12 @@ mod tests {
         assert_ne!(centre, STYLES6);
         let r = ecrire_wb(&c, "c.jdiag", &centre).await;
         assert!(!r.echec, "{r:?}");
-        assert_eq!(fs::read_to_string(d.join("c.jdiag")).unwrap(), centre);
+        assert_eq!(
+            fs::read_to_string(d.join("c.jdiag")).unwrap(),
+            avec_m(&centre)
+        );
         let r = lancer_outil(&c, "whiteboard_read", json!({"path": "c.jdiag"})).await;
-        assert_eq!(r, ok(centre.clone()));
+        assert_eq!(r, ok(avec_m(&centre)));
         let milieu = STYLES6.replace("\"toSide\": \"left\"", "\"toSide\": \"middle\"");
         let r = ecrire_wb(&c, "m.jdiag", &milieu).await;
         assert!(
@@ -1279,7 +1478,7 @@ mod tests {
     async fn REQ147_AC10_texte_de_lien_blanc_ecrit_sans_texte() {
         let d = dossier("wb147");
         let c = ctx(&d);
-        let blanc = r#"{"version":1,"boxes":[{"id":"b1","x":40,"y":80,"width":160,"height":80,"text":"Début"},{"id":"b2","x":300,"y":80,"width":160,"height":80,"text":"Fin"}],"links":[{"id":"l1","from":"b1","to":"b2","text":"  \n","spans":[{"start":0,"end":1,"bold":true}]}]}"#;
+        let blanc = r#"{"version":1,"model":"m","boxes":[{"id":"b1","x":40,"y":80,"width":160,"height":80,"text":"Début"},{"id":"b2","x":300,"y":80,"width":160,"height":80,"text":"Fin"}],"links":[{"id":"l1","from":"b1","to":"b2","text":"  \n","spans":[{"start":0,"end":1,"bold":true}]}]}"#;
         let r = lancer_outil(
             &c,
             "whiteboard_write",
@@ -1468,10 +1667,13 @@ mod tests {
         let d = dossier("wb8");
         let c = ctx(&d);
         ecrire_wb(&c, "a.jdiag", SPANS12).await;
-        assert_eq!(fs::read_to_string(d.join("a.jdiag")).unwrap(), SPANS12);
+        assert_eq!(
+            fs::read_to_string(d.join("a.jdiag")).unwrap(),
+            avec_m(SPANS12)
+        );
         let r = lancer_outil(&c, "whiteboard_read", json!({"path": "a.jdiag"})).await;
         assert!(!r.echec);
-        assert_eq!(r.contenu, SPANS12);
+        assert_eq!(r.contenu, avec_m(SPANS12));
         // AC-132-13 : autre ordre, parties qui se touchent, défauts, partie sans style, liste vide.
         let autre = SPANS12
             .replace(
@@ -1479,7 +1681,8 @@ mod tests {
                 "\"spans\": [{\"start\": 9, \"end\": 13, \"strike\": true, \"italic\": true, \"underline\": true, \"bold\": false, \"color\": \"default\"}, {\"start\": 6, \"end\": 8, \"italic\": false}, {\"start\": 2, \"end\": 5, \"bold\": true, \"color\": \"red\"}, {\"start\": 0, \"end\": 2, \"color\": \"red\", \"bold\": true, \"inconnue\": 1}]",
             )
             .replace("\"text\": \"Fin\"}", "\"text\": \"Fin\", \"spans\": []}");
-        let w: Value = serde_json::from_str(&autre).unwrap();
+        let mut w: Value = serde_json::from_str(&autre).unwrap();
+        w["model"] = json!("m");
         let r = lancer_outil(
             &c,
             "whiteboard_write",
@@ -1487,7 +1690,10 @@ mod tests {
         )
         .await;
         assert!(!r.echec, "{r:?}");
-        assert_eq!(fs::read_to_string(d.join("b.jdiag")).unwrap(), SPANS12);
+        assert_eq!(
+            fs::read_to_string(d.join("b.jdiag")).unwrap(),
+            avec_m(SPANS12)
+        );
         fs::write(d.join("c.jdiag"), &autre).unwrap();
         let r = lancer_outil(&c, "whiteboard_read", json!({"path": "c.jdiag"})).await;
         assert_eq!(r.contenu, SPANS12);
@@ -1596,7 +1802,7 @@ mod tests {
         fs::create_dir_all(d.join("dossier.jdiag")).unwrap();
         fs::write(d.join("gros.jdiag"), vec![b' '; 5 * 1024 * 1024 + 1]).unwrap();
         let c = ctx(&d);
-        let w = json!({"version": 1, "boxes": [], "links": []});
+        let w = json!({"version": 1, "model": "m", "boxes": [], "links": []});
         for nom in ["whiteboard_read", "whiteboard_write"] {
             let r = lancer_outil(&c, nom, json!({"whiteboard": w})).await;
             assert_eq!(r, echec("Missing or invalid argument: path."), "{nom}");

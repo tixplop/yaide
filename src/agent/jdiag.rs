@@ -410,6 +410,13 @@ pub fn relire(texte: &str) -> Result<String, String> {
     en_texte(&brut).map(|r| r.0)
 }
 
+/// Texte d'un fichier → le modèle seul, `None` s'il n'y en a pas. Le fichier doit être lisible.
+pub fn modele_seul(texte: &str) -> Result<Option<String>, String> {
+    let relu = relire(texte)?;
+    let brut: Value = serde_json::from_str(&relu).map_err(|_| "The file is not valid JSON.")?;
+    Ok(brut["model"].as_str().map(str::to_string))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

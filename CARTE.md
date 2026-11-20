@@ -30,7 +30,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/agent/outils_config.rs — outils de l'agent qui modifient la configuration de Yaide — definitions, lancer, lire_interface
 - src/agent/mcp.rs — serveurs MCP (rmcp, stdio), `mcp.json` — preparer, appeler, lister_serveurs
 - src/agent/web.rs — recherche web (DuckDuckGo) et récupération de pages — chercher, recuperer, html_en_texte
-- src/agent/jdiag.rs — lecture et écriture des whiteboards par l'agent (dont `align`/`valign`, REQ-150 ; clé `model`, REQ-151) — relire, en_texte
+- src/agent/jdiag.rs — lecture et écriture des whiteboards par l'agent (dont `align`/`valign`, REQ-150 ; clé `model`, REQ-151) — relire, en_texte, modele_seul
 - src/agent/jdiag_controle.rs — avertissements de mise en page de `whiteboard_write` (boîtes, liens, textes, zone de texte des symboles ; REQ-148, REQ-149) — avertissements, bloc
 - src/agent/jdiag_trace.rs — tracé à 100 % d'un lien de whiteboard (même calcul que `geometrieLien`), cas communs dans `jdiag_traces.json` — trace, milieu
 
@@ -113,4 +113,5 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-126 soumettre des fichiers à un agent → web/src/vues/soumission-agent.js
 - REQ-118 formater le document → web/src/formatage.js, vues/principale.js
 - REQ-122, REQ-123 mermaid → web/src/mermaid.js, ui/diagramme.js, ui/apercu.js
+- REQ-151 modèle d'un whiteboard pour les agents (`model` obligatoire dans `whiteboard_write`, `model_only` dans `whiteboard_read`) → src/agent/jdiag.rs (en_texte, modele_seul), outils.rs, web/src/jdiag.js
 - REQ-127 à REQ-150 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, jdiag_trace.rs, jdiag_controle.rs, outils.rs
