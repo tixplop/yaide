@@ -2,12 +2,15 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { expect, test } from "vitest";
+import { SYMBOLES } from "../jdiag.js";
 import { NOMS, icone } from "./icones.js";
 
 const attendues = [
   "files", "search", "branch", "terminal", "square-x", "log-out", "sun", "file-plus", "folder-plus", "pencil", "trash", "eye",
   "x", "plus", "check", "arrow-down", "arrow-up", "folder", "file", "file-code", "md", "chevron",
 ];
+// Les symboles de contenu (REQ-149) sont hors de la règle « deux commandes, deux icônes ».
+const COMMANDES = NOMS.filter((n) => !n.startsWith("symbole-"));
 const retirees = ["git-branch", "circle-plus", "square-terminal", "trash-2", "arrow-down-to-line", "arrow-up-from-line", "git-commit-horizontal"];
 
 test("REQ031_AC1_toutes_les_icones_du_design_system_existent", () => {
@@ -35,8 +38,11 @@ test("REQ036_AC6_icone_de_14_px_dans_une_action_de_ligne_et_13_px_dans_la_fermet
 
 // Exception à AC-031-2 : « Thème clair » et « Thème clair du whiteboard » gardent toutes deux `sun` (REQ-143, DEC-093) ; le test compare des noms d'icônes, `sun` y figure une fois.
 test("REQ031_AC2_deux_commandes_n_ont_jamais_la_meme_icone", () => {
-  const formes = NOMS.map((n) => icone(n).innerHTML);
-  expect(new Set(formes).size).toBe(NOMS.length);
+  // Les vingt `symbole-<shape>` sont des contenus du dessin, hors de la règle (REQ-149).
+  const commandes = NOMS.filter((n) => !n.startsWith("symbole-"));
+  const formes = commandes.map((n) => icone(n).innerHTML);
+  expect(new Set(formes).size).toBe(commandes.length);
+  expect(commandes).toContain("shapes");
   for (const f of formes) expect(f.length).toBeGreaterThan(0);
 });
 
@@ -113,7 +119,7 @@ test("REQ056_les_huit_icones_de_l_agent_existent_au_trait_lucide", () => {
     expect(s.innerHTML.length, n).toBeGreaterThan(20);
   }
   // Deux commandes différentes n'ont jamais la même icône (AC-031-2).
-  expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
+  expect(new Set(COMMANDES.map((n) => icone(n).innerHTML)).size).toBe(COMMANDES.length);
 });
 
 test("REQ059_AC1_panel_right_close_au_trait_lucide_et_sans_doublon", () => {
@@ -123,7 +129,7 @@ test("REQ059_AC1_panel_right_close_au_trait_lucide_et_sans_doublon", () => {
   expect(s.innerHTML).toContain('d="M15 3v18"');
   expect(s.innerHTML).toContain('d="m8 9 3 3-3 3"');
   expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("panel-right-close");
-  expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
+  expect(new Set(COMMANDES.map((n) => icone(n).innerHTML)).size).toBe(COMMANDES.length);
 });
 
 test("REQ062_icone_type_au_trait_lucide_et_sans_doublon", () => {
@@ -133,7 +139,7 @@ test("REQ062_icone_type_au_trait_lucide_et_sans_doublon", () => {
   expect(s.getAttribute("aria-hidden")).toBe("true");
   expect(s.innerHTML).toContain('d="M12 4v16"');
   expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("type");
-  expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
+  expect(new Set(COMMANDES.map((n) => icone(n).innerHTML)).size).toBe(COMMANDES.length);
 });
 
 test("REQ064_les_quatre_icones_des_agents_existent_au_trait_lucide", () => {
@@ -189,7 +195,7 @@ test("REQ084_icone_brain_au_trait_lucide_et_sans_doublon", () => {
   expect(s.innerHTML).toContain('d="M12 18V5"');
   expect(s.innerHTML).toContain('d="M6.003 5.125a4 4 0 0 0-2.526 5.77"');
   expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("brain");
-  expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
+  expect(new Set(COMMANDES.map((n) => icone(n).innerHTML)).size).toBe(COMMANDES.length);
 });
 
 test("REQ088_AC12_messages_square_au_trait_lucide_et_distincte_des_autres", () => {
@@ -202,7 +208,7 @@ test("REQ088_AC12_messages_square_au_trait_lucide_et_distincte_des_autres", () =
   expect(s.innerHTML).toContain('d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"');
   expect(readFileSync("web/src/ui/icones.js", "utf8").slice(0, 6000)).toContain("messages-square");
   expect(icone("messages-square").innerHTML).not.toBe(icone("history").innerHTML);
-  expect(new Set(NOMS.map((n) => icone(n).innerHTML)).size).toBe(NOMS.length);
+  expect(new Set(COMMANDES.map((n) => icone(n).innerHTML)).size).toBe(COMMANDES.length);
 });
 
 test("REQ092_AC1_icone_circle_arrow_up_au_trait_lucide", () => {
@@ -277,7 +283,7 @@ test("REQ131_icones_square_plus_zoom_out_zoom_in_et_scan", () => {
     for (const p of parties) expect(s.innerHTML, n).toContain(p);
   }
   const src = readFileSync("web/src/ui/icones.js", "utf8");
-  expect(src).toMatch(/Icônes Lucide \(ISC\) utilisées ici : [^\n]*square-plus, zoom-out, zoom-in, scan, bold, italic, underline, strikethrough\./);
+  expect(src).toMatch(/Icônes Lucide \(ISC\) utilisées ici : [^\n]*square-plus, zoom-out, zoom-in, scan, bold, italic, underline, strikethrough, shapes\./);
 });
 
 test("REQ133_icones_de_la_boite_a_outils_rendues_et_masquees", () => {
@@ -347,4 +353,21 @@ test("REQ146_AC10_AC031_2_icones_du_style_du_texte_distinctes_de_baseline_et_tai
   expect(new Set(formes).size).toBe(7);
   const tete = readFileSync("web/src/ui/icones.js", "utf8").split("*/")[0];
   for (const n of Object.keys(dessins)) expect(tete, n).toContain(n);
+});
+
+test("REQ149_AC1_les_vingt_dessins_de_symboles_existent_et_sont_distincts_et_shapes_est_distinct_des_commandes", () => {
+  expect(SYMBOLES).toHaveLength(20);
+  const dessins = SYMBOLES.map((s) => {
+    expect(NOMS, s.shape).toContain(`symbole-${s.shape}`);
+    const i = icone(`symbole-${s.shape}`);
+    expect(i.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(i.innerHTML.length).toBeGreaterThan(0);
+    return i.innerHTML;
+  });
+  expect(new Set(dessins).size).toBe(20);
+  expect(icone("symbole-database").innerHTML).toContain('<ellipse cx="12" cy="5" rx="9" ry="3"');
+  const commandes = NOMS.filter((n) => !n.startsWith("symbole-") && n !== "shapes");
+  expect(commandes.map((n) => icone(n).innerHTML)).not.toContain(icone("shapes").innerHTML);
+  expect(icone("shapes").innerHTML).toContain("M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3");
+  expect(readFileSync("web/src/ui/icones.js", "utf8")).toContain("shapes");
 });

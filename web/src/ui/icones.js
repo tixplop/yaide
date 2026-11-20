@@ -16,8 +16,8 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-Icônes Lucide (ISC) utilisées ici : panel-left-close, panel-left-open, panel-right-close, panel-bottom-close, panel-bottom-open, bot, message-square-plus, history, send-horizontal, circle-stop, circle-dashed, circle-check, circle-x, circle-arrow-up, type, users, user-plus, sliders-horizontal, arrow-left, asterisk, code-xml, circle-minus, brain, messages-square, server, copy, clipboard-paste, square-dashed, bring-to-front, send-to-back, mouse-pointer-2, circle, diamond, baseline, workflow, move-up-right, square-plus, zoom-out, zoom-in, scan, bold, italic, underline, strikethrough.
-Dessinées pour Yaide : couleur-texte, opacite-100, opacite-75, opacite-50, opacite-25, opacite-0, taille-petit, taille-normal, taille-grand, taille-tres-grand, epaisseur-fin, epaisseur-moyen, epaisseur-epais.
+Icônes Lucide (ISC) utilisées ici : panel-left-close, panel-left-open, panel-right-close, panel-bottom-close, panel-bottom-open, bot, message-square-plus, history, send-horizontal, circle-stop, circle-dashed, circle-check, circle-x, circle-arrow-up, type, users, user-plus, sliders-horizontal, arrow-left, asterisk, code-xml, circle-minus, brain, messages-square, server, copy, clipboard-paste, square-dashed, bring-to-front, send-to-back, mouse-pointer-2, circle, diamond, baseline, workflow, move-up-right, square-plus, zoom-out, zoom-in, scan, bold, italic, underline, strikethrough, shapes.
+Dessinées pour Yaide : couleur-texte, opacite-100, opacite-75, opacite-50, opacite-25, opacite-0, taille-petit, taille-normal, taille-grand, taille-tres-grand, epaisseur-fin, epaisseur-moyen, epaisseur-epais ; les vingt contenus `symbole-<shape>` (REQ-149) sont de Lucide (database, user-round, users-round, lock, lock-open, circle-check, circle-x, network, wifi, ethernet-port, server, cloud, monitor, smartphone, file-text, mail, settings, triangle-alert, brick-wall), sauf `symbole-pipe`, dessiné pour Yaide.
 
 ---
 
@@ -154,6 +154,27 @@ const CHEMINS = {
   "epaisseur-fin": "<path d=\"M4 8v8M20 8v8\"/><rect x=\"7\" y=\"11.25\" width=\"10\" height=\"1.5\" rx=\".75\" fill=\"currentColor\" stroke=\"none\"/>",
   "epaisseur-moyen": "<path d=\"M4 8v8M20 8v8\"/><rect x=\"7\" y=\"10.5\" width=\"10\" height=\"3\" rx=\"1\" fill=\"currentColor\" stroke=\"none\"/>",
   "epaisseur-epais": "<path d=\"M4 8v8M20 8v8\"/><rect x=\"7\" y=\"9.5\" width=\"10\" height=\"5\" rx=\"1.5\" fill=\"currentColor\" stroke=\"none\"/>",
+  "shapes": "<path d=\"M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/><circle cx=\"17.5\" cy=\"17.5\" r=\"3.5\"/>",
+  "symbole-database": "<ellipse cx=\"12\" cy=\"5\" rx=\"9\" ry=\"3\"/><path d=\"M3 5v14a9 3 0 0 0 18 0V5\"/><path d=\"M3 12a9 3 0 0 0 18 0\"/>",
+  "symbole-pipe": "<ellipse cx=\"18\" cy=\"12\" rx=\"3\" ry=\"6\"/><path d=\"M18 6H6a3 6 0 0 0 0 12h12\"/>",
+  "symbole-person": "<circle cx=\"12\" cy=\"8\" r=\"5\"/><path d=\"M20 21a8 8 0 0 0-16 0\"/>",
+  "symbole-people": "<path d=\"M18 21a8 8 0 0 0-16 0\"/><circle cx=\"10\" cy=\"8\" r=\"5\"/><path d=\"M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3\"/>",
+  "symbole-secure": "<rect x=\"3\" y=\"11\" width=\"18\" height=\"11\" rx=\"2\"/><path d=\"M7 11V7a5 5 0 0 1 10 0v4\"/>",
+  "symbole-insecure": "<rect x=\"3\" y=\"11\" width=\"18\" height=\"11\" rx=\"2\"/><path d=\"M7 11V7a5 5 0 0 1 9.9-1\"/>",
+  "symbole-check": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m9 12 2 2 4-4\"/>",
+  "symbole-failure": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m15 9-6 6M9 9l6 6\"/>",
+  "symbole-network": "<rect x=\"16\" y=\"16\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"2\" y=\"16\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"9\" y=\"2\" width=\"6\" height=\"6\" rx=\"1\"/><path d=\"M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3\"/><path d=\"M12 12V8\"/>",
+  "symbole-wifi": "<path d=\"M12 20h.01\"/><path d=\"M2 8.82a15 15 0 0 1 20 0\"/><path d=\"M5 12.86a10 10 0 0 1 14 0\"/><path d=\"M8.5 16.43a5 5 0 0 1 7 0\"/>",
+  "symbole-ethernet": "<path d=\"m15 20 3-3h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2l3 3z\"/><path d=\"M6 8v1M10 8v1M14 8v1M18 8v1\"/>",
+  "symbole-server": "<rect x=\"2\" y=\"2\" width=\"20\" height=\"8\" rx=\"2\"/><rect x=\"2\" y=\"14\" width=\"20\" height=\"8\" rx=\"2\"/><path d=\"M6 6h.01M6 18h.01\"/>",
+  "symbole-cloud": "<path d=\"M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z\"/>",
+  "symbole-computer": "<rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"/><path d=\"M8 21h8M12 17v4\"/>",
+  "symbole-phone": "<rect x=\"5\" y=\"2\" width=\"14\" height=\"20\" rx=\"2\"/><path d=\"M12 18h.01\"/>",
+  "symbole-file": "<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path d=\"M10 9H8M16 13H8M16 17H8\"/>",
+  "symbole-mail": "<rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\"/><path d=\"m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7\"/>",
+  "symbole-settings": "<path d=\"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/>",
+  "symbole-warning": "<path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\"/><path d=\"M12 9v4M12 17h.01\"/>",
+  "symbole-firewall": "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M12 9v6M16 15v6M16 3v6M3 15h18M3 9h18M8 15v6M8 3v6\"/>",
 };
 
 export const NOMS = Object.keys(CHEMINS);

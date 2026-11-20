@@ -918,6 +918,25 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau-surface.crosshair { cursor: crosshair; }
 .ya-tableau-surface.crosshair .boite .forme { cursor: crosshair; }
 .ya-tableau-surface.tiree { cursor: grabbing; }
+/* C-006 `grille` (REQ-149) : cinq colonnes égales, cases de 76 px, un seul arrêt de Tab. */
+.ya-grille-choix { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-rows: 76px; gap: var(--space-1); min-height: 0; overflow-y: auto; }
+.ya-grille-case { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding: var(--space-2) var(--space-1) var(--space-1); border-radius: var(--radius-sm); color: var(--ink); cursor: default; }
+.ya-grille-dessin { display: flex; flex: none; width: 28px; height: 28px; }
+.ya-grille-dessin svg { width: 28px; height: 28px; }
+.ya-grille-nom-case { font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); text-align: center; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ya-grille-case:hover { background: var(--bg-400); }
+.ya-grille-case[aria-selected="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-fg); color: var(--accent-fg); }
+.ya-grille-case[aria-selected="true"] .ya-grille-nom-case { color: var(--ink); }
+.ya-grille-case:focus { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
+
+/* C-007 `centre` « Choix sans bouton principal » : 458 px de haut, remonté à 16 px du haut au moins ; sous 490 px, la grille défile seule. */
+.ya-choix { margin-top: max(var(--space-4), min(18vh, calc(100vh - 474px))); max-height: calc(100vh - 2 * var(--space-4)); }
+.ya-choix[open] { display: flex; flex-direction: column; }
+.ya-choix .dialogue-titre { margin-bottom: var(--space-1); }
+.ya-choix .ya-aide-choix { margin: 0 0 var(--space-3); font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+.ya-choix .dialogue-contenu { display: flex; flex-direction: column; gap: 0; flex: 1 1 auto; min-height: 0; }
+.ya-choix .dialogue-actions { margin-top: var(--space-4); }
+
 
 /* Barre d'outils d'un onglet de whiteboard (C-005 `actionsDroite`, REQ-131) : 2 px entre les commandes, 8 px après « Ajouter une boîte » et avant « Thème clair du whiteboard ». */
 .onglets-droite:has(.ya-tableau-ajout) { gap: 2px; }

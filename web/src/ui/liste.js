@@ -3,7 +3,8 @@ import { compteur as compteurDe } from "./compteur.js";
 import { icone } from "./icones.js";
 import { fermerInfoBulleDans, infoBulle } from "./info-bulle.js";
 
-const VARIANTES = ["plate", "arbre", "objets", "passages"];
+const VARIANTES = ["plate", "arbre", "objets", "passages", "grille"];
+const COLONNES = 5;
 let compteur = 0;
 
 // Mot dit par le nom accessible pour chaque statut git d'une ligne.
@@ -116,6 +117,54 @@ function listePassages({ lignes, nom, surLien }) {
   return ol;
 }
 
+// Variante `grille` (C-006, REQ-149) : des choix montrés par leur dessin, en cases de cinq colonnes ; un seul arrêt de Tab.
+function listeGrille({ lignes, selection, nom, surActiver }) {
+  const racine = document.createElement("div");
+  racine.className = "liste ya-grille-choix";
+  racine.setAttribute("role", "listbox");
+  if (nom) racine.setAttribute("aria-label", nom);
+  const cases = lignes.map((l) => {
+    if (!l.libelle || !l.icone) throw new Error("liste : libelle et icone requis");
+    const e = document.createElement("div");
+    e.className = "ya-grille-case";
+    e.setAttribute("role", "option");
+    e.setAttribute("aria-selected", String(l.id === selection));
+    e.title = l.libelle;
+    const dessin = document.createElement("span");
+    dessin.className = "ya-grille-dessin";
+    dessin.append(icone(l.icone, 28));
+    const texte = document.createElement("span");
+    texte.className = "ya-grille-nom-case";
+    texte.textContent = l.libelle;
+    e.append(dessin, texte);
+    e.addEventListener("click", () => surActiver?.(l.id));
+    return e;
+  });
+  const depart = Math.max(0, lignes.findIndex((l) => l.id === selection));
+  const placer = (i) => cases.forEach((e, k) => (e.tabIndex = k === i ? 0 : -1));
+  cases.forEach((e, i) => {
+    e.addEventListener("focus", () => {
+      placer(i);
+      e.scrollIntoView?.({ block: "nearest" });
+    });
+    e.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        surActiver?.(lignes[i].id);
+        return;
+      }
+      const cible = { ArrowLeft: i - 1, ArrowRight: i + 1, ArrowUp: i - COLONNES, ArrowDown: i + COLONNES, Home: 0, End: cases.length - 1 }[ev.key];
+      if (cible === undefined) return;
+      ev.preventDefault();
+      if (cible >= 0 && cible < cases.length) cases[cible].focus();
+    });
+  });
+  racine.append(...cases);
+  placer(depart);
+  racine.focusInitial = cases[depart];
+  return racine;
+}
+
 export function liste({ variante = "plate", lignes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, flottante = false, message, nom, focusSurListe = false, surActiver, surBasculer, surMenu, surDepot, surLien }) {
   if (!VARIANTES.includes(variante)) throw new Error(`liste : variante inconnue « ${variante} »`);
   if (flottante && (variante !== "plate" || pilotage !== "champ")) throw new Error("liste : flottante demande la variante « plate » et le pilotage « champ »");
@@ -123,6 +172,7 @@ export function liste({ variante = "plate", lignes, selection, multiple = false,
   if (message !== undefined && !flottante) throw new Error("liste : message demande flottante");
   if (focusSurListe && (variante !== "plate" || pilotage === "champ")) throw new Error("liste : focusSurListe demande la variante « plate » et le pilotage « focus »");
   if (pilotage === "champ" && !champ) throw new Error("liste : champ requis avec pilotage « champ »");
+  if (variante === "grille") return listeGrille({ lignes, selection, nom, surActiver });
   if (variante === "objets") return listeObjets({ lignes, nom });
   if (variante === "passages") return listePassages({ lignes, nom, surLien });
   for (const l of lignes) {

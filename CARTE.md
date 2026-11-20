@@ -54,7 +54,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/formatage.js — formatage du document ouvert — formatable, formater
 - web/src/jdiag.js — lecture et écriture du format `.jdiag` — lireJdiag, ecrireJdiag, SYMBOLES (les vingt symboles, REQ-149)
 - web/src/mermaid.js — bibliothèque mermaid, bundle à part chargé au premier diagramme
-- web/src/ui/ — design system : composants (`bouton`, `champ`, `menu`, `dialogue`, `onglets`, `liste`, `message`, `cadre`, `poignee`, `info-bulle`, `indication`, `compteur`, `avatar`, `image`) ; `icones.js` ; `tokens.css`, `composants.css`, `theme.js`, `polices/`
+- web/src/ui/ — design system : composants (`bouton`, `champ`, `menu`, `dialogue`, `onglets`, `liste`, `message`, `cadre`, `poignee`, `info-bulle`, `indication`, `compteur`, `avatar`, `image`) ; `dialogueChoix` (dialogue « Choix sans bouton principal » avec la `grille` de `liste`, REQ-149) ; `icones.js` (dont `shapes` et les vingt `symbole-<shape>`, REQ-149) ; `tokens.css`, `composants.css`, `theme.js`, `polices/`
 - web/src/ui/apercu.js, apercu-html.js, hybride.js, diagramme.js — rendu markdown, aperçu HTML, mode hybride, mermaid — rendreMarkdown, apercuHtml, decorationsHybride
 - web/src/ui/zone-code.js, langages.js, couleurs-code.js — éditeur CodeMirror et coloration — zoneCode, langagePourFichier
 - web/src/ui/conversation.js, completion.js, attentes.js, copie.js — conversation, complétion `/ @ $ #`, attentes d'autorisation, copie en texte simple — conversation, completion, copierEnTexteSimple

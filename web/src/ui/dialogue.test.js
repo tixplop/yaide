@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, expect, test, vi } from "vitest";
 import { bouton } from "./bouton.js";
-import { amenerDansLaVue, dialogue, groupe } from "./dialogue.js";
+import { amenerDansLaVue, dialogue, dialogueChoix, groupe } from "./dialogue.js";
 
 const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
 const regle = (sel) => {
@@ -334,4 +334,111 @@ test("REQ103_AC9_reglages_avec_sections_barre_sous_le_titre_hauteur_fixe_par_tok
   expect(() => dialogue({ titre: "T", position: "centre", sections: barre, focusInitial: bouton1, surAnnuler() {} })).toThrow(/sections/);
   const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
   expect(tokens).toMatch(/--hauteur-dialogue-sections:\s*560px;/);
+});
+
+// C-007 `centre` « Choix sans bouton principal » (REQ-149).
+const lignesChoix = [{ id: "a", libelle: "Alpha", icone: "symbole-database" }, { id: "b", libelle: "Beta", icone: "symbole-pipe" }, { id: "c", libelle: "Gamma", icone: "symbole-person" }];
+function monterChoix(selection) {
+  const declencheur = bouton({ libelle: "Symboles" });
+  document.body.append(declencheur);
+  declencheur.focus();
+  const surChoix = vi.fn();
+  const d = dialogueChoix({ titre: "Symboles", aide: "Choisissez un symbole.", nom: "Symboles disponibles", lignes: lignesChoix, selection, surChoix });
+  d.ouvrir();
+  return { d, declencheur, surChoix, el: d.element };
+}
+
+test("REQ149_AC8_dialogue_choix_modal_nomme_aide_decrite_grille_et_fermer_seul", () => {
+  const { el, d } = monterChoix();
+  expect(el.dataset.modal).toBe("oui");
+  expect(el.getAttribute("aria-labelledby")).toBe(el.querySelector("h2").id);
+  expect(el.querySelector("h2").textContent).toBe("Symboles");
+  const aide = document.getElementById(el.getAttribute("aria-describedby"));
+  expect(aide.textContent).toBe("Choisissez un symbole.");
+  expect(el.querySelector('[role="listbox"]').getAttribute("aria-label")).toBe("Symboles disponibles");
+  expect([...el.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Fermer"]);
+  const ordre = [...el.children].map((c) => c.className.split(" ")[0]);
+  expect(ordre).toEqual(["dialogue-titre", "ya-aide-choix", "dialogue-contenu", "dialogue-actions"]);
+  d.fermer();
+});
+
+test("REQ149_AC8_dialogue_choix_focus_initial_case_courante_sinon_premiere", () => {
+  const a = monterChoix("b");
+  expect(document.activeElement).toBe(a.el.querySelectorAll('[role="option"]')[1]);
+  a.d.fermer();
+  const b = monterChoix();
+  expect(document.activeElement).toBe(b.el.querySelectorAll('[role="option"]')[0]);
+  b.d.fermer();
+});
+
+test("REQ149_AC8_dialogue_choix_choisir_ferme_rend_le_choix_et_le_focus", () => {
+  const { el, declencheur, surChoix } = monterChoix();
+  el.querySelectorAll('[role="option"]')[2].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  expect(surChoix.mock.calls).toEqual([["c"]]);
+  expect(el.isConnected).toBe(false);
+  expect(document.activeElement).toBe(declencheur);
+});
+
+test("REQ149_AC8_dialogue_choix_fermer_echap_et_voile_ne_rendent_rien_et_rendent_le_focus", () => {
+  for (const fermeture of [
+    (el) => [...el.querySelectorAll("button")].find((b) => b.textContent === "Fermer").click(),
+    (el) => el.dispatchEvent(new Event("cancel", { cancelable: true })),
+    (el) => {
+      el.getBoundingClientRect = () => ({ left: 100, right: 500, top: 100, bottom: 500 });
+      el.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 10, clientY: 10 }));
+    },
+  ]) {
+    const { el, declencheur, surChoix } = monterChoix("a");
+    fermeture(el);
+    expect(surChoix).not.toHaveBeenCalled();
+    expect(el.isConnected).toBe(false);
+    expect(document.activeElement).toBe(declencheur);
+  }
+  // Un clic dans le cadre ne ferme pas.
+  const { el, d } = monterChoix();
+  el.getBoundingClientRect = () => ({ left: 0, right: 500, top: 0, bottom: 500 });
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 10, clientY: 10 }));
+  expect(el.isConnected).toBe(true);
+  d.fermer();
+});
+
+test("REQ149_AC8_dialogue_choix_hauteur_et_defilement_de_la_grille_sous_490_px", () => {
+  expect(regle(".ya-choix")).toContain("max-height: calc(100vh - 2 * var(--space-4))");
+  expect(regle(".ya-choix")).toContain("max(var(--space-4), min(18vh, calc(100vh - 474px)))");
+  expect(regle(".ya-choix[open]")).toContain("display: flex");
+  expect(regle(".ya-choix .dialogue-contenu")).toContain("min-height: 0");
+  expect(regle(".ya-grille-choix")).toContain("overflow-y: auto");
+  expect(regle(".ya-choix .dialogue-titre")).toContain("margin-bottom: var(--space-1)");
+  expect(regle(".ya-choix .ya-aide-choix")).toContain("margin: 0 0 var(--space-3)");
+  expect(regle(".ya-choix .dialogue-actions")).toContain("margin-top: var(--space-4)");
+});
+
+test("REQ149_AC8_contrastes_du_dialogue_des_choix_dans_les_deux_themes", () => {
+  const tokens = readFileSync("web/src/ui/tokens.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  const jetons = (theme) => {
+    const t = {};
+    for (const m of tokens.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      if (!m[1].split(",").map((s) => s.trim()).some((s) => s === ":root" || s === `[data-theme="${theme}"]`)) continue;
+      for (const x of m[2].matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) t[x[1]] = x[2].trim();
+    }
+    return t;
+  };
+  const rgb = (v) => (v.startsWith("#") ? [1, 3, 5].map((i) => parseInt(v.slice(i, i + 2), 16)) : v.match(/[\d.]+/g).slice(0, 3).map(Number));
+  const lum = ([r, g, b]) => {
+    const [x, y, z] = [r, g, b].map((c) => c / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * x + 0.7152 * y + 0.0722 * z;
+  };
+  const rapport = (a, b) => {
+    const [p, q] = [lum(a), lum(b)].sort((m, n) => n - m);
+    return (p + 0.05) / (q + 0.05);
+  };
+  for (const theme of ["dark", "light"]) {
+    const t = jetons(theme);
+    const fond = rgb(t["--bg-300"]);
+    for (const j of ["--ink", "--ink-muted"]) expect(rapport(rgb(t[j]), fond), `${j} (${theme})`).toBeGreaterThanOrEqual(4.5);
+    const a = Number(t["--accent-soft"].match(/[\d.]+/g)[3]);
+    const soft = rgb(t["--accent-soft"]).map((c, i) => c * a + fond[i] * (1 - a));
+    expect(rapport(rgb(t["--accent-fg"]), soft), `accent-fg sur accent-soft (${theme})`).toBeGreaterThanOrEqual(4.5);
+    expect(rapport(rgb(t["--ink"]), soft), `ink sur accent-soft (${theme})`).toBeGreaterThanOrEqual(4.5);
+  }
 });

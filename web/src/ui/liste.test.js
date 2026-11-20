@@ -1453,3 +1453,77 @@ test("REQ112_mise_a_jour_de_base_seule_garde_les_lignes_le_focus_et_la_selection
   expect(l.scrollTop).toBe(40);
   expect(document.activeElement).toBe(avant[1]);
 });
+
+// C-006 `grille` (REQ-149).
+const symboles20 = Array.from({ length: 20 }, (_, i) => ({ id: `s${i}`, libelle: `Symbole ${i}`, icone: "symbole-database" }));
+const grille = (extra = {}) => {
+  const surActiver = vi.fn();
+  const g = liste({ variante: "grille", lignes: symboles20, nom: "Symboles disponibles", surActiver, ...extra });
+  document.body.append(g);
+  return { g, surActiver, cases: items(g) };
+};
+const touchesGrille = (cases, depart, suite) => {
+  cases[depart].focus();
+  const vus = [];
+  for (const k of suite) {
+    touche(document.activeElement, k);
+    vus.push(cases.indexOf(document.activeElement));
+  }
+  return vus;
+};
+
+test("REQ149_AC8_grille_roles_noms_aria_selected_et_un_seul_arret_de_tab", () => {
+  const { g, cases } = grille({ selection: "s7" });
+  expect(g.getAttribute("role")).toBe("listbox");
+  expect(g.getAttribute("aria-label")).toBe("Symboles disponibles");
+  expect(cases).toHaveLength(20);
+  expect(cases[3].textContent).toBe("Symbole 3");
+  expect(cases.map((c) => c.getAttribute("aria-selected"))).toEqual(symboles20.map((_, i) => String(i === 7)));
+  expect(cases.filter((c) => c.tabIndex === 0)).toEqual([cases[7]]);
+  expect(cases.filter((c) => c.tabIndex === -1)).toHaveLength(19);
+  expect(g.focusInitial).toBe(cases[7]);
+  expect(cases[0].querySelector("svg").getAttribute("width")).toBe("28");
+});
+
+test("REQ149_AC8_grille_sans_selection_toutes_false_et_focus_sur_la_premiere", () => {
+  const { g, cases } = grille();
+  expect(cases.every((c) => c.getAttribute("aria-selected") === "false")).toBe(true);
+  expect(g.focusInitial).toBe(cases[0]);
+  expect(cases[0].tabIndex).toBe(0);
+});
+
+test("REQ149_AC8_grille_fleches_debut_fin_sans_boucler", () => {
+  const { cases } = grille();
+  expect(touchesGrille(cases, 0, ["ArrowUp", "ArrowLeft"])).toEqual([0, 0]);
+  expect(touchesGrille(cases, 0, ["ArrowDown", "ArrowDown", "ArrowRight", "ArrowUp", "End", "Home"])).toEqual([5, 10, 11, 6, 19, 0]);
+  expect(touchesGrille(cases, 4, ["ArrowRight", "ArrowLeft"])).toEqual([5, 4]);
+  expect(touchesGrille(cases, 19, ["ArrowRight", "ArrowDown"])).toEqual([19, 19]);
+  expect(touchesGrille(cases, 17, ["ArrowDown"])).toEqual([17]);
+  cases[13].focus();
+  expect(cases.filter((c) => c.tabIndex === 0)).toEqual([cases[13]]);
+});
+
+test("REQ149_AC8_grille_entree_espace_et_clic_choisissent", () => {
+  const { cases, surActiver } = grille();
+  touche(cases[2], "Enter");
+  touche(cases[3], " ");
+  clic(cases[4]);
+  expect(surActiver.mock.calls).toEqual([["s2"], ["s3"], ["s4"]]);
+  touche(cases[2], "a");
+  expect(surActiver).toHaveBeenCalledTimes(3);
+});
+
+test("REQ149_AC8_grille_case_amenee_dans_la_vue_et_etats_du_design", () => {
+  const { cases } = grille();
+  const vue = vi.fn();
+  cases[9].scrollIntoView = vue;
+  cases[9].focus();
+  expect(vue).toHaveBeenCalledWith({ block: "nearest" });
+  expect(regle(".ya-grille-choix")).toContain("repeat(5, minmax(0, 1fr))");
+  expect(regle(".ya-grille-case")).toContain("var(--radius-sm)");
+  expect(regle(".ya-grille-case:hover")).toContain("var(--bg-400)");
+  expect(regle('.ya-grille-case[aria-selected="true"]')).toContain("var(--accent-soft)");
+  expect(regle(".ya-grille-case:focus")).toContain("outline: 2px solid var(--accent-fg)");
+  expect(regle(".ya-grille-case:focus")).toContain("outline-offset: -2px");
+  expect(() => liste({ variante: "grille", lignes: [{ id: "a", libelle: "A" }] })).toThrow(/icone/);
+});

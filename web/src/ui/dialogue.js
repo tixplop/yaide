@@ -1,3 +1,6 @@
+import { bouton } from "./bouton.js";
+import { liste } from "./liste.js";
+
 const POSITIONS = ["centre", "palette", "reglages"];
 let compteur = 0;
 
@@ -143,4 +146,28 @@ export function fiche({ titre, message, champs }) {
   }
   f.append(h, ...(message ? [message] : []), grille);
   return f;
+}
+
+// C-007 `centre`, « Choix sans bouton principal » (REQ-149) : l'aide, une C-006 `grille`, « Fermer » seul.
+// Choisir une case ferme le dialogue et rend le choix ; « Fermer », Échap ou le voile le ferment sans rien rendre.
+export function dialogueChoix({ titre, aide, nom, lignes, selection, surChoix }) {
+  const texte = document.createElement("p");
+  texte.className = "ya-aide-choix";
+  texte.textContent = aide;
+  const grille = liste({ variante: "grille", lignes, selection, nom, surActiver: (id) => {
+    d.fermer();
+    surChoix(id);
+  } });
+  const fermer = bouton({ libelle: "Fermer", variante: "secondaire" });
+  const annuler = () => d.fermer();
+  fermer.addEventListener("click", annuler);
+  const d = dialogue({ titre, aide: texte, contenu: [grille], actions: [fermer], focusInitial: grille.focusInitial, surAnnuler: annuler });
+  d.element.classList.add("ya-choix");
+  // Un clic sur le voile arrive sur le dialogue lui-même, hors de son cadre.
+  d.element.addEventListener("click", (e) => {
+    if (e.target !== d.element) return;
+    const r = d.element.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) annuler();
+  });
+  return d;
 }
