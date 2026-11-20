@@ -9,8 +9,31 @@ const ENTIERS = new Set(["x", "y", "width", "height", "x1", "y1", "x2", "y2"]);
 const COULEURS = ["default", "blue", "green", "yellow", "orange", "red", "purple"];
 const TRAITS = ["solid", "dashed", "dotted"];
 const EPAISSEURS = ["thin", "medium", "thick"];
+// Les vingt symboles (REQ-149), dans l'ordre du dialogue « Symboles ».
+export const SYMBOLES = [
+  { shape: "database", nom: "Base de données" },
+  { shape: "pipe", nom: "Tuyau" },
+  { shape: "person", nom: "Personne" },
+  { shape: "people", nom: "Groupe de personnes" },
+  { shape: "secure", nom: "Sécurisé" },
+  { shape: "insecure", nom: "Non sécurisé" },
+  { shape: "check", nom: "Validé" },
+  { shape: "failure", nom: "Échec" },
+  { shape: "network", nom: "Réseau" },
+  { shape: "wifi", nom: "Wi-Fi" },
+  { shape: "ethernet", nom: "Ethernet" },
+  { shape: "server", nom: "Serveur" },
+  { shape: "cloud", nom: "Nuage" },
+  { shape: "computer", nom: "Ordinateur" },
+  { shape: "phone", nom: "Téléphone" },
+  { shape: "file", nom: "Fichier" },
+  { shape: "mail", nom: "Courriel" },
+  { shape: "settings", nom: "Réglages" },
+  { shape: "warning", nom: "Alerte" },
+  { shape: "firewall", nom: "Pare-feu" },
+];
 const STYLE_BOITE = {
-  shape: ["rectangle", "rounded", "ellipse", "diamond", "note", "text"],
+  shape: ["rectangle", "rounded", "ellipse", "diamond", "note", "text", ...SYMBOLES.map((s) => s.shape)],
   color: COULEURS,
   line: TRAITS,
   weight: EPAISSEURS,

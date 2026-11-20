@@ -1002,8 +1002,10 @@ fn REQ110_AC1_REQ112_donnees_fichier_modifie_remis_a_jour_dans_chaque_collection
     attendre("vecteurs après Ctrl+S", || {
         vecteurs_de(&s, "api") == [7.0, 1.0]
     });
+    attendre("vecteurs de notes après Ctrl+S", || {
+        vecteurs_de(&s, "notes") == [7.0, 1.0, 2.0, 1.0]
+    });
     assert_eq!(textes_depuis(&recues, avant), ["v7 sept"]);
-    assert_eq!(vecteurs_de(&s, "notes"), [7.0, 1.0, 2.0, 1.0]);
 }
 
 #[test]

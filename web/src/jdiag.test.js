@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { avecExtensionJdiag, ecrireJdiag, idLibre, lireJdiag, normaliserSpans } from "./jdiag.js";
+import { avecExtensionJdiag, ecrireJdiag, idLibre, lireJdiag, normaliserSpans, SYMBOLES } from "./jdiag.js";
 
 const VIDE = '{\n  "version": 1,\n  "boxes": [],\n  "links": []\n}\n';
 const DEUX =
@@ -40,6 +40,20 @@ describe("jdiag", () => {
     '{"version": 1, "boxes": [], "links": [{"id": "l1", "from": 1, "to": "b9"}]}',
   ])("REQ132_AC4 : illisible %s", (texte) => {
     expect(lireJdiag(texte)).toBeNull();
+  });
+
+  test("REQ132_AC15 : vingt symboles, relus et réécrits à l'identique ; router illisible", () => {
+    expect(SYMBOLES).toHaveLength(20);
+    expect(SYMBOLES[0]).toEqual({ shape: "database", nom: "Base de données" });
+    expect(SYMBOLES[19]).toEqual({ shape: "firewall", nom: "Pare-feu" });
+    for (const { shape } of SYMBOLES) {
+      const t = `{\n  "version": 1,\n  "boxes": [\n    {"id": "b1", "x": 1, "y": 2, "width": 100, "height": 100, "text": "A", "shape": "${shape}"}\n  ],\n  "links": []\n}\n`;
+      const doc = lireJdiag(t);
+      expect(doc.boxes[0].shape).toBe(shape);
+      expect(ecrireJdiag(doc)).toBe(t);
+    }
+    const t = '{"version": 1, "boxes": [{"id": "b1", "x": 0, "y": 0, "width": 1, "height": 1, "text": "", "shape": "router"}], "links": []}';
+    expect(lireJdiag(t)).toBeNull();
   });
 
   test("REQ132_AC5 : plus petit id libre, texte à caractères spéciaux", () => {

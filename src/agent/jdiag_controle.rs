@@ -269,19 +269,33 @@ pub fn avertissements(whiteboard: &Value) -> Vec<String> {
     }
 
     for (b, &(_, _, w, h)) in boites.iter().zip(&rects) {
-        let r = match texte(b, "shape") {
+        let forme = texte(b, "shape");
+        let symbole = !matches!(
+            forme,
+            "" | "rectangle" | "rounded" | "ellipse" | "diamond" | "note" | "text"
+        );
+        let r = match forme {
             "ellipse" => (1.0 - 0.5_f64.sqrt()) / 2.0,
             "diamond" => 0.25,
             _ => 0.0,
         };
         let (police, interligne) = taille(b);
         let large = w * (1.0 - 2.0 * r) - 16.0;
-        let haut = h * (1.0 - 2.0 * r) - 12.0;
+        // Un symbole : bande des deux cinquièmes du bas, sans marge en hauteur.
+        let haut = if symbole {
+            0.4 * h
+        } else {
+            h * (1.0 - 2.0 * r) - 12.0
+        };
         let n = ((large / (0.6 * police) + 1e-9).floor().max(1.0)) as usize;
         let total = lignes(texte(b, "text"), n);
         let tient = (((haut / interligne) + 1e-9).floor().max(0.0)) as usize;
         if total > tient {
-            let conseil = ((total as f64 * interligne + 12.0) / (1.0 - 2.0 * r) - 1e-9).ceil();
+            let conseil = if symbole {
+                (total as f64 * interligne / 0.4 - 1e-9).ceil()
+            } else {
+                ((total as f64 * interligne + 12.0) / (1.0 - 2.0 * r) - 1e-9).ceil()
+            };
             m.push(format!(
                 "- Box {}: text overflows ({total} lines, {tient} fit); a height of {conseil} would fit it.",
                 id(b)
@@ -423,6 +437,18 @@ mod tests {
             .unwrap()
             .extend(extra.as_object().unwrap().clone());
         avertissements(&wb(vec![bo], vec![]))
+    }
+
+    #[test]
+    fn REQ149_AC7_texte_des_symboles() {
+        let sym = json!({"shape": "database"});
+        assert_eq!(
+            texte(100, 100, "a\nb\nc", sym.clone()),
+            ["- Box b1: text overflows (3 lines, 2 fit); a height of 135 would fit it."]
+        );
+        assert!(texte(100, 100, "a\nb", sym.clone()).is_empty());
+        // Une boîte ordinaire de même taille n'est pas touchée.
+        assert!(texte(100, 100, "a\nb\nc", json!({})).is_empty());
     }
 
     #[test]

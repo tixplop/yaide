@@ -347,6 +347,23 @@ mod tests {
     }
 
     #[test]
+    fn req149_ac5_lien_droit_vers_un_symbole_comme_un_rectangle() {
+        let fin = json!({"id": "b2", "x": 0, "y": 0, "width": 100, "height": 100, "text": ""});
+        let mut nuage = fin.clone();
+        nuage["id"] = json!("b1");
+        nuage["x"] = json!(300);
+        nuage["shape"] = json!("cloud");
+        let mut rect = nuage.clone();
+        rect.as_object_mut().unwrap().remove("shape");
+        let lien = json!({"id": "l1", "from": "b2", "to": "b1"});
+        let avec = trace(&[fin.clone(), nuage], std::slice::from_ref(&lien), &lien);
+        let sans = trace(&[fin, rect], std::slice::from_ref(&lien), &lien);
+        assert_eq!(avec.len(), 2);
+        assert_eq!(avec, sans);
+        proche(avec[1], (300.0, 50.0), "bord gauche de la boîte");
+    }
+
+    #[test]
     fn req148_ac2_ac3_cas_communs_avec_le_javascript() {
         let cas: Vec<Value> = serde_json::from_str(include_str!("jdiag_traces.json")).unwrap();
         assert!(cas.len() >= 20);

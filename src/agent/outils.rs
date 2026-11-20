@@ -1046,6 +1046,10 @@ mod tests {
             json!(["normal", "small", "large", "xlarge"])
         );
         assert_eq!(boite["shape"]["enum"][5], "text");
+        let formes = boite["shape"]["enum"].as_array().unwrap();
+        assert_eq!(formes.len(), 26);
+        assert_eq!(formes[6], "database");
+        assert_eq!(formes[25], "firewall");
         let lien = &wb["properties"]["links"]["items"]["properties"];
         assert_eq!(
             lien["route"]["enum"],
@@ -1144,6 +1148,33 @@ mod tests {
         assert!(fs::read_to_string(d.join("b.jdiag"))
             .unwrap()
             .contains(r#""text": "a\"b\\c\nd""#));
+    }
+
+    #[tokio::test]
+    async fn REQ132_AC15_symboles_lus_et_ecrits_a_l_identique() {
+        let d = dossier("wb15");
+        let c = ctx(&d);
+        let fichier = "{\n  \"version\": 1,\n  \"boxes\": [\n    {\"id\": \"b1\", \"x\": 1, \"y\": 2, \"width\": 100, \"height\": 100, \"text\": \"Clients\", \"shape\": \"database\", \"color\": \"green\"}\n  ],\n  \"links\": []\n}\n";
+        fs::write(d.join("s.jdiag"), fichier).unwrap();
+        let r = lancer_outil(&c, "whiteboard_read", json!({"path": "s.jdiag"})).await;
+        let w: Value = serde_json::from_str(&r.contenu).unwrap();
+        assert_eq!(w["boxes"][0]["shape"], "database");
+        fs::remove_file(d.join("s.jdiag")).unwrap();
+        lancer_outil(
+            &c,
+            "whiteboard_write",
+            json!({"path": "s.jdiag", "whiteboard": w}),
+        )
+        .await;
+        assert_eq!(fs::read_to_string(d.join("s.jdiag")).unwrap(), fichier);
+        let mauvais = json!({"version": 1, "boxes": [{"id": "b1", "x": 1, "y": 1, "width": 1, "height": 1, "text": "", "shape": "router"}], "links": []});
+        let r = lancer_outil(
+            &c,
+            "whiteboard_write",
+            json!({"path": "t.jdiag", "whiteboard": mauvais}),
+        )
+        .await;
+        assert!(!d.join("t.jdiag").exists(), "{}", r.contenu);
     }
 
     #[tokio::test]
