@@ -162,6 +162,8 @@ export function bouton({
     bulle = creerInfoBulle({ texte: raccourci ? `${nom} (${raccourci})` : nom, ancre: b, enveloppe, position: positionInfoBulle });
     b.enveloppe = enveloppe;
   }
+  // Change le texte de l'info-bulle d'un bouton à icône, sans toucher à son nom accessible.
+  b.definirInfoBulle = (texte) => bulle?.definirTexte(texte);
   // Change la commande d'un bouton à icône : nom accessible, dessin et texte de la bulle. Jamais d'`aria-pressed`.
   b.definirCommande = ({ nomAccessible: nom, icone: dessin }) => {
     if (!bulle) throw new Error("bouton : definirCommande demande un bouton à icône");

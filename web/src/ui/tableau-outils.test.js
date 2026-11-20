@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, expect, test, vi } from "vitest";
 import { boiteOutils } from "./tableau-outils.js";
 
 const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
 const DEPART = () => ({ outil: "choisir", forme: "rectangle", couleur: "default", opacite: 100, taille: "normal", trace: "direct", bouts: "end", trait: "solid", epaisseur: "thin" });
-const NOMS = ["Choisir", "Sélection", "Rectangle", "Rectangle arrondi", "Cercle", "Losange", "Note", "Texte", "Lien", "Flèche", "Par défaut", "Bleu", "Vert", "Jaune", "Orange", "Rouge", "Violet", "100 %", "75 %", "50 %", "25 %", "0 %", "Petit", "Normal", "Grand", "Très grand", "Gras", "Italique", "Souligné", "Barré", "Texte par défaut", "Texte bleu", "Texte vert", "Texte jaune", "Texte orange", "Texte rouge", "Texte violet", "Droit", "Coudé", "Courbe", "À l'arrivée", "Aucune", "Au départ", "Aux deux bouts", "Plein", "Tirets", "Pointillés", "Fin", "Moyen", "Épais", "Premier plan", "Arrière-plan"];
+const NOMS = ["Choisir", "Sélection", "Rectangle", "Rectangle arrondi", "Cercle", "Losange", "Note", "Texte", "Symboles", "Lien", "Flèche", "Par défaut", "Bleu", "Vert", "Jaune", "Orange", "Rouge", "Violet", "100 %", "75 %", "50 %", "25 %", "0 %", "Petit", "Normal", "Grand", "Très grand", "Gras", "Italique", "Souligné", "Barré", "Texte par défaut", "Texte bleu", "Texte vert", "Texte jaune", "Texte orange", "Texte rouge", "Texte violet", "Droit", "Coudé", "Courbe", "À l'arrivée", "Aucune", "Au départ", "Aux deux bouts", "Plein", "Tirets", "Pointillés", "Fin", "Moyen", "Épais", "Premier plan", "Arrière-plan"];
 const GROUPES = ["Outil", "Forme", "Relier", "Couleur", "Opacité", "Taille du texte", "Style du texte", "Couleur du texte", "Tracé", "Extrémités", "Trait", "Épaisseur", "Plan"];
-const RANGS = [10, 7, 9, 11, 7, 8];
-const DEBUTS = [0, 10, 17, 26, 37, 44];
+const RANGS = [11, 7, 9, 11, 7, 8];
+const DEBUTS = [0, 11, 18, 27, 38, 45];
 
 let b;
 let choix;
@@ -62,7 +62,7 @@ test("REQ133_AC8_noms_groupes_et_info_bulles_dans_l_ordre", () => {
   expect(boutons().map((x) => x.getAttribute("aria-label"))).toEqual(NOMS);
   const groupes = [...b.element.querySelectorAll('[role="group"]')];
   expect(groupes.map((g) => g.getAttribute("aria-label"))).toEqual(GROUPES);
-  expect(groupes.map((g) => g.querySelectorAll("button").length)).toEqual([2, 6, 2, 7, 5, 4, 4, 7, 3, 4, 3, 3, 2]);
+  expect(groupes.map((g) => g.querySelectorAll("button").length)).toEqual([2, 7, 2, 7, 5, 4, 4, 7, 3, 4, 3, 3, 2]);
   vi.useFakeTimers();
   const texte = (nom) => {
     par(nom).enveloppe.dispatchEvent(new MouseEvent("pointerenter"));
@@ -87,9 +87,9 @@ test("REQ133_AC8_noms_groupes_et_info_bulles_dans_l_ordre", () => {
   expect(par("Vert").querySelector("svg")).toBeNull();
   expect(par("Cercle").querySelector("svg")).not.toBeNull();
   // Un seul pressé parmi Outil, Forme et Relier.
-  expect(boutons().slice(0, 10).filter((x) => x.getAttribute("aria-pressed") === "true").length).toBe(1);
+  expect(boutons().slice(0, 11).filter((x) => x.getAttribute("aria-pressed") === "true").length).toBe(1);
   par("Cercle").click();
-  expect(boutons().slice(0, 10).filter((x) => x.getAttribute("aria-pressed") === "true").map((x) => x.getAttribute("aria-label"))).toEqual(["Cercle"]);
+  expect(boutons().slice(0, 11).filter((x) => x.getAttribute("aria-pressed") === "true").map((x) => x.getAttribute("aria-label"))).toEqual(["Cercle"]);
   // CSS : à 12 px du bas et de la gauche, sans valeur brute hors tokens.
   const regle = css.match(/\.ya-tableau-outils\s*\{([^}]*)\}/)[1];
   expect(regle).toMatch(/position:\s*absolute/);
@@ -185,10 +185,10 @@ test("REQ133_AC10_courant_et_presse_apres_un_choix_de_forme", () => {
   expect(css).toMatch(/\.ya-tableau-outils \.ya-icon-btn\[aria-current="true"\]::after/);
 });
 
-test("REQ133_AC11_pas_de_defilement_horizontal_a_298px", () => {
+test("REQ133_AC11_pas_de_defilement_horizontal_a_304px", () => {
   const regle = css.match(/\.ya-tableau-outils\s*\{([^}]*)\}/)[1];
   expect(regle).toMatch(/overflow-x:\s*hidden/);
-  expect(regle).toMatch(/width:\s*298px/);
+  expect(regle).toMatch(/width:\s*304px/);
 });
 
 test("REQ133_AC1_valeurs_de_depart_et_plan_inactif", () => {
@@ -269,16 +269,16 @@ test("REQ133_AC8_AC12_REQ146_AC10_info_bulles_du_texte_non_mac_et_mac", async ()
   ua.mockRestore();
 });
 
-test("REQ133_AC13_six_rangs_barre_de_298px_et_pas_de_scroll_horizontal", () => {
+test("REQ133_AC13_six_rangs_barre_de_304px_et_pas_de_scroll_horizontal", () => {
   monter();
   expect([...b.element.children].map((r) => r.querySelectorAll("button").length)).toEqual(RANGS);
   const regle = css.match(/\.ya-tableau-outils\s*\{([^}]*)\}/)[1];
-  expect(regle).toMatch(/width:\s*298px/);
+  expect(regle).toMatch(/width:\s*304px/);
   expect(regle).toMatch(/overflow-y:\s*auto/);
   expect(regle).toMatch(/max-height:\s*calc\(100% - 24px\)/);
-  // Rang 4 : onze boutons de 24 px, 2 px entre eux, 8 px entre groupes, marges de 4 px : 4 + 11 × 24 + 9 × 2 + 8 + 4 = 298.
-  expect(4 + 11 * 24 + 9 * 2 + 8 + 4).toBe(298);
-  expect(298 + 12).toBeLessThanOrEqual(320);
+  // Rang 1 : onze boutons de 24 px, 8 écarts de 2 px dans les groupes, 2 écarts de 8 px entre groupes, marges de 4 px : 304.
+  expect(4 + 11 * 24 + 8 * 2 + 2 * 8 + 4).toBe(304);
+  expect(304 + 12).toBeLessThanOrEqual(320);
 });
 
 test("REQ146_AC8_texte_inactif_onze_boutons_aria_disabled_et_clic_sans_effet", () => {
@@ -337,4 +337,90 @@ test("REQ146_AC10_barre_de_couleur_des_boutons_de_couleur_du_texte", () => {
   expect(css).toMatch(/\.ya-texte-defaut \{ --barre-texte: var\(--ink\)/);
   expect(css).toMatch(/\.ya-barre-texte \{ fill: var\(--barre-texte/);
   for (const c of ["bleu", "jaune", "orange", "rouge", "violet"]) expect(css).toContain(`--barre-texte: var(--boite-${c}-trait)`);
+});
+
+const ouvert = () => document.querySelector("dialog[open]");
+// jsdom n'implémente pas <dialog> modal : on simule ouverture et fermeture.
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute("open");
+  };
+});
+const echap = () => ouvert().dispatchEvent(new Event("cancel", { cancelable: true }));
+
+const NOMS_SYMBOLES = ["Base de données", "Tuyau", "Personne", "Groupe de personnes", "Sécurisé", "Non sécurisé", "Validé", "Échec", "Réseau", "Wi-Fi", "Ethernet", "Serveur", "Nuage", "Ordinateur", "Téléphone", "Fichier", "Courriel", "Réglages", "Alerte", "Pare-feu"];
+
+test("REQ149_AC1_AC10_symboles_ouvre_le_dialogue_aux_vingt_cases_et_echap_ne_change_rien", () => {
+  monter();
+  const s = par("Symboles");
+  expect(s.getAttribute("aria-haspopup")).toBe("dialog");
+  expect(s.hasAttribute("aria-expanded")).toBe(false);
+  expect(s.querySelector("svg")).not.toBeNull();
+  s.click();
+  const d = ouvert();
+  expect(d.querySelector("h2").textContent).toBe("Symboles");
+  expect(document.getElementById(d.getAttribute("aria-describedby")).textContent).toBe("Choisissez un symbole, puis cliquez sur le whiteboard pour le poser.");
+  const options = [...d.querySelectorAll('[role="option"]')];
+  expect(options.map((o) => o.textContent)).toEqual(NOMS_SYMBOLES);
+  expect(choix).toEqual([]);
+  expect(par("Choisir").getAttribute("aria-pressed")).toBe("true");
+  echap();
+  expect(ouvert()).toBeNull();
+  expect(choix).toEqual([]);
+  expect(document.activeElement).toBe(s);
+  expect(par("Choisir").getAttribute("aria-pressed")).toBe("true");
+});
+
+test("REQ149_AC2_AC10_choisir_un_symbole_en_fait_l_outil_presse_courant_et_l_info_bulle", () => {
+  monter();
+  vi.useFakeTimers();
+  const bulle = () => {
+    par("Symboles").enveloppe.dispatchEvent(new MouseEvent("pointerenter"));
+    vi.advanceTimersByTime(400);
+    const t = document.querySelector("[role=tooltip]")?.textContent;
+    par("Symboles").enveloppe.dispatchEvent(new MouseEvent("pointerleave"));
+    return t;
+  };
+  expect(bulle()).toBe("Symboles");
+  par("Symboles").click();
+  [...ouvert().querySelectorAll('[role="option"]')].find((o) => o.textContent === "Serveur").click();
+  expect(choix).toEqual([["outil", "server"]]);
+  expect(ouvert()).toBeNull();
+  expect(document.activeElement).toBe(par("Symboles"));
+  const courants = () => boutons().filter((x) => x.getAttribute("aria-current") === "true").map((x) => x.getAttribute("aria-label"));
+  expect(par("Symboles").getAttribute("aria-pressed")).toBe("true");
+  expect(courants()).toEqual(["Symboles"]);
+  expect(par("Rectangle").getAttribute("aria-pressed")).toBe("false");
+  expect(bulle()).toBe("Symboles : Serveur");
+  // Après la pose : l'appelant remet « Choisir », « Symboles » reste courant.
+  b.definir({ ...DEPART(), forme: "server", outil: "choisir" });
+  expect(par("Choisir").getAttribute("aria-pressed")).toBe("true");
+  expect(par("Symboles").getAttribute("aria-pressed")).toBe("false");
+  expect(courants()).toEqual(["Symboles"]);
+});
+
+test("REQ149_AC8_deuxieme_ouverture_focus_sur_le_symbole_courant_aria_selected", () => {
+  monter();
+  par("Symboles").click();
+  expect(document.activeElement.textContent).toBe("Base de données");
+  [...ouvert().querySelectorAll('[role="option"]')].find((o) => o.textContent === "Nuage").click();
+  par("Symboles").click();
+  const options = [...ouvert().querySelectorAll('[role="option"]')];
+  expect(document.activeElement.textContent).toBe("Nuage");
+  expect(options.filter((o) => o.getAttribute("aria-selected") === "true").map((o) => o.textContent)).toEqual(["Nuage"]);
+  echap();
+});
+
+test("REQ133_AC12_AC13_rang_1_a_onze_boutons_bas_et_haut_depuis_le_rang_1", () => {
+  monter();
+  const rang1 = [...b.element.children][0];
+  expect(rang1.querySelectorAll("button").length).toBe(11);
+  par("Symboles").focus();
+  touche(par("Symboles"), "ArrowDown");
+  expect(document.activeElement).toBe(par("Violet"));
+  touche(document.activeElement, "ArrowUp");
+  expect(document.activeElement).toBe(par("Note"));
 });

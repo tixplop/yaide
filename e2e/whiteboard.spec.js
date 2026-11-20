@@ -27,7 +27,7 @@ const glisser = async (page, de, vers) => {
   await page.mouse.up();
 };
 
-test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_REQ142_AC1_AC4_REQ143_AC1_AC2_AC5_REQ145_AC1_AC3_REQ133_AC13_REQ147_AC1_AC9_REQ139_AC6_REQ146_AC4_AC5_AC9_parcours_P096_P100_P101_P102_P103_P106_whiteboard", async ({ page }) => {
+test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1_REQ128_AC2_REQ131_AC2_REQ137_AC1_AC2_AC4_REQ139_AC1_AC4_REQ142_AC1_AC4_REQ143_AC1_AC2_AC5_REQ145_AC1_AC3_REQ133_AC13_REQ147_AC1_AC9_REQ139_AC6_REQ146_AC4_AC5_AC9_REQ149_AC1_AC2_AC6_AC9_parcours_P096_P100_P101_P102_P103_P106_P109_P110_whiteboard", async ({ page }) => {
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "docs"), { recursive: true });
   fs.writeFileSync(path.join(dossier, "docs/a.md"), "# A\n");
@@ -345,12 +345,12 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1
     await page.keyboard.press("Control+z");
     expect(Math.abs((await xDe(bDebut)) - x1)).toBeLessThanOrEqual(1);
 
-    // P-106, AC-133-13 : boîte à outils de 298 × 172 px ; O puis Bas depuis « Normal » → « Texte vert » ; Bas depuis « Texte rouge » → « Aux deux bouts ».
+    // P-106, AC-133-13 : boîte à outils de 304 × 172 px ; O puis Bas depuis « Normal » → « Texte vert » ; Bas depuis « Texte rouge » → « Aux deux bouts ».
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.getByRole("button", { name: "Tout afficher" }).click();
     await surf2.focus();
     const outils = await page.locator(".ya-tableau-outils:visible").boundingBox();
-    proche(outils.width, 298);
+    proche(outils.width, 304);
     proche(outils.height, 172);
     await page.keyboard.press("o");
     await expect(page.locator(".ya-tableau-outils:visible button:focus")).toHaveCount(1);
@@ -470,6 +470,39 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1
     await expect(zb).not.toContainText("zzz");
     await expect(zb).toBeFocused();
     await page.keyboard.press("Escape");
+
+    // P-109 (étapes 1 à 3), P-110 (étape 4), AC-149-1, AC-149-2, AC-149-6, AC-149-9 : le symbole « Base de données ».
+    const symboles = page.getByRole("button", { name: "Symboles", exact: true });
+    await symboles.click();
+    const dialogueSymboles = page.getByRole("dialog", { name: "Symboles" });
+    await expect(dialogueSymboles).toBeVisible();
+    await expect(dialogueSymboles.getByRole("option", { name: "Base de données" })).toBeFocused();
+    await dialogueSymboles.getByRole("option", { name: "Base de données" }).click();
+    await expect(dialogueSymboles).toBeHidden();
+    await expect(symboles).toBeFocused();
+    const zoneSurface = await surf2.boundingBox();
+    await surf2.click({ position: { x: zoneSurface.width - 80, y: 80 } });
+    const boiteSymbole = () => surf2.locator('[aria-roledescription="boîte"][aria-label^="Base de données"]').last();
+    const saisieSymbole = page.getByRole("textbox", { name: "Texte de la boîte" });
+    await expect(saisieSymbole).toBeFocused();
+    await expect(boiteSymbole()).toHaveAccessibleName("Base de données");
+    const bs = await boiteSymbole().boundingBox();
+    const ts = await saisieSymbole.boundingBox();
+    proche(bs.width, bs.height);
+    expect(ts.y).toBeGreaterThanOrEqual(bs.y + 0.6 * bs.height - 1);
+    expect(ts.y + ts.height).toBeLessThanOrEqual(bs.y + bs.height + 1);
+    await page.keyboard.type("Clients");
+    await expect(boiteSymbole()).toHaveAccessibleName("Base de données : Clients");
+    await page.keyboard.type("\nUn texte très long pour un symbole\nsur plusieurs lignes\nencore une ligne\net une autre\net la dernière");
+    await page.keyboard.press("Escape");
+    const bs2 = await boiteSymbole().boundingBox();
+    proche(bs2.width, bs.width);
+    proche(bs2.height, bs.height);
+    // AC-149-2 : le fichier enregistré porte 100 × 100 px, la forme et le texte.
+    await page.keyboard.press("Control+s");
+    await expect.poll(() => JSON.parse(fs.readFileSync(fichier, "utf8")).boxes.some((x) => x.shape === "database")).toBe(true);
+    expect(JSON.parse(fs.readFileSync(fichier, "utf8")).boxes.find((x) => x.shape === "database")).toMatchObject({ width: 100, height: 100, shape: "database" });
+    expect(JSON.parse(fs.readFileSync(fichier, "utf8")).boxes.find((x) => x.shape === "database").text).toMatch(/^Clients/);
   } finally {
     await yaide.arreter();
   }

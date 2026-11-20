@@ -1,5 +1,8 @@
 import { bouton } from "./bouton.js";
 import { estMac } from "../references.js";
+import { dialogueChoix } from "./dialogue.js";
+import { SYMBOLES } from "../jdiag.js";
+import { estSymbole } from "./tableau-calculs.js";
 
 // Rangs, groupes et boutons de la boîte à outils (C-018). `cle` : la valeur de `valeurs` que le groupe règle.
 const RANGS = [
@@ -20,6 +23,7 @@ const RANGS = [
         ["Losange", "diamond", "diamond"],
         ["Note", "note", "forme-note"],
         ["Texte", "text", "baseline"],
+        ["Symboles", "symboles", "shapes"],
       ],
     },
     {
@@ -192,6 +196,9 @@ export function boiteOutils({ valeurs, surChoix, surAction, surTexte, surEchap }
         });
         if (g.cle === "couleurTexte") b.classList.add(`ya-texte-${COULEURS_CSS[valeur]}`);
         b.dataset.indice = String(liste.length);
+        if (valeur === "symboles") {
+          b.setAttribute("aria-haspopup", "dialog");
+        }
         if (!icone) {
           const pastille = document.createElement("span");
           pastille.className = `ya-pastille-couleur ya-pastille-${COULEURS_CSS[valeur]}`;
@@ -202,6 +209,11 @@ export function boiteOutils({ valeurs, surChoix, surAction, surTexte, surEchap }
         // Style et plan : pas de focus à la souris, pour ne pas finir une saisie. Un outil le prend.
         if (g.action || g.cle !== "outil") b.addEventListener("mousedown", (e) => e.preventDefault());
         b.addEventListener("click", () => {
+          if (valeur === "symboles") {
+            b.focus();
+            ouvrirSymboles();
+            return;
+          }
           if (g.action) {
             surAction?.(valeur);
             return;
@@ -229,8 +241,35 @@ export function boiteOutils({ valeurs, surChoix, surAction, surTexte, surEchap }
     racine.append(rang);
   }
 
+
+  // Le dialogue « Symboles » : choisir un symbole en fait l'outil actif et la forme courante.
+  function ouvrirSymboles() {
+    const d = dialogueChoix({
+      titre: "Symboles",
+      aide: "Choisissez un symbole, puis cliquez sur le whiteboard pour le poser.",
+      nom: "Symboles disponibles",
+      lignes: SYMBOLES.map((s) => ({ id: s.shape, libelle: s.nom, icone: `symbole-${s.shape}` })),
+      selection: estSymbole({ shape: etat.forme }) ? etat.forme : undefined,
+      surChoix: (shape) => {
+        etat.outil = shape;
+        etat.forme = shape;
+        afficher();
+        surChoix?.("outil", shape);
+      },
+    });
+    d.ouvrir();
+  }
+
   function afficher() {
     for (const { b, g, valeur } of liste) {
+      if (valeur === "symboles") {
+        b.setAttribute("aria-pressed", String(estSymbole({ shape: etat.outil })));
+        if (estSymbole({ shape: etat.forme })) b.setAttribute("aria-current", "true");
+        else b.removeAttribute("aria-current");
+        const nom = SYMBOLES.find((s) => s.shape === etat.forme)?.nom;
+        b.definirInfoBulle(nom ? `Symboles : ${nom}` : "Symboles");
+        continue;
+      }
       if (g.action) {
         b.definirInactif(!planActif);
         continue;

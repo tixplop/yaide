@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { ecrireJdiag } from "../jdiag.js";
 import { tableau } from "./tableau.js";
 
@@ -458,4 +458,68 @@ test("REQ141_AC4_AC5_tab_suit_le_nouvel_ordre_et_la_saisie_garde_son_focus", () 
   expect(lignes(dernier(), "boxes")).toEqual(["b1", "b2", "b3"]);
   expect(t.element.querySelector("[role=textbox]")).toBe(zone);
   expect(document.activeElement).toBe(zone);
+});
+
+
+// jsdom n'implémente pas <dialog> modal : on simule ouverture et fermeture.
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute("open");
+  };
+});
+const choisirSymbole = (nom) => {
+  bt("Symboles").click();
+  [...document.querySelectorAll('[role="option"]')].find((o) => o.textContent === nom).click();
+};
+
+test("REQ149_AC2_symbole_pose_a_100_x_100_centre_enregistre_retour_a_choisir_double_clic_et_ajouter", () => {
+  monter({ version: 1, boxes: [], links: [] });
+  choisirSymbole("Base de données");
+  expect(presse("Symboles")).toBe("true");
+  expect(bt("Symboles").getAttribute("aria-current")).toBe("true");
+  expect(bt("Rectangle").getAttribute("aria-current")).toBeNull();
+  const s = surface();
+  ptr(s, "pointerdown", 300, 200);
+  ptr(s, "pointerup", 300, 200);
+  expect(dernier().boxes).toEqual([{ id: "b1", x: 250, y: 150, width: 100, height: 100, text: "", shape: "database" }]);
+  expect(t.element.querySelector("[role=textbox]")).not.toBeNull();
+  expect(JSON.parse(ecrireJdiag(dernier())).boxes[0]).toMatchObject({ width: 100, height: 100, shape: "database" });
+  expect(presse("Choisir")).toBe("true");
+  expect(bt("Symboles").getAttribute("aria-current")).toBe("true");
+  expect(presse("Symboles")).toBe("false");
+  doubleClic(600, 400);
+  expect(dernier().boxes[1]).toMatchObject({ x: 550, y: 350, width: 100, height: 100, shape: "database" });
+  t.ajouterBoite();
+  expect(dernier().boxes[2]).toMatchObject({ width: 100, height: 100, shape: "database" });
+});
+
+test("REQ149_AC4_couleur_teinte_et_opacite_trait_epaisseur_sans_effet_sur_un_symbole", () => {
+  monter({ version: 1, boxes: [{ id: "b1", x: 100, y: 100, width: 100, height: 100, text: "", shape: "server" }], links: [] });
+  clic(obj("b1"));
+  bt("Vert").click();
+  expect(dernier().boxes[0].color).toBe("green");
+  expect(JSON.parse(ecrireJdiag(dernier())).boxes[0].color).toBe("green");
+  bt("Par défaut").click();
+  expect(JSON.parse(ecrireJdiag(dernier())).boxes[0]).not.toHaveProperty("color");
+  const n = changements.length;
+  bt("50 %").click();
+  bt("Tirets").click();
+  bt("Épais").click();
+  expect(changements.length).toBe(n);
+  // Un symbole choisi comme outil : les choix valent pour les suivants, sans toucher au document.
+  clic(surface().querySelector("svg"));
+  choisirSymbole("Serveur");
+  bt("50 %").click();
+  bt("Tirets").click();
+  bt("Épais").click();
+  expect(changements.length).toBe(n);
+  t.ajouterBoite();
+  const nouvelle = dernier().boxes.at(-1);
+  expect(nouvelle).toMatchObject({ shape: "server", width: 100, height: 100 });
+  expect(nouvelle.opacity).toBeUndefined();
+  expect(nouvelle.line).toBeUndefined();
+  expect(nouvelle.weight).toBeUndefined();
 });

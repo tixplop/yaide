@@ -542,3 +542,15 @@ test("REQ141_AC4_bouton_inactif_de_barre_d_outils_aria_disabled_sans_disabled_fo
   expect(css).not.toMatch(/\.ya-icon-btn\[aria-disabled="true"\](:not\([^)]*\))?\s*\{[^}]*opacity/);
   barre.remove();
 });
+
+test("REQ031_AC1_definirInfoBulle_change_la_bulle_sans_toucher_au_nom_accessible", () => {
+  vi.useFakeTimers();
+  const b = bouton({ icone: "circle", nomAccessible: "Symboles" });
+  document.body.append(b.enveloppe);
+  b.definirInfoBulle("Symboles : Serveur");
+  expect(b.getAttribute("aria-label")).toBe("Symboles");
+  b.enveloppe.dispatchEvent(new MouseEvent("pointerenter"));
+  vi.advanceTimersByTime(400);
+  expect(document.querySelector("[role=tooltip]").textContent).toBe("Symboles : Serveur");
+  vi.useRealTimers();
+});
