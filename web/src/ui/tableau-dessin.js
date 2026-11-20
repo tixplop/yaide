@@ -1,3 +1,4 @@
+import { positionTexte } from "../jdiag.js";
 import { rendreTexte } from "./tableau-texte.js";
 import { icone } from "./icones.js";
 import { connecteursAffiches, epaisseur, estSymbole, geometrieLien, milieuTrace, pointe, retraitPointes, tirets, trace, zoneTexte } from "./tableau-calculs.js";
@@ -68,6 +69,10 @@ export function dessinBoite(b, { id, nom, classe, texte }) {
     d.setAttribute("stroke-width", "1.5");
     g.append(d);
   }
+  // Position du texte (REQ-150) : une classe par valeur, sur la zone affichée comme sur la saisie.
+  const { align, valign } = positionTexte(b);
+  texte.classList.remove("align-left", "align-center", "align-right", "valign-top", "valign-middle", "valign-bottom");
+  texte.classList.add(`align-${align}`, `valign-${valign}`);
   const zone = zoneTexte(b);
   svg("foreignObject", { x: zone.x, y: zone.y, width: zone.width, height: zone.height }, g).append(texte);
   return g;

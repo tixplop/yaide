@@ -877,12 +877,18 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau .boite.forme-symbole:not(.choisie, .saisie, .glissee):hover .forme { stroke: var(--line-strong); stroke-width: var(--trait); stroke-dasharray: 4 4; }
 .ya-tableau .boite .symbole-dessin { color: var(--boite-trait); pointer-events: none; }
 .ya-tableau .boite.forme-symbole.couleur-default .symbole-dessin { color: var(--ink); }
-.ya-tableau .boite.forme-symbole .ya-tableau-texte { justify-content: flex-start; padding: 0; }
+.ya-tableau .boite.forme-symbole .ya-tableau-texte { padding: 0; }
 .ya-tableau .boite.choisie .forme, .ya-tableau .boite.choisie .pli, .ya-tableau .boite.saisie .forme, .ya-tableau .boite.saisie .pli, .ya-tableau .boite.glissee .forme, .ya-tableau .boite.glissee .pli { stroke: var(--accent-fg); stroke-width: max(2px, var(--e)); }
 .ya-tableau .boite.glissee .forme { cursor: grabbing; }
 .ya-tableau .boite.saisie .forme { cursor: text; }
 .ya-tableau .boite.cible .surcouche { fill: var(--accent-soft); stroke: var(--accent-fg); stroke-width: var(--trait); }
 .ya-tableau-texte { box-sizing: border-box; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: safe center; padding: 6px 8px; overflow: hidden; text-align: center; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--texte-base) var(--font-sans); color: var(--ink); outline: none; }
+.ya-tableau-texte.align-left { text-align: left; }
+.ya-tableau-texte.align-center { text-align: center; }
+.ya-tableau-texte.align-right { text-align: right; }
+.ya-tableau-texte.valign-top { justify-content: safe flex-start; }
+.ya-tableau-texte.valign-middle { justify-content: safe center; }
+.ya-tableau-texte.valign-bottom { justify-content: safe flex-end; }
 .ya-tableau .boite.taille-small .ya-tableau-texte { font: 11px/15px var(--font-sans); }
 .ya-tableau .boite.taille-large .ya-tableau-texte { font: 18px/24px var(--font-sans); }
 .ya-tableau .boite.taille-xlarge .ya-tableau-texte { font: 24px/30px var(--font-sans); }

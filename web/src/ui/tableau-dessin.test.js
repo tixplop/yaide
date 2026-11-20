@@ -353,7 +353,7 @@ test("REQ139_AC2_quatre_tailles_de_texte_sur_la_note_le_cercle_et_la_forme_texte
   clic(forme("b1"));
   touche("Enter");
   expect(obj("b1").classList.contains("saisie")).toBe(true);
-  expect(obj("b1").querySelector("[role=textbox]").className).toBe("ya-tableau-texte");
+  expect(obj("b1").querySelector("[role=textbox]").classList.contains("ya-tableau-texte")).toBe(true);
   expect(obj("b1").classList.contains("taille-xlarge")).toBe(true);
   t.definirDocument(DOC({ boxes: [boite("b1", 0, 0)] }));
   expect([...obj("b1").classList].some((c) => c.startsWith("taille-"))).toBe(false);
@@ -577,7 +577,8 @@ test("REQ149_AC6_texte_dans_la_bande_du_bas_gras_annule_copie_et_effacement", ()
   const fo = obj("b1").querySelector("foreignObject");
   expect(["x", "y", "width", "height"].map((a) => fo.getAttribute(a))).toEqual(["108", "160", "84", "40"]);
   expect(regle(".ya-tableau-texte")[0]).toMatch(/overflow: hidden/);
-  expect(css).toMatch(/\.boite\.forme-symbole \.ya-tableau-texte \{[^}]*justify-content: flex-start; padding: 0/);
+  expect(css).toMatch(/\.boite\.forme-symbole \.ya-tableau-texte \{[^}]*padding: 0/);
+  expect(pos("b1")).toEqual(["align-center", "valign-top"]);
   clic(obj("b1").querySelector(".forme"));
   bt("Gras").click();
   expect(changements.at(-1).boxes[0].spans).toEqual([{ start: 0, end: 7, bold: true }]);
@@ -607,4 +608,67 @@ test("REQ149_AC9_nom_du_symbole_avec_son_texte_et_saisie_dans_la_bande_du_bas", 
   const fo = zone.closest("foreignObject");
   expect([fo.getAttribute("y"), fo.getAttribute("height")]).toEqual(["160", "40"]);
   expect(dessinDe("b1")).not.toBeNull();
+});
+
+// REQ-150 : position du texte.
+const zoneTxt = (id) => obj(id).querySelector(".ya-tableau-texte");
+const pos = (id) => [...zoneTxt(id).classList].filter((c) => /^v?align-/.test(c));
+
+test("REQ150_AC1_AC2_rectangle_une_classe_par_valeur_et_regles_css_safe", () => {
+  const align = ["left", "center", "right"];
+  const valign = ["top", "middle", "bottom"];
+  monter(DOC({ boxes: [boite("b0", 0, 0), ...align.flatMap((a, i) => valign.map((v, j) => boite(`b${i}${j}`, 0, 0, { align: a, valign: v })))] }));
+  expect(pos("b0")).toEqual(["align-center", "valign-middle"]);
+  for (const [i, a] of align.entries()) for (const [j, v] of valign.entries()) expect(pos(`b${i}${j}`)).toEqual([`align-${a}`, `valign-${v}`]);
+  const dit = (sel, decl) => expect(regle(sel)[0]).toContain(decl);
+  dit(".ya-tableau-texte.align-left", "text-align: left");
+  dit(".ya-tableau-texte.align-center", "text-align: center");
+  dit(".ya-tableau-texte.align-right", "text-align: right");
+  dit(".ya-tableau-texte.valign-top", "justify-content: safe flex-start");
+  dit(".ya-tableau-texte.valign-middle", "justify-content: safe center");
+  dit(".ya-tableau-texte.valign-bottom", "justify-content: safe flex-end");
+  expect(regle(".ya-tableau-texte")[0]).toContain("padding: 6px 8px");
+});
+
+test("REQ150_AC3_autres_formes_gardent_leur_zone_et_prennent_les_six_valeurs", () => {
+  for (const shape of ["ellipse", "diamond", "note", "rounded", "text"]) {
+    const sans = boite("b1", 0, 0, { shape, width: 160, height: 100 });
+    monter(DOC({ boxes: [sans] }));
+    const fo = (id) => ["x", "y", "width", "height"].map((k) => obj(id).querySelector("foreignObject").getAttribute(k));
+    const ref = fo("b1");
+    t.detruire();
+    document.body.innerHTML = "";
+    monter(DOC({ boxes: [{ ...sans, align: "right", valign: "bottom" }] }));
+    expect(fo("b1")).toEqual(ref);
+    expect(pos("b1")).toEqual(["align-right", "valign-bottom"]);
+    t.detruire();
+    document.body.innerHTML = "";
+  }
+});
+
+test("REQ150_AC4_symbole_en_haut_par_defaut_dessin_immobile", () => {
+  monter(DOC({ boxes: [boite("b1", 0, 0, { shape: "database", width: 100, height: 100 })] }));
+  expect(pos("b1")).toEqual(["align-center", "valign-top"]);
+  const dessin = () => [...obj("b1").querySelector(".symbole-dessin").attributes].map((a) => `${a.name}=${a.value}`);
+  const avant = dessin();
+  t.definirDocument(DOC({ boxes: [boite("b1", 0, 0, { shape: "database", width: 100, height: 100, valign: "middle" })] }));
+  expect(pos("b1")).toEqual(["align-center", "valign-middle"]);
+  t.definirDocument(DOC({ boxes: [boite("b1", 0, 0, { shape: "database", width: 100, height: 100, valign: "bottom", align: "right" })] }));
+  expect(pos("b1")).toEqual(["align-right", "valign-bottom"]);
+  expect(dessin()).toEqual(avant);
+  expect(regle(".ya-tableau .boite.forme-symbole .ya-tableau-texte")[0]).not.toContain("justify-content");
+  expect(regle(".ya-tableau .boite.forme-symbole .ya-tableau-texte")[0]).toContain("padding: 0");
+});
+
+test("REQ150_AC8_la_saisie_a_les_memes_classes_dans_la_zone_de_la_forme", () => {
+  monter(DOC({ boxes: [boite("b1", 0, 0, { align: "right", valign: "bottom" }), boite("b2", 300, 0, { shape: "database" })] }));
+  clic(obj("b1").querySelector(".surcouche"));
+  touche("Enter");
+  const zone = obj("b1").querySelector("foreignObject [role=textbox]");
+  expect(zone.getAttribute("aria-label")).toBe("Texte de la boîte");
+  expect([...zone.classList]).toEqual(["ya-tableau-texte", "align-right", "valign-bottom"]);
+  touche("Escape");
+  clic(obj("b2").querySelector(".surcouche"));
+  touche("Enter");
+  expect(pos("b2")).toEqual(["align-center", "valign-top"]);
 });
