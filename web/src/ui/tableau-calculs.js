@@ -1,6 +1,6 @@
 // Calculs du whiteboard (C-018), sans DOM. Une vue est `{ x, y, zoom }` : (x, y) est le point du dessin
 // en haut à gauche de la surface, `zoom` un rapport (1 = 100 %). Une taille est `{ largeur, hauteur }` en px écran.
-import { SYMBOLES } from "../jdiag.js";
+import { FORMES_PLEINES, SYMBOLES } from "../jdiag.js";
 
 export const ZOOM_MIN = 0.25;
 export const ZOOM_MAX = 4;
@@ -135,6 +135,8 @@ export function retraitPointes(ends, weight, zoom) {
 }
 
 export const estSymbole = (boite) => SYMBOLES.some((s) => s.shape === boite.shape);
+// « Point » et « Barre » : formes pleines, sans texte (REQ-156).
+export const estFormePleine = (boite) => FORMES_PLEINES.some((s) => s.shape === boite.shape);
 
 // Rectangle où le texte d'une boîte reste dans sa forme.
 export function zoneTexte(boite) {

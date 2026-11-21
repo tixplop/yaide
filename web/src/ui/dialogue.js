@@ -150,11 +150,11 @@ export function fiche({ titre, message, champs }) {
 
 // C-007 `centre`, « Choix sans bouton principal » (REQ-149) : l'aide, une C-006 `grille`, « Fermer » seul.
 // Choisir une case ferme le dialogue et rend le choix ; « Fermer », Échap ou le voile le ferment sans rien rendre.
-export function dialogueChoix({ titre, aide, nom, lignes, selection, surChoix }) {
+export function dialogueChoix({ titre, aide, nom, lignes, groupes, selection, surChoix }) {
   const texte = document.createElement("p");
   texte.className = "ya-aide-choix";
   texte.textContent = aide;
-  const grille = liste({ variante: "grille", lignes, selection, nom, surActiver: (id) => {
+  const grille = liste({ variante: "grille", lignes, groupes, selection, nom, surActiver: (id) => {
     d.fermer();
     surChoix(id);
   } });

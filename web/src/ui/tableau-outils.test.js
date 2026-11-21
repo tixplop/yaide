@@ -377,9 +377,10 @@ beforeAll(() => {
 });
 const echap = () => ouvert().dispatchEvent(new Event("cancel", { cancelable: true }));
 
+const NOMS_FORMES = ["Point", "Barre"];
 const NOMS_SYMBOLES = ["Base de données", "Tuyau", "Personne", "Groupe de personnes", "Sécurisé", "Non sécurisé", "Validé", "Échec", "Réseau", "Wi-Fi", "Ethernet", "Serveur", "Nuage", "Ordinateur", "Téléphone", "Fichier", "Courriel", "Réglages", "Alerte", "Pare-feu", "Disque", "Internet", "Content", "Neutre", "Mécontent"];
 
-test("REQ149_AC1_AC10_symboles_ouvre_le_dialogue_aux_vingt_cases_et_echap_ne_change_rien", () => {
+test("REQ149_AC1_AC10_symboles_ouvre_le_dialogue_aux_vingt_sept_cases_et_echap_ne_change_rien", () => {
   monter();
   const s = par("Symboles");
   expect(s.getAttribute("aria-haspopup")).toBe("dialog");
@@ -390,7 +391,7 @@ test("REQ149_AC1_AC10_symboles_ouvre_le_dialogue_aux_vingt_cases_et_echap_ne_cha
   expect(d.querySelector("h2").textContent).toBe("Symboles");
   expect(document.getElementById(d.getAttribute("aria-describedby")).textContent).toBe("Choisissez un symbole, puis cliquez sur le whiteboard pour le poser.");
   const options = [...d.querySelectorAll('[role="option"]')];
-  expect(options.map((o) => o.textContent)).toEqual(NOMS_SYMBOLES);
+  expect(options.map((o) => o.textContent)).toEqual([...NOMS_SYMBOLES, ...NOMS_FORMES]);
   expect(choix).toEqual([]);
   expect(par("Choisir").getAttribute("aria-pressed")).toBe("true");
   echap();
@@ -449,4 +450,45 @@ test("REQ133_AC12_AC13_rang_1_a_onze_boutons_bas_et_haut_depuis_le_rang_1", () =
   expect(document.activeElement).toBe(par("Violet"));
   touche(document.activeElement, "ArrowUp");
   expect(document.activeElement).toBe(par("Note"));
+});
+
+test("REQ149_AC12_disque_et_un_visage_choisis_donnent_l_outil_de_leur_forme", () => {
+  monter();
+  for (const [nom, shape] of [["Disque", "disk"], ["Content", "happy"]]) {
+    par("Symboles").click();
+    [...ouvert().querySelectorAll('[role="option"]')].find((o) => o.textContent === nom).click();
+    expect(choix.at(-1)).toEqual(["outil", shape]);
+    expect(par("Symboles").getAttribute("aria-pressed")).toBe("true");
+  }
+});
+
+test("REQ156_AC1_AC10_point_et_barre_dans_le_dialogue_outil_info_bulle_et_focus_a_la_reouverture", () => {
+  monter();
+  vi.useFakeTimers();
+  const bulle = () => {
+    par("Symboles").enveloppe.dispatchEvent(new MouseEvent("pointerenter"));
+    vi.advanceTimersByTime(400);
+    const t = document.querySelector("[role=tooltip]")?.textContent;
+    par("Symboles").enveloppe.dispatchEvent(new MouseEvent("pointerleave"));
+    return t;
+  };
+  par("Symboles").click();
+  const options = () => [...ouvert().querySelectorAll('[role="option"]')];
+  expect(options().at(-2).querySelector("svg")).not.toBeNull();
+  // Fin → « Barre » ; Entrée sur « Point » choisit « Point ».
+  touche(document.activeElement, "End");
+  expect(document.activeElement.textContent).toBe("Barre");
+  options().find((o) => o.textContent === "Point").focus();
+  touche(document.activeElement, "Enter");
+  expect(choix.at(-1)).toEqual(["outil", "dot"]);
+  expect(ouvert()).toBeNull();
+  expect(par("Symboles").getAttribute("aria-pressed")).toBe("true");
+  expect(bulle()).toBe("Symboles : Point");
+  b.definir({ ...DEPART(), forme: "dot", outil: "choisir" });
+  expect(par("Symboles").getAttribute("aria-current")).toBe("true");
+  expect(par("Symboles").getAttribute("aria-pressed")).toBe("false");
+  par("Symboles").click();
+  expect(document.activeElement.textContent).toBe("Point");
+  expect(options().filter((o) => o.getAttribute("aria-selected") === "true").map((o) => o.textContent)).toEqual(["Point"]);
+  echap();
 });

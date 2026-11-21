@@ -7,7 +7,7 @@ import { message } from "./message.js";
 import { depuisMermaid } from "../mermaid-jdiag.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
 import { boiteOutils } from "./tableau-outils.js";
-import { connecteurProcheAffiche, connecteursAffiches, connecteurs, dansRectangle, estSymbole, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
+import { connecteurProcheAffiche, connecteursAffiches, connecteurs, dansRectangle, estFormePleine, estSymbole, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
 import { basculer, colorer, decalages, etatTexte, inserer, lireTexte, pointA, rendreZone } from "./tableau-texte.js";
 import { dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, dessinRectangleSelection, poigneesBoite, poigneesFleche, poigneesLien, svg } from "./tableau-dessin.js";
 
@@ -24,26 +24,30 @@ const OUTILS_DEPART = { outil: "choisir", forme: "rectangle", couleur: "default"
 // « boite », « texte » (la forme « Texte »), « lien » et « trait » (flèches libres, et choix d'un nouveau lien).
 const CLES_STYLE = { couleur: "color", opacite: "opacity", taille: "textSize", trace: "route", bouts: "ends", trait: "line", epaisseur: "weight" };
 const CONCERNES = {
-  couleur: ["boite", "texte", "trait", "lien"],
-  opacite: ["boite"],
+  couleur: ["boite", "texte", "forme", "trait", "lien"],
+  opacite: ["boite", "forme"],
   taille: ["boite", "texte", "lien"],
   trace: ["trait", "lien"],
   bouts: ["trait", "lien"],
-  trait: ["boite", "trait", "lien"],
-  epaisseur: ["boite", "trait", "lien"],
+  trait: ["boite", "forme", "trait", "lien"],
+  epaisseur: ["boite", "forme", "trait", "lien"],
 };
 let compteur = 0;
 let collages = 0; // collages faits depuis la dernière copie
 let presse = null; // la copie de Ctrl+C, partagée par tous les onglets de whiteboard
 let dernierTexte = null; // le texte écrit dans le presse-papiers du système par la dernière copie
 
-// Le rectangle des deux points, dans tous les sens, jamais sous 40 x 24 px, aux positions entières.
-function rectangleTrace(a, b) {
+// Taille minimale d'une forme : 8 x 8 px pour « Point » et « Barre », 40 x 24 px pour les autres.
+const tailleMin = (shape) => (estFormePleine({ shape }) ? [8, 8] : [40, 24]);
+
+// Le rectangle des deux points, dans tous les sens, jamais sous la taille minimale de la forme, aux positions entières.
+function rectangleTrace(a, b, shape) {
+  const [minL, minH] = tailleMin(shape);
   return {
     x: Math.round(Math.min(a.x, b.x)),
     y: Math.round(Math.min(a.y, b.y)),
-    width: Math.max(40, Math.round(Math.abs(b.x - a.x))),
-    height: Math.max(24, Math.round(Math.abs(b.y - a.y))),
+    width: Math.max(minL, Math.round(Math.abs(b.x - a.x))),
+    height: Math.max(minH, Math.round(Math.abs(b.y - a.y))),
   };
 }
 
@@ -355,7 +359,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     afficherOutils();
   }
 
-  const sorte = (o) => (boite(o.id) ? (o.shape === "text" || estSymbole(o) ? "texte" : "boite") : estLien(o.id) ? "lien" : "trait");
+  const sorte = (o) => (boite(o.id) ? (o.shape === "text" || estSymbole(o) ? "texte" : estFormePleine(o) ? "forme" : "boite") : estLien(o.id) ? "lien" : "trait");
   const cibles = () => (saisie !== null ? [saisie] : choisis).map(objet).filter(Boolean);
   // Les choix de style d'une sorte d'objet qui diffèrent de leur valeur par défaut.
   function styleChoisi(s) {
@@ -392,7 +396,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   }
 
   // Les boîtes visées par « Alignement du texte » et « Position verticale du texte » : la boîte en saisie, sinon les boîtes choisies.
-  const boitesVisees = () => cibles().filter((o) => boite(o.id));
+  const boitesVisees = () => cibles().filter((o) => boite(o.id) && !estFormePleine(o));
   function positionOutils() {
     const bs = boitesVisees();
     if (bs.length === 0) return { actif: false };
@@ -430,7 +434,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       ? { id, x: rect.x, y: rect.y, width, height, text: "" }
       : { id, x: Math.round(centreX - width / 2), y: Math.round(centreY - height / 2), width, height, text: "" };
     if (choix.forme !== "rectangle") b.shape = choix.forme;
-    Object.assign(b, styleChoisi(choix.forme === "text" || estSymbole({ shape: choix.forme }) ? "texte" : "boite"));
+    Object.assign(b, styleChoisi(choix.forme === "text" || estSymbole({ shape: choix.forme }) ? "texte" : estFormePleine({ shape: choix.forme }) ? "forme" : "boite"));
     appliquer({ ...doc, boxes: [...doc.boxes, b] });
     choix.outil = "choisir";
     commencerSaisie(id);
@@ -455,7 +459,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   // la sélection de la saisie si elle n'est pas vide, sinon tout le texte.
   function plages() {
     return cibles()
-      .filter((o) => boite(o.id) || doc.links.some((l) => l.id === o.id))
+      .filter((o) => (boite(o.id) && !estFormePleine(o)) || doc.links.some((l) => l.id === o.id))
       .map((o) => {
         const { text, spans } = o.id === saisie ? lireTexte(editeur) : { text: o.text ?? "", spans: o.spans ?? [] };
         const sel = o.id === saisie ? selectionSaisie() : null;
@@ -557,6 +561,12 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
 
   function commencerSaisie(id) {
     finirSaisie();
+    // « Point » et « Barre » n'ont pas de texte : la boîte est seulement choisie.
+    if (boite(id) && estFormePleine(boite(id))) {
+      choisis = [id];
+      dessiner();
+      return;
+    }
     saisie = id;
     choisis = [id];
     editeur = document.createElement("div");
@@ -974,8 +984,9 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       const p = pointDessin(e);
       geste.rect = { x: Math.min(geste.p0.x, p.x), y: Math.min(geste.p0.y, p.y), width: Math.abs(p.x - geste.p0.x), height: Math.abs(p.y - geste.p0.y) };
     } else if (geste.type === "taille") {
-      const width = Math.max(40, Math.round(geste.origine.width + dx / z));
-      const height = Math.max(24, Math.round(geste.origine.height + dy / z));
+      const [minL, minH] = tailleMin(boite(geste.id).shape);
+      const width = Math.max(minL, Math.round(geste.origine.width + dx / z));
+      const height = Math.max(minH, Math.round(geste.origine.height + dy / z));
       appliquer({ ...doc, boxes: doc.boxes.map((b) => (b.id === geste.id ? { ...b, width, height } : b)) }, geste);
     } else if (geste.type === "bout") {
       const o = geste.origine;
@@ -989,7 +1000,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       provisoire = { lien: true, ends: geste.ends, depart, arrivee };
       cible = boiteSous(pointeur, autre)?.id ?? null;
     } else if (geste.type === "forme") {
-      formeProvisoire = rectangleTrace(geste.p0, pointDessin(e));
+      formeProvisoire = rectangleTrace(geste.p0, pointDessin(e), choix.forme);
     } else if (geste.type === "fleche") {
       const p = pointDessin(e);
       provisoire = { libre: true, depart: geste.p0, x: p.x, y: p.y };
@@ -1047,7 +1058,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   // Fin d'un geste d'un outil de forme, « Lien » ou « Flèche » : crée l'objet, qui devient choisi, et l'outil revient à « Choisir ».
   function creerAvecOutil(fin, lieu, p) {
     if (fin.type === "forme") {
-      if (fin.actif) nouvelleBoite(0, 0, rectangleTrace(fin.p0, p));
+      if (fin.actif) nouvelleBoite(0, 0, rectangleTrace(fin.p0, p, choix.forme));
       else nouvelleBoite(fin.p0.x, fin.p0.y);
     } else if (fin.type === "fleche") {
       if (!fin.actif) return;

@@ -523,3 +523,110 @@ test("REQ149_AC4_couleur_teinte_et_opacite_trait_epaisseur_sans_effet_sur_un_sym
   expect(nouvelle.line).toBeUndefined();
   expect(nouvelle.weight).toBeUndefined();
 });
+
+const PLEINES = () => ({
+  version: 1,
+  boxes: [
+    { id: "b1", x: 100, y: 100, width: 16, height: 16, text: "", shape: "dot" },
+    { id: "b2", x: 300, y: 100, width: 120, height: 8, text: "", shape: "bar" },
+    { id: "b3", x: 100, y: 300, width: 160, height: 80, text: "Texte" },
+  ],
+  links: [],
+});
+const GROUPES_TEXTE = ["Style du texte", "Couleur du texte", "Alignement du texte", "Position verticale du texte"];
+const groupe = (nom) => [...barre().querySelectorAll(`[role=group][aria-label="${nom}"] button`)];
+
+test("REQ156_AC1_point_pose_au_clic_sans_saisie_choisi_et_second_point_au_double_clic", () => {
+  monter({ version: 1, boxes: [], links: [] });
+  choisirSymbole("Point");
+  expect(presse("Symboles")).toBe("true");
+  ptr(surface(), "pointerdown", 300, 200);
+  ptr(surface(), "pointerup", 300, 200);
+  expect(dernier().boxes).toEqual([{ id: "b1", x: 292, y: 192, width: 16, height: 16, text: "", shape: "dot" }]);
+  expect(JSON.parse(ecrireJdiag(dernier())).boxes[0]).toMatchObject({ width: 16, height: 16, text: "", shape: "dot" });
+  expect(t.element.querySelector("[role=textbox]")).toBeNull();
+  expect(choisieId()).toBe(obj("b1").id);
+  expect(presse("Choisir")).toBe("true");
+  expect(bt("Symboles").getAttribute("aria-current")).toBe("true");
+  doubleClic(600, 400);
+  expect(dernier().boxes[1]).toMatchObject({ x: 592, y: 392, width: 16, height: 16, shape: "dot" });
+  expect(t.element.querySelector("[role=textbox]")).toBeNull();
+  t.ajouterBoite();
+  expect(dernier().boxes).toHaveLength(3);
+  expect(t.element.querySelector("[role=textbox]")).toBeNull();
+});
+
+test("REQ156_AC2_barre_au_clic_au_glisser_et_taille_minimale_8_x_8_a_la_poignee", () => {
+  monter({ version: 1, boxes: [], links: [] });
+  choisirSymbole("Barre");
+  ptr(surface(), "pointerdown", 300, 200);
+  ptr(surface(), "pointerup", 300, 200);
+  expect(dernier().boxes.at(-1)).toMatchObject({ x: 240, y: 196, width: 120, height: 8, shape: "bar" });
+  choisirSymbole("Barre");
+  glisser(surface(), [100, 100], [112, 220]);
+  expect(dernier().boxes.at(-1)).toMatchObject({ x: 100, y: 100, width: 12, height: 120, shape: "bar" });
+  // Un glisser très court reste à 8 x 8 au plus petit.
+  choisirSymbole("Barre");
+  glisser(surface(), [500, 400], [503, 403]);
+  expect(dernier().boxes.at(-1)).toMatchObject({ width: 8, height: 8 });
+  // La poignée vers le haut et la gauche : 8 x 8 ; un rectangle reste à 40 x 24.
+  monter(PLEINES());
+  clic(obj("b2"));
+  glisser(t.element.querySelector('[data-poignee="taille"]'), [420, 108], [0, 0]);
+  expect(dernier().boxes.find((x) => x.id === "b2")).toMatchObject({ width: 8, height: 8 });
+  clic(obj("b3"));
+  glisser(t.element.querySelector('[data-poignee="taille"]'), [260, 380], [0, 0]);
+  expect(dernier().boxes.find((x) => x.id === "b3")).toMatchObject({ width: 40, height: 24 });
+});
+
+test("REQ156_AC4_double_clic_et_entree_sans_saisie_et_le_texte_ne_change_rien", () => {
+  monter(PLEINES());
+  obj("b1").dispatchEvent(new MouseEvent("dblclick", { clientX: 108, clientY: 108, bubbles: true, cancelable: true }));
+  expect(t.element.querySelector("[role=textbox]")).toBeNull();
+  clic(obj("b1"));
+  touche(surface(), "Enter");
+  expect(t.element.querySelector("[role=textbox]")).toBeNull();
+  const n = changements.length;
+  for (const nom of ["Gras", "Grand", "À gauche", "Texte rouge"]) bt(nom).click();
+  expect(changements.length).toBe(n);
+});
+
+test("REQ156_AC7_point_ou_barre_seuls_groupes_du_texte_inactifs_avec_une_boite_actifs_la_boite_seule_change", () => {
+  monter(PLEINES());
+  clic(obj("b1"));
+  for (const g of GROUPES_TEXTE) {
+    for (const x of groupe(g)) {
+      expect(x.getAttribute("aria-disabled")).toBe("true");
+      expect(x.getAttribute("aria-pressed")).toBe("false");
+    }
+  }
+  // Les groupes de valeurs montrent celles du point.
+  expect(bt("Rouge").hasAttribute("aria-disabled")).toBe(false);
+  clic(obj("b2"));
+  expect(bt("Gras").getAttribute("aria-disabled")).toBe("true");
+  // Avec une boîte choisie en plus : actifs, et la boîte seule change.
+  clic(obj("b1"));
+  surface().dispatchEvent(new KeyboardEvent("keydown", { key: "a", ctrlKey: true, bubbles: true, cancelable: true }));
+  for (const g of GROUPES_TEXTE) for (const x of groupe(g)) expect(x.hasAttribute("aria-disabled")).toBe(false);
+  bt("Gras").click();
+  const apres = dernier().boxes;
+  expect(apres.find((x) => x.id === "b3").spans?.length ?? 0).toBeGreaterThan(0);
+  expect(apres.find((x) => x.id === "b1")).toEqual(PLEINES().boxes[0]);
+  bt("À gauche").click();
+  expect(dernier().boxes.find((x) => x.id === "b3").align).toBe("left");
+  expect(dernier().boxes.find((x) => x.id === "b2")).toEqual(PLEINES().boxes[1]);
+});
+
+test("REQ149_AC12_disque_et_content_poses_dessines_en_saisie_avec_leur_forme", () => {
+  for (const [nom, shape] of [["Disque", "disk"], ["Content", "happy"]]) {
+    monter({ version: 1, boxes: [], links: [] });
+    choisirSymbole(nom);
+    ptr(surface(), "pointerdown", 300, 200);
+    ptr(surface(), "pointerup", 300, 200);
+    expect(dernier().boxes[0]).toMatchObject({ x: 250, y: 150, width: 100, height: 100, shape });
+    expect(JSON.parse(ecrireJdiag(dernier())).boxes[0].shape).toBe(shape);
+    expect(t.element.querySelector("[role=textbox]")).not.toBeNull();
+    t.detruire();
+    document.body.innerHTML = "";
+  }
+});

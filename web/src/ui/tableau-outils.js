@@ -1,8 +1,8 @@
 import { bouton } from "./bouton.js";
 import { estMac } from "../references.js";
 import { dialogueChoix } from "./dialogue.js";
-import { SYMBOLES } from "../jdiag.js";
-import { estSymbole } from "./tableau-calculs.js";
+import { FORMES_PLEINES, SYMBOLES } from "../jdiag.js";
+import { estFormePleine, estSymbole } from "./tableau-calculs.js";
 
 // Rangs, groupes et boutons de la boîte à outils (C-018). `cle` : la valeur de `valeurs` que le groupe règle.
 const RANGS = [
@@ -273,14 +273,19 @@ export function boiteOutils({ valeurs, surChoix, surAction, surTexte, surPositio
   }
 
 
+  const dansSymboles = (shape) => estSymbole({ shape }) || estFormePleine({ shape });
+
   // Le dialogue « Symboles » : choisir un symbole en fait l'outil actif et la forme courante.
   function ouvrirSymboles() {
     const d = dialogueChoix({
       titre: "Symboles",
       aide: "Choisissez un symbole, puis cliquez sur le whiteboard pour le poser.",
       nom: "Symboles disponibles",
-      lignes: SYMBOLES.map((s) => ({ id: s.shape, libelle: s.nom, icone: `symbole-${s.shape}` })),
-      selection: estSymbole({ shape: etat.forme }) ? etat.forme : undefined,
+      groupes: [
+        SYMBOLES.map((s) => ({ id: s.shape, libelle: s.nom, icone: `symbole-${s.shape}` })),
+        FORMES_PLEINES.map((s) => ({ id: s.shape, libelle: s.nom, icone: s.shape === "dot" ? "forme-point" : "forme-barre" })),
+      ],
+      selection: dansSymboles(etat.forme) ? etat.forme : undefined,
       surChoix: (shape) => {
         etat.outil = shape;
         etat.forme = shape;
@@ -294,10 +299,10 @@ export function boiteOutils({ valeurs, surChoix, surAction, surTexte, surPositio
   function afficher() {
     for (const { b, g, valeur } of liste) {
       if (valeur === "symboles") {
-        b.setAttribute("aria-pressed", String(estSymbole({ shape: etat.outil })));
-        if (estSymbole({ shape: etat.forme })) b.setAttribute("aria-current", "true");
+        b.setAttribute("aria-pressed", String(dansSymboles(etat.outil)));
+        if (dansSymboles(etat.forme)) b.setAttribute("aria-current", "true");
         else b.removeAttribute("aria-current");
-        const nom = SYMBOLES.find((s) => s.shape === etat.forme)?.nom;
+        const nom = [...SYMBOLES, ...FORMES_PLEINES].find((s) => s.shape === etat.forme)?.nom;
         b.definirInfoBulle(nom ? `Symboles : ${nom}` : "Symboles");
         continue;
       }
