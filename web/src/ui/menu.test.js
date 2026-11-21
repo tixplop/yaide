@@ -471,3 +471,76 @@ test("REQ049_AC13_commande_desactivee_style_opacite_45_contour_sans_aplat", () =
   expect(f).toContain("outline-offset: calc(-1 * var(--trait))");
   expect(regle('.ya-menu .menu-commande[aria-disabled="true"]:focus .menu-touche')).toContain("opacity: .45");
 });
+
+test("REQ155_AC7_placer_dans_un_cadre_avec_marge", () => {
+  const z = { gauche: 100, haut: 50, largeur: 400, hauteur: 300 };
+  const t = { largeur: 180, hauteur: 100 };
+  expect(placer({ x: 150, y: 80 }, t, z, 4)).toEqual({ left: 150, top: 80 });
+  // Dépasse à droite : retourné à gauche du pointeur.
+  expect(placer({ x: 450, y: 80 }, t, z, 4)).toEqual({ left: 270, top: 80 });
+  // Dépasse en bas : retourné au-dessus du pointeur.
+  expect(placer({ x: 150, y: 330 }, t, z, 4)).toEqual({ left: 150, top: 230 });
+  // Retournement qui sort de la zone : borné à 4 px des bords.
+  expect(placer({ x: 120, y: 340 }, { largeur: 180, hauteur: 320 }, z, 4)).toEqual({ left: 120, top: 54 });
+  expect(placer({ x: 101, y: 51 }, t, z, 4)).toEqual({ left: 104, top: 54 });
+  // Zone plus petite que le menu : coin à 4 px de celui de la zone.
+  expect(placer({ x: 120, y: 70 }, { largeur: 500, hauteur: 400 }, z, 4)).toEqual({ left: 104, top: 54 });
+  // Sans marge ni cadre décalé : comportement de la fenêtre.
+  expect(placer({ x: 790, y: 50 }, { largeur: 180, hauteur: 200 }, { largeur: 800, hauteur: 480 })).toEqual({ left: 610, top: 50 });
+});
+
+function zoneAvecTailles() {
+  const zone = document.createElement("div");
+  zone.getBoundingClientRect = () => ({ left: 100, top: 50, width: 400, height: 300 });
+  document.body.append(zone);
+  return zone;
+}
+const ouvrirDansZone = (zone, position, surFermeture = () => {}) => {
+  const m = menu({ nom: "Actions sur la sélection", groupes: [[{ libelle: "Copier au format Klaxoon" }]], position, zone, surFermeture });
+  ouverts.push(m);
+  return m;
+};
+
+test("REQ155_AC7_menu_pose_dans_la_zone_au_pointeur_puis_borne", () => {
+  const zone = zoneAvecTailles();
+  const proto = Object.getOwnPropertyDescriptors(HTMLElement.prototype);
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => 180 });
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 100 });
+  try {
+    const m = ouvrirDansZone(zone, { x: 150, y: 80 });
+    expect(zone.contains(m.racine)).toBe(true);
+    expect([m.racine.style.left, m.racine.style.top]).toEqual(["150px", "80px"]);
+    m.fermer();
+    const m2 = ouvrirDansZone(zone, { x: 490, y: 340 });
+    expect([m2.racine.style.left, m2.racine.style.top]).toEqual(["310px", "240px"]);
+    m2.fermer();
+    const m3 = ouvrirDansZone(zone, { x: 101, y: 51 });
+    expect([m3.racine.style.left, m3.racine.style.top]).toEqual(["104px", "54px"]);
+    m3.fermer();
+    zone.getBoundingClientRect = () => ({ left: 100, top: 50, width: 100, height: 60 });
+    const m4 = ouvrirDansZone(zone, { x: 120, y: 70 });
+    expect([m4.racine.style.left, m4.racine.style.top]).toEqual(["104px", "54px"]);
+  } finally {
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", proto.offsetWidth);
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", proto.offsetHeight);
+  }
+});
+
+test("REQ155_AC7_zone_invalide_refusee_et_sans_zone_le_menu_est_dans_le_body", () => {
+  expect(() => ouvrirDansZone({}, { x: 1, y: 1 })).toThrow(/zone/);
+  const { m } = ouvrir();
+  expect(m.racine.parentElement).toBe(document.body);
+});
+
+test("REQ155_AC9_un_cran_de_molette_sur_la_zone_ferme_le_menu_sans_preventDefault", () => {
+  const zone = zoneAvecTailles();
+  const surFermeture = vi.fn();
+  const m = ouvrirDansZone(zone, { x: 150, y: 80 }, surFermeture);
+  const e = new Event("wheel", { bubbles: true, cancelable: true });
+  zone.dispatchEvent(e);
+  expect(e.defaultPrevented).toBe(false);
+  expect(m.racine.isConnected).toBe(false);
+  expect(surFermeture).toHaveBeenCalledTimes(1);
+  zone.dispatchEvent(new Event("wheel"));
+  expect(surFermeture).toHaveBeenCalledTimes(1);
+});

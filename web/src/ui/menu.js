@@ -3,15 +3,21 @@ let avalerClic = null;
 let avalerMouseDown = false;
 let ecoutes = false;
 
-/** Coin haut gauche du menu : à `position`, retourné de l'autre côté du point s'il déborde, puis borné à la fenêtre. */
-export function placer(position, taille, fenetre) {
+/**
+ * Coin haut gauche du menu : à `position`, retourné de l'autre côté du point s'il déborde du `cadre`, puis borné à `marge` de ses bords.
+ * `cadre` : { gauche, haut, largeur, hauteur } (gauche et haut valent 0 s'ils manquent). Cadre plus petit que le menu : coin à `marge` du sien.
+ */
+export function placer(position, taille, cadre, marge = 0) {
+  const gauche = cadre.gauche ?? 0;
+  const haut = cadre.haut ?? 0;
   let left = position.x;
   let top = position.y;
-  if (left + taille.largeur > fenetre.largeur) left -= taille.largeur;
-  if (top + taille.hauteur > fenetre.hauteur) top -= taille.hauteur;
+  if (left + taille.largeur > gauche + cadre.largeur) left -= taille.largeur;
+  if (top + taille.hauteur > haut + cadre.hauteur) top -= taille.hauteur;
+  const borne = (v, min, max) => Math.max(min, Math.min(v, max));
   return {
-    left: Math.max(0, Math.min(left, fenetre.largeur - taille.largeur)),
-    top: Math.max(0, Math.min(top, fenetre.hauteur - taille.hauteur)),
+    left: borne(left, gauche + marge, gauche + cadre.largeur - taille.largeur - marge),
+    top: borne(top, haut + marge, haut + cadre.hauteur - taille.hauteur - marge),
   };
 }
 
@@ -61,7 +67,8 @@ function surEchap(e) {
 const surPerteDeFocus = () => ouvert?.fermer();
 
 // `ancre` : bouton d'en-tête qui ouvre le menu ; sans `position`, le menu s'ouvre 4 px sous lui, sur son bord gauche.
-export function menu({ nom, groupes, position, ancre, surFermeture }) {
+// `zone` : élément (surface d'un whiteboard) qui porte le menu ; `position` est alors au pointeur, et le menu reste dans la zone.
+export function menu({ nom, groupes, position, ancre, zone, surFermeture }) {
   if (!nom) throw new Error("menu : nom requis");
   if (typeof surFermeture !== "function") throw new Error("menu : surFermeture requis");
   if (ancre !== undefined && typeof ancre.getBoundingClientRect !== "function") throw new Error("menu : ancre doit être un élément");
@@ -70,6 +77,7 @@ export function menu({ nom, groupes, position, ancre, surFermeture }) {
   for (const c of pleins.flat()) {
     if (!c.libelle) throw new Error("menu : libelle requis");
   }
+  if (zone !== undefined && typeof zone.getBoundingClientRect !== "function") throw new Error("menu : zone doit être un élément");
   ouvert?.fermer();
   const origine = document.activeElement;
 
@@ -134,6 +142,7 @@ export function menu({ nom, groupes, position, ancre, surFermeture }) {
       window.removeEventListener("resize", surPerteDeFocus);
     }
     ancre?.setAttribute("aria-expanded", "false");
+    zone?.removeEventListener("wheel", fermer);
     racine.hidePopover?.();
     racine.remove();
     if (origine?.isConnected) origine.focus?.();
@@ -160,7 +169,7 @@ export function menu({ nom, groupes, position, ancre, surFermeture }) {
     cible.focus();
   });
 
-  document.body.append(racine);
+  (zone ?? document.body).append(racine);
   racine.showPopover?.();
   const taille = { largeur: racine.offsetWidth, hauteur: racine.offsetHeight };
   const fenetre = { largeur: window.innerWidth, hauteur: window.innerHeight };
@@ -171,7 +180,13 @@ export function menu({ nom, groupes, position, ancre, surFermeture }) {
     // Décalé vers la gauche s'il ne tient pas, jamais retourné de l'autre côté du bouton.
     depart = { x: Math.min(r.left, fenetre.largeur - taille.largeur), y: r.bottom + 4 };
   }
-  const p = placer(depart, taille, fenetre);
+  let p;
+  if (zone) {
+    const r = zone.getBoundingClientRect();
+    p = placer(depart, taille, { gauche: r.left, haut: r.top, largeur: r.width, hauteur: r.height }, 4);
+    // Un cran de molette ou un pincer ferme le menu ; l'événement continue vers la zone.
+    zone.addEventListener("wheel", fermer, { passive: true });
+  } else p = placer(depart, taille, fenetre);
   racine.style.left = `${p.left}px`;
   racine.style.top = `${p.top}px`;
 

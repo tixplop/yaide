@@ -441,3 +441,30 @@ test("REQ154_AC10_contrastes_du_message_flottant_dans_les_deux_themes", () => {
     expect(rapport(danger, pose), `${debut} filet`).toBeGreaterThanOrEqual(3);
   }
 });
+
+test("REQ155_contrastes_du_menu_pose_dans_la_zone_d_un_whiteboard_dans_les_deux_themes", () => {
+  const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
+  const lum = (hex) => {
+    const c = [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  for (const debut of [':root, [data-theme="dark"]', '[data-theme="light"]']) {
+    const i = tokens.indexOf(debut);
+    const b = tokens.slice(i, tokens.indexOf("}", i));
+    const val = (nom) => {
+      const v = new RegExp(`${nom}:\\s*([^;]+);`).exec(b)[1].trim();
+      const alias = /^var\((--[a-z-]+)\)$/.exec(v);
+      return alias ? val(alias[1]) : v;
+    };
+    const rapport = (x, y) => {
+      const [l1, l2] = [lum(val(x)), lum(val(y))].sort((p, q) => q - p);
+      return (l1 + 0.05) / (l2 + 0.05);
+    };
+    // Repos.
+    expect(rapport("--ink", "--bg-300"), `${debut} repos`).toBeGreaterThanOrEqual(4.5);
+    // Commande courante.
+    expect(rapport("--on-accent", "--accent"), `${debut} courante`).toBeGreaterThanOrEqual(4.5);
+    // Contour au focus d'une commande désactivée.
+    expect(rapport("--accent-fg", "--bg-300"), `${debut} contour`).toBeGreaterThanOrEqual(3);
+  }
+});

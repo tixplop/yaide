@@ -54,7 +54,7 @@ describe("versKlaxoon", () => {
     expect(autre.tete).not.toBe(tete);
     expect(autre.liste[0].data.parent).not.toBe(liste[0].data.parent);
     expect(autre.liste[0].data.sourceActivityUuid).not.toBe(liste[0].data.sourceActivityUuid);
-    expect(JSON.stringify(liste)).not.toContain("a1");
+    expect(JSON.stringify(liste)).not.toContain('"a1"');
   });
 
   it("REQ155_AC2 : aucune boîte choisie → null", () => {
