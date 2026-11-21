@@ -779,7 +779,10 @@ test("REQ125_AC1_parcours_de_copie_menu_en_tete_ctrl_c_ctrl_v_refuse_et_coller_s
   const m = menu(page, "Actions sur b.txt");
   await expect(arbre(page).getByRole("treeitem", { selected: true })).toHaveCount(2);
   await expect(m.getByRole("menuitem", { name: /^Coller/ })).toHaveAttribute("aria-disabled", "true");
+  await page.mouse.move(0, 0); // le pointeur quitte le menu : un survol tardif ne déplace pas le focus pendant les flèches
   await expect(m.locator(":focus")).toHaveCount(1); // le menu a pris le focus avant les flèches
+  await page.keyboard.press("Home");
+  await expect(m.getByRole("menuitem").first()).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
