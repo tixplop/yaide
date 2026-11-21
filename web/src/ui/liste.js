@@ -118,15 +118,28 @@ function listePassages({ lignes, nom, surLien }) {
 }
 
 // Variante `grille` (C-006, REQ-149) : des choix montrés par leur dessin, en cases de cinq colonnes ; un seul arrêt de Tab.
-function listeGrille({ lignes, selection, nom, surActiver }) {
+function listeGrille({ lignes, groupes, selection, nom, surActiver }) {
   const racine = document.createElement("div");
   racine.className = "liste ya-grille-choix";
   racine.setAttribute("role", "listbox");
   if (nom) racine.setAttribute("aria-label", nom);
-  const cases = lignes.map((l) => {
+  // Chaque groupe commence un rang ; `rangs` : les index des cases de chaque rang.
+  const tous = [];
+  const rangs = [];
+  const apresGroupe = new Set();
+  for (const [g, groupe] of (groupes ?? [lignes]).entries()) {
+    for (const [k, l] of groupe.entries()) {
+      if (k % COLONNES === 0) rangs.push([]);
+      if (g > 0 && k < COLONNES) apresGroupe.add(tous.length);
+      rangs.at(-1).push(tous.length);
+      tous.push(l);
+    }
+  }
+  lignes = tous;
+  const cases = lignes.map((l, i) => {
     if (!l.libelle || !l.icone) throw new Error("liste : libelle et icone requis");
     const e = document.createElement("div");
-    e.className = "ya-grille-case";
+    e.className = apresGroupe.has(i) ? "ya-grille-case ya-grille-case-groupe" : "ya-grille-case";
     e.setAttribute("role", "option");
     e.setAttribute("aria-selected", String(l.id === selection));
     e.title = l.libelle;
@@ -153,9 +166,14 @@ function listeGrille({ lignes, selection, nom, surActiver }) {
         surActiver?.(lignes[i].id);
         return;
       }
-      const cible = { ArrowLeft: i - 1, ArrowRight: i + 1, ArrowUp: i - COLONNES, ArrowDown: i + COLONNES, Home: 0, End: cases.length - 1 }[ev.key];
-      if (cible === undefined) return;
+      const r = rangs.findIndex((x) => x.includes(i));
+      const colonne = rangs[r].indexOf(i);
+      // Haut et Bas : la case de même colonne ; sous une colonne vide, la dernière case du rang.
+      const rang = (n) => rangs[n] && (rangs[n][colonne] ?? rangs[n].at(-1));
+      const cibles = { ArrowLeft: i - 1, ArrowRight: i + 1, ArrowUp: rang(r - 1), ArrowDown: rang(r + 1), Home: 0, End: cases.length - 1 };
+      if (!(ev.key in cibles)) return;
       ev.preventDefault();
+      const cible = cibles[ev.key];
       if (cible >= 0 && cible < cases.length) cases[cible].focus();
     });
   });
@@ -165,14 +183,14 @@ function listeGrille({ lignes, selection, nom, surActiver }) {
   return racine;
 }
 
-export function liste({ variante = "plate", lignes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, flottante = false, message, nom, focusSurListe = false, surActiver, surBasculer, surMenu, surDepot, surLien }) {
+export function liste({ variante = "plate", lignes, groupes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, flottante = false, message, nom, focusSurListe = false, surActiver, surBasculer, surMenu, surDepot, surLien }) {
   if (!VARIANTES.includes(variante)) throw new Error(`liste : variante inconnue « ${variante} »`);
   if (flottante && (variante !== "plate" || pilotage !== "champ")) throw new Error("liste : flottante demande la variante « plate » et le pilotage « champ »");
   if (flottante && !nom) throw new Error("liste : nom requis avec flottante");
   if (message !== undefined && !flottante) throw new Error("liste : message demande flottante");
   if (focusSurListe && (variante !== "plate" || pilotage === "champ")) throw new Error("liste : focusSurListe demande la variante « plate » et le pilotage « focus »");
   if (pilotage === "champ" && !champ) throw new Error("liste : champ requis avec pilotage « champ »");
-  if (variante === "grille") return listeGrille({ lignes, selection, nom, surActiver });
+  if (variante === "grille") return listeGrille({ lignes, groupes, selection, nom, surActiver });
   if (variante === "objets") return listeObjets({ lignes, nom });
   if (variante === "passages") return listePassages({ lignes, nom, surLien });
   for (const l of lignes) {

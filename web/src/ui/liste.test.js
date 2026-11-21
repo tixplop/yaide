@@ -1527,3 +1527,94 @@ test("REQ149_AC8_grille_case_amenee_dans_la_vue_et_etats_du_design", () => {
   expect(regle(".ya-grille-case:focus")).toContain("outline-offset: -2px");
   expect(() => liste({ variante: "grille", lignes: [{ id: "a", libelle: "A" }] })).toThrow(/icone/);
 });
+
+// C-006 `grille` en deux groupes : un rang à part (REQ-149, REQ-156).
+const deuxGroupes = () => {
+  const base = Array.from({ length: 25 }, (_, i) => ({ id: `s${i}`, libelle: `Symbole ${i}`, icone: "symbole-database" }));
+  const formes = [
+    { id: "dot", libelle: "Point", icone: "forme-point" },
+    { id: "bar", libelle: "Barre", icone: "forme-barre" },
+  ];
+  const g = liste({ variante: "grille", groupes: [base, formes], nom: "Symboles disponibles" });
+  document.body.append(g);
+  return { g, cases: items(g) };
+};
+
+test("REQ149_AC10_grille_en_deux_groupes_six_rangs_le_sixieme_a_12_px_du_cinquieme_et_un_seul_arret_de_tab", () => {
+  const { cases } = deuxGroupes();
+  expect(cases).toHaveLength(27);
+  expect(cases.filter((c) => c.tabIndex === 0)).toEqual([cases[0]]);
+  expect(cases.filter((c) => c.classList.contains("ya-grille-case-groupe")).map((c) => c.textContent)).toEqual(["Point", "Barre"]);
+  // 4 px d'écart de grille + 8 px de marge = 12 px.
+  expect(regle(".ya-grille-choix")).toContain("gap: var(--space-1)");
+  expect(regle(".ya-grille-case-groupe")).toContain("margin-top: var(--space-2)");
+  expect(regle(".ya-grille-case")).toContain("height: 76px");
+  // l'ancienne API à une liste reste valable
+  expect(grille().cases).toHaveLength(20);
+  expect(() => liste({ variante: "grille", groupes: [], lignes: symboles20 })).not.toThrow();
+});
+
+test("REQ149_AC10_grille_fleches_entre_les_rangs_et_vers_le_rang_a_part", () => {
+  const { cases } = deuxGroupes();
+  const nom = (c) => c.textContent;
+  const va = (depart, suite) => touchesGrille(cases, depart, suite).map((i) => nom(cases[i]));
+  // « Base de données » (0) : Fin → Barre, Gauche → Point
+  expect(va(0, ["End", "ArrowLeft"])).toEqual(["Barre", "Point"]);
+  // « Pare-feu » (s19, colonne 5) : Bas → Mécontent (s24), Bas → Barre, Haut → Internet (s21, colonne de Barre)
+  expect(va(19, ["ArrowDown", "ArrowDown", "ArrowUp"])).toEqual(["Symbole 24", "Barre", "Symbole 21"]);
+  // « Disque » (s20, colonne 1) : Bas → Point
+  expect(va(20, ["ArrowDown"])).toEqual(["Point"]);
+  // « Content » (s22, colonne 3) : Bas → Barre (la dernière du rang, colonne vide)
+  expect(va(22, ["ArrowDown"])).toEqual(["Barre"]);
+  // rien au dernier rang
+  expect(va(26, ["ArrowDown", "ArrowRight"])).toEqual(["Barre", "Barre"]);
+  expect(va(25, ["ArrowUp"])).toEqual(["Symbole 20"]);
+});
+
+test("REQ149_AC8_contrastes_des_cinq_dessins_et_des_noms_de_la_grille_dans_les_deux_themes", () => {
+  const tokens = readFileSync("web/src/ui/tokens.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  const jetons = (theme) => {
+    const t = {};
+    for (const m of tokens.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      if (!m[1].split(",").map((s) => s.trim()).some((s) => s === ":root" || s === `[data-theme="${theme}"]`)) continue;
+      for (const d of m[2].matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) t[d[1]] = d[2].trim();
+    }
+    return t;
+  };
+  const lum = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const rapport = (a, b) => {
+    const [p, q] = [lum(a), lum(b)].sort((m, n) => n - m);
+    return (p + 0.05) / (q + 0.05);
+  };
+  expect(regle(".ya-grille-case")).toContain("color: var(--ink)");
+  expect(regle(".ya-grille-nom-case")).toContain("color: var(--ink-muted)");
+  for (const theme of ["dark", "light"]) {
+    const t = jetons(theme);
+    expect(rapport(t["--ink"], t["--bg-300"]), `dessins ${theme}`).toBeGreaterThanOrEqual(3);
+    expect(rapport(t["--ink-muted"], t["--bg-300"]), `noms ${theme}`).toBeGreaterThanOrEqual(4.5);
+  }
+  for (const n of ["disk", "internet", "happy", "neutral", "sad"]) expect(icone(`symbole-${n}`).getAttribute("stroke")).toBe("currentColor");
+});
+
+test("REQ156_AC7_point_et_barre_dessines_pleins_et_nommes_dans_la_grille", () => {
+  const { cases } = deuxGroupes();
+  const [point, barre] = cases.slice(25);
+  expect(point.querySelector("circle").getAttribute("fill")).toBe("currentColor");
+  expect(barre.querySelector("rect").getAttribute("fill")).toBe("currentColor");
+  expect(point.getAttribute("title")).toBe("Point");
+  expect(barre.textContent).toBe("Barre");
+});
+
+test("REQ149_AC10_grille_haut_au_premier_rang_et_bas_au_dernier_gardent_le_focus_et_bloquent_le_defilement", () => {
+  const { cases } = deuxGroupes();
+  for (const [depart, k] of [[0, "ArrowUp"], [26, "ArrowDown"]]) {
+    cases[depart].focus();
+    const ev = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true });
+    cases[depart].dispatchEvent(ev);
+    expect(ev.defaultPrevented, k).toBe(true);
+    expect(document.activeElement).toBe(cases[depart]);
+  }
+});

@@ -410,3 +410,20 @@ test("REQ153_AC14_les_quatre_icones_des_disques_sont_distinctes_au_trait_de_2", 
   expect(new Set(formes).size).toBe(4);
   for (const autre of ["plus", "square-plus", "trash", "x"]) expect(formes).not.toContain(icone(autre).innerHTML);
 });
+
+test("REQ149_AC1_REQ156_AC7_dessins_des_cinq_symboles_aux_yeux_pleins_et_de_point_et_barre_pleins", () => {
+  for (const n of ["happy", "neutral", "sad"]) {
+    const h = icone(`symbole-${n}`).innerHTML;
+    expect(h, n).toContain('<circle cx="9" cy="9.5" r=".6" fill="currentColor"');
+    expect(h, n).toContain('<circle cx="15" cy="9.5" r=".6" fill="currentColor"');
+  }
+  expect(icone("symbole-disk").innerHTML).toContain("M22 12H2");
+  expect(icone("symbole-internet").innerHTML).toContain("M2 12h20");
+  expect(icone("forme-point").innerHTML).toBe('<circle cx="12" cy="12" r="5" fill="currentColor"></circle>');
+  expect(icone("forme-barre").innerHTML).toContain('<rect x="3" y="10" width="18" height="4" fill="currentColor"');
+  expect(icone("circle").getAttribute("fill")).toBe("none");
+  const tete = readFileSync("web/src/ui/icones.js", "utf8").split("*/")[0];
+  for (const n of ["hard-drive", "globe", "smile", "meh", "frown"]) expect(tete, n).toContain(n);
+  expect(tete).toContain("forme-point");
+  expect(tete).toContain("forme-barre");
+});
