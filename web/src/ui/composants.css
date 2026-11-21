@@ -16,6 +16,14 @@
 .ya-icon-btn-ligne svg { width: 14px; height: 14px; }
 .ya-icon-btn-onglet svg { width: 13px; height: 13px; }
 .ya-icon-btn:hover { background: var(--bg-400); color: var(--ink); }
+/* C-001 `disque` : zone de 20 px centrée sur sa place (left et top posés par l'appelant), disque de 16 px, icône de 12 px. */
+.ya-icon-btn-disque { position: absolute; width: 20px; height: 20px; transform: translate(-50%, -50%); }
+.ya-icon-btn-disque::before { content: ""; position: absolute; inset: 2px; border-radius: 50%; background: var(--bg-300); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.ya-icon-btn-disque svg { position: relative; width: 12px; height: 12px; }
+.ya-icon-btn-disque:hover { background: transparent; color: var(--ink); }
+.ya-icon-btn-disque:hover::before { background: var(--bg-400); }
+.ya-icon-btn.ya-icon-btn-disque:active { box-shadow: none; }
+.ya-icon-btn-disque:active::before { box-shadow: inset 0 0 0 1px var(--ink); }
 .ya-icon-btn[aria-pressed="true"] { color: var(--accent-fg); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-fg); }
 .ya-btn:active, .ya-icon-btn:active { box-shadow: inset 0 0 0 1px currentColor; }
 .ya-btn:focus-visible, .ya-icon-btn:focus-visible, .ya-icon-btn.ya-focus-garde { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
@@ -1102,8 +1110,19 @@ body { margin: 0; }
 .cm-line.cm-hy-bloc-code { font: var(--texte-code) var(--font-mono); color: var(--md-bloc-code-couleur, var(--ink)); background-color: var(--md-bloc-code-fond, var(--code-fond)); }
 .cm-line.cm-hy-mono { font: var(--texte-code) var(--font-mono); color: var(--ink); }
 .cm-line.cm-hy-citation.cm-activeLine, .cm-line.cm-hy-bloc-code.cm-activeLine { background-image: linear-gradient(var(--ligne-active), var(--ligne-active)); }
-.cm-hy-tableau { margin: var(--space-1) 0; padding-left: calc(var(--space-2) - var(--space-1) / 2); /* bord gauche du texte des lignes (celui de cm-line) */ font: var(--texte-lecture) var(--font-sans); color: var(--ink); cursor: text; }
+.cm-hy-tableau { box-sizing: border-box; position: relative; max-width: calc(100% - var(--space-3)); margin: var(--space-1) 0; padding-left: calc(var(--space-2) - var(--space-1) / 2); /* bord gauche du texte des lignes (celui de cm-line) */ font: var(--texte-lecture) var(--font-sans); color: var(--ink); cursor: text; }
 .cm-hy-tableau table { margin: 0; }
+/* C-008 « Cellule en saisie » (REQ-153). */
+.cm-hy-tableau td:has(> .ya-cellule-saisie), .cm-hy-tableau th:has(> .ya-cellule-saisie) { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait-fort)); min-width: var(--space-8); }
+.ya-cellule-saisie { display: block; font: inherit; font-weight: inherit; color: inherit; white-space: pre-wrap; overflow-wrap: anywhere; caret-color: var(--accent-fg); outline: none; }
+.ya-cellule-saisie::selection { background: var(--selection); }
+/* C-008 « Aides » : calque, filet d'insertion et cadre de suppression, sans rien déplacer. */
+.ya-tableau-aides { position: absolute; inset: 0; pointer-events: none; }
+.ya-tableau-aides .ya-icon-btn-disque { pointer-events: auto; }
+.ya-tableau-filet { position: absolute; background: var(--accent-fg); pointer-events: none; }
+.ya-tableau-filet-v { width: var(--trait-fort); }
+.ya-tableau-filet-h { height: var(--trait-fort); }
+.ya-tableau-cadre { position: absolute; box-sizing: border-box; box-shadow: inset 0 0 0 var(--trait-fort) var(--danger); pointer-events: none; }
 .cm-hybride .ya-diagramme { margin: var(--space-1) 0; padding-left: calc(var(--space-2) - var(--space-1) / 2); /* bord gauche du texte des lignes */ cursor: text; }
 .cm-hy-puce { color: var(--md-puce-couleur, var(--ink-muted)); }
 .cm-hy-trait { display: inline-block; width: 100%; height: 0; vertical-align: middle; border-top: var(--trait) solid var(--md-separateur-couleur, var(--line-strong)); }

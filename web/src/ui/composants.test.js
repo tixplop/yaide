@@ -342,3 +342,56 @@ test("C018_regles_css_du_whiteboard", () => {
   expect(css).toMatch(/\.ya-tableau :is\(\.lien, \.fleche\)\.choisie \.trait \{ stroke: var\(--accent-fg\)/);
   a(".ya-tableau .fleche.provisoire .trait", "stroke-dasharray: 4 4");
 });
+
+test("REQ153_cellule_en_saisie_et_calque_des_aides_suivent_le_design_system", () => {
+  const cel = regle(".cm-hy-tableau td:has(> .ya-cellule-saisie)").replace(/\s+/g, " ");
+  for (const d of ["outline: var(--trait-fort) solid var(--accent-fg)", "outline-offset: calc(-1 * var(--trait-fort))", "min-width: var(--space-8)"]) expect(cel).toContain(d);
+  const c = regle(".ya-cellule-saisie").replace(/\s+/g, " ");
+  for (const d of ["display: block", "font: inherit", "color: inherit", "white-space: pre-wrap", "overflow-wrap: anywhere", "caret-color: var(--accent-fg)", "outline: none"]) expect(c).toContain(d);
+  expect(c).not.toContain("min-width");
+  a(".cm-hy-tableau", "box-sizing: border-box");
+  a(".ya-tableau-filet-v", "width: var(--trait-fort)");
+  a(".ya-tableau-filet-h", "height: var(--trait-fort)");
+  a(".ya-cellule-saisie::selection", "background: var(--selection)");
+  const calque = regle(".ya-tableau-aides").replace(/\s+/g, " ");
+  expect(calque).toContain("position: absolute");
+  expect(calque).not.toContain("z-index");
+  expect(css).not.toMatch(/\.ya-tableau-(aides|filet|cadre)[^{]*\{[^}]*z-index/);
+  a(".cm-hy-tableau", "position: relative");
+  a(".ya-tableau-filet", "background: var(--accent-fg)");
+  a(".ya-tableau-cadre", "box-shadow: inset 0 0 0 var(--trait-fort) var(--danger)");
+  a(".ya-tableau-cadre", "pointer-events: none");
+  a(".ya-tableau-filet", "pointer-events: none");
+  expect(regle(".cm-hy-tableau")).toContain("calc(100% - var(--space-3))");
+});
+
+test("REQ153_AC14_contrastes_des_disques_du_filet_et_du_cadre_dans_les_deux_themes", () => {
+  const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
+  const bloc = (debut) => {
+    const i = tokens.indexOf(debut);
+    return tokens.slice(i, tokens.indexOf("}", i));
+  };
+  const lum = (hex) => {
+    const c = [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  for (const debut of [':root, [data-theme="dark"]', '[data-theme="light"]']) {
+    const b = bloc(debut);
+    const val = (nom) => {
+      const v = new RegExp(`${nom}:\\s*([^;]+);`).exec(b)[1].trim();
+      const alias = /^var\((--[a-z-]+)\)$/.exec(v);
+      return alias ? val(alias[1]) : v;
+    };
+    const rapport = (x, y) => {
+      const [l1, l2] = [lum(val(x)), lum(val(y))].sort((p, q) => q - p);
+      return (l1 + 0.05) / (l2 + 0.05);
+    };
+    for (const fond of ["--bg-300", "--bg-400"]) {
+      expect(rapport("--ink-muted", fond), `${debut} ink-muted/${fond}`).toBeGreaterThanOrEqual(4.5);
+      expect(rapport("--ink", fond), `${debut} ink/${fond}`).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(rapport("--line-strong", "--bg-100"), `${debut} contour`).toBeGreaterThanOrEqual(3);
+    expect(rapport("--accent-fg", "--bg-100"), `${debut} filet`).toBeGreaterThanOrEqual(3);
+    expect(rapport("--danger", "--bg-100"), `${debut} cadre`).toBeGreaterThanOrEqual(3);
+  }
+});

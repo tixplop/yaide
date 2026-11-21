@@ -389,3 +389,24 @@ test("REQ150_icones_du_rang_5_text_align_de_Lucide_et_position_dessinees_pour_Ya
   }
   expect(new Set(Object.keys(dessins).map((n) => icone(n).innerHTML)).size).toBe(6);
 });
+
+test("REQ153_AC14_les_quatre_icones_des_disques_sont_distinctes_au_trait_de_2", () => {
+  const noms = ["inserer-colonne", "inserer-ligne", "supprimer-colonne", "supprimer-ligne"];
+  const traces = {
+    "inserer-colonne": ["M5 4v16", "M19 4v16", "M12 8.5v7", "M8.5 12h7"],
+    "inserer-ligne": ["M4 5h16", "M4 19h16", "M12 8.5v7", "M8.5 12h7"],
+    "supprimer-colonne": ["M5 4v16", "M19 4v16", "M8.5 12h7"],
+    "supprimer-ligne": ["M4 5h16", "M4 19h16", "M8.5 12h7"],
+  };
+  for (const n of noms) {
+    expect(NOMS).toContain(n);
+    const s = icone(n, 12);
+    expect(s.getAttribute("width")).toBe("12");
+    for (const d of traces[n]) expect(s.innerHTML, n).toContain(`d="${d}"`);
+    expect(s.querySelectorAll("path").length).toBe(traces[n].length);
+    for (const p of s.querySelectorAll("path")) expect(p.getAttribute("stroke-width")).toBe("2");
+  }
+  const formes = noms.map((n) => icone(n).innerHTML);
+  expect(new Set(formes).size).toBe(4);
+  for (const autre of ["plus", "square-plus", "trash", "x"]) expect(formes).not.toContain(icone(autre).innerHTML);
+});

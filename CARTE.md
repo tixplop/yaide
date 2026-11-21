@@ -54,7 +54,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/formatage.js — formatage du document ouvert — formatable, formater
 - web/src/jdiag.js — lecture et écriture du format `.jdiag` — lireJdiag, ecrireJdiag, positionTexte (clés `align`/`valign`, REQ-150 ; clé `model`, REQ-151), SYMBOLES (les vingt symboles, REQ-149)
 - web/src/mermaid.js — bibliothèque mermaid, bundle à part chargé au premier diagramme
-- web/src/ui/ — design system : composants (`bouton`, `champ`, `menu`, `dialogue`, `onglets`, `liste`, `message`, `cadre`, `poignee`, `info-bulle`, `indication`, `compteur`, `avatar`, `image`) ; `dialogueChoix` (dialogue « Choix sans bouton principal » avec la `grille` de `liste`, REQ-149) ; `icones.js` (dont `shapes` et les vingt `symbole-<shape>`, REQ-149) ; `tokens.css`, `composants.css`, `theme.js`, `polices/`
+- web/src/ui/ — design system : composants (`bouton` dont la taille `disque` des aides du tableau rendu, REQ-153 ; `champ`, `menu`, `dialogue`, `onglets`, `liste`, `message`, `cadre`, `poignee`, `info-bulle`, `indication`, `compteur`, `avatar`, `image`) ; `dialogueChoix` (dialogue « Choix sans bouton principal » avec la `grille` de `liste`, REQ-149) ; `icones.js` (dont `shapes` et les vingt `symbole-<shape>`, REQ-149) ; `tokens.css`, `composants.css`, `theme.js`, `polices/`
 - web/src/ui/apercu.js, apercu-html.js, hybride.js, diagramme.js — rendu markdown, aperçu HTML, mode hybride (tableaux et diagrammes mermaid rendus, REQ-152 ; `diagrammesHybride`/`diagrammesRendus` ; dessins partagés par `diagramme.js`), mermaid — rendreMarkdown, apercuHtml, decorationsHybride
 - web/src/ui/zone-code.js, langages.js, couleurs-code.js — éditeur CodeMirror et coloration (numéros, Haut/Bas et bascule autour des tableaux et diagrammes rendus, REQ-063, REQ-152) — zoneCode, langagePourFichier
 - web/src/ui/conversation.js, completion.js, attentes.js, copie.js — conversation, complétion `/ @ $ #`, attentes d'autorisation, copie en texte simple — conversation, completion, copierEnTexteSimple
@@ -114,5 +114,6 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-118 formater le document → web/src/formatage.js, vues/principale.js
 - REQ-122, REQ-123 mermaid → web/src/mermaid.js, ui/diagramme.js, ui/apercu.js
 - REQ-152 diagrammes mermaid dessinés en mode hybride → ui/hybride.js, ui/diagramme.js, ui/zone-code.js
+- REQ-153 tableau rendu modifiable → ui/bouton.js, ui/icones.js, ui/composants.css
 - REQ-151 modèle d'un whiteboard pour les agents (`model` obligatoire dans `whiteboard_write`, `model_only` dans `whiteboard_read`) → src/agent/jdiag.rs (en_texte, modele_seul), outils.rs, web/src/jdiag.js
 - REQ-127 à REQ-150 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, jdiag_trace.rs, jdiag_controle.rs, outils.rs

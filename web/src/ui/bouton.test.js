@@ -554,3 +554,58 @@ test("REQ031_AC1_definirInfoBulle_change_la_bulle_sans_toucher_au_nom_accessible
   expect(document.querySelector("[role=tooltip]").textContent).toBe("Symboles : Serveur");
   vi.useRealTimers();
 });
+
+test("REQ153_AC14_disque_nom_exact_sans_focus_sans_title_mousedown_retenu_et_bulle_au_survol", () => {
+  vi.useFakeTimers();
+  for (const [icone, nom, position] of [
+    ["inserer-colonne", "Insérer une colonne", "dessus"],
+    ["inserer-ligne", "Insérer une ligne", "droite"],
+    ["supprimer-colonne", "Supprimer la colonne", "dessus"],
+    ["supprimer-ligne", "Supprimer la ligne", "droite"],
+  ]) {
+    const b = bouton({ icone, nomAccessible: nom, taille: "disque", positionInfoBulle: position });
+    document.body.append(b.enveloppe);
+    expect(b.getAttribute("aria-label")).toBe(nom);
+    expect(b.classList.contains("ya-icon-btn-disque")).toBe(true);
+    expect(b.getAttribute("tabindex")).toBe("-1");
+    expect(b.hasAttribute("title")).toBe(false);
+    expect(b.disabled).toBe(false);
+    const ev = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    b.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    const textes = () => [...document.querySelectorAll(".info-bulle")].map((x) => x.textContent);
+    expect(textes()).not.toContain(nom);
+    b.enveloppe.dispatchEvent(new Event("pointerenter"));
+    expect(textes()).not.toContain(nom);
+    vi.advanceTimersByTime(500);
+    expect(textes()).toContain(nom);
+    b.enveloppe.dispatchEvent(new Event("pointerleave"));
+    expect(textes()).not.toContain(nom);
+    b.enveloppe.remove();
+  }
+  vi.useRealTimers();
+});
+
+test("REQ153_AC14_disque_refuse_desactive_libelle_et_position_hors_dessus_droite", () => {
+  const base = { icone: "inserer-colonne", nomAccessible: "Insérer une colonne", taille: "disque" };
+  expect(() => bouton({ ...base, desactive: true })).toThrow(/disque/);
+  expect(() => bouton({ ...base, libelle: "Insérer" })).toThrow(/disque/);
+  expect(() => bouton({ ...base, positionInfoBulle: "dessous" })).toThrow(/disque/);
+  expect(() => bouton({ libelle: "x", taille: "disque" })).toThrow(/disque/);
+  expect(bouton(base).enveloppe).toBeTruthy();
+});
+
+test("REQ153_AC14_css_du_disque_zone_de_20_px_centree_disque_de_16_px", () => {
+  expect(regle(".ya-icon-btn-disque")).toContain("width: 20px");
+  expect(regle(".ya-icon-btn-disque")).toContain("height: 20px");
+  expect(regle(".ya-icon-btn-disque")).toContain("translate(-50%, -50%)");
+  const d = regle(".ya-icon-btn-disque::before").replace(/\s+/g, " ");
+  expect(d).toContain("border-radius: 50%");
+  expect(d).toContain("background: var(--bg-300)");
+  expect(d).toContain("inset 0 0 0 1px var(--line-strong)");
+  expect(regle(".ya-icon-btn-disque:hover::before")).toContain("background: var(--bg-400)");
+  expect(regle(".ya-icon-btn-disque:hover")).toContain("color: var(--ink)");
+  expect(regle(".ya-icon-btn.ya-icon-btn-disque:active")).toContain("box-shadow: none");
+  expect(regle(".ya-icon-btn-disque:active::before")).toContain("inset 0 0 0 1px var(--ink)");
+  expect(regle(".ya-icon-btn-disque svg")).toContain("width: 12px");
+});

@@ -3,7 +3,7 @@ import { compteur as creerCompteur } from "./compteur.js";
 import { infoBulle as creerInfoBulle } from "./info-bulle.js";
 
 const VARIANTES = ["principal", "secondaire", "discret", "danger"];
-const TAILLES = ["normale", "ligne", "onglet", "barre"];
+const TAILLES = ["normale", "ligne", "onglet", "barre", "disque"];
 
 const COULEUR_PASTILLE = /^#[0-9a-fA-F]{3,8}$/;
 const classes = new Map();
@@ -54,6 +54,8 @@ export function bouton({
   if (!TAILLES.includes(taille)) throw new Error(`bouton : taille inconnue « ${taille} »`);
   if (!libelle && !nomAccessible) throw new Error("bouton : nomAccessible requis sans libelle");
   if (libelle && !/[\p{L}\p{N}]/u.test(libelle) && !nomAccessible) throw new Error("bouton : nomAccessible requis pour un libellé qui n'est qu'un signe");
+  if (taille === "disque" && (!icone || libelle || variante !== "secondaire" || desactive)) throw new Error("bouton : la taille disque demande une icône secondaire, sans libellé, jamais désactivée");
+  if (taille === "disque" && positionInfoBulle !== undefined && !["dessus", "droite"].includes(positionInfoBulle)) throw new Error("bouton : la taille disque place son info-bulle dessus ou à droite");
   if (taille === "barre" && (!libelle || icone || variante !== "secondaire")) throw new Error("bouton : la taille barre demande un libellé secondaire, sans icône");
   if (pastilles && (!libelle || icone || variante !== "secondaire" || pastilles.length !== 3)) throw new Error("bouton : pastilles demande un libellé secondaire, sans icône, et trois couleurs");
   const b = document.createElement("button");
@@ -67,6 +69,11 @@ export function bouton({
   if (variante === "danger") b.classList.add("ya-btn-danger");
   if (taille === "barre") b.classList.add("ya-btn-barre");
   if (aIcone && taille !== "normale") b.classList.add(`ya-icon-btn-${taille}`);
+  if (taille === "disque") {
+    // Aide d'un tableau rendu : jamais un arrêt de Tab, et le focus ne quitte pas l'éditeur ou la cellule.
+    b.tabIndex = -1;
+    b.addEventListener("mousedown", (ev) => ev.preventDefault());
+  }
   if (nomAccessible) b.setAttribute("aria-label", nomAccessible);
   if (touche) b.setAttribute("aria-keyshortcuts", touche);
   if (presse !== undefined) b.setAttribute("aria-pressed", String(Boolean(presse)));
@@ -159,7 +166,7 @@ export function bouton({
     const enveloppe = document.createElement("span");
     enveloppe.className = "bouton-enveloppe";
     enveloppe.append(b);
-    bulle = creerInfoBulle({ texte: raccourci ? `${nom} (${raccourci})` : nom, ancre: b, enveloppe, position: positionInfoBulle });
+    bulle = creerInfoBulle({ texte: raccourci ? `${nom} (${raccourci})` : nom, ancre: b, enveloppe, position: positionInfoBulle ?? (taille === "disque" ? "dessus" : undefined) });
     b.enveloppe = enveloppe;
   }
   // Change le texte de l'info-bulle d'un bouton à icône, sans toucher à son nom accessible.
