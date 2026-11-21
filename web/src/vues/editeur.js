@@ -1101,6 +1101,12 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     afficher();
   }
 
+  // Une cellule de tableau en saisie est validée d'abord : la décision tient compte de ce texte (REQ-153).
+  function deciderDisque(o, lecture) {
+    o.zone.validerSaisie?.();
+    return decisionDisque(o, lecture);
+  }
+
   function appliquer(o, lecture, decision) {
     if (decision === "adopter") {
       changerBase(o, lecture.contenu, lecture.version);
@@ -1170,7 +1176,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
         if (v === o.version || v === o.question?.version) continue;
         const lecture = await lireFichier(o.chemin);
         if (detruit || !inchange(o)) continue;
-        appliquer(o, lecture, decisionDisque(o, lecture));
+        appliquer(o, lecture, deciderDisque(o, lecture));
       }
     } finally {
       sondageEnCours = false;
@@ -1501,7 +1507,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     actif = groupes.get(courant).actif;
     if (prefere !== null) activer(prefere);
     pret = true;
-    for (const [o, r] of aVerifier) appliquer(o, r, decisionDisque(o, r));
+    for (const [o, r] of aVerifier) appliquer(o, r, deciderDisque(o, r));
     afficher();
     garderListe();
     if (!coupe) executerAttente();

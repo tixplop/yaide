@@ -1,5 +1,6 @@
 import { Decoration, EditorView, ViewPlugin, WidgetType } from "@codemirror/view";
 import { StateEffect, StateField } from "@codemirror/state";
+import { isolateHistory } from "@codemirror/commands";
 import { syntaxTree } from "@codemirror/language";
 import { rendreMarkdown } from "./apercu.js";
 import { estMac, lienDeDocument } from "../references.js";
@@ -188,25 +189,48 @@ function construire(vue) {
   return Decoration.set(decorationsHybride(vue.state, vue.visibleRanges).map(enDecoration), true);
 }
 
-// Début du texte d'une cellule dans la source du tableau (rangée 0 = en-tête, la ligne `---` est sautée).
-// Un `\|` n'est pas un séparateur. Hors du tableau : début de la source.
-export function debutCellule(source, rangee, colonne) {
+// Bornes [debut, fin] du texte d'une cellule dans la source (espaces autour exclus), ou null si la cellule n'existe pas.
+// Une cellule vide prend place entre deux espaces quand il y en a.
+export function bornesCellule(source, rangee, colonne) {
   const lignes = source.split("\n");
   const index = rangee <= 0 ? 0 : rangee + 1;
-  if (index >= lignes.length) return 0;
-  let debut = 0;
-  for (let i = 0; i < index; i++) debut += lignes[i].length + 1;
+  if (index >= lignes.length) return null;
+  let decalage = 0;
+  for (let i = 0; i < index; i++) decalage += lignes[i].length + 1;
   const texte = lignes[index];
+  const blanc = (c) => c === " " || c === "\t";
   let pos = 0;
-  while (texte[pos] === " " || texte[pos] === "\t") pos++;
+  while (blanc(texte[pos])) pos++;
   if (texte[pos] === "|") pos++;
   for (let k = 0; k < colonne; k++) {
     while (pos < texte.length && texte[pos] !== "|") pos += texte[pos] === "\\" ? 2 : 1;
-    if (pos >= texte.length) return debut + texte.length;
+    if (pos >= texte.length) return null;
     pos++;
   }
-  while (texte[pos] === " " || texte[pos] === "\t") pos++;
-  return debut + Math.min(pos, texte.length);
+  let fin = pos;
+  while (fin < texte.length && texte[fin] !== "|") fin += texte[fin] === "\\" ? 2 : 1;
+  fin = Math.min(fin, texte.length);
+  let a = pos;
+  let b = fin;
+  while (a < b && blanc(texte[a])) a++;
+  while (b > a && blanc(texte[b - 1])) b--;
+  if (a === b) a = b = pos + (fin > pos ? 1 : 0);
+  return { debut: decalage + a, fin: decalage + b };
+}
+
+// Texte d'une cellule tel qu'il se montre en saisie : `\|` du fichier devient `|`.
+export function texteSaisie(source, rangee, colonne) {
+  const b = bornesCellule(source, rangee, colonne);
+  return b ? source.slice(b.debut, b.fin).replaceAll("\\|", "|") : "";
+}
+
+const texteEcrit = (texte) => texte.replace(/\s*\n\s*/g, " ").trim().replaceAll("|", "\\|");
+
+// Source après remplacement du texte d'une cellule : seul le texte entre ses `|` change, un `|` tapé devient `\|`.
+export function sourceApres(source, rangee, colonne, texte) {
+  const b = bornesCellule(source, rangee, colonne);
+  if (!b) return source;
+  return source.slice(0, b.debut) + texteEcrit(texte) + source.slice(b.fin);
 }
 
 // Tableaux rendus : ceux dont aucune ligne n'est touchée par la sélection, de la première à la dernière ligne entière.
@@ -253,26 +277,175 @@ export class TableauRendu extends WidgetType {
       el.append(table);
     } else el.textContent = this.source;
     el.addEventListener("mousedown", (e) => {
+      if (e.target.closest?.(".ya-cellule-saisie")) return; // la saisie garde le comportement natif du navigateur
       e.preventDefault();
-      const debut = vue.posAtDOM(el);
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || !table) return;
       const cellule = e.target.closest?.("td, th");
-      let pos = debut;
-      if (cellule && table) {
-        const rangee = [...table.querySelectorAll("tr")].indexOf(cellule.parentElement);
-        pos = debut + debutCellule(this.source, rangee, cellule.cellIndex);
-      }
-      const haut = el.getBoundingClientRect().top;
-      vue.dispatch({ selection: { anchor: pos } });
-      vue.focus();
-      // Le haut de la ligne 1 du tableau prend la place du haut du tableau rendu (hors marge) ; ce qui suit remonte.
-      const ecart = vue.lineBlockAt(debut).top + vue.documentTop - haut;
-      if (ecart) vue.scrollDOM.scrollTop += ecart;
+      if (!cellule || !table.contains(cellule)) return;
+      const rangee = [...table.rows].indexOf(cellule.parentElement);
+      const point = { x: e.clientX, y: e.clientY };
+      const ouverte = saisies.get(vue);
+      if (ouverte) ouverte.valider({ indice: indiceTableau(vue, el), rangee, colonne: cellule.cellIndex });
+      else ouvrirSaisie(vue, el, this.source, rangee, cellule.cellIndex, point);
     });
+    if (table) ouvreurs.set(el, (rangee, colonne) => ouvrirSaisie(vue, el, this.source, rangee, colonne));
     return el;
   }
   ignoreEvent() {
     return true;
   }
+  // La saisie d'une cellule est dans le widget : CodeMirror n'en lit ni les mutations ni la sélection.
+  ignoreMutation() {
+    return true;
+  }
+}
+
+// Cellule en saisie (REQ-153, DEC-102) : une seule par vue ; le document ne change qu'à la validation.
+const saisies = new WeakMap(); // vue -> { valider(suite) }
+const ouvreurs = new WeakMap(); // élément du tableau rendu -> (rangée, colonne) => ouvre la saisie
+
+// Ouvre la saisie de la cellule (rangée, colonne) du tableau d'indice `indice` (dans l'ordre des tableaux rendus), après la transaction.
+export const ouvrirCellule = StateEffect.define();
+
+// Une fois le DOM refait par la transaction, ouvre la cellule demandée par l'effet `ouvrirCellule`.
+const ouvertureDeCellule = ViewPlugin.fromClass(
+  class {
+    constructor(vue) {
+      this.vue = vue;
+    }
+    update(u) {
+      for (const tr of u.transactions) {
+        for (const e of tr.effects) {
+          if (!e.is(ouvrirCellule)) continue;
+          const { indice, rangee, colonne } = e.value;
+          queueMicrotask(() => {
+            const el = this.vue.dom.querySelectorAll(".cm-hy-tableau")[indice];
+            if (el) ouvreurs.get(el)?.(rangee, colonne);
+          });
+        }
+      }
+    }
+  },
+);
+
+const indiceTableau = (vue, el) => [...vue.dom.querySelectorAll(".cm-hy-tableau")].indexOf(el);
+
+// Valide la saisie ouverte, s'il y en a une.
+export function validerSaisie(vue) {
+  saisies.get(vue)?.valider();
+}
+
+// Position du clic dans le texte de la cellule, ou -1.
+function decalageDuClic(cellule, point) {
+  let noeud = null;
+  let decalage = 0;
+  if (document.caretPositionFromPoint) {
+    const p = document.caretPositionFromPoint(point.x, point.y);
+    if (p) [noeud, decalage] = [p.offsetNode, p.offset];
+  } else if (document.caretRangeFromPoint) {
+    const r = document.caretRangeFromPoint(point.x, point.y);
+    if (r) [noeud, decalage] = [r.startContainer, r.startOffset];
+  }
+  if (!noeud || noeud.nodeType !== 3 || !cellule.contains(noeud)) return -1;
+  const parcours = document.createTreeWalker(cellule, NodeFilter.SHOW_TEXT);
+  let avant = 0;
+  while (parcours.nextNode() && parcours.currentNode !== noeud) avant += parcours.currentNode.length;
+  return avant + decalage;
+}
+
+function ouvrirSaisie(vue, el, source, rangee, colonne, point) {
+  validerSaisie(vue);
+  const table = el.querySelector("table");
+  const cellule = table?.rows[rangee]?.cells[colonne];
+  if (!cellule) return;
+  const texte0 = texteSaisie(source, rangee, colonne);
+  const enTete = cellule.tagName === "TH";
+  const titre = table.rows[0]?.cells[colonne]?.textContent.trim();
+  const nom = enTete ? `En-tête de la colonne ${colonne + 1}` : titre ? `${titre}, rangée ${rangee}` : `Colonne ${colonne + 1}, rangée ${rangee}`;
+  // Sans marque dans le texte, le curseur est où l'on a cliqué ; sinon à la fin.
+  const decalage = point && texte0 === cellule.textContent ? decalageDuClic(cellule, point) : -1;
+  const avant = cellule.innerHTML;
+  const span = document.createElement("span");
+  span.className = "ya-cellule-saisie";
+  span.setAttribute("role", "textbox");
+  span.setAttribute("aria-multiline", "false");
+  span.setAttribute("contenteditable", "plaintext-only");
+  span.setAttribute("aria-label", nom);
+  span.textContent = texte0;
+  cellule.replaceChildren(span);
+  span.focus();
+  const sel = document.getSelection();
+  if (sel) {
+    const t = span.firstChild;
+    if (t) sel.collapse(t, decalage >= 0 ? Math.min(decalage, t.length) : t.length);
+    else sel.collapse(span, 0);
+  }
+
+  let fini = false;
+  const clore = () => {
+    fini = true;
+    saisies.delete(vue);
+  };
+  // suite : { indice, rangee, colonne } de la cellule à ouvrir ensuite ; sinon le focus revient au texte (sauf `garderFocus`).
+  const valider = (suite, garderFocus) => {
+    if (fini) return;
+    clore();
+    const texte = span.textContent;
+    const debut = vue.posAtDOM(el);
+    const b = texte === texte0 ? null : bornesCellule(source, rangee, colonne);
+    const intact = vue.state.doc.sliceString(debut, debut + source.length) === source;
+    const effets = suite ? [ouvrirCellule.of(suite)] : [];
+    if (b && intact) {
+      vue.dispatch({
+        changes: { from: debut + b.debut, to: debut + b.fin, insert: texteEcrit(texte) },
+        annotations: isolateHistory.of("full"),
+        effects: effets,
+      });
+    } else {
+      cellule.innerHTML = avant;
+      if (effets.length) vue.dispatch({ effects: effets });
+    }
+    if (!suite && !garderFocus) vue.focus();
+  };
+  saisies.set(vue, { valider });
+
+  const voisine = (pas) => {
+    const lignes = [...table.rows];
+    let r = rangee;
+    let c = colonne + pas;
+    if (c < 0) {
+      r--;
+      c = (lignes[r]?.cells.length ?? 1) - 1;
+    } else if (c >= lignes[r].cells.length) {
+      r++;
+      c = 0;
+    }
+    return r >= 0 && r < lignes.length && c >= 0 ? { indice: indiceTableau(vue, el), rangee: r, colonne: c } : null;
+  };
+  span.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      valider();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (fini) return;
+      clore();
+      cellule.innerHTML = avant;
+      vue.focus();
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      e.stopPropagation();
+      valider(voisine(e.shiftKey ? -1 : 1));
+    } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
+      valider(); // l'événement continue vers Ctrl+S de la page
+    } else e.stopPropagation();
+  });
+  for (const type of ["keyup", "keypress", "beforeinput", "input", "compositionstart", "compositionend", "paste", "cut", "copy", "dragstart", "drop"]) {
+    span.addEventListener(type, (e) => e.stopPropagation());
+  }
+  span.addEventListener("blur", () => valider(null, true));
 }
 
 // Un StateField : CodeMirror refuse les décorations de bloc venant d'un ViewPlugin.
@@ -543,5 +716,5 @@ export function hybride({ surLien, surSurvol } = {}) {
     },
     { decorations: (p) => p.decorations },
   );
-  return [plugin, suiviDesLiens({ surLien, surSurvol }), champTableaux, champDiagrammes, pluginDiagrammes, EditorView.editorAttributes.of({ class: "cm-hybride" })];
+  return [plugin, ouvertureDeCellule, suiviDesLiens({ surLien, surSurvol }), champTableaux, champDiagrammes, pluginDiagrammes, EditorView.editorAttributes.of({ class: "cm-hybride" })];
 }

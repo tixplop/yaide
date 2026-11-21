@@ -2,10 +2,11 @@ import { EditorState } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorView } from "@codemirror/view";
 import { readFileSync } from "node:fs";
-import { history, undo } from "@codemirror/commands";
+import { history, undo, redo, undoDepth } from "@codemirror/commands";
 import { afterEach, expect, test, vi } from "vitest";
 import { apercu } from "./apercu.js";
-import { diagrammesHybride, debutCellule, fondsRegles, decorationsHybride, hybride, lienA, tableauxHybride } from "./hybride.js";
+import { zoneCode } from "./zone-code.js";
+import { diagrammesHybride, bornesCellule, texteSaisie, sourceApres, validerSaisie, fondsRegles, decorationsHybride, hybride, lienA, tableauxHybride } from "./hybride.js";
 
 // Le curseur est en fin de document : une dernière ligne « fin » le tient loin des lignes testées.
 function deco(texte, { curseur, plages } = {}) {
@@ -257,40 +258,285 @@ test("REQ063_AC3_image_et_html_restent_du_texte", () => {
   m.fin();
 });
 
-test("REQ063_AC4_debutCellule_cellules_pipe_echappe_et_cellule_vide", () => {
-  const src = "| a | b \\| c |  |\n|---|---|---|\n|  x | y | z |";
-  expect(debutCellule(src, 0, 0)).toBe(2);
-  expect(debutCellule(src, 0, 1)).toBe(6);
-  expect(src.slice(debutCellule(src, 0, 1))).toMatch(/^b \\\|/);
-  expect(src.slice(debutCellule(src, 0, 2), debutCellule(src, 0, 2) + 1)).toBe("|"); // cellule vide : sur le séparateur
-  const l3 = src.indexOf("|  x");
-  expect(debutCellule(src, 1, 0)).toBe(l3 + 3);
-  expect(src[debutCellule(src, 1, 2)]).toBe("z");
-  expect(debutCellule("a | b\n--|--\nc | d", 1, 1)).toBe("a | b\n--|--\nc | ".length);
-  expect(debutCellule(src, 9, 0)).toBe(0);
+const SRC = "| a | b \\| c |  |\n|---|---|---|\n|  x | y | z |";
+
+test("REQ153_AC2_bornesCellule_texte_seul_espaces_gardes_cellule_vide_et_pipe_echappe", () => {
+  expect(bornesCellule(SRC, 0, 0)).toEqual({ debut: 2, fin: 3 });
+  expect(SRC.slice(bornesCellule(SRC, 0, 1).debut, bornesCellule(SRC, 0, 1).fin)).toBe("b \\| c");
+  const l3 = SRC.indexOf("|  x");
+  expect(bornesCellule(SRC, 1, 0)).toEqual({ debut: l3 + 3, fin: l3 + 4 });
+  expect(bornesCellule(SRC, 0, 2)).toEqual({ debut: SRC.indexOf("|  |") + 2, fin: SRC.indexOf("|  |") + 2 });
+  expect(bornesCellule(SRC, 9, 0)).toBeNull();
+  expect(bornesCellule(SRC, 0, 7)).toBeNull();
+  expect(texteSaisie(SRC, 0, 1)).toBe("b | c");
+  expect(sourceApres(SRC, 1, 1, "oui")).toBe(SRC.replace("| y |", "| oui |"));
+  expect(sourceApres(SRC, 0, 2, "v")).toBe(SRC.replace("|  |", "| v |"));
+  expect(sourceApres(SRC, 1, 2, "")).toBe(SRC.replace("| z |", "|  |"));
+  expect(sourceApres("a | b\n--|--\nc | d", 1, 1, " e ")).toBe("a | b\n--|--\nc | e");
 });
 
-test("REQ063_AC4_mousedown_sur_une_cellule_place_le_curseur_et_repasse_en_texte", () => {
-  const doc = `avant\n\n${TABLE}\n\nfin`;
-  const m = monter(doc);
-  const cellules = m.parent.querySelectorAll(".cm-hy-tableau td");
-  const e = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
-  cellules[1].dispatchEvent(e); // rangée 1, colonne 1 : « **non** »
+test("REQ153_AC4_pipe_tape_devient_pipe_echappe_meme_nombre_de_colonnes", () => {
+  const src = "| a | b |\n|---|---|\n| 1 | 2 |";
+  const apres = sourceApres(src, 1, 0, "a|b");
+  expect(apres).toBe("| a | b |\n|---|---|\n| a\\|b | 2 |");
+  expect(texteSaisie(apres, 1, 0)).toBe("a|b");
+});
+
+// Vue avec historique, curseur ligne 1 (« avant »), tableau rendu.
+const TAB = "| Option | Défaut | Effet |\n|---|---|---|\n| `--nom` | non | Salue en **capitales**. |\n| `--fort` | non | Plus fort |";
+const DOCT = `avant\n\n${TAB}\n\nfin`;
+function monterH(doc = DOCT, anchor = 0, options = {}) {
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  const vue = new EditorView({ doc, selection: { anchor }, parent, extensions: [markdown({ base: markdownLanguage }), history(), hybride(options)] });
+  const cellules = () => [...parent.querySelectorAll(".cm-hy-tableau td, .cm-hy-tableau th")];
+  const clic = (cellule, init = {}) => {
+    const e = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, ...init });
+    cellule.dispatchEvent(e);
+    return e;
+  };
+  const saisie = () => parent.querySelector(".ya-cellule-saisie");
+  const touche = (cible, key, init = {}) => {
+    const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
+    cible.dispatchEvent(e);
+    return e;
+  };
+  const taper = (texte) => {
+    saisie().textContent = texte;
+  };
+  const attendre = () => new Promise((r) => setTimeout(r));
+  return { vue, parent, cellules, clic, saisie, touche, taper, attendre, fin: () => (vue.destroy(), parent.remove()) };
+}
+
+test("REQ153_AC1_clic_ouvre_une_saisie_dans_le_tableau_sans_toucher_a_l_editeur", async () => {
+  const m = monterH();
+  const sel = m.vue.state.selection.main.head;
+  const e = m.clic(m.cellules()[4]); // rangée 1, colonne 1 : « non »
   expect(e.defaultPrevented).toBe(true);
-  expect(m.vue.state.selection.main.head).toBe(doc.indexOf("**non**"));
-  expect(m.parent.querySelector(".cm-hy-tableau")).toBeNull();
-  expect(m.vue.contentDOM.textContent).toContain("| `--fort` | **non** |");
+  expect(m.parent.querySelectorAll(".ya-cellule-saisie").length).toBe(1);
+  const s = m.saisie();
+  expect(s.getAttribute("role")).toBe("textbox");
+  expect(s.getAttribute("aria-multiline")).toBe("false");
+  expect(s.getAttribute("contenteditable")).toBe("plaintext-only");
+  expect(s.getAttribute("aria-label")).toBe("Défaut, rangée 1");
+  expect(document.activeElement).toBe(s);
+  expect(m.parent.querySelector(".cm-hy-tableau")).not.toBeNull();
+  expect(m.vue.state.selection.main.head).toBe(sel);
+  // Une frappe dans la saisie ne change ni le document ni la sélection avant la validation.
+  s.textContent = "oui";
+  s.dispatchEvent(new InputEvent("input", { bubbles: true }));
+  expect(m.vue.state.doc.toString()).toBe(DOCT);
+  expect(m.vue.state.selection.main.head).toBe(sel);
+  expect(m.parent.querySelector(".cm-hy-tableau")).not.toBeNull();
+  // Une seule saisie : un clic dans une autre cellule valide la première.
+  m.clic(m.cellules()[5]);
+  await m.attendre();
+  expect(m.parent.querySelectorAll(".ya-cellule-saisie").length).toBe(1);
+  expect(m.vue.state.doc.toString()).toContain("| `--nom` | oui |");
   m.fin();
 });
 
-test("REQ063_AC4_clic_hors_cellule_va_au_debut_du_tableau", () => {
-  const doc = `avant\n\n${TABLE}\n\nfin`;
-  const m = monter(doc);
-  m.parent.querySelector(".cm-hy-tableau").dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-  expect(m.vue.state.selection.main.head).toBe(doc.indexOf("| Nom"));
+test("REQ153_AC1_noms_en_tete_et_colonne_sous_en_tete_vide", async () => {
+  const m = monterH("avant\n\n|  | B |\n|---|---|\n| 1 | 2 |\n\nfin");
+  m.clic(m.cellules()[1]); // th « B »
+  expect(m.saisie().getAttribute("aria-label")).toBe("En-tête de la colonne 2");
+  m.clic(m.cellules()[2]); // td colonne 1 sous un en-tête vide
+  await m.attendre();
+  expect(m.saisie().getAttribute("aria-label")).toBe("Colonne 1, rangée 1");
   m.fin();
 });
 
+test("REQ153_AC2_entree_ecrit_une_seule_transaction_et_le_tableau_montre_oui", () => {
+  const m = monterH();
+  let transactions = 0;
+  const origine = m.vue.dispatch.bind(m.vue);
+  m.vue.dispatch = (...a) => (transactions++, origine(...a));
+  m.clic(m.cellules()[4]);
+  m.taper("oui");
+  m.touche(m.saisie(), "Enter");
+  expect(transactions).toBe(1);
+  expect(m.vue.state.doc.toString()).toBe(DOCT.replace("| `--nom` | non |", "| `--nom` | oui |"));
+  expect(m.cellules()[4].textContent).toBe("oui");
+  expect(m.saisie()).toBeNull();
+  expect(m.vue.state.selection.main.head).toBe(0);
+  m.fin();
+});
+
+test("REQ153_AC3_saisie_montre_les_marques_et_entree_sans_changement_n_ecrit_rien", () => {
+  const m = monterH();
+  m.clic(m.cellules()[5]);
+  expect(m.saisie().textContent).toBe("Salue en **capitales**.");
+  expect(m.cellules()[4].querySelector("code, strong")).toBeNull();
+  expect(m.cellules()[3].querySelector("code").textContent).toBe("--nom");
+  expect(m.cellules()[5].querySelector("strong")).toBeNull();
+  let transactions = 0;
+  const origine = m.vue.dispatch.bind(m.vue);
+  m.vue.dispatch = (...a) => (transactions++, origine(...a));
+  const profondeur = undoDepth(m.vue.state);
+  m.touche(m.saisie(), "Enter");
+  expect(transactions).toBe(0);
+  expect(undoDepth(m.vue.state)).toBe(profondeur);
+  expect(m.saisie()).toBeNull();
+  expect(m.cellules()[5].querySelector("strong").textContent).toBe("capitales");
+  m.fin();
+});
+
+test("REQ153_AC4_pipe_tape_est_echappe_dans_la_source_puis_montre_sans_antislash", () => {
+  const m = monterH();
+  m.clic(m.cellules()[4]);
+  m.taper("a|b");
+  m.touche(m.saisie(), "Enter");
+  const doc = m.vue.state.doc.toString();
+  expect(doc).toContain("| `--nom` | a\\|b | Salue");
+  expect(doc.split("\n").find((l) => l.includes("--nom")).match(/(?<!\\)\|/g).length).toBe(4);
+  m.clic(m.cellules()[4]);
+  expect(m.saisie().textContent).toBe("a|b");
+  m.fin();
+});
+
+test("REQ153_AC5_echap_abandonne_et_blur_vers_la_ligne_1_valide", () => {
+  const m = monterH();
+  m.clic(m.cellules()[4]);
+  m.taper("oui");
+  m.touche(m.saisie(), "Escape");
+  expect(m.vue.state.doc.toString()).toBe(DOCT);
+  expect(m.saisie()).toBeNull();
+  expect(m.cellules()[4].textContent).toBe("non");
+  m.clic(m.cellules()[4]);
+  m.taper("oui");
+  m.vue.contentDOM.focus(); // le focus part vers le texte : blur
+  expect(m.vue.state.doc.toString()).toContain("| `--nom` | oui |");
+  expect(m.saisie()).toBeNull();
+  m.fin();
+});
+
+test("REQ153_AC6_tab_et_maj_tab_passent_de_cellule_en_cellule_le_dernier_valide", async () => {
+  const m = monterH();
+  const sel = m.vue.state.selection.main.head;
+  m.clic(m.cellules()[5]); // rangée 1, dernière colonne
+  m.taper("X");
+  m.touche(m.saisie(), "Tab");
+  await m.attendre();
+  expect(m.vue.state.doc.toString()).toContain("| X |");
+  expect(m.saisie().getAttribute("aria-label")).toBe("Option, rangée 2");
+  expect(m.saisie().textContent).toBe("`--fort`");
+  m.touche(m.saisie(), "Tab", { shiftKey: true });
+  await m.attendre();
+  expect(m.saisie().getAttribute("aria-label")).toBe("Effet, rangée 1");
+  expect(m.saisie().textContent).toBe("X");
+  // Dernier Tab : on va jusqu'à la fin, la dernière validation rend le focus au texte.
+  m.clic(m.cellules()[m.cellules().length - 1]);
+  await m.attendre();
+  m.taper("Fin");
+  m.touche(m.saisie(), "Tab");
+  await m.attendre();
+  expect(m.saisie()).toBeNull();
+  expect(m.vue.state.doc.toString()).toContain("| Fin |");
+  expect(document.activeElement).toBe(m.vue.contentDOM);
+  expect(m.vue.state.selection.main.head).toBe(sel);
+  m.fin();
+});
+
+test("REQ153_AC7_ctrl_s_valide_avant_que_l_evenement_atteigne_document", () => {
+  const m = monterH();
+  let vu = null;
+  const ecoute = () => (vu = m.vue.state.doc.toString());
+  document.addEventListener("keydown", ecoute);
+  m.clic(m.cellules()[4]);
+  m.taper("oui");
+  m.touche(m.saisie(), "s", { ctrlKey: true });
+  document.removeEventListener("keydown", ecoute);
+  expect(vu).toContain("| `--nom` | oui |");
+  m.fin();
+});
+
+test("REQ153_AC7_les_autres_touches_de_la_saisie_n_atteignent_pas_document", () => {
+  const m = monterH();
+  let atteint = 0;
+  const ecoute = () => atteint++;
+  document.addEventListener("keydown", ecoute);
+  m.clic(m.cellules()[4]);
+  m.touche(m.saisie(), "a");
+  m.touche(m.saisie(), "z", { ctrlKey: true });
+  m.touche(m.saisie(), "Enter");
+  document.removeEventListener("keydown", ecoute);
+  expect(atteint).toBe(0);
+  m.fin();
+});
+
+test("REQ153_AC12_annuler_et_refaire_une_saisie_validee_a_l_octet_pres", () => {
+  const m = monterH();
+  m.clic(m.cellules()[4]);
+  m.taper("oui");
+  m.touche(m.saisie(), "Enter");
+  const apres = m.vue.state.doc.toString();
+  expect(apres).not.toBe(DOCT);
+  undo(m.vue);
+  expect(m.vue.state.doc.toString()).toBe(DOCT);
+  expect(m.parent.querySelector(".cm-hy-tableau")).not.toBeNull();
+  redo(m.vue);
+  expect(m.vue.state.doc.toString()).toBe(apres);
+  // Deux saisies à la suite sont deux pas d'annulation.
+  m.clic(m.cellules()[4]);
+  m.taper("peut-être");
+  m.touche(m.saisie(), "Enter");
+  undo(m.vue);
+  expect(m.vue.state.doc.toString()).toBe(apres);
+  m.fin();
+});
+
+test("REQ153_AC13_ctrl_clic_suit_le_lien_sans_saisie_et_mode_eteint_aucune_cellule_modifiable", () => {
+  const surLien = vi.fn();
+  const doc = "| a | b |\n|---|---|\n| [Y](docs/x.md) | 2 |\n\nfin";
+  const m = monterLiens(doc, { surLien, anchor: doc.length });
+  m.evt("mousedown", m.parent.querySelector(".cm-hy-tableau a"), { ctrlKey: true });
+  expect(surLien).toHaveBeenCalledWith("docs/x.md");
+  expect(m.parent.querySelector(".ya-cellule-saisie")).toBeNull();
+  m.evt("mousedown", m.parent.querySelector(".cm-hy-tableau td:last-child"), { ctrlKey: true });
+  expect(m.parent.querySelector(".ya-cellule-saisie")).toBeNull();
+  m.fin();
+  // Mode éteint, puis aperçu : aucune cellule n'est modifiable.
+  for (const options of [{ hybride: false }, { hybride: false, apercu: true }]) {
+    const z = zoneCode({ contenu: doc, langage: "markdown", ...options });
+    document.body.append(z);
+    expect(z.querySelector(".cm-hy-tableau")).toBeNull();
+    for (const td of z.querySelectorAll("td, th")) td.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    if (options.apercu) expect(z.querySelectorAll("td").length).toBeGreaterThan(0);
+    expect(z.querySelector(".ya-cellule-saisie")).toBeNull();
+    expect(z.querySelector("[contenteditable=plaintext-only]")).toBeNull();
+    z.detruire();
+    z.remove();
+  }
+});
+
+test("REQ153_AC1_curseur_au_clic_sans_marques_a_la_fin_avec_marques", () => {
+  const m = monterH();
+  document.caretPositionFromPoint = () => ({ offsetNode: document.__noeud, offset: 2 });
+  document.__noeud = m.cellules()[3].firstChild.firstChild; // « --nom » dans le code
+  m.clic(m.cellules()[3], { clientX: 5, clientY: 5 });
+  const sel = document.getSelection();
+  expect(m.saisie().textContent).toBe("`--nom`"); // des marques : à la fin
+  expect(sel.anchorOffset).toBe(7);
+  m.touche(m.saisie(), "Escape");
+  document.__noeud = m.cellules()[4].firstChild; // « non »
+  m.clic(m.cellules()[4], { clientX: 5, clientY: 5 });
+  expect(m.saisie().textContent).toBe("non");
+  expect(sel.anchorNode).toBe(m.saisie().firstChild);
+  expect(sel.anchorOffset).toBe(2);
+  delete document.caretPositionFromPoint;
+  m.fin();
+});
+
+test("REQ153_AC13_validerSaisie_ecrit_la_saisie_ouverte", () => {
+  const m = monterH();
+  validerSaisie(m.vue); // aucune saisie : rien
+  m.clic(m.cellules()[4]);
+  m.taper("oui");
+  validerSaisie(m.vue);
+  expect(m.vue.state.doc.toString()).toContain("| `--nom` | oui |");
+  expect(m.saisie()).toBeNull();
+  m.fin();
+});
 test("REQ063_AC2_tableauxHybride_donne_debut_fin_source_hors_des_lignes_touchees", () => {
   const doc = `avant\n\n${TABLE}\n\nfin\n\n| x |\n|---|\n| y |`;
   const etat = (anchor, head) => EditorState.create({ doc, selection: { anchor, head }, extensions: [markdown({ base: markdownLanguage })] });
@@ -470,10 +716,10 @@ test("REQ101_AC2_AC13_tableau_rendu_ctrl_clic_suit_le_lien_et_reste_rendu", () =
   expect(surLien).toHaveBeenCalledWith("docs/x.md");
   expect(m.vue.state.selection.main.head).toBe(tete);
   expect(m.parent.querySelector(".cm-hy-tableau")).not.toBeNull();
-  // Clic simple : le tableau garde son comportement (curseur dans la cellule), rien ne s'ouvre.
+  // Clic simple : la cellule passe en saisie, aucun lien suivi, la sélection ne bouge pas.
   m.evt("mousedown", a);
   expect(surLien).toHaveBeenCalledTimes(1);
-  expect(m.vue.state.selection.main.head).not.toBe(tete);
+  expect(m.vue.state.selection.main.head).toBe(tete);
   m.fin();
 });
 

@@ -8,7 +8,7 @@ import { apercuHtml } from "./apercu-html.js";
 import { image } from "./image.js";
 import { chargerMermaid, adresseDiagramme } from "./diagramme.js";
 import { couleurs } from "./couleurs-code.js";
-import { hybride as extensionHybride, TableauRendu, DiagrammeRendu, tableauxHybride, diagrammesRendus } from "./hybride.js";
+import { hybride as extensionHybride, TableauRendu, DiagrammeRendu, tableauxHybride, diagrammesRendus, validerSaisie } from "./hybride.js";
 import { themeCourant } from "./theme.js";
 import { lienDeDocument, ligneDuTitre } from "../references.js";
 
@@ -317,7 +317,9 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     });
   };
   // Le curseur reste sur la même ligne (bornée au nouveau texte), à la même colonne si elle existe encore.
+  racine.validerSaisie = () => validerSaisie(vue);
   racine.remplacer = (texte) => {
+    validerSaisie(vue);
     const doc = vue.state.doc;
     const tete = doc.lineAt(vue.state.selection.main.head);
     const colonne = vue.state.selection.main.head - tete.from;

@@ -834,3 +834,22 @@ test("REQ123_AC6_autres_fichiers_sans_apercu_mermaid", avecMermaid(async () => {
   }
   expect(mm.dessiner).not.toHaveBeenCalled();
 }));
+
+test("REQ153_AC1_remplacer_et_validerSaisie_ecrivent_d_abord_la_cellule_en_saisie", () => {
+  const doc = "# T\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nfin";
+  const z = zoneCode({ contenu: doc, langage: "markdown", hybride: true, surChangement: () => {} });
+  document.body.append(z);
+  ensureSyntaxTree(z.vue.state, z.vue.state.doc.length, 5000);
+  z.vue.dispatch({});
+  z.vue.dom.querySelector(".cm-hy-tableau td").dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+  z.vue.dom.querySelector(".ya-cellule-saisie").textContent = "neuf";
+  z.validerSaisie();
+  expect(z.contenu()).toBe(doc.replace("| 1 |", "| neuf |"));
+  z.vue.dom.querySelector(".cm-hy-tableau td:last-child").dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+  z.vue.dom.querySelector(".ya-cellule-saisie").textContent = "deux";
+  z.remplacer("# T\n\nautre");
+  expect(z.vue.dom.querySelector(".ya-cellule-saisie")).toBeNull();
+  expect(z.contenu()).toBe("# T\n\nautre");
+  z.detruire();
+  z.remove();
+});
