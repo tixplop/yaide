@@ -735,6 +735,19 @@ test("REQ155_parcours_P115_P116_AC155_1_AC155_2_AC155_3_AC155_5_AC155_7_AC155_8"
     await expect(menu).toHaveCount(0);
     await expect(surface).toBeFocused();
 
+    // AC-155-1 : clic droit au centre exact de « Début », là où se pose son connecteur du centre.
+    await page.mouse.click(rb1.x + rb1.width + 100, rb1.y + 300);
+    await expect(surface).not.toHaveAttribute("aria-activedescendant", /.+/);
+    await expect(surface.locator("g.choisie")).toHaveCount(0);
+    await page.mouse.move(rb1.x + rb1.width / 2, rb1.y + rb1.height / 2);
+    await page.mouse.click(rb1.x + rb1.width / 2, rb1.y + rb1.height / 2, { button: "right" });
+    await expect(menu).toBeVisible();
+    await expect(surface).toHaveAttribute("aria-activedescendant", /-b1$/);
+    await expect(commande).not.toHaveAttribute("aria-disabled", /.*/);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(surface).toBeFocused();
+
     // AC-155-2, AC-155-8 : Ctrl+A, clic droit sur une partie vide, la commande.
     await page.keyboard.press("Control+a");
     const actif = await surface.getAttribute("aria-activedescendant");

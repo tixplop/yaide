@@ -801,8 +801,9 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     if (doc === null || saisie !== null || geste) return;
     e.preventDefault();
     effacerRefus();
+    const connecteur = e.target.closest?.("[data-connecteur]");
     const g = e.target.closest?.("g.boite, g.lien, g.fleche");
-    const id = g?.getAttribute("data-id") ?? null;
+    const id = connecteur ? connecteur.getAttribute("data-boite") : g?.getAttribute("data-id") ?? null;
     if (id !== null && !choisis.includes(id)) choisir(id);
     ouvrirMenu({ x: e.clientX, y: e.clientY });
   }

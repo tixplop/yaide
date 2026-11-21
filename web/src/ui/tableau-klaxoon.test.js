@@ -235,7 +235,8 @@ test("REQ155_AC8_status_apres_la_copie_et_commande_desactivee", async () => {
 
 test("REQ155_AC9_pas_de_connecteur_clic_ailleurs_molette_refus_et_boite_a_outils", () => {
   monter();
-  const survol = () => surface().dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 100, clientY: 100 }));
+  let dx = 0;
+  const survol = () => surface().dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 100 + ++dx, clientY: 100 }));
   const nb = () => t.element.querySelector(".connecteurs").children.length;
   survol();
   expect(nb()).toBeGreaterThan(0);
@@ -261,6 +262,35 @@ test("REQ155_AC9_pas_de_connecteur_clic_ailleurs_molette_refus_et_boite_a_outils
   const e = droit(t.element.querySelector("[role=toolbar]"));
   expect(e.defaultPrevented).toBe(false);
   expect(menuOuvert()).toBeNull();
+});
+
+test("REQ155_AC1_clic_droit_sur_un_connecteur_vaut_clic_droit_sur_sa_boite", () => {
+  monter();
+  let dx = 0;
+  const survol = () => surface().dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 100 + ++dx, clientY: 100 }));
+  const toutDeselectionner = () => {
+    touche("Escape");
+    t.element.querySelector("svg").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+    expect(choisies()).toEqual([]);
+  };
+  const connecteur = (cote) => t.element.querySelector(`[data-connecteur="${cote}"][data-boite="b1"]`);
+  for (const cote of ["center", "right"]) {
+    toutDeselectionner();
+    survol();
+    const c = connecteur(cote);
+    expect(c).not.toBeNull();
+    droit(c);
+    expect(choisies()).toEqual(["b1"]);
+    expect(menuOuvert()).not.toBeNull();
+    expect(commande().getAttribute("aria-disabled")).toBeNull();
+    touche("Escape");
+  }
+  droit(obj("b2"));
+  touche("Escape");
+  expect(choisies()).toEqual(["b2"]);
+  survol();
+  droit(connecteur("center"));
+  expect(choisies()).toEqual(["b1"]);
 });
 
 test("REQ155_AC10_refus_du_presse_papiers_rien_n_est_retenu", async () => {
