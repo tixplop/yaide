@@ -1069,7 +1069,10 @@ fn REQ110_AC2_fichier_touche_sans_changement_de_contenu_aucune_requete() {
         date_gardee(&s, "notes", "docs/a.md") != ancienne
     });
     assert_eq!(textes_depuis(&recues, avant), ["v3 trois"]);
-    assert_eq!(vecteurs_de(&s, "notes"), [1.0, 1.0, 3.0, 1.0]);
+    // La date de a.md et les vecteurs de b.md s'écrivent à des moments distincts de la passe.
+    attendre("vecteurs de notes après la passe", || {
+        vecteurs_de(&s, "notes") == [1.0, 1.0, 3.0, 1.0]
+    });
 }
 
 #[test]
