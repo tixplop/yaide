@@ -46,9 +46,11 @@ function glisser(cible, de, vers) {
   ptr(surface(), "pointermove", vers[0], vers[1]);
   ptr(surface(), "pointerup", vers[0], vers[1]);
 }
+// Ctrl+V : le navigateur envoie ensuite l'événement `paste`, que la surface reçoit.
 const touche = (key, opts = {}, cible = surface()) => {
   const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts });
   cible.dispatchEvent(e);
+  if (opts.ctrlKey && key === "v" && !e.defaultPrevented) cible.dispatchEvent(new Event("paste", { bubbles: true, cancelable: true }));
   return e;
 };
 const z = (cible) => touche("z", { ctrlKey: true }, cible);

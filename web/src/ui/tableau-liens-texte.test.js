@@ -41,7 +41,13 @@ const dbl = (cherche) => {
   clic(cherche());
   cherche().dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true, button: 0 }));
 };
-const touche = (key, opts = {}, cible = surface()) => cible.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts }));
+// Ctrl+V : le navigateur envoie ensuite l'événement `paste`, que la surface reçoit.
+const touche = (key, opts = {}, cible = surface()) => {
+  const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts });
+  const r = cible.dispatchEvent(e);
+  if (opts.ctrlKey && key === "v" && r) cible.dispatchEvent(new Event("paste", { bubbles: true, cancelable: true }));
+  return r;
+};
 const taper = (zone, texte) => {
   zone.textContent = texte;
   zone.dispatchEvent(new Event("input", { bubbles: true }));

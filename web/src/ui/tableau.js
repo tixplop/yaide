@@ -1,6 +1,8 @@
 import { ecrireJdiag, idLibre, positionTexte, SYMBOLES, TAILLES } from "../jdiag.js";
 import { estMac } from "../references.js";
 import { indication } from "./indication.js";
+import { message } from "./message.js";
+import { depuisMermaid } from "../mermaid-jdiag.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
 import { boiteOutils } from "./tableau-outils.js";
 import { connecteurProcheAffiche, connecteursAffiches, connecteurs, dansRectangle, estSymbole, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
@@ -31,6 +33,7 @@ const CONCERNES = {
 let compteur = 0;
 let collages = 0; // collages faits depuis la dernière copie
 let presse = null; // la copie de Ctrl+C, partagée par tous les onglets de whiteboard
+let dernierTexte = null; // le texte écrit dans le presse-papiers du système par la dernière copie
 
 // Le rectangle des deux points, dans tous les sens, jamais sous 40 x 24 px, aux positions entières.
 function rectangleTrace(a, b) {
@@ -63,6 +66,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   let vueCourante = { x: 0, y: 0, zoom: 1, ...vue };
   let choisis = []; // les `id` choisis, dans l'ordre de Tab
   let etat = null; // zone `status`
+  let alerte = null; // zone `alert` du refus d'un collage mermaid, vide sans refus
   let saisie = null;
   let editeur = null;
   let surface = null;
@@ -169,6 +173,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     surface = null;
     dessin = null;
     etat = null;
+    alerte = null;
     editeur = null;
     saisie = null;
     if (doc === null) {
@@ -203,9 +208,14 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     etat = document.createElement("div");
     etat.className = "masque";
     etat.setAttribute("role", "status");
-    fond.append(surface, etat);
+    // Une zone vivante déjà dans la page, vide (donc cachée) sans refus : le texte y est posé pour être lu.
+    alerte = message({ texte: "-", variante: "erreur", presentation: "flottante" });
+    alerte.replaceChildren();
+    fond.append(surface, etat, alerte);
     element.append(barre.element);
     surface.addEventListener("keydown", surTouche);
+    surface.addEventListener("copy", surCopie);
+    surface.addEventListener("paste", surColler);
     surface.addEventListener("pointerdown", surAppui);
     surface.addEventListener("pointermove", surMouvement);
     surface.addEventListener("pointerup", surRelache);
@@ -636,16 +646,10 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       return;
     }
     if (saisie === null && !e.altKey && !e.shiftKey && (estMac() ? e.metaKey : e.ctrlKey) && (e.key.toLowerCase() === "c" || e.key.toLowerCase() === "v")) {
-      e.preventDefault();
+      // Ni Ctrl+C ni Ctrl+V ne sont retenus : les événements `copy` et `paste` du navigateur partent ensuite.
       if (e.key.toLowerCase() === "c") {
         presse = copier(doc, choisis);
         collages = 0;
-      } else if (presse) {
-        const r = coller(doc, presse, ++collages);
-        appliquer(r.doc);
-        choisis = r.ids;
-        ramener(premier());
-        dessiner();
       }
       return;
     }
@@ -698,6 +702,46 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       e.stopPropagation();
       choisir(null);
     }
+  }
+
+  // Écrit les textes des boîtes copiées, un par ligne, dans le presse-papiers du système.
+  function surCopie(e) {
+    if (doc === null || saisie !== null) return;
+    dernierTexte = (presse?.boxes ?? []).map((b) => b.text).join("\n");
+    e.clipboardData?.setData("text/plain", dernierTexte);
+    e.preventDefault();
+  }
+
+  const effacerRefus = () => {
+    if (alerte?.firstChild) alerte.replaceChildren();
+  };
+
+  function collerObjets() {
+    if (!presse) return;
+    const r = coller(doc, presse, ++collages);
+    appliquer(r.doc);
+    choisis = r.ids;
+    ramener(premier());
+    dessiner();
+  }
+
+  function surColler(e) {
+    if (doc === null || saisie !== null) return;
+    e.preventDefault();
+    const texte = e.clipboardData?.getData("text/plain") ?? "";
+    const r = texte === dernierTexte ? null : depuisMermaid(texte);
+    if (r === null) return collerObjets();
+    effacerRefus();
+    if (r.refus) {
+      alerte.replaceChildren(...message({ texte: `Diagramme mermaid non collé : ${r.refus}`, variante: "erreur", presentation: "flottante" }).childNodes);
+      return;
+    }
+    appliquer(r.doc);
+    choisis = [];
+    afficherTout();
+    const n = r.doc.boxes.length;
+    const l = r.doc.links.length;
+    annoncer(`Diagramme mermaid collé : ${n} ${n > 1 ? "boîtes" : "boîte"}, ${l === 0 ? "aucun lien" : l === 1 ? "1 lien" : `${l} liens`}.`);
   }
 
   function surClic(e) {
@@ -996,6 +1040,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     surEchap: () => surface?.focus({ preventScroll: true }),
   });
   barre.element.addEventListener("keydown", surHistorique);
+  // Le refus d'un collage part au geste suivant sur la zone.
+  for (const type of ["pointerdown", "wheel", "keydown"]) element.addEventListener(type, effacerRefus, { passive: true, capture: true });
   const surSelection = () => {
     if (saisie !== null) afficherOutils();
   };
@@ -1003,6 +1049,11 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   const observateur = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => dessiner());
   observateur?.observe(element);
   monter();
+
+  function afficherTout() {
+    changerVue(calculerToutAfficher([...doc.boxes, ...(doc.arrows ?? []).map(rectangleFleche)], taille()));
+    dessiner();
+  }
 
   function changerZoom(sens) {
     if (doc === null) return;
@@ -1045,8 +1096,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     zoomArriere: () => changerZoom(-1),
     toutAfficher() {
       if (doc === null) return;
-      changerVue(calculerToutAfficher([...doc.boxes, ...(doc.arrows ?? []).map(rectangleFleche)], taille()));
-      dessiner();
+      afficherTout();
     },
     detruire() {
       observateur?.disconnect();

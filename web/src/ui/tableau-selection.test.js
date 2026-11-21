@@ -49,9 +49,11 @@ function glisser(cible, de, vers) {
   ptr(surface(), "pointermove", vers[0], vers[1]);
   ptr(surface(), "pointerup", vers[0], vers[1]);
 }
+// Ctrl+V : le navigateur envoie ensuite l'événement `paste`, que la surface reçoit.
 const touche = (key, opts = {}, cible = surface()) => {
   const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts });
   cible.dispatchEvent(e);
+  if (opts.ctrlKey && key === "v" && !e.defaultPrevented) cible.dispatchEvent(new Event("paste", { bubbles: true, cancelable: true }));
   return e;
 };
 function choisirTrois() {
@@ -217,7 +219,7 @@ test("REQ137_AC4_copier_coller_deux_fois_puis_autre_onglet_et_lien_seul", async 
   choisirTrois();
   touche("c", { ctrlKey: true });
   const e = touche("v", { ctrlKey: true });
-  expect(e.defaultPrevented).toBe(true);
+  expect(e.defaultPrevented).toBe(false); // le collage se fait à l'événement `paste`, que le navigateur envoie ensuite
   expect(dernier().boxes.slice(3).map((b) => [b.id, b.x, b.y])).toEqual([["b4", 60, 100], ["b5", 320, 100]]);
   expect(choisis()).toEqual(["b4", "b5", "l2"]);
   expect(statut().textContent).toBe("3 objets choisis");

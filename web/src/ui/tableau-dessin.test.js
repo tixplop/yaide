@@ -30,7 +30,12 @@ afterEach(() => {
 
 const surface = () => t.element.querySelector("[role=application]");
 const obj = (id) => t.element.querySelector(`[data-id="${id}"]`);
-const touche = (key, opts = {}) => surface().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts }));
+// Ctrl+V : le navigateur envoie ensuite l'événement `paste`, que la surface reçoit.
+const touche = (key, opts = {}) => {
+  const r = surface().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts }));
+  if (opts.ctrlKey && key === "v" && r) surface().dispatchEvent(new Event("paste", { bubbles: true, cancelable: true }));
+  return r;
+};
 const clic = (el) => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 const trait = (id) => obj(id).querySelector(".trait");
 const pointes = (id) => [...obj(id).querySelectorAll(".pointe")].map((p) => p.getAttribute("points").split(" ")[0]);

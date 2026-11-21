@@ -120,7 +120,7 @@ test("REQ128_AC1_AC8_AC9_ouverture_par_ouvrir_ouvrirCitee_et_reference_sans_doub
   expect(textes()).toEqual(["Début", "Fin"]);
   expect(zone().querySelectorAll("[aria-roledescription=lien]")).toHaveLength(1);
   expect(e.code.querySelector(".zone-code")).toBeNull();
-  expect(document.querySelector("[role=alert], .ya-message")).toBeNull();
+  expect(document.querySelector("[role=alert]:not(:empty), .ya-message")).toBeNull();
   // AC-128-8 et AC-128-9 : focus sur la surface, rôle, nom, fil d'Ariane, barre d'état.
   expect(document.activeElement).toBe(surface());
   expect(surface().getAttribute("aria-label")).toBe("plan.jdiag");
@@ -253,7 +253,7 @@ test("REQ128_AC6_AC8_AC9_vide_sans_point_et_ctrl_s_ecrit_le_format_complet", asy
   expect(surface()).not.toBeNull();
   expect(textes()).toEqual([]);
   expect(onglet("vide.jdiag").dataset.modifie).toBeUndefined();
-  expect(document.querySelector("[role=alert], .ya-message")).toBeNull();
+  expect(document.querySelector("[role=alert]:not(:empty), .ya-message")).toBeNull();
   ctrlS();
   await vi.waitFor(() => expect(serveur.ecritures).toEqual([["vide.jdiag", ecrireJdiag({ version: 1, boxes: [], links: [] })]]));
   await attendre();
@@ -444,6 +444,7 @@ test("REQ143_AC4_nom_icone_info_bulle_tab_focus_gardé_et_pas_de_bouton_ailleurs
 const ctrl = (cible, key) => {
   const ev = new KeyboardEvent("keydown", { key, ctrlKey: true, bubbles: true, cancelable: true });
   cible.dispatchEvent(ev);
+  if (key === "v" && !ev.defaultPrevented) cible.dispatchEvent(new Event("paste", { bubbles: true, cancelable: true }));
   return ev;
 };
 // Position de `b1` : le `y` de sa forme (une flèche Bas la descend de 10).
@@ -564,4 +565,31 @@ test("REQ151_AC6_modele_invisible_garde_au_deplacement_ctrl_z_a_l_octet_pres_cop
   expect(serveur.ecritures[2][0]).toBe("sans.jdiag");
   expect(serveur.ecritures[2][1]).not.toContain("model");
   expect(JSON.parse(serveur.ecritures[2][1]).boxes).toHaveLength(3);
+});
+
+test("REQ154_AC8_collage_mermaid_enregistre_defait_a_l_octet_pres_et_refait_avec_le_modele", async () => {
+  fauxServeur({ "plan.jdiag": AVEC_MODELE });
+  const { e } = monter();
+  await ouvrir(e, "plan.jdiag");
+  const p = new Event("paste", { bubbles: true, cancelable: true });
+  p.clipboardData = { getData: () => "graph TD\r\nA --> B\r\n\r\n" };
+  surface().dispatchEvent(p);
+  ctrlS();
+  await vi.waitFor(() => expect(serveur.ecritures).toHaveLength(1));
+  const ecrit = serveur.ecritures[0][1];
+  expect(ecrit.startsWith('{\n  "version": 1,\n  "model": "graph TD\\nA --> B"')).toBe(true);
+  const colle = JSON.parse(ecrit);
+  expect(colle.boxes).toEqual([
+    { id: "b1", x: 40, y: 50, width: 160, height: 80, text: "A" },
+    { id: "b2", x: 40, y: 230, width: 160, height: 80, text: "B" },
+  ]);
+  expect(colle.links).toEqual([{ id: "l1", from: "b1", to: "b2" }]);
+  ctrl(surface(), "z");
+  ctrlS();
+  await vi.waitFor(() => expect(serveur.ecritures).toHaveLength(2));
+  expect(serveur.ecritures[1][1]).toBe(AVEC_MODELE);
+  ctrl(surface(), "y");
+  ctrlS();
+  await vi.waitFor(() => expect(serveur.ecritures).toHaveLength(3));
+  expect(serveur.ecritures[2][1]).toBe(ecrit);
 });

@@ -37,9 +37,11 @@ const dernier = () => changements.at(-1);
 const boite = (id, doc = dernier()) => doc.boxes.find((b) => b.id === id);
 const editeur = () => t.element.querySelector("[role=textbox]");
 const clic = (el) => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+// Ctrl+V : le navigateur envoie ensuite l'événement `paste`, que la surface reçoit.
 const touche = (key, opts = {}, cible = surface()) => {
   const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts });
   cible.dispatchEvent(e);
+  if (opts.ctrlKey && key === "v" && !e.defaultPrevented) cible.dispatchEvent(new Event("paste", { bubbles: true, cancelable: true }));
   return e;
 };
 const saisir = (id) => {
