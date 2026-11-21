@@ -1,0 +1,83 @@
+{
+ "postit": {
+  "type": "TEXT",
+  "format": "auto",
+  "colorId": "f9eeb1c2-1ece-4c78-a366-7fdc7ec85a7c",
+  "categoryId": null,
+  "coords": {
+   "left": -323,
+   "top": -29
+  },
+  "scale": {
+   "scaleX": 1,
+   "scaleY": 1
+  },
+  "dimensions": [],
+  "zIndex": 1,
+  "isLocked": false,
+  "isDisplayedOnBackground": false,
+  "parent": "8e04bf0a-f47c-4358-9f9a-2bd3c9ece246",
+  "sourceActivityUuid": "320a717a-7de0-499d-97a1-c89d6e303661",
+  "text": null,
+  "contentHtml": "<p>Début</p>",
+  "fontFamily": "arimo",
+  "textAlignment": 3,
+  "verticalAlignment": "center",
+  "imageId": null,
+  "imagePath": null,
+  "crop": null,
+  "imageCaption": "",
+  "drawingCaption": "",
+  "fileId": null,
+  "filePath": null,
+  "fileCaption": "",
+  "file": null,
+  "provider": null,
+  "drawingColor": null,
+  "anchorTarget": null,
+  "quarkId": null,
+  "color": {
+   "id": "f9eeb1c2-1ece-4c78-a366-7fdc7ec85a7c",
+   "label": "",
+   "hexa": "#ffe775",
+   "originalHexa": "#ffe151",
+   "rank": 0,
+   "textColor": null
+  },
+  "dimensionsLabel": {},
+  "image": null
+ },
+ "link": {
+  "color": "c51",
+  "colorOpacity": 1,
+  "shapes": [
+   "l",
+   "l"
+  ],
+  "objectIds": [
+   "8e04bf0a-f47c-4358-9f9a-2bd3c9ece246",
+   "a5646f58-c49d-4e7c-8f5a-886e53552652"
+  ],
+  "linkShape": "smart",
+  "strokeWidth": 2,
+  "strokeStyle": "full",
+  "waypoints": [],
+  "objectAnchors": [
+   "right",
+   "left"
+  ],
+  "objectAnchorPositions": [
+   null,
+   null
+  ],
+  "contentHtml": null,
+  "fontSize": null,
+  "textAlignment": 0,
+  "textPathPosition": 0.5,
+  "textPathOffset": null,
+  "cornerRadius": 10,
+  "lineJumpsEnabled": true,
+  "parent": "9d42f717-2895-40a6-84ee-900dd8c3beb8",
+  "sourceActivityUuid": "320a717a-7de0-499d-97a1-c89d6e303661"
+ }
+}
