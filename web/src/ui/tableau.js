@@ -1,6 +1,8 @@
 import { ecrireJdiag, idLibre, positionTexte, SYMBOLES, TAILLES } from "../jdiag.js";
 import { estMac } from "../references.js";
 import { indication } from "./indication.js";
+import { menu } from "./menu.js";
+import { versKlaxoon } from "../klaxoon.js";
 import { message } from "./message.js";
 import { depuisMermaid } from "../mermaid-jdiag.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
@@ -80,6 +82,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   let couche = null;
   const choix = { ...OUTILS_DEPART, ...outils };
   let barre = null;
+  let menuOuvert = null; // menu « Actions sur la sélection » : { fermer }
+  let enAttente = null; // copie au format Klaxoon que `surCopie` doit écrire : { klaxoon, copie, recu }
 
   const element = document.createElement("div");
   element.className = "ya-tableau-zone";
@@ -173,6 +177,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   function monter() {
     fond.replaceChildren();
     barre?.element.remove();
+    menuOuvert?.fermer();
     surface = null;
     dessin = null;
     etat = null;
@@ -226,6 +231,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       dessinerConnecteurs();
     });
     surface.addEventListener("dblclick", surDoubleClic);
+    surface.addEventListener("contextmenu", surMenuContextuel);
     surface.addEventListener("wheel", surMolette, { passive: false });
     dessin.addEventListener("click", surClic);
     dessiner();
@@ -266,7 +272,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   // Les boîtes dont on montre les connecteurs, et ceux qui sont pleins (sous le pointeur, de départ ou le plus proche d'une cible).
   function etatConnecteurs() {
     const rien = { boites: [], pleins: [] };
-    if (saisie !== null || (geste && geste.type !== "liaison" && geste.type !== "boutLien")) return rien;
+    if (menuOuvert || saisie !== null || (geste && geste.type !== "liaison" && geste.type !== "boutLien")) return rien;
     if (geste?.type === "boutLien") {
       if (!cible || !pointeur) return rien;
       return { boites: [boite(cible)], pleins: [{ id: cible, cote: connecteurProcheAffiche(boite(cible), pointeur, vueCourante.zoom) }] };
@@ -640,6 +646,12 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       return;
     }
     if (surHistorique(e)) return;
+    if (saisie === null && !geste && (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      effacerRefus();
+      ouvrirMenu(departClavier());
+      return;
+    }
     if (saisie === null && !e.altKey && !e.shiftKey && (estMac() ? e.metaKey : e.ctrlKey) && e.key.toLowerCase() === "a") {
       e.preventDefault();
       choisis = tousLesId();
@@ -708,6 +720,13 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   // Écrit les textes des boîtes copiées, un par ligne, dans le presse-papiers du système.
   function surCopie(e) {
     if (doc === null || saisie !== null) return;
+    if (enAttente) {
+      e.clipboardData?.setData("text/plain", enAttente.klaxoon.texte);
+      e.clipboardData?.setData("text/html", enAttente.klaxoon.html);
+      enAttente.recu = true;
+      e.preventDefault();
+      return;
+    }
     dernierTexte = (presse?.boxes ?? []).map((b) => b.text).join("\n");
     e.clipboardData?.setData("text/plain", dernierTexte);
     e.preventDefault();
@@ -716,6 +735,73 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   const effacerRefus = () => {
     if (alerte?.firstChild) alerte.replaceChildren();
   };
+
+  const pluriel = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
+
+  // « Copier au format Klaxoon » : une copie en attente, puis un `copy` déclenché dans le même geste, que `surCopie` remplit (REQ-155).
+  function copierKlaxoon() {
+    const klaxoon = versKlaxoon(doc, choisis);
+    if (klaxoon === null) return;
+    surface.focus({ preventScroll: true });
+    effacerRefus();
+    const attente = { klaxoon, copie: copier(doc, choisis), recu: false };
+    enAttente = attente;
+    let accepte = false;
+    try {
+      accepte = document.execCommand("copy") === true;
+    } catch {
+      accepte = false;
+    }
+    enAttente = null;
+    if (!accepte || !attente.recu) {
+      alerte.replaceChildren(...message({ texte: "Copie au format Klaxoon impossible : le navigateur a refusé l'accès au presse-papiers. Réessayez.", variante: "erreur", presentation: "flottante" }).childNodes);
+      return;
+    }
+    presse = attente.copie;
+    collages = 0;
+    dernierTexte = klaxoon.texte;
+    annoncer(`Copié au format Klaxoon : ${pluriel(klaxoon.boites, "boîte", "boîtes")}, ${klaxoon.liens === 0 ? "aucun lien" : pluriel(klaxoon.liens, "lien", "liens")}.`);
+  }
+
+  function ouvrirMenu(position) {
+    surface.focus({ preventScroll: true });
+    const m = menu({
+      nom: "Actions sur la sélection",
+      groupes: [[{ libelle: "Copier au format Klaxoon", desactive: !choisis.some((id) => boite(id) !== undefined), surChoix: copierKlaxoon }]],
+      position,
+      zone: element,
+      surFermeture: () => {
+        if (menuOuvert?.fermer !== m.fermer) return;
+        menuOuvert = null;
+        if (dessin) dessinerConnecteurs();
+      },
+    });
+    menuOuvert = m;
+    dessinerConnecteurs();
+  }
+
+  // Clavier : 4 px sous la première boîte choisie (sinon le premier objet choisi), sur son bord gauche ; rien de choisi : 12 px du coin de la zone.
+  function departClavier() {
+    const id = choisis.find((c) => boite(c) !== undefined) ?? premier();
+    const e = id === null ? null : dessin.querySelector(`[data-id="${id}"]`);
+    if (e) {
+      const r = e.getBoundingClientRect();
+      return { x: r.left, y: r.bottom + 4 };
+    }
+    const z = element.getBoundingClientRect();
+    return { x: z.left + 12, y: z.top + 12 };
+  }
+
+  // Clic droit sur la surface, hors saisie et hors glisser : le menu de Yaide, jamais celui du navigateur.
+  function surMenuContextuel(e) {
+    if (doc === null || saisie !== null || geste) return;
+    e.preventDefault();
+    effacerRefus();
+    const g = e.target.closest?.("g.boite, g.lien, g.fleche");
+    const id = g?.getAttribute("data-id") ?? null;
+    if (id !== null && !choisis.includes(id)) choisir(id);
+    ouvrirMenu({ x: e.clientX, y: e.clientY });
+  }
 
   function collerObjets() {
     if (!presse) return;
@@ -1100,6 +1186,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       afficherTout();
     },
     detruire() {
+      menuOuvert?.fermer();
       observateur?.disconnect();
       document.removeEventListener("selectionchange", surSelection);
       element.remove();

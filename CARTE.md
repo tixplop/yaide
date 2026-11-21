@@ -53,7 +53,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/couleurs-markdown.js — couleurs réglables du rendu markdown — analyser, appliquer, charger
 - web/src/formatage.js — formatage du document ouvert — formatable, formater
 - web/src/jdiag.js — lecture et écriture du format `.jdiag` — lireJdiag, ecrireJdiag, positionTexte (clés `align`/`valign`, REQ-150 ; clé `model`, REQ-151), SYMBOLES (les vingt symboles, REQ-149), TAILLES (tailles par défaut des formes)
-- web/src/klaxoon.js — sélection du whiteboard → presse-papiers au format Klaxoon (REQ-155, DEC-104), pas encore branché ; `klaxoon-modele.json` (valeurs fixes), `klaxoon-exemple.json` (fixture de test) — versKlaxoon
+- web/src/klaxoon.js — sélection du whiteboard → presse-papiers au format Klaxoon (REQ-155, DEC-104) ; `klaxoon-modele.json` (valeurs fixes), `klaxoon-exemple.json` (fixture de test) — versKlaxoon
 - web/src/mermaid-jdiag.js — organigramme mermaid → document whiteboard ou refus (REQ-154, DEC-103) — depuisMermaid
 - web/src/mermaid.js — bibliothèque mermaid, bundle à part chargé au premier diagramme
 - web/src/ui/ — design system : composants (`bouton` dont la taille `disque` des aides du tableau rendu, REQ-153 ; `champ`, `menu`, `dialogue`, `onglets`, `liste`, `message` (présentations `barre` et `flottante`, REQ-154), `cadre`, `poignee`, `info-bulle`, `indication`, `compteur`, `avatar`, `image`) ; `dialogueChoix` (dialogue « Choix sans bouton principal » avec la `grille` de `liste`, REQ-149) ; `icones.js` (dont `shapes` et les vingt `symbole-<shape>`, REQ-149) ; `tokens.css`, `composants.css`, `theme.js`, `polices/`
@@ -62,7 +62,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/ui/conversation.js, completion.js, attentes.js, copie.js — conversation, complétion `/ @ $ #`, attentes d'autorisation, copie en texte simple — conversation, completion, copierEnTexteSimple
 - web/src/ui/terminal.js — terminal xterm.js — terminal
 - web/src/ui/palettes.js — palettes de couleurs markdown suggérées — PALETTES
-- web/src/ui/tableau.js — composant whiteboard : surface, gestes, clavier, historique Ctrl+Z/Ctrl+Y, copier (`copy`) et coller (`paste`, dont l'organigramme mermaid et sa zone `alert` de refus, REQ-154) — tableau
+- web/src/ui/tableau.js — composant whiteboard : surface, gestes, clavier, historique Ctrl+Z/Ctrl+Y, copier (`copy`) et coller (`paste`, dont l'organigramme mermaid et sa zone `alert` de refus, REQ-154 ; menu « Actions sur la sélection » (clic droit, Menu, Maj+F10) et copie Klaxoon par `execCommand("copy")`, REQ-155) — tableau
 - web/src/ui/tableau-texte.js — texte d'une boîte ou d'un lien et styles d'une partie du texte : rendu, lecture du DOM de la saisie, bascule, couleur, insertion (REQ-146) — rendreTexte, lireTexte, basculer
 - web/src/ui/tableau-calculs.js, tableau-dessin.js, tableau-edition.js, tableau-outils.js — géométrie (dont la zone de texte des symboles), rendu SVG (dont le dessin des symboles, REQ-149, et les classes `align-*` `valign-*` du texte des boîtes, REQ-150), copier/coller/plan/rattachement, boîte à outils (dont le bouton « Symboles » et son dialogue, REQ-149, et le rang « Alignement » et « Position verticale du texte », REQ-133, REQ-150) — extremitesFleche, milieuTrace, dessinBoite, coller, boiteOutils
 - web/src/vues/principale.js — fenêtre : rails, panneaux, zones, Ctrl+P — vuePrincipale
@@ -118,6 +118,6 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-152 diagrammes mermaid dessinés en mode hybride → ui/hybride.js, ui/diagramme.js, ui/zone-code.js
 - REQ-153 tableau rendu modifiable, aides au survol → ui/hybride.js, ui/bouton.js, ui/zone-code.js, vues/editeur.js, ui/icones.js, ui/composants.css
 - REQ-151 modèle d'un whiteboard pour les agents (`model` obligatoire dans `whiteboard_write`, `model_only` dans `whiteboard_read`) → src/agent/jdiag.rs (en_texte, modele_seul), outils.rs, web/src/jdiag.js
-- REQ-155 copie au format Klaxoon (fonction pure) → web/src/klaxoon.js
+- REQ-155 copie au format Klaxoon (menu de la surface) → web/src/klaxoon.js, ui/tableau.js, ui/menu.js
 - REQ-154 coller un organigramme mermaid (lecture et placement, collage, refus) → web/src/mermaid-jdiag.js, ui/tableau.js, ui/message.js
 - REQ-127 à REQ-150 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, jdiag_trace.rs, jdiag_controle.rs, outils.rs
