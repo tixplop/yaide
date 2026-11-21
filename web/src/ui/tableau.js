@@ -1,4 +1,4 @@
-import { ecrireJdiag, idLibre, positionTexte, SYMBOLES, TAILLES } from "../jdiag.js";
+import { ecrireJdiag, FORMES_PLEINES, idLibre, positionTexte, SYMBOLES, TAILLES } from "../jdiag.js";
 import { estMac } from "../references.js";
 import { indication } from "./indication.js";
 import { menu } from "./menu.js";
@@ -7,9 +7,9 @@ import { message } from "./message.js";
 import { depuisMermaid } from "../mermaid-jdiag.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
 import { boiteOutils } from "./tableau-outils.js";
-import { connecteurProcheAffiche, connecteursAffiches, connecteurs, dansRectangle, estFormePleine, estSymbole, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
+import { connecteurProcheAffiche, connecteursAffiches, connecteurs, dansRectangle, decalageAnneau, estFormePleine, estSymbole, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
 import { basculer, colorer, decalages, etatTexte, inserer, lireTexte, pointA, rendreZone } from "./tableau-texte.js";
-import { dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, dessinRectangleSelection, poigneesBoite, poigneesFleche, poigneesLien, svg } from "./tableau-dessin.js";
+import { anneauxPleines, dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, dessinRectangleSelection, poigneesBoite, poigneesFleche, poigneesLien, svg } from "./tableau-dessin.js";
 
 // C-018 : whiteboard. Un SVG dont le `viewBox` suit la vue ; le document est celui de `jdiag.js`.
 const aide = () => {
@@ -58,7 +58,8 @@ const avecTexte = (o, text, spans) => (spans.length > 0 || o.spans ? { ...o, tex
 
 function nomBoite(boite) {
   const texte = boite.text.split("\n").map((l) => l.trim()).filter(Boolean).join(" ");
-  const symbole = SYMBOLES.find((s) => s.shape === boite.shape);
+  const symbole = [...SYMBOLES, ...FORMES_PLEINES].find((s) => s.shape === boite.shape);
+  if (symbole && estFormePleine(boite)) return symbole.nom;
   if (symbole) return texte ? `${symbole.nom} : ${texte}` : symbole.nom;
   return texte || "Boîte vide";
 }
@@ -251,7 +252,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       texte.className = "ya-tableau-texte";
       rendreZone(texte, b.text, b.spans);
     }
-    return dessinBoite(b, { id: idElement(b.id), nom: nomBoite(b), classe, texte });
+    return dessinBoite(b, { id: idElement(b.id), nom: nomBoite(b), classe, texte, zoom: vueCourante.zoom });
   }
 
   function groupeLien(l, z) {
@@ -299,7 +300,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       return Math.hypot(dx, dy) <= PROCHE / z;
     });
     const choisie = unique() ? boite(unique()) : null;
-    const surTaille = choisie && Math.max(Math.abs(pointeur.x - (choisie.x + choisie.width)), Math.abs(pointeur.y - (choisie.y + choisie.height))) <= 8 / z;
+    const decalage = choisie && estFormePleine(choisie) ? decalageAnneau(choisie, z) : 0;
+    const surTaille = choisie && Math.max(Math.abs(pointeur.x - (choisie.x + choisie.width + decalage)), Math.abs(pointeur.y - (choisie.y + choisie.height + decalage))) <= 8 / z;
     const lien = lienChoisi();
     const surBout = lien && boutsLien(lien).some((p) => Math.max(Math.abs(pointeur.x - p.x), Math.abs(pointeur.y - p.y)) <= 8 / z);
     const pleins = [];
@@ -345,6 +347,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     couche = svg("g");
     dessin.append(couche);
     dessinerConnecteurs();
+    const pleines = choisis.filter((id) => boite(id) && estFormePleine(boite(id))).map(boite);
+    if (pleines.length > 0 && !saisie) dessin.append(anneauxPleines(pleines, z));
     if (b) dessin.append(poigneesBoite(b, z));
     if (libre) dessin.append(poigneesFleche(libre, z));
     if (lien && !(geste?.actif && geste.type === "boutLien")) dessin.append(poigneesLien(doc, lien, z));

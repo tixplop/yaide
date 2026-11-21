@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import {
   connecteurProche,
+  connecteursAffiches,
   connecteurs,
   cotesProches,
   cranVoisin,
@@ -451,4 +452,46 @@ describe("cas communs avec le tracé Rust (src/agent/jdiag_traces.json)", () => 
 
 test("REQ149_AC6_zone_de_texte_d_un_symbole_bande_des_deux_cinquiemes_du_bas_marges_de_8_px", () => {
   expect(zoneTexte({ ...boite(10, 20, 100, 100), shape: "database" })).toEqual({ x: 18, y: 80, width: 84, height: 40 });
+});
+
+const point = (x, y, w = 16, h = 16) => ({ id: "p", x, y, width: w, height: h, shape: "dot", text: "" });
+const barre = (x, y, w = 120, h = 8) => ({ id: "r", x, y, width: w, height: h, shape: "bar", text: "" });
+
+test("REQ156_AC5_quatre_connecteurs_jamais_le_centre_meme_a_400_pour_cent_ronds_a_6_px_hors_du_cote", () => {
+  for (const zoom of [1, 4]) {
+    for (const b of [point(92, 192), barre(0, 0)]) {
+      const c = connecteursAffiches(b, zoom);
+      expect(Object.keys(c).sort()).toEqual(["bottom", "left", "right", "top"]);
+      const mx = b.x + b.width / 2;
+      const my = b.y + b.height / 2;
+      expect(c.right.x).toBeCloseTo(b.x + b.width + 6 / zoom);
+      expect(c.right.y).toBeCloseTo(my);
+      expect(c.left.x).toBeCloseTo(b.x - 6 / zoom);
+      expect(c.top.y).toBeCloseTo(b.y - 6 / zoom);
+      expect(c.top.x).toBeCloseTo(mx);
+      expect(c.bottom.y).toBeCloseTo(b.y + b.height + 6 / zoom);
+    }
+  }
+  // Une boîte ordinaire grande garde son centre.
+  expect(connecteursAffiches({ x: 0, y: 0, width: 160, height: 80 }, 1).center).toBeDefined();
+});
+
+test("REQ156_AC5_le_lien_s_attache_au_milieu_du_cote_sur_le_bord_de_la_forme", () => {
+  const p = point(92, 192);
+  expect(connecteurs(p).right).toEqual({ x: 108, y: 200 });
+  const b = { id: "b", x: 300, y: 100, width: 160, height: 80, text: "Fin" };
+  const g = geometrieLien({ boxes: [p, b], links: [] }, { from: "p", to: "b", fromSide: "right", toSide: "left" }, 1);
+  expect(g.debut.point).toEqual({ x: 108, y: 200 });
+});
+
+test("REQ156_AC5_point_de_sortie_d_un_point_sur_l_ellipse_et_d_une_barre_sur_le_rectangle", () => {
+  const p = point(0, 0, 40, 40);
+  const s = pointSortie(p, 100, 100);
+  expect(Math.hypot(s.x - 20, s.y - 20)).toBeCloseTo(20, 0);
+  const r = barre(0, 0);
+  const t = pointSortie(r, 60, 100);
+  expect(t.y).toBeCloseTo(8, 0);
+  expect(t.x).toBeCloseTo(60, 0);
+  const u = pointSortie(r, 300, 4);
+  expect(u.x).toBeCloseTo(120, 0);
 });

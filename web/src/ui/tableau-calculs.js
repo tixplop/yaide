@@ -14,7 +14,7 @@ const MARGE_OBJET = 24;
 function sortie(boite, ox, oy, dx, dy) {
   if (dx === 0 && dy === 0) return { x: ox, y: oy };
   let t;
-  if (boite.shape === "ellipse") {
+  if (boite.shape === "ellipse" || boite.shape === "dot") {
     t = 1 / Math.hypot(dx / (boite.width / 2), dy / (boite.height / 2));
   } else if (boite.shape === "diamond") {
     t = 1 / (Math.abs(dx) / (boite.width / 2) + Math.abs(dy) / (boite.height / 2));
@@ -162,10 +162,22 @@ export function connecteurs(boite) {
   };
 }
 
-// Les connecteurs d'une boîte au zoom courant : les quatre côtés, plus `center` si la boîte fait au moins 64 px de large
-// ou de haut à l'écran. Seule fonction qui décide de cette liste (affichage, cible, lâcher, poignées de bout).
+// Écart, en px écran, du rond d'un connecteur de « Point » ou « Barre » au milieu de son côté (REQ-156).
+const ECART_ROND = 6;
+// Écart de l'anneau du choix au contour d'une forme pleine : demi-trait, 3 px de surface et la moitié des 2 px de l'anneau.
+export const decalageAnneau = (boite, zoom) => (epaisseur("boite", boite.weight) / 2 + 4) / zoom;
+
+// Les ronds des connecteurs d'une boîte au zoom courant : les quatre côtés, plus `center` si la boîte fait au moins 64 px de large
+// ou de haut à l'écran. « Point » et « Barre » : quatre ronds posés à 6 px hors du milieu de leur côté, jamais le centre ;
+// le lien, lui, s'attache toujours au milieu du côté (`connecteurs`). Seule fonction qui décide de cette liste
+// (affichage, cible, lâcher, poignées de bout).
 export function connecteursAffiches(boite, zoom) {
   const c = connecteurs(boite);
+  if (estFormePleine(boite)) {
+    const e = ECART_ROND / zoom;
+    for (const cote of COTES) c[cote] = { x: c[cote].x + NORMALES[cote].x * e, y: c[cote].y + NORMALES[cote].y * e };
+    return c;
+  }
   if (boite.width * zoom >= 64 || boite.height * zoom >= 64) c.center = { x: boite.x + boite.width / 2, y: boite.y + boite.height / 2 };
   return c;
 }

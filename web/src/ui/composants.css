@@ -890,6 +890,12 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau .boite.forme-symbole.couleur-default .symbole-dessin { color: var(--ink); }
 .ya-tableau .boite.forme-symbole .ya-tableau-texte { padding: 0; }
 .ya-tableau .boite.choisie .forme, .ya-tableau .boite.choisie .pli, .ya-tableau .boite.saisie .forme, .ya-tableau .boite.saisie .pli, .ya-tableau .boite.glissee .forme, .ya-tableau .boite.glissee .pli { stroke: var(--accent-fg); stroke-width: max(2px, var(--e)); }
+/* Point et Barre (REQ-156) : fond et contour de la même couleur, jamais le bleu du choix (l'anneau le porte) ; ni texte ni foreignObject. */
+.ya-tableau .boite.forme-pleine.couleur-default { --boite-trait: var(--ink); }
+.ya-tableau .boite.forme-pleine .forme { fill: var(--boite-trait); stroke: var(--boite-trait); stroke-width: var(--e); }
+.ya-tableau .boite.forme-pleine.forme-pleine:is(.choisie, .saisie, .glissee, :hover) :is(.forme, .pli) { stroke: var(--boite-trait); stroke-width: var(--e); }
+.ya-tableau .anneaux { pointer-events: none; }
+.ya-tableau .anneaux .anneau { fill: none; stroke: var(--accent-fg); stroke-width: 2px; }
 .ya-tableau .boite.glissee .forme { cursor: grabbing; }
 .ya-tableau .boite.saisie .forme { cursor: text; }
 .ya-tableau .boite.cible .surcouche { fill: var(--accent-soft); stroke: var(--accent-fg); stroke-width: var(--trait); }

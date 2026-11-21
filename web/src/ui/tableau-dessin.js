@@ -1,7 +1,7 @@
 import { positionTexte } from "../jdiag.js";
 import { rendreTexte } from "./tableau-texte.js";
 import { icone } from "./icones.js";
-import { connecteursAffiches, epaisseur, estSymbole, geometrieLien, milieuTrace, pointe, retraitPointes, tirets, trace, zoneTexte } from "./tableau-calculs.js";
+import { connecteursAffiches, decalageAnneau, epaisseur, estFormePleine, estSymbole, geometrieLien, milieuTrace, pointe, retraitPointes, tirets, trace, zoneTexte } from "./tableau-calculs.js";
 
 // C-018 : le SVG d'une boîte, d'un lien, d'une flèche libre et des poignées. Fonctions sans état : le choix,
 // la saisie et les gestes restent dans `tableau.js`, qui passe ici ce qu'il faut pour dessiner.
@@ -16,10 +16,15 @@ export function svg(nom, attrs, parent) {
 }
 
 // Contour d'une forme, sans le pli de la note.
-function contour(b) {
-  const { x, y, width: w, height: h } = b;
+// `marge` agrandit la forme de chaque côté (anneau et cible d'une forme pleine).
+function contour(b, marge = 0) {
+  const x = b.x - marge;
+  const y = b.y - marge;
+  const w = b.width + 2 * marge;
+  const h = b.height + 2 * marge;
   const forme = b.shape ?? "rectangle";
-  if (forme === "ellipse") return svg("ellipse", { cx: x + w / 2, cy: y + h / 2, rx: w / 2, ry: h / 2 });
+  if (forme === "ellipse" || forme === "dot") return svg("ellipse", { cx: x + w / 2, cy: y + h / 2, rx: w / 2, ry: h / 2 });
+  if (forme === "bar") return svg("rect", { x, y, width: w, height: h });
   if (forme === "diamond") return svg("path", { d: `M ${x + w / 2} ${y} L ${x + w} ${y + h / 2} L ${x + w / 2} ${y + h} L ${x} ${y + h / 2} Z` });
   if (forme === "note") {
     const c = Math.min(16, Math.min(w, h) / 3);
@@ -30,14 +35,15 @@ function contour(b) {
 }
 
 // `texte` : le nœud du texte (affiché ou en saisie), posé sur la zone inscrite de la forme.
-export function dessinBoite(b, { id, nom, classe, texte }) {
+export function dessinBoite(b, { id, nom, classe, texte, zoom = 1 }) {
   const forme = b.shape ?? "rectangle";
   const symbole = estSymbole(b);
+  const pleine = estFormePleine(b);
   const g = svg("g", { id, "data-id": b.id, role: "group", "aria-roledescription": "boîte", "aria-label": nom });
   const weight = b.weight ?? "thin";
   const line = b.line ?? "solid";
   // La forme « Texte » n'a ni contour ni fond : ni épaisseur ni trait.
-  const classes = [`boite forme-${forme}${symbole ? " forme-symbole" : ""} couleur-${b.color ?? "default"}${forme === "text" || symbole ? "" : ` epaisseur-${weight} ligne-${line}`}`];
+  const classes = [`boite forme-${forme}${symbole ? " forme-symbole" : ""}${pleine ? " forme-pleine" : ""} couleur-${b.color ?? "default"}${forme === "text" || symbole ? "" : ` epaisseur-${weight} ligne-${line}`}`];
   if (b.textSize) classes.push(`taille-${b.textSize}`);
   if (b.opacity === 0) classes.push("opacite-0");
   g.setAttribute("class", classes.join(" ") + classe);
@@ -56,9 +62,11 @@ export function dessinBoite(b, { id, nom, classe, texte }) {
     e.setAttribute("stroke-dasharray", pas);
     if (line === "dotted") e.setAttribute("stroke-linecap", "round");
   }
-  const sur = contour(b);
+  // Forme pleine : la cible d'un lien a la taille de l'anneau et se dessine sous la forme.
+  const sur = contour(b, pleine ? decalageAnneau(b, zoom) : 0);
   sur.setAttribute("class", "surcouche");
-  g.append(sur);
+  if (pleine) g.prepend(sur);
+  else g.append(sur);
   if (symbole) {
     // Le dessin : un carré dans la bande des trois cinquièmes du haut, à ses proportions, centré.
     const cote = 0.8 * Math.min(b.width, 0.6 * b.height);
@@ -73,6 +81,7 @@ export function dessinBoite(b, { id, nom, classe, texte }) {
   const { align, valign } = positionTexte(b);
   texte.classList.remove("align-left", "align-center", "align-right", "valign-top", "valign-middle", "valign-bottom");
   texte.classList.add(`align-${align}`, `valign-${valign}`);
+  if (pleine) return g;
   const zone = zoneTexte(b);
   svg("foreignObject", { x: zone.x, y: zone.y, width: zone.width, height: zone.height }, g).append(texte);
   return g;
@@ -162,11 +171,21 @@ export function dessinRectangleSelection(r) {
 // Poignée de taille de la boîte choisie, au coin bas droit.
 export function poigneesBoite(b, z) {
   const g = svg("g", { class: "poignees", "aria-hidden": "true" });
-  const cx = b.x + b.width;
-  const cy = b.y + b.height;
+  // Forme pleine : la poignée est au coin de l'anneau, hors de la forme.
+  const d = estFormePleine(b) ? decalageAnneau(b, z) : 0;
+  const cx = b.x + b.width + d;
+  const cy = b.y + b.height + d;
   svg("rect", { class: "prise", "data-poignee": "taille", x: cx - 8 / z, y: cy - 8 / z, width: 16 / z, height: 16 / z }, g);
   svg("rect", { class: "carre", x: cx - 4 / z, y: cy - 4 / z, width: 8 / z, height: 8 / z }, g);
   return g;
+}
+
+function zonePleine(b, cote, p, z) {
+  const horizontal = cote === "left" || cote === "right";
+  const dehors = 14 / z;
+  const large = 16 / z;
+  if (horizontal) return { x: cote === "right" ? b.x + b.width : b.x - dehors, y: p.y - large / 2, width: dehors, height: large };
+  return { x: p.x - large / 2, y: cote === "bottom" ? b.y + b.height : b.y - dehors, width: large, height: dehors };
 }
 
 // Connecteurs : un rond de 8 px (10 px, plein, pour les `pleins`) au milieu de chaque côté et au centre (si la boîte est assez grande), et sa zone de prise de 16 px.
@@ -176,7 +195,9 @@ export function dessinConnecteurs(boites, pleins, z) {
   for (const b of boites) {
     for (const [cote, p] of Object.entries(connecteursAffiches(b, z))) {
       const plein = pleins.some((q) => q.id === b.id && q.cote === cote);
-      svg("rect", { class: "prise", "data-connecteur": cote, "data-boite": b.id, x: p.x - 8 / z, y: p.y - 8 / z, width: 16 / z, height: 16 / z }, g);
+      // Une forme pleine se prend partout : la zone du connecteur s'arrête à son côté (14 px dehors sur 16 px de large).
+      const zone = estFormePleine(b) ? zonePleine(b, cote, p, z) : { x: p.x - 8 / z, y: p.y - 8 / z, width: 16 / z, height: 16 / z };
+      svg("rect", { class: "prise", "data-connecteur": cote, "data-boite": b.id, ...zone }, g);
       svg("circle", { class: plein ? "connecteur plein" : "connecteur", cx: p.x, cy: p.y, r: (plein ? 5 : 4) / z }, g);
     }
   }
@@ -202,4 +223,15 @@ export function poigneesFleche(f, z) {
 export function poigneesLien(doc, lien, z) {
   const geo = geometrieLien(doc, lien, z);
   return poigneesBouts(geo.debut.point, geo.fin.point, z);
+}
+
+// Anneau de 2 px des formes pleines choisies, séparé de la forme (REQ-156) : sa couleur reste entière.
+export function anneauxPleines(boites, z) {
+  const g = svg("g", { class: "anneaux", "aria-hidden": "true" });
+  for (const b of boites) {
+    const anneau = contour(b, decalageAnneau(b, z));
+    anneau.setAttribute("class", "anneau");
+    g.append(anneau);
+  }
+  return g;
 }

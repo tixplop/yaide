@@ -670,6 +670,93 @@ test("REQ154_parcours_P114_AC154_6_AC154_1_AC154_8_AC154_10_REQ137_AC137_11", as
   }
 });
 
+// P-117 étapes 1 à 4 : « Point », ses connecteurs, son déplacement et un lien, à la souris réelle.
+test("REQ156_AC8_parcours_P117", async ({ page }) => {
+  const dossier = depotExemple();
+  fs.mkdirSync(path.join(dossier, "docs"), { recursive: true });
+  const plan = path.join(dossier, "docs/plan.jdiag");
+  fs.writeFileSync(plan, '{\n  "version": 1,\n  "boxes": [\n    {"id": "b1", "x": 300, "y": 80, "width": 160, "height": 80, "text": "Fin"}\n  ],\n  "links": []\n}\n');
+  const yaide = await lancerYaide({ dossier });
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+    await ligne(page, "docs").click();
+    await ligne(page, "plan.jdiag").click();
+    const surface = page.getByRole("application", { name: "plan.jdiag" });
+    await expect(surface).toBeFocused();
+    // Étapes 1 et 2 : le dialogue au clavier (Fin, Gauche, Entrée) choisit « Point ».
+    const symboles = page.getByRole("button", { name: "Symboles", exact: true });
+    await symboles.focus();
+    await page.keyboard.press("Enter");
+    const dialogue = page.getByRole("dialog", { name: "Symboles" });
+    await expect(dialogue).toBeVisible();
+    await page.keyboard.press("End");
+    await expect(dialogue.getByRole("option", { name: "Barre" })).toBeFocused();
+    await page.keyboard.press("ArrowLeft");
+    await expect(dialogue.getByRole("option", { name: "Point" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(dialogue).toBeHidden();
+    const zone = await surface.boundingBox();
+    await page.mouse.click(zone.x + 100, zone.y + 400);
+    const point = surface.locator('[aria-roledescription="boîte"][aria-label="Point"]');
+    await expect(point).toHaveCount(1);
+    const p = await point.locator(".forme").boundingBox();
+    proche(p.width, 16);
+    proche(p.height, 16);
+    // Étape 3 : le survol montre quatre connecteurs, aucun au centre ; `move` sur le point, `crosshair` sur un connecteur.
+    const c0 = { x: p.x + 8, y: p.y + 8 };
+    await page.mouse.move(c0.x, c0.y);
+    const prises = surface.locator("[data-connecteur]");
+    await expect(prises).toHaveCount(4);
+    await expect(surface.locator('[data-connecteur="center"]')).toHaveCount(0);
+    const curseur = (loc) => loc.evaluate((e) => getComputedStyle(e).cursor);
+    expect(await curseur(point.locator(".forme"))).toBe("move");
+    const droit = surface.locator('[data-connecteur="right"]');
+    expect(await curseur(droit)).toBe("crosshair");
+    const rond = await surface.locator(".connecteur").nth(1).boundingBox();
+    expect(rond.x + rond.width / 2).toBeGreaterThan(p.x + p.width + 4);
+    // Glisser depuis le centre : il bouge de 30 px, aucun lien.
+    await glisser(page, c0, { x: c0.x + 30, y: c0.y });
+    const p2 = await point.locator(".forme").boundingBox();
+    proche(p2.x - p.x, 30);
+    await expect(surface.locator('[aria-roledescription="lien"]')).toHaveCount(0);
+    // Étape 4 : du connecteur droit vers « Fin » : un lien ; pendant le glisser, la cible sous « Fin ».
+    const fin = surface.locator('[aria-roledescription="boîte"]').filter({ hasText: "Fin" });
+    const bf = await fin.boundingBox();
+    const cd = { x: p2.x + 8, y: p2.y + 8 };
+    await page.mouse.move(cd.x, cd.y);
+    const rd = await droit.boundingBox();
+    await page.mouse.move(rd.x + rd.width / 2, rd.y + rd.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bf.x + 40, bf.y + 40, { steps: 8 });
+    await expect(fin.locator(".surcouche")).toBeVisible();
+    await page.mouse.up();
+    await expect(surface.locator('[aria-roledescription="lien"]')).toHaveCount(1);
+    // Pendant le glisser d'un lien de « Fin » vers le point : la cible sous le point.
+    const bf2 = await fin.boundingBox();
+    await page.mouse.move(bf2.x + bf2.width / 2, bf2.y + bf2.height / 2);
+    const rf = await surface.locator('[data-connecteur="top"]').first().boundingBox();
+    await page.mouse.move(rf.x + rf.width / 2, rf.y + rf.height / 2);
+    await page.mouse.down();
+    const pc = await point.locator(".forme").boundingBox();
+    await page.mouse.move(pc.x + pc.width / 2, pc.y + pc.height / 2, { steps: 8 });
+    await expect(point.locator(".surcouche")).toBeVisible();
+    await page.mouse.up();
+    // À 200 %, le point fait 32 px à l'écran.
+    const avant = await point.locator(".forme").boundingBox();
+    for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Zoom avant" }).click();
+    const apres = await point.locator(".forme").boundingBox();
+    proche(apres.width, 2 * avant.width);
+    proche(apres.width, 32);
+    await page.keyboard.press("Control+s");
+    await expect.poll(() => JSON.parse(fs.readFileSync(plan, "utf8")).links.length).toBe(2);
+    expect(JSON.parse(fs.readFileSync(plan, "utf8")).links.some((l) => l.fromSide === "right")).toBe(true);
+    expect(JSON.parse(fs.readFileSync(plan, "utf8")).boxes.find((b) => b.shape === "dot")).toMatchObject({ width: 16, height: 16, text: "" });
+  } finally {
+    await yaide.arreter();
+  }
+});
+
 // P-115 et P-116 : copier au format Klaxoon par le menu de la surface. P-115 étape 4 (collage dans Klaxoon) : essai de l'humain après livraison.
 // P-116 étape 3 (menu du navigateur pendant une saisie) et étape 4 (refus du presse-papiers) : prouvées en composant (AC-155-4, AC-155-10, tableau-klaxoon.test.js).
 test("REQ155_parcours_P115_P116_AC155_1_AC155_2_AC155_3_AC155_5_AC155_7_AC155_8", async ({ page }) => {
