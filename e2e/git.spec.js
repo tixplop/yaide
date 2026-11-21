@@ -221,7 +221,11 @@ test("REQ022_AC1_AC2_AC6_AC7_REQ031_AC1_V005_REQ034_AC8_statuts_un_seul_onglet_d
     await expect.poll(() => opacite("Indexer neuf.txt")).toBe("1");
   });
   await test.step("REQ034_AC8_commit_du_menu_montre_le_panneau_git_avec_le_focus_dans_message_sans_rien_valider", async () => {
+    // Afficher le panneau relit l'état : on saisit une fois cette relecture rendue, pas pendant.
+    const relecture = page.waitForResponse((r) => r.url().includes("/api/git/etat"));
     await panneauGit(page);
+    await relecture;
+    await expect(changements(page)).toBeVisible();
     await message(page).fill("déjà écrit");
     await page.getByRole("tab", { name: "Fichiers", exact: true }).click();
     await page.getByRole("treeitem", { name: nomLigne("neuf.txt") }).click({ button: "right" });
