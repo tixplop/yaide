@@ -99,6 +99,8 @@
 .ya-message-barre.message-info .message-texte, .ya-message-barre.message-succes .message-texte { white-space: nowrap; }
 .ya-message-barre.message-erreur .message-texte { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ya-message-barre:focus { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
+/* C-003, présentation « flottante » : refus posé en haut de la zone d'un whiteboard, sans icône ni croix. */
+.ya-message-flottante { position: absolute; top: var(--space-3); left: var(--space-3); right: var(--space-3); margin: 0 auto; width: fit-content; max-width: 720px; padding: 8px 12px; background: linear-gradient(var(--msg-erreur), var(--msg-erreur)), var(--bg-300); border-left: 0; box-shadow: inset 2px 0 0 var(--danger), var(--shadow-popover); border-radius: var(--radius-md); font-size: 13px; line-height: 20px; color: var(--ink); pointer-events: none; }
 .message-actions { display: flex; gap: var(--space-2); }
 .message-detail { flex-basis: 100%; margin: 0; max-height: var(--hauteur-detail); overflow: auto; font: var(--texte-petit) var(--font-mono); white-space: pre-wrap; }
 /* C-003 avec `champs` (REQ-072) : sans fond propre, filet --info, champs en grille de deux colonnes (une sous 30rem = 480 px). */

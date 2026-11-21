@@ -395,3 +395,49 @@ test("REQ153_AC14_contrastes_des_disques_du_filet_et_du_cadre_dans_les_deux_them
     expect(rapport("--danger", "--bg-100"), `${debut} cadre`).toBeGreaterThanOrEqual(3);
   }
 });
+
+test("REQ154_AC10_message_flottant_css_position_fond_filet_et_sans_pointeur", () => {
+  a(".ya-message-flottante", "position: absolute");
+  a(".ya-message-flottante", "top: var(--space-3)");
+  a(".ya-message-flottante", "left: var(--space-3)");
+  a(".ya-message-flottante", "right: var(--space-3)");
+  a(".ya-message-flottante", "margin: 0 auto");
+  a(".ya-message-flottante", "width: fit-content");
+  a(".ya-message-flottante", "max-width: 720px");
+  a(".ya-message-flottante", "background: linear-gradient(var(--msg-erreur), var(--msg-erreur)), var(--bg-300)");
+  a(".ya-message-flottante", "box-shadow: inset 2px 0 0 var(--danger), var(--shadow-popover)");
+  a(".ya-message-flottante", "border-radius: var(--radius-md)");
+  a(".ya-message-flottante", "padding: 8px 12px");
+  a(".ya-message-flottante", "font-size: 13px");
+  a(".ya-message-flottante", "line-height: 20px");
+  a(".ya-message-flottante", "color: var(--ink)");
+  a(".ya-message-flottante", "pointer-events: none");
+});
+
+test("REQ154_AC10_contrastes_du_message_flottant_dans_les_deux_themes", () => {
+  const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
+  const rgb = (hex) => [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16));
+  const lum = (c) => {
+    const l = c.map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2];
+  };
+  const rapport = (x, y) => {
+    const [l1, l2] = [lum(x), lum(y)].sort((p, q) => q - p);
+    return (l1 + 0.05) / (l2 + 0.05);
+  };
+  for (const debut of [':root, [data-theme="dark"]', '[data-theme="light"]']) {
+    const i = tokens.indexOf(debut);
+    const b = tokens.slice(i, tokens.indexOf("}", i));
+    const val = (nom) => {
+      const v = new RegExp(`${nom}:\\s*([^;]+);`).exec(b)[1].trim();
+      const alias = /^var\((--[a-z-]+)\)$/.exec(v);
+      return alias ? val(alias[1]) : v;
+    };
+    const danger = rgb(val("--danger"));
+    const fond = rgb(val("--bg-300"));
+    const pct = Number(/--msg-erreur:\s*color-mix\(in srgb, var\(--danger\) (\d+)%/.exec(tokens)[1]) / 100;
+    const pose = danger.map((v, k) => v * pct + fond[k] * (1 - pct));
+    expect(rapport(rgb(val("--ink")), pose), `${debut} ink`).toBeGreaterThanOrEqual(4.5);
+    expect(rapport(danger, pose), `${debut} filet`).toBeGreaterThanOrEqual(3);
+  }
+});

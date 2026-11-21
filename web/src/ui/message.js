@@ -10,9 +10,12 @@ const ICONES_BARRE = { info: "circle-arrow-up", erreur: "circle-x", succes: "cir
 export function message({ texte, variante = "info", detail, champs, actions = [], fermable = false, fort = false, presentation = "normale" }) {
   if (!texte) throw new Error("message : texte requis");
   if (!VARIANTES.includes(variante)) throw new Error(`message : variante inconnue « ${variante} »`);
-  if (presentation !== "normale" && presentation !== "barre") throw new Error(`message : presentation inconnue « ${presentation} »`);
+  if (!["normale", "barre", "flottante"].includes(presentation)) throw new Error(`message : presentation inconnue « ${presentation} »`);
   if (presentation === "barre" && (!ICONES_BARRE[variante] || detail || champs?.length || fermable || fort)) {
     throw new Error("message : la présentation barre n'accepte que info, succes et erreur, sans detail, champs, fermable ni fort");
+  }
+  if (presentation === "flottante" && (variante !== "erreur" || detail || champs?.length || actions.length || fermable || fort)) {
+    throw new Error("message : la présentation flottante n'accepte que erreur, sans detail, champs, actions, fermable ni fort");
   }
   if (champs?.length && (variante !== "info" || fort)) throw new Error("message : champs réservés à la variante info");
   const m = document.createElement(champs?.length ? "form" : "div");
@@ -39,6 +42,7 @@ export function message({ texte, variante = "info", detail, champs, actions = []
     if (variante === "erreur") m.title = texte;
     if (variante === "succes") m.tabIndex = -1;
   }
+  if (presentation === "flottante") m.classList.add("ya-message-flottante");
   const t = document.createElement("span");
   t.className = "message-texte";
   t.textContent = texte;

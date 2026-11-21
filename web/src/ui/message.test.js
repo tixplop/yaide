@@ -149,3 +149,15 @@ test("REQ115_AC10_AC11_le_second_message_empile_a_un_filet_haut_line", () => {
   expect(conteneur.children[1].matches(".message + .message")).toBe(true);
   expect(conteneur.children[0].matches(".message + .message")).toBe(false);
 });
+
+test("REQ154_AC10_message_flottante_alerte_sans_icone_ni_croix_et_refus_des_autres_options", () => {
+  const m = message({ texte: "Diagramme mermaid non collé : il n'a aucun nœud.", variante: "erreur", presentation: "flottante" });
+  expect(m.getAttribute("role")).toBe("alert");
+  expect(m.classList.contains("ya-message-flottante")).toBe(true);
+  expect(m.querySelector("svg, button")).toBeNull();
+  expect(m.textContent).toBe("Diagramme mermaid non collé : il n'a aucun nœud.");
+  const b = bouton({ libelle: "Ok" });
+  for (const o of [{ variante: "info" }, { variante: "succes" }, { variante: "alerte" }, { detail: "x" }, { champs: [document.createElement("input")] }, { actions: [b] }, { fermable: true }, { fort: true }]) {
+    expect(() => message({ texte: "a", variante: "erreur", presentation: "flottante", ...o })).toThrow(/flottante/);
+  }
+});
