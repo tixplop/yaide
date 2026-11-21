@@ -87,6 +87,9 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   const fond = document.createElement("div");
   fond.className = "ya-tableau";
   element.append(fond);
+  // Sur `fond` et non sur la surface : le navigateur envoie `paste` et `copy` pas forcément à l'élément qui a le focus : selon la sélection de la page (celle de l'éditeur d'où l'on vient), ils peuvent partir vers un voisin de la surface.
+  fond.addEventListener("paste", surColler);
+  fond.addEventListener("copy", surCopie);
 
   const taille = () => {
     const r = element.getBoundingClientRect();
@@ -214,8 +217,6 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     fond.append(surface, etat, alerte);
     element.append(barre.element);
     surface.addEventListener("keydown", surTouche);
-    surface.addEventListener("copy", surCopie);
-    surface.addEventListener("paste", surColler);
     surface.addEventListener("pointerdown", surAppui);
     surface.addEventListener("pointermove", surMouvement);
     surface.addEventListener("pointerup", surRelache);

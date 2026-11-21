@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { lancerYaide, ouvrirYaide, depotExemple, nomLigne } from "./aides.js";
+import { lancerYaide, ouvrirYaide, depotExemple, nomLigne, avancer } from "./aides.js";
+import { lancerRelais } from "./relais.js";
 
 // P-096 : parcours d'un whiteboard dans le navigateur.
 const ligne = (page, nom) => page.getByRole("tree", { name: "Fichiers" }).getByRole("treeitem", { name: nomLigne(nom) });
@@ -553,6 +554,118 @@ test("REQ127_AC1_REQ129_AC1_REQ130_AC1_AC13_REQ133_AC8_REQ134_AC1_AC7_REQ136_AC1
     await expect.poll(() => JSON.parse(fs.readFileSync(fichier, "utf8")).boxes.find((x) => x.shape === "database")?.valign).toBe("middle");
     expect(JSON.parse(fs.readFileSync(fichier, "utf8")).boxes.find((x) => /^Début/.test(x.text))).toMatchObject({ align: "left", valign: "top" });
   } finally {
+    await yaide.arreter();
+  }
+});
+
+// P-114 : coller un diagramme mermaid copié d'un fichier markdown en mode hybride. L'étape 5 est prouvée par AC-151-6 (tests déjà là).
+test("REQ154_parcours_P114_AC154_6_AC154_1_AC154_8_AC154_10_REQ137_AC137_11", async ({ page }) => {
+  await page.clock.install();
+  const dossier = depotExemple();
+  fs.mkdirSync(path.join(dossier, "docs"), { recursive: true });
+  const plan = path.join(dossier, "docs/plan.jdiag");
+  const avant =
+    '{\n  "version": 1,\n  "boxes": [\n    {"id": "b1", "x": 40, "y": 80, "width": 160, "height": 80, "text": "Début"},\n    {"id": "b2", "x": 300, "y": 80, "width": 160, "height": 80, "text": "Fin"}\n  ],\n  "links": [\n    {"id": "l1", "from": "b1", "to": "b2"}\n  ]\n}\n';
+  fs.writeFileSync(plan, avant);
+  const organigramme = "graph TD\n  A[Début] --> B{Choix}\n  B -->|oui| C(Fin)\n  B -.-> D((Autre))";
+  fs.writeFileSync(
+    path.join(dossier, "docs/guide.md"),
+    `# Guide\n\n\`\`\`mermaid\nsequenceDiagram\n  A->>B: Bonjour\n\`\`\`\n\n\`\`\`mermaid\n${organigramme}\n\`\`\`\n\nFin.\n`,
+  );
+  const yaide = await lancerYaide({ dossier });
+  const relais = await lancerRelais(yaide.port);
+  try {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
+    await ligne(page, "docs").click();
+    await ligne(page, "guide.md").click();
+    const editeur = page.getByRole("textbox", { name: "Éditeur guide.md" });
+    await expect(editeur).toBeFocused();
+    const dessins = page.locator(".cm-content:visible").getByRole("img", { name: "Diagramme" });
+    await expect(dessins).toHaveCount(2);
+    const copierBloc = async (dessin, lignes) => {
+      await dessin.click();
+      // Le clic met le curseur sur la première ligne sous l'ouverture du bloc : on remonte à la ligne de l'ouverture.
+      await page.keyboard.press("ArrowUp");
+      await page.keyboard.press("Home");
+      for (let i = 0; i < lignes; i++) await page.keyboard.press("Shift+ArrowDown");
+      await page.keyboard.press("Control+c");
+    };
+    // Étape 1 : le bloc sequenceDiagram (quatre lignes) copié, puis collé sur la surface : refus.
+    await copierBloc(dessins.first(), 4);
+    await ligne(page, "plan.jdiag").click();
+    const surface = page.getByRole("application", { name: "plan.jdiag" });
+    await expect(surface).toBeFocused();
+    const alerte = surface.locator("xpath=..").locator('[role="alert"]');
+    await page.keyboard.press("Control+v");
+    const texteRefus = "Diagramme mermaid non collé : seuls les organigrammes (graph, flowchart) sont pris en charge.";
+    await expect(alerte).toHaveText(texteRefus);
+    const zone = await surface.locator("xpath=..").boundingBox();
+    const m = await alerte.boundingBox();
+    proche(m.y, zone.y + 12);
+    proche(m.x + m.width / 2, zone.x + zone.width / 2);
+    expect(await alerte.evaluate((e) => getComputedStyle(e).pointerEvents)).toBe("none");
+    await expect(page.getByRole("tab", { name: /^plan\.jdiag.*, non sauvegardé/ })).toHaveCount(0);
+    await expect(surface).toBeFocused();
+    // Étape 2 : un clic sur une partie vide efface le message.
+    const rs = await surface.boundingBox();
+    await page.mouse.click(rs.x + rs.width - 60, rs.y + rs.height - 200);
+    await expect(alerte).toBeEmpty();
+    await expect(alerte).toBeHidden();
+    await expect(surface).toBeFocused();
+    // Étape 3 : le second bloc, clôtures comprises (cinq lignes), collé pendant une coupure.
+    await ligne(page, "guide.md").click();
+    // Le curseur est resté dans le premier bloc, montré en texte : seul le second est dessiné.
+    await expect(dessins).toHaveCount(1);
+    await copierBloc(dessins.last(), 6);
+    await relais.couper();
+    await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." })).toBeVisible({ timeout: 300 }));
+    await page.getByRole("tab", { name: "plan.jdiag" }).click();
+    await surface.focus();
+    const requetes = [];
+    page.on("request", (r) => requetes.push(r.url()));
+    await page.keyboard.press("Control+v");
+    const boite = (t) => surface.locator('[aria-roledescription="boîte"]').filter({ hasText: t });
+    await expect(surface.locator('[aria-roledescription="boîte"]')).toHaveCount(4);
+    for (const t of ["Début", "Choix", "Fin", "Autre"]) await expect(boite(t)).toBeVisible();
+    await expect(surface.locator('[aria-roledescription="lien"]')).toHaveCount(3);
+    await expect(surface.getByText("oui", { exact: true })).toBeVisible();
+    await expect(surface.locator('[aria-roledescription="lien"] [stroke-dasharray]')).toHaveCount(1);
+    await expect(page.getByRole("tab", { name: /^plan\.jdiag.*, non sauvegardé/ })).toBeVisible();
+    await expect(alerte).toBeEmpty();
+    await expect(surface).toBeFocused();
+    expect(await surface.getAttribute("aria-activedescendant")).toBeNull();
+    expect(requetes).toEqual([]);
+    const posDebut = await boite("Début").boundingBox();
+    const posChoix = await boite("Choix").boundingBox();
+    expect(posChoix.y).toBeGreaterThan(posDebut.y + posDebut.height);
+    await relais.retablir();
+    await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue." })).toHaveCount(0, { timeout: 300 }));
+    // Étape 4 : Ctrl+Z, Ctrl+Y, Ctrl+S.
+    await surface.focus();
+    await page.keyboard.press("Control+z");
+    await expect(surface.locator('[aria-roledescription="boîte"]')).toHaveCount(2);
+    await expect(page.getByRole("tab", { name: /^plan\.jdiag.*, non sauvegardé/ })).toHaveCount(0);
+    expect(fs.readFileSync(plan, "utf8")).toBe(avant);
+    await page.keyboard.press("Control+y");
+    await expect(surface.locator('[aria-roledescription="boîte"]')).toHaveCount(4);
+    await page.keyboard.press("Control+s");
+    await expect.poll(() => fs.readFileSync(plan, "utf8")).toContain('"model"');
+    const doc = JSON.parse(fs.readFileSync(plan, "utf8"));
+    expect(doc.model).toBe(organigramme);
+    expect(doc.model).not.toContain("```");
+    expect(doc.boxes).toHaveLength(4);
+    // AC-137-11 : les boîtes choisies (Ctrl+A) copiées par Ctrl+C, puis Ctrl+V sur la surface : elles sont collées (quatre de plus), le dessin n'est pas recréé.
+    await surface.focus();
+    await page.keyboard.press("Control+a");
+    await page.keyboard.press("Control+c");
+    await page.keyboard.press("Control+v");
+    await expect(surface.locator('[aria-roledescription="boîte"]')).toHaveCount(8);
+    await expect(boite("Début")).toHaveCount(2);
+    await expect(surface).toBeFocused();
+  } finally {
+    relais.fermer();
     await yaide.arreter();
   }
 });
