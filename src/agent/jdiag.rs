@@ -438,6 +438,15 @@ mod tests {
     }
 
     #[test]
+    fn req154_ac8_modele_seul_du_fichier_colle() {
+        let texte = "{\n  \"version\": 1,\n  \"model\": \"graph TD\\nA --> B\",\n  \"boxes\": [],\n  \"links\": []\n}\n";
+        assert_eq!(
+            modele_seul(texte).unwrap().as_deref(),
+            Some("graph TD\nA --> B")
+        );
+    }
+
+    #[test]
     fn req151_ac3_model_non_texte_refuse_vide_non_reecrit() {
         for m in [json!(3), json!(["a"])] {
             let brut = json!({"version": 1, "model": m, "boxes": [], "links": []});

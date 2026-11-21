@@ -32,6 +32,8 @@ export const SYMBOLES = [
   { shape: "warning", nom: "Alerte" },
   { shape: "firewall", nom: "Pare-feu" },
 ];
+// Taille par défaut (largeur, hauteur) de chaque forme (REQ-134, REQ-149).
+export const TAILLES = { rectangle: [160, 80], rounded: [160, 80], ellipse: [100, 100], diamond: [160, 100], note: [160, 80], text: [160, 40], ...Object.fromEntries(SYMBOLES.map((s) => [s.shape, [100, 100]])) };
 const STYLE_BOITE = {
   shape: ["rectangle", "rounded", "ellipse", "diamond", "note", "text", ...SYMBOLES.map((s) => s.shape)],
   color: COULEURS,

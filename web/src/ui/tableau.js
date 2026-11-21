@@ -1,4 +1,4 @@
-import { ecrireJdiag, idLibre, positionTexte, SYMBOLES } from "../jdiag.js";
+import { ecrireJdiag, idLibre, positionTexte, SYMBOLES, TAILLES } from "../jdiag.js";
 import { estMac } from "../references.js";
 import { indication } from "./indication.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
@@ -16,7 +16,6 @@ const PAS = 10;
 const SEUIL = 3;
 const PROCHE = 24; // px écran : distance du pointeur au bord d'une boîte pour montrer ses connecteurs
 const OUTILS_DEPART = { outil: "choisir", forme: "rectangle", couleur: "default", trace: "direct", bouts: "end", trait: "solid", opacite: 100, taille: "normal", epaisseur: "thin" };
-const TAILLES = { rectangle: [160, 80], rounded: [160, 80], ellipse: [100, 100], diamond: [160, 100], note: [160, 80], text: [160, 40], ...Object.fromEntries(SYMBOLES.map((s) => [s.shape, [100, 100]])) };
 // Clé du document de chaque choix de la boîte à outils, et sortes d'objets qu'il concerne :
 // « boite », « texte » (la forme « Texte »), « lien » et « trait » (flèches libres, et choix d'un nouveau lien).
 const CLES_STYLE = { couleur: "color", opacite: "opacity", taille: "textSize", trace: "route", bouts: "ends", trait: "line", epaisseur: "weight" };
