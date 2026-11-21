@@ -669,3 +669,183 @@ test("REQ154_parcours_P114_AC154_6_AC154_1_AC154_8_AC154_10_REQ137_AC137_11", as
     await yaide.arreter();
   }
 });
+
+// P-115 et P-116 : copier au format Klaxoon par le menu de la surface. P-115 étape 4 (collage dans Klaxoon) : essai de l'humain après livraison.
+// P-116 étape 3 (menu du navigateur pendant une saisie) et étape 4 (refus du presse-papiers) : prouvées en composant (AC-155-4, AC-155-10, tableau-klaxoon.test.js).
+test("REQ155_parcours_P115_P116_AC155_1_AC155_2_AC155_3_AC155_5_AC155_7_AC155_8", async ({ page }) => {
+  const dossier = depotExemple();
+  fs.mkdirSync(path.join(dossier, "docs"), { recursive: true });
+  const plan = path.join(dossier, "docs/plan.jdiag");
+  const avant =
+    '{\n  "version": 1,\n  "boxes": [\n    {"id": "b1", "x": 40, "y": 80, "width": 160, "height": 80, "text": "Début"},\n    {"id": "b2", "x": 300, "y": 80, "width": 160, "height": 80, "text": "Fin"}\n  ],\n  "links": [\n    {"id": "l1", "from": "b1", "to": "b2"}\n  ],\n  "arrows": [\n    {"id": "a1", "x1": 100, "y1": 300, "x2": 300, "y2": 300}\n  ]\n}\n';
+  fs.writeFileSync(plan, avant);
+  const yaide = await lancerYaide({ dossier });
+  try {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+    await ligne(page, "docs").click();
+    await ligne(page, "plan.jdiag").click();
+    const surface = page.getByRole("application", { name: "plan.jdiag" });
+    await expect(surface).toBeFocused();
+    // AC-155-7 : whiteboards en clair, Yaide en sombre.
+    await page.getByRole("button", { name: "Thème clair du whiteboard" }).click();
+    await surface.focus();
+    const zone = surface.locator("xpath=..");
+    const zoneBoard = surface.locator("xpath=../..");
+    const statut = zone.locator('[role="status"]');
+    const alerte = zone.locator('[role="alert"]');
+    const menu = page.getByRole("menu", { name: "Actions sur la sélection" });
+    const commande = menu.getByRole("menuitem", { name: "Copier au format Klaxoon" });
+    const objet = (role, t) => (t ? surface.locator(`[aria-roledescription="${role}"]`).filter({ hasText: t }) : surface.locator(`[aria-roledescription="${role}"]`));
+    const b1 = objet("boîte", "Début");
+    const b2 = objet("boîte", "Fin");
+    const fleche = objet("flèche");
+    const sansPoint = () => expect(page.getByRole("tab", { name: /^plan\.jdiag.*, non sauvegardé/ })).toHaveCount(0);
+
+    // AC-155-1, AC-155-7 : clic droit sur « Début ».
+    const rb1 = await b1.boundingBox();
+    const pt = { x: rb1.x + 30, y: rb1.y + 20 };
+    await page.mouse.click(pt.x, pt.y, { button: "right" });
+    await expect(menu).toBeVisible();
+    await expect(surface).toHaveAttribute("aria-activedescendant", /-b1$/);
+    await expect(menu.getByRole("menuitem")).toHaveCount(1);
+    await expect(menu.locator('[role="separator"]')).toHaveCount(0);
+    await expect(commande).toHaveText("Copier au format Klaxoon");
+    await expect(commande).toBeFocused();
+    expect(await commande.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(0, 95, 184)");
+    expect(await menu.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(255, 255, 255)");
+    expect(await menu.evaluate((e, z) => z.contains(e), await zoneBoard.elementHandle())).toBe(true);
+    let rm = await menu.boundingBox();
+    proche(rm.x, pt.x);
+    proche(rm.y, pt.y);
+    // Un clic droit près du coin bas droit : le menu entier reste dans la zone, son coin bas droit au pointeur.
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    const rz = await zoneBoard.boundingBox();
+    const coin = { x: rz.x + rz.width - 20, y: rz.y + rz.height - 10 };
+    await page.mouse.click(coin.x, coin.y, { button: "right" });
+    await expect(menu).toBeVisible();
+    rm = await menu.boundingBox();
+    proche(rm.x + rm.width, coin.x);
+    proche(rm.y + rm.height, coin.y);
+    expect(rm.x).toBeGreaterThanOrEqual(rz.x);
+    expect(rm.y).toBeGreaterThanOrEqual(rz.y);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(surface).toBeFocused();
+
+    // AC-155-2, AC-155-8 : Ctrl+A, clic droit sur une partie vide, la commande.
+    await page.keyboard.press("Control+a");
+    const actif = await surface.getAttribute("aria-activedescendant");
+    await page.mouse.click(rb1.x + 100, rb1.y + 140, { button: "right" });
+    await expect(menu).toBeVisible();
+    await commande.click();
+    await expect(menu).toHaveCount(0);
+    await expect(statut).toHaveText("Copié au format Klaxoon : 2 boîtes, 1 lien.");
+    await expect(alerte).toBeEmpty();
+    await expect(surface).toBeFocused();
+    expect(await surface.getAttribute("aria-activedescendant")).toBe(actif);
+    await sansPoint();
+    expect(fs.readFileSync(plan, "utf8")).toBe(avant);
+    // Lecture du presse-papiers du système par un vrai collage dans un champ hors de la surface.
+    await page.evaluate(() => {
+      const t = document.createElement("textarea");
+      t.id = "lecture-presse-papiers";
+      document.body.append(t);
+      window.__collage = null;
+      t.addEventListener("paste", (e) => {
+        e.preventDefault();
+        window.__collage = { texte: e.clipboardData.getData("text/plain"), html: e.clipboardData.getData("text/html") };
+      });
+      t.focus();
+    });
+    await page.keyboard.press("Control+v");
+    const lu = await page.evaluate(() => {
+      const r = window.__collage;
+      document.getElementById("lecture-presse-papiers").remove();
+      return r;
+    });
+    expect(lu.texte).toBe("Début\nFin");
+    const h = lireHtmlKlaxoon(lu.html);
+    expect(h.contenu).toBe("<p>Début</p><br><p>Fin</p>");
+    expect(h.donnees).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
+    const liste = JSON.parse(Buffer.from(h.donnees.slice(36), "base64").toString("utf8")).map((e) => ({ ...e.data, type: e.type }));
+    expect(liste.map((e) => e.type)).toEqual(["postit", "postit", "link"]);
+    expect(liste[0].coords).toEqual({ left: 40, top: 80 });
+    expect([liste[0].zIndex, liste[0].contentHtml]).toEqual([1, "<p>Début</p>"]);
+    expect(liste[1].coords).toEqual({ left: 300, top: 80 });
+    expect([liste[1].zIndex, liste[1].contentHtml]).toEqual([2, "<p>Fin</p>"]);
+    expect(liste[2].objectIds).toEqual([liste[0].parent, liste[1].parent]);
+    expect(liste[2].objectAnchors).toEqual(["right", "left"]);
+    expect(new Set([h.donnees.slice(0, 36), ...liste.map((e) => e.parent)]).size).toBe(4);
+
+    // AC-155-3 : Ctrl+V sur la surface colle les boîtes et le lien.
+    await surface.focus();
+    await page.keyboard.press("Control+v");
+    await expect(objet("boîte")).toHaveCount(4);
+    await expect(objet("lien")).toHaveCount(2);
+    await expect(objet("flèche")).toHaveCount(2);
+    await page.keyboard.press("Control+z");
+    await expect(objet("boîte")).toHaveCount(2);
+    await sansPoint();
+
+    // P-116 étape 1, AC-155-5 : Maj+F10 sur la flèche libre seule, commande désactivée.
+    await page.keyboard.press("Escape");
+    const rf = await fleche.boundingBox();
+    await page.mouse.click(rf.x + rf.width / 2, rf.y + rf.height / 2);
+    await page.keyboard.press("Shift+F10");
+    await expect(menu).toBeVisible();
+    await expect(commande).toHaveAttribute("aria-disabled", "true");
+    await expect(commande).toBeFocused();
+    rm = await menu.boundingBox();
+    // Le rectangle d'un élément SVG : celui du DOM, trait compris (celui de Playwright l'omet).
+    const rfc = await fleche.evaluate((e) => e.getBoundingClientRect().toJSON());
+    proche(rm.y, rfc.y + rfc.height + 4);
+    proche(rm.x, rfc.x);
+    const statutAvant = await statut.textContent();
+    await page.keyboard.press("Enter");
+    await expect(menu).toBeVisible();
+    await expect(commande).toBeFocused();
+    expect(await statut.textContent()).toBe(statutAvant);
+    // Étape 2 : « Fin » seule, touche Menu, Entrée.
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(surface).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(surface).toHaveAttribute("aria-activedescendant", /-b2$/);
+    await page.keyboard.press("ContextMenu");
+    await expect(menu).toBeVisible();
+    await expect(commande).not.toHaveAttribute("aria-disabled", "true");
+    expect(await commande.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(0, 95, 184)");
+    const rb2 = await b2.boundingBox();
+    rm = await menu.boundingBox();
+    proche(rm.y, rb2.y + rb2.height + 4);
+    proche(rm.x, rb2.x);
+    await page.keyboard.press("Enter");
+    await expect(menu).toHaveCount(0);
+    await expect(statut).toHaveText("Copié au format Klaxoon : 1 boîte, aucun lien.");
+    await expect(surface).toBeFocused();
+    // Rien de choisi, touche Menu : 12 px du haut et de la gauche de la zone.
+    await page.keyboard.press("Escape");
+    await expect(surface).not.toHaveAttribute("aria-activedescendant", /.+/);
+    await page.keyboard.press("ContextMenu");
+    await expect(menu).toBeVisible();
+    rm = await menu.boundingBox();
+    proche(rm.x, rz.x + 12);
+    proche(rm.y, rz.y + 12);
+    await page.keyboard.press("Escape");
+    await sansPoint();
+    expect(fs.readFileSync(plan, "utf8")).toBe(avant);
+  } finally {
+    await yaide.arreter();
+  }
+});
+
+// Lit le `div` du `text/html` copié : son contenu et son attribut `data-board`.
+function lireHtmlKlaxoon(html) {
+  const m = /^<div data-board="([^"]*)"[^>]*>([\s\S]*)<\/div>$/.exec(html.replace(/<!--[\s\S]*?-->/g, "").trim());
+  if (!m) throw new Error(`html inattendu : ${html}`);
+  return { donnees: m[1], contenu: m[2] };
+}
