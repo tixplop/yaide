@@ -114,6 +114,6 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-118 formater le document → web/src/formatage.js, vues/principale.js
 - REQ-122, REQ-123 mermaid → web/src/mermaid.js, ui/diagramme.js, ui/apercu.js
 - REQ-152 diagrammes mermaid dessinés en mode hybride → ui/hybride.js, ui/diagramme.js, ui/zone-code.js
-- REQ-153 tableau rendu modifiable → ui/bouton.js, ui/icones.js, ui/composants.css
+- REQ-153 tableau rendu modifiable, aides au survol → ui/hybride.js, ui/bouton.js, ui/zone-code.js, vues/editeur.js, ui/icones.js, ui/composants.css
 - REQ-151 modèle d'un whiteboard pour les agents (`model` obligatoire dans `whiteboard_write`, `model_only` dans `whiteboard_read`) → src/agent/jdiag.rs (en_texte, modele_seul), outils.rs, web/src/jdiag.js
 - REQ-127 à REQ-150 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, jdiag_trace.rs, jdiag_controle.rs, outils.rs

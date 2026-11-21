@@ -871,7 +871,7 @@ test("REQ062_parcours_P025_P026", async ({ page, browserName }) => {
     relais.fermer();
   }
 });
-test("REQ063_parcours_P027", async ({ page, browserName }) => {
+test("REQ063_parcours_P027_REQ153_AC1_AC2_AC3_AC5_AC6_AC9_AC10_AC11_AC12_AC13_P113", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
   await page.clock.install();
   const lignesSource = [
@@ -887,7 +887,11 @@ test("REQ063_parcours_P027", async ({ page, browserName }) => {
   ];
   const source = lignesSource.join("\n") + "\n";
   const attendu = source.replace("| non    |", "| oui    |");
-  const dossier = await ouvrir(page, (d) => fs.writeFileSync(path.join(d, "README.md"), source));
+  const dossier = await ouvrir(page, (d) => {
+    fs.writeFileSync(path.join(d, "README.md"), source);
+    fs.mkdirSync(path.join(d, "docs"));
+    fs.writeFileSync(path.join(d, "docs", "etapes.md"), "# Étapes\n\n| Étape |\n| ----- |\n| Lire |\n| Lancer |\n");
+  });
   const relais = await lancerRelais(yaide.port);
   try {
     await page.goto(relais.origine + "/");
@@ -895,9 +899,13 @@ test("REQ063_parcours_P027", async ({ page, browserName }) => {
     const requetes = [];
     page.on("request", (r) => /\/polices\//.test(r.url()) || requetes.push(r.url()));
     page.on("popup", () => requetes.push("popup"));
+    const rienOuvert = () => expect(requetes.filter((u) => u === "popup" || u.includes("exemple.org"))).toEqual([]);
     const lignes = page.locator(".cm-content:visible .cm-line");
     const tableau = page.locator(".cm-hy-tableau:visible");
     const pied = page.locator("footer");
+    const contenu = () => page.locator(".zone-code:visible").first().evaluate((e) => e.contenu());
+    const saisie = page.locator(".cm-hy-tableau:visible .ya-cellule-saisie");
+    const editeurFocus = () => page.evaluate(() => document.activeElement?.classList.contains("cm-content"));
     await ligne(page, "README.md").click();
     await expect(page.getByRole("button", { name: "Mode hybride", exact: true })).toHaveAttribute("aria-pressed", "true");
     // Étape 1 : clôtures vides, tableau rendu à la place des lignes 23 à 27.
@@ -908,25 +916,41 @@ test("REQ063_parcours_P027", async ({ page, browserName }) => {
     await expect(tableau.locator("th")).toHaveText(["Option", "Défaut", "Effet"]);
     await expect(tableau.locator("strong")).toHaveText("capitales");
     await expect(pied).toContainText("Ln 1, Col 1");
-    // Étape 2 : clic sur « non ».
+    // Étape 2 : clic juste après « non » (AC-153-1) : saisie, le tableau reste rendu, le curseur de l'éditeur n'a pas bougé.
     requetes.length = 0;
-    await tableau.getByRole("cell", { name: "non", exact: true }).click();
-    await expect(tableau).toHaveCount(0);
-    await expect(lignes.nth(25)).toHaveText(lignesSource[25]);
-    await expect(pied).toContainText("Ln 26, Col 14");
-    await expect(lignes.nth(0)).toHaveText("projet");
-    expect(requetes.filter((u) => u === "popup" || u.includes("exemple.org"))).toEqual([]);
-    // Étape 3 : coupure, Suppr trois fois, « oui », Bas deux fois.
+    const cellule = tableau.getByRole("cell", { name: "non", exact: true });
+    const boite = await cellule.boundingBox();
+    const hautAvant = (await tableau.boundingBox()).y;
+    await page.mouse.click(boite.x + 2 * boite.width / 3 + 6, boite.y + boite.height / 2);
+    await expect(saisie).toHaveText("non");
+    await expect(saisie).toBeFocused();
+    expect(await saisie.evaluate(() => { const s = document.getSelection(); return [s.anchorOffset, s.isCollapsed]; })).toEqual([3, true]);
+    await expect(tableau).toHaveCount(1);
+    expect(await tableau.evaluate((e) => /\||---/.test(e.textContent))).toBe(false);
+    expect(Math.abs((await tableau.boundingBox()).y - hautAvant)).toBeLessThanOrEqual(1);
+    await expect(lignes.nth(0)).toHaveText("# projet");
+    await expect(pied).toContainText("Ln 1, Col 1");
+    await rienOuvert();
+    // Étape 3 : coupure, Retour arrière trois fois, « oui », Entrée (AC-153-2) ; le fichier du disque n'a pas changé.
     relais.couper();
     await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue. Modifications gardées." })).toBeVisible({ timeout: 300 }));
-    for (let i = 0; i < 3; i++) await page.keyboard.press("Delete");
+    for (let i = 0; i < 3; i++) await page.keyboard.press("Backspace");
     await page.keyboard.type("oui");
-    await expect(lignes.nth(25)).toHaveText("| `--fort` | oui    | Salue en **capitales**.      |");
-    await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("ArrowDown");
-    await expect(pied).toContainText("Ln 28");
+    await page.keyboard.press("Enter");
+    await expect(saisie).toHaveCount(0);
     await expect(tableau.getByRole("cell", { name: "oui", exact: true })).toBeVisible();
-    // Étape 4 : clôtures au clic sur « main », puis de nouveau vides.
+    await expect(onglet(page, /^README\.md.*non sauvegardé/)).toBeVisible();
+    expect(await contenu()).toBe(attendu);
+    expect(fs.readFileSync(path.join(dossier, "README.md"), "utf8")).toBe(source);
+    // Étape 4 : cellule avec marques (AC-153-3), puis Échap : le texte d'avant revient, le document est intact (AC-153-5).
+    await tableau.getByRole("cell", { name: "Salue en capitales.", exact: true }).click();
+    await expect(saisie).toHaveText("Salue en **capitales**.");
+    await expect(tableau.locator("strong")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(saisie).toHaveCount(0);
+    await expect(tableau.locator("strong")).toHaveText("capitales");
+    expect(await contenu()).toBe(attendu);
+    // Étape 5 : clôtures au clic sur « main », puis de nouveau vides.
     await lignes.nth(8).getByText("main", { exact: true }).click();
     await expect(lignes.nth(7)).toHaveText("```rust");
     await expect(lignes.nth(11)).toHaveText("```");
@@ -934,14 +958,25 @@ test("REQ063_parcours_P027", async ({ page, browserName }) => {
     await lignes.nth(0).click();
     await expect(lignes.nth(7)).toHaveText("");
     await expect(lignes.nth(11)).toHaveText("");
-    // Étape 5 : clic sur « aide » dans le tableau.
+    // Étape 6 : clic sur « aide » (AC-153-13), rien ne s'ouvre ; Échap ; Bas depuis la ligne 22 montre le tableau en texte.
+    requetes.length = 0;
     await tableau.locator("a", { hasText: /^aide$/ }).click();
+    await expect(saisie).toHaveText("Affiche l'[aide](https://exemple.org/aide).");
+    await expect(tableau).toHaveCount(1);
+    await rienOuvert();
+    await page.keyboard.press("Escape");
+    await expect(saisie).toHaveCount(0);
+    await lignes.nth(21).click();
+    await page.keyboard.press("ArrowDown");
+    await expect(pied).toContainText("Ln 23");
     await expect(tableau).toHaveCount(0);
-    await expect(lignes.nth(26)).toContainText("[aide](https://exemple.org/aide)");
-    await expect(pied).toContainText("Ln 27, Col 23");
-    expect(requetes.filter((u) => u === "popup" || u.includes("exemple.org"))).toEqual([]);
-    // Étape 6 : aperçu ensemble, mêmes cellules rendues, puis Ctrl+S au retour.
+    await expect(lignes.nth(22)).toHaveText(lignesSource[22]);
+    await expect(lignes.nth(26)).toContainText("--aide");
+    await expect(lignes.nth(22)).toHaveClass(/cm-hy-mono/);
     await lignes.nth(0).click();
+    await page.keyboard.press("Control+Home");
+    await expect(tableau.locator("tr")).toHaveCount(4);
+    // Étape 7 : aperçu ensemble, mêmes cellules rendues, puis Ctrl+S au retour (AC-153-2).
     await page.getByRole("button", { name: "Aperçu", exact: true }).click();
     const zoneApercu = page.getByRole("region", { name: "Aperçu" });
     await expect(zoneApercu.getByRole("cell", { name: "oui", exact: true })).toBeVisible();
@@ -952,6 +987,96 @@ test("REQ063_parcours_P027", async ({ page, browserName }) => {
     await avancer(page, () => expect(page.getByRole("alert").filter({ hasText: "Connexion perdue" })).toHaveCount(0, { timeout: 300 }));
     await page.keyboard.press("Control+s");
     await expect.poll(() => fs.readFileSync(path.join(dossier, "README.md"), "utf8")).toBe(attendu);
+
+    // P-113, étape 1 : survol de la bordure entre `--fort` et `--aide` (AC-153-9).
+    await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+    await expect(zoneApercu).toHaveCount(0);
+    await expect(onglet(page, /^README\.md.*non sauvegardé/)).toHaveCount(0);
+    const rang = (i) => tableau.locator("tbody tr").nth(i);
+    const bas = await rang(1).locator("td").nth(2).boundingBox();
+    const haut = await rang(2).locator("td").nth(2).boundingBox();
+    const by = (bas.y + bas.height + haut.y) / 2;
+    await page.mouse.move(bas.x + 20, by - 40);
+    await page.mouse.move(bas.x + 20, by, { steps: 4 });
+    const inserer = tableau.getByRole("button", { name: "Insérer une ligne" });
+    await expect(inserer).toBeVisible();
+    const ib = await inserer.boundingBox();
+    expect(Math.abs(ib.y + ib.height / 2 - by)).toBeLessThanOrEqual(3);
+    await expect(tableau.locator(".ya-tableau-filet-h")).toHaveCount(1);
+    await avancer(page, () => expect(page.getByRole("tooltip")).toHaveText("Insérer une ligne", { timeout: 300 }));
+    // Étape 2 : clic, rangée vide entre `--fort` et `--aide`, première cellule en saisie.
+    await expect(page.locator(".cm-lineNumbers .cm-gutterElement").filter({ hasText: /^28$/ })).toHaveCount(1);
+    await expect(page.locator(".cm-lineNumbers .cm-gutterElement").filter({ hasText: /^31$/ })).toHaveCount(0);
+    await inserer.click();
+    await expect(tableau.locator("tr")).toHaveCount(5);
+    await expect(saisie).toHaveCount(1);
+    await expect(saisie).toBeFocused();
+    await expect(saisie).toHaveText("");
+    await expect(rang(2).locator(".ya-cellule-saisie")).toHaveCount(1);
+    await expect(page.locator(".cm-lineNumbers .cm-gutterElement").filter({ hasText: /^28$/ })).toHaveCount(0);
+    await expect(page.locator(".cm-lineNumbers .cm-gutterElement").filter({ hasText: /^31$/ })).toHaveCount(1);
+    await expect(onglet(page, /^README\.md.*non sauvegardé/)).toBeVisible();
+    // Étape 3 : Tab valide et passe à la cellule suivante ; Entrée valide la dernière (AC-153-6).
+    await page.keyboard.type("`--court`");
+    await page.keyboard.press("Tab");
+    await expect(saisie).toHaveCount(1);
+    await page.keyboard.type("non");
+    await page.keyboard.press("Tab");
+    await page.keyboard.type("Salue en un mot.");
+    await page.keyboard.press("Enter");
+    await expect(saisie).toHaveCount(0);
+    await expect(rang(2).locator("code")).toHaveText("--court");
+    await expect(rang(2).locator("td")).toHaveText(["--court", "non", "Salue en un mot."]);
+    const apresSaisies = await contenu();
+    expect(apresSaisies.split("\n").filter((l) => l.includes("`--court`") && l.includes("Salue en un mot.")).length).toBe(1);
+    // Étape 4 : pointeur sur l'en-tête « Défaut », puis sur le disque (AC-153-10) ; colonne encadrée.
+    const tete = await tableau.locator("th").nth(1).boundingBox();
+    await page.mouse.move(tete.x + tete.width / 2, tete.y + tete.height / 2, { steps: 4 });
+    const supprimer = tableau.getByRole("button", { name: "Supprimer la colonne" });
+    await expect(supprimer).toBeVisible();
+    await supprimer.hover();
+    await expect(tableau.locator(".ya-tableau-cadre")).toHaveCount(1);
+    const cadre = await tableau.locator(".ya-tableau-cadre").boundingBox();
+    expect(Math.abs(cadre.x - tete.x)).toBeLessThanOrEqual(3);
+    expect(Math.abs(cadre.width - tete.width)).toBeLessThanOrEqual(3);
+    await avancer(page, () => expect(page.getByRole("tooltip")).toHaveText("Supprimer la colonne", { timeout: 300 }));
+    // Étape 5 : clic, la colonne disparaît ; le focus revient dans l'éditeur.
+    await supprimer.click();
+    await expect(tableau.locator("th")).toHaveText(["Option", "Effet"]);
+    expect(await editeurFocus()).toBe(true);
+    await expect(pied).toContainText("Ln 1, Col 1");
+    const sansColonne = await contenu();
+    expect(sansColonne).not.toContain("Défaut");
+    // Étape 6 : Ctrl+Z rend la colonne, à l'octet près (AC-153-12) ; Ctrl+Z encore défait la saisie ; Ctrl+Y deux fois ; Ctrl+S.
+    await page.keyboard.press("Control+z");
+    await expect(tableau.locator("th")).toHaveText(["Option", "Défaut", "Effet"]);
+    expect(await contenu()).toBe(apresSaisies);
+    await page.keyboard.press("Control+z");
+    await expect(tableau.locator("tr")).toHaveCount(5);
+    expect(await contenu()).not.toContain("Salue en un mot.");
+    await page.keyboard.press("Control+y");
+    await page.keyboard.press("Control+y");
+    await expect(tableau.locator("th")).toHaveText(["Option", "Effet"]);
+    expect(await contenu()).toBe(sansColonne);
+    await page.keyboard.press("Control+s");
+    await expect(onglet(page, /^README\.md.*non sauvegardé/)).toHaveCount(0);
+    await expect.poll(() => fs.readFileSync(path.join(dossier, "README.md"), "utf8")).toBe(sansColonne);
+    // Étape 7 : une seule colonne ne se supprime pas ; une rangée a son disque « Supprimer la ligne » sur le bord droit (AC-153-10, AC-153-11).
+    await ligne(page, "docs").click();
+    await ligne(page, "etapes.md").click();
+    await expect(tableau.locator("th")).toHaveText(["Étape"]);
+    const un = await tableau.locator("th").boundingBox();
+    await page.mouse.move(un.x + un.width / 2, un.y + un.height / 2, { steps: 4 });
+    await expect(tableau.getByRole("button", { name: "Supprimer la colonne" })).toHaveCount(0);
+    await expect(tableau.getByRole("button", { name: "Supprimer la ligne" })).toHaveCount(0);
+    const tb = await tableau.locator("table").boundingBox();
+    const r1 = await tableau.locator("tbody tr").first().locator("td").boundingBox();
+    await page.mouse.move(r1.x + r1.width / 2, r1.y + r1.height / 2, { steps: 4 });
+    const supLigne = tableau.getByRole("button", { name: "Supprimer la ligne" });
+    await expect(supLigne).toBeVisible();
+    const sb = await supLigne.boundingBox();
+    expect(Math.abs(sb.x + sb.width / 2 - (tb.x + tb.width))).toBeLessThanOrEqual(3);
+    expect(Math.abs(sb.y + sb.height / 2 - (r1.y + r1.height / 2))).toBeLessThanOrEqual(3);
   } finally {
     relais.fermer();
   }

@@ -531,7 +531,7 @@ async function ouvrirTableau(page, hybride) {
   );
 }
 
-test("REQ063_AC5_AC17_AC19_clavier_clic_dans_une_cellule_et_bascule", async ({ page }) => {
+test("REQ063_AC5_AC19_REQ153_AC1_clavier_clic_dans_une_cellule_et_bascule", async ({ page }) => {
   await ouvrirTableau(page, true);
   const vue = (f, arg) => page.evaluate(([src, a]) => new Function("v", "a", `return (${src})(v, a)`)(document.querySelector(".zone-code").vue, a), [f.toString(), arg]);
   await vue((v) => { v.dispatch({ selection: { anchor: v.state.doc.line(22).from } }); v.focus(); });
@@ -546,17 +546,23 @@ test("REQ063_AC5_AC17_AC19_clavier_clic_dans_une_cellule_et_bascule", async ({ p
   await expect.poll(() => brut(page)).toMatch(/^Ln 27, /);
   await expect(page.locator(".cm-hy-tableau")).toHaveCount(0);
 
-  // AC-063-17 : le haut du tableau ne bouge pas au clic dans une cellule.
+  // AC-153-1 : clic juste après « non » : cellule en saisie, curseur après `non`, haut du tableau en place, curseur de l'éditeur inchangé.
   await vue((v) => { v.dispatch({ selection: { anchor: 0 } }); v.scrollDOM.scrollTop = v.lineBlockAt(v.state.doc.line(23).from).top - 120; });
   const tableau = page.locator(".cm-hy-tableau");
   await expect(tableau).toHaveCount(1);
   const avant = (await tableau.boundingBox()).y;
-  await tableau.getByText("non").click();
-  await expect.poll(() => brut(page)).toBe("Ln 26, Col 14");
-  expect(await page.evaluate(() => document.activeElement.classList.contains("cm-content"))).toBe(true);
-  await expect(page.locator(".cm-activeLine")).toHaveText("| --fort   | non |");
-  const apres = (await page.locator(".cm-line", { hasText: "| option" }).boundingBox()).y;
+  const cellule = tableau.getByRole("cell", { name: "non", exact: true });
+  const boite = await cellule.boundingBox();
+  await page.mouse.click(boite.x + boite.width - 14, boite.y + boite.height / 2);
+  const saisie = tableau.getByRole("textbox", { name: "effet, rangée 2" });
+  await expect(saisie).toBeFocused();
+  await expect(saisie).toHaveText("non");
+  expect(await page.evaluate(() => { const s = document.getSelection(); return [s.anchorOffset, s.isCollapsed, s.anchorNode.textContent]; })).toEqual([3, true, "non"]);
+  await expect(tableau).toHaveCount(1);
+  expect(await brut(page)).toBe("Ln 1, Col 1");
+  const apres = (await tableau.boundingBox()).y;
   expect(Math.abs(apres - avant)).toBeLessThanOrEqual(1);
+  expect(await tableau.evaluate((e) => e.textContent.includes("|") || e.textContent.includes("---"))).toBe(false);
 
   // AC-063-19 : éteint puis allumé avec la ligne 25 en haut, le haut du tableau est au bord haut de l'éditeur.
   await ouvrirTableau(page, false);
@@ -571,7 +577,7 @@ test("REQ063_AC5_AC17_AC19_clavier_clic_dans_une_cellule_et_bascule", async ({ p
   expect(await brut(page)).toBe(position);
 });
 
-test("REQ063_AC8_AC13_AC14_AC15_AC16_AC18_tableau_rendu_comme_l_apercu", async ({ page }) => {
+test("REQ063_AC8_AC13_AC14_AC15_AC16_AC18_REQ153_AC8_AC9_AC10_AC11_AC15_tableau_rendu_comme_l_apercu", async ({ page }) => {
     await page.goto(pathToFileURL(resolve(dossier, "index.html")).href);
     const md = docTableau();
     const rendu = page.locator(".cm-hy-tableau");
@@ -632,7 +638,7 @@ test("REQ063_AC8_AC13_AC14_AC15_AC16_AC18_tableau_rendu_comme_l_apercu", async (
     });
     const entete = await rendu.locator("th").first().boundingBox();
     expect(Math.abs(centre(n23) - centre(entete))).toBeLessThanOrEqual(2);
-    // AC-063-16 : pointeur `text`, aucun fond ne change au survol, ni tabindex ni href.
+    // AC-063-16 : pointeur `text`, aucun fond ne change au survol, aucun href, aucun arrêt de Tab.
     const fond = (loc) => loc.evaluate((e) => getComputedStyle(e).backgroundColor);
     const cellule = rendu.locator("td").nth(3);
     const lien = rendu.locator("a");
@@ -643,7 +649,66 @@ test("REQ063_AC8_AC13_AC14_AC15_AC16_AC18_tableau_rendu_comme_l_apercu", async (
       expect(await loc.evaluate((e) => getComputedStyle(e).cursor)).toBe("text");
     }
     expect([await fond(cellule), await fond(lien)]).toEqual(avant);
-    expect(await rendu.locator("[tabindex], [href]").count()).toBe(0);
+    expect(await rendu.locator("[href]").count()).toBe(0);
+    expect(await rendu.locator("[tabindex]:not([tabindex='-1'])").count()).toBe(0);
+    // AC-153-8 à AC-153-11 : disques à leur place sous le pointeur réel, filet et cadre visibles.
+    const boiteDe = (loc) => loc.boundingBox();
+    const pointe = async (x, y) => { await page.mouse.move(x - 30, y - 30); await page.mouse.move(x, y, { steps: 4 }); };
+    const centreDe = async (loc) => { const b = await boiteDe(loc); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+    const th0 = await boiteDe(rendu.locator("th").nth(0));
+    const th1 = await boiteDe(rendu.locator("th").nth(1));
+    const rangee1 = await boiteDe(rendu.locator("tbody tr").nth(0).locator("td").first());
+    const rangee2 = await boiteDe(rendu.locator("tbody tr").nth(1).locator("td").first());
+    const tab = await boiteDe(rendu.locator("table"));
+    const pres = (a, b) => expect(Math.abs(a - b)).toBeLessThanOrEqual(3);
+    // Bordure entre « option » et « effet » : « Insérer une colonne », filet bleu de 2 px sur toute la hauteur.
+    const bx = (th0.x + th0.width + th1.x) / 2;
+    const py = rangee1.y + rangee1.height / 2;
+    await pointe(bx, py);
+    const insCol = rendu.getByRole("button", { name: "Insérer une colonne" });
+    await expect(insCol).toBeVisible();
+    const cc = await centreDe(insCol);
+    pres(cc.x, bx);
+    pres(cc.y, py);
+    const filetV = await boiteDe(rendu.locator(".ya-tableau-filet-v"));
+    expect(filetV.width).toBe(2);
+    pres(filetV.x + 1, bx);
+    pres(filetV.height, tab.height);
+    // Bordure entre deux rangées : « Insérer une ligne », filet sur toute la largeur du tableau.
+    const by = (rangee1.y + rangee1.height + rangee2.y) / 2;
+    const px = tab.x + tab.width / 3;
+    await pointe(px, by);
+    const insLigne = rendu.getByRole("button", { name: "Insérer une ligne" });
+    await expect(insLigne).toBeVisible();
+    const cl = await centreDe(insLigne);
+    pres(cl.x, px);
+    pres(cl.y, by);
+    const filetH = await boiteDe(rendu.locator(".ya-tableau-filet-h"));
+    expect(filetH.height).toBe(2);
+    pres(filetH.width, tab.width);
+    // En-tête « effet » : « Supprimer la colonne » au milieu du bord haut, colonne encadrée au survol du disque.
+    const c1 = await centreDe(rendu.locator("th").nth(1));
+    await pointe(c1.x, c1.y);
+    const supCol = rendu.getByRole("button", { name: "Supprimer la colonne" });
+    await expect(supCol).toBeVisible();
+    await expect(rendu.getByRole("button", { name: "Supprimer la ligne" })).toHaveCount(0);
+    await expect(rendu.getByRole("button", { name: "Insérer une ligne" })).toHaveCount(0);
+    const cs = await centreDe(supCol);
+    pres(cs.x, th1.x + th1.width / 2);
+    pres(cs.y, tab.y);
+    await supCol.hover();
+    const cadre = await boiteDe(rendu.locator(".ya-tableau-cadre"));
+    pres(cadre.x, th1.x);
+    pres(cadre.width, th1.width);
+    pres(cadre.height, tab.height);
+    // Rangée : « Supprimer la ligne » au milieu de la rangée, sur le bord droit.
+    const c2 = await centreDe(rendu.locator("tbody tr").nth(1).locator("td").first());
+    await pointe(c2.x, c2.y);
+    const supLigne = rendu.getByRole("button", { name: "Supprimer la ligne" });
+    await expect(supLigne).toBeVisible();
+    const cr = await centreDe(supLigne);
+    pres(cr.x, tab.x + tab.width);
+    pres(cr.y, rangee2.y + rangee2.height / 2);
     // AC-063-13 : 6 colonnes dans 400 px, un chemin de 80 caractères, pas de défilement horizontal.
     const chemin = "/".repeat(1) + "dossier/".repeat(10);
     const large = `| a | b | c | d | e | f |\n|---|---|---|---|---|---|\n| ${chemin.slice(0, 80)} | 2 | 3 | 4 | 5 | 6 |\n`;
@@ -654,6 +719,12 @@ test("REQ063_AC8_AC13_AC14_AC15_AC16_AC18_tableau_rendu_comme_l_apercu", async (
     await expect(rendu).toHaveCount(1);
     const defil = await page.evaluate(() => { const s = document.querySelector(".cm-scroller"); return s.scrollWidth - s.clientWidth; });
     expect(defil).toBe(0);
+    // AC-153-15 : la cellule du chemin en saisie, son texte passe à la ligne, toujours pas de défilement horizontal.
+    await rendu.locator("td").first().click();
+    const saisie80 = rendu.getByRole("textbox");
+    await expect(saisie80).toHaveText(chemin.slice(0, 80));
+    expect((await saisie80.boundingBox()).height).toBeGreaterThan(30);
+    expect(await page.evaluate(() => { const s = document.querySelector(".cm-scroller"); return s.scrollWidth - s.clientWidth; })).toBe(0);
     expect((await rendu.locator("td").first().boundingBox()).height).toBeGreaterThan(30);
     // AC-063-18 : clôtures du bloc de code à la hauteur de la ligne 4, vides, puis en --ink-muted.
     await page.evaluate(() => {
