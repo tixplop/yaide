@@ -6,7 +6,7 @@ import { history, undo, redo, undoDepth } from "@codemirror/commands";
 import { afterEach, expect, test, vi } from "vitest";
 import { apercu } from "./apercu.js";
 import { zoneCode } from "./zone-code.js";
-import { diagrammesHybride, bornesCellule, texteSaisie, sourceApres, validerSaisie, fondsRegles, decorationsHybride, hybride, lienA, tableauxHybride } from "./hybride.js";
+import { diagrammesHybride, bornesCellule, texteSaisie, sourceApres, validerSaisie, fondsRegles, decorationsHybride, hybride, lienA, tableauxHybride, insererColonne, insererLigne, supprimerColonne, supprimerLigne, zonesAides } from "./hybride.js";
 
 // Le curseur est en fin de document : une dernière ligne « fin » le tient loin des lignes testées.
 function deco(texte, { curseur, plages } = {}) {
@@ -496,6 +496,10 @@ test("REQ153_AC13_ctrl_clic_suit_le_lien_sans_saisie_et_mode_eteint_aucune_cellu
   expect(m.parent.querySelector(".ya-cellule-saisie")).toBeNull();
   m.fin();
   // Mode éteint, puis aperçu : aucune cellule n'est modifiable.
+  const allume = zoneCode({ contenu: DOCT.replace(TAB, T3), langage: "markdown", hybride: true });
+  document.body.append(allume);
+  expect(allume.querySelector(".cm-hy-tableau .ya-tableau-aides")).not.toBeNull();
+  allume.remove();
   for (const options of [{ hybride: false }, { hybride: false, apercu: true }]) {
     const z = zoneCode({ contenu: doc, langage: "markdown", ...options });
     document.body.append(z);
@@ -1033,4 +1037,255 @@ test("REQ152_AC13_chargement_en_attente_bloc_de_code_sans_message_puis_img_sans_
   expect(n.imgs().length).toBe(0);
   await vi.advanceTimersByTimeAsync(1600);
   expect(n.imgs().length).toBe(1);
+});
+
+// ---- Aides du tableau (REQ-153, T-353) ----
+const T3 = "| Option | Défaut | Effet |\n|---|:---:|---|\n| `--nom` | non | Salue |\n| `--fort` | non | Plus fort |";
+
+test("REQ153_AC8_insertion_de_colonne_au_debut_au_milieu_a_la_fin_reste_a_l_octet_pres", () => {
+  expect(insererColonne(T3, 0)).toBe("| | Option | Défaut | Effet |\n| --- |---|:---:|---|\n| | `--nom` | non | Salue |\n| | `--fort` | non | Plus fort |");
+  expect(insererColonne(T3, 1)).toBe("| Option | | Défaut | Effet |\n|---| --- |:---:|---|\n| `--nom` | | non | Salue |\n| `--fort` | | non | Plus fort |");
+  expect(insererColonne(T3, 3)).toBe("| Option | Défaut | Effet | |\n|---|:---:|---| --- |\n| `--nom` | non | Salue | |\n| `--fort` | non | Plus fort | |");
+  // Sans `|` de tête ni de queue.
+  expect(insererColonne("a | b\n--|--\n1 | 2", 0)).toBe("| | a | b\n| --- | --|--\n| | 1 | 2");
+  expect(insererColonne("a | b\n--|--\n1 | 2", 2)).toBe("a | b | |\n--|-- | --- |\n1 | 2 | |");
+  // Une rangée plus courte que l'en-tête reste telle quelle au-delà de sa fin.
+  expect(insererColonne("| a | b |\n|---|---|\n| 1 |", 2)).toBe("| a | b | |\n|---|---| --- |\n| 1 |");
+});
+
+test("REQ153_AC9_insertion_de_ligne_sous_l_en_tete_entre_deux_rangees_a_la_fin", () => {
+  const [en, sep, a, b] = T3.split("\n");
+  expect(insererLigne(T3, 0)).toBe([en, sep, "| | | |", a, b].join("\n"));
+  expect(insererLigne(T3, 1)).toBe([en, sep, a, "| | | |", b].join("\n"));
+  expect(insererLigne(T3, 2)).toBe([en, sep, a, b, "| | | |"].join("\n"));
+});
+
+test("REQ153_AC10_colonne_retiree_de_chaque_ligne_reste_a_l_octet_pres", () => {
+  expect(supprimerColonne(T3, 0)).toBe("| Défaut | Effet |\n|:---:|---|\n| non | Salue |\n| non | Plus fort |");
+  expect(supprimerColonne(T3, 1)).toBe("| Option | Effet |\n|---|---|\n| `--nom` | Salue |\n| `--fort` | Plus fort |");
+  expect(supprimerColonne(T3, 2)).toBe("| Option | Défaut |\n|---|:---:|\n| `--nom` | non |\n| `--fort` | non |");
+  expect(supprimerColonne("a | b\n--|--\n1 | 2", 1)).toBe("| a |\n| -- |\n| 1 |");
+  expect(supprimerColonne("| a \\| x | b |\n|---|---|\n| 1 | 2 |", 0)).toBe("| b |\n|---|\n| 2 |");
+});
+
+test("REQ153_AC11_ligne_retiree", () => {
+  const [en, sep, a, b] = T3.split("\n");
+  expect(supprimerLigne(T3, 1)).toBe([en, sep, b].join("\n"));
+  expect(supprimerLigne(T3, 2)).toBe([en, sep, a].join("\n"));
+  expect(supprimerLigne(T3, 0)).toBe(T3);
+  expect(supprimerLigne(T3, 3)).toBe(T3);
+});
+
+// 3 colonnes de 100 px à partir de x = 100, en-tête de y = 50 à 80, puis rangées de 30 px.
+const GRILLE = [0, 1, 2].map((r) => [0, 1, 2].map((c) => ({ left: 100 + c * 100, right: 200 + c * 100, top: 50 + r * 30, bottom: 80 + r * 30 })));
+const zone = (x, y, extra = {}) => zonesAides({ lignes: GRILLE, pointeur: { x, y }, gauche: 110, ...extra });
+
+test("REQ153_AC8_AC9_AC10_AC11_zones_des_disques_sous_le_pointeur", () => {
+  // Bordure entre deux colonnes : sur toute la hauteur, centré sur la bordure, à l'ordonnée du pointeur ; 4 px.
+  expect(zone(203, 100)).toMatchObject({ sorte: "inserer-colonne", indice: 1, x: 200, y: 100, filet: { x: 200, top: 50, bottom: 140 } });
+  expect(zone(205, 100)?.sorte).not.toBe("inserer-colonne");
+  // Bords gauche et droit : seulement à la hauteur de l'en-tête ; décalé pour la gouttière.
+  expect(zone(101, 60)).toMatchObject({ sorte: "inserer-colonne", indice: 0, x: 110, y: 60 });
+  expect(zone(399, 60)).toMatchObject({ sorte: "inserer-colonne", indice: 3, x: 400 });
+  expect(zone(101, 100)).toMatchObject({ sorte: "supprimer-ligne" });
+  // Bordure entre deux rangées : abscisse du pointeur, bornée à 8 px des bords ; sous l'en-tête et bord bas, jamais le bord haut.
+  expect(zone(250, 82)).toMatchObject({ sorte: "inserer-ligne", indice: 0, x: 250, y: 80, filet: { y: 80, left: 100, right: 400 } });
+  expect(zone(103, 82)).toMatchObject({ sorte: "inserer-ligne", x: 108 });
+  expect(zone(250, 109)).toMatchObject({ sorte: "inserer-ligne", indice: 1, y: 110 });
+  expect(zone(250, 139)).toMatchObject({ sorte: "inserer-ligne", indice: 2, y: 140 });
+  expect(zone(250, 142)).toMatchObject({ sorte: "inserer-ligne", indice: 2, y: 140 });
+  expect(zone(250, 48)).toBeNull();
+  expect(zone(250, 51)?.sorte).toBe("supprimer-colonne");
+  // Deux bordures : la plus proche ; à égalité, la verticale.
+  expect(zone(202, 83).sorte).toBe("inserer-colonne");
+  expect(zone(203, 82)).toMatchObject({ sorte: "inserer-ligne" });
+  expect(zone(203, 83)).toMatchObject({ sorte: "inserer-colonne" });
+  // En-tête : « Supprimer la colonne », milieu de la colonne, bord haut, cadre de la colonne entière.
+  expect(zone(250, 65)).toMatchObject({ sorte: "supprimer-colonne", indice: 1, x: 250, y: 50, cadre: { left: 200, right: 300, top: 50, bottom: 140 } });
+  // Rangée du corps : « Supprimer la ligne », bord droit ; 4 px à droite du bord compris.
+  expect(zone(250, 95)).toMatchObject({ sorte: "supprimer-ligne", indice: 1, x: 400, y: 95, cadre: { left: 100, right: 400, top: 80, bottom: 110 } });
+  expect(zone(250, 95 + 0)).toMatchObject({ indice: 1 });
+  expect(zone(404, 95)?.sorte).toBe("supprimer-ligne");
+  expect(zone(406, 95)).toBeNull();
+  // Une seule colonne : pas de « Supprimer la colonne ». En-tête : pas de « Supprimer la ligne ».
+  const seule = [[{ left: 100, right: 200, top: 50, bottom: 80 }], [{ left: 100, right: 200, top: 80, bottom: 110 }]];
+  expect(zonesAides({ lignes: seule, pointeur: { x: 150, y: 65 } })).toBeNull();
+  expect(zone(250, 65).sorte).not.toBe("supprimer-ligne");
+  // Hors du tableau.
+  expect(zone(50, 60)).toBeNull();
+  // Le disque sous le pointeur est gardé, immobile.
+  const d = zone(203, 100);
+  expect(zone(208, 108, { courant: d })).toBe(d);
+  expect(zone(240, 100, { courant: d })).not.toBe(d);
+});
+
+function monterAides(doc = DOCT.replace(TAB, T3)) {
+  const m = monterH(doc);
+  const actuel = () => m.parent.querySelector(".cm-hy-tableau");
+  const rect = (l, t, r, b) => ({ left: l, top: t, right: r, bottom: b, width: r - l, height: b - t, x: l, y: t });
+  const spy = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function () {
+    if (this.classList?.contains("cm-hy-tableau")) return rect(90, 40, 410, 130);
+    if (this.matches?.("td, th")) {
+      const r = this.parentElement.rowIndex;
+      const c = this.cellIndex;
+      return rect(100 + c * 100, 50 + r * 30, 200 + c * 100, 80 + r * 30);
+    }
+    return rect(0, 0, 0, 0);
+  });
+  const survol = (x, y, init = {}) => actuel().dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: x, clientY: y, ...init }));
+  const disque = () => actuel().querySelector(".ya-tableau-aides .ya-icon-btn-disque");
+  return { ...m, get tableau() { return actuel(); }, survol, disque, fin: () => (spy.mockRestore(), m.fin()) };
+}
+
+test("REQ153_AC8_clic_sur_le_disque_insere_une_colonne_en_une_transaction_et_ouvre_l_en_tete", async () => {
+  const m = monterAides();
+  m.survol(203, 60);
+  expect(m.disque().getAttribute("aria-label")).toBe("Insérer une colonne");
+  expect(m.parent.querySelectorAll(".ya-tableau-aides .ya-icon-btn-disque").length).toBe(1);
+  expect(m.disque().style.left).toBe("110px");
+  expect(m.disque().style.top).toBe("20px");
+  const filet = m.tableau.querySelector(".ya-tableau-filet-v");
+  expect(filet.style.left).toBe("109px");
+  expect(filet.style.height).toBe("90px");
+  let transactions = 0;
+  const origine = m.vue.dispatch.bind(m.vue);
+  m.vue.dispatch = (...a) => (transactions++, origine(...a));
+  const sel = m.vue.state.selection.main.head;
+  m.disque().click();
+  await m.attendre();
+  expect(transactions).toBe(1);
+  expect(m.vue.state.doc.toString()).toBe(DOCT.replace(TAB, insererColonne(T3, 1)));
+  expect(m.vue.state.selection.main.head).toBe(sel);
+  expect(m.parent.querySelectorAll(".cm-hy-tableau th").length).toBe(4);
+  expect(m.saisie().getAttribute("aria-label")).toBe("En-tête de la colonne 2");
+  m.fin();
+});
+
+test("REQ153_AC9_clic_sur_le_disque_insere_une_ligne_et_ouvre_sa_premiere_cellule", async () => {
+  const m = monterAides();
+  m.survol(250, 81);
+  expect(m.disque().getAttribute("aria-label")).toBe("Insérer une ligne");
+  expect(m.tableau.querySelector(".ya-tableau-filet-h")).not.toBeNull();
+  m.disque().click();
+  await m.attendre();
+  expect(m.vue.state.doc.toString()).toBe(DOCT.replace(TAB, insererLigne(T3, 0)));
+  expect(m.parent.querySelectorAll(".cm-hy-tableau tr").length).toBe(4);
+  expect(m.saisie().getAttribute("aria-label")).toBe("Option, rangée 1");
+  expect(m.saisie().closest("tr").rowIndex).toBe(1);
+  m.fin();
+});
+
+test("REQ153_AC10_AC11_suppression_de_colonne_et_de_ligne_cadre_rouge_focus_au_texte", async () => {
+  const m = monterAides();
+  m.survol(250, 65);
+  expect(m.disque().getAttribute("aria-label")).toBe("Supprimer la colonne");
+  expect(m.tableau.querySelector(".ya-tableau-cadre")).toBeNull();
+  m.disque().dispatchEvent(new MouseEvent("mouseenter"));
+  const cadre = m.tableau.querySelector(".ya-tableau-cadre");
+  expect([cadre.style.left, cadre.style.width, cadre.style.height]).toEqual(["110px", "100px", "90px"]);
+  m.disque().dispatchEvent(new MouseEvent("mouseleave"));
+  expect(m.tableau.querySelector(".ya-tableau-cadre")).toBeNull();
+  m.disque().click();
+  expect(m.vue.state.doc.toString()).toBe(DOCT.replace(TAB, supprimerColonne(T3, 1)));
+  expect(m.parent.querySelectorAll(".cm-hy-tableau th").length).toBe(2);
+  expect(m.parent.querySelector(".ya-tableau-aides .ya-icon-btn-disque")).toBeNull();
+  expect(m.vue.hasFocus || document.activeElement === m.vue.contentDOM).toBe(true);
+  m.survol(150, 125);
+  expect(m.disque().getAttribute("aria-label")).toBe("Supprimer la ligne");
+  m.disque().click();
+  expect(m.vue.state.doc.toString()).toBe(DOCT.replace(TAB, supprimerLigne(supprimerColonne(T3, 1), 2)));
+  expect(m.parent.querySelectorAll(".cm-hy-tableau tr").length).toBe(2);
+  m.fin();
+});
+
+test("REQ153_AC10_AC11_pas_de_suppression_de_colonne_seule_ni_de_ligne_ni_d_insertion_au_dessus_de_l_en_tete", () => {
+  const m = monterAides("avant\n\n| a |\n|---|\n| 1 |\n\nfin");
+  m.tableau.getBoundingClientRect(); // grille de 3 colonnes : seule la première existe ici
+  m.survol(150, 65);
+  expect(m.disque()).toBeNull();
+  m.survol(150, 51);
+  expect(m.disque()).toBeNull();
+  m.fin();
+});
+
+test("REQ153_AC12_deux_actions_puis_undo_undo_redo_redo", async () => {
+  const m = monterAides();
+  m.survol(203, 60);
+  m.disque().click();
+  await m.attendre();
+  m.touche(m.saisie(), "Escape");
+  m.survol(250, 65);
+  m.disque().click();
+  const [apres1, apres2] = [DOCT.replace(TAB, insererColonne(T3, 1)), m.vue.state.doc.toString()];
+  expect(apres2).not.toBe(apres1);
+  undo(m.vue);
+  expect(m.vue.state.doc.toString()).toBe(apres1);
+  undo(m.vue);
+  expect(m.vue.state.doc.toString()).toBe(DOCT.replace(TAB, T3));
+  expect(m.parent.querySelector(".cm-hy-tableau")).not.toBeNull();
+  redo(m.vue);
+  redo(m.vue);
+  expect(m.vue.state.doc.toString()).toBe(apres2);
+  m.fin();
+});
+
+test("REQ153_AC12_saisie_ouverte_validee_avant_l_action_deux_pas_d_annulation", async () => {
+  const m = monterAides();
+  m.clic(m.cellules()[4]);
+  m.taper("oui");
+  m.survol(250, 81);
+  m.disque().click();
+  await m.attendre();
+  const doc = m.vue.state.doc.toString();
+  expect(doc).toContain("| `--nom` | oui | Salue |");
+  expect(doc).toContain("| | | |");
+  undo(m.vue);
+  expect(m.vue.state.doc.toString()).toContain("| `--nom` | oui | Salue |");
+  expect(m.vue.state.doc.toString()).not.toContain("| | | |");
+  undo(m.vue);
+  expect(m.vue.state.doc.toString()).toBe(DOCT.replace(TAB, T3));
+  m.fin();
+});
+
+test("REQ153_AC13_aucun_disque_mode_eteint_et_ctrl_enfonce", () => {
+  const m = monterAides();
+  m.survol(203, 60);
+  expect(m.disque()).not.toBeNull();
+  m.survol(203, 60, { ctrlKey: true });
+  expect(m.disque()).toBeNull();
+  m.survol(203, 60);
+  expect(m.disque()).not.toBeNull();
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Control", ctrlKey: true }));
+  expect(m.disque()).toBeNull();
+  m.fin();
+  // Témoin : allumé, le tableau rendu porte son calque ; éteint, puis aperçu : aucun calque, aucun disque.
+  const allume = zoneCode({ contenu: DOCT.replace(TAB, T3), langage: "markdown", hybride: true });
+  document.body.append(allume);
+  expect(allume.querySelector(".cm-hy-tableau .ya-tableau-aides")).not.toBeNull();
+  allume.remove();
+  for (const options of [{ hybride: false }, { hybride: false, apercu: true }]) {
+    const z = zoneCode({ contenu: DOCT.replace(TAB, T3), langage: "markdown", ...options });
+    document.body.append(z);
+    z.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 203, clientY: 60 }));
+    expect(z.querySelector(".cm-hy-tableau, .ya-tableau-aides, .ya-icon-btn-disque")).toBeNull();
+    z.remove();
+  }
+});
+
+test("REQ153_AC14_disques_hors_tab_partent_au_mouseleave_et_pendant_un_glisse", () => {
+  const m = monterAides();
+  m.survol(203, 60);
+  expect(m.disque().tabIndex).toBe(-1);
+  expect(m.tableau.contains(m.disque())).toBe(true);
+  m.tableau.dispatchEvent(new MouseEvent("mouseleave"));
+  expect(m.disque()).toBeNull();
+  m.survol(203, 60);
+  m.survol(203, 61, { buttons: 1 });
+  expect(m.disque()).toBeNull();
+  m.survol(203, 60);
+  m.survol(250, 65);
+  expect(m.parent.querySelectorAll(".ya-icon-btn-disque").length).toBe(1);
+  expect(m.disque().getAttribute("aria-label")).toBe("Supprimer la colonne");
+  expect(m.tableau.querySelector(".ya-tableau-filet")).toBeNull();
+  m.fin();
 });

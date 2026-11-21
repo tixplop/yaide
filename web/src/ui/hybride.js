@@ -4,6 +4,7 @@ import { isolateHistory } from "@codemirror/commands";
 import { syntaxTree } from "@codemirror/language";
 import { rendreMarkdown } from "./apercu.js";
 import { estMac, lienDeDocument } from "../references.js";
+import { bouton } from "./bouton.js";
 import { chargerMermaid, adresseDiagramme, dessinConnu, dessinerTexte } from "./diagramme.js";
 
 // Mode hybride (REQ-062, DEC-041) : le markdown est mis en forme dans l'éditeur, d'après l'arbre de
@@ -233,6 +234,123 @@ export function sourceApres(source, rangee, colonne, texte) {
   return source.slice(0, b.debut) + texteEcrit(texte) + source.slice(b.fin);
 }
 
+// Structure d'une ligne de tableau : positions des `|` non échappés, présence des `|` de tête et de queue, nombre de cellules.
+function structureLigne(texte) {
+  const blanc = (c) => c === " " || c === "\t";
+  let debut = 0;
+  while (blanc(texte[debut])) debut++;
+  let fin = texte.length;
+  while (fin > debut && blanc(texte[fin - 1])) fin--;
+  const barres = [];
+  for (let i = debut; i < fin; i++) {
+    if (texte[i] === "\\") i++;
+    else if (texte[i] === "|") barres.push(i);
+  }
+  const tete = texte[debut] === "|";
+  const queue = barres.length > 0 && barres.at(-1) === fin - 1 && !(tete && barres.length === 1);
+  const n = barres.length - (tete && queue ? 1 : 0) + (!tete && !queue ? 1 : 0);
+  return { debut, fin, barres, tete, n, avant: (k) => (tete ? barres[k] : k === 0 ? undefined : barres[k - 1]) };
+}
+
+const parLignes = (source, f) => source.split("\n").map(f).join("\n");
+
+// Source après l'ajout d'une cellule vide à la colonne `k` (0 = avant la première) dans chaque ligne ; `---` dans la séparation.
+export function insererColonne(source, k) {
+  return parLignes(source, (texte, i) => {
+    const s = structureLigne(texte);
+    if (k > s.n) return texte;
+    const cellule = i === 1 ? " --- |" : " |";
+    const pos = s.avant(k);
+    if (pos !== undefined) return texte.slice(0, pos + 1) + cellule + texte.slice(pos + 1);
+    if (k === 0) return texte.slice(0, s.debut) + "|" + cellule + " " + texte.slice(s.debut);
+    return texte.slice(0, s.fin) + " |" + cellule;
+  });
+}
+
+// Source après le retrait de la colonne `k` de chaque ligne.
+export function supprimerColonne(source, k) {
+  return parLignes(source, (texte) => {
+    const s = structureLigne(texte);
+    if (k >= s.n) return texte;
+    const avant = s.avant(k);
+    const apres = s.tete ? s.barres[k + 1] : s.barres[k];
+    const r = apres !== undefined ? texte.slice(0, avant === undefined ? s.debut : avant + 1) + texte.slice(apres + 1) : texte.slice(0, avant) + texte.slice(s.fin);
+    if (s.n > 2) return r;
+    // Une seule colonne reste : les `|` de bord gardent le tableau (sans eux, la séparation devient un titre).
+    const [corps, fin] = [r.trimEnd(), r.slice(r.trimEnd().length)];
+    const indent = corps.length - corps.trimStart().length;
+    const tete = corps[indent] === "|" ? "" : "| ";
+    const queue = corps.endsWith("|") && !corps.endsWith("\\|") ? "" : " |";
+    return corps.slice(0, indent) + tete + corps.slice(indent) + queue + (queue ? "" : fin);
+  });
+}
+
+// Source après l'ajout d'une ligne vide au rang `p` du corps (0 = juste sous l'en-tête, nombre de rangées = à la fin).
+export function insererLigne(source, p) {
+  const lignes = source.split("\n");
+  const vide = "|" + " |".repeat(structureLigne(lignes[0]).n);
+  lignes.splice(Math.min(2 + p, lignes.length), 0, vide);
+  return lignes.join("\n");
+}
+
+// Source après le retrait de la rangée `rangee` du tableau rendu (1 = première rangée du corps).
+export function supprimerLigne(source, rangee) {
+  const lignes = source.split("\n");
+  if (rangee < 1 || rangee + 1 >= lignes.length) return source;
+  lignes.splice(rangee + 1, 1);
+  return lignes.join("\n");
+}
+
+const TOLERANCE_AIDE = 4;
+const DEMI_DISQUE = 10;
+
+// Disque d'aide sous le pointeur d'un tableau rendu (REQ-153, C-008 « Aides »). Fonction pure, coordonnées de la fenêtre.
+// `lignes` : rectangles { left, top, right, bottom } des cellules, rangée par rangée (l'en-tête d'abord) ; `courant` : le disque déjà visible ;
+// `gauche` : plus petite abscisse du centre d'un disque (pour ne pas passer sous la gouttière).
+// Rend { sorte, indice, x, y, filet | cadre } (sorte = nom de l'icône) ou null.
+export function zonesAides({ lignes, pointeur: { x, y }, courant, gauche = -Infinity }) {
+  if (courant && Math.abs(x - courant.x) <= DEMI_DISQUE && Math.abs(y - courant.y) <= DEMI_DISQUE) return courant;
+  const en = lignes[0];
+  if (!en?.length) return null;
+  const bornes = lignes.map((r) => ({ top: Math.min(...r.map((c) => c.top)), bottom: Math.max(...r.map((c) => c.bottom)) }));
+  const t = { left: en[0].left, right: en.at(-1).right, top: bornes[0].top, bottom: bornes.at(-1).bottom };
+  const dansTableau = x >= t.left - TOLERANCE_AIDE && x <= t.right + TOLERANCE_AIDE && y >= t.top && y <= t.bottom + TOLERANCE_AIDE;
+  let meilleur = null;
+  if (dansTableau) {
+    for (let k = 0; k <= en.length; k++) {
+      const bord = k === 0 || k === en.length;
+      if (bord && (y < bornes[0].top || y > bornes[0].bottom)) continue;
+      const bx = k === 0 ? en[0].left : k === en.length ? en[k - 1].right : (en[k - 1].right + en[k].left) / 2;
+      const d = Math.abs(x - bx);
+      if (d <= TOLERANCE_AIDE && (!meilleur || d < meilleur.d)) {
+        const [haut, bas] = bord ? [bornes[0].top, bornes[0].bottom] : [t.top, t.bottom];
+        meilleur = { d, disque: { sorte: "inserer-colonne", indice: k, x: Math.max(bx, gauche), y: Math.min(Math.max(y, haut), bas), filet: { x: bx, top: t.top, bottom: t.bottom } } };
+      }
+    }
+    if (x >= t.left && x <= t.right) {
+      for (let r = 0; r < lignes.length; r++) {
+        const by = r === lignes.length - 1 ? bornes[r].bottom : (bornes[r].bottom + bornes[r + 1].top) / 2;
+        const d = Math.abs(y - by);
+        if (d <= TOLERANCE_AIDE && (!meilleur || d < meilleur.d)) {
+          const [a, b] = [t.left + 8, t.right - 8];
+          meilleur = { d, disque: { sorte: "inserer-ligne", indice: r, x: a > b ? (t.left + t.right) / 2 : Math.min(Math.max(x, a), b), y: by, filet: { y: by, left: t.left, right: t.right } } };
+        }
+      }
+    }
+  }
+  if (meilleur) return meilleur.disque;
+  if (en.length >= 2 && y >= bornes[0].top && y <= bornes[0].bottom) {
+    const j = en.findIndex((c) => x >= c.left && x <= c.right);
+    if (j >= 0) return { sorte: "supprimer-colonne", indice: j, x: (en[j].left + en[j].right) / 2, y: t.top, cadre: { left: en[j].left, right: en[j].right, top: t.top, bottom: t.bottom } };
+  }
+  for (let r = 1; r < lignes.length; r++) {
+    if (y >= bornes[r].top && y <= bornes[r].bottom && x >= t.left && x <= t.right + TOLERANCE_AIDE) {
+      return { sorte: "supprimer-ligne", indice: r, x: t.right, y: (bornes[r].top + bornes[r].bottom) / 2, cadre: { left: t.left, right: t.right, top: bornes[r].top, bottom: bornes[r].bottom } };
+    }
+  }
+  return null;
+}
+
 // Tableaux rendus : ceux dont aucune ligne n'est touchée par la sélection, de la première à la dernière ligne entière.
 export function tableauxHybride(etat) {
   const doc = etat.doc;
@@ -288,8 +406,14 @@ export class TableauRendu extends WidgetType {
       if (ouverte) ouverte.valider({ indice: indiceTableau(vue, el), rangee, colonne: cellule.cellIndex });
       else ouvrirSaisie(vue, el, this.source, rangee, cellule.cellIndex, point);
     });
-    if (table) ouvreurs.set(el, (rangee, colonne) => ouvrirSaisie(vue, el, this.source, rangee, colonne));
+    if (table) {
+      ouvreurs.set(el, (rangee, colonne) => ouvrirSaisie(vue, el, this.source, rangee, colonne));
+      nettoyages.set(el, aidesDuTableau(vue, el, table));
+    }
     return el;
+  }
+  destroy(dom) {
+    nettoyages.get(dom)?.();
   }
   ignoreEvent() {
     return true;
@@ -327,6 +451,117 @@ const ouvertureDeCellule = ViewPlugin.fromClass(
     }
   },
 );
+
+const nettoyages = new WeakMap(); // élément du tableau rendu -> retire les écouteurs de la fenêtre
+
+// Disques « Insérer » et « Supprimer » au survol, filet et cadre (REQ-153, C-008 « Aides »). Rend la fonction qui retire les écouteurs de la fenêtre.
+function aidesDuTableau(vue, el, table) {
+  const mac = estMac();
+  const modif = (e) => (mac ? e.metaKey : e.ctrlKey);
+  const calque = document.createElement("div");
+  calque.className = "ya-tableau-aides";
+  el.append(calque);
+  let courant = null; // disque affiché
+  let bouton_ = null;
+  let trait = null;
+  const effacer = () => {
+    courant = null;
+    bouton_?.enveloppe.remove();
+    bouton_ = null;
+    trait?.remove();
+    trait = null;
+  };
+  const poser = (div, style) => {
+    for (const [k, v] of Object.entries(style)) div.style[k] = `${v}px`;
+  };
+  const tracer = (classe, style) => {
+    trait?.remove();
+    trait = document.createElement("div");
+    trait.className = classe;
+    poser(trait, style);
+    calque.append(trait);
+  };
+  const agir = () => {
+    const d = courant;
+    if (!d) return;
+    const indice = indiceTableau(vue, el);
+    const debut = vue.posAtDOM(el);
+    validerSaisie(vue);
+    const t = tableauxHybride(vue.state).find((x) => x.debut === debut);
+    if (!t) return;
+    let apres;
+    let suite = null;
+    if (d.sorte === "inserer-colonne") {
+      apres = insererColonne(t.source, d.indice);
+      suite = { indice, rangee: 0, colonne: d.indice };
+    } else if (d.sorte === "inserer-ligne") {
+      apres = insererLigne(t.source, d.indice);
+      suite = { indice, rangee: d.indice + 1, colonne: 0 };
+    } else if (d.sorte === "supprimer-colonne") apres = supprimerColonne(t.source, d.indice);
+    else apres = supprimerLigne(t.source, d.indice);
+    effacer();
+    let a = 0;
+    while (a < t.source.length && a < apres.length && t.source[a] === apres[a]) a++;
+    let b = 0;
+    while (b < t.source.length - a && b < apres.length - a && t.source[t.source.length - 1 - b] === apres[apres.length - 1 - b]) b++;
+    vue.dispatch({
+      changes: { from: t.debut + a, to: t.debut + t.source.length - b, insert: apres.slice(a, apres.length - b) },
+      annotations: isolateHistory.of("full"),
+      effects: suite ? [ouvrirCellule.of(suite)] : [],
+    });
+    if (!suite) vue.focus();
+  };
+  const afficher = (d, base) => {
+    const [x, y] = [d.x - base.left, d.y - base.top];
+    if (bouton_?.dataset.sorte !== d.sorte) {
+      bouton_?.enveloppe.remove();
+      const colonne = d.sorte.endsWith("colonne");
+      const nom = { "inserer-colonne": "Insérer une colonne", "inserer-ligne": "Insérer une ligne", "supprimer-colonne": "Supprimer la colonne", "supprimer-ligne": "Supprimer la ligne" }[d.sorte];
+      bouton_ = bouton({ icone: d.sorte, nomAccessible: nom, taille: "disque", positionInfoBulle: colonne ? "dessus" : "droite" });
+      bouton_.dataset.sorte = d.sorte;
+      bouton_.addEventListener("click", agir);
+      if (d.sorte.startsWith("supprimer")) {
+        bouton_.addEventListener("mouseenter", () => {
+          const c = courant?.cadre;
+          if (c) {
+            const r = el.getBoundingClientRect();
+            tracer("ya-tableau-cadre", { left: c.left - r.left, top: c.top - r.top, width: c.right - c.left, height: c.bottom - c.top });
+          }
+        });
+        bouton_.addEventListener("mouseleave", () => {
+          trait?.remove();
+          trait = null;
+        });
+      }
+      calque.append(bouton_.enveloppe);
+    }
+    poser(bouton_, { left: x, top: y });
+    courant = d;
+    if (d.filet) {
+      const f = d.filet;
+      if (d.sorte === "inserer-colonne") tracer("ya-tableau-filet ya-tableau-filet-v", { left: f.x - base.left - 1, top: f.top - base.top, height: f.bottom - f.top });
+      else tracer("ya-tableau-filet ya-tableau-filet-h", { left: f.left - base.left, top: f.y - base.top - 1, width: f.right - f.left });
+    } else if (!bouton_.matches(":hover")) {
+      trait?.remove();
+      trait = null;
+    }
+  };
+  el.addEventListener("mousemove", (e) => {
+    if (modif(e) || e.buttons & 1) return effacer();
+    const lignes = [...table.rows].map((r) => [...r.cells].map((c) => c.getBoundingClientRect()));
+    const base = el.getBoundingClientRect();
+    const d = zonesAides({ lignes, pointeur: { x: e.clientX, y: e.clientY }, courant, gauche: base.left + DEMI_DISQUE });
+    if (!d) return effacer();
+    if (d === courant) return;
+    afficher(d, base);
+  });
+  el.addEventListener("mouseleave", effacer);
+  const touche = (e) => {
+    if (e.key === (mac ? "Meta" : "Control") && e.type === "keydown") effacer();
+  };
+  window.addEventListener("keydown", touche, true);
+  return () => window.removeEventListener("keydown", touche, true);
+}
 
 const indiceTableau = (vue, el) => [...vue.dom.querySelectorAll(".cm-hy-tableau")].indexOf(el);
 
