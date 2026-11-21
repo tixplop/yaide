@@ -747,10 +747,14 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     const attente = { klaxoon, copie: copier(doc, choisis), recu: false };
     enAttente = attente;
     let accepte = false;
+    // L'événement `copy` part de l'élément où se trouve le curseur de sélection, parfois hors de la surface : on l'écoute sur le document le temps de la commande.
+    document.addEventListener("copy", surCopie, true);
     try {
       accepte = document.execCommand("copy") === true;
     } catch {
       accepte = false;
+    } finally {
+      document.removeEventListener("copy", surCopie, true);
     }
     enAttente = null;
     if (!accepte || !attente.recu) {
