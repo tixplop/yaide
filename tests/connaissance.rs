@@ -255,11 +255,29 @@ type Recues = Arc<Mutex<Vec<Value>>>;
 /// `(code, délai en ms)`, puis 200 tout de suite. Un texte `v<n>…` a le vecteur `[n, 1]`,
 /// les autres `[1, 0]`.
 fn faux_provider(scenario: Vec<(u16, u64)>) -> (String, Recues) {
+    let (adresse, recues, _) = faux_provider_retenu(scenario);
+    (adresse, recues)
+}
+
+/// Délai d'une réponse du faux provider qui attend un permis du test (fichier témoin à la place d'une pause).
+const RETENU: u64 = u64::MAX;
+
+/// Comme `faux_provider`, mais une réponse de délai `RETENU` attend un permis : chaque
+/// `permis.fetch_add(1, ..)` libère la réponse retenue suivante, dans l'ordre.
+fn faux_provider_retenu(
+    scenario: Vec<(u16, u64)>,
+) -> (String, Recues, Arc<std::sync::atomic::AtomicUsize>) {
     use axum::body::Bytes;
     use axum::extract::State;
     use axum::http::{HeaderMap, StatusCode, Uri};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     #[derive(Clone)]
-    struct Etat(Arc<Mutex<VecDeque<(u16, u64)>>>, Recues);
+    struct Etat(
+        Arc<Mutex<VecDeque<(u16, u64)>>>,
+        Recues,
+        Arc<AtomicUsize>,
+        Arc<AtomicUsize>,
+    );
     fn vecteur(t: &str) -> Vec<f32> {
         let chiffres: String = t
             .strip_prefix('v')
@@ -286,7 +304,15 @@ fn faux_provider(scenario: Vec<(u16, u64)>) -> (String, Recues) {
             "input": v["input"],
         }));
         let (code, delai) = e.0.lock().unwrap().pop_front().unwrap_or((200, 0));
-        tokio::time::sleep(Duration::from_millis(delai)).await;
+        if delai == RETENU {
+            let rang = e.3.fetch_add(1, Ordering::SeqCst);
+            let debut = Instant::now();
+            while e.2.load(Ordering::SeqCst) <= rang && debut.elapsed() < Duration::from_secs(30) {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        } else {
+            tokio::time::sleep(Duration::from_millis(delai)).await;
+        }
         if code != 200 {
             return (
                 StatusCode::from_u16(code).unwrap(),
@@ -307,7 +333,13 @@ fn faux_provider(scenario: Vec<(u16, u64)>) -> (String, Recues) {
     ecoute.set_nonblocking(true).unwrap();
     let adresse = format!("http://{}", ecoute.local_addr().unwrap());
     let recues: Recues = Default::default();
-    let etat = Etat(Arc::new(Mutex::new(scenario.into())), recues.clone());
+    let permis = Arc::new(AtomicUsize::new(0));
+    let etat = Etat(
+        Arc::new(Mutex::new(scenario.into())),
+        recues.clone(),
+        permis.clone(),
+        Arc::new(AtomicUsize::new(0)),
+    );
     std::thread::spawn(move || {
         tokio::runtime::Runtime::new()
             .unwrap()
@@ -317,7 +349,11 @@ fn faux_provider(scenario: Vec<(u16, u64)>) -> (String, Recues) {
                 axum::serve(ecoute, app).await.unwrap();
             });
     });
-    (adresse, recues)
+    (adresse, recues, permis)
+}
+
+fn liberer(permis: &std::sync::atomic::AtomicUsize) {
+    permis.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 }
 
 /// Ollama (sans clé) à l'adresse donnée, puis la base configurée sur ce provider.
@@ -604,7 +640,7 @@ fn REQ104_AC9_refus_du_provider_arrete_l_ajout_et_garde_les_fichiers_finis() {
 #[test]
 fn REQ104_AC10_REQ105_AC4_AC5_second_ajout_refuse_progression_et_suppression_refusee() {
     // Deux lots : le second tarde, ce qui laisse lire l'avancement.
-    let (adresse, _) = faux_provider(vec![(200, 0), (200, 1500)]);
+    let (adresse, _, permis) = faux_provider_retenu(vec![(200, 0), (200, RETENU)]);
     let s = lancer("ac10");
     let ligne = format!("v2 {}", "x".repeat(1500));
     ecrire(&s, "docs/a.md", "v1 a\n");
@@ -643,6 +679,7 @@ fn REQ104_AC10_REQ105_AC4_AC5_second_ajout_refuse_progression_et_suppression_ref
         r.json()["message"],
         "L'ajout à notes est en cours. Attendez sa fin pour supprimer la collection."
     );
+    liberer(&permis);
     let fin = s.attendre_fin();
     assert_eq!(fin["etat"], "fini");
     assert_eq!(fin["ajoutes"], 2);
@@ -1157,7 +1194,8 @@ fn REQ110_AC6_REQ112_refus_du_provider_ancien_vecteurs_ecartes_sans_nouvelle_req
 #[test]
 fn REQ110_AC7_aucune_mise_a_jour_pendant_un_ajout_et_ajout_non_refuse_pendant_une_mise_a_jour() {
     // 1 : ajout de a ; 2 : ajout de c (lent) ; 3 : mise à jour de a ; 4 : mise à jour lente de a ; 5 : ajout de d.
-    let (adresse, recues) = faux_provider(vec![(200, 0), (200, 1000), (200, 0), (200, 1000)]);
+    let (adresse, recues, permis) =
+        faux_provider_retenu(vec![(200, 0), (200, RETENU), (200, 0), (200, RETENU)]);
     let s = lancer_rapide("ac110-7");
     ecrire(&s, "docs/a.md", "v1 un\n");
     ecrire(&s, "docs/c.md", "v3 trois\n");
@@ -1168,13 +1206,14 @@ fn REQ110_AC7_aucune_mise_a_jour_pendant_un_ajout_et_ajout_non_refuse_pendant_un
     assert_eq!(s.ajouter("notes", &["docs/c.md"]).code, 202);
     attendre("requête de l'ajout", || nombre_requetes(&recues) == 2);
     ecrire(&s, "docs/a.md", "v5 cinq\n");
-    // Pendant l'ajout (1 s, plusieurs passes), a.md n'est pas envoyé.
-    let debut = Instant::now();
-    while s.etat()["ajout"]["etat"] == "en_cours" {
+    // Pendant l'ajout (retenu, plusieurs passes), a.md n'est pas envoyé.
+    for _ in 0..5 {
+        assert_eq!(s.etat()["ajout"]["etat"], "en_cours");
         assert_eq!(nombre_requetes(&recues), 2);
-        assert!(debut.elapsed() < Duration::from_secs(10));
         std::thread::sleep(Duration::from_millis(100));
     }
+    liberer(&permis);
+    attendre("fin de l'ajout", || s.etat()["ajout"]["etat"] != "en_cours");
     attendre("mise à jour de a.md", || nombre_requetes(&recues) == 3);
     attendre("vecteurs de a.md", || {
         vecteurs_de(&s, "notes") == [5.0, 1.0, 3.0, 1.0]
@@ -1185,6 +1224,7 @@ fn REQ110_AC7_aucune_mise_a_jour_pendant_un_ajout_et_ajout_non_refuse_pendant_un
     attendre("mise à jour lente", || nombre_requetes(&recues) == 4);
     let r = s.ajouter("notes", &["docs/d.md"]);
     assert_eq!(r.code, 202, "{}", r.corps);
+    liberer(&permis);
     let fin = attendre_numero(&s, 3);
     assert_eq!(fin["etat"], "fini");
     assert_eq!(s.fichiers("notes"), ["docs/a.md", "docs/c.md", "docs/d.md"]);
@@ -1326,7 +1366,7 @@ fn REQ111_refus_comme_l_ajout_base_non_configuree() {
 
 #[test]
 fn REQ111_AC4_travail_en_cours_refuse_en_409_et_continue() {
-    let (adresse, _) = faux_provider(vec![(200, 0), (200, 1500)]);
+    let (adresse, _, permis) = faux_provider_retenu(vec![(200, 0), (200, RETENU)]);
     let s = lancer("ac111-409");
     ecrire(&s, "docs/a.md", "v1 un\n");
     ecrire(&s, "docs/d.md", "v4 quatre\n");
@@ -1347,6 +1387,7 @@ fn REQ111_AC4_travail_en_cours_refuse_en_409_et_continue() {
     let c = s.collection("notes").unwrap();
     assert!(c.get("ajout").is_none(), "{c}");
     assert_eq!(s.etat()["ajout"]["etat"], "en_cours");
+    liberer(&permis);
     let fin = attendre_numero(&s, 2);
     assert_eq!(fin["etat"], "fini");
     assert_eq!(fin["ajoutes"], 1);
@@ -1354,7 +1395,7 @@ fn REQ111_AC4_travail_en_cours_refuse_en_409_et_continue() {
 
 #[test]
 fn REQ111_AC4_ajout_en_cours_refuse_la_mise_a_jour_et_continue() {
-    let (adresse, _) = faux_provider(vec![(200, 0), (200, 1500)]);
+    let (adresse, _, permis) = faux_provider_retenu(vec![(200, 0), (200, RETENU)]);
     let s = lancer("ac111-409b");
     ecrire(&s, "docs/a.md", "v1 un\n");
     ecrire(&s, "docs/d.md", "v4 quatre\n");
@@ -1365,6 +1406,7 @@ fn REQ111_AC4_ajout_en_cours_refuse_la_mise_a_jour_et_continue() {
     let r = s.mettre_a_jour(&["docs/a.md"]);
     assert_eq!(r.code, 409, "{}", r.corps);
     assert_eq!(r.json()["cause"], "encours");
+    liberer(&permis);
     let fin = attendre_numero(&s, 2);
     assert_eq!(fin["etat"], "fini");
     assert_eq!(fin["genre"], "ajout");
@@ -1700,7 +1742,7 @@ fn REQ114_AC1_AC2_AC8_reglages_par_defaut_enregistres_relus_et_perdus_avec_la_co
 
 #[test]
 fn REQ114_AC2_enregistrement_accepte_pendant_un_ajout() {
-    let (adresse, recues) = faux_provider(vec![(200, 0), (200, 1500)]);
+    let (adresse, recues, permis) = faux_provider_retenu(vec![(200, 0), (200, RETENU)]);
     let s = lancer("ac114-2b");
     ecrire(&s, "docs/a.md", "v1 un\n");
     ecrire(&s, "docs/c.md", "v3 trois\n");
@@ -1716,6 +1758,7 @@ fn REQ114_AC2_enregistrement_accepte_pendant_un_ajout() {
         &json!({ "passages": 4, "score_minimal": null }),
     );
     assert_eq!(r.code, 200, "{}", r.corps);
+    liberer(&permis);
     s.attendre_fin();
     assert_eq!(
         recherche_de(&s, "notes"),

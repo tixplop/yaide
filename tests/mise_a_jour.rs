@@ -37,7 +37,7 @@ impl Env {
             format!(
                 r#"#!/bin/sh
 echo "$*" >> "{r}/appels"
-[ -f "{r}/lent" ] && sleep 1
+if [ -f "{r}/lent" ]; then n=0; while [ ! -f "{r}/libre" ] && [ $n -lt 600 ]; do sleep 0.05; n=$((n+1)); done; fi
 out=""; fmt=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -467,7 +467,15 @@ fn req093_ac4_deux_demandes_simultanees_une_seule_installation() {
     });
     attendre(|| e.appels());
     assert_eq!(etat(&s)["maj"], "encours");
-    let second = http(port, "POST", "/api/version/maj", &cookie, true);
+    let second = std::thread::spawn({
+        let c = cookie.clone();
+        move || http(port, "POST", "/api/version/maj", &c, true)
+    });
+    // Le faux curl attend le fichier `libre` : la seconde demande arrive pendant l'installation.
+    std::thread::sleep(Duration::from_millis(400));
+    assert_eq!(etat(&s)["maj"], "encours");
+    fs::write(e.racine.join("libre"), "").unwrap();
+    let second = second.join().unwrap();
     let premier = premier.join().unwrap();
     assert_eq!(premier.0, 200, "{}", premier.1);
     assert_eq!(second.0, 200, "{}", second.1);
