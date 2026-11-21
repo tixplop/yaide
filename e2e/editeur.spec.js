@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { lancerRelais } from "./relais.js";
-import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, avancer } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, avancer, retarder } from "./aides.js";
 
 let yaide;
 test.afterEach(async () => {
@@ -600,17 +600,6 @@ test("REQ018_AC1_les_onglets_et_l_onglet_actif_reviennent_apres_rechargement", a
   await expect(onglet(page, "a.txt")).toBeVisible();
   await expect(page.locator(".cm-content:visible")).toContainText("garde moi");
 });
-
-/** Retarde la lecture du fichier `chemin` jusqu'à l'appel de la fonction rendue. */
-async function retarder(page, chemin) {
-  let liberer;
-  const porte = new Promise((r) => (liberer = r));
-  await page.route("**/api/fichier?*", async (route) => {
-    if (new URL(route.request().url()).searchParams.get("chemin") === chemin) await porte;
-    await route.continue();
-  });
-  return liberer;
-}
 
 test("REQ008_AC7_AC8_REQ031_AC1_groupe_lectures_tardives_et_icone_de_fermeture", async ({ page }) => {
   await ouvrir(page);

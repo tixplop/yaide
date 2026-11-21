@@ -653,7 +653,9 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     activer(chemin);
     afficher();
     if (Number.isInteger(ligne) && !trouver(chemin).image && !trouver(chemin).whiteboard) trouver(chemin).zone.aller(ligne);
-    trouver(chemin).zone.vue.focus();
+    // Un menu ouvert hors de l'éditeur (arborescence) garde le focus : la lecture tardive ne le reprend pas.
+    const menu = document.activeElement?.closest?.("[role=menu]");
+    if (!menu || code.contains(menu)) trouver(chemin).zone.vue.focus();
     garderListe();
   }
 

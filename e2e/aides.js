@@ -225,3 +225,14 @@ export function fluxRecus(page, n) {
     });
   });
 }
+
+/** Retarde la lecture du fichier `chemin` jusqu'à l'appel de la fonction rendue. */
+export async function retarder(page, chemin) {
+  let liberer;
+  const porte = new Promise((r) => (liberer = r));
+  await page.route("**/api/fichier?*", async (route) => {
+    if (new URL(route.request().url()).searchParams.get("chemin") === chemin) await porte;
+    await route.continue();
+  });
+  return liberer;
+}

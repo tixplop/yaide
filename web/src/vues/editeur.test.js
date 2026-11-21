@@ -2444,3 +2444,42 @@ test("REQ124_AC5_ctrl_s_pendant_une_coupure_appelle_surCtrlS_une_fois_au_retour_
   expect(appels).toEqual(["docs/a.md"]);
   expect(surCtrlS).toHaveBeenCalledWith("docs/a.md");
 });
+
+function menuOuvertHorsEditeur() {
+  const menu = document.createElement("div");
+  menu.setAttribute("role", "menu");
+  const commande = document.createElement("button");
+  commande.setAttribute("role", "menuitem");
+  menu.append(commande);
+  document.body.append(menu);
+  commande.focus();
+  return commande;
+}
+
+test("REQ008_AC9_menu_de_l_arborescence_ouvert_pendant_la_lecture_garde_le_focus_onglet_ajoute_et_actif", () => {
+  const { e } = monter();
+  const commande = menuOuvertHorsEditeur();
+  const geste = e.lecture(true);
+  e.ouvrir({ chemin: "a.txt", contenu: "a", version: "1", geste });
+  expect(nomsOnglets()).toEqual(["a.txt"]);
+  expect(actifNom()).toBe("a.txt");
+  expect(document.activeElement).toBe(commande);
+});
+
+test("REQ008_AC9_avec_un_onglet_actif_avant_le_menu_garde_le_focus", () => {
+  const { e } = monter();
+  e.ouvrir({ chemin: "README.md", contenu: "r", version: "1" });
+  const commande = menuOuvertHorsEditeur();
+  const geste = e.lecture(true);
+  e.ouvrir({ chemin: "a.txt", contenu: "a", version: "1", geste });
+  expect(nomsOnglets()).toEqual(["README.md", "a.txt"]);
+  expect(actifNom()).toBe("a.txt");
+  expect(document.activeElement).toBe(commande);
+});
+
+test("REQ008_AC6_sans_menu_le_focus_va_dans_l_editeur", () => {
+  const { e } = monter();
+  const geste = e.lecture(true);
+  e.ouvrir({ chemin: "a.txt", contenu: "a", version: "1", geste });
+  expect(e.code.contains(document.activeElement)).toBe(true);
+});

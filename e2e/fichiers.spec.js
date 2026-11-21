@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, saisir, survoler, lacher } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, saisir, survoler, lacher, retarder } from "./aides.js";
 
 let yaide;
 test.afterEach(async () => {
@@ -769,6 +769,7 @@ test("REQ125_AC1_parcours_de_copie_menu_en_tete_ctrl_c_ctrl_v_refuse_et_coller_s
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await expect(arbre(page)).toBeVisible();
   const coller = page.getByRole("button", { name: "Coller" });
+  const liberer = await retarder(page, "a.txt"); // AC-008-9 : la lecture de a.txt répond après l'ouverture du menu
   await ligne(page, "a.txt").click();
   await ligne(page, "b.txt").click({ modifiers: ["Control"] });
   await expect(page.getByRole("button", { name: "Copier" })).toBeEnabled();
@@ -781,6 +782,9 @@ test("REQ125_AC1_parcours_de_copie_menu_en_tete_ctrl_c_ctrl_v_refuse_et_coller_s
   await expect(m.getByRole("menuitem", { name: /^Coller/ })).toHaveAttribute("aria-disabled", "true");
   await page.mouse.move(0, 0); // le pointeur quitte le menu : un survol tardif ne déplace pas le focus pendant les flèches
   await expect(m.locator(":focus")).toHaveCount(1); // le menu a pris le focus avant les flèches
+  liberer();
+  await expect(page.getByRole("tab", { name: "a.txt" })).toBeVisible();
+  await expect(m.getByRole("menuitem").first()).toBeFocused(); // l'éditeur ne reprend pas le focus
   await page.keyboard.press("Home");
   await expect(m.getByRole("menuitem").first()).toBeFocused();
   await page.keyboard.press("ArrowDown");
