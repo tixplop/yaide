@@ -80,7 +80,7 @@ fn def(nom: &str, description: &str, proprietes: Value, requis: &[&str]) -> DefO
 }
 
 const DESCRIPTION_WHITEBOARD: &str = "Create or replace a whiteboard file (.jdiag), with its parent folders. The whiteboard is refused, and nothing written, if it is not valid. Required keys: version (1), model, boxes, links; arrows (free arrows) is optional. model is a short text that says the essentials of the diagram: one line per element, then one line per relation (name the boxes by their id if useful), with no position and no style; it is required and must be updated at every write, so that it matches the drawing. Box: id, x, y (top-left corner, integer pixels), width, height (integers), text (lines separated by \\n), spans (optional parts of the text with their own style). Link: id, from, to (box ids), text (optional label shown on the link, with spans and textSize). Free arrow: id, x1, y1 (start), x2, y2 (end), integers. Ids are unique across all objects: b<n> for boxes, l<n> for links, a<n> for arrows, n starting at 1. Optional keys and their allowed values, the first one being the default: ";
-const FIN_DESCRIPTION_WHITEBOARD: &str = ". align places the box text horizontally and valign vertically; the default valign is middle, except top for symbol shapes (database to firewall); they apply to boxes only. A new box is 160x80 (circle 100x100, diamond 160x100, text 160x40). A link may give fromSide and toSide together (top, right, bottom, left, center (the box center; the line stops at its border)). A span is {start, end, bold, italic, underline, strike, color}: start and end are positions in characters (not bytes), end excluded, spans must not overlap, and a link label needs a text before its spans. Lists go from the lowest object to the highest. To change a whiteboard, read it with whiteboard_read, then write it whole. The result of whiteboard_write lists layout warnings (estimated sizes; the file is written anyway): overlapping boxes, links over boxes, crossing or overlapping links, texts that overlap or overflow; fix them by moving or enlarging boxes or changing fromSide, toSide or route, then write again.";
+const FIN_DESCRIPTION_WHITEBOARD: &str = ". align places the box text horizontally and valign vertically; the default valign is middle, except top for symbol shapes (database to sad); they apply to boxes only. A new box is 160x80 (circle 100x100, diamond 160x100, text 160x40). The shapes dot (16x16) and bar (120x8) have no text. A link may give fromSide and toSide together (top, right, bottom, left, center (the box center; the line stops at its border)). A span is {start, end, bold, italic, underline, strike, color}: start and end are positions in characters (not bytes), end excluded, spans must not overlap, and a link label needs a text before its spans. Lists go from the lowest object to the highest. To change a whiteboard, read it with whiteboard_read, then write it whole. The result of whiteboard_write lists layout warnings (estimated sizes; the file is written anyway): overlapping boxes, links over boxes, crossing or overlapping links, texts that overlap or overflow; fix them by moving or enlarging boxes or changing fromSide, toSide or route, then write again.";
 
 fn valeurs_texte(style: &jdiag::Style) -> String {
     style
@@ -1081,9 +1081,17 @@ mod tests {
         assert!(ecriture.description.contains("top for symbol shapes"));
         assert_eq!(boite["shape"]["enum"][5], "text");
         let formes = boite["shape"]["enum"].as_array().unwrap();
-        assert_eq!(formes.len(), 26);
+        assert_eq!(formes.len(), 33);
         assert_eq!(formes[6], "database");
         assert_eq!(formes[25], "firewall");
+        assert_eq!(
+            formes[26..],
+            ["disk", "internet", "happy", "neutral", "sad", "dot", "bar"]
+        );
+        assert!(ecriture.description.contains("(database to sad)"));
+        assert!(ecriture
+            .description
+            .contains("dot (16x16) and bar (120x8) have no text"));
         let lien = &wb["properties"]["links"]["items"]["properties"];
         assert_eq!(
             lien["route"]["enum"],

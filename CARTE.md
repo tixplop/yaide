@@ -52,7 +52,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/reglages-interface.js — `.yaide/interface.json` — analyser, charger, serialiser
 - web/src/couleurs-markdown.js — couleurs réglables du rendu markdown — analyser, appliquer, charger
 - web/src/formatage.js — formatage du document ouvert — formatable, formater
-- web/src/jdiag.js — lecture et écriture du format `.jdiag` — lireJdiag, ecrireJdiag, positionTexte (clés `align`/`valign`, REQ-150 ; clé `model`, REQ-151), SYMBOLES (les vingt symboles, REQ-149), TAILLES (tailles par défaut des formes)
+- web/src/jdiag.js — lecture et écriture du format `.jdiag` — lireJdiag, ecrireJdiag, positionTexte (clés `align`/`valign`, REQ-150 ; clé `model`, REQ-151), SYMBOLES (les vingt-cinq symboles, REQ-149), FORMES_PLEINES (`dot` et `bar`, REQ-156), TAILLES (tailles par défaut des formes)
 - web/src/klaxoon.js — sélection du whiteboard → presse-papiers au format Klaxoon (REQ-155, DEC-104) ; `klaxoon-modele.json` (valeurs fixes), `klaxoon-exemple.json` (fixture de test) — versKlaxoon
 - web/src/mermaid-jdiag.js — organigramme mermaid → document whiteboard ou refus (REQ-154, DEC-103) — depuisMermaid
 - web/src/mermaid.js — bibliothèque mermaid, bundle à part chargé au premier diagramme
@@ -117,6 +117,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-122, REQ-123 mermaid → web/src/mermaid.js, ui/diagramme.js, ui/apercu.js
 - REQ-152 diagrammes mermaid dessinés en mode hybride → ui/hybride.js, ui/diagramme.js, ui/zone-code.js
 - REQ-153 tableau rendu modifiable, aides au survol → ui/hybride.js, ui/bouton.js, ui/zone-code.js, vues/editeur.js, ui/icones.js, ui/composants.css
+- REQ-156 point et barre (`dot`, `bar`) : format et outils de l'agent → web/src/jdiag.js, src/agent/jdiag.rs, jdiag_controle.rs, jdiag_trace.rs, outils.rs
 - REQ-151 modèle d'un whiteboard pour les agents (`model` obligatoire dans `whiteboard_write`, `model_only` dans `whiteboard_read`) → src/agent/jdiag.rs (en_texte, modele_seul), outils.rs, web/src/jdiag.js
 - REQ-155 copie au format Klaxoon (menu de la surface) → web/src/klaxoon.js, ui/tableau.js, ui/menu.js
 - REQ-154 coller un organigramme mermaid (lecture et placement, collage, refus) → web/src/mermaid-jdiag.js, ui/tableau.js, ui/message.js

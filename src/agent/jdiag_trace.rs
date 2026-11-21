@@ -62,7 +62,7 @@ fn sortie(b: &Boite, ox: f64, oy: f64, dx: f64, dy: f64) -> Point {
         return (ox, oy);
     }
     let t = match b.forme {
-        "ellipse" => 1.0 / (dx / (b.w / 2.0)).hypot(dy / (b.h / 2.0)),
+        "ellipse" | "dot" => 1.0 / (dx / (b.w / 2.0)).hypot(dy / (b.h / 2.0)),
         "diamond" => 1.0 / (dx.abs() / (b.w / 2.0) + dy.abs() / (b.h / 2.0)),
         _ => {
             let tx = if dx == 0.0 {
@@ -361,6 +361,35 @@ mod tests {
         assert_eq!(avec.len(), 2);
         assert_eq!(avec, sans);
         proche(avec[1], (300.0, 50.0), "bord gauche de la boîte");
+    }
+
+    #[test]
+    fn req156_ac5_lien_vers_un_point_ou_une_barre() {
+        let fin = json!({"id": "b2", "x": 0, "y": 0, "width": 100, "height": 100, "text": ""});
+        let point = json!({"id": "b1", "x": 300, "y": 30, "width": 40, "height": 40, "text": "", "shape": "dot"});
+        let lien = json!({"id": "l1", "from": "b2", "to": "b1"});
+        let t = trace(&[fin.clone(), point], std::slice::from_ref(&lien), &lien);
+        // Centres (50, 50) et (320, 50) : le rayon horizontal touche le cercle en x = 300.
+        assert_eq!(t.len(), 2);
+        assert!((t[1].0 - 300.0).abs() <= 1.0 && (t[1].1 - 50.0).abs() <= 1.0);
+        // En diagonale, le bord est celui du cercle, non celui du carré.
+        let diag = json!({"id": "b1", "x": 300, "y": 230, "width": 40, "height": 40, "text": "", "shape": "dot"});
+        let t = trace(&[fin.clone(), diag], std::slice::from_ref(&lien), &lien);
+        let (cx, cy) = (320.0, 250.0);
+        let r = (t[1].0 - cx).hypot(t[1].1 - cy);
+        assert!((r - 20.0).abs() <= 1.0, "rayon {r}");
+        // Une barre : le rectangle.
+        let barre = json!({"id": "b1", "x": 300, "y": 230, "width": 120, "height": 8, "text": "", "shape": "bar"});
+        let t = trace(&[fin.clone(), barre], std::slice::from_ref(&lien), &lien);
+        assert!((t[1].1 - 230.0).abs() <= 1.0, "{t:?}");
+        // fromSide right d'un point : milieu du côté droit.
+        let point = json!({"id": "b2", "x": 0, "y": 0, "width": 16, "height": 16, "text": "", "shape": "dot"});
+        let cible =
+            json!({"id": "b1", "x": 300, "y": -42, "width": 100, "height": 100, "text": ""});
+        let lien =
+            json!({"id": "l1", "from": "b2", "to": "b1", "fromSide": "right", "toSide": "left"});
+        let t = trace(&[point, cible], std::slice::from_ref(&lien), &lien);
+        proche(t[0], (16.0, 8.0), "milieu du côté droit");
     }
 
     #[test]

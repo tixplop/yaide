@@ -270,6 +270,13 @@ pub fn avertissements(whiteboard: &Value) -> Vec<String> {
 
     for (b, &(_, _, w, h)) in boites.iter().zip(&rects) {
         let forme = texte(b, "shape");
+        if matches!(forme, "dot" | "bar") {
+            if !texte(b, "text").is_empty() {
+                let nom = if forme == "dot" { "a dot" } else { "a bar" };
+                m.push(format!("- Box {}: {nom} shows no text.", id(b)));
+            }
+            continue;
+        }
         let symbole = !matches!(
             forme,
             "" | "rectangle" | "rounded" | "ellipse" | "diamond" | "note" | "text"
@@ -449,6 +456,26 @@ mod tests {
         assert!(texte(100, 100, "a\nb", sym.clone()).is_empty());
         // Une boîte ordinaire de même taille n'est pas touchée.
         assert!(texte(100, 100, "a\nb\nc", json!({})).is_empty());
+    }
+
+    #[test]
+    fn REQ156_AC6_texte_d_un_point_ou_d_une_barre() {
+        assert_eq!(
+            texte(16, 16, "A", json!({"shape": "dot"})),
+            ["- Box b1: a dot shows no text."]
+        );
+        assert_eq!(
+            texte(120, 8, "A", json!({"shape": "bar"})),
+            ["- Box b1: a bar shows no text."]
+        );
+        // Sans texte : rien ; pas de contrôle du dépassement.
+        assert!(texte(16, 16, "", json!({"shape": "dot"})).is_empty());
+        assert!(texte(120, 8, "", json!({"shape": "bar"})).is_empty());
+        // Les cinq symboles gardent le contrôle des symboles.
+        assert_eq!(
+            texte(100, 100, "a\nb\nc", json!({"shape": "sad"})),
+            ["- Box b1: text overflows (3 lines, 2 fit); a height of 135 would fit it."]
+        );
     }
 
     #[test]

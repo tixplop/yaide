@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { avecExtensionJdiag, ecrireJdiag, idLibre, lireJdiag, normaliserSpans, positionTexte, SYMBOLES } from "./jdiag.js";
+import { avecExtensionJdiag, ecrireJdiag, idLibre, lireJdiag, FORMES_PLEINES, normaliserSpans, positionTexte, SYMBOLES, TAILLES } from "./jdiag.js";
 
 const VIDE = '{\n  "version": 1,\n  "boxes": [],\n  "links": []\n}\n';
 const DEUX =
@@ -42,12 +42,20 @@ describe("jdiag", () => {
     expect(lireJdiag(texte)).toBeNull();
   });
 
-  test("REQ132_AC15 : vingt symboles, relus et réécrits à l'identique ; router illisible", () => {
-    expect(SYMBOLES).toHaveLength(20);
+  test("REQ132_AC15 REQ149_AC12 REQ156_AC6 : vingt-cinq symboles, dot et bar, relus et réécrits à l'identique ; router illisible", () => {
+    expect(SYMBOLES).toHaveLength(25);
     expect(SYMBOLES[0]).toEqual({ shape: "database", nom: "Base de données" });
     expect(SYMBOLES[19]).toEqual({ shape: "firewall", nom: "Pare-feu" });
-    for (const { shape } of SYMBOLES) {
-      const t = `{\n  "version": 1,\n  "boxes": [\n    {"id": "b1", "x": 1, "y": 2, "width": 100, "height": 100, "text": "A", "shape": "${shape}"}\n  ],\n  "links": []\n}\n`;
+    expect(SYMBOLES.slice(20).map((s) => s.shape)).toEqual(["disk", "internet", "happy", "neutral", "sad"]);
+    expect(FORMES_PLEINES).toEqual([{ shape: "dot", nom: "Point" }, { shape: "bar", nom: "Barre" }]);
+    expect(positionTexte({ shape: "sad" }).valign).toBe("top");
+    expect(positionTexte({ shape: "dot" }).valign).toBe("middle");
+    expect(positionTexte({ shape: "bar" }).valign).toBe("middle");
+    expect(TAILLES.dot).toEqual([16, 16]);
+    expect(TAILLES.bar).toEqual([120, 8]);
+    expect(TAILLES.disk).toEqual([100, 100]);
+    for (const { shape } of [...SYMBOLES, ...FORMES_PLEINES]) {
+      const t = `{\n  "version": 1,\n  "boxes": [\n    {"id": "b1", "x": 1, "y": 2, "width": 100, "height": 100, "text": "${shape === "dot" || shape === "bar" ? "" : "A"}", "shape": "${shape}"}\n  ],\n  "links": []\n}\n`;
       const doc = lireJdiag(t);
       expect(doc.boxes[0].shape).toBe(shape);
       expect(ecrireJdiag(doc)).toBe(t);

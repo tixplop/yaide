@@ -356,7 +356,7 @@ test("REQ146_AC10_AC031_2_icones_du_style_du_texte_distinctes_de_baseline_et_tai
 });
 
 test("REQ149_AC1_les_vingt_dessins_de_symboles_existent_et_sont_distincts_et_shapes_est_distinct_des_commandes", () => {
-  expect(SYMBOLES).toHaveLength(20);
+  expect(SYMBOLES).toHaveLength(25);
   const dessins = SYMBOLES.map((s) => {
     expect(NOMS, s.shape).toContain(`symbole-${s.shape}`);
     const i = icone(`symbole-${s.shape}`);
@@ -364,7 +364,7 @@ test("REQ149_AC1_les_vingt_dessins_de_symboles_existent_et_sont_distincts_et_sha
     expect(i.innerHTML.length).toBeGreaterThan(0);
     return i.innerHTML;
   });
-  expect(new Set(dessins).size).toBe(20);
+  expect(new Set(dessins).size).toBe(25);
   expect(icone("symbole-database").innerHTML).toContain('<ellipse cx="12" cy="5" rx="9" ry="3"');
   const commandes = NOMS.filter((n) => !n.startsWith("symbole-") && n !== "shapes");
   expect(commandes.map((n) => icone(n).innerHTML)).not.toContain(icone("shapes").innerHTML);

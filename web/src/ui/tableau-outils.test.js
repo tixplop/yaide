@@ -377,7 +377,7 @@ beforeAll(() => {
 });
 const echap = () => ouvert().dispatchEvent(new Event("cancel", { cancelable: true }));
 
-const NOMS_SYMBOLES = ["Base de données", "Tuyau", "Personne", "Groupe de personnes", "Sécurisé", "Non sécurisé", "Validé", "Échec", "Réseau", "Wi-Fi", "Ethernet", "Serveur", "Nuage", "Ordinateur", "Téléphone", "Fichier", "Courriel", "Réglages", "Alerte", "Pare-feu"];
+const NOMS_SYMBOLES = ["Base de données", "Tuyau", "Personne", "Groupe de personnes", "Sécurisé", "Non sécurisé", "Validé", "Échec", "Réseau", "Wi-Fi", "Ethernet", "Serveur", "Nuage", "Ordinateur", "Téléphone", "Fichier", "Courriel", "Réglages", "Alerte", "Pare-feu", "Disque", "Internet", "Content", "Neutre", "Mécontent"];
 
 test("REQ149_AC1_AC10_symboles_ouvre_le_dialogue_aux_vingt_cases_et_echap_ne_change_rien", () => {
   monter();

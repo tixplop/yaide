@@ -63,6 +63,13 @@ pub fn style_boite() -> Style {
                 "settings",
                 "warning",
                 "firewall",
+                "disk",
+                "internet",
+                "happy",
+                "neutral",
+                "sad",
+                "dot",
+                "bar",
             ]),
         ),
         ("color", couleurs()),
@@ -83,7 +90,7 @@ fn est_symbole(shape: Option<&Value>) -> bool {
     let formes = &style_boite()[0].1;
     shape
         .and_then(|s| formes.iter().position(|f| f == s))
-        .is_some_and(|i| i >= 6)
+        .is_some_and(|i| (6..31).contains(&i))
 }
 
 pub fn style_trait() -> Style {
@@ -456,5 +463,42 @@ mod tests {
             let brut = json!({"version": 1, "model": m, "boxes": [], "links": []});
             assert_eq!(en_texte(&brut).unwrap().0, VIDE);
         }
+    }
+
+    #[test]
+    fn req149_ac12_req156_ac6_cinq_symboles_dot_et_bar_a_l_identique() {
+        for shape in ["disk", "internet", "happy", "neutral", "sad", "dot", "bar"] {
+            let texte = if shape == "dot" || shape == "bar" {
+                ""
+            } else {
+                "A"
+            };
+            let brut = json!({"version": 1, "boxes": [
+                {"id": "b1", "x": 1, "y": 2, "width": 100, "height": 100, "text": texte, "shape": shape}
+            ], "links": []});
+            let (ecrit, _) = en_texte(&brut).unwrap();
+            assert!(
+                ecrit.contains(&format!("\"shape\": \"{shape}\"")),
+                "{ecrit}"
+            );
+            assert!(ecrit.contains("\"text\": \"{}\"".replace("{}", texte).as_str()));
+            assert!(!ecrit.contains("valign"), "valign par défaut : {ecrit}");
+            assert_eq!(relire(&ecrit).unwrap(), ecrit);
+        }
+        // `valign: "top"` est le défaut d'un symbole, pas d'un point ni d'une barre.
+        for (shape, garde) in [("sad", false), ("dot", true), ("bar", true)] {
+            let brut = json!({"version": 1, "boxes": [
+                {"id": "b1", "x": 1, "y": 2, "width": 16, "height": 16, "text": "", "shape": shape, "valign": "top"}
+            ], "links": []});
+            assert_eq!(
+                en_texte(&brut).unwrap().0.contains("valign"),
+                garde,
+                "{shape}"
+            );
+        }
+        let inconnu = json!({"version": 1, "boxes": [
+            {"id": "b1", "x": 1, "y": 2, "width": 1, "height": 1, "text": "", "shape": "router"}
+        ], "links": []});
+        assert!(en_texte(&inconnu).is_err());
     }
 }

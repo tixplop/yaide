@@ -9,7 +9,7 @@ const ENTIERS = new Set(["x", "y", "width", "height", "x1", "y1", "x2", "y2"]);
 const COULEURS = ["default", "blue", "green", "yellow", "orange", "red", "purple"];
 const TRAITS = ["solid", "dashed", "dotted"];
 const EPAISSEURS = ["thin", "medium", "thick"];
-// Les vingt symboles (REQ-149), dans l'ordre du dialogue « Symboles ».
+// Les vingt-cinq symboles (REQ-149), dans l'ordre du dialogue « Symboles ».
 export const SYMBOLES = [
   { shape: "database", nom: "Base de données" },
   { shape: "pipe", nom: "Tuyau" },
@@ -31,11 +31,21 @@ export const SYMBOLES = [
   { shape: "settings", nom: "Réglages" },
   { shape: "warning", nom: "Alerte" },
   { shape: "firewall", nom: "Pare-feu" },
+  { shape: "disk", nom: "Disque" },
+  { shape: "internet", nom: "Internet" },
+  { shape: "happy", nom: "Content" },
+  { shape: "neutral", nom: "Neutre" },
+  { shape: "sad", nom: "Mécontent" },
+];
+// Les deux formes pleines, sans texte, après les symboles (REQ-156).
+export const FORMES_PLEINES = [
+  { shape: "dot", nom: "Point" },
+  { shape: "bar", nom: "Barre" },
 ];
 // Taille par défaut (largeur, hauteur) de chaque forme (REQ-134, REQ-149).
-export const TAILLES = { rectangle: [160, 80], rounded: [160, 80], ellipse: [100, 100], diamond: [160, 100], note: [160, 80], text: [160, 40], ...Object.fromEntries(SYMBOLES.map((s) => [s.shape, [100, 100]])) };
+export const TAILLES = { rectangle: [160, 80], rounded: [160, 80], ellipse: [100, 100], diamond: [160, 100], note: [160, 80], text: [160, 40], ...Object.fromEntries(SYMBOLES.map((s) => [s.shape, [100, 100]])), dot: [16, 16], bar: [120, 8] };
 const STYLE_BOITE = {
-  shape: ["rectangle", "rounded", "ellipse", "diamond", "note", "text", ...SYMBOLES.map((s) => s.shape)],
+  shape: ["rectangle", "rounded", "ellipse", "diamond", "note", "text", ...SYMBOLES.map((s) => s.shape), ...FORMES_PLEINES.map((s) => s.shape)],
   color: COULEURS,
   line: TRAITS,
   weight: EPAISSEURS,
