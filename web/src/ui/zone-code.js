@@ -10,6 +10,8 @@ import { chargerMermaid, adresseDiagramme } from "./diagramme.js";
 import { couleurs } from "./couleurs-code.js";
 import { hybride as extensionHybride, TableauRendu, DiagrammeRendu, tableauxHybride, diagrammesRendus, validerSaisie } from "./hybride.js";
 import { themeCourant } from "./theme.js";
+import { tableur } from "./tableur.js";
+import { lireCsv, debutChamp, celluleA } from "../csv.js";
 import { lienDeDocument, ligneDuTitre } from "../references.js";
 
 const MODES = ["edition", "diff"];
@@ -215,7 +217,7 @@ function apercuMmd(nom, texte) {
   return el;
 }
 
-export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, document: cheminDocument, ligne, nom = "", surChangement, surPosition, surLien, surSurvolLien } = {}) {
+export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, document: cheminDocument, ligne, nom = "", surChangement, surPosition, surLien, surSurvolLien, surTableur } = {}) {
   if (!MODES.includes(mode)) throw new Error(`zoneCode : mode inconnu « ${mode} »`);
   const diff = mode === "diff";
   const racine = document.createElement("div");
@@ -263,12 +265,74 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
       if (u.docChanged) {
         if (ap) ap.maj(u.state.doc.toString());
         surChangement?.(u.state.doc.toString());
+        if (csvActif) suivreCsv(u);
       }
       if ((u.docChanged || u.selectionSet) && surPosition) signalerPosition(u.state);
     }),
   );
 
   let ap = null;
+
+  // Fichier CSV (REQ-157) : l'éditeur reste dans la page avec son document ; il prend `hidden` quand la grille est affichée.
+  const csv = /\.csv$/i.test(nom) && !diff;
+  let csvActif = csv && hybride;
+  let tab = null;
+  let grille = false;
+  let alerte = null;
+  let depuisDisque = false;
+  function etatTableur(g, a) {
+    if (g === grille && a === alerte) return;
+    grille = g;
+    alerte = a;
+    surTableur?.({ grille, alerte });
+  }
+  // Montre la grille : la cellule active est celle du champ où est le curseur.
+  function afficherGrille(l, focus) {
+    if (!tab) {
+      tab = tableur({ vue, nom });
+      racine.append(tab.element);
+    }
+    tab.rafraichir();
+    const { r, c } = celluleA(l, vue.state.selection.main.head);
+    tab.activer(r, c, false);
+    hote.hidden = true;
+    tab.element.hidden = false;
+    if (focus) tab.focuser();
+    etatTableur(true, null);
+  }
+  // Montre le texte, le curseur en `pos` (ligne centrée) ; le focus va à l'éditeur si `focus`.
+  // `differe` : appelé pendant une mise à jour de l'éditeur, qui n'accepte pas de transaction.
+  function afficherTexte(pos, focus, refus, differe = false) {
+    if (tab) tab.element.hidden = true;
+    hote.hidden = false;
+    const placer = () => {
+      if (pos !== undefined) vue.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: "center" }) });
+      if (focus) vue.focus();
+    };
+    etatTableur(false, refus ? `Tableur indisponible : ${refus}` : null);
+    if (differe) queueMicrotask(placer);
+    else placer();
+  }
+  function suivreCsv(u) {
+    const l = lireCsv(vue.state.doc.toString());
+    if (!l.refus) {
+      if (grille) {
+        tab.rafraichir();
+        etatTableur(true, null);
+      } else {
+        afficherGrille(l, vue.hasFocus);
+      }
+    } else if (grille) {
+      const focus = tab.element.contains(document.activeElement);
+      let pos = 0;
+      if (!depuisDisque) {
+        pos = null;
+        u.changes.iterChangedRanges((_, __, fromB) => (pos ??= fromB));
+        pos = Math.min(pos ?? 0, u.state.doc.length);
+      }
+      afficherTexte(pos, focus, l.refus, true);
+    } else etatTableur(false, `Tableur indisponible : ${l.refus}`);
+  }
   function signalerPosition(etat) {
     const tete = etat.selection.main.head;
     const l = etat.doc.lineAt(tete);
@@ -277,6 +341,17 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   const vue = new EditorView({ state: EditorState.create({ doc: contenu, extensions }), parent: hote });
 
   racine.vue = vue;
+  if (csv) {
+    // Tous les appels de focus de l'éditeur vont à la grille quand elle est affichée.
+    const focusCm = vue.focus.bind(vue);
+    vue.focus = () => (grille ? tab.focuser() : focusCm());
+  }
+  if (csvActif) {
+    const l = lireCsv(contenu);
+    if (l.refus) etatTableur(false, `Tableur indisponible : ${l.refus}`);
+    else afficherGrille(l, false);
+  }
+  racine.grilleAffichee = () => grille;
   // Change la coloration sans recréer la vue : texte, historique, curseur et défilement restent.
   racine.changerLangage = (id) => {
     if (!diff) vue.dispatch({ effects: compartimentLangage.reconfigure(id ? supportLangage(id) : []) });
@@ -303,6 +378,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   // Bascule du mode hybride : la première ligne visible reste en haut, rien d'autre ne bouge (pas de surChangement).
   let hybrideActif = hybridePossible && hybride;
   racine.definirHybride = (actif) => {
+    if (csv) return definirHybrideCsv(!!actif);
     actif = hybridePossible && !!actif;
     if (actif === hybrideActif) return;
     hybrideActif = actif;
@@ -317,24 +393,49 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     });
   };
   // Le curseur reste sur la même ligne (bornée au nouveau texte), à la même colonne si elle existe encore.
-  racine.validerSaisie = () => validerSaisie(vue);
-  racine.remplacer = (texte) => {
+  function definirHybrideCsv(actif) {
+    if (actif === csvActif) return;
+    if (!actif) {
+      tab?.validerSaisie();
+      csvActif = false;
+      if (!grille) return etatTableur(false, null);
+      const l = lireCsv(vue.state.doc.toString());
+      const { r, c } = tab.celluleActive();
+      afficherTexte(l.refus ? undefined : debutChamp(l, Math.min(r, l.rangees.length - 1), Math.min(c, l.colonnes - 1)), false, null);
+      return;
+    }
+    csvActif = true;
+    const l = lireCsv(vue.state.doc.toString());
+    if (l.refus) etatTableur(false, `Tableur indisponible : ${l.refus}`);
+    else afficherGrille(l, false);
+  }
+  racine.validerSaisie = () => {
     validerSaisie(vue);
+    tab?.validerSaisie();
+  };
+  racine.remplacer = (texte) => {
+    racine.validerSaisie();
     const doc = vue.state.doc;
     const tete = doc.lineAt(vue.state.selection.main.head);
     const colonne = vue.state.selection.main.head - tete.from;
     const nouveau = vue.state.update({ changes: { from: 0, to: doc.length, insert: texte } }).state.doc;
     const ligne = nouveau.line(Math.min(tete.number, nouveau.lines));
-    vue.dispatch({
-      changes: { from: 0, to: doc.length, insert: texte },
-      selection: { anchor: ligne.from + Math.min(colonne, ligne.length) },
-    });
+    depuisDisque = true;
+    try {
+      vue.dispatch({
+        changes: { from: 0, to: doc.length, insert: texte },
+        selection: { anchor: ligne.from + Math.min(colonne, ligne.length) },
+      });
+    } finally {
+      depuisDisque = false;
+    }
   };
   const suivreTheme = (e) => vue.dispatch({ effects: compartiment.reconfigure(e.detail === "dark" ? themeSombre : themeClair) });
   document.addEventListener("yaide-theme", suivreTheme);
   racine.detruire = () => {
     document.removeEventListener("yaide-theme", suivreTheme);
     ap?.retirer?.();
+    tab?.detruire();
     vue.destroy();
   };
   if (apercu) racine.definirApercu(true);

@@ -62,7 +62,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/ui/ — design system : composants (`bouton` dont la taille `disque` des aides du tableau rendu, REQ-153 ; `champ`, `menu` (option `zone` : menu porté par la surface d'un whiteboard, REQ-155), `dialogue`, `onglets`, `liste`, `message` (présentations `barre` et `flottante`, REQ-154), `cadre`, `poignee`, `info-bulle`, `indication`, `compteur`, `avatar`, `image`) ; `dialogueChoix` (dialogue « Choix sans bouton principal » avec la `grille` de `liste`, REQ-149 : option `groupes`, un rang à part par groupe, REQ-156 ; `forme-point` et `forme-barre` de `icones.js` sont pleins) ; `icones.js` (dont `shapes` et les vingt-cinq `symbole-<shape>`, REQ-149) ; `tokens.css`, `composants.css`, `theme.js`, `polices/`
 - web/src/ui/apercu.js, apercu-html.js, hybride.js, diagramme.js — rendu markdown, aperçu HTML, mode hybride (tableaux rendus dont les cellules se modifient sur place, `validerSaisie`, disques au survol qui ajoutent ou retirent lignes et colonnes, `zonesAides`, `aidesSurvol` (partagé avec le tableur), REQ-153 ; diagrammes mermaid rendus, REQ-152 ; `diagrammesHybride`/`diagrammesRendus` ; dessins partagés par `diagramme.js`), mermaid — rendreMarkdown, apercuHtml, decorationsHybride
 - web/src/ui/tableur.js — tableur d'un fichier CSV (grille `role="grid"`, cellule active, clavier, saisie reprise de `hybride.js` `champSaisie`, une transaction par saisie ; disques d'aide au survol de `aidesSurvol` de `hybride.js`, option `tableur` de `zonesAides` ; `rafraichir`, `validerSaisie`, `activer`), REQ-157 — tableur
-- web/src/ui/zone-code.js, langages.js, couleurs-code.js — éditeur CodeMirror et coloration (numéros, Haut/Bas et bascule autour des tableaux et diagrammes rendus, REQ-063, REQ-152) — zoneCode, langagePourFichier
+- web/src/ui/zone-code.js, langages.js, couleurs-code.js — éditeur CodeMirror et coloration (numéros, Haut/Bas et bascule autour des tableaux et diagrammes rendus, REQ-063, REQ-152 ; sur un `.csv`, grille ou texte selon `lireCsv`, `surTableur`, REQ-157) — zoneCode, langagePourFichier
 - web/src/ui/conversation.js, completion.js, attentes.js, copie.js — conversation, complétion `/ @ $ #`, attentes d'autorisation, copie en texte simple — conversation, completion, copierEnTexteSimple
 - web/src/ui/terminal.js — terminal xterm.js — terminal
 - web/src/ui/palettes.js — palettes de couleurs markdown suggérées — PALETTES
@@ -71,7 +71,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/ui/tableau-calculs.js, tableau-dessin.js, tableau-edition.js, tableau-outils.js — géométrie (dont la zone de texte des symboles, `connecteursAffiches` : ronds à 6 px hors du côté de « Point » et « Barre », points d'attache `connecteurs` au bord, `decalageAnneau`, REQ-156), rendu SVG (dont le dessin des symboles, REQ-149, celui de « Point » et « Barre » pleins avec anneau du choix, cible et zones de prise, REQ-156, `anneauxPleines`, et les classes `align-*` `valign-*` du texte des boîtes, REQ-150), copier/coller/plan/rattachement, boîte à outils (dont le bouton « Symboles » et son dialogue, REQ-149, « Point » et « Barre » sans saisie de texte, REQ-156, et le rang « Alignement » et « Position verticale du texte », REQ-133, REQ-150) — extremitesFleche, milieuTrace, dessinBoite, coller, boiteOutils
 - web/src/vues/principale.js — fenêtre : rails, panneaux, zones, Ctrl+P — vuePrincipale
 - web/src/vues/principale.aides.js — aides des tests de la vue principale
-- web/src/vues/editeur.js — groupes d'onglets : fichiers, images, whiteboards (zoneWhiteboard), sessions — vueEditeur
+- web/src/vues/editeur.js — groupes d'onglets : fichiers, images, whiteboards (zoneWhiteboard), sessions ; sur un `.csv`, bouton « Mode hybride » et message `role="alert"` « Tableur indisponible » dans `questionOnglet` (REQ-157) — vueEditeur
 - web/src/vues/depot-onglets.js — dépôt et persistance des onglets de l'éditeur — depotOnglets
 - web/src/vues/fichiers.js, git.js, recherche.js, ouverture.js — vues Fichiers, Git, Recherche, ouverture rapide — vueFichiers, vueGit, vueOuverture
 - web/src/vues/shells.js — zone des shells — vueShells
@@ -95,7 +95,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 ## Fonctionnalités
 - REQ-001 à REQ-006 mot de passe, lancement, HTTPS, session → src/cli.rs, config.rs, tls.rs, auth.rs, serveur.rs, web/src/vues/connexion.js
 - REQ-007 à REQ-010, REQ-034, REQ-049, REQ-050, REQ-125 arborescence → src/fichiers.rs, web/src/vues/fichiers.js
-- REQ-157 (lecture et écriture CSV ; tableur : grille, clavier, saisie) → web/src/csv.js, ui/tableur.js, ui/hybride.js (`champSaisie`), ui/composants.css
+- REQ-157 (lecture et écriture CSV ; tableur : grille, clavier, saisie) → web/src/csv.js, ui/tableur.js, ui/hybride.js (`champSaisie`), ui/zone-code.js (bascule grille/texte, message), vues/editeur.js, ui/composants.css
 - REQ-008, REQ-011 à REQ-014, REQ-061, REQ-083 onglets, sauvegarde, menu → web/src/vues/editeur.js, onglets-fichiers.js, ui/onglets.js, ui/zone-code.js
 - REQ-120, REQ-121 images et SVG → web/src/ui/image.js, vues/editeur.js
 - REQ-012, REQ-042 à REQ-044, REQ-058, REQ-062, REQ-063, REQ-115, REQ-117 rendu markdown, aperçu HTML, hybride, couleurs → ui/apercu.js, apercu-html.js, hybride.js, couleurs-markdown.js, ui/palettes.js, src/apercu.rs

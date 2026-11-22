@@ -35,7 +35,7 @@ const TEXTE_SUPPRIME = "Fichier supprimé du disque. Ctrl+S le recrée.";
 const TEXTE_IMAGE_SUPPRIMEE = "Fichier supprimé du disque.";
 const estFichier = (o) => !o.claude && !o.opencode && !o.conversationAgent;
 const estTexte = (o) => estFichier(o) && !o.image; // un onglet d'image n'a ni texte, ni disque lu, ni éditeur
-const avecHybride = (chemin) => /\.(md|markdown)$/i.test(chemin);
+const avecHybride = (chemin) => /\.(md|markdown|csv)$/i.test(chemin);
 const avecApercu = (chemin) => /\.(md|markdown|html|htm|svg|mmd)$/i.test(chemin);
 
 /**
@@ -325,7 +325,8 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       surCourant(null);
       return surActif({});
     }
-    const etat = o.image || o.whiteboard ? undefined : (o === diff ? diff.el : o.zone).vue?.state;
+    const grille = o !== diff && o.zone?.grilleAffichee?.();
+    const etat = o.image || o.whiteboard || grille ? undefined : (o === diff ? diff.el : o.zone).vue?.state;
     let position;
     if (etat) {
       const tete = etat.selection.main.head;
@@ -333,7 +334,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       position = `Ln ${l.number}, Col ${tete - l.from + 1}`;
     }
     surCourant(o === diff ? null : o.chemin);
-    surActif({ position, langage: o === diff || o.image || o.whiteboard ? undefined : nomLangage(nomDe(o.chemin)) });
+    surActif({ position, langage: o === diff || o.image || o.whiteboard || grille ? undefined : nomLangage(nomDe(o.chemin)) });
   }
 
   // Seuls M, A et U colorent un onglet.
@@ -410,8 +411,9 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     g.barre.replaceChildren(ongl);
     ongl.choisir(idActif);
     if (avaitLeFocus) ongl.querySelector("[role=tab][aria-selected=true]")?.focus();
-    const avis = o.avis ?? null;
-    if (g.questionOnglet.firstChild !== avis) g.questionOnglet.replaceChildren(...(avis ? [avis] : []));
+    const enfants = [o.alerteCsv, o.avis].filter(Boolean);
+    const presents = [...g.questionOnglet.childNodes];
+    if (enfants.length !== presents.length || enfants.some((e, i) => e !== presents[i])) g.questionOnglet.replaceChildren(...enfants);
     return o;
   }
 
@@ -475,6 +477,13 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       afficher();
       garderListe();
     };
+    if (/\.csv$/i.test(chemin)) {
+      // Message « Tableur indisponible » (REQ-157) : présent vide dès l'ouverture, son texte n'est posé que s'il change.
+      o.alerteCsv = message({ texte: "-", variante: "alerte" });
+      o.alerteCsv.classList.add("ya-alerte-tableur");
+      o.alerteTexte = o.alerteCsv.querySelector(".message-texte");
+      o.alerteTexte.textContent = "";
+    }
     o.zone = estWhiteboard(chemin) ? zoneWhiteboard(o, texte ?? contenu, surChangement) : zoneCode({
       contenu: texte ?? contenu,
       langage: langagePourFichier(nomDe(chemin)) ?? undefined,
@@ -497,6 +506,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       },
       surPosition() {
         if (trouver(actif) === o) publier(o);
+      },
+      surTableur({ alerte }) {
+        if (o.alerteTexte.textContent !== (alerte ?? "")) o.alerteTexte.textContent = alerte ?? "";
+        if (o.zone && trouver(actif) === o) publier(o);
       },
       surChangement,
     });

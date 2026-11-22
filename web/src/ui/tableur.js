@@ -71,12 +71,12 @@ export function tableur({ vue, nom }) {
     if (focus) cellule(active.r, active.c)?.focus();
   }
 
-  function activer(r, c) {
+  function activer(r, c, avecFocus = true) {
     const td = cellule(r, c);
     if (!td) return;
     active = { r, c };
     marquer();
-    if (zone.isConnected) td.focus();
+    if (avecFocus && zone.isConnected) td.focus();
     td.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }
 
