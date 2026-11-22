@@ -135,6 +135,7 @@
   --apercu-fond: var(--hover);
   --apercu-entete: var(--bg-400);
   --largeur-palette: 600px;
+  --largeur-cellule-max: 320px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;

@@ -61,6 +61,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/mermaid.js — bibliothèque mermaid, bundle à part chargé au premier diagramme (avec mermaid-mesure.js et mermaid-dessin.js) — `window.yaideMermaid` : dessiner, traduire (texte → `{ doc }` ou `{ refus }`), traduireSvg
 - web/src/ui/ — design system : composants (`bouton` dont la taille `disque` des aides du tableau rendu, REQ-153 ; `champ`, `menu` (option `zone` : menu porté par la surface d'un whiteboard, REQ-155), `dialogue`, `onglets`, `liste`, `message` (présentations `barre` et `flottante`, REQ-154), `cadre`, `poignee`, `info-bulle`, `indication`, `compteur`, `avatar`, `image`) ; `dialogueChoix` (dialogue « Choix sans bouton principal » avec la `grille` de `liste`, REQ-149 : option `groupes`, un rang à part par groupe, REQ-156 ; `forme-point` et `forme-barre` de `icones.js` sont pleins) ; `icones.js` (dont `shapes` et les vingt-cinq `symbole-<shape>`, REQ-149) ; `tokens.css`, `composants.css`, `theme.js`, `polices/`
 - web/src/ui/apercu.js, apercu-html.js, hybride.js, diagramme.js — rendu markdown, aperçu HTML, mode hybride (tableaux rendus dont les cellules se modifient sur place, `validerSaisie`, disques au survol qui ajoutent ou retirent lignes et colonnes, `zonesAides`, REQ-153 ; diagrammes mermaid rendus, REQ-152 ; `diagrammesHybride`/`diagrammesRendus` ; dessins partagés par `diagramme.js`), mermaid — rendreMarkdown, apercuHtml, decorationsHybride
+- web/src/ui/tableur.js — tableur d'un fichier CSV (grille `role="grid"`, cellule active, clavier, saisie reprise de `hybride.js` `champSaisie`, une transaction par saisie ; `rafraichir`, `validerSaisie`, `activer`), REQ-157 — tableur
 - web/src/ui/zone-code.js, langages.js, couleurs-code.js — éditeur CodeMirror et coloration (numéros, Haut/Bas et bascule autour des tableaux et diagrammes rendus, REQ-063, REQ-152) — zoneCode, langagePourFichier
 - web/src/ui/conversation.js, completion.js, attentes.js, copie.js — conversation, complétion `/ @ $ #`, attentes d'autorisation, copie en texte simple — conversation, completion, copierEnTexteSimple
 - web/src/ui/terminal.js — terminal xterm.js — terminal
@@ -94,7 +95,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 ## Fonctionnalités
 - REQ-001 à REQ-006 mot de passe, lancement, HTTPS, session → src/cli.rs, config.rs, tls.rs, auth.rs, serveur.rs, web/src/vues/connexion.js
 - REQ-007 à REQ-010, REQ-034, REQ-049, REQ-050, REQ-125 arborescence → src/fichiers.rs, web/src/vues/fichiers.js
-- REQ-157 (lecture et écriture CSV) → web/src/csv.js
+- REQ-157 (lecture et écriture CSV ; tableur : grille, clavier, saisie) → web/src/csv.js, ui/tableur.js, ui/hybride.js (`champSaisie`), ui/composants.css
 - REQ-008, REQ-011 à REQ-014, REQ-061, REQ-083 onglets, sauvegarde, menu → web/src/vues/editeur.js, onglets-fichiers.js, ui/onglets.js, ui/zone-code.js
 - REQ-120, REQ-121 images et SVG → web/src/ui/image.js, vues/editeur.js
 - REQ-012, REQ-042 à REQ-044, REQ-058, REQ-062, REQ-063, REQ-115, REQ-117 rendu markdown, aperçu HTML, hybride, couleurs → ui/apercu.js, apercu-html.js, hybride.js, couleurs-markdown.js, ui/palettes.js, src/apercu.rs

@@ -873,3 +873,35 @@ test("REQ140_AC1_contrastes_des_traits_colores_et_du_rectangle_de_selection_sur_
     expect(r).toBeGreaterThanOrEqual(3);
   });
 });
+
+test("REQ157_AC14_largeur_maximale_du_texte_d_une_cellule_du_tableur", () => {
+  for (const theme of THEMES) expect(T[theme]["--largeur-cellule-max"], theme).toBe("320px");
+  expect(css).toContain("--largeur-cellule-max: 320px;");
+});
+
+test("REQ157_AC12_contrastes_du_tableur_dans_les_deux_themes", () => {
+  // [texte, fond, fond dessous, seuil, [sombre, clair]] : tableau « Tableur d'un fichier CSV » de design-system.md.
+  const paires = [
+    ["--ink", "--bg-200", null, 4.5, [10.26, 16.48]],
+    ["--ink", "--apercu-entete", null, 4.5, [7.36, 13.25]],
+    ["--ink", "--accent-soft", "--bg-200", 4.5, [8.39, 13.73]],
+    ["--ink", "--accent-soft", "--apercu-entete", 4.5, [6.26, 11.19]],
+    ["--ink-faint", "--bg-200", null, 3, [4.83, 5.09]],
+    ["--ink-faint", "--apercu-entete", null, 3, [3.46, 4.1]],
+    ["--ink-faint", "--accent-soft", "--bg-200", 3, [3.95, 4.24]],
+    ["--accent-fg", "--bg-200", null, 3, [6.64, 6.3]],
+    ["--accent-fg", "--apercu-entete", null, 3, [4.76, 5.07]],
+    ["--accent-fg", "--accent-soft", "--bg-200", 3, [5.43, 5.25]],
+    ["--accent-fg", "--accent-soft", "--apercu-entete", 3, [4.06, 4.28]],
+    ["--danger", "--bg-200", null, 3, [6.04, 6.68]],
+    ["--ink-muted", "--bg-100", null, 3, [6.58, 6.29]],
+    ["--accent-fg", "--accent-soft", "--bg-100", 3, [5.67, 4.96]],
+  ];
+  THEMES.forEach((theme, k) => {
+    for (const [texte, fond, sous, seuil, attendu] of paires) {
+      const r = ratio(theme, texte, fond, sous ?? undefined);
+      egalA(r, attendu[k], `${texte} sur ${fond}/${sous} (${theme})`);
+      expect(r, `${texte} sur ${fond}/${sous} (${theme})`).toBeGreaterThanOrEqual(seuil);
+    }
+  });
+});

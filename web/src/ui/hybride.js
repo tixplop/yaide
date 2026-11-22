@@ -571,7 +571,7 @@ export function validerSaisie(vue) {
 }
 
 // Position du clic dans le texte de la cellule, ou -1.
-function decalageDuClic(cellule, point) {
+export function decalageDuClic(cellule, point) {
   let noeud = null;
   let decalage = 0;
   if (document.caretPositionFromPoint) {
@@ -588,6 +588,30 @@ function decalageDuClic(cellule, point) {
   return avant + decalage;
 }
 
+// Cellule en saisie (C-008) : un `span` `role="textbox"` qui prend la place du contenu de la cellule, le focus et le curseur
+// (à `decalage`, ou à la fin si négatif). Partagée par le tableau rendu et le tableur : chacun gère ses touches.
+export function champSaisie(cellule, nom, texte, decalage = -1) {
+  const span = document.createElement("span");
+  span.className = "ya-cellule-saisie";
+  span.setAttribute("role", "textbox");
+  span.setAttribute("aria-multiline", "false");
+  span.setAttribute("contenteditable", "plaintext-only");
+  span.setAttribute("aria-label", nom);
+  span.textContent = texte;
+  cellule.replaceChildren(span);
+  span.focus();
+  const sel = document.getSelection();
+  if (sel) {
+    const t = span.firstChild;
+    if (t) sel.collapse(t, decalage >= 0 ? Math.min(decalage, t.length) : t.length);
+    else sel.collapse(span, 0);
+  }
+  for (const type of ["keyup", "keypress", "beforeinput", "input", "compositionstart", "compositionend", "paste", "cut", "copy", "dragstart", "drop"]) {
+    span.addEventListener(type, (e) => e.stopPropagation());
+  }
+  return span;
+}
+
 function ouvrirSaisie(vue, el, source, rangee, colonne, point) {
   validerSaisie(vue);
   const table = el.querySelector("table");
@@ -600,21 +624,7 @@ function ouvrirSaisie(vue, el, source, rangee, colonne, point) {
   // Sans marque dans le texte, le curseur est où l'on a cliqué ; sinon à la fin.
   const decalage = point && texte0 === cellule.textContent ? decalageDuClic(cellule, point) : -1;
   const avant = cellule.innerHTML;
-  const span = document.createElement("span");
-  span.className = "ya-cellule-saisie";
-  span.setAttribute("role", "textbox");
-  span.setAttribute("aria-multiline", "false");
-  span.setAttribute("contenteditable", "plaintext-only");
-  span.setAttribute("aria-label", nom);
-  span.textContent = texte0;
-  cellule.replaceChildren(span);
-  span.focus();
-  const sel = document.getSelection();
-  if (sel) {
-    const t = span.firstChild;
-    if (t) sel.collapse(t, decalage >= 0 ? Math.min(decalage, t.length) : t.length);
-    else sel.collapse(span, 0);
-  }
+  const span = champSaisie(cellule, nom, texte0, decalage);
 
   let fini = false;
   const clore = () => {
@@ -677,9 +687,6 @@ function ouvrirSaisie(vue, el, source, rangee, colonne, point) {
       valider(); // l'événement continue vers Ctrl+S de la page
     } else e.stopPropagation();
   });
-  for (const type of ["keyup", "keypress", "beforeinput", "input", "compositionstart", "compositionend", "paste", "cut", "copy", "dragstart", "drop"]) {
-    span.addEventListener(type, (e) => e.stopPropagation());
-  }
   span.addEventListener("blur", () => valider(null, true));
 }
 

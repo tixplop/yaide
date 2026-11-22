@@ -1,0 +1,253 @@
+import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { history, undo } from "@codemirror/commands";
+import { afterEach, expect, test } from "vitest";
+import { tableur } from "./tableur.js";
+
+const CLIENTS = "nom,ville,note\nAlice,Paris,12\nBob,Lyon,x\nChloé,Nantes,\n";
+let nettoyage = [];
+afterEach(() => {
+  for (const f of nettoyage) f();
+  nettoyage = [];
+  document.body.replaceChildren();
+});
+
+function monter(doc = CLIENTS, nom = "clients.csv") {
+  const transactions = [];
+  const vue = new EditorView({
+    state: EditorState.create({ doc, extensions: [history(), EditorView.updateListener.of((u) => u.docChanged && transactions.push(u.transactions.length))] }),
+    parent: document.body,
+  });
+  const t = tableur({ vue, nom });
+  document.body.append(t.element);
+  t.focuser();
+  nettoyage.push(() => vue.destroy());
+  return { vue, t, transactions, table: t.element.querySelector("table") };
+}
+const cellule = (t, r, c) => t.element.querySelector("table").rows[r].cells[c];
+const touche = (el, key, opts = {}) => {
+  const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts });
+  el.dispatchEvent(e);
+  return e;
+};
+const saisieOuverte = (t) => t.element.querySelector("[role=textbox]");
+const taper = (span, texte) => {
+  span.textContent = texte;
+};
+const clic = (el) => el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+test("REQ157_AC14_grille_nommee_en_tetes_cellules_et_une_seule_cellule_a_tabindex_0", () => {
+  const { t, table } = monter();
+  expect(table.getAttribute("role")).toBe("grid");
+  expect(table.getAttribute("aria-label")).toBe("Tableur clients.csv");
+  expect(table.querySelectorAll("[role=columnheader]").length).toBe(3);
+  expect(table.querySelectorAll("[role=gridcell]").length).toBe(9);
+  const zeros = [...table.querySelectorAll("th, td")].filter((c) => c.getAttribute("tabindex") === "0");
+  expect(zeros).toEqual([cellule(t, 0, 0)]);
+  expect(cellule(t, 0, 0).textContent).toBe("nom");
+});
+
+test("REQ157_AC14_clic_ouvre_la_saisie_nommee_et_echap_rend_la_cellule_active_avec_le_focus", () => {
+  const { t, vue } = monter();
+  clic(cellule(t, 1, 1));
+  const span = saisieOuverte(t);
+  expect(span.getAttribute("aria-label")).toBe("ville, rangée 1");
+  expect(span.textContent).toBe("Paris");
+  taper(span, "Rome");
+  touche(span, "Escape");
+  expect(saisieOuverte(t)).toBeNull();
+  expect(cellule(t, 1, 1).textContent).toBe("Paris");
+  expect(cellule(t, 1, 1).getAttribute("tabindex")).toBe("0");
+  expect(document.activeElement).toBe(cellule(t, 1, 1));
+  expect(vue.state.doc.toString()).toBe(CLIENTS);
+});
+
+test("REQ157_AC14_nom_de_saisie_en_tete_et_premiere_rangee_vide", () => {
+  const a = monter();
+  clic(cellule(a.t, 0, 1));
+  expect(saisieOuverte(a.t).getAttribute("aria-label")).toBe("En-tête de la colonne 2");
+  document.body.replaceChildren();
+  const b = monter(",,\nA,B,C\n");
+  clic(cellule(b.t, 1, 1));
+  expect(saisieOuverte(b.t).getAttribute("aria-label")).toBe("Colonne 2, rangée 1");
+});
+
+test("REQ157_AC11_clavier_fleches_sans_boucle_entree_f2_et_tab_non_retenu", () => {
+  const { t } = monter();
+  expect(document.activeElement).toBe(cellule(t, 0, 0));
+  touche(document.activeElement, "ArrowUp");
+  touche(document.activeElement, "ArrowLeft");
+  expect(t.celluleActive()).toEqual({ r: 0, c: 0 });
+  touche(document.activeElement, "ArrowDown");
+  expect(document.activeElement.textContent).toBe("Alice");
+  touche(document.activeElement, "ArrowRight");
+  expect(document.activeElement.textContent).toBe("Paris");
+  touche(t.element.querySelector("[tabindex='0']"), "ArrowRight");
+  touche(document.activeElement, "ArrowRight");
+  expect(t.celluleActive()).toEqual({ r: 1, c: 2 });
+  // Entrée : saisie, curseur à la fin.
+  touche(document.activeElement, "Enter");
+  let span = saisieOuverte(t);
+  expect(document.activeElement).toBe(span);
+  expect(document.getSelection().anchorOffset).toBe(2);
+  touche(span, "Enter");
+  expect(saisieOuverte(t)).toBeNull();
+  expect(document.activeElement).toBe(cellule(t, 1, 2));
+  touche(document.activeElement, "F2");
+  span = saisieOuverte(t);
+  expect(document.activeElement).toBe(span);
+  touche(span, "Enter");
+  expect(document.activeElement).toBe(cellule(t, 1, 2));
+  // Tab hors saisie : la grille ne le retient pas.
+  expect(touche(document.activeElement, "Tab").defaultPrevented).toBe(false);
+  // Bas jusqu'au bord.
+  for (let i = 0; i < 5; i++) touche(document.activeElement, "ArrowDown");
+  expect(t.celluleActive()).toEqual({ r: 3, c: 2 });
+});
+
+test("REQ157_AC12_une_seule_saisie_un_seul_textbox_avec_le_focus", () => {
+  const { t } = monter();
+  clic(cellule(t, 1, 0));
+  clic(cellule(t, 2, 1));
+  expect(t.element.querySelectorAll("[role=textbox]").length).toBe(1);
+  expect(document.activeElement).toBe(saisieOuverte(t));
+  expect(t.celluleActive()).toEqual({ r: 2, c: 1 });
+});
+
+test("REQ157_AC3_une_transaction_par_saisie_seul_le_champ_change_et_undo_refait_la_grille", () => {
+  const { t, vue, transactions } = monter();
+  touche(document.activeElement, "ArrowDown");
+  touche(document.activeElement, "ArrowRight");
+  touche(document.activeElement, "ArrowRight");
+  touche(document.activeElement, "Enter");
+  taper(saisieOuverte(t), "15");
+  touche(saisieOuverte(t), "Enter");
+  expect(vue.state.doc.toString()).toBe(CLIENTS.replace("12", "15"));
+  expect(transactions).toEqual([1]);
+  expect(cellule(t, 1, 2).textContent).toBe("15");
+  undo(vue);
+  t.rafraichir();
+  expect(vue.state.doc.toString()).toBe(CLIENTS);
+  expect(cellule(t, 1, 2).textContent).toBe("12");
+  expect(t.celluleActive()).toEqual({ r: 1, c: 2 });
+  expect(cellule(t, 1, 2).getAttribute("tabindex")).toBe("0");
+});
+
+test("REQ157_AC3_ctrl_z_et_ctrl_y_hors_saisie_agissent_sur_le_document", () => {
+  const { t, vue } = monter();
+  touche(document.activeElement, "ArrowDown");
+  touche(document.activeElement, "Enter");
+  taper(saisieOuverte(t), "Zoé");
+  touche(saisieOuverte(t), "Enter");
+  expect(cellule(t, 1, 0).textContent).toBe("Zoé");
+  const z = touche(document.activeElement, "z", { ctrlKey: true });
+  expect(z.defaultPrevented).toBe(true);
+  expect(vue.state.doc.toString()).toBe(CLIENTS);
+  expect(cellule(t, 1, 0).textContent).toBe("Alice");
+  touche(document.activeElement, "y", { ctrlKey: true });
+  expect(cellule(t, 1, 0).textContent).toBe("Zoé");
+  expect(vue.state.doc.toString()).toContain("Zoé,Paris,12");
+});
+
+test("REQ157_AC5_echap_tab_entree_sans_changement_et_clic_ailleurs", () => {
+  const { t, vue, transactions } = monter();
+  // Entrée sans changement : aucune transaction.
+  clic(cellule(t, 1, 0));
+  touche(saisieOuverte(t), "Enter");
+  expect(transactions).toEqual([]);
+  // Tab : cellule suivante en saisie, de gauche à droite puis rangée suivante.
+  clic(cellule(t, 1, 2));
+  taper(saisieOuverte(t), "13");
+  touche(saisieOuverte(t), "Tab");
+  expect(vue.state.doc.toString()).toContain("Alice,Paris,13");
+  expect(saisieOuverte(t).getAttribute("aria-label")).toBe("nom, rangée 2");
+  expect(t.celluleActive()).toEqual({ r: 2, c: 0 });
+  // Maj+Tab : revient.
+  touche(saisieOuverte(t), "Tab", { shiftKey: true });
+  expect(saisieOuverte(t).getAttribute("aria-label")).toBe("note, rangée 1");
+  expect(saisieOuverte(t).textContent).toBe("13");
+  // Tab depuis la dernière cellule : validée, cellule active.
+  clic(cellule(t, 3, 2));
+  taper(saisieOuverte(t), "ok");
+  touche(saisieOuverte(t), "Tab");
+  expect(saisieOuverte(t)).toBeNull();
+  expect(vue.state.doc.toString()).toContain("Chloé,Nantes,ok");
+  expect(t.celluleActive()).toEqual({ r: 3, c: 2 });
+  expect(document.activeElement).toBe(cellule(t, 3, 2));
+  // Maj+Tab depuis la première : validée, rien d'autre.
+  clic(cellule(t, 0, 0));
+  touche(saisieOuverte(t), "Tab", { shiftKey: true });
+  expect(saisieOuverte(t)).toBeNull();
+  expect(t.celluleActive()).toEqual({ r: 0, c: 0 });
+  // Clic ailleurs : validée.
+  clic(cellule(t, 1, 0));
+  taper(saisieOuverte(t), "Alix");
+  saisieOuverte(t).dispatchEvent(new FocusEvent("blur"));
+  expect(vue.state.doc.toString()).toContain("Alix,Paris");
+  expect(saisieOuverte(t)).toBeNull();
+});
+
+test("REQ157_AC5_echap_laisse_le_document_inchange", () => {
+  const { t, vue, transactions } = monter();
+  clic(cellule(t, 2, 0));
+  taper(saisieOuverte(t), "Zut");
+  touche(saisieOuverte(t), "Escape");
+  expect(vue.state.doc.toString()).toBe(CLIENTS);
+  expect(transactions).toEqual([]);
+});
+
+test("REQ157_AC8_cellule_a_deux_lignes_saisie_sans_saut_de_ligne_ajoute", () => {
+  const { t, vue } = monter('a,b\n"ligne 1\nligne 2",x\n');
+  expect(cellule(t, 1, 0).textContent).toBe("ligne 1\nligne 2");
+  clic(cellule(t, 1, 0));
+  const span = saisieOuverte(t);
+  expect(span.textContent).toBe("ligne 1\nligne 2");
+  const e = touche(span, "Enter");
+  expect(e.defaultPrevented).toBe(true);
+  expect(saisieOuverte(t)).toBeNull();
+  expect(vue.state.doc.toString()).toBe('a,b\n"ligne 1\nligne 2",x\n');
+});
+
+test("REQ157_AC5_validerSaisie_ecrit_la_saisie_ouverte", () => {
+  const { t, vue } = monter();
+  clic(cellule(t, 1, 0));
+  taper(saisieOuverte(t), "Alix");
+  t.validerSaisie();
+  expect(vue.state.doc.toString()).toContain("Alix,Paris,12");
+  expect(saisieOuverte(t)).toBeNull();
+});
+
+test("REQ157_AC3_ne_fait_rien_quand_le_texte_est_illisible", () => {
+  const { t, vue } = monter();
+  vue.dispatch({ changes: { from: 0, to: vue.state.doc.length, insert: 'a,"b\n' } });
+  t.rafraichir();
+  expect(cellule(t, 1, 0).textContent).toBe("Alice");
+});
+
+test("REQ157_AC3_rafraichir_ramene_la_cellule_active_dans_la_grille", () => {
+  const { t, vue } = monter();
+  t.activer(3, 2);
+  vue.dispatch({ changes: { from: 0, to: vue.state.doc.length, insert: "a\nb\n" } });
+  t.rafraichir();
+  expect(t.celluleActive()).toEqual({ r: 1, c: 0 });
+  expect(cellule(t, 1, 0).getAttribute("tabindex")).toBe("0");
+  expect(document.activeElement).toBe(cellule(t, 1, 0));
+});
+
+test("REQ157_AC5_rafraichir_pendant_une_saisie_laisse_le_focus_sur_la_cellule_active", () => {
+  const { t } = monter();
+  clic(cellule(t, 1, 1));
+  expect(document.activeElement).toBe(saisieOuverte(t));
+  t.rafraichir();
+  expect(saisieOuverte(t)).toBeNull();
+  expect(document.activeElement).toBe(cellule(t, 1, 1));
+});
+
+test("REQ157_AC11_clic_place_le_curseur_a_l_endroit_du_clic", () => {
+  const { t } = monter();
+  document.caretPositionFromPoint = (x) => ({ offsetNode: cellule(t, 1, 1).querySelector("div").firstChild, offset: x });
+  nettoyage.push(() => delete document.caretPositionFromPoint);
+  cellule(t, 1, 1).dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 2, clientY: 5 }));
+  expect(saisieOuverte(t).textContent).toBe("Paris");
+  expect(document.getSelection().anchorOffset).toBe(2);
+});
