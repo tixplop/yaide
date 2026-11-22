@@ -5,6 +5,7 @@ import { menu } from "./menu.js";
 import { versKlaxoon } from "../klaxoon.js";
 import { message } from "./message.js";
 import { depuisMermaid } from "../mermaid-jdiag.js";
+import { chargerMermaid } from "./diagramme.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
 import { boiteOutils } from "./tableau-outils.js";
 import { connecteurProcheAffiche, connecteursAffiches, connecteurs, dansRectangle, decalageAnneau, estFormePleine, estSymbole, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
@@ -73,6 +74,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   let vueCourante = { x: 0, y: 0, zoom: 1, ...vue };
   let choisis = []; // les `id` choisis, dans l'ordre de Tab
   let etat = null; // zone `status`
+  let detruit = false;
   let alerte = null; // zone `alert` du refus d'un collage mermaid, vide sans refus
   let saisie = null;
   let dessinSeul = 0; // numéro du Ctrl+Maj+V pressé sur la surface, tant que ni `paste` ni une autre touche ne l'ont consommé (0 : aucun)
@@ -863,11 +865,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     const r = texte === dernierTexte ? null : depuisMermaid(texte);
     if (r === null) return collerObjets();
     effacerRefus();
-    if (r.autre) return; // autres types : la surface les prend en charge avec T-375
-    if (r.refus) {
-      alerte.replaceChildren(...message({ texte: `Diagramme mermaid non collé : ${r.refus}`, variante: "erreur", presentation: "flottante" }).childNodes);
-      return;
-    }
+    if (r.autre) return collerAutre(r.model, seul);
+    if (r.refus) return refuser(r.refus);
     // Dessin seul : le document recréé garde le modèle du document courant (absent, il reste absent).
     if (seul) {
       const recree = { ...r.doc };
@@ -880,6 +879,37 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     const n = r.doc.boxes.length;
     const l = r.doc.links.length;
     annoncer(`Diagramme mermaid collé : ${n} ${n > 1 ? "boîtes" : "boîte"}, ${l === 0 ? "aucun lien" : l === 1 ? "1 lien" : `${l} liens`}.`);
+  }
+
+  function refuser(texte) {
+    alerte.replaceChildren(...message({ texte: `Diagramme mermaid non collé : ${texte}`, variante: "erreur", presentation: "flottante" }).childNodes);
+  }
+
+  // Autre type de diagramme : mermaid le dessine, puis le dessin est traduit en boîtes, textes et flèches libres (REQ-154, DEC-107).
+  async function collerAutre(model, seul) {
+    const zone = surface;
+    zone.classList.add("ya-attente");
+    let r;
+    try {
+      const mermaid = await chargerMermaid();
+      r = await mermaid.traduire(model);
+    } catch {
+      r = { refus: "la bibliothèque mermaid n'a pas pu être chargée." };
+    }
+    zone.classList.remove("ya-attente");
+    if (detruit || doc === null || zone !== surface) return;
+    zone.focus({ preventScroll: true });
+    if (r.refus) return refuser(r.refus);
+    const recree = { ...r.doc };
+    if (seul) {
+      if (doc.model !== undefined) recree.model = doc.model;
+    } else recree.model = model;
+    appliquer(recree);
+    choisis = [];
+    afficherTout();
+    const n = r.doc.boxes.length;
+    const f = r.doc.arrows.length;
+    annoncer(`Diagramme mermaid collé : ${pluriel(n, "boîte", "boîtes")}, ${f === 0 ? "aucune flèche libre" : pluriel(f, "flèche libre", "flèches libres")}.`);
   }
 
   function surClic(e) {
@@ -1238,6 +1268,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       afficherTout();
     },
     detruire() {
+      detruit = true;
       menuOuvert?.fermer();
       observateur?.disconnect();
       document.removeEventListener("selectionchange", surSelection);

@@ -835,6 +835,9 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau[hidden] { display: none; }
 .ya-tableau-surface { flex: 1; min-width: 0; min-height: 0; position: relative; outline: none; cursor: default; -webkit-user-select: none; user-select: none; }
 .ya-tableau-surface :is(.ya-tableau-texte, .ya-tableau-lien-texte)[contenteditable] { -webkit-user-select: text; user-select: text; }
+/* `.ya-attente` est aussi la pile verticale des attentes : la surface reste un bloc */
+.ya-tableau-surface.ya-attente { display: block; gap: 0; }
+.ya-tableau-surface.ya-attente, .ya-tableau-surface.ya-attente * { cursor: progress; }
 .ya-tableau-surface svg { display: block; width: 100%; height: 100%; }
 /* Boîte à outils d'un whiteboard (C-018, REQ-133) */
 .ya-tableau-outils { box-sizing: border-box; position: absolute; left: var(--space-3); bottom: var(--space-3); width: 304px; max-height: calc(100% - 24px); overflow-x: hidden; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; gap: 4px; background: var(--bg-300); border-radius: var(--radius-md); box-shadow: var(--shadow-popover); }
