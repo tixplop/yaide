@@ -95,8 +95,8 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 ## Fonctionnalités
 - REQ-001 à REQ-006 mot de passe, lancement, HTTPS, session → src/cli.rs, config.rs, tls.rs, auth.rs, serveur.rs, web/src/vues/connexion.js
 - REQ-007 à REQ-010, REQ-034, REQ-049, REQ-050, REQ-125 arborescence → src/fichiers.rs, web/src/vues/fichiers.js
-- REQ-158 thème clair ou sombre propre au tableur (clé `yaide-theme-tableur`, `data-theme` sur `.ya-tableur`, bouton « Thème clair du tableur ») → web/src/ui/theme.js, ui/zone-code.js, vues/editeur.js, ui/composants.css
-- REQ-157 (lecture et écriture CSV ; tableur : grille, clavier, saisie) → web/src/csv.js, ui/tableur.js, ui/hybride.js (`champSaisie`), ui/zone-code.js (bascule grille/texte, message), vues/editeur.js, ui/composants.css
+- REQ-158 (e2e/tableur.spec.js) thème clair ou sombre propre au tableur (clé `yaide-theme-tableur`, `data-theme` sur `.ya-tableur`, bouton « Thème clair du tableur ») → web/src/ui/theme.js, ui/zone-code.js, vues/editeur.js, ui/composants.css
+- REQ-157 (lecture et écriture CSV ; tableur : grille, clavier, saisie, rangée d'en-tête collée en haut, `scroll-padding-top` posé par `activer`) → e2e/tableur.spec.js (P-120, P-121), web/src/csv.js, ui/tableur.js, ui/hybride.js (`champSaisie`), ui/zone-code.js (bascule grille/texte, message), vues/editeur.js, ui/composants.css
 - REQ-008, REQ-011 à REQ-014, REQ-061, REQ-083 onglets, sauvegarde, menu → web/src/vues/editeur.js, onglets-fichiers.js, ui/onglets.js, ui/zone-code.js
 - REQ-120, REQ-121 images et SVG → web/src/ui/image.js, vues/editeur.js
 - REQ-012, REQ-042 à REQ-044, REQ-058, REQ-062, REQ-063, REQ-115, REQ-117 rendu markdown, aperçu HTML, hybride, couleurs → ui/apercu.js, apercu-html.js, hybride.js, couleurs-markdown.js, ui/palettes.js, src/apercu.rs

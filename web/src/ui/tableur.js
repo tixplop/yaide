@@ -76,6 +76,9 @@ export function tableur({ vue, nom }) {
     if (!td) return;
     active = { r, c };
     marquer();
+    // La première rangée reste collée en haut : la cellule active doit s'arrêter sous elle, même si ses titres passent à la ligne.
+    const entete = table.rows[0]?.getBoundingClientRect().bottom - zone.getBoundingClientRect().top;
+    if (entete > 0) zone.style.scrollPaddingTop = `${entete}px`;
     if (avecFocus && zone.isConnected) td.focus();
     td.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }

@@ -262,6 +262,14 @@ Un whiteboard se crée par « Nouveau whiteboard » dans le menu de l'arborescen
 
 Une image (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.avif`, `.bmp`, `.ico`) s'ouvre dans son propre onglet, entière et en lecture seule, et se met à jour quand le fichier change sur le disque. Un fichier SVG s'ouvre dans l'éditeur avec son aperçu à côté, qui suit la frappe : le SVG n'y exécute aucun script et ne charge rien.
 
+## Tableur d'un fichier CSV
+
+Un fichier `.csv` s'ouvre en tableur : une grille, une rangée par enregistrement, une colonne par champ (la première rangée sert d'en-tête). Le séparateur est `;` si la première ligne en a plus que de `,`, sinon `,`. Les flèches changent de cellule ; Entrée ou F2, ou un clic, met la cellule en saisie. Entrée ou un clic ailleurs valide, Échap abandonne, Tab et Maj+Tab valident et passent à la cellule suivante ou précédente. Valider ne change dans le fichier que le champ de la cellule, le reste à l'octet près ; Ctrl+Z et Ctrl+Y annulent et rétablissent, Ctrl+S enregistre comme pour un fichier texte.
+
+Au survol des bordures et de la première rangée, des boutons insèrent une colonne ou une ligne, ou les suppriment. Un clic sur « Mode hybride » revient au texte du fichier, et un nouveau clic à la grille. « Thème clair du tableur » passe tous les tableurs ouverts en clair ou en sombre, quel que soit le thème de Yaide ; ce choix est gardé dans le navigateur.
+
+Si le fichier ne peut pas s'afficher en grille, l'éditeur montre son texte, « Mode hybride » reste pressé, et un message en haut de l'éditeur dit pourquoi : « Tableur indisponible : guillemet non fermé à la ligne 3. » ou « Tableur indisponible : plus de 2 000 lignes. ». La grille revient dès que le texte redevient lisible.
+
 ## Thème clair
 
 Le bouton « Thème clair », à droite de la barre de titre, fait passer toute l'interface (éditeur et shells compris) en clair, sans recharger la page ni perdre le texte ou l'affichage des shells. Un nouveau clic revient au sombre. Le choix est gardé dans le navigateur, pour cette adresse, et s'applique dès l'affichage, y compris sur l'écran de connexion. Le sombre est le thème par défaut.
