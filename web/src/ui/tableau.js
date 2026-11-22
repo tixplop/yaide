@@ -863,6 +863,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     const r = texte === dernierTexte ? null : depuisMermaid(texte);
     if (r === null) return collerObjets();
     effacerRefus();
+    if (r.autre) return; // autres types : la surface les prend en charge avec T-375
     if (r.refus) {
       alerte.replaceChildren(...message({ texte: `Diagramme mermaid non collé : ${r.refus}`, variante: "erreur", presentation: "flottante" }).childNodes);
       return;

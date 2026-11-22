@@ -13,7 +13,8 @@ const DOC = () => ({
   arrows: [{ id: "a1", x1: 100, y1: 300, x2: 300, y2: 300 }],
 });
 const GRAPH = "graph TD\n  A[Début] --> B{Choix}\n  B -->|oui| C(Fin)\n  B -.-> D((Autre))";
-const REFUS = "Diagramme mermaid non collé : seuls les organigrammes (graph, flowchart) sont pris en charge.";
+const REFUS = "Diagramme mermaid non collé : la ligne 3 n'est pas comprise.";
+const ILLISIBLE = "graph TD\nA --> B\nA@{ shape: rect }";
 
 let t;
 let changements;
@@ -100,7 +101,7 @@ test("REQ154_AC11_la_zone_alert_existe_vide_et_cachee_apres_la_surface_et_le_ref
   expect(alerte().matches(":empty")).toBe(true);
   expect(css).toMatch(/\.ya-message-flottante:empty\s*\{\s*display:\s*none/);
   expect(surface().compareDocumentPosition(alerte()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  coller("sequenceDiagram\n  A->>B: Bonjour");
+  coller(ILLISIBLE);
   expect(alerte().textContent).toBe(REFUS);
   expect(alerte().matches(":empty")).toBe(false);
   expect(alerte().classList.contains("ya-message-flottante")).toBe(true);
@@ -110,7 +111,7 @@ test("REQ154_AC11_la_zone_alert_existe_vide_et_cachee_apres_la_surface_et_le_ref
 test("REQ154_AC6_AC10_refus_ne_change_rien_garde_le_focus_et_part_au_geste_suivant", () => {
   monter();
   surface().focus();
-  const e = coller("sequenceDiagram\n  A->>B: Bonjour");
+  const e = coller(ILLISIBLE);
   expect(e.defaultPrevented).toBe(true);
   expect(changements).toHaveLength(0);
   expect(vues).toHaveLength(0);
@@ -133,22 +134,22 @@ test("REQ154_AC6_AC10_refus_ne_change_rien_garde_le_focus_et_part_au_geste_suiva
     () => t.element.querySelector("[role=toolbar]").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })),
   ];
   for (const geste of gestes) {
-    coller("sequenceDiagram");
+    coller(ILLISIBLE);
     expect(alerte().textContent).not.toBe("");
     geste();
     expect(alerte().textContent).toBe("");
   }
   // même refus deux fois de suite : le Ctrl+V vide la zone, le collage la réécrit
-  coller("sequenceDiagram");
+  coller(ILLISIBLE);
   touche("v", { ctrlKey: true });
   expect(alerte().textContent).toBe("");
-  coller("sequenceDiagram");
+  coller(ILLISIBLE);
   expect(alerte().textContent).toBe(REFUS);
 });
 
 test("REQ154_AC10_le_message_reste_sans_geste_et_part_quand_le_fichier_devient_illisible", async () => {
   monter();
-  coller("sequenceDiagram");
+  coller(ILLISIBLE);
   await attendre();
   expect(alerte().textContent).toBe(REFUS);
   t.element.remove();

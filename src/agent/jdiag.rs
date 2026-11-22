@@ -501,4 +501,48 @@ mod tests {
         ], "links": []});
         assert!(en_texte(&inconnu).is_err());
     }
+
+    #[test]
+    fn req154_ac16_ce_que_la_traduction_ecrit_est_relu_a_l_identique() {
+        let brut = json!({"version": 1, "model": "pie\n  \"A\" : 1", "boxes": [
+            {"id": "b1", "x": 40, "y": 40, "width": 1, "height": 1, "text": ""},
+            {"id": "b2", "x": 50, "y": 40, "width": 12, "height": 12, "text": "", "shape": "dot"},
+            {"id": "b3", "x": 70, "y": 40, "width": 72, "height": 30, "text": "Bonjour\nSalut", "shape": "text"},
+            {"id": "b4", "x": 40, "y": 90, "width": 100, "height": 40, "text": "A", "shape": "rounded", "color": "red", "opacity": 50, "line": "dashed"},
+            {"id": "b5", "x": 40, "y": 150, "width": 100, "height": 50, "text": "", "shape": "diamond", "opacity": 0, "color": "blue"},
+            {"id": "b6", "x": 40, "y": 210, "width": 60, "height": 40, "text": "B", "shape": "ellipse", "opacity": 25, "color": "purple"}
+        ], "links": [], "arrows": [
+            {"id": "a1", "x1": 40, "y1": 40, "x2": 140, "y2": 40, "ends": "none"},
+            {"id": "a2", "x1": 140, "y1": 40, "x2": 140, "y2": 90},
+            {"id": "a3", "x1": 1, "y1": 2, "x2": 3, "y2": 4, "ends": "start", "line": "dashed", "weight": "thick"},
+            {"id": "a4", "x1": 1, "y1": 2, "x2": 3, "y2": 4, "ends": "both"}
+        ]});
+        let (ecrit, nombres) = en_texte(&brut).unwrap();
+        assert_eq!(nombres, [6, 0, 4]);
+        for attendu in [
+            "\"shape\": \"dot\"",
+            "\"shape\": \"text\"",
+            "\"shape\": \"rounded\"",
+            "\"shape\": \"diamond\"",
+            "\"shape\": \"ellipse\"",
+            "\"opacity\": 0",
+            "\"opacity\": 50",
+            "\"color\": \"red\"",
+            "\"line\": \"dashed\"",
+            "\"ends\": \"none\"",
+            "\"ends\": \"start\"",
+            "\"ends\": \"both\"",
+            "\"weight\": \"thick\"",
+            "\"width\": 1, \"height\": 1",
+        ] {
+            assert!(ecrit.contains(attendu), "{attendu} manque : {ecrit}");
+        }
+        assert!(
+            ecrit.contains(
+                "{\"id\": \"a3\", \"x1\": 1, \"y1\": 2, \"x2\": 3, \"y2\": 4, \"ends\": \"start\", \"line\": \"dashed\", \"weight\": \"thick\"}"
+            ),
+            "{ecrit}"
+        );
+        assert_eq!(relire(&ecrit).unwrap(), ecrit);
+    }
 }

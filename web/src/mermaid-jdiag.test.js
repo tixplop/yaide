@@ -89,7 +89,6 @@ describe("depuisMermaid", () => {
   });
 
   it("REQ154_AC6 : refus et causes", () => {
-    expect(depuisMermaid("sequenceDiagram\n  A->>B: Bonjour")).toEqual({ refus: "seuls les organigrammes (graph, flowchart) sont pris en charge." });
     expect(depuisMermaid("graph TD\nA --> B\nA@{ shape: rect }")).toEqual({ refus: "la ligne 3 n'est pas comprise." });
     expect(depuisMermaid("```mermaid\ngraph TD\nA --> B\nA@{ shape: rect }\n```")).toEqual({ refus: "la ligne 4 n'est pas comprise." });
     expect(depuisMermaid("graph TD\nA[Début --> B")).toEqual({ refus: "la ligne 2 n'est pas comprise." });
@@ -113,5 +112,27 @@ describe("depuisMermaid", () => {
     expect(depuisMermaid("Bonjour")).toBeNull();
     expect(depuisMermaid("")).toBeNull();
     expect(depuisMermaid("graphique TD\nA --> B")).toBeNull();
+  });
+
+  it("REQ154_AC16 : chaque autre type est reconnu, avec le texte normalisé comme modèle", () => {
+    const mots = [
+      "sequenceDiagram", "classDiagram", "classDiagram-v2", "stateDiagram", "stateDiagram-v2", "erDiagram", "journey", "gantt", "pie",
+      "quadrantChart", "requirementDiagram", "requirement", "gitGraph", "C4Context", "C4Container", "C4Component", "C4Dynamic",
+      "C4Deployment", "mindmap", "timeline", "sankey", "sankey-beta", "xychart", "xychart-beta", "block", "block-beta", "packet",
+      "packet-beta", "architecture-beta", "kanban", "radar-beta", "treemap", "treeView-beta", "venn-beta", "wardley-beta",
+      "usecase-beta", "swimlane-beta", "eventmodeling", "ishikawa", "ishikawa-beta", "cynefin-beta", "agentflow-beta",
+      "railroad-beta", "railroad-ebnf-beta", "railroad-abnf-beta", "railroad-peg-beta", "flowchart-elk",
+    ];
+    expect(mots).toHaveLength(47);
+    for (const mot of mots) {
+      const texte = `${mot}\n  a b`;
+      expect(depuisMermaid(texte), mot).toEqual({ autre: true, model: texte });
+    }
+    expect(depuisMermaid("pie title Animaux\n  \"Chiens\" : 3")).toEqual({ autre: true, model: "pie title Animaux\n  \"Chiens\" : 3" });
+    expect(depuisMermaid("info")).toBeNull();
+    expect(depuisMermaid("Bonjour")).toBeNull();
+    const clos = ["```mermaid", "%%{init: {'theme': 'dark'}}%%", "", "  %% commentaire", "sequenceDiagram", "  A->>B: Salut", "```"];
+    expect(depuisMermaid(clos.join("\r\n") + "\r\n\r\n")).toEqual({ autre: true, model: clos.slice(1, -1).join("\n") });
+    expect(depuisMermaid("%%{init: {}}%%\ngantt")).toEqual({ autre: true, model: "%%{init: {}}%%\ngantt" });
   });
 });

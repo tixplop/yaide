@@ -253,7 +253,7 @@ test("REQ155_AC9_pas_de_connecteur_clic_ailleurs_molette_refus_et_boite_a_outils
   expect(choisies()).toEqual(["b2"]);
   surface().dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 40 }));
   expect(menuOuvert()).toBeNull();
-  coller("sequenceDiagram\n  A->>B: Bonjour");
+  coller("graph TD\nA --> B\nA@{ shape: rect }");
   expect(alerte().textContent).not.toBe("");
   droit(surface());
   expect(alerte().textContent).toBe("");

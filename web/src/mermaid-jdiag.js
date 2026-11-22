@@ -1,10 +1,14 @@
-// Organigramme mermaid → document whiteboard (REQ-154, DEC-103). Fonction pure, sans dépendance.
+// Texte mermaid → document whiteboard pour l'organigramme, `{ autre, model }` pour les autres types (REQ-154, DEC-103). Fonction pure, sans dépendance.
 import { TAILLES } from "./jdiag.js";
 
+// Les types que dessine la bibliothèque mermaid de Yaide, autres que l'organigramme (REQ-154, DEC-107).
 const AUTRES_TYPES = new Set([
-  "sequenceDiagram", "classDiagram", "stateDiagram", "stateDiagram-v2", "erDiagram", "journey", "gantt", "pie",
-  "quadrantChart", "requirementDiagram", "gitGraph", "C4Context", "mindmap", "timeline", "sankey-beta",
-  "xychart-beta", "block-beta", "packet-beta", "architecture-beta", "kanban", "radar-beta",
+  "sequenceDiagram", "classDiagram", "classDiagram-v2", "stateDiagram", "stateDiagram-v2", "erDiagram", "journey", "gantt", "pie",
+  "quadrantChart", "requirementDiagram", "requirement", "gitGraph", "C4Context", "C4Container", "C4Component", "C4Dynamic",
+  "C4Deployment", "mindmap", "timeline", "sankey", "sankey-beta", "xychart", "xychart-beta", "block", "block-beta", "packet",
+  "packet-beta", "architecture-beta", "kanban", "radar-beta", "treemap", "treeView-beta", "venn-beta", "wardley-beta",
+  "usecase-beta", "swimlane-beta", "eventmodeling", "ishikawa", "ishikawa-beta", "cynefin-beta", "agentflow-beta",
+  "railroad-beta", "railroad-ebnf-beta", "railroad-abnf-beta", "railroad-peg-beta", "flowchart-elk",
 ]);
 const IGNOREES = /^(subgraph|direction|classDef|class|style|linkStyle|click|accTitle|accDescr)(\s|$)/;
 // Ouvrante, fermante, forme : les plus longues ouvrantes d'abord.
@@ -130,9 +134,9 @@ export function depuisMermaid(texte) {
   }
   if (lignes.length === 0) return null;
   const mot = /^[^\s;]+/.exec(lignes[0].t)[0];
-  if (AUTRES_TYPES.has(mot)) return { refus: "seuls les organigrammes (graph, flowchart) sont pris en charge." };
-  if (mot !== "graph" && mot !== "flowchart") return null;
   const model = brutes.slice(debut, fin).join("\n");
+  if (AUTRES_TYPES.has(mot)) return { autre: true, model };
+  if (mot !== "graph" && mot !== "flowchart") return null;
 
   const noeuds = new Map();
   const liens = [];
