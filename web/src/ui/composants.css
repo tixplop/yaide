@@ -832,6 +832,9 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 /* C-018 : whiteboard. Contours, traits et pointes gardent leur taille à l'écran (`vector-effect`). */
 .ya-tableau-zone { box-sizing: border-box; flex: 1; height: 100%; min-width: 0; min-height: 0; display: flex; overflow: hidden; position: relative; background: var(--bg-200); }
 .ya-tableau-zone[hidden] { display: none; }
+/* Recherche dans un whiteboard (REQ-161) : la zone isole ses couches ; le panneau et la boîte à outils sont en z-index 1, et le refus d'un collage passe dessous. */
+.ya-tableau-zone { isolation: isolate; }
+.ya-message-flottante.ya-message-sous-recherche { top: 50px; }
 .ya-tableau { box-sizing: border-box; flex: 1; height: 100%; min-width: 0; min-height: 0; display: flex; overflow: hidden; background: var(--bg-200); }
 .ya-tableau:focus-within { outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
 .ya-tableau[hidden] { display: none; }
@@ -842,7 +845,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau-surface.ya-attente, .ya-tableau-surface.ya-attente * { cursor: progress; }
 .ya-tableau-surface svg { display: block; width: 100%; height: 100%; }
 /* Boîte à outils d'un whiteboard (C-018, REQ-133) */
-.ya-tableau-outils { box-sizing: border-box; position: absolute; left: var(--space-3); bottom: var(--space-3); width: 304px; max-height: calc(100% - 24px); overflow-x: hidden; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; gap: 4px; background: var(--bg-300); border-radius: var(--radius-md); box-shadow: var(--shadow-popover); }
+.ya-tableau-outils { box-sizing: border-box; position: absolute; z-index: 1; left: var(--space-3); bottom: var(--space-3); width: 304px; max-height: calc(100% - 24px); overflow-x: hidden; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; gap: 4px; background: var(--bg-300); border-radius: var(--radius-md); box-shadow: var(--shadow-popover); }
 .ya-tableau-outils-rang { display: flex; gap: 8px; }
 .ya-tableau-outils-groupe { display: flex; gap: 2px; }
 .ya-tableau-outils .ya-icon-btn { position: relative; }

@@ -8,7 +8,8 @@ import { depuisMermaid } from "../mermaid-jdiag.js";
 import { chargerMermaid } from "./diagramme.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
 import { boiteOutils } from "./tableau-outils.js";
-import { connecteurProcheAffiche, connecteursAffiches, connecteurs, dansRectangle, decalageAnneau, estFormePleine, estSymbole, geometrieLien, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
+import { chercherTexte, marquerOccurrences, panneauRecherche } from "./panneau-recherche.js";
+import { connecteurProcheAffiche, connecteursAffiches, centrerObjet, connecteurs, dansRectangle, decalageAnneau, estFormePleine, estSymbole, geometrieLien, milieuTrace, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
 import { basculer, colorer, decalages, etatTexte, inserer, lireTexte, pointA, rendreZone } from "./tableau-texte.js";
 import { anneauxPleines, dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, dessinRectangleSelection, poigneesBoite, poigneesFleche, poigneesLien, svg } from "./tableau-dessin.js";
 
@@ -92,6 +93,9 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   const choix = { ...OUTILS_DEPART, ...outils };
   let barre = null;
   let menuOuvert = null; // menu « Actions sur la sélection » : { fermer }
+  const rech = { texte: "", ouvert: false }; // recherche (REQ-161)
+  let courante = null; // `id` de l'occurrence choisie par F3
+  let panneau = null;
   let enAttente = null; // copie au format Klaxoon que `surCopie` doit écrire : { klaxoon, copie, recu }
 
   const element = document.createElement("div");
@@ -136,6 +140,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     }
     dernierGroupe = groupe;
     doc = nouveau;
+    courante = null;
     surChangement(nouveau);
   };
   // Fin d'un geste ou d'une saisie : un pas qui ne change pas le texte du document ne compte pas.
@@ -194,6 +199,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     editeur = null;
     saisie = null;
     if (doc === null) {
+      fermer(false);
       element.setAttribute("role", "region");
       element.setAttribute("aria-label", nomCourant);
       element.tabIndex = -1;
@@ -255,12 +261,13 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       texte = document.createElement("div");
       texte.className = "ya-tableau-texte";
       rendreZone(texte, b.text, b.spans);
+      marquer(texte, b);
     }
     return dessinBoite(b, { id: idElement(b.id), nom: nomBoite(b), classe, texte, zoom: vueCourante.zoom });
   }
 
   function groupeLien(l, z) {
-    return dessinLien(doc, l, z, { id: idElement(l.id), nom: nomLien(l), classe: choisis.includes(l.id) ? " choisie" : "", texte: saisie === l.id ? editeur : null });
+    return dessinLien(doc, l, z, { id: idElement(l.id), nom: nomLien(l), classe: choisis.includes(l.id) ? " choisie" : "", texte: saisie === l.id ? editeur : null, marquer: (etiquette) => marquer(etiquette, l) });
   }
 
   function flecheProvisoire(z) {
@@ -336,6 +343,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
 
   function dessiner() {
     if (!dessin) return;
+    const occ = calculerOccurrences();
     const z = vueCourante.zoom;
     const t = taille();
     dessin.setAttribute("viewBox", `${vueCourante.x} ${vueCourante.y} ${t.largeur / z} ${t.hauteur / z}`);
@@ -365,6 +373,105 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     etat.textContent = annonce ? annonce.texte : choisis.length > 1 ? `${choisis.length} objets choisis` : "";
     if (avaitFocus) placerSelection(sel?.debut ?? null, sel?.fin);
     afficherOutils();
+    afficherCompteur(occ);
+  }
+
+  // ---- Recherche dans les boîtes et les liens (REQ-161) ----
+
+  // Boîtes et liens dont le texte contient le texte cherché, de haut en bas puis de gauche à droite (coin haut gauche d'une boîte, milieu du tracé d'un lien).
+  function calculerOccurrences() {
+    if (!rech.ouvert || !rech.texte) return [];
+    const occ = [...doc.boxes, ...doc.links]
+      .filter((o) => chercherTexte(o.text ?? "", rech.texte).length > 0)
+      .map((o) => ({ id: o.id, ...clePosition(o) }))
+      .sort((a, b) => a.y - b.y || a.x - b.x);
+    // L'occurrence courante ne survit ni à un autre choix, ni à la perte de son texte.
+    if (courante && !(choisis.length === 1 && choisis[0] === courante && occ.some((o) => o.id === courante))) courante = null;
+    return occ;
+  }
+  function clePosition(o) {
+    if (boite(o.id)) return { x: o.x, y: o.y };
+    if (estLien(o.id)) return milieuTrace(doc, o);
+    const r = rectangleFleche(o);
+    return { x: r.x, y: r.y };
+  }
+  function marquer(zone, o) {
+    if (rech.ouvert && rech.texte) marquerOccurrences(zone, rech.texte, { courante: courante === o.id });
+  }
+  function afficherCompteur(occ) {
+    if (!panneau) return;
+    panneau.definirTexte(rech.texte);
+    const i = courante ? occ.findIndex((o) => o.id === courante) : -1;
+    panneau.afficher(occ.length, i >= 0 ? i + 1 : undefined);
+  }
+  // Va à l'occurrence suivante (ou précédente) de l'objet choisi, en bouclant ; le focus reste où il est.
+  function aller(sens) {
+    const occ = calculerOccurrences();
+    if (!occ.length || doc === null) return;
+    finirSaisie();
+    const ref = unique();
+    const i = occ.findIndex((o) => o.id === ref);
+    let cibleOcc;
+    if (i >= 0) cibleOcc = occ[(i + sens + occ.length) % occ.length];
+    else if (ref === null) cibleOcc = sens > 0 ? occ[0] : occ[occ.length - 1];
+    else {
+      const k = clePosition(objet(ref));
+      const apres = (o) => o.y > k.y || (o.y === k.y && o.x > k.x);
+      cibleOcc = sens > 0 ? (occ.find(apres) ?? occ[0]) : (occ.findLast((o) => !apres(o) && (o.y !== k.y || o.x !== k.x)) ?? occ[occ.length - 1]);
+    }
+    courante = cibleOcc.id;
+    choisis = [courante];
+    centrer(courante);
+    dessiner();
+  }
+  // Centre l'objet si le rectangle n'est pas entier dans la zone sous le panneau, ou s'il passe sous la boîte à outils.
+  function centrer(id) {
+    const t = taille();
+    if (!t.largeur || !t.hauteur) return;
+    const z = element.getBoundingClientRect();
+    const b = barre.element.getBoundingClientRect();
+    const outils = b.width > 0 && b.height > 0 ? { x: b.left - z.left, y: b.top - z.top, width: b.width, height: b.height } : null;
+    const nv = centrerObjet(vueCourante, t, limites(id), { haut: 42, outils });
+    if (nv.x !== vueCourante.x || nv.y !== vueCourante.y) changerVue(nv);
+  }
+  function creerPanneau() {
+    panneau = panneauRecherche({
+      nom: nomCourant,
+      surTexte: (texte) => {
+        rech.texte = texte;
+        courante = null;
+        dessiner();
+      },
+      surSuivante: () => aller(1),
+      surPrecedente: () => aller(-1),
+      surFermer: () => fermer(),
+    });
+    element.prepend(panneau.element);
+    alerte?.classList.add("ya-message-sous-recherche");
+  }
+  function ouvrir() {
+    if (doc === null) return;
+    finirSaisie();
+    rech.ouvert = true;
+    if (!panneau) creerPanneau();
+    dessiner();
+    panneau.ouvrir();
+  }
+  function fermer(focus = true) {
+    if (!rech.ouvert) return;
+    rech.ouvert = false;
+    rech.texte = "";
+    panneau?.element.remove();
+    panneau = null;
+    alerte?.classList.remove("ya-message-sous-recherche");
+    dessiner();
+    if (focus) surface?.focus({ preventScroll: true });
+  }
+  // F3 et Maj+F3, recherche ouverte, depuis la surface et la boîte à outils.
+  function surF3(e) {
+    if (e.key !== "F3" || !rech.ouvert || e.ctrlKey || e.metaKey || e.altKey) return;
+    e.preventDefault();
+    aller(e.shiftKey ? -1 : 1);
   }
 
   const sorte = (o) => (boite(o.id) ? (o.shape === "text" || estSymbole(o) ? "texte" : estFormePleine(o) ? "forme" : "boite") : estLien(o.id) ? "lien" : "trait");
@@ -612,6 +719,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       appliquer(avecTexteDe(id, text, spans), mon);
       dessin.querySelector(`[data-id="${id}"]`)?.setAttribute("aria-label", nomSaisie(objet(id), text));
       afficherOutils();
+      afficherCompteur(calculerOccurrences());
     });
     dessiner();
     placerSelection(null);
@@ -672,6 +780,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       }, 0);
     }
     if (doc === null) return;
+    surF3(e);
     if (geste?.type === "selection" && e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -1209,6 +1318,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     surEchap: () => surface?.focus({ preventScroll: true }),
   });
   barre.element.addEventListener("keydown", surHistorique);
+  barre.element.addEventListener("keydown", surF3);
   // Le refus d'un collage part au geste suivant sur la zone.
   for (const type of ["pointerdown", "wheel", "keydown"]) element.addEventListener(type, effacerRefus, { passive: true, capture: true });
   const surSelection = () => {
@@ -1242,6 +1352,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       aRefaire = [];
       dernierGroupe = null;
       doc = nouveau ?? null;
+      courante = null;
       choisis = doc === null ? [] : choisis.filter((id) => objet(id) !== undefined);
       if (avant || doc === null) monter();
       else dessiner();
@@ -1253,7 +1364,10 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     definirNom(nouveau) {
       nomCourant = nouveau;
       if (doc === null) monter();
-      else surface.setAttribute("aria-label", nouveau);
+      else {
+        surface.setAttribute("aria-label", nouveau);
+        panneau?.element.setAttribute("aria-label", `Rechercher dans ${nouveau}`);
+      }
     },
     ajouterBoite() {
       if (doc === null) return;
@@ -1261,6 +1375,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       const t = taille();
       nouvelleBoite(vueCourante.x + t.largeur / 2 / vueCourante.zoom, vueCourante.y + t.hauteur / 2 / vueCourante.zoom);
     },
+    recherche: { ouvrir, fermer },
     zoomAvant: () => changerZoom(1),
     zoomArriere: () => changerZoom(-1),
     toutAfficher() {

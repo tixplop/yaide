@@ -104,6 +104,24 @@ export function voirObjet(vue, taille, objet) {
   };
 }
 
+// REQ-161 : vue qui centre `objet` dans la zone, sauf s'il y est déjà entier : à l'écran, hors des `haut` px du haut
+// (panneau de recherche) et hors de `outils` ({ x, y, width, height } en px écran, ou null). Zoom inchangé.
+export function centrerObjet(vue, taille, objet, { haut = 0, outils = null } = {}) {
+  const z = vue.zoom;
+  const g = (objet.x - vue.x) * z;
+  const h = (objet.y - vue.y) * z;
+  const d = g + objet.width * z;
+  const b = h + objet.height * z;
+  const entier = g >= 0 && h >= haut && d <= taille.largeur && b <= taille.hauteur;
+  const croise = outils && g < outils.x + outils.width && d > outils.x && h < outils.y + outils.height && b > outils.y;
+  if (entier && !croise) return vue;
+  return {
+    ...vue,
+    x: objet.x + objet.width / 2 - taille.largeur / 2 / z,
+    y: objet.y + objet.height / 2 - taille.hauteur / 2 / z,
+  };
+}
+
 // ---- Formes, connecteurs et tracés (REQ-130, REQ-134, REQ-135, REQ-136) ----
 
 const COTES = ["top", "right", "bottom", "left"];

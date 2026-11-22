@@ -116,8 +116,8 @@ function geometrie(depart, arrivee, style, zoom) {
   return { ...t, pointeDebut: pointe(t.debut, zoom, style.weight), pointeFin: pointe(t.fin, zoom, style.weight) };
 }
 
-// `texte` : le nœud de la saisie du texte du lien, mis à la place de l'étiquette.
-export function dessinLien(doc, lien, zoom, { id, nom, classe, texte = null }) {
+// `texte` : le nœud de la saisie du texte du lien, mis à la place de l'étiquette ; `marquer(etiquette)` : surlignage de la recherche (REQ-161) posé sur l'étiquette affichée.
+export function dessinLien(doc, lien, zoom, { id, nom, classe, texte = null, marquer = null }) {
   const g = svg("g", { id, "data-id": lien.id, role: "group", "aria-roledescription": "lien", "aria-label": nom });
   g.setAttribute("class", `lien${lien.textSize && lien.textSize !== "normal" ? ` taille-${lien.textSize}` : ""}${classe}`);
   traitEtPointes(g, geometrieLien(doc, lien, zoom), lien, true);
@@ -131,6 +131,7 @@ export function dessinLien(doc, lien, zoom, { id, nom, classe, texte = null }) {
       etiquette = document.createElement("div");
       etiquette.className = "ya-tableau-lien-texte";
       rendreTexte(etiquette, lien.text, lien.spans);
+      marquer?.(etiquette);
     }
     cadre.append(etiquette);
     svg("foreignObject", { x: m.x - CADRE / 2, y: m.y - CADRE / 2, width: CADRE, height: CADRE }, g).append(cadre);

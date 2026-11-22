@@ -1045,3 +1045,97 @@ function lireHtmlKlaxoon(html) {
   if (!m) throw new Error(`html inattendu : ${html}`);
   return { donnees: m[1], contenu: m[2] };
 }
+
+// P-125 : recherche dans un whiteboard (REQ-161). Un seul lancement de Yaide ; le reste est prouvé par les tests de composant.
+test("REQ161_AC9_AC10_parcours_P125_recherche_whiteboard", async ({ page }) => {
+  const dossier = depotExemple();
+  const plan = path.join(dossier, "plan.jdiag");
+  const couleurs = ["default", "blue", "green", "yellow", "orange", "red", "purple"];
+  const boxes = couleurs.map((c, i) => ({ id: `b${i + 1}`, x: 40 + (i % 4) * 200, y: 40 + Math.floor(i / 4) * 120, width: 160, height: 80, text: "Serveur", ...(c === "default" ? {} : { color: c }) }));
+  boxes[0].spans = [{ start: 0, end: 3, bold: true }];
+  boxes.push({ id: "b8", x: 440, y: 160, width: 160, height: 80, text: "Serveur rouge", shape: "text", color: "red" });
+  fs.writeFileSync(plan, JSON.stringify({ version: 1, boxes, links: [{ id: "l1", from: "b1", to: "b2", text: "serveur" }] }));
+  const yaide = await lancerYaide({ dossier });
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+    await ligne(page, "plan.jdiag").click();
+    const surface = page.getByRole("application", { name: "plan.jdiag" });
+    await expect(surface).toBeFocused();
+    const zone = page.locator(".ya-tableau-zone").locator("visible=true").first();
+    await page.keyboard.press("Control+f");
+    const panneau = page.getByRole("search", { name: "Rechercher dans plan.jdiag" });
+    await expect(panneau.locator("input")).toBeFocused();
+    await page.keyboard.type("serveur");
+    const marques = zone.locator("mark.ya-occurrence");
+    await expect(marques).toHaveCount(10); // sept boîtes (la première en deux marques, « Ser » gras et « veur »), le texte rouge, le lien
+    // AC-161-9 : fond `--occurrence` posé sur `--bg-200` du thème du whiteboard, texte `--ink`, 4,5:1 au moins, dans les deux thèmes.
+    const resoudre = (jeton, propriete) => zone.evaluate((e, [j, p]) => {
+      const sonde = document.createElement("div");
+      sonde.style.setProperty(p, `var(${j})`);
+      e.append(sonde);
+      const v = getComputedStyle(sonde)[p === "background" ? "backgroundColor" : "color"];
+      sonde.remove();
+      return v;
+    }, [jeton, propriete]);
+    const mesurer = (marque) => marque.evaluate((m) => {
+      const cs = getComputedStyle(m);
+      const nombres = (t) => t.match(/[\d.]+/g).map(Number);
+      const base = nombres(cs.backgroundColor);
+      const [vr, vg, vb, va = 1] = nombres(cs.backgroundImage.match(/rgba?\([^)]*\)/)[0]);
+      const fond = [vr, vg, vb].map((v, i) => v * va + base[i] * (1 - va));
+      const lum = (c) => c.map((v) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+      const [a, b] = [lum(nombres(cs.color)), lum(fond)];
+      return { classe: m.className, base: cs.backgroundColor, image: cs.backgroundImage, couleur: cs.color, graisse: cs.fontWeight, ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
+    });
+    const verifierMarques = async () => {
+      const fondZone = await resoudre("--bg-200", "background");
+      const occurrence = await resoudre("--occurrence", "background");
+      const encre = await resoudre("--ink", "color");
+      for (let i = 0; i < 10; i++) {
+        const m = await mesurer(marques.nth(i));
+        expect(m.classe).toBe("ya-occurrence");
+        expect(m.base).toBe(fondZone);
+        expect(m.image).toContain(occurrence);
+        expect(m.couleur).toBe(encre);
+        expect(m.ratio).toBeGreaterThanOrEqual(4.5);
+      }
+      expect((await mesurer(marques.first())).graisse).toBe("700"); // la partie grasse garde sa graisse
+    };
+    await verifierMarques();
+    const bouton = page.getByRole("button", { name: "Thème clair du whiteboard" });
+    await bouton.click();
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    await verifierMarques();
+    // AC-161-10 : whiteboard clair dans un Yaide sombre : fond blanc, à 16 px du bord droit et 4 px du haut, immobile.
+    expect(await panneau.evaluate((e) => Boolean(e.closest("[data-theme=light]")))).toBe(true);
+    expect(await panneau.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(255, 255, 255)");
+    const place = async () => {
+      const zb = await zone.boundingBox();
+      const pb = await panneau.boundingBox();
+      return { droite: zb.x + zb.width - (pb.x + pb.width), haut: pb.y - zb.y, pb };
+    };
+    const avant = await place();
+    proche(avant.droite, 16);
+    proche(avant.haut, 4);
+    await surface.hover();
+    await page.mouse.wheel(0, 120);
+    await page.getByRole("button", { name: "Zoom avant" }).click();
+    expect((await place()).pb).toEqual(avant.pb);
+    // AC-161-9 : zone de 320 px de large, la fenêtre ne recouvre pas la boîte à outils.
+    const largeur = async () => (await zone.boundingBox()).width;
+    await page.setViewportSize({ width: 1280, height: 700 });
+    // Le panneau de l'éditeur ne descend pas sous 420 px : la zone elle-même est ramenée à 320 px.
+    await zone.evaluate((e) => {
+      e.style.flex = "none";
+      e.style.width = "320px";
+    });
+    await expect.poll(async () => Math.abs((await largeur()) - 320)).toBeLessThanOrEqual(1);
+    const outils = await zone.getByRole("toolbar").boundingBox();
+    const fenetre = await panneau.boundingBox();
+    const croise = fenetre.x < outils.x + outils.width && fenetre.x + fenetre.width > outils.x && fenetre.y < outils.y + outils.height && fenetre.y + fenetre.height > outils.y;
+    expect(croise).toBe(false);
+  } finally {
+    await yaide.arreter();
+  }
+});

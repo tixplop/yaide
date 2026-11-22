@@ -253,3 +253,89 @@ test("REQ160_AC6_AC8_texte_en_mode_hybride_eteint_fermeture_au_basculement_et_pa
   expect(document.querySelector(".ya-recherche-fichier")).toBeNull();
   expect(document.querySelector("mark.ya-occurrence")).toBeNull();
 });
+
+// ---- REQ-161 : recherche dans un whiteboard ----
+const PLAN = JSON.stringify({
+  version: 1,
+  boxes: [
+    { id: "b1", x: 40, y: 40, width: 160, height: 80, text: "Serveur web" },
+    { id: "b2", x: 400, y: 40, width: 160, height: 80, text: "Base de données" },
+    { id: "b3", x: 40, y: 300, width: 160, height: 80, text: "Cache serveur" },
+  ],
+  links: [{ id: "l1", from: "b1", to: "b2", text: "appelle le serveur" }],
+});
+const zoneWb = () => document.querySelector(".ya-tableau-zone:not([hidden])");
+const panneauWb = () => zoneWb().querySelector("[role=search]");
+const monterPlan = (fichiers = {}) => monter({ "plan.jdiag": PLAN, "README.md": README, ...fichiers });
+
+test("REQ161_AC1_ctrl_f_sur_la_surface_ou_la_boite_a_outils_ouvre_le_panneau_et_pas_sur_un_whiteboard_illisible", () => {
+  const e = monterPlan({ "casse.jdiag": "pas du json" });
+  aller(e, "plan.jdiag");
+  const z = zoneWb();
+  const surface = z.querySelector("[role=application]");
+  surface.focus();
+  const ev = ctrlF(surface);
+  expect(ev.defaultPrevented).toBe(true);
+  expect(panneauWb().getAttribute("aria-label")).toBe("Rechercher dans plan.jdiag");
+  expect(z.firstElementChild).toBe(panneauWb());
+  expect(document.activeElement).toBe(panneauWb().querySelector("input"));
+  expect([...panneauWb().querySelectorAll("input, button")].map((x) => x.getAttribute("aria-label") ?? x.className)).toEqual(["champ-saisie ya-input", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
+  // Depuis la boîte à outils : de même, la fenêtre étant déjà là, le champ reprend le focus.
+  panneauWb().querySelector('button[aria-label="Fermer la recherche"]').click();
+  expect(panneauWb()).toBeNull();
+  const outils = z.querySelector("[role=toolbar] button");
+  outils.focus();
+  expect(ctrlF(outils).defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(panneauWb().querySelector("input"));
+  // Whiteboard illisible : Ctrl+F ne change pas.
+  aller(e, "casse.jdiag");
+  const illisible = zoneWb();
+  expect(illisible.querySelector("[role=application]")).toBeNull();
+  expect(ctrlF(illisible).defaultPrevented).toBe(false);
+  expect(illisible.querySelector("[role=search]")).toBeNull();
+});
+
+test("REQ161_AC7_ctrl_f_pendant_la_saisie_la_finit_le_panneau_survit_au_changement_d_onglet_pas_au_rechargement", async () => {
+  stubFichiers();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const e = monter({});
+  await e.restaurer();
+  for (const [chemin, contenu] of Object.entries({ "plan.jdiag": PLAN, "README.md": README })) e.ouvrir({ chemin, contenu, version: "1" });
+  aller(e, "plan.jdiag");
+  const z = zoneWb();
+  const surface = z.querySelector("[role=application]");
+  surface.focus();
+  z.querySelector('[data-id="b1"]').dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+  const saisie = z.querySelector("[role=textbox]");
+  expect(saisie).not.toBeNull();
+  const ev = new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true, cancelable: true });
+  saisie.dispatchEvent(ev);
+  expect(ev.defaultPrevented).toBe(true);
+  expect(z.querySelector("[role=textbox]")).toBeNull();
+  expect(panneauWb()).not.toBeNull();
+  const champ = panneauWb().querySelector("input");
+  champ.value = "serveur";
+  champ.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(z.querySelectorAll("mark.ya-occurrence")).toHaveLength(3);
+  // Autre onglet puis retour.
+  aller(e, "README.md");
+  expect(z.hidden).toBe(true);
+  aller(e, "plan.jdiag");
+  expect(panneauWb().querySelector("input").value).toBe("serveur");
+  expect(panneauWb().querySelector(".ya-recherche-compteur").textContent).toBe("3");
+  expect(z.querySelectorAll("mark.ya-occurrence")).toHaveLength(3);
+  // Rechargement : la liste est relue, le panneau est fermé.
+  vi.advanceTimersByTime(300);
+  e.detruire();
+  document.body.replaceChildren();
+  let c2 = null;
+  const e2 = vueEditeur({ dire: vi.fn(), surGroupes: (arbre, courant) => c2?.definirGroupes(arbre, courant) });
+  editeurs.push(e2);
+  c2 = cadre({ principal: { groupes: e2.groupes() } });
+  document.body.append(c2);
+  await e2.restaurer();
+  expect(document.querySelector(".ya-tableau-zone")).not.toBeNull();
+  expect(document.querySelector("[role=search]")).toBeNull();
+  expect(document.querySelector("mark.ya-occurrence")).toBeNull();
+  vi.useRealTimers();
+});
