@@ -921,3 +921,17 @@ test("REQ159_AC13_occurrence_dans_les_deux_themes_et_contraste_de_l_encre_dessus
     }
   });
 });
+
+test("REQ160_AC10_REQ161_AC9_encre_sur_occurrence_posee_sur_bg_200", () => {
+  const minimum = [5.8, 13.93];
+  THEMES.forEach((theme, k) => {
+    // Le navigateur arrondit le mélange à 8 bits, comme la mesure de la spec.
+    const m = poser(jeton(theme, "--occurrence"), jeton(theme, "--bg-200"));
+    const surface = { r: Math.round(m.r), g: Math.round(m.g), b: Math.round(m.b), a: 1 };
+    const [x, y] = [lum(jeton(theme, "--ink")), lum(surface)].sort((p, q) => q - p);
+    const exact = (x + 0.05) / (y + 0.05);
+    expect(exact, theme).toBeGreaterThanOrEqual(4.5);
+    expect(Math.round(exact * 100) / 100, `--ink sur --occurrence sur --bg-200 (${theme}) : ${exact}`).toBe(minimum[k]);
+  });
+  expect(composants).toMatch(/mark\.ya-occurrence\s*\{[^}]*linear-gradient\(var\(--occurrence\), var\(--occurrence\)\), var\(--bg-200\)/);
+});

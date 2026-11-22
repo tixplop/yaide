@@ -1,9 +1,7 @@
 import { StateEffect, StateField, EditorSelection, Prec } from "@codemirror/state";
 import { EditorView, Decoration, ViewPlugin, keymap } from "@codemirror/view";
 import { SearchQuery } from "@codemirror/search";
-import { champ } from "./champ.js";
-import { bouton } from "./bouton.js";
-import { compteur } from "./compteur.js";
+import { panneauRecherche } from "./panneau-recherche.js";
 
 // REQ-159 (C-008) : recherche dans le texte d'un éditeur CodeMirror. Le panneau est de classe `ya-recherche-fichier`
 // (`ya-recherche` est déjà la vue Recherche).
@@ -71,53 +69,27 @@ function fermer(vue) {
 
 function ouvrir(vue) {
   if (!vue.state.field(champRecherche).ouvert) vue.dispatch({ effects: definir.of({ texte: "", ouvert: true }) });
-  const saisie = vue.dom.querySelector(".ya-recherche-fichier input");
-  saisie.focus();
-  saisie.select();
+  panneaux.get(vue).ouvrir();
 }
 
+const panneaux = new WeakMap();
+
 function creerPanneau(vue, nom) {
-  const panneau = document.createElement("div");
-  panneau.className = "ya-recherche-fichier";
-  panneau.setAttribute("role", "search");
-  panneau.setAttribute("aria-label", `Rechercher dans ${nom}`);
-  const c = champ({ libelle: "Rechercher dans le fichier", libelleMasque: true, indication: "Rechercher" });
-  const saisie = c.querySelector("input");
-  saisie.setAttribute("autocomplete", "off");
-  const zoneCompteur = document.createElement("span");
-  zoneCompteur.className = "ya-recherche-compteur";
-  const precedente = bouton({ icone: "chevron-up", nomAccessible: "Occurrence précédente", raccourci: "Maj+F3", touche: "Shift+F3" });
-  const suivante = bouton({ icone: "chevron-down", nomAccessible: "Occurrence suivante", raccourci: "F3", touche: "F3" });
-  const croix = bouton({ icone: "x", nomAccessible: "Fermer la recherche", raccourci: "Échap", touche: "Escape" });
-  const statut = document.createElement("div");
-  statut.className = "masque";
-  statut.setAttribute("role", "status");
-  precedente.addEventListener("click", () => aller(vue, -1));
-  suivante.addEventListener("click", () => aller(vue, 1));
-  croix.addEventListener("click", () => fermer(vue));
-  saisie.addEventListener("input", () => vue.dispatch({ effects: definir.of({ texte: saisie.value, ouvert: true }) }));
-  panneau.addEventListener("keydown", (ev) => {
-    const mod = ev.ctrlKey || ev.metaKey;
-    if (ev.key === "Escape") fermer(vue);
-    else if ((ev.key === "Enter" && !mod && ev.target === saisie) || ev.key === "F3") aller(vue, ev.shiftKey ? -1 : 1);
-    else if (mod && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === "f") ouvrir(vue);
-    else return;
-    ev.preventDefault();
-    ev.stopPropagation();
+  const p = panneauRecherche({
+    nom,
+    surTexte: (texte) => vue.dispatch({ effects: definir.of({ texte, ouvert: true }) }),
+    surSuivante: () => aller(vue, 1),
+    surPrecedente: () => aller(vue, -1),
+    surFermer: () => fermer(vue),
   });
-  panneau.append(c, zoneCompteur, precedente.enveloppe, suivante.enveloppe, croix.enveloppe, statut);
+  panneaux.set(vue, p);
   return {
-    element: panneau,
-    saisie,
+    element: p.element,
     maj(etat) {
       const { texte, occ } = etat.field(champRecherche);
-      if (saisie.value !== texte) saisie.value = texte;
-      const total = occ.length;
+      p.definirTexte(texte);
       const i = indexCourant(etat);
-      zoneCompteur.replaceChildren();
-      if (texte) zoneCompteur.append(compteur({ valeur: total, variante: "texte", position: i >= 0 ? i + 1 : undefined }));
-      statut.textContent = !texte ? "" : total === 0 ? "Aucune occurrence" : i >= 0 ? `Occurrence ${i + 1} sur ${total}` : total === 1 ? "1 occurrence" : `${total} occurrences`;
-      for (const b of [precedente, suivante]) b.definirInactif(total === 0);
+      p.afficher(occ.length, i >= 0 ? i + 1 : undefined);
     },
   };
 }

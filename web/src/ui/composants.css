@@ -982,18 +982,20 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau-zoom { box-sizing: border-box; width: 44px; text-align: center; font: 12px/16px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
 .ya-icon-btn[aria-disabled="true"]:not([aria-busy="true"]) > svg { opacity: .45; }
 /* Recherche dans le fichier (REQ-159, C-008). `ya-recherche` est pris par la vue Recherche : le panneau est `ya-recherche-fichier`. */
-.ya-recherche-fichier { position: absolute; z-index: 5; top: var(--space-1); right: var(--space-4); box-sizing: border-box; height: 34px; width: 344px; max-width: calc(100% - 32px); display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1); background: var(--bg-300); border-radius: var(--radius-md); box-shadow: var(--shadow-popover); }
+.ya-recherche-fichier { position: absolute; z-index: 1; top: var(--space-1); right: var(--space-4); box-sizing: border-box; height: 34px; width: 344px; max-width: calc(100% - 32px); display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1); background: var(--bg-300); border-radius: var(--radius-md); box-shadow: var(--shadow-popover); }
 .ya-recherche-fichier .champ { flex: 1 1 200px; min-width: 96px; }
 .ya-recherche-fichier .ya-input { width: 100%; }
 .ya-recherche-compteur { flex: none; min-width: 48px; text-align: center; }
 .ya-recherche-fichier .bouton-enveloppe { flex: none; }
+.ya-recherche-isole { isolation: isolate; }
 .ya-occurrence { background-color: var(--occurrence); color: var(--ink); }
+mark.ya-occurrence { background: linear-gradient(var(--occurrence), var(--occurrence)), var(--bg-200); color: var(--ink); }
 .ya-occurrence * { color: var(--ink); }
 /* Dans un lien, un titre ou un bloc de code, des règles plus précises (`.cm-hy-lien span`) reprennent la couleur du texte : le texte surligné garde `--ink`. */
 .cm-content .cm-line span.ya-occurrence.ya-occurrence, .cm-content .cm-line .ya-occurrence.ya-occurrence * { color: var(--ink); }
 .ya-occurrence-courante { box-shadow: inset 0 0 0 1px var(--accent-fg); }
 @media (forced-colors: active) {
-  .ya-occurrence { background-color: Mark; color: MarkText; }
+  .ya-occurrence, mark.ya-occurrence { background: Mark; color: MarkText; }
   .ya-occurrence * { color: MarkText; }
   .cm-content .cm-line span.ya-occurrence.ya-occurrence, .cm-content .cm-line .ya-occurrence.ya-occurrence * { color: MarkText; }
   .ya-occurrence-courante { box-shadow: inset 0 0 0 1px Highlight; }
