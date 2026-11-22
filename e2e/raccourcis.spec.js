@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { lancerYaide, ouvrirYaide, nomLigne, deuxImages } from "./aides.js";
+import fs from "node:fs";
+import path from "node:path";
+import { lancerYaide, ouvrirYaide, nomLigne, deuxImages, depotExemple } from "./aides.js";
 
 let yaide;
 test.beforeEach(async () => {
@@ -94,4 +96,27 @@ test("REQ034_AC1_AC11_AC16_clic_droit_touche_menu_et_maj_f10_ouvrent_une_seule_f
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Git" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Message" })).toBeFocused();
+});
+
+test("REQ154_AC18_ctrl_maj_v_sur_la_surface_recree_le_dessin_et_garde_le_modele", async ({ page }) => {
+  const modele = "Flux : Début → Fin.\nUne seule étape.";
+  const dossier = depotExemple();
+  const source = `{\n  "version": 1,\n  "model": ${JSON.stringify(modele)},\n  "boxes": [\n    { "id": "b1", "x": 40, "y": 80, "width": 160, "height": 80, "text": "Début" }\n  ],\n  "links": []\n}\n`;
+  fs.writeFileSync(path.join(dossier, "plan.jdiag"), source);
+  const yaide = await lancerYaide({ dossier });
+  try {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+    await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+    await page.getByRole("tree", { name: "Fichiers" }).getByRole("treeitem", { name: nomLigne("plan.jdiag") }).click();
+    const surface = page.getByRole("application", { name: "plan.jdiag" });
+    await expect(surface).toBeFocused();
+    await page.evaluate(() => navigator.clipboard.writeText("graph TD\nA --> B"));
+    await page.keyboard.press("Control+Shift+V");
+    await expect(surface.locator('[aria-roledescription="boîte"]')).toHaveCount(2);
+    await page.keyboard.press("Control+s");
+    await expect.poll(() => fs.readFileSync(path.join(dossier, "plan.jdiag"), "utf8")).toContain("\"b2\"");
+    expect(fs.readFileSync(path.join(dossier, "plan.jdiag"), "utf8")).toContain(`  "version": 1,\n  "model": ${JSON.stringify(modele)},\n  "boxes"`);
+  } finally {
+    await yaide.arreter();
+  }
 });

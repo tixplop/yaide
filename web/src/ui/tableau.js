@@ -75,6 +75,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   let etat = null; // zone `status`
   let alerte = null; // zone `alert` du refus d'un collage mermaid, vide sans refus
   let saisie = null;
+  let dessinSeul = 0; // numéro du Ctrl+Maj+V pressé sur la surface, tant que ni `paste` ni une autre touche ne l'ont consommé (0 : aucun)
+  let pressees = 0;
   let editeur = null;
   let surface = null;
   let dessin = null;
@@ -650,6 +652,23 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   }
 
   function surTouche(e) {
+    // Le `paste` n'indique pas Maj : Ctrl+Maj+V lève ce drapeau, sans `preventDefault` (sinon pas de `paste`), et toute autre touche le baisse.
+    // Firefox n'envoie pas `paste` à une surface qui n'est pas modifiable : le texte est alors lu dans le presse-papiers, si aucun `paste` n'est venu entre-temps.
+    const numero = saisie === null && e.shiftKey && !e.altKey && (estMac() ? e.metaKey : e.ctrlKey) && e.key.toLowerCase() === "v" ? ++pressees : 0;
+    dessinSeul = numero;
+    if (numero !== 0 && doc !== null) {
+      setTimeout(() => {
+        if (dessinSeul !== numero) return;
+        navigator.clipboard?.readText?.().then(
+          (texte) => {
+            if (dessinSeul !== numero) return;
+            dessinSeul = 0;
+            collerTexte(texte, true);
+          },
+          () => {},
+        );
+      }, 0);
+    }
     if (doc === null) return;
     if (geste?.type === "selection" && e.key === "Escape") {
       e.preventDefault();
@@ -832,9 +851,15 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   }
 
   function surColler(e) {
+    const seul = dessinSeul !== 0;
+    dessinSeul = 0;
     if (doc === null || saisie !== null) return;
     e.preventDefault();
-    const texte = e.clipboardData?.getData("text/plain") ?? "";
+    collerTexte(e.clipboardData?.getData("text/plain") ?? "", seul);
+  }
+
+  function collerTexte(texte, seul) {
+    if (doc === null || saisie !== null) return;
     const r = texte === dernierTexte ? null : depuisMermaid(texte);
     if (r === null) return collerObjets();
     effacerRefus();
@@ -842,7 +867,13 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       alerte.replaceChildren(...message({ texte: `Diagramme mermaid non collé : ${r.refus}`, variante: "erreur", presentation: "flottante" }).childNodes);
       return;
     }
-    appliquer(r.doc);
+    // Dessin seul : le document recréé garde le modèle du document courant (absent, il reste absent).
+    if (seul) {
+      const recree = { ...r.doc };
+      delete recree.model;
+      if (doc.model !== undefined) recree.model = doc.model;
+      appliquer(recree);
+    } else appliquer(r.doc);
     choisis = [];
     afficherTout();
     const n = r.doc.boxes.length;

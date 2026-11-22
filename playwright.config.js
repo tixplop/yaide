@@ -9,6 +9,6 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: { browserName: "chromium" } },
     { name: "firefox", use: { browserName: "firefox" }, testMatch: ["parcours.spec.js", "raccourcis.spec.js", "socle.spec.js"],
-      grep: /socle\.spec\.js|REQ030_AC1_parcours_[123]_|REQ019_AC[47]_/ },
+      grep: /socle\.spec\.js|REQ030_AC1_parcours_[123]_|REQ019_AC[47]_|REQ154_AC18_ctrl_maj_v/ },
   ],
 });

@@ -245,3 +245,62 @@ test("REQ137_AC11_copy_sans_boite_ecrit_un_texte_vide_et_en_saisie_laisse_faire_
   expect(p.defaultPrevented).toBe(false);
   expect(obj("b1")).not.toBeNull();
 });
+
+const MODELE = "Flux : Début → Fin.\nUne seule étape.";
+const maj = (key = "v", opts = {}, cible) => touche(key, { ctrlKey: true, shiftKey: true, ...opts }, cible);
+
+test("REQ154_AC18_AC23_ctrl_maj_v_recree_le_dessin_garde_le_modele_et_s_annule_en_un_pas", async () => {
+  monter({ ...DOC(), model: MODELE });
+  surface().focus();
+  const k = maj();
+  expect(k.defaultPrevented).toBe(false);
+  coller("graph TD\nA --> B");
+  const d = changements.at(-1);
+  expect(d.boxes.map((b) => [b.id, b.x, b.y, b.text])).toEqual([["b1", 40, 50, "A"], ["b2", 40, 230, "B"]]);
+  expect(d.links).toEqual([{ id: "l1", from: "b1", to: "b2" }]);
+  expect(d.model).toBe(MODELE);
+  expect(surface().hasAttribute("aria-activedescendant")).toBe(false);
+  expect(document.activeElement).toBe(surface());
+  expect(vues.at(-1).zoom).toBeLessThanOrEqual(1);
+  expect(alerte().textContent).toBe("");
+  await attendre();
+  expect(statut().textContent).toBe("Diagramme mermaid collé : 2 boîtes, 1 lien.");
+  touche("z", { ctrlKey: true });
+  expect(changements.at(-1)).toEqual({ ...DOC(), model: MODELE });
+  // Le drapeau est consommé : un Ctrl+V ordinaire reprend le modèle collé.
+  touche("v", { ctrlKey: true });
+  coller("graph TD\nA --> B");
+  expect(changements.at(-1).model).toBe("graph TD\nA --> B");
+});
+
+test("REQ154_AC18_sans_modele_pas_de_cle_et_autre_touche_baisse_le_drapeau", () => {
+  monter();
+  maj();
+  coller("graph TD\nA --> B");
+  expect("model" in changements.at(-1)).toBe(false);
+  expect(changements.at(-1).boxes).toHaveLength(2);
+  // Autre touche entre le keydown et le paste : le drapeau est baissé.
+  t.detruire();
+  document.body.innerHTML = "";
+  monter({ ...DOC(), model: MODELE });
+  maj();
+  touche("a");
+  coller("graph TD\nA --> B");
+  expect(changements.at(-1).model).toBe("graph TD\nA --> B");
+});
+
+test("REQ154_AC18_autre_texte_colle_la_copie_et_la_saisie_garde_son_paste", () => {
+  monter();
+  touche("Tab");
+  touche("c", { ctrlKey: true });
+  maj();
+  coller("Bonjour");
+  expect(changements.at(-1).boxes.at(-1)).toMatchObject({ id: "b3", text: "Début" });
+  touche("Enter");
+  const zone = t.element.querySelector("[role=textbox]");
+  const n = changements.length;
+  maj("v", {}, zone);
+  const p = coller(GRAPH, zone);
+  expect(p.defaultPrevented).toBe(false);
+  expect(changements).toHaveLength(n);
+});
