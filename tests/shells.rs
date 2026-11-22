@@ -692,13 +692,11 @@ fn req035_ac2_fermer_tue_ce_qui_ignore_hup_et_term() {
         "(trap '' HUP TERM; exec sleep 300) & echo P2=$! E$((1+1))\n",
     );
     let t = lire_jusque(&mut w, "E2\r\n", 10);
-    let pid: u32 = t
-        .lines()
-        .find(|l| l.starts_with("P2="))
-        .unwrap()
+    let ligne = t.lines().find(|l| l.starts_with("P2=")).unwrap();
+    let pid: u32 = ligne[3..]
         .split_whitespace()
         .next()
-        .unwrap()[3..]
+        .unwrap()
         .parse()
         .unwrap();
     assert!(vivant(pid));
@@ -751,4 +749,47 @@ fn req035_ac6_fermer_exige_session_origine_et_shell_connu() {
     assert!(liste(&s).contains(&id.to_string()));
     assert_eq!(http(s.port, "DELETE", &chemin, &s.cookie, "").0, 204);
     assert_eq!(http(s.port, "DELETE", &chemin, &s.cookie, "").0, 404);
+}
+
+#[test]
+fn req162_ac2_arret_ferme_la_session_et_arrete_yaide_et_les_shells() {
+    let s = &mut lancer("arret-route", Some("/bin/bash"));
+    let mut w = ws(s, ouvrir(s));
+    taper(&mut w, "sleep 300 & echo P=$! E$((1+1)); wait\n");
+    let t = lire_jusque(&mut w, "E2\r\n", 10);
+    let ligne = t.lines().find(|l| l.starts_with("P=")).unwrap();
+    let pid: u32 = ligne[2..]
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(vivant(pid));
+    let sortie = Command::new("curl")
+        .args(["-sk", "-i", "--max-time", "10", "-X", "POST"])
+        .arg(format!("https://127.0.0.1:{}/api/arret", s.port))
+        .args(["-H", &format!("Origin: https://127.0.0.1:{}", s.port)])
+        .args(["-H", &format!("Cookie: {}", s.cookie)])
+        .output()
+        .unwrap();
+    let texte = String::from_utf8_lossy(&sortie.stdout).to_lowercase();
+    assert!(
+        texte.starts_with("http/2 204") || texte.starts_with("http/1.1 204"),
+        "{texte}"
+    );
+    assert!(
+        texte.contains("set-cookie: yaide_session=;") && texte.contains("max-age=0"),
+        "{texte}"
+    );
+    let debut = Instant::now();
+    let mut statut = None;
+    while debut.elapsed() < Duration::from_secs(5) {
+        statut = s.child.try_wait().unwrap();
+        if statut.is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(statut.expect("Yaide ne s'est pas arrêté").success());
+    assert!(attendre(5, || !vivant(pid)), "le shell tourne encore");
 }

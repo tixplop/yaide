@@ -368,3 +368,23 @@ fn req002_ac2_deux_instances_deux_dossiers() {
     assert!(ia.corps().contains("/un\""), "{}", ia.corps());
     assert!(ib.corps().contains("/deux\""), "{}", ib.corps());
 }
+
+#[test]
+fn req162_ac3_arret_refuse_sans_session_ou_avec_origine_etrangere() {
+    let (_, _, s) = prete("arret3");
+    let c = connexion(s.port, "mdp").cookie();
+    let r = requete(s.port, "POST", "/api/arret", "", &[&origine(s.port)]);
+    assert_eq!(r.code, 401);
+    let etranger = "Origin: https://evil.example";
+    let r = requete(
+        s.port,
+        "POST",
+        "/api/arret",
+        "",
+        &[etranger, &format!("Cookie: {c}")],
+    );
+    assert_eq!(r.code, 403);
+    std::thread::sleep(Duration::from_millis(800));
+    assert!(s.child.id() > 0);
+    assert_eq!(session(s.port, &c), 204);
+}

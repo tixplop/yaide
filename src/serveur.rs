@@ -41,6 +41,8 @@ struct Etat {
     ajouts: Arc<connaissance::Suivi>,
     verrou_base: Arc<tokio::sync::Mutex<()>>,
     echecs_base: Arc<connaissance::Echecs>,
+    /// Réveillé par `/api/arret` : déclenche le même arrêt que SIGTERM.
+    arret_demande: tokio::sync::Notify,
 }
 
 type Partage = Arc<Etat>;
@@ -245,6 +247,16 @@ async fn deconnexion() -> Response {
         )],
     )
         .into_response()
+}
+
+/// Ferme la session comme `deconnexion`, répond, puis arrête Yaide comme sur SIGTERM.
+async fn arreter_yaide(State(etat): State<Partage>) -> Response {
+    // Laisse partir la réponse avant que le serveur ne s'arrête.
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        etat.arret_demande.notify_one();
+    });
+    deconnexion().await
 }
 
 /// Sert de sonde : 204 si la session est valide (la garde a déjà répondu 401 sinon).
@@ -1909,6 +1921,7 @@ pub async fn servir(
         ajouts: Default::default(),
         verrou_base: Default::default(),
         echecs_base: Default::default(),
+        arret_demande: Default::default(),
     });
     let verification = etat.clone();
     let verification = tokio::spawn(async move {
@@ -1969,6 +1982,7 @@ pub async fn servir(
         .route("/api/version/maj", post(version_maj))
         .route("/api/connexion", post(connexion))
         .route("/api/deconnexion", post(deconnexion))
+        .route("/api/arret", post(arreter_yaide))
         .route("/api/session", get(session))
         .route("/api/shells", get(liste_shells).post(ouvrir_shell))
         .route("/api/claude", get(claude_disponible).post(ouvrir_claude))
@@ -2041,7 +2055,7 @@ pub async fn servir(
         .serve(app.into_make_service());
     tokio::select! {
         r = serveur => r.map_err(|e| format!("le serveur s'est arrêté : {e}")),
-        _ = arret() => {
+        _ = async { tokio::select! { _ = arret() => {}, _ = etat_arret.arret_demande.notified() => {} } } => {
             veille.abort();
             verification.abort();
             etat_arret.opencode.arreter().await;
