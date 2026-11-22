@@ -1289,3 +1289,31 @@ test("REQ153_AC14_disques_hors_tab_partent_au_mouseleave_et_pendant_un_glisse", 
   expect(m.tableau.querySelector(".ya-tableau-filet")).toBeNull();
   m.fin();
 });
+
+test("REQ157_AC7_zones_des_aides_avec_l_option_tableur", () => {
+  const t = (x, y, extra = {}) => zonesAides({ lignes: GRILLE, pointeur: { x, y }, tableur: true, ...extra });
+  // Bord haut : insérer une ligne au-dessus de la première rangée (indice -1), à 4 px au plus ; sans l'option, rien.
+  expect(t(250, 48)).toMatchObject({ sorte: "inserer-ligne", indice: -1, y: 50, filet: { y: 50, left: 100, right: 400 } });
+  expect(t(250, 45)).toBeNull();
+  expect(zone(250, 48)).toBeNull();
+  // Première rangée : « Supprimer la colonne » dans ses cellules, « Supprimer la ligne » à 4 px à droite du bord.
+  expect(t(250, 65)).toMatchObject({ sorte: "supprimer-colonne", indice: 1 });
+  // Au bord droit, « Insérer une colonne » seulement côté intérieur.
+  expect(t(398, 65)).toMatchObject({ sorte: "inserer-colonne", indice: 3 });
+  // Bande extérieure ]bord, bord + 4 px] : « Supprimer la ligne », première rangée comprise.
+  expect(t(404, 65)).toMatchObject({ sorte: "supprimer-ligne", indice: 0, x: 400, y: 65, cadre: { left: 100, right: 400, top: 50, bottom: 80 } });
+  // Les autres rangées : « Supprimer la ligne », jamais « Supprimer la colonne ».
+  expect(t(250, 95)).toMatchObject({ sorte: "supprimer-ligne", indice: 1 });
+  // Une seule colonne : pas de « Supprimer la colonne » ; une seule rangée : pas de « Supprimer la ligne ».
+  const colonne = [[{ left: 100, right: 200, top: 50, bottom: 80 }], [{ left: 100, right: 200, top: 80, bottom: 110 }]];
+  expect(zonesAides({ lignes: colonne, pointeur: { x: 150, y: 65 }, tableur: true })).toMatchObject({ sorte: "supprimer-ligne", indice: 0, x: 200, y: 65, cadre: { top: 50, bottom: 80 } });
+  expect(zonesAides({ lignes: colonne, pointeur: { x: 150, y: 95 }, tableur: true })).toMatchObject({ sorte: "supprimer-ligne", indice: 1 });
+  const rangee = [GRILLE[0]];
+  expect(zonesAides({ lignes: rangee, pointeur: { x: 250, y: 65 }, tableur: true })?.sorte).toBe("supprimer-colonne");
+  expect(zonesAides({ lignes: rangee, pointeur: { x: 250, y: 95 }, tableur: true })).toBeNull();
+  const une = [[{ left: 100, right: 200, top: 50, bottom: 80 }]];
+  expect(zonesAides({ lignes: une, pointeur: { x: 150, y: 65 }, tableur: true })).toBeNull();
+  // Sans l'option, REQ-153 inchangé : pas de « Supprimer la ligne » sur l'en-tête.
+  expect(zone(404, 65)?.sorte).toBe("inserer-colonne"); // sans l'option : REQ-153 inchangé
+  expect(zonesAides({ lignes: colonne, pointeur: { x: 150, y: 65 } })).toBeNull();
+});

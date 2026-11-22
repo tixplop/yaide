@@ -307,19 +307,21 @@ const DEMI_DISQUE = 10;
 // Disque d'aide sous le pointeur d'un tableau rendu (REQ-153, C-008 « Aides »). Fonction pure, coordonnées de la fenêtre.
 // `lignes` : rectangles { left, top, right, bottom } des cellules, rangée par rangée (l'en-tête d'abord) ; `courant` : le disque déjà visible ;
 // `gauche` : plus petite abscisse du centre d'un disque (pour ne pas passer sous la gouttière).
+// `tableur` (REQ-157) : l'insertion d'une ligne est aussi permise au bord haut (indice -1), « Supprimer la ligne » aussi sur la première rangée.
 // Rend { sorte, indice, x, y, filet | cadre } (sorte = nom de l'icône) ou null.
-export function zonesAides({ lignes, pointeur: { x, y }, courant, gauche = -Infinity }) {
+export function zonesAides({ lignes, pointeur: { x, y }, courant, gauche = -Infinity, tableur = false }) {
   if (courant && Math.abs(x - courant.x) <= DEMI_DISQUE && Math.abs(y - courant.y) <= DEMI_DISQUE) return courant;
   const en = lignes[0];
   if (!en?.length) return null;
   const bornes = lignes.map((r) => ({ top: Math.min(...r.map((c) => c.top)), bottom: Math.max(...r.map((c) => c.bottom)) }));
   const t = { left: en[0].left, right: en.at(-1).right, top: bornes[0].top, bottom: bornes.at(-1).bottom };
-  const dansTableau = x >= t.left - TOLERANCE_AIDE && x <= t.right + TOLERANCE_AIDE && y >= t.top && y <= t.bottom + TOLERANCE_AIDE;
+  const dansTableau = x >= t.left - TOLERANCE_AIDE && x <= t.right + TOLERANCE_AIDE && y >= t.top - (tableur ? TOLERANCE_AIDE : 0) && y <= t.bottom + TOLERANCE_AIDE;
   let meilleur = null;
   if (dansTableau) {
     for (let k = 0; k <= en.length; k++) {
       const bord = k === 0 || k === en.length;
       if (bord && (y < bornes[0].top || y > bornes[0].bottom)) continue;
+      if (tableur && k === en.length && x > t.right) continue; // bande extérieure : « Supprimer la ligne »
       const bx = k === 0 ? en[0].left : k === en.length ? en[k - 1].right : (en[k - 1].right + en[k].left) / 2;
       const d = Math.abs(x - bx);
       if (d <= TOLERANCE_AIDE && (!meilleur || d < meilleur.d)) {
@@ -328,8 +330,8 @@ export function zonesAides({ lignes, pointeur: { x, y }, courant, gauche = -Infi
       }
     }
     if (x >= t.left && x <= t.right) {
-      for (let r = 0; r < lignes.length; r++) {
-        const by = r === lignes.length - 1 ? bornes[r].bottom : (bornes[r].bottom + bornes[r + 1].top) / 2;
+      for (let r = tableur ? -1 : 0; r < lignes.length; r++) {
+        const by = r < 0 ? bornes[0].top : r === lignes.length - 1 ? bornes[r].bottom : (bornes[r].bottom + bornes[r + 1].top) / 2;
         const d = Math.abs(y - by);
         if (d <= TOLERANCE_AIDE && (!meilleur || d < meilleur.d)) {
           const [a, b] = [t.left + 8, t.right - 8];
@@ -343,7 +345,8 @@ export function zonesAides({ lignes, pointeur: { x, y }, courant, gauche = -Infi
     const j = en.findIndex((c) => x >= c.left && x <= c.right);
     if (j >= 0) return { sorte: "supprimer-colonne", indice: j, x: (en[j].left + en[j].right) / 2, y: t.top, cadre: { left: en[j].left, right: en[j].right, top: t.top, bottom: t.bottom } };
   }
-  for (let r = 1; r < lignes.length; r++) {
+  const premiere = tableur ? (lignes.length < 2 ? Infinity : 0) : 1;
+  for (let r = premiere; r < lignes.length; r++) {
     if (y >= bornes[r].top && y <= bornes[r].bottom && x >= t.left && x <= t.right + TOLERANCE_AIDE) {
       return { sorte: "supprimer-ligne", indice: r, x: t.right, y: (bornes[r].top + bornes[r].bottom) / 2, cadre: { left: t.left, right: t.right, top: bornes[r].top, bottom: bornes[r].bottom } };
     }
@@ -454,8 +457,43 @@ const ouvertureDeCellule = ViewPlugin.fromClass(
 
 const nettoyages = new WeakMap(); // élément du tableau rendu -> retire les écouteurs de la fenêtre
 
-// Disques « Insérer » et « Supprimer » au survol, filet et cadre (REQ-153, C-008 « Aides »). Rend la fonction qui retire les écouteurs de la fenêtre.
+// Disques « Insérer » et « Supprimer » au survol, filet et cadre du tableau rendu (REQ-153, C-008 « Aides »).
 function aidesDuTableau(vue, el, table) {
+  return aidesSurvol(el, table, {
+    agir(d, effacer) {
+      const indice = indiceTableau(vue, el);
+      const debut = vue.posAtDOM(el);
+      validerSaisie(vue);
+      const t = tableauxHybride(vue.state).find((x) => x.debut === debut);
+      if (!t) return;
+      let apres;
+      let suite = null;
+      if (d.sorte === "inserer-colonne") {
+        apres = insererColonne(t.source, d.indice);
+        suite = { indice, rangee: 0, colonne: d.indice };
+      } else if (d.sorte === "inserer-ligne") {
+        apres = insererLigne(t.source, d.indice);
+        suite = { indice, rangee: d.indice + 1, colonne: 0 };
+      } else if (d.sorte === "supprimer-colonne") apres = supprimerColonne(t.source, d.indice);
+      else apres = supprimerLigne(t.source, d.indice);
+      effacer();
+      let a = 0;
+      while (a < t.source.length && a < apres.length && t.source[a] === apres[a]) a++;
+      let b = 0;
+      while (b < t.source.length - a && b < apres.length - a && t.source[t.source.length - 1 - b] === apres[apres.length - 1 - b]) b++;
+      vue.dispatch({
+        changes: { from: t.debut + a, to: t.debut + t.source.length - b, insert: apres.slice(a, apres.length - b) },
+        annotations: isolateHistory.of("full"),
+        effects: suite ? [ouvrirCellule.of(suite)] : [],
+      });
+      if (!suite) vue.focus();
+    },
+  });
+}
+
+// Calque des aides au survol d'une grille (tableau rendu ou tableur) : disques, filet, cadre, info-bulles. `el` : élément positionné qui
+// contient `table` (`ecoute` : l'élément dont le pointeur est suivi, `el` par défaut) ; `agir(disque, effacer)` fait le geste du disque cliqué. Rend la fonction qui retire les écouteurs de la fenêtre.
+export function aidesSurvol(el, table, { agir: geste, tableur = false, ecoute = el }) {
   const mac = estMac();
   const modif = (e) => (mac ? e.metaKey : e.ctrlKey);
   const calque = document.createElement("div");
@@ -482,34 +520,7 @@ function aidesDuTableau(vue, el, table) {
     calque.append(trait);
   };
   const agir = () => {
-    const d = courant;
-    if (!d) return;
-    const indice = indiceTableau(vue, el);
-    const debut = vue.posAtDOM(el);
-    validerSaisie(vue);
-    const t = tableauxHybride(vue.state).find((x) => x.debut === debut);
-    if (!t) return;
-    let apres;
-    let suite = null;
-    if (d.sorte === "inserer-colonne") {
-      apres = insererColonne(t.source, d.indice);
-      suite = { indice, rangee: 0, colonne: d.indice };
-    } else if (d.sorte === "inserer-ligne") {
-      apres = insererLigne(t.source, d.indice);
-      suite = { indice, rangee: d.indice + 1, colonne: 0 };
-    } else if (d.sorte === "supprimer-colonne") apres = supprimerColonne(t.source, d.indice);
-    else apres = supprimerLigne(t.source, d.indice);
-    effacer();
-    let a = 0;
-    while (a < t.source.length && a < apres.length && t.source[a] === apres[a]) a++;
-    let b = 0;
-    while (b < t.source.length - a && b < apres.length - a && t.source[t.source.length - 1 - b] === apres[apres.length - 1 - b]) b++;
-    vue.dispatch({
-      changes: { from: t.debut + a, to: t.debut + t.source.length - b, insert: apres.slice(a, apres.length - b) },
-      annotations: isolateHistory.of("full"),
-      effects: suite ? [ouvrirCellule.of(suite)] : [],
-    });
-    if (!suite) vue.focus();
+    if (courant) geste(courant, effacer);
   };
   const afficher = (d, base) => {
     const [x, y] = [d.x - base.left, d.y - base.top];
@@ -546,16 +557,16 @@ function aidesDuTableau(vue, el, table) {
       trait = null;
     }
   };
-  el.addEventListener("mousemove", (e) => {
+  ecoute.addEventListener("mousemove", (e) => {
     if (modif(e) || e.buttons & 1) return effacer();
     const lignes = [...table.rows].map((r) => [...r.cells].map((c) => c.getBoundingClientRect()));
     const base = el.getBoundingClientRect();
-    const d = zonesAides({ lignes, pointeur: { x: e.clientX, y: e.clientY }, courant, gauche: base.left + DEMI_DISQUE });
+    const d = zonesAides({ lignes, pointeur: { x: e.clientX, y: e.clientY }, courant, gauche: tableur ? -Infinity : base.left + DEMI_DISQUE, tableur });
     if (!d) return effacer();
     if (d === courant) return;
     afficher(d, base);
   });
-  el.addEventListener("mouseleave", effacer);
+  ecoute.addEventListener("mouseleave", effacer);
   const touche = (e) => {
     if (e.key === (mac ? "Meta" : "Control") && e.type === "keydown") effacer();
   };

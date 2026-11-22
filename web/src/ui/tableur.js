@@ -1,6 +1,6 @@
 import { undo, redo, isolateHistory } from "@codemirror/commands";
-import { lireCsv, changerCellule } from "../csv.js";
-import { champSaisie, decalageDuClic } from "./hybride.js";
+import { lireCsv, changerCellule, insererColonne, supprimerColonne, insererRangee, supprimerRangee } from "../csv.js";
+import { champSaisie, decalageDuClic, aidesSurvol } from "./hybride.js";
 
 // Tableur d'un fichier CSV (C-008 `hybride` sur un `.csv`, REQ-157, DEC-109). `vue` est l'EditorView de l'onglet,
 // masquée par l'appelant : le document y reste la source, chaque saisie validée y est une transaction.
@@ -10,7 +10,10 @@ export function tableur({ vue, nom }) {
   const table = document.createElement("table");
   table.setAttribute("role", "grid");
   table.setAttribute("aria-label", `Tableur ${nom}`);
-  zone.append(table);
+  const grille = document.createElement("div"); // porte le calque des aides, au-dessus de la grille
+  grille.className = "ya-tableur-grille";
+  grille.append(table);
+  zone.append(grille);
 
   let active = { r: 0, c: 0 };
   let saisie = null; // { valider, annuler }
@@ -174,6 +177,34 @@ export function tableur({ vue, nom }) {
     }
   });
 
+  // Geste d'un disque d'aide : la saisie ouverte est validée d'abord (son propre pas), puis une transaction.
+  function geste(d, effacer) {
+    validerSaisie();
+    const l = lecture();
+    if (!l) return;
+    effacer();
+    const changes = {
+      "inserer-colonne": () => insererColonne(l, d.indice),
+      "inserer-ligne": () => insererRangee(l, d.indice + 1),
+      "supprimer-colonne": () => supprimerColonne(l, d.indice),
+      "supprimer-ligne": () => supprimerRangee(l, d.indice),
+    }[d.sorte]();
+    vue.dispatch({ changes, annotations: isolateHistory.of("full") });
+    if (d.sorte === "inserer-colonne") {
+      rafraichir();
+      saisir(0, d.indice);
+    } else if (d.sorte === "inserer-ligne") {
+      rafraichir();
+      saisir(d.indice + 1, 0);
+    } else {
+      // La cellule à la même place (la précédente si c'était la dernière) devient active ; rafraichir la ramène dans la grille.
+      active = d.sorte === "supprimer-colonne" ? { r: 0, c: d.indice } : { r: d.indice, c: active.c };
+      rafraichir();
+      activer(active.r, active.c);
+    }
+  }
+  const retirerAides = aidesSurvol(grille, table, { agir: geste, tableur: true, ecoute: zone });
+
   rafraichir();
   return {
     element: zone,
@@ -182,6 +213,7 @@ export function tableur({ vue, nom }) {
     activer,
     celluleActive: () => ({ ...active }),
     focuser: () => activer(active.r, active.c),
+    detruire: retirerAides,
   };
 }
 
