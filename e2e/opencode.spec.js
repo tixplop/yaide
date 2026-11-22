@@ -140,7 +140,7 @@ test("REQ072_parcours_36_tache_et_sous_agent", async ({ page }) => {
   await expect(page.getByRole("log", { name: "Conversation" }).getByText("Trouve les appels de parse_args")).toBeVisible();
   await expect(champ(page)).toHaveValue("");
   await expect(champ(page)).toBeFocused();
-  await expect(page.getByRole("button", { name: "Arrêter" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Envoyer" })).toBeDisabled();
   const sousAgent = page.getByRole("group", { name: /^Sous-agent explore/ });
   await expect(sousAgent).toContainText("Explorer le dépôt");
@@ -173,7 +173,7 @@ test("REQ072_parcours_36_tache_et_sous_agent", async ({ page }) => {
   await onglet(page, "opencode 1").click();
   await expect(page.getByRole("group", { name: /^Sous-agent explore/ })).toContainText("terminé");
   await expect(page.getByText("Le sous-agent a fini.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toHaveCount(0);
   await expect(champ(page)).toBeFocused();
 
   // AC-072-15 : opencode écrit NOTES.md (autorisation de la racine à donner), l'onglet ouvert montre le nouveau contenu.
@@ -182,7 +182,7 @@ test("REQ072_parcours_36_tache_et_sous_agent", async ({ page }) => {
   await expect(demandes(page)).toContainText("echo bonjour");
   await page.getByRole("button", { name: "Autoriser une fois" }).click();
   await expect(page.getByText("Terminé.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toHaveCount(0);
   expect(fs.readFileSync(path.join(dossier, "NOTES.md"), "utf8")).toBe("notes\n");
   await onglet(page, "NOTES.md").click();
   const notes = page.getByRole("textbox", { name: "Éditeur NOTES.md" });
@@ -277,7 +277,7 @@ test("REQ072_parcours_37_question_erreur_a_800_par_480", async ({ page }) => {
   await envoyer(page, "[scenario:refus] Mets à jour Cargo.toml.");
   const echec = alerte(page, "Le tour a échoué. Vous pouvez envoyer un autre message.");
   await expect(echec).toContainText("Clé d'API invalide (faux provider)");
-  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toHaveCount(0);
 
   // 5 (coupure sans tour, tour long coupé) retiré : web/src/opencode.test.js REQ072_AC10_* ; REQ072_AC13_coupure_et_503_aucun_onglet ; REQ072_AC27_envoi_refuse_coupure_et_serveur_absent.
   // 6. Largeur de la session et page sans défilement (AC-072-21).
@@ -346,7 +346,7 @@ test("REQ074_parcours_38_choix_recharge_et_largeurs", async ({ page }) => {
   // 5. Un tour qui reste ouvert, puis des largeurs d'éditeur exactes (panneau replié, agent déplié) : la barre ne
   // déborde pas, « Envoyer » et « Arrêter » sont entiers ; à 460 px « Effort » garde 104 px et « Modèle » rétrécit.
   await envoyer(page, "[scenario:question] Prépare la release.");
-  await expect(page.getByRole("button", { name: "Arrêter" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toBeVisible();
   await page.getByRole("banner").getByRole("button", { name: "Replier le panneau" }).click();
   await page.getByRole("button", { name: "Agents", exact: true }).click();
   const mesurer = (cible) => mesurerBarre(page, cible);
@@ -408,7 +408,7 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
   await expect(compteur).toHaveText("15 k / 200 k · 8 %");
   await expect(champ(page)).toBeFocused();
   const couleur8 = await compteur.evaluate((e) => getComputedStyle(e).color);
-  await expect(page.getByRole("button", { name: "Arrêter" })).toBeHidden(); // le tour est fini avant de changer de modèle
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toBeHidden(); // le tour est fini avant de changer de modèle
 
   // AC-076-6 : GPT-5, la fenêtre change, pas les tokens.
   await modele.selectOption({ label: "GPT-5 · openai" });
@@ -436,7 +436,7 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
 
   // Un tour reste ouvert (question en attente) : « Arrêter » est là.
   await envoyer(page, "[scenario:question] Prépare la release.");
-  await expect(page.getByRole("button", { name: "Arrêter" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toBeVisible();
   const pendant = {};
   for (const cible of [720, 560, 559, 320, 460]) pendant[cible] = await mesurerBarre(page, cible);
 
@@ -577,7 +577,7 @@ test("REQ072_AC31_AC32_bords_alignes_1200", async ({ page, browserName }) => {
   expect(Math.round((await boite(modele)).largeur)).toBe(280);
 
   // Une demande d'autorisation.
-  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toHaveCount(0);
   await envoyer(page, "[scenario:outils] Écris les notes.");
   await expect(demandes(page)).toContainText("opencode demande une autorisation : shell.");
   const autorisation = await boite(demandes(page).locator(".ya-attente").first());
@@ -585,7 +585,7 @@ test("REQ072_AC31_AC32_bords_alignes_1200", async ({ page, browserName }) => {
   proche(autorisation.droite, saisie.droite, "autorisation, bord droit");
   await page.getByRole("button", { name: "Autoriser une fois" }).click();
   await expect(page.getByText("Terminé.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toHaveCount(0);
 
   // Une question : ses deux premiers champs côte à côte, de même largeur.
   await envoyer(page, "[scenario:formulaire] Prépare la release.");
@@ -651,7 +651,7 @@ test("REQ084_parcours_55_raisonnement_opencode", async ({ page }) => {
   await expect(raisons).toBeFocused();
   await expect(conversation.locator(".ya-raison-zone")).toHaveCount(1);
   await expect(conversation).toContainText("deux");
-  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toHaveCount(0);
   await expect(raisons).toBeFocused();
   // AC-084-1 : le raisonnement est avant la réponse.
   const avant = await conversation.evaluate((c) => {
@@ -665,7 +665,7 @@ test("REQ084_parcours_55_raisonnement_opencode", async ({ page }) => {
   await champ(page).click();
   await envoyer(page, "Encore une.");
   await expect(raisons).toHaveCount(2, { timeout: 20000 });
-  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toHaveCount(0);
 
   // AC-084-7 : Tab depuis la conversation passe par les deux « Raisonnement », puis le champ.
   await conversation.focus();
@@ -741,7 +741,7 @@ test("REQ088_REQ091_parcours_61_63_sessions_et_suggestions", async ({ page }) =>
   await expect.poll(() => corps().length, { timeout: 20000 }).toBe(1);
   expect(corps()[0]).toMatchObject({ chemin: "prompt", corps: { text: "Bonjour." } });
   await expect(conversation).toContainText("deux", { timeout: 20000 });
-  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0, { timeout: 20000 });
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toHaveCount(0, { timeout: 20000 });
   const apresTour = JSON.parse(fs.readFileSync(path.join(opencode, "etat.json"), "utf8")).sessions;
   expect(apresTour.ses_ancienne.messages.some((m) => m.text === "Bonjour.")).toBe(true);
   expect(Object.keys(apresTour).filter((k) => k.startsWith("ses_n"))).toEqual([]);
@@ -772,7 +772,7 @@ test("REQ088_REQ091_parcours_61_63_sessions_et_suggestions", async ({ page }) =>
   expect(cmd.chemin).toBe("command");
   expect(cmd.corps).toMatchObject({ name: "review", files: [{ uri: `file://${projet}/src/main.rs`, mention: { start: 8, end: 20, text: "@src/main.rs" } }] });
   expect(cmd.corps.text.trim()).toBe("@src/main.rs");
-  await expect(page.getByRole("button", { name: "Arrêter" })).toHaveCount(0, { timeout: 20000 });
+  await expect(page.getByRole("button", { name: "Arrêter", exact: true })).toHaveCount(0, { timeout: 20000 });
 
   // AC-091-3, AC-091-7 : `$open`, Entrée, envoi → `prompt` avec `skills` ; description sur une ligne, coupée.
   await champ(page).click();
