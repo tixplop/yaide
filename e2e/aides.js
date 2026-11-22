@@ -203,10 +203,10 @@ export async function avancer(page, attente, { pas = 1500, timeout = 10000, limi
 export const temoin = () => path.join(process.env.TMPDIR || os.tmpdir(), `temoin-${randomUUID()}`);
 export const attendre = (t, suite) => `while [ ! -e "${t}" ]; do sleep 0.05; done; ${suite}`;
 
-/** Faux GitHub : répond tout de suite que la dernière release est v0.9.2. Rend `{ url, fermer }` ; `url` va dans `releases` de `lancerYaide`. */
+/** Faux GitHub : répond tout de suite que la dernière release est v99.0.0. Rend `{ url, fermer }` ; `url` va dans `releases` de `lancerYaide`. */
 export async function fauxGithub() {
   const serveur = http.createServer((req, res) => {
-    res.writeHead(302, { Location: "https://github.com/tixplop/yaide/releases/tag/v0.9.2", "Content-Length": 0 });
+    res.writeHead(302, { Location: "https://github.com/tixplop/yaide/releases/tag/v99.0.0", "Content-Length": 0 });
     res.end();
   });
   await new Promise((ok) => serveur.listen(0, "127.0.0.1", ok));

@@ -6,7 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { lancerYaide, ouvrirYaide, depotExemple, fauxGithub } from "./aides.js";
 
-const NOM = "yaide-v0.9.2-x86_64-linux";
+const NOM = "yaide-v99.0.0-x86_64-linux";
+const VERSION = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
 
 test("REQ092_REQ093_parcours_64_mise_a_jour", async ({ page }) => {
   test.setTimeout(60000);
@@ -20,7 +21,7 @@ test("REQ092_REQ093_parcours_64_mise_a_jour", async ({ page }) => {
   fs.chmodSync(binaire, 0o755);
   const avant = fs.readFileSync(binaire);
 
-  // Release v0.9.2 : archive, et empreinte d'abord fausse.
+  // Release v99.0.0 : archive, et empreinte d'abord fausse.
   const src = path.join(racine, "src", NOM);
   fs.mkdirSync(src, { recursive: true });
   fs.writeFileSync(path.join(src, "yaide"), "#!/bin/sh\necho nouveau\n");
@@ -43,7 +44,7 @@ while [ $# -gt 0 ]; do
     *) url="$1"; shift ;;
   esac
 done
-if [ -n "$fmt" ]; then printf 'https://github.com/tixplop/yaide/releases/tag/v0.9.2'; exit 0; fi
+if [ -n "$fmt" ]; then printf 'https://github.com/tixplop/yaide/releases/tag/v99.0.0'; exit 0; fi
 f="${releases}/\${url##*/}"
 [ -f "$f" ] || exit 22
 cp "$f" "$out"
@@ -51,7 +52,7 @@ cp "$f" "$out"
     { mode: 0o755 },
   );
 
-  // Faux GitHub : répond tout de suite v0.9.2.
+  // Faux GitHub : répond tout de suite v99.0.0.
   const github = await fauxGithub();
   const urlReleases = github.url;
 
@@ -69,8 +70,8 @@ cp "$f" "$out"
     const bouton = etat.getByRole("button", { name: /Mettre à jour|Mise à jour…/ });
 
     // Étape 1 : notification et bouton (AC-092-3), sur une ligne sans défilement (AC-092-6).
-    await expect(statut).toHaveText("v0.9.2 disponible");
-    await expect(etat).toContainText("v0.6.0");
+    await expect(statut).toHaveText("v99.0.0 disponible");
+    await expect(etat).toContainText(`v${VERSION}`);
     await expect(bouton).toBeVisible();
     const mise_en_page = async () =>
       page.evaluate(() => {
@@ -109,16 +110,16 @@ cp "$f" "$out"
     await expect(bouton).toBeFocused();
     await expect(bouton).toHaveText("Mettre à jour");
     expect(fs.readFileSync(binaire).equals(avant)).toBe(true);
-    await expect(etat).toContainText("v0.6.0");
+    await expect(etat).toContainText(`v${VERSION}`);
 
     // Étape 3 : empreinte juste, nouvel essai (AC-093-1, AC-093-6).
     ecrireEmpreinte(crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex"));
     await page.keyboard.press("Enter");
     const installee = etat.getByRole("status").filter({ hasText: "installée" });
-    await expect(installee).toHaveText("v0.9.2 installée. Redémarrez Yaide pour l'utiliser.");
+    await expect(installee).toHaveText("v99.0.0 installée. Redémarrez Yaide pour l'utiliser.");
     await expect(installee.locator('[tabindex="-1"]')).toBeFocused();
     await expect(bouton).toHaveCount(0);
-    await expect(etat).toContainText("v0.6.0");
+    await expect(etat).toContainText(`v${VERSION}`);
     expect(fs.readFileSync(binaire).toString()).toBe("#!/bin/sh\necho nouveau\n");
 
     // Le serveur tourne encore et le shell ouvert est vivant (AC-093-1).

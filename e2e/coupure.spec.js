@@ -239,7 +239,7 @@ test("REQ094_AC1_AC2_AC3_AC4_parcours_65_badge_de_connexion_a_800_x_480", async 
     await page.keyboard.press("End");
     const etat = page.locator(".cadre-etat");
     const badge = etat.locator(".ya-connexion");
-    await expect(etat.getByRole("status")).toHaveText("v0.9.2 disponible");
+    await expect(etat.getByRole("status")).toHaveText("v99.0.0 disponible");
     await expect(etat).toContainText("Ln 8, Col 51");
     // Étape 1 : connecté (AC-094-1).
     await expect(badge).toHaveText("Serveur : Connecté");
