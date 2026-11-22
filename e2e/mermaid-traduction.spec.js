@@ -10,7 +10,7 @@ async function charger(page) {
   await page.addScriptTag({ path: "web/dist/mermaid.js" });
 }
 
-test("REQ154_AC17_traduction_d_un_dessin_donne_mesure", async ({ page }) => {
+test("REQ154_AC17_traduction_d_un_dessin_donne_mesure_et_groupe_translate_puis_scale", async ({ page }) => {
   await charger(page);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 20 400 300">
     <defs><marker id="m"><path d="M0,0 L5,5"/></marker></defs>
@@ -26,16 +26,13 @@ test("REQ154_AC17_traduction_d_un_dessin_donne_mesure", async ({ page }) => {
   // origine (10, 20) : (100 - 10 - 50 + 40, 50 - 20 - 20 + 40) = (80, 50)
   expect(r.doc.boxes[0]).toMatchObject({ id: "b1", shape: "rounded", x: 80, y: 50, width: 100, height: 40, text: "A" });
   expect(r.doc.arrows).toHaveLength(0);
-});
 
-test("REQ154_AC17_groupe_translate_puis_scale", async ({ page }) => {
-  await charger(page);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  const svg2 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
     <g transform="translate(100,50) scale(2)"><rect x="0" y="0" width="20" height="10" fill="none" stroke="#333" stroke-dasharray="3"/></g>
     <marker id="z"><rect x="0" y="0" width="9" height="9" fill="red"/></marker>
   </svg>`;
-  const r = await page.evaluate((s) => window.yaideMermaid.traduireSvg(s), svg);
-  expect(r.doc.boxes).toEqual([{ id: "b1", x: 140, y: 90, width: 40, height: 20, text: "", opacity: 0, line: "dashed" }]);
+  const r2 = await page.evaluate((s) => window.yaideMermaid.traduireSvg(s), svg2);
+  expect(r2.doc.boxes).toEqual([{ id: "b1", x: 140, y: 90, width: 40, height: 20, text: "", opacity: 0, line: "dashed" }]);
 });
 
 test("REQ154_AC16_AC14_AC15_AC6_un_exemple_par_type_traduit", async ({ page }) => {
