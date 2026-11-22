@@ -26,7 +26,7 @@
 .ya-icon-btn-disque:active::before { box-shadow: inset 0 0 0 1px var(--ink); }
 .ya-icon-btn[aria-pressed="true"] { color: var(--accent-fg); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-fg); }
 .ya-btn:active, .ya-icon-btn:active { box-shadow: inset 0 0 0 1px currentColor; }
-.ya-btn:focus-visible, .ya-icon-btn:focus-visible, .ya-icon-btn.ya-focus-garde { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
+.ya-btn:focus-visible, .ya-icon-btn:focus-visible, .ya-icon-btn.ya-focus-garde, .ya-btn.ya-focus-garde { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
 /* C-001 `principal` : le focus se dessine hors du bouton, y compris quand Yaide pose lui-même le focus. */
 .ya-btn-primary:focus-visible, .ya-btn-primary.ya-focus-garde { outline-offset: 2px; }
 .ya-btn[disabled], .ya-icon-btn[disabled] { opacity: .45; cursor: default; pointer-events: none; }
@@ -307,6 +307,11 @@
   font-family: var(--font-sans);
 }
 .dialogue::backdrop { background: var(--voile); }
+/* `milieu` (fin de session, REQ-162) : centré sur les deux axes, un message, une seule action. */
+.ya-milieu { margin: auto; max-width: calc(100% - 2 * var(--space-4)); }
+.ya-milieu .dialogue-titre { margin: 0; }
+.ya-milieu .ya-aide-dialogue { margin: var(--space-1) 0 0; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+.ya-milieu .dialogue-actions { margin-top: var(--space-4); }
 /* Palette : ancrée 4 px sous la barre de titre, centrée, sans titre visible. */
 .ya-palette { width: var(--largeur-palette); margin: calc(var(--size-titlebar) + 4px) auto 0; padding: 6px; border-radius: var(--radius-md); }
 .ya-palette::backdrop { background: transparent; }
@@ -384,7 +389,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre.cadre-sans-rail-droit.cadre-agent-replie { grid-template-columns: var(--size-activity) var(--taille-panneau, var(--largeur-panneau)) var(--epaisseur-poignee) minmax(0, 1fr) 0 0 0; }
 .cadre.cadre-sans-rail-droit.cadre-panneau-replie.cadre-agent-replie { grid-template-columns: var(--size-activity) 0 0 minmax(0, 1fr) 0 0 0; }
 .cadre-panneau[hidden], .cadre-agent[hidden], .poignee-vertical[hidden] { display: none; }
-.ya-titlebar { grid-column: 1 / -1; box-sizing: border-box; display: grid; grid-template-columns: 1fr minmax(240px, 560px) 1fr; align-items: center; gap: var(--space-3); padding: 0 var(--space-2); background: var(--bg-000); border-bottom: var(--trait) solid var(--line); font-size: 13px; color: var(--ink-muted); }
+.ya-titlebar { grid-column: 1 / -1; box-sizing: border-box; display: grid; grid-template-columns: minmax(var(--largeur-actions-titre), 1fr) minmax(240px, 560px) minmax(var(--largeur-actions-titre), 1fr); align-items: center; gap: var(--space-3); padding: 0 var(--space-2); background: var(--bg-000); border-bottom: var(--trait) solid var(--line); font-size: 13px; color: var(--ink-muted); }
 .ya-titlebar-symbole { display: flex; align-items: center; padding-left: var(--space-1); }
 .ya-titlebar-actions { display: flex; justify-content: flex-end; gap: 2px; }
 .ya-command { box-sizing: border-box; height: 24px; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; padding: 0 var(--space-2); border-radius: var(--radius-md); border: var(--trait) solid var(--line); background: var(--bg-100); color: var(--ink-muted); font: inherit; font-size: 12px; cursor: pointer; }

@@ -152,7 +152,7 @@ test("REQ037_AC2_AC3_barre_de_titre_symbole_bouton_central_et_actions", () => {
   b.click();
   expect(ouvert).toEqual([1]);
   expect(b.hasAttribute("title")).toBe(false);
-  expect(regle(".ya-titlebar")).toContain("grid-template-columns: 1fr minmax(240px, 560px) 1fr");
+  expect(regle(".ya-titlebar")).toContain("grid-template-columns: minmax(var(--largeur-actions-titre), 1fr) minmax(240px, 560px) minmax(var(--largeur-actions-titre), 1fr)");
   expect(regle(".ya-titlebar")).toContain("border-bottom: var(--trait) solid var(--line)");
   expect(regle(".ya-command")).toContain("height: 24px");
   expect(regle(".ya-command:hover")).toContain("background: var(--bg-300)");
@@ -1221,4 +1221,9 @@ test("REQ101_AC12_regles_css_de_l_indication_du_pointeur_et_du_titre_atteint", (
   expect(titres(":focus-visible")).toContain("outline: var(--trait-fort) solid var(--accent-fg)");
   expect(titres(":focus-visible")).toContain("outline-offset: var(--trait-fort)");
   expect(titres(":focus")).toContain("outline: none");
+});
+
+test("REQ162_AC1_largeur_des_actions_de_la_barre_de_titre_des_deux_cotes", () => {
+  expect(tokens).toMatch(/--largeur-actions-titre:\s*128px;/);
+  expect(regle(".ya-titlebar")).toContain("grid-template-columns: minmax(var(--largeur-actions-titre), 1fr) minmax(240px, 560px) minmax(var(--largeur-actions-titre), 1fr)");
 });

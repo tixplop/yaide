@@ -434,3 +434,14 @@ test("REQ159_AC9_chevron_up_existe_et_se_distingue_des_autres_chevrons", () => {
   expect(icone("chevron-up").innerHTML).not.toBe(icone("chevron-down").innerHTML);
   expect(icone("chevron-up").getAttribute("stroke-width")).toBe("1.6");
 });
+
+test("REQ162_AC1_icone_power_au_format_de_lucide_distincte_de_log_out", () => {
+  expect(NOMS).toContain("power");
+  const s = icone("power");
+  expect(s.getAttribute("viewBox")).toBe("0 0 24 24");
+  expect(s.getAttribute("stroke-width")).toBe("1.6");
+  expect(s.getAttribute("aria-hidden")).toBe("true");
+  expect(s.innerHTML).toContain("M12 2v10");
+  expect(s.innerHTML).toContain("M18.4 6.6a9 9 0 1 1-12.77.04");
+  expect(s.innerHTML).not.toBe(icone("log-out").innerHTML);
+});

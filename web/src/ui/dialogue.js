@@ -1,18 +1,19 @@
 import { bouton } from "./bouton.js";
 import { liste } from "./liste.js";
 
-const POSITIONS = ["centre", "palette", "reglages"];
+const POSITIONS = ["centre", "milieu", "palette", "reglages"];
 let compteur = 0;
 
-export function dialogue({ titre, contenu = [], actions = [], focusInitial, position = "centre", sansChamp = false, aide, sections, surAnnuler }) {
+export function dialogue({ titre, contenu = [], actions = [], focusInitial, position = "centre", sansChamp = false, aide, sections, focusFermeture, surAnnuler }) {
   if (!titre) throw new Error("dialogue : titre requis");
   if (sansChamp && position !== "palette") throw new Error("dialogue : sansChamp demande la position « palette »");
   if (!focusInitial && !sansChamp) throw new Error("dialogue : focusInitial requis");
   if (!surAnnuler) throw new Error("dialogue : surAnnuler requis");
   if (sections && position !== "reglages") throw new Error("dialogue : sections demande la position « reglages »");
+  if (focusFermeture && position !== "milieu") throw new Error("dialogue : focusFermeture demande la position « milieu »");
   if (!POSITIONS.includes(position)) throw new Error(`dialogue : position inconnue « ${position} »`);
   const el = document.createElement("dialog");
-  el.className = { centre: "dialogue", palette: "dialogue ya-palette", reglages: "dialogue ya-reglages" }[position];
+  el.className = { centre: "dialogue", milieu: "dialogue ya-milieu", palette: "dialogue ya-palette", reglages: "dialogue ya-reglages" }[position];
   if (sansChamp) {
     el.classList.add("ya-palette-sans-champ");
     el.tabIndex = -1;
@@ -33,6 +34,7 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
   }
   const idAide = `dialogue-${compteur}-aide`;
   const poserAide = (a) => {
+    if (position === "milieu") a.classList.add("ya-aide-dialogue");
     el.setAttribute("aria-describedby", a.id || (a.id = idAide));
     const c = el.querySelector(":scope > .dialogue-contenu");
     if (c) c.before(a);
@@ -64,6 +66,19 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
     });
   }
 
+  // Fin de session : un message, une seule action. Tab reste sur elle, Entrée ferme, le voile ne fait rien.
+  if (position === "milieu") {
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        focusInitial.focus();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        surAnnuler();
+      }
+    });
+  }
+
   let origine = null;
   return {
     element: el,
@@ -71,12 +86,15 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
       origine = document.activeElement;
       document.body.append(el);
       el.showModal();
-      focusInitial.focus();
+      // Le contour de focus s'affiche dès l'ouverture, même après un clic à la souris.
+      if (position === "milieu" && focusInitial.poserFocus) focusInitial.poserFocus();
+      else focusInitial.focus();
     },
     fermer({ rendreFocus = true } = {}) {
       el.close();
       el.remove();
-      if (rendreFocus) origine?.focus?.();
+      if (focusFermeture) focusFermeture.focus();
+      else if (rendreFocus) origine?.focus?.();
     },
     // Pose l'aide sous le titre, après coup (texte connu après le chargement), reliée par aria-describedby.
     definirAide(a) {

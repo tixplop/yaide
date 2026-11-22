@@ -442,3 +442,90 @@ test("REQ149_AC8_contrastes_du_dialogue_des_choix_dans_les_deux_themes", () => {
     expect(rapport(rgb(t["--ink"]), soft), `ink sur accent-soft (${theme})`).toBeGreaterThanOrEqual(4.5);
   }
 });
+
+// C-007 `milieu` (fin de session, REQ-162).
+function monterMilieu(opts = {}) {
+  const champ = document.createElement("input");
+  document.body.append(champ);
+  const fermer = bouton({ libelle: "Fermer", variante: "secondaire" });
+  const surAnnuler = vi.fn();
+  const d = dialogue({ titre: "Vous êtes déconnecté.", position: "milieu", actions: [fermer], focusInitial: fermer, focusFermeture: champ, surAnnuler, ...opts });
+  return { d, fermer, champ, surAnnuler };
+}
+
+test("REQ162_AC9_milieu_role_modal_nom_par_le_titre_et_aide_reliee", () => {
+  const aide = Object.assign(document.createElement("p"), { textContent: "Relancez Yaide, puis reconnectez-vous ici." });
+  const { d } = monterMilieu({ titre: "Yaide est arrêté. Vous êtes déconnecté.", aide });
+  d.ouvrir();
+  const el = d.element;
+  expect(el.tagName).toBe("DIALOG");
+  expect(el.dataset.modal).toBe("oui");
+  expect(el.classList.contains("ya-milieu")).toBe(true);
+  const h = el.querySelector("h2");
+  expect(h.textContent).toBe("Yaide est arrêté. Vous êtes déconnecté.");
+  expect(el.getAttribute("aria-labelledby")).toBe(h.id);
+  expect(el.getAttribute("aria-describedby")).toBe(aide.id);
+  expect(el.contains(aide)).toBe(true);
+  // Sans aide : pas de aria-describedby.
+  const sans = monterMilieu().d;
+  expect(sans.element.hasAttribute("aria-describedby")).toBe(false);
+  expect(sans.element.querySelectorAll("button").length).toBe(1);
+});
+
+test("REQ162_AC9_milieu_focus_sur_fermer_avec_contour_des_l_ouverture", () => {
+  const { d, fermer } = monterMilieu();
+  d.ouvrir();
+  expect(document.activeElement).toBe(fermer);
+  expect(fermer.classList.contains("ya-focus-garde")).toBe(true);
+  // Le contour est dessiné pour le bouton secondaire dont Yaide pose le focus.
+  expect(regle(".ya-btn.ya-focus-garde")).toContain("outline: 2px solid var(--accent-fg)");
+});
+
+test("REQ162_AC9_milieu_entree_et_echap_ferment_tab_reste_dedans_le_voile_ne_fait_rien", () => {
+  const { d, fermer, surAnnuler } = monterMilieu();
+  d.ouvrir();
+  // Tab et Maj+Tab : le focus reste sur la seule action.
+  for (const shiftKey of [false, true]) {
+    const ev = new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true });
+    fermer.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(fermer);
+  }
+  expect(surAnnuler).not.toHaveBeenCalled();
+  // Clic sur le voile (sur le dialogue, hors de son cadre) : rien.
+  d.element.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: -5, clientY: -5 }));
+  expect(surAnnuler).not.toHaveBeenCalled();
+  // Entrée ferme.
+  const entree = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+  fermer.dispatchEvent(entree);
+  expect(surAnnuler).toHaveBeenCalledTimes(1);
+  // Échap ferme.
+  const ev = new Event("cancel", { cancelable: true });
+  d.element.dispatchEvent(ev);
+  expect(ev.defaultPrevented).toBe(true);
+  expect(surAnnuler).toHaveBeenCalledTimes(2);
+});
+
+test("REQ162_AC9_milieu_a_la_fermeture_le_focus_va_au_champ_de_la_vue", () => {
+  const { d, champ } = monterMilieu();
+  const autre = bouton({ libelle: "Autre" });
+  document.body.append(autre);
+  autre.focus();
+  d.ouvrir();
+  d.fermer();
+  expect(d.element.isConnected).toBe(false);
+  expect(document.activeElement).toBe(champ);
+});
+
+test("REQ162_AC9_milieu_centre_sur_les_deux_axes_et_style_du_design_system", () => {
+  expect(regle(".ya-milieu")).toContain("margin: auto");
+  expect(regle(".ya-milieu")).toContain("max-width: calc(100% - 2 * var(--space-4))");
+  expect(regle(".ya-milieu .ya-aide-dialogue")).toContain("color: var(--ink-muted)");
+  expect(regle(".ya-milieu .ya-aide-dialogue")).toContain("font: var(--texte-petit) var(--font-sans)");
+  expect(regle(".ya-milieu .dialogue-actions")).toContain("margin-top: var(--space-4)");
+});
+
+test("REQ162_AC9_milieu_refuse_focus_fermeture_hors_milieu", () => {
+  const f = bouton({ libelle: "ok" });
+  expect(() => dialogue({ titre: "t", focusInitial: f, focusFermeture: f, surAnnuler() {} })).toThrow(/focusFermeture/);
+});
