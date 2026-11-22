@@ -11,9 +11,10 @@ vi.mock("../stockage.js", () => ({ lire: vi.fn(async (cle) => magasin.get(cle)),
 Range.prototype.getClientRects ??= () => [];
 Range.prototype.getBoundingClientRect ??= () => ({ left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 });
 
+const CLIENTS = 'nom,ville,note\nAlice,Paris,12\n"Bob, fils",Lyon,"dit ""oui"""\nChloé,Nantes\n';
 const README = "Yaide ici\nun yaide là\net YAIDE";
 let editeurs = [];
-function monter(fichiers = { "README.md": README, "main.rs": "fn main() {}\n", "clients.csv": "a,b\n1,2\n" }) {
+function monter(fichiers = { "README.md": README, "main.rs": "fn main() {}\n", "clients.csv": CLIENTS }) {
   let c = null;
   const e = vueEditeur({ dire: vi.fn(), surGroupes: (arbre, courant) => c?.definirGroupes(arbre, courant) });
   editeurs.push(e);
@@ -78,10 +79,6 @@ test("REQ159_AC1_ctrl_f_ouvre_le_panneau_sur_un_markdown_seulement", async () =>
   const rs = ctrlF(zoneDe("main.rs").vue.contentDOM);
   expect(rs.defaultPrevented).toBe(false);
   expect(panneau("main.rs")).toBeNull();
-  aller(e, "clients.csv");
-  const csv = ctrlF(zoneDe("clients.csv").vue.contentDOM);
-  expect(csv.defaultPrevented).toBe(false);
-  expect(panneau("clients.csv")).toBeNull();
   e.ouvrirDiff({ chemin: "README.md", texte: "@@ -1 +1 @@\n-a\n+b\n" });
   const diff = document.querySelector(".zone-code:not([hidden])");
   const d = ctrlF(diff.vue.contentDOM);
@@ -165,4 +162,94 @@ test("REQ159_AC15_le_panneau_suit_son_onglet_et_pas_le_rechargement", async () =
   await e2.restaurer();
   expect(zoneDe("README.md")).toBeTruthy();
   expect(document.querySelector(".ya-recherche-fichier")).toBeNull();
+});
+
+// ---- REQ-160 : recherche dans un fichier CSV ----
+const hybride = () => document.querySelector('button[aria-label="Mode hybride"]');
+const panneauCsv = () => document.querySelector(".ya-tableur-conteneur > .ya-recherche-fichier");
+const saisieCsv = () => panneauCsv().querySelector("input");
+function chercherCsv(texte) {
+  saisieCsv().value = texte;
+  saisieCsv().dispatchEvent(new Event("input", { bubbles: true }));
+}
+const compteCsv = () => panneauCsv().querySelector(".ya-recherche-compteur").textContent.replace(/\s+/g, " ").trim();
+
+test("REQ160_AC1_ctrl_f_sur_la_grille_ouvre_le_panneau_du_tableur_et_pas_sur_un_diff", () => {
+  const e = monter();
+  aller(e, "clients.csv");
+  const z = zoneDe("clients.csv");
+  const td = z.querySelector("td");
+  td.focus();
+  const ev = ctrlF(td);
+  expect(ev.defaultPrevented).toBe(true);
+  expect(panneauCsv()).not.toBeNull();
+  expect(panneauCsv().nextElementSibling).toBe(z.querySelector(".ya-tableur"));
+  expect(document.activeElement).toBe(saisieCsv());
+  expect(z.querySelector(".zone-code-editeur .ya-recherche-fichier")).toBeNull();
+  e.ouvrirDiff({ chemin: "clients.csv", texte: "@@ -1 +1 @@\n-a\n+b\n" });
+  const diff = document.querySelector(".zone-code:not([hidden])");
+  expect(ctrlF(diff.vue.contentDOM).defaultPrevented).toBe(false);
+});
+
+test("REQ160_AC6_AC8_texte_en_mode_hybride_eteint_fermeture_au_basculement_et_panneau_garde_par_onglet", async () => {
+  stubFichiers();
+  const e = monter({});
+  await e.restaurer(); // l'éditeur garde sa liste à partir de là
+  for (const [chemin, contenu] of Object.entries({ "README.md": README, "clients.csv": CLIENTS })) e.ouvrir({ chemin, contenu, version: "1" });
+  aller(e, "clients.csv");
+  let z = zoneDe("clients.csv");
+  // Mode hybride éteint : la recherche de REQ-159 sur le texte du fichier.
+  hybride().click();
+  ctrlF(z.vue.contentDOM);
+  expect(z.querySelector(".zone-code-editeur .ya-recherche-fichier")).not.toBeNull();
+  expect(panneauCsv()).toBeNull();
+  z.querySelector(".ya-recherche-fichier input").value = '""';
+  z.querySelector(".ya-recherche-fichier input").dispatchEvent(new Event("input", { bubbles: true }));
+  expect(z.querySelectorAll(".ya-occurrence")).toHaveLength(2);
+  // Retour à la grille : plus de panneau, rien de surligné, focus sur le bouton.
+  hybride().focus();
+  hybride().click();
+  expect(document.querySelector(".ya-recherche-fichier")).toBeNull();
+  ctrlF(z.querySelector("td"));
+  chercherCsv('""');
+  expect(compteCsv()).toBe("0");
+  chercherCsv("a");
+  expect(compteCsv()).toBe("3");
+  hybride().focus();
+  hybride().click();
+  expect(document.querySelector(".ya-recherche-fichier")).toBeNull();
+  expect(z.querySelectorAll("mark.ya-occurrence")).toHaveLength(0);
+  expect(document.activeElement).toBe(hybride());
+  hybride().click();
+  z = zoneDe("clients.csv");
+  // Une saisie en cours : Ctrl+F la valide dans le document, puis ouvre le panneau.
+  const td = z.querySelectorAll("td")[2];
+  td.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  const span = z.querySelector(".ya-cellule-saisie");
+  span.textContent = "Laval";
+  const ev = new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true, cancelable: true });
+  span.dispatchEvent(ev);
+  expect(ev.defaultPrevented).toBe(true);
+  expect(z.contenu()).toContain("Alice,Paris,Laval");
+  chercherCsv("a");
+  expect(compteCsv()).toBe("4");
+  // Autre onglet puis retour : le panneau, `a` et son surlignage sont là.
+  aller(e, "README.md");
+  aller(e, "clients.csv");
+  expect(saisieCsv().value).toBe("a");
+  expect(z.querySelectorAll("mark.ya-occurrence").length).toBe(5);
+  // Rechargement : la liste est écrite (200 ms), un nouvel éditeur la relit : clients.csv revient sans panneau ni surlignage.
+  await new Promise((ok) => setTimeout(ok, 300));
+  expect(magasin.size).toBeGreaterThan(0);
+  e.detruire();
+  document.body.replaceChildren();
+  let c2 = null;
+  const e2 = vueEditeur({ dire: vi.fn(), surGroupes: (arbre, courant) => c2?.definirGroupes(arbre, courant) });
+  editeurs.push(e2);
+  c2 = cadre({ principal: { groupes: e2.groupes() } });
+  document.body.append(c2);
+  await e2.restaurer();
+  expect(zoneDe("clients.csv")).toBeTruthy();
+  expect(document.querySelector(".ya-recherche-fichier")).toBeNull();
+  expect(document.querySelector("mark.ya-occurrence")).toBeNull();
 });

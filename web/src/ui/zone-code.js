@@ -293,12 +293,14 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   // Le thème propre au tableur (REQ-158) : l'attribut seulement avec un choix, sinon la zone suit `<html>`.
   function appliquerThemeTableur() {
     const t = themeTableur();
-    if (t) tab.element.dataset.theme = t;
-    else delete tab.element.dataset.theme;
+    for (const el of [tab.element, tab.zone]) {
+      if (t) el.dataset.theme = t;
+      else delete el.dataset.theme;
+    }
   }
   function afficherGrille(l, focus) {
     if (!tab) {
-      tab = tableur({ vue, nom });
+      tab = tableur({ vue, nom: recherche?.nom ?? nom });
       appliquerThemeTableur();
       racine.append(tab.element);
     }
@@ -306,14 +308,14 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     const { r, c } = celluleA(l, vue.state.selection.main.head);
     tab.activer(r, c, false);
     hote.hidden = true;
-    tab.element.hidden = false;
+    tab.element.hidden = tab.zone.hidden = false;
     if (focus) tab.focuser();
     etatTableur(true, null);
   }
   // Montre le texte, le curseur en `pos` (ligne centrée) ; le focus va à l'éditeur si `focus`.
   // `differe` : appelé pendant une mise à jour de l'éditeur, qui n'accepte pas de transaction.
   function afficherTexte(pos, focus, refus, differe = false) {
-    if (tab) tab.element.hidden = true;
+    if (tab) tab.element.hidden = tab.zone.hidden = true;
     hote.hidden = false;
     const placer = () => {
       if (pos !== undefined) vue.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: "center" }) });
@@ -353,7 +355,9 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   racine.vue = vue;
   if (rech) {
     rech.attacher(vue);
-    racine.recherche = { ouvrir: rech.ouvrir, fermer: rech.fermer, etat: rech.etat, reprendre: rech.reprendre };
+    // Sur un `.csv`, la recherche du tableur quand la grille est affichée, sinon celle du texte.
+    const affichee = () => (grille && tab ? tab.recherche : rech);
+    racine.recherche = { ouvrir: () => affichee().ouvrir(), fermer: () => affichee().fermer(), etat: () => affichee().etat(), reprendre: (e) => affichee().reprendre(e) };
   }
   if (csv) {
     // Tous les appels de focus de l'éditeur vont à la grille quand elle est affichée.
@@ -366,6 +370,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     else afficherGrille(l, false);
   }
   racine.grilleAffichee = () => grille;
+  racine.tableurContient = (noeud) => Boolean(tab?.element.contains(noeud));
   racine.definirThemeTableur = () => {
     if (tab) appliquerThemeTableur();
   };
@@ -412,6 +417,9 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   // Le curseur reste sur la même ligne (bornée au nouveau texte), à la même colonne si elle existe encore.
   function definirHybrideCsv(actif) {
     if (actif === csvActif) return;
+    // La recherche ouverte se ferme, le focus reste sur le bouton (REQ-160).
+    tab?.recherche.fermer(false);
+    rech?.reprendre(null);
     if (!actif) {
       tab?.validerSaisie();
       csvActif = false;

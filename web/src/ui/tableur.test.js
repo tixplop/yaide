@@ -251,3 +251,167 @@ test("REQ157_AC11_clic_place_le_curseur_a_l_endroit_du_clic", () => {
   expect(saisieOuverte(t).textContent).toBe("Paris");
   expect(document.getSelection().anchorOffset).toBe(2);
 });
+
+// ---- Recherche dans les cellules (REQ-160) ----
+const PAYS = 'nom,ville,note\nAlice,Paris,12\n"Bob, fils",Lyon,"dit ""oui"""\nChloé,Nantes\n';
+const panneauDe = (t) => t.element.querySelector(".ya-recherche-fichier");
+const champDe = (t) => panneauDe(t).querySelector("input");
+const chercher = (t, texte) => {
+  champDe(t).value = texte;
+  champDe(t).dispatchEvent(new Event("input", { bubbles: true }));
+};
+const compte = (t) => panneauDe(t).querySelector(".ya-recherche-compteur").textContent.replace(/\s+/g, " ").trim();
+const marques = (t) => [...t.element.querySelectorAll("mark.ya-occurrence")];
+const textes = (t) => marques(t).map((m) => m.closest("td, th").textContent);
+const f3 = (t, opts = {}) => touche(champDe(t), "F3", opts);
+
+test("REQ160_AC1_AC9_le_panneau_est_premier_enfant_du_conteneur_et_tab_mene_a_la_cellule_active", () => {
+  const { t } = monter(PAYS);
+  t.activer(1, 1);
+  t.recherche.ouvrir();
+  const p = panneauDe(t);
+  expect(t.element.firstElementChild).toBe(p);
+  expect(t.element.children[1]).toBe(t.zone);
+  expect(t.zone.className).toBe("ya-tableur");
+  expect(document.activeElement).toBe(champDe(t));
+  expect(p.getAttribute("role")).toBe("search");
+  expect(p.getAttribute("aria-label")).toBe("Rechercher dans clients.csv");
+  const ordre = [...p.querySelectorAll("input, .ya-recherche-compteur, button")].map((x) => (x.tagName === "INPUT" ? "champ" : x.className.includes("compteur") ? "compteur" : x.getAttribute("aria-label")));
+  expect(ordre).toEqual(["champ", "compteur", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
+  // Tab : trois boutons puis la cellule active (seule cellule focalisable).
+  const focalisables = [...t.element.querySelectorAll("input, button, [tabindex='0']")];
+  expect(focalisables.map((x) => x.tagName)).toEqual(["INPUT", "BUTTON", "BUTTON", "BUTTON", "TD"]);
+  expect(focalisables.at(-1)).toBe(cellule(t, 1, 1));
+  const statut = p.querySelector("[role=status]");
+  chercher(t, "a");
+  expect(statut.textContent).toBe("3 occurrences");
+  chercher(t, "zzz");
+  expect(statut.textContent).toBe("Aucune occurrence");
+});
+
+test("REQ160_AC2_les_cellules_trouvees_sont_comptees_et_surlignees", () => {
+  const { t } = monter(PAYS);
+  t.recherche.ouvrir();
+  chercher(t, "a");
+  expect(compte(t)).toBe("3");
+  expect(textes(t)).toEqual(["Alice", "Paris", "Nantes"]);
+  expect(marques(t).map((m) => m.textContent)).toEqual(["A", "a", "a"]);
+  chercher(t, "zzz");
+  expect(compte(t)).toBe("0");
+  expect(marques(t)).toHaveLength(0);
+  chercher(t, "");
+  expect(compte(t)).toBe("");
+  expect(marques(t)).toHaveLength(0);
+  // texte affiché, sans les guillemets du fichier
+  chercher(t, '"oui"');
+  expect(compte(t)).toBe("1");
+});
+
+test("REQ160_AC3_AC4_AC12_F3_va_de_cellule_en_cellule_Echap_ferme_sans_toucher_au_document", () => {
+  const { t, vue } = monter(PAYS);
+  t.recherche.ouvrir();
+  chercher(t, "a");
+  f3(t);
+  expect(cellule(t, 1, 0).tabIndex).toBe(0);
+  expect(cellule(t, 1, 0).classList.contains("ya-cellule-active")).toBe(true);
+  expect(compte(t)).toBe("1 sur 3");
+  expect(document.activeElement).toBe(champDe(t));
+  // seule la marque de « Alice » est la courante
+  expect(marques(t).filter((m) => m.classList.contains("ya-occurrence-courante")).map((m) => m.closest("td").textContent)).toEqual(["Alice"]);
+  f3(t);
+  expect(t.celluleActive()).toEqual({ r: 1, c: 1 });
+  f3(t);
+  expect(t.celluleActive()).toEqual({ r: 3, c: 1 });
+  f3(t);
+  expect(t.celluleActive()).toEqual({ r: 1, c: 0 });
+  f3(t, { shiftKey: true });
+  expect(t.celluleActive()).toEqual({ r: 3, c: 1 });
+  // flèche haut du panneau : Maj+F3
+  panneauDe(t).querySelector('button[aria-label="Occurrence précédente"]').click();
+  expect(t.celluleActive()).toEqual({ r: 1, c: 1 });
+  // flèche droite sur la grille : plus de marque courante, « 3 »
+  f3(t);
+  cellule(t, 3, 1).focus();
+  touche(cellule(t, 3, 1), "ArrowLeft");
+  expect(marques(t).some((m) => m.classList.contains("ya-occurrence-courante"))).toBe(false);
+  expect(compte(t)).toBe("3");
+  // F3 depuis la grille
+  touche(cellule(t, 3, 0), "F3");
+  expect(t.celluleActive()).toEqual({ r: 3, c: 1 });
+  // Échap
+  const avant = vue.state.doc.toString();
+  touche(champDe(t), "Escape");
+  expect(panneauDe(t)).toBeNull();
+  expect(marques(t)).toHaveLength(0);
+  expect(document.activeElement).toBe(cellule(t, 3, 1));
+  expect(vue.state.doc.toString()).toBe(avant);
+  touche(cellule(t, 3, 1), "z", { ctrlKey: true });
+  expect(vue.state.doc.toString()).toBe(avant);
+});
+
+test("REQ160_AC5_une_saisie_validee_et_Ctrl_Z_mettent_le_compteur_a_jour", () => {
+  const { t, vue } = monter(PAYS);
+  t.recherche.ouvrir();
+  chercher(t, "a");
+  clic(cellule(t, 1, 2));
+  taper(saisieOuverte(t), "Laval");
+  touche(saisieOuverte(t), "Enter");
+  expect(compte(t)).toBe("4");
+  expect(cellule(t, 1, 2).querySelectorAll("mark")).toHaveLength(2);
+  t.activer(1, 1);
+  t.recherche.ouvrir();
+  f3(t);
+  expect(t.celluleActive()).toEqual({ r: 1, c: 2 });
+  touche(cellule(t, 1, 2), "z", { ctrlKey: true });
+  expect(compte(t)).toBe("3");
+  expect(vue.state.doc.toString()).toBe(PAYS);
+});
+
+test("REQ160_AC12_une_cellule_en_saisie_n_a_pas_de_marque_et_Echap_la_rend", () => {
+  const { t } = monter(PAYS);
+  t.recherche.ouvrir();
+  chercher(t, "a");
+  clic(cellule(t, 1, 1));
+  expect(cellule(t, 1, 1).querySelectorAll("mark")).toHaveLength(0);
+  touche(saisieOuverte(t), "Escape");
+  expect(cellule(t, 1, 1).querySelectorAll("mark")).toHaveLength(1);
+});
+
+test("REQ160_AC10_une_cellule_avec_trois_parties_trouvees_compte_une_fois", () => {
+  const { t } = monter(PAYS);
+  t.recherche.ouvrir();
+  chercher(t, "a");
+  clic(cellule(t, 3, 0));
+  taper(saisieOuverte(t), "Nantes, Laval");
+  touche(saisieOuverte(t), "Enter");
+  expect(cellule(t, 3, 0).querySelectorAll("mark")).toHaveLength(3);
+  expect(compte(t)).toBe("4");
+  expect(textes(t).filter((x) => x === "Nantes, Laval")).toHaveLength(3);
+});
+
+test("REQ160_AC8_Ctrl_F_pendant_une_saisie_la_valide_puis_ouvre_la_recherche", () => {
+  const { t, vue } = monter(PAYS);
+  clic(cellule(t, 1, 2));
+  taper(saisieOuverte(t), "Laval");
+  const ev = touche(saisieOuverte(t), "f", { ctrlKey: true });
+  expect(ev.defaultPrevented).toBe(true);
+  expect(vue.state.doc.toString()).toContain("Alice,Paris,Laval");
+  expect(saisieOuverte(t)).toBeNull();
+  expect(document.activeElement).toBe(champDe(t));
+});
+
+test("REQ160_AC6_fermer_sans_focus_et_etat_repris", () => {
+  const { t } = monter(PAYS);
+  const bouton = document.createElement("button");
+  document.body.append(bouton);
+  t.recherche.ouvrir();
+  chercher(t, "a");
+  bouton.focus();
+  t.recherche.fermer(false);
+  expect(panneauDe(t)).toBeNull();
+  expect(marques(t)).toHaveLength(0);
+  expect(document.activeElement).toBe(bouton);
+  t.recherche.reprendre({ texte: "a", ouvert: true });
+  expect(compte(t)).toBe("3");
+  expect(t.recherche.etat()).toEqual({ texte: "a", ouvert: true });
+});

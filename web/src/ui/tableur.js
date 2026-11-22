@@ -1,6 +1,8 @@
 import { undo, redo, isolateHistory } from "@codemirror/commands";
 import { lireCsv, changerCellule, insererColonne, supprimerColonne, insererRangee, supprimerRangee } from "../csv.js";
 import { champSaisie, decalageDuClic, aidesSurvol } from "./hybride.js";
+import { panneauRecherche, chercherTexte, marquerOccurrences, retirerMarques } from "./panneau-recherche.js";
+import { estMac } from "../references.js";
 
 // Tableur d'un fichier CSV (C-008 `hybride` sur un `.csv`, REQ-157, DEC-109). `vue` est l'EditorView de l'onglet,
 // masquée par l'appelant : le document y reste la source, chaque saisie validée y est une transaction.
@@ -14,6 +16,10 @@ export function tableur({ vue, nom }) {
   grille.className = "ya-tableur-grille";
   grille.append(table);
   zone.append(grille);
+  // Conteneur du tableur : le panneau de recherche (REQ-160) en est le premier enfant, avant la grille.
+  const conteneur = document.createElement("div");
+  conteneur.className = "ya-tableur-conteneur";
+  conteneur.append(zone);
 
   let active = { r: 0, c: 0 };
   let saisie = null; // { valider, annuler }
@@ -68,7 +74,101 @@ export function tableur({ vue, nom }) {
     marquer();
     zone.scrollLeft = defilement.x;
     zone.scrollTop = defilement.y;
+    majRecherche();
     if (focus) cellule(active.r, active.c)?.focus();
+  }
+
+  // ---- Recherche dans les cellules (REQ-160) ----
+  const rech = { texte: "", ouvert: false };
+  let courante = null; // cellule choisie par F3 : { r, c }
+  let panneau = null;
+
+  // Cellules dont le texte affiché contient le texte cherché, rangée par rangée, de gauche à droite.
+  function occurrences() {
+    const l = rech.ouvert && rech.texte ? lecture() : null;
+    const sortie = [];
+    l?.rangees.forEach((rangee, r) =>
+      rangee.champs.forEach((champ, c) => {
+        if (chercherTexte(champ.texte, rech.texte).length) sortie.push({ r, c });
+      }),
+    );
+    return sortie;
+  }
+
+  // Surligne les cellules trouvées (jamais celle en saisie) et met à jour le panneau.
+  function majRecherche() {
+    retirerMarques(table);
+    if (!rech.ouvert || !panneau) return;
+    const occ = occurrences();
+    for (const { r, c } of occ) {
+      const texte = cellule(r, c)?.querySelector(":scope > .ya-cellule-texte");
+      if (texte) marquerOccurrences(texte, rech.texte, { courante: courante?.r === r && courante?.c === c });
+    }
+    const i = courante ? occ.findIndex((o) => o.r === courante.r && o.c === courante.c) : -1;
+    if (i < 0) courante = null;
+    panneau.definirTexte(rech.texte);
+    panneau.afficher(occ.length, i >= 0 ? i + 1 : undefined);
+  }
+
+  function ecarterCourante() {
+    if (!courante) return;
+    courante = null;
+    majRecherche();
+  }
+
+  // Va à la cellule trouvée suivante (ou précédente) la cellule active, en bouclant ; le focus reste où il est.
+  function aller(sens) {
+    const occ = occurrences();
+    if (!occ.length) return;
+    const apres = (o) => o.r > active.r || (o.r === active.r && o.c > active.c);
+    const avant = (o) => o.r < active.r || (o.r === active.r && o.c < active.c);
+    const cible = sens > 0 ? (occ.find(apres) ?? occ[0]) : (occ.findLast(avant) ?? occ[occ.length - 1]);
+    activer(cible.r, cible.c, false);
+    courante = cible;
+    majRecherche();
+  }
+
+  function creerPanneau() {
+    panneau = panneauRecherche({
+      nom,
+      surTexte: (texte) => {
+        rech.texte = texte;
+        courante = null;
+        majRecherche();
+      },
+      surSuivante: () => aller(1),
+      surPrecedente: () => aller(-1),
+      surFermer: () => fermer(),
+    });
+    conteneur.insertBefore(panneau.element, zone);
+  }
+
+  function ouvrir() {
+    validerSaisie();
+    rech.ouvert = true;
+    if (!panneau) creerPanneau();
+    majRecherche();
+    panneau.ouvrir();
+  }
+
+  // `focus` : le focus revient à la cellule active (pas quand le clic est ailleurs, sur « Mode hybride »).
+  function fermer(focus = true) {
+    if (!rech.ouvert) return;
+    rech.ouvert = false;
+    rech.texte = "";
+    courante = null;
+    retirerMarques(table);
+    panneau?.element.remove();
+    panneau = null;
+    if (focus) cellule(active.r, active.c)?.focus();
+  }
+
+  function reprendre(e) {
+    if (!e?.ouvert) return fermer(false);
+    rech.ouvert = true;
+    rech.texte = e.texte ?? "";
+    if (!panneau) creerPanneau();
+    majRecherche();
   }
 
   function activer(r, c, avecFocus = true) {
@@ -76,9 +176,12 @@ export function tableur({ vue, nom }) {
     if (!td) return;
     active = { r, c };
     marquer();
+    ecarterCourante();
     // La première rangée reste collée en haut : la cellule active doit s'arrêter sous elle, même si ses titres passent à la ligne.
+    // Panneau de recherche ouvert : au moins 42 px, pour que la cellule ne passe pas dessous.
     const entete = table.rows[0]?.getBoundingClientRect().bottom - zone.getBoundingClientRect().top;
-    if (entete > 0) zone.style.scrollPaddingTop = `${entete}px`;
+    if (rech.ouvert) zone.style.scrollPaddingTop = `${Math.max(entete > 0 ? entete : 0, 42)}px`;
+    else if (entete > 0) zone.style.scrollPaddingTop = `${entete}px`;
     if (avecFocus && zone.isConnected) td.focus();
     td.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }
@@ -96,6 +199,7 @@ export function tableur({ vue, nom }) {
     if (!l || !td) return;
     active = { r, c };
     marquer();
+    ecarterCourante();
     const texte0 = l.rangees[r].champs[c].texte;
     const span = champSaisie(td, nomDeSaisie(l, r, c), texte0, decalage);
     let fini = false;
@@ -104,6 +208,7 @@ export function tableur({ vue, nom }) {
       fini = true;
       saisie = null;
       td.replaceChildren(texteDeCellule(texte0));
+      majRecherche();
     };
     const valider = (suite, focus = true) => {
       if (fini) return;
@@ -134,6 +239,12 @@ export function tableur({ vue, nom }) {
         valider(voisine(l, r, c, e.shiftKey ? -1 : 1));
       } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
         valider(); // l'événement continue vers Ctrl+S de la page
+      } else if ((estMac() ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+        // Ctrl+F : la saisie est validée d'abord, puis la recherche s'ouvre (la cellule saisie n'est plus dans la page).
+        e.preventDefault();
+        e.stopPropagation();
+        valider(null, false);
+        ouvrir();
       } else e.stopPropagation();
     });
     span.addEventListener("blur", () => valider(null, false));
@@ -163,7 +274,10 @@ export function tableur({ vue, nom }) {
     const { r, c } = active;
     const pas = { ArrowDown: [1, 0], ArrowUp: [-1, 0], ArrowRight: [0, 1], ArrowLeft: [0, -1] }[e.key];
     const mod = (e.ctrlKey || e.metaKey) && !e.altKey;
-    if (pas && !mod && !e.shiftKey) {
+    if (e.key === "F3" && rech.ouvert && !mod && !e.altKey) {
+      e.preventDefault();
+      aller(e.shiftKey ? -1 : 1);
+    } else if (pas && !mod && !e.shiftKey) {
       e.preventDefault();
       activer(r + pas[0], c + pas[1]);
     } else if ((e.key === "Enter" || e.key === "F2") && !mod && !e.shiftKey) {
@@ -206,11 +320,13 @@ export function tableur({ vue, nom }) {
       activer(active.r, active.c);
     }
   }
-  const retirerAides = aidesSurvol(grille, table, { agir: geste, tableur: true, ecoute: zone });
+  const retirerAides = aidesSurvol(grille, table, { agir: geste, tableur: true, ecoute: conteneur });
 
   rafraichir();
   return {
-    element: zone,
+    element: conteneur,
+    zone,
+    recherche: { ouvrir, fermer, etat: () => ({ texte: rech.texte, ouvert: rech.ouvert }), reprendre },
     rafraichir,
     validerSaisie,
     activer,

@@ -498,7 +498,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       contenu: texte ?? contenu,
       langage: langagePourFichier(nomDe(chemin)) ?? undefined,
       nom: nomDe(chemin),
-      recherche: /\.(md|markdown)$/i.test(chemin) ? { nom: nomDe(chemin) } : undefined,
+      recherche: /\.(md|markdown|csv)$/i.test(chemin) ? { nom: nomDe(chemin) } : undefined,
       document: chemin,
       apercu,
       hybride,
@@ -1439,11 +1439,11 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   // Ctrl+S, partout sauf dans un shell : le dialogue du navigateur ne s'ouvre jamais.
   const surTouche = (e) => {
-    // REQ-159 : Ctrl+F (Cmd+F sur macOS) cherche dans l'éditeur d'un onglet markdown ; ailleurs, la recherche du navigateur reste.
+    // REQ-159 : Ctrl+F (Cmd+F sur macOS) cherche dans l'éditeur d'un onglet markdown ou CSV (REQ-160) ; ailleurs, la recherche du navigateur reste.
     const f = (estMac() ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f";
     if (f) {
       const z = trouver(actif)?.zone;
-      if (z?.recherche && z.vue.dom.contains(e.target) && !document.querySelector("[role=dialog], dialog[open]")) {
+      if (z?.recherche && (z.vue.dom.contains(e.target) || z.tableurContient?.(e.target)) && !document.querySelector("[role=dialog], dialog[open]")) {
         e.preventDefault();
         z.recherche.ouvrir();
       }

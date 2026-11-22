@@ -8,14 +8,27 @@ import { lancerYaide, ouvrirYaide, depotExemple, nomLigne } from "./aides.js";
 const ligne = (page, nom) => page.getByRole("tree", { name: "Fichiers" }).getByRole("treeitem", { name: nomLigne(nom) });
 const pres = (a, b, t = 1) => expect(Math.abs(a - b)).toBeLessThanOrEqual(t);
 
-test("REQ157_AC1_AC3_AC11_AC9_AC16_REQ158_AC1_REQ157_AC7_AC13_AC15_REQ158_AC5_AC6_parcours_P120_P121_tableur", async ({ page }) => {
+// REQ-160 : fond calculé et contraste d'une partie surlignée (fond `--occurrence` posé sur `--bg-200`, texte `--ink`).
+const mesurerMarque = (marque) =>
+  marque.evaluate((m) => {
+    const cs = getComputedStyle(m);
+    const nombres = (t) => t.match(/[\d.]+/g).map(Number);
+    const base = nombres(cs.backgroundColor);
+    const [vr, vg, vb, va = 1] = nombres(cs.backgroundImage.match(/rgba?\([^)]*\)/)[0]);
+    const fond = [vr, vg, vb].map((v, i) => v * va + base[i] * (1 - va));
+    const lum = (c) => c.map((v) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const [a, b] = [lum(nombres(cs.color)), lum(fond)];
+    return { classe: m.className, base: cs.backgroundColor, image: cs.backgroundImage, couleur: cs.color, ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
+  });
+
+test("REQ157_AC1_AC3_AC11_AC9_AC16_REQ158_AC1_REQ157_AC7_AC13_AC15_REQ158_AC5_AC6_REQ160_AC7_AC10_AC11_AC13_parcours_P120_P121_tableur", async ({ page }) => {
   const dossier = depotExemple();
   const clients = path.join(dossier, "clients.csv");
   const original = 'nom,ville,note\nAlice,Paris,12\n"Bob, fils",Lyon,"dit ""oui"""\nChloé,Nantes\n';
   fs.writeFileSync(clients, original);
   const mot = "mot ".repeat(49) + "mots";
   const rangees = [Array.from({ length: 30 }, (_, c) => `col${c + 1}`).join(",")];
-  for (let r = 1; r <= 60; r++) rangees.push(Array.from({ length: 30 }, (_, c) => (r === 3 && c === 2 ? mot : r === 4 && c === 2 ? "" : `r${r}c${c + 1}`)).join(","));
+  for (let r = 1; r <= 60; r++) rangees.push(Array.from({ length: 30 }, (_, c) => (r === 3 && c === 2 ? mot : r === 4 && c === 2 ? "" : (r === 3 || r === 55) && c === 1 ? "zzz" : `r${r}c${c + 1}`)).join(","));
   fs.writeFileSync(path.join(dossier, "large.csv"), rangees.join("\n") + "\n");
   const yaide = await lancerYaide({ dossier });
   try {
@@ -103,6 +116,54 @@ test("REQ157_AC1_AC3_AC11_AC9_AC16_REQ158_AC1_REQ157_AC7_AC13_AC15_REQ158_AC5_AC
     await expect(grille.getByRole("textbox", { name: "En-tête de la colonne 2" })).toBeFocused();
     await expect(grille.getByRole("row").first().getByRole("columnheader")).toHaveCount(4);
     await page.keyboard.press("Escape");
+
+    // REQ-160 AC-160-10 : `o` cherché, « Bob, fils » active ; une partie surlignée dans l'en-tête, une cellule et la cellule active, dans les deux thèmes.
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await expect(grille.getByRole("gridcell", { name: "Bob, fils" })).toBeFocused();
+    await page.keyboard.press("Control+f");
+    const panneauClients = page.getByRole("search", { name: "Rechercher dans clients.csv" });
+    const champClients = panneauClients.locator("input");
+    await expect(champClients).toBeFocused();
+    await page.keyboard.type("o");
+    const marquesTheme = async () => {
+      const fondZone = await resoudre(zone, "background", "--bg-200");
+      const occurrence = await resoudre(zone, "background", "--occurrence");
+      const encre = await resoudre(zone, "color", "--ink");
+      for (const marque of [
+        grille.getByRole("columnheader", { name: "note" }).locator("mark"),
+        grille.getByRole("gridcell", { name: "Lyon" }).locator("mark"),
+        grille.getByRole("gridcell", { name: "Bob, fils" }).locator("mark"),
+      ]) {
+        const m = await mesurerMarque(marque);
+        expect(m.classe).toBe("ya-occurrence");
+        expect(m.base).toBe(fondZone);
+        expect(m.image).toContain(occurrence);
+        expect(m.couleur).toBe(encre);
+        expect(m.ratio).toBeGreaterThanOrEqual(4.5);
+      }
+    };
+    await marquesTheme();
+    await theme.click();
+    await expect(theme).toHaveAttribute("aria-pressed", "false");
+    await marquesTheme();
+    await theme.click();
+    await expect(theme).toHaveAttribute("aria-pressed", "true");
+    // « Nantes, Laval » saisi : trois `mark` pour `a`, et la cellule ne compte qu'une fois.
+    await champClients.fill("a");
+    await expect(panneauClients.locator(".ya-recherche-compteur")).toContainText("3");
+    await grille.getByRole("gridcell", { name: "Nantes" }).click();
+    await page.keyboard.press("Control+a");
+    await page.keyboard.type("Nantes, Laval");
+    await page.keyboard.press("Enter");
+    await expect(grille.getByRole("gridcell", { name: "Nantes, Laval" }).locator("mark")).toHaveCount(3);
+    await expect(panneauClients.locator(".ya-recherche-compteur")).toContainText("3");
+    await panneauClients.getByRole("button", { name: "Fermer la recherche" }).click();
+    await expect(panneauClients).toBeHidden();
+    await grille.getByRole("gridcell", { name: "Nantes, Laval" }).focus();
+    await page.keyboard.press("Control+z"); // le guillemet de la cellule ne doit pas fermer celui de P-121
+    await expect(grille.getByRole("gridcell", { name: "Nantes", exact: true })).toBeVisible();
 
     // P-121, AC-157-9, AC-157-16 : « Mode hybride » éteint, ligne 3 sans guillemet fermant, mode rallumé.
     await hybride.click();
@@ -224,6 +285,51 @@ test("REQ157_AC1_AC3_AC11_AC9_AC16_REQ158_AC1_REQ157_AC7_AC13_AC15_REQ158_AC5_AC
         return cb.y >= tb.y + tb.height - 1 && cb.y + cb.height <= bas + 1;
       }).toBe(true);
     }
+
+    // REQ-160 AC-160-7, AC-160-13, AC-160-11 : `zzz` aux rangées 3 et 55 de large.csv, tableur clair dans un Yaide sombre.
+    await expect(theme).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Control+f");
+    const panneau = page.getByRole("search", { name: "Rechercher dans large.csv" });
+    await expect(panneau.locator("input")).toBeFocused();
+    await page.keyboard.type("zzz");
+    const cellule = (r) => grande.getByRole("row").nth(r).getByRole("gridcell").nth(1);
+    // Cellule entière dans la zone, sous la rangée d'en-tête et sous le panneau (42 px au moins du haut).
+    const visible = async (r) => {
+      const zb = await z.boundingBox();
+      const cb = await cellule(r).boundingBox();
+      const eb = await grande.getByRole("columnheader", { name: "col1", exact: true }).boundingBox();
+      const bas = zb.y + (await z.evaluate((e) => e.clientHeight));
+      return cb.y >= zb.y + 42 && cb.y >= eb.y + eb.height - 1 && cb.y + cb.height <= bas + 1;
+    };
+    await page.keyboard.press("F3");
+    await expect.poll(() => visible(3)).toBe(true);
+    await page.keyboard.press("F3");
+    await expect(cellule(55)).toHaveClass(/ya-cellule-active/);
+    await expect.poll(() => visible(55)).toBe(true);
+    await expect(panneau.locator("input")).toBeFocused();
+    await grande.getByRole("gridcell", { name: "r40c1", exact: true }).scrollIntoViewIfNeeded();
+    await page.keyboard.press("F3");
+    await expect(cellule(3)).toHaveClass(/ya-cellule-active/);
+    await expect.poll(() => visible(3)).toBe(true);
+    // AC-160-11 : fond blanc, à 16 px du bord droit et 4 px du haut de la zone, immobile, devant la rangée d'en-tête.
+    const conteneur = page.locator(".ya-tableur-conteneur").locator("visible=true").first();
+    expect(await panneau.evaluate((e) => Boolean(e.closest("[data-theme=light]")))).toBe(true);
+    expect(await panneau.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(255, 255, 255)");
+    const place = async () => {
+      const cb = await conteneur.boundingBox();
+      const pb = await panneau.boundingBox();
+      return { droite: cb.x + cb.width - (pb.x + pb.width), haut: pb.y - cb.y, pb };
+    };
+    const avant = await place();
+    pres(avant.droite, 16);
+    pres(avant.haut, 4);
+    await z.evaluate((e) => (e.scrollTop += 10 * e.querySelector("tr:nth-child(5)").getBoundingClientRect().height));
+    await expect.poll(() => z.evaluate((e) => e.scrollTop)).toBeGreaterThan(100);
+    expect((await place()).pb).toEqual(avant.pb);
+    expect(await panneau.locator("input").evaluate((e) => {
+      const b = e.getBoundingClientRect();
+      return document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2) === e;
+    })).toBe(true);
   } finally {
     await yaide.arreter();
   }

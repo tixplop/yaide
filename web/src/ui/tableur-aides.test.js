@@ -157,7 +157,7 @@ test("REQ157_AC7_supprimer_la_premiere_rangee_d_une_grille_a_plusieurs_colonnes"
 
 test("REQ157_AC7_la_grille_refaite_garde_son_defilement", () => {
   const m = monter();
-  const zone = m.t.element;
+  const zone = m.t.zone;
   let ecritures = 0;
   let y = 17;
   Object.defineProperty(zone, "scrollTop", { configurable: true, get: () => y, set: (v) => {
@@ -168,7 +168,7 @@ test("REQ157_AC7_la_grille_refaite_garde_son_defilement", () => {
   const ecritures0 = ecritures;
   m.survol(250, 95);
   m.disque().click();
-  expect(m.t.element).toBe(zone);
+  expect(m.t.zone).toBe(zone);
   expect(y).toBe(17);
   // Le défilement est relu avant le changement puis remis : une écriture au moins, jamais à zéro.
   expect(ecritures).toBeGreaterThan(ecritures0);
