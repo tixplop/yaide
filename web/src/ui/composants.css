@@ -974,6 +974,9 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .onglets-droite:has(.ya-tableau-ajout) { gap: 2px; }
 .onglets-droite .ya-tableau-ajout { margin-right: 6px; }
 .onglets-droite .ya-tableau-theme { margin-left: 6px; }
+.onglets-droite:has(.ya-tableur-theme) { gap: 2px; }
+.onglets-droite .ya-tableur-theme { margin-left: 6px; }
+.onglets-droite .ya-tableur-theme[hidden] { display: none; }
 .ya-tableau-zoom { box-sizing: border-box; width: 44px; text-align: center; font: 12px/16px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
 .ya-icon-btn[aria-disabled="true"]:not([aria-busy="true"]) > svg { opacity: .45; }
 .zone-code {

@@ -11,6 +11,20 @@ export function changerTheme(theme) {
   document.dispatchEvent(new CustomEvent("yaide-theme", { detail: theme }));
 }
 
+const CLE_TABLEUR = "yaide-theme-tableur";
+
+/** Le choix de thème des tableurs (REQ-158) : `"light"`, `"dark"`, ou `null` tant qu'aucun choix n'est fait. */
+export function themeTableur() {
+  const v = localStorage.getItem(CLE_TABLEUR);
+  return v === "light" || v === "dark" ? v : null;
+}
+
+export function changerThemeTableur(theme) {
+  if (theme !== "dark" && theme !== "light") throw new Error(`thème inconnu : ${theme}`);
+  localStorage.setItem(CLE_TABLEUR, theme);
+  document.dispatchEvent(new CustomEvent("yaide-theme-tableur", { detail: theme }));
+}
+
 const CLE_WHITEBOARD = "yaide-theme-whiteboard";
 
 /** Le choix de thème des whiteboards (REQ-143) : `"light"`, `"dark"`, ou `null` tant qu'aucun choix n'est fait. */

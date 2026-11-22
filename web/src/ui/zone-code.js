@@ -9,7 +9,7 @@ import { image } from "./image.js";
 import { chargerMermaid, adresseDiagramme } from "./diagramme.js";
 import { couleurs } from "./couleurs-code.js";
 import { hybride as extensionHybride, TableauRendu, DiagrammeRendu, tableauxHybride, diagrammesRendus, validerSaisie } from "./hybride.js";
-import { themeCourant } from "./theme.js";
+import { themeCourant, themeTableur } from "./theme.js";
 import { tableur } from "./tableur.js";
 import { lireCsv, debutChamp, celluleA } from "../csv.js";
 import { lienDeDocument, ligneDuTitre } from "../references.js";
@@ -287,9 +287,16 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     surTableur?.({ grille, alerte });
   }
   // Montre la grille : la cellule active est celle du champ où est le curseur.
+  // Le thème propre au tableur (REQ-158) : l'attribut seulement avec un choix, sinon la zone suit `<html>`.
+  function appliquerThemeTableur() {
+    const t = themeTableur();
+    if (t) tab.element.dataset.theme = t;
+    else delete tab.element.dataset.theme;
+  }
   function afficherGrille(l, focus) {
     if (!tab) {
       tab = tableur({ vue, nom });
+      appliquerThemeTableur();
       racine.append(tab.element);
     }
     tab.rafraichir();
@@ -352,6 +359,9 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     else afficherGrille(l, false);
   }
   racine.grilleAffichee = () => grille;
+  racine.definirThemeTableur = () => {
+    if (tab) appliquerThemeTableur();
+  };
   // Change la coloration sans recréer la vue : texte, historique, curseur et défilement restent.
   racine.changerLangage = (id) => {
     if (!diff) vue.dispatch({ effects: compartimentLangage.reconfigure(id ? supportLangage(id) : []) });

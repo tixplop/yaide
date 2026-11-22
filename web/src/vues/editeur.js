@@ -11,7 +11,7 @@ import { icone } from "../ui/icones.js";
 import { image } from "../ui/image.js";
 import { lireJdiag, ecrireJdiag } from "../jdiag.js";
 import { tableau } from "../ui/tableau.js";
-import { changerThemeWhiteboard, themeCourant, themeWhiteboard } from "../ui/theme.js";
+import { changerThemeTableur, changerThemeWhiteboard, themeCourant, themeTableur, themeWhiteboard } from "../ui/theme.js";
 import { langagePourFichier, nomLangage } from "../ui/langages.js";
 import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
@@ -386,6 +386,16 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       });
       actionsDroite.push(ap.enveloppe);
     }
+    // « Thème clair du tableur » (REQ-158) : 8 px après « Mode hybride », caché tant que la grille n'est pas affichée.
+    o.themeCsv = null;
+    if (o !== diff && o.alerteCsv) {
+      const th = bouton({ icone: "sun", variante: "discret", nomAccessible: "Thème clair du tableur", presse: themeClairTableur() });
+      th.enveloppe.classList.add("ya-tableur-theme");
+      th.addEventListener("click", () => changerThemeTableur(themeClairTableur() ? "dark" : "light"));
+      th.enveloppe.hidden = !o.zone.grilleAffichee();
+      o.themeCsv = th;
+      actionsDroite.push(th.enveloppe);
+    }
     if (o !== diff && o.whiteboard && !o.zone.illisible()) actionsDroite = barreWhiteboard(o);
     const ongl = onglets({
       onglets: ongletsDe(g).map((x) => x === diff ? { id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true } : x.claude ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "asterisk", titre: `Claude Code dans ${cheminProjet}`, fermable: true } : x.conversationAgent ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "bot", titre: `Agent dans ${cheminProjet}`, fermable: true } : x.opencode ? ongletOpencode(x, noms.get(x).libelle) : ({
@@ -507,9 +517,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       surPosition() {
         if (trouver(actif) === o) publier(o);
       },
-      surTableur({ alerte }) {
+      surTableur({ grille, alerte }) {
         if (o.alerteTexte.textContent !== (alerte ?? "")) o.alerteTexte.textContent = alerte ?? "";
         if (o.zone && trouver(actif) === o) publier(o);
+        if (o.themeCsv) o.themeCsv.enveloppe.hidden = !grille;
       },
       surChangement,
     });
@@ -586,6 +597,17 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     z.vue = { focus: () => (z.querySelector("[role=application]") ?? z).focus() };
     return z;
   }
+
+  const themeClairTableur = () => (themeTableur() ?? themeCourant()) === "light";
+  // Le thème des tableurs (REQ-158) : un seul choix pour tous les onglets CSV ; les boutons suivent.
+  const suivreThemeTableur = () => {
+    for (const o of liste) {
+      if (o.alerteCsv) o.zone.definirThemeTableur();
+      o.themeCsv?.setAttribute("aria-pressed", String(themeClairTableur()));
+    }
+  };
+  document.addEventListener("yaide-theme", suivreThemeTableur);
+  document.addEventListener("yaide-theme-tableur", suivreThemeTableur);
 
   const themeClairWhiteboard = () => (themeWhiteboard() ?? themeCourant()) === "light";
 
@@ -1594,6 +1616,8 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       clearTimeout(minuteurDisque);
       if (pret) ecrireGarde(); // le texte tapé dans les dernières 200 ms n'est pas perdu
       document.removeEventListener("keydown", surTouche);
+      document.removeEventListener("yaide-theme", suivreThemeTableur);
+      document.removeEventListener("yaide-theme-tableur", suivreThemeTableur);
       for (const ev of finsPression) document.removeEventListener(ev, finPression);
       for (const o of liste) o.zone.detruire();
       diff?.el.detruire?.();

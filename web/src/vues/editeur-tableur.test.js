@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { undo } from "@codemirror/commands";
 import { vueEditeur } from "./editeur.js";
+import { cadre } from "../ui/cadre.js";
+import { themeTableur } from "../ui/theme.js";
 
 vi.mock("./claude.js", () => ({ vueClaude: () => ({ corps: document.createElement("div"), focus() {}, ajuster() {}, detruire() {} }) }));
 vi.mock("./opencode.js", () => ({ vueOpencode: () => ({ corps: document.createElement("div"), focus() {}, detruire() {} }) }));
@@ -298,4 +300,119 @@ test("REQ157_AC3_AC9_tableur_indisponible_au_retour_du_disque_texte_curseur_au_d
   expect(alerte().textContent).toBe("Tableur indisponible : guillemet non fermé à la ligne 2.");
   await microtaches();
   expect(vue().state.selection.main.head).toBe(0);
+});
+
+const THEME = "Thème clair du tableur";
+const bThemeBrut = () => document.querySelector(`button[aria-label="${THEME}"]`);
+// Le bouton n'est « proposé » que quand son enveloppe est visible.
+const bTheme = () => (bThemeBrut()?.closest(".bouton-enveloppe").hidden ? null : bThemeBrut());
+const zonesTableur = () => [...document.querySelectorAll(".ya-tableur")];
+
+test("REQ158_AC1_clic_grille_en_clair_seule_sans_point_cellule_gardée_aria_pressed_second_clic", () => {
+  document.documentElement.setAttribute("data-theme", "dark");
+  const { e } = monter();
+  ouvrir(e, "clients.csv", CLIENTS);
+  touche(cellule(0, 0), "ArrowDown");
+  touche(grille().querySelector("[tabindex='0']"), "ArrowRight");
+  const active = grille().querySelector(".ya-cellule-active");
+  expect(grille().dataset.theme).toBeUndefined();
+  expect(bTheme().getAttribute("aria-pressed")).toBe("false");
+  clic(bTheme());
+  expect(grille().dataset.theme).toBe("light");
+  expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+  expect(point("clients.csv")).toBeUndefined();
+  expect(serveur.ecritures).toEqual([]);
+  expect(texte()).toBe(CLIENTS);
+  expect(grille().querySelector(".ya-cellule-active")).toBe(active);
+  expect(bTheme().getAttribute("aria-pressed")).toBe("true");
+  clic(bTheme());
+  expect(grille().dataset.theme).toBe("dark");
+  expect(bTheme().getAttribute("aria-pressed")).toBe("false");
+});
+
+test("REQ158_AC2_deux_groupes_ensemble_rechargement_yaide_sans_effet_whiteboard_distinct", () => {
+  document.documentElement.setAttribute("data-theme", "dark");
+  let c = null;
+  const e = vueEditeur({ dire: vi.fn(), surActif: vi.fn(), surGroupes: (arbre, courant) => c?.definirGroupes(arbre, courant) });
+  editeurs.push(e);
+  c = cadre({ principal: { groupes: e.groupes() } });
+  document.body.append(c);
+  e.lecture(false);
+  ouvrir(e, "a.csv", CLIENTS);
+  ouvrir(e, "b.csv", CLIENTS);
+  e.deplacer("b.csv", "g1", "droite");
+  expect(zonesTableur()).toHaveLength(2);
+  clic(bTheme());
+  expect(zonesTableur().map((z) => z.dataset.theme)).toEqual(["light", "light"]);
+  expect(localStorage.getItem("yaide-theme-tableur")).toBe("light");
+  expect(localStorage.getItem("yaide-theme-whiteboard")).toBeNull();
+  document.documentElement.setAttribute("data-theme", "light");
+  document.dispatchEvent(new CustomEvent("yaide-theme", { detail: "light" }));
+  document.documentElement.setAttribute("data-theme", "dark");
+  document.dispatchEvent(new CustomEvent("yaide-theme", { detail: "dark" }));
+  expect(zonesTableur().map((z) => z.dataset.theme)).toEqual(["light", "light"]);
+  document.dispatchEvent(new CustomEvent("yaide-theme-whiteboard", { detail: "dark" }));
+  expect(zonesTableur().map((z) => z.dataset.theme)).toEqual(["light", "light"]);
+  clic(bTheme());
+  expect(zonesTableur().map((z) => z.dataset.theme)).toEqual(["dark", "dark"]);
+  clic(bTheme());
+  // « rechargement » : une nouvelle vue relit le choix
+  e.detruire();
+  editeurs = [];
+  document.body.replaceChildren();
+  const { e: neuf } = monter();
+  ouvrir(neuf, "c.csv", CLIENTS);
+  expect(themeTableur()).toBe("light");
+  expect(grille().dataset.theme).toBe("light");
+});
+
+test("REQ158_AC3_sans_choix_suit_le_theme_de_yaide", () => {
+  document.documentElement.setAttribute("data-theme", "light");
+  const { e } = monter();
+  ouvrir(e, "clients.csv", CLIENTS);
+  expect(bTheme().getAttribute("aria-pressed")).toBe("true");
+  document.documentElement.setAttribute("data-theme", "dark");
+  document.dispatchEvent(new CustomEvent("yaide-theme", { detail: "dark" }));
+  expect(bTheme().getAttribute("aria-pressed")).toBe("false");
+  expect(grille().dataset.theme).toBeUndefined();
+  expect(themeTableur()).toBeNull();
+});
+
+test("REQ158_AC4_nom_icone_info_bulle_ordre_focus_gardé_absent_mode_eteint_indisponible_et_autre_onglet", () => {
+  const { e } = monter();
+  ouvrir(e, "clients.csv", CLIENTS);
+  const b = bTheme();
+  expect(b.innerHTML).toContain('r="4"');
+  const boutons = [...document.querySelectorAll(".onglets-droite button")];
+  expect(boutons.map((x) => x.getAttribute("aria-label"))).toEqual(["Mode hybride", THEME]);
+  vi.useFakeTimers();
+  b.closest(".bouton-enveloppe").dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(500);
+  expect(document.querySelector(".info-bulle[data-ouverte]")?.textContent).toBe(THEME);
+  vi.useRealTimers();
+  b.focus();
+  clic(b);
+  expect(document.activeElement).toBe(bTheme());
+  hybride().click();
+  expect(bTheme()).toBeNull();
+  hybride().click();
+  expect(bTheme()).not.toBeNull();
+  ouvrir(e, "casse.csv", 'a,"b\n');
+  expect(alerte().textContent).toContain("Tableur indisponible");
+  expect(bTheme()).toBeNull();
+  ouvrir(e, "x.txt", "x");
+  expect(bTheme()).toBeNull();
+});
+
+test("REQ158_AC4_bouton_revient_quand_le_texte_redevient_valide", () => {
+  const { e } = monter();
+  ouvrir(e, "clients.csv", CLIENTS);
+  hybride().click();
+  const fin = CLIENTS.length;
+  inserer(fin, '"x');
+  hybride().click();
+  expect(alerte().textContent).toContain("Tableur indisponible");
+  expect(bTheme()).toBeNull();
+  vue().dispatch({ changes: { from: fin, to: fin + 2, insert: "" } });
+  expect(bTheme()).not.toBeNull();
 });

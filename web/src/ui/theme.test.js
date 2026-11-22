@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
-import { changerTheme, themeCourant } from "./theme.js";
+import { changerTheme, changerThemeTableur, themeCourant, themeTableur } from "./theme.js";
 
 const initial = readFileSync("web/src/theme-initial.js", "utf8");
 const lancerInitial = () => new Function(initial)();
@@ -59,4 +59,19 @@ test("REQ038_AC3_theme_js_est_chargé_en_bloquant_avant_les_feuilles", () => {
   expect(html).toContain('<body class="ya">');
   expect(html).toContain("<title>yaide</title>");
   expect(html).toContain('rel="icon" href="data:image/svg+xml,');
+});
+
+test("REQ158_AC1_le_choix_du_tableur_est_null_sans_choix_rejette_l_inconnu_et_émet_l_événement", () => {
+  expect(themeTableur()).toBeNull();
+  expect(() => changerThemeTableur("rose")).toThrow();
+  expect(themeTableur()).toBeNull();
+  const recu = vi.fn();
+  document.addEventListener("yaide-theme-tableur", recu);
+  changerThemeTableur("light");
+  expect(themeTableur()).toBe("light");
+  expect(localStorage.getItem("yaide-theme-tableur")).toBe("light");
+  expect(recu.mock.calls[0][0].detail).toBe("light");
+  localStorage.setItem("yaide-theme-tableur", "rose");
+  expect(themeTableur()).toBeNull();
+  document.removeEventListener("yaide-theme-tableur", recu);
 });
