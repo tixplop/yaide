@@ -42,6 +42,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/connexion.js — surveille la connexion au serveur — surveiller
 - web/src/stockage.js, brouillons.js, disque.js — IndexedDB, modifications gardées, décision face au disque — lire/ecrire, decider, decisionDisque
 - web/src/disposition.js — arbre des groupes de l'éditeur (diviser, tailles) — couper, retirerGroupe, valider
+- web/src/csv.js — lecture et écriture des fichiers CSV (champs, séparateur, modifications à l'octet près) — lireCsv, changerCellule, celluleA
 - web/src/onglets-fichiers.js — types et libellés des onglets de fichiers — nomDe, estImage, estWhiteboard
 - web/src/references.js — liens de documents, fichiers cités, titres — lienDeDocument, depuisProjet, estMac
 - web/src/statuts.js — mots du statut git — statutsDe
@@ -93,6 +94,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 ## Fonctionnalités
 - REQ-001 à REQ-006 mot de passe, lancement, HTTPS, session → src/cli.rs, config.rs, tls.rs, auth.rs, serveur.rs, web/src/vues/connexion.js
 - REQ-007 à REQ-010, REQ-034, REQ-049, REQ-050, REQ-125 arborescence → src/fichiers.rs, web/src/vues/fichiers.js
+- REQ-157 (lecture et écriture CSV) → web/src/csv.js
 - REQ-008, REQ-011 à REQ-014, REQ-061, REQ-083 onglets, sauvegarde, menu → web/src/vues/editeur.js, onglets-fichiers.js, ui/onglets.js, ui/zone-code.js
 - REQ-120, REQ-121 images et SVG → web/src/ui/image.js, vues/editeur.js
 - REQ-012, REQ-042 à REQ-044, REQ-058, REQ-062, REQ-063, REQ-115, REQ-117 rendu markdown, aperçu HTML, hybride, couleurs → ui/apercu.js, apercu-html.js, hybride.js, couleurs-markdown.js, ui/palettes.js, src/apercu.rs
