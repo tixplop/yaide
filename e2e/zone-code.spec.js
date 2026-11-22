@@ -799,3 +799,119 @@ test("REQ152_AC16_clic_sur_la_ligne_45_dessine_le_bloc_et_garde_la_ligne_40_en_h
   await attendreMesure(page);
   expect(Math.abs((await l40.boundingBox()).y - avant)).toBeLessThanOrEqual(1);
 });
+
+// T-387 : recherche dans un fichier markdown (REQ-159), mode hybride, long fichier, éditeur étroit.
+test("REQ159_AC5_AC8_AC13_AC14_recherche_dans_un_markdown_hybride", async ({ page }) => {
+  const docA = (() => {
+    const l = Array.from({ length: 220 }, (_, i) => `ligne ${i + 1}`);
+    l.splice(0, 15, "# Accueil", "", "texte **salue** fin", "", "[salue](https://example.org/x) lien", "", "> salue citation", "", "| a | b |", "|---|---|", "| salue | 2 |", "", "```js", "const salue = 1;", "```");
+    return l.join("\n");
+  })();
+  const docB = Array.from({ length: 220 }, (_, i) => (i === 11 || i === 149 ? `ligne ${i + 1} salue` : `ligne ${i + 1}`)).join("\n");
+  const monter = async (contenu, largeur) => {
+    await page.evaluate(([c, w]) => {
+      document.getElementById("h").style.width = `${w}px`;
+      document.getElementById("h").replaceChildren(window.zoneCode({ contenu: c, langage: "markdown", nom: "README.md", hybride: true, recherche: { nom: "README.md" } }));
+      document.querySelector(".zone-code").recherche.ouvrir();
+    }, [contenu, largeur]);
+    await page.keyboard.type("salue");
+  };
+  const suivante = () => page.keyboard.press("F3");
+  const courante = page.locator(".ya-occurrence-courante");
+  await page.goto(pathToFileURL(resolve(dossier, "index.html")).href);
+
+  for (const theme of ["dark", "light"]) {
+    await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme);
+    await monter(docA, 1000);
+    await expect(page.locator(".ya-recherche-compteur")).toHaveText("5");
+    // AC-159-5 : le tableau est rendu, l'occurrence cachée n'est pas surlignée ; F3 montre chaque ligne en texte.
+    await expect(page.locator(".cm-hy-tableau")).toHaveCount(1);
+    expect(await page.locator(".cm-hy-tableau .ya-occurrence").count()).toBe(0);
+    const ink = await valeur(page, "color", "--ink");
+    const fond = await valeur(page, "backgroundColor", "--occurrence");
+    const accent = await valeur(page, "color", "--accent-fg");
+    const lignes = ["texte **salue** fin", "[salue](https://example.org/x) lien", "> salue citation", "| salue | 2 |", "const salue = 1;"];
+    for (const [i, texte] of lignes.entries()) {
+      await suivante();
+      await expect(page.locator(".cm-line", { hasText: texte })).toHaveCount(1);
+      await expect(courante.first()).toBeVisible();
+      if (i === 3) await expect(page.locator(".cm-hy-tableau")).toHaveCount(0);
+      expect(await page.evaluate(() => document.querySelector(".zone-code").vue.state.sliceDoc(document.querySelector(".zone-code").vue.state.selection.main.from, document.querySelector(".zone-code").vue.state.selection.main.to))).toBe("salue");
+      // AC-159-13 : fond `--occurrence`, texte `--ink` (lien et bloc de code compris), contraste d'au moins 4,5:1 sur la ligne active, la citation et le bloc.
+      const m = await page.evaluate(() => {
+        const nombres = (c) => c.match(/[\d.]+/g).map(Number);
+        const mix = (haut, bas) => {
+          const [r, g, b, a = 1] = haut;
+          return [0, 1, 2].map((k) => [r, g, b][k] * a + bas[k] * (1 - a)).concat(1);
+        };
+        const lum = ([r, g, b]) => {
+          const [x, y, z] = [r, g, b].map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; });
+          return 0.2126 * x + 0.7152 * y + 0.0722 * z;
+        };
+        const sortie = [];
+        for (const e of document.querySelectorAll(".ya-occurrence")) {
+          const pile = [];
+          for (let n = e; n; n = n.parentElement) pile.push(nombres(getComputedStyle(n).backgroundColor));
+          let base = [255, 255, 255, 1];
+          for (const c of pile.reverse()) base = mix(c, base);
+          const textes = [];
+          const it = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+          for (let t = it.nextNode(); t; t = it.nextNode()) textes.push(getComputedStyle(t.parentElement).color);
+          const couleur = nombres(textes[0]);
+          const [a, b] = [lum(couleur), lum(base)].sort((x, y) => y - x);
+          sortie.push({ fond: getComputedStyle(e).backgroundColor, textes, ratio: (a + 0.05) / (b + 0.05), contour: getComputedStyle(e).boxShadow, courante: e.classList.contains("ya-occurrence-courante") });
+        }
+        return sortie;
+      });
+      expect(m.length).toBeGreaterThan(0);
+      for (const o of m) {
+        expect(o.fond).toBe(fond);
+        for (const t of o.textes) expect(t).toBe(ink);
+        expect(o.ratio).toBeGreaterThanOrEqual(4.5);
+        if (o.courante) expect(o.contour).toBe(`${accent} 0px 0px 0px 1px inset`);
+      }
+    }
+  }
+
+  // AC-159-14 : éditeur de 320 px, panneau à 4 et 16 px des bords, sans débordement ; 344 × 34 px à 1000 px.
+  await monter(docB, 1000);
+  const boite = () => page.evaluate(() => {
+    const p = document.querySelector(".ya-recherche-fichier").getBoundingClientRect();
+    const ed = document.querySelector(".cm-editor").getBoundingClientRect();
+    return { largeur: p.width, hauteur: p.height, haut: p.top - ed.top, droite: ed.right - p.right, bas: p.bottom - ed.top };
+  });
+  const normale = await boite();
+  expect([normale.largeur, normale.hauteur, normale.haut, normale.droite]).toEqual([344, 34, 4, 16]);
+  // AC-159-8 : défilé à la ligne 200, le panneau reste au même endroit ; F3 vers la ligne 12, hors écran, la ramène à l'écran.
+  await page.evaluate(() => document.querySelector(".zone-code").aller(200));
+  await expect.poll(() => page.evaluate(() => document.querySelector(".zone-code").vue.scrollDOM.scrollTop)).toBeGreaterThan(3000);
+  expect(await boite()).toEqual(normale);
+  const dansEditeur = (sel) => page.evaluate((s) => {
+    const r = document.querySelector(s).getBoundingClientRect();
+    const ed = document.querySelector(".cm-editor").getBoundingClientRect();
+    return { haut: r.top - ed.top, bas: r.bottom - ed.top, editeur: ed.height };
+  }, sel);
+  await suivante();
+  await expect(courante).toHaveCount(1);
+  await expect(courante).toHaveText("salue");
+  await expect.poll(async () => {
+    const a = await dansEditeur(".ya-occurrence-courante");
+    return a.haut >= 42 && a.bas <= a.editeur;
+  }).toBe(true);
+  // Ligne 12 tout en haut de l'éditeur, curseur au début : F3 la fait descendre sous le panneau.
+  await page.evaluate(() => {
+    const v = document.querySelector(".zone-code").vue;
+    v.dispatch({ selection: { anchor: 0 } });
+    v.scrollDOM.scrollTop = v.lineBlockAt(v.state.doc.line(12).from).top;
+  });
+  await expect.poll(() => page.evaluate(() => { const v = document.querySelector(".zone-code").vue; return Math.round(v.lineBlockAt(v.state.doc.line(12).from).top - v.scrollDOM.scrollTop); })).toBe(0);
+  await suivante();
+  await expect(courante).toHaveCount(1);
+  await expect.poll(async () => (await dansEditeur(".ya-occurrence-courante")).haut).toBeGreaterThanOrEqual(42);
+
+  await monter(docB, 320);
+  const etroit = await boite();
+  expect([etroit.largeur, etroit.haut, etroit.droite]).toEqual([288, 4, 16]);
+  expect(await page.evaluate(() => { const ed = document.querySelector(".cm-editor"); return ed.scrollWidth <= ed.clientWidth; })).toBe(true);
+  expect(await page.evaluate(() => { const p = document.querySelector(".ya-recherche-fichier"); return p.scrollWidth <= p.clientWidth; })).toBe(true);
+});

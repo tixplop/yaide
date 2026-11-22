@@ -1,0 +1,168 @@
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { vueEditeur } from "./editeur.js";
+import { cadre } from "../ui/cadre.js";
+
+vi.mock("./claude.js", () => ({ vueClaude: () => ({ corps: document.createElement("div"), focus() {}, ajuster() {}, detruire() {} }) }));
+vi.mock("./opencode.js", () => ({ vueOpencode: () => ({ corps: document.createElement("div"), focus() {}, detruire() {} }) }));
+vi.mock("./agent.js", () => ({ vueAgent: () => ({ corps: document.createElement("div"), focuser() {}, majListe() {}, relireReglages() {}, detruire() {} }) }));
+const magasin = vi.hoisted(() => new Map());
+vi.mock("../stockage.js", () => ({ lire: vi.fn(async (cle) => magasin.get(cle)), ecrire: vi.fn(async (cle, v) => void magasin.set(cle, v)) }));
+
+Range.prototype.getClientRects ??= () => [];
+Range.prototype.getBoundingClientRect ??= () => ({ left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 });
+
+const README = "Yaide ici\nun yaide là\net YAIDE";
+let editeurs = [];
+function monter(fichiers = { "README.md": README, "main.rs": "fn main() {}\n", "clients.csv": "a,b\n1,2\n" }) {
+  let c = null;
+  const e = vueEditeur({ dire: vi.fn(), surGroupes: (arbre, courant) => c?.definirGroupes(arbre, courant) });
+  editeurs.push(e);
+  c = cadre({ principal: { groupes: e.groupes() } });
+  document.body.append(c);
+  e.lecture(false);
+  for (const [chemin, contenu] of Object.entries(fichiers)) e.ouvrir({ chemin, contenu, version: "1" });
+  return e;
+}
+beforeEach(() => {
+  localStorage.clear();
+  magasin.clear();
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({ x: 0, y: 0, left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 });
+});
+afterEach(() => {
+  for (const e of editeurs) e.detruire();
+  editeurs = [];
+  document.body.replaceChildren();
+  vi.restoreAllMocks();
+});
+
+const zoneDe = (chemin) => [...document.querySelectorAll(".zone-code")].find((z) => z.vue.contentDOM.getAttribute("aria-label") === `Éditeur ${chemin}`);
+const panneau = (chemin) => zoneDe(chemin).querySelector(".ya-recherche-fichier");
+const onglet = (nom) => [...document.querySelectorAll("[role=tab]")].find((t) => t.querySelector(".onglet-nom").textContent === nom);
+const attendre = () => new Promise((ok) => setTimeout(ok, 0));
+const aller = (e, chemin) => e.ouvrir({ chemin, contenu: "", version: "1" });
+function ctrlF(cible, init = {}) {
+  const ev = new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true, cancelable: true, ...init });
+  cible.dispatchEvent(ev);
+  return ev;
+}
+const noms = (p) => [...p.children].map((x) => x.className || x.getAttribute("role") || x.tagName);
+
+test("REQ159_AC1_ctrl_f_ouvre_le_panneau_sur_un_markdown_seulement", async () => {
+  const e = monter();
+  aller(e, "README.md");
+  const z = zoneDe("README.md");
+  z.vue.focus();
+  const ev = ctrlF(z.vue.contentDOM);
+  expect(ev.defaultPrevented).toBe(true);
+  const p = panneau("README.md");
+  expect(p.getAttribute("role")).toBe("search");
+  expect(document.activeElement).toBe(p.querySelector("input"));
+  // champ, compteur, flèche haut, flèche bas, croix, dans cet ordre
+  const ordre = [...p.querySelectorAll("input, .ya-recherche-compteur, button")].map((x) => x.tagName === "INPUT" ? "champ" : x.className.includes("compteur") ? "compteur" : x.getAttribute("aria-label"));
+  expect(ordre).toEqual(["champ", "compteur", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
+  // Ctrl+F panneau ouvert : focus et texte sélectionné
+  const saisie = p.querySelector("input");
+  saisie.value = "yaide";
+  saisie.dispatchEvent(new Event("input", { bubbles: true }));
+  z.vue.focus();
+  ctrlF(z.vue.contentDOM);
+  expect(document.activeElement).toBe(saisie);
+  expect(saisie.selectionStart).toBe(0);
+  expect(saisie.selectionEnd).toBe(5);
+  expect(p.querySelectorAll(".ya-occurrence")).toHaveLength(0); // décorations dans le contenu, pas dans le panneau
+  expect(z.querySelectorAll(".ya-occurrence")).toHaveLength(3);
+
+  // Ailleurs, la recherche du navigateur reste.
+  aller(e, "main.rs");
+  zoneDe("main.rs").vue.focus();
+  const rs = ctrlF(zoneDe("main.rs").vue.contentDOM);
+  expect(rs.defaultPrevented).toBe(false);
+  expect(panneau("main.rs")).toBeNull();
+  aller(e, "clients.csv");
+  const csv = ctrlF(zoneDe("clients.csv").vue.contentDOM);
+  expect(csv.defaultPrevented).toBe(false);
+  expect(panneau("clients.csv")).toBeNull();
+  e.ouvrirDiff({ chemin: "README.md", texte: "@@ -1 +1 @@\n-a\n+b\n" });
+  const diff = document.querySelector(".zone-code:not([hidden])");
+  const d = ctrlF(diff.vue.contentDOM);
+  expect(d.defaultPrevented).toBe(false);
+  expect(diff.querySelector(".ya-recherche-fichier")).toBeNull();
+});
+
+test("REQ159_AC1_cmd_f_sur_macos", () => {
+  vi.spyOn(globalThis.navigator, "platform", "get").mockReturnValue("MacIntel");
+  const e = monter({ "README.md": README });
+  aller(e, "README.md");
+  const z = zoneDe("README.md");
+  expect(ctrlF(z.vue.contentDOM).defaultPrevented).toBe(false);
+  expect(ctrlF(z.vue.contentDOM, { ctrlKey: false, metaKey: true }).defaultPrevented).toBe(true);
+  expect(panneau("README.md")).not.toBeNull();
+});
+
+test("REQ159_AC7_la_croix_ne_marque_pas_l_onglet_modifie", async () => {
+  const e = monter({ "README.md": README });
+  aller(e, "README.md");
+  const z = zoneDe("README.md");
+  ctrlF(z.vue.contentDOM);
+  const p = panneau("README.md");
+  p.querySelector("input").value = "yaide";
+  p.querySelector("input").dispatchEvent(new Event("input", { bubbles: true }));
+  p.querySelector('button[aria-label="Fermer la recherche"]').click();
+  await attendre();
+  expect(panneau("README.md")).toBeNull();
+  expect(onglet("README.md").dataset.modifie).toBeUndefined();
+  expect(z.contenu()).toBe(README);
+});
+
+const stubFichiers = () =>
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const u = new URL(String(url), "http://x");
+    if (u.pathname === "/api/fichiers/versions") return { ok: true, status: 200, json: async () => ({}) };
+    return { ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => README };
+  }));
+
+test("REQ159_AC15_le_panneau_suit_son_onglet_et_pas_le_rechargement", async () => {
+  stubFichiers();
+  const e = monter({});
+  await e.restaurer(); // l'éditeur garde sa liste à partir de là
+  for (const [chemin, contenu] of Object.entries({ "README.md": README, "main.rs": "fn main() {}\n" })) e.ouvrir({ chemin, contenu, version: "1" });
+  aller(e, "README.md");
+  const z = zoneDe("README.md");
+  ctrlF(z.vue.contentDOM);
+  const saisie = () => panneau("README.md").querySelector("input");
+  saisie().value = "yaide";
+  saisie().dispatchEvent(new Event("input", { bubbles: true }));
+  aller(e, "main.rs");
+  aller(e, "README.md");
+  await attendre();
+  expect(saisie().value).toBe("yaide");
+  expect(z.querySelectorAll(".ya-occurrence")).toHaveLength(3);
+  // « Mode hybride » et « Aperçu » basculés : le panneau reste.
+  document.querySelector('button[aria-label="Mode hybride"]').click();
+  document.querySelector('button[aria-label="Aperçu"]').click();
+  await attendre();
+  expect(saisie().value).toBe("yaide");
+  expect(z.querySelectorAll(".ya-occurrence")).toHaveLength(3);
+  expect(noms(panneau("README.md").parentNode)).toContain("ya-recherche-fichier");
+  // Un autre groupe a son propre panneau.
+  e.ouvrir({ chemin: "AUTRE.md", contenu: "yaide", version: "1" });
+  e.deplacer("AUTRE.md", "g1", "droite");
+  const autre = zoneDe("AUTRE.md");
+  expect(autre.querySelector(".ya-recherche-fichier")).toBeNull();
+  ctrlF(autre.vue.contentDOM);
+  expect(autre.querySelector(".ya-recherche-fichier input").value).toBe("");
+  expect(saisie().value).toBe("yaide");
+  // Rechargement : la liste est écrite (200 ms), un nouvel éditeur la relit : README.md revient sans panneau.
+  await new Promise((ok) => setTimeout(ok, 300));
+  expect(magasin.size).toBeGreaterThan(0);
+  e.detruire();
+  document.body.replaceChildren();
+  let c2 = null;
+  const e2 = vueEditeur({ dire: vi.fn(), surGroupes: (arbre, courant) => c2?.definirGroupes(arbre, courant) });
+  editeurs.push(e2);
+  c2 = cadre({ principal: { groupes: e2.groupes() } });
+  document.body.append(c2);
+  await e2.restaurer();
+  expect(zoneDe("README.md")).toBeTruthy();
+  expect(document.querySelector(".ya-recherche-fichier")).toBeNull();
+});

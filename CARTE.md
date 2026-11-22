@@ -72,7 +72,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/ui/tableau-calculs.js, tableau-dessin.js, tableau-edition.js, tableau-outils.js — géométrie (dont la zone de texte des symboles, `connecteursAffiches` : ronds à 6 px hors du côté de « Point » et « Barre », points d'attache `connecteurs` au bord, `decalageAnneau`, REQ-156), rendu SVG (dont le dessin des symboles, REQ-149, celui de « Point » et « Barre » pleins avec anneau du choix, cible et zones de prise, REQ-156, `anneauxPleines`, et les classes `align-*` `valign-*` du texte des boîtes, REQ-150), copier/coller/plan/rattachement, boîte à outils (dont le bouton « Symboles » et son dialogue, REQ-149, « Point » et « Barre » sans saisie de texte, REQ-156, et le rang « Alignement » et « Position verticale du texte », REQ-133, REQ-150) — extremitesFleche, milieuTrace, dessinBoite, coller, boiteOutils
 - web/src/vues/principale.js — fenêtre : rails, panneaux, zones, Ctrl+P — vuePrincipale
 - web/src/vues/principale.aides.js — aides des tests de la vue principale
-- web/src/vues/editeur.js — groupes d'onglets : fichiers, images, whiteboards (zoneWhiteboard), sessions ; sur un `.csv`, bouton « Mode hybride » et message `role="alert"` « Tableur indisponible » dans `questionOnglet` (REQ-157) — vueEditeur
+- web/src/vues/editeur.js — groupes d'onglets : fichiers, images, whiteboards (zoneWhiteboard), sessions, Ctrl+F des onglets markdown (REQ-159) ; sur un `.csv`, bouton « Mode hybride » et message `role="alert"` « Tableur indisponible » dans `questionOnglet` (REQ-157) — vueEditeur
 - web/src/vues/depot-onglets.js — dépôt et persistance des onglets de l'éditeur — depotOnglets
 - web/src/vues/fichiers.js, git.js, recherche.js, ouverture.js — vues Fichiers, Git, Recherche, ouverture rapide — vueFichiers, vueGit, vueOuverture
 - web/src/vues/shells.js — zone des shells — vueShells
@@ -96,6 +96,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 ## Fonctionnalités
 - REQ-001 à REQ-006 mot de passe, lancement, HTTPS, session → src/cli.rs, config.rs, tls.rs, auth.rs, serveur.rs, web/src/vues/connexion.js
 - REQ-007 à REQ-010, REQ-034, REQ-049, REQ-050, REQ-125 arborescence → src/fichiers.rs, web/src/vues/fichiers.js
+- REQ-159 recherche dans un fichier markdown → web/src/ui/recherche-fichier.js, ui/zone-code.js, vues/editeur.js, ui/compteur.js, ui/composants.css
 - REQ-158 (e2e/tableur.spec.js) thème clair ou sombre propre au tableur (clé `yaide-theme-tableur`, `data-theme` sur `.ya-tableur`, bouton « Thème clair du tableur ») → web/src/ui/theme.js, ui/zone-code.js, vues/editeur.js, ui/composants.css
 - REQ-157 (lecture et écriture CSV ; tableur : grille, clavier, saisie, rangée d'en-tête collée en haut, `scroll-padding-top` posé par `activer`) → e2e/tableur.spec.js (P-120, P-121), web/src/csv.js, ui/tableur.js, ui/hybride.js (`champSaisie`), ui/zone-code.js (bascule grille/texte, message), vues/editeur.js, ui/composants.css
 - REQ-008, REQ-011 à REQ-014, REQ-061, REQ-083 onglets, sauvegarde, menu → web/src/vues/editeur.js, onglets-fichiers.js, ui/onglets.js, ui/zone-code.js
