@@ -36,6 +36,13 @@ export async function deconnexion() {
   return r?.status === 204 || r?.status === 401;
 }
 
+/** Arrête Yaide : "ok" (204, session fermée), "expiree" (401) ou "echec". */
+export async function arret() {
+  const r = await appeler("/api/arret", { method: "POST" });
+  if (r?.status === 204) return "ok";
+  return r?.status === 401 ? "expiree" : "echec";
+}
+
 /** `{ instance, shells: [id…] }`, ou null si le serveur ne répond pas. */
 export async function listeShells() {
   const r = await appeler("/api/shells");

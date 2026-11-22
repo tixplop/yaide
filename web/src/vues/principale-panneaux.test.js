@@ -588,7 +588,7 @@ test("REQ070_AC11_ordre_de_tab_sans_les_fonctions_absentes", async () => {
   await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
   const arrets = [...vue.querySelectorAll("button, [role=tab], [tabindex]")].filter((e) => e.tabIndex >= 0 && !e.closest("[hidden]"));
   const noms = arrets.map((e) => e.getAttribute("aria-label")).filter(Boolean);
-  expect(noms.slice(0, 4)).toEqual(["Ouverture rapide", "Replier le panneau", "Thème clair", "Déconnexion"]);
+  expect(noms.slice(0, 5)).toEqual(["Ouverture rapide", "Replier le panneau", "Thème clair", "Déconnexion", "Arrêter Yaide"]);
   expect(noms).not.toContain("Recherche");
   expect(noms).not.toContain("Git");
   expect(noms).not.toContain("Agent");

@@ -187,7 +187,12 @@ test("REQ005_AC8_deconnexion_avec_du_texte_non_sauvegarde_sans_question_puis_le_
   await ouvrirMain(page);
   await taper(page, "// avant sortie\n");
   await page.getByRole("button", { name: "Déconnexion" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // Aucune question : le seul dialogue est le message de fin de session (REQ-162), qu'on ferme.
+  const dialogues = page.getByRole("dialog");
+  await expect(dialogues).toHaveCount(1);
+  await expect(dialogues).toHaveAccessibleName("Vous êtes déconnecté.");
+  await dialogues.getByRole("button", { name: "Fermer" }).click();
+  await expect(dialogues).toHaveCount(0);
   await page.getByLabel("Mot de passe").fill("mdp");
   await page.keyboard.press("Enter");
   await expect(onglet(page, "main.rs, non sauvegardé")).toBeVisible();

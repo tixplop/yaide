@@ -81,7 +81,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/vues/claude.js, opencode.js, sessions-opencode.js — sessions Claude et opencode — vueClaude, vueOpencode
 - web/src/vues/connaissance.js, ajout-connaissance.js — base de connaissance — vueConnaissance, ouvrirAjoutConnaissance
 - web/src/vues/configuration.js, configuration-couleurs.js, providers.js, profils.js, serveurs-mcp.js — dialogue Configuration et panneaux de réglage — ouvrirConfiguration, ouvrirProviders, vueServeursMcp
-- web/src/vues/connexion.js — écran de connexion — vueConnexion
+- web/src/vues/connexion.js — écran de connexion, dialogue de fin de session après Déconnexion ou arrêt (REQ-162) — vueConnexion
 
 ## Tests
 - tests/*.rs — intégration Rust, un fichier par domaine (socle, auth, fichiers, git, shells, agent, connaissance, opencode, mise_a_jour…)
@@ -133,4 +133,4 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-155 copie au format Klaxoon (menu de la surface) → web/src/klaxoon.js, ui/tableau.js, ui/menu.js
 - REQ-154 coller un diagramme mermaid (organigramme : lecture et placement ; autres types : traduction du dessin ; collage, refus) → web/src/mermaid-jdiag.js, web/src/mermaid-dessin.js, ui/tableau.js, ui/message.js
 - REQ-127 à REQ-150 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, jdiag_trace.rs, jdiag_controle.rs, outils.rs
-- REQ-162 arrêter Yaide : route `/api/arret` → src/serveur.rs (`arreter_yaide`) ; dialogue de fin de session (partie design system : `dialogue` position `milieu`, icône `power`, token `--largeur-actions-titre`) → web/src/ui/dialogue.js, icones.js, tokens.css, composants.css
+- REQ-162 arrêter Yaide : route `/api/arret` → src/serveur.rs (`arreter_yaide`) ; dialogue de fin de session (partie design system : `dialogue` position `milieu`, icône `power`, token `--largeur-actions-titre`) → web/src/ui/dialogue.js, icones.js, tokens.css, composants.css ; bouton « Arrêter Yaide » et dialogue de fin de session (option `fin` de l'écran de connexion, passée par `main.js`) → web/src/vues/principale.js, vues/connexion.js, main.js, api.js (`arret`)

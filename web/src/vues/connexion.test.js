@@ -1,6 +1,15 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { vueConnexion } from "./connexion.js";
 
+// jsdom n'implémente pas <dialog> modal : on simule ouverture et fermeture.
+HTMLDialogElement.prototype.showModal = function () {
+  this.setAttribute("open", "");
+  this.dataset.modal = "oui";
+};
+HTMLDialogElement.prototype.close = function () {
+  this.removeAttribute("open");
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
   document.body.replaceChildren();
@@ -103,4 +112,43 @@ test("REQ004_chargement_bouton_Connexion_desactive_pendant_l_attente", async () 
   expect(b.textContent).toBe("Connexion…");
   expect(b.disabled).toBe(true);
   expect(b.getAttribute("aria-busy")).toBe("true");
+});
+
+const fermer = () => [...document.querySelectorAll("dialog button")].find((b) => b.textContent === "Fermer");
+
+test("REQ162_AC5_AC9_AC12_deconnexion_dialogue_modal_sans_aide_focus_sur_Fermer_puis_dans_le_champ", () => {
+  const { vue } = monter({ fin: "deconnexion" });
+  vue.focaliser();
+  const d = document.querySelector("dialog");
+  expect(d.querySelector("h2").textContent).toBe("Vous êtes déconnecté.");
+  expect(d.getAttribute("aria-labelledby")).toBe(d.querySelector("h2").id);
+  expect(d.hasAttribute("aria-describedby")).toBe(false);
+  expect(d.dataset.modal).toBe("oui");
+  expect([...d.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Fermer"]);
+  expect(document.activeElement).toBe(fermer());
+  expect(vue.querySelector("input").value).toBe("");
+  expect(vue.querySelector("[role=alert], [role=status], .message")).toBeNull();
+  fermer().click();
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(document.activeElement).toBe(vue.querySelector("input"));
+});
+
+test("REQ162_AC9_AC12_arret_dialogue_avec_aide_reliee_et_Echap_ferme", () => {
+  const { vue } = monter({ fin: "arret" });
+  vue.focaliser();
+  const d = document.querySelector("dialog");
+  expect(d.querySelector("h2").textContent).toBe("Yaide est arrêté. Vous êtes déconnecté.");
+  const aide = document.getElementById(d.getAttribute("aria-describedby"));
+  expect(aide.textContent).toBe("Relancez Yaide, puis reconnectez-vous ici.");
+  expect([...d.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Fermer"]);
+  d.dispatchEvent(new Event("cancel", { cancelable: true }));
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(document.activeElement).toBe(vue.querySelector("input"));
+});
+
+test("REQ162_AC8_session_expiree_sans_dialogue", () => {
+  const { vue } = monter({ expiree: true });
+  vue.focaliser();
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(vue.textContent).toContain("Session expirée. Reconnectez-vous.");
 });

@@ -1,4 +1,4 @@
-import { claudeDisponible, creerChemin, creerSession, deconnexion, lireFichier, opencodeDisponible, ouvrirClaude, reglagesAgent } from "../api.js";
+import { claudeDisponible, creerChemin, creerSession, arret, deconnexion, lireFichier, opencodeDisponible, ouvrirClaude, reglagesAgent } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { cadre } from "../ui/cadre.js";
 import { borner, limites } from "../ui/poignee.js";
@@ -48,7 +48,14 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
 
   const sortir = bouton({ icone: "log-out", nomAccessible: "Déconnexion" });
   sortir.addEventListener("click", async () => {
-    if (etat !== "coupe" && (await deconnexion())) surDeconnexion();
+    if (etat !== "coupe" && (await deconnexion())) surDeconnexion("deconnexion");
+    else dire({ texte: TEXTE_COUPURE, variante: "alerte" });
+  });
+  const boutonArret = bouton({ icone: "power", nomAccessible: "Arrêter Yaide" });
+  boutonArret.addEventListener("click", async () => {
+    const r = etat === "coupe" ? "echec" : await arret();
+    if (r === "ok") surDeconnexion("arret");
+    else if (r === "expiree") surExpiree();
     else dire({ texte: TEXTE_COUPURE, variante: "alerte" });
   });
   const theme = bouton({ icone: "sun", nomAccessible: "Thème clair", presse: themeCourant() === "light" });
@@ -351,7 +358,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const choisies = {};
   let detruite = false;
   racine = cadre({
-    barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [boutonPanneau.enveloppe, shells.repli.enveloppe, theme.enveloppe, sortir.enveloppe].filter(Boolean) },
+    barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [boutonPanneau.enveloppe, shells.repli.enveloppe, theme.enveloppe, sortir.enveloppe, boutonArret.enveloppe].filter(Boolean) },
     rail: { onglets: rail, commandes: shells.commandes },
     panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche?.corps, git.corps].filter(Boolean) },
     agent: { titre: "Agents", repli: repliAgent.enveloppe, corps: avec.agents ? [agents.corps] : [] },

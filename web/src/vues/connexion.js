@@ -1,6 +1,7 @@
 import { connexion } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { symbole } from "../ui/cadre.js";
+import { dialogue } from "../ui/dialogue.js";
 import { champ } from "../ui/champ.js";
 import { message } from "../ui/message.js";
 
@@ -12,8 +13,13 @@ const TEXTES = {
   erreur: "Une erreur est survenue. Réessayez.",
 };
 
-/** V-001. `surSucces` est appelé une fois connecté. */
-export function vueConnexion({ chemin, expiree = false, surSucces }) {
+const FINS = {
+  deconnexion: { titre: "Vous êtes déconnecté." },
+  arret: { titre: "Yaide est arrêté. Vous êtes déconnecté.", aide: "Relancez Yaide, puis reconnectez-vous ici." },
+};
+
+/** V-001. `surSucces` est appelé une fois connecté. `fin` (`deconnexion` ou `arret`) ouvre le dialogue de fin de session (REQ-162). */
+export function vueConnexion({ chemin, expiree = false, fin, surSucces }) {
   const racine = document.createElement("div");
   racine.className = "connexion";
   const form = document.createElement("form");
@@ -73,6 +79,32 @@ export function vueConnexion({ chemin, expiree = false, surSucces }) {
   });
 
   afficher({});
-  racine.focaliser = () => focaliser();
+  let fenetre = null;
+  if (FINS[fin]) {
+    const fermer = bouton({ libelle: "Fermer", variante: "secondaire" });
+    const aide = FINS[fin].aide ? Object.assign(document.createElement("p"), { textContent: FINS[fin].aide }) : undefined;
+    fenetre = dialogue({
+      titre: FINS[fin].titre,
+      position: "milieu",
+      aide,
+      actions: [fermer],
+      focusInitial: fermer,
+      focusFermeture: { focus: () => focaliser() },
+      surAnnuler: () => fenetre.fermer(),
+    });
+    fermer.addEventListener("click", () => fenetre.fermer());
+  }
+  let dejaOuvert = false;
+  racine.focaliser = () => {
+    if (fenetre && !dejaOuvert) {
+      dejaOuvert = true;
+      fenetre.ouvrir();
+      return;
+    }
+    focaliser();
+  };
+  racine.detruire = () => {
+    if (fenetre?.element.isConnected) fenetre.fermer({ rendreFocus: false });
+  };
   return racine;
 }

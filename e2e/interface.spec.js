@@ -59,7 +59,7 @@ test("REQ028_AC8_AC7_ordre_de_Tab_complet_et_contour_de_focus_a_chaque_arret", a
     expect(contour.some(Boolean), `contour absent à l'arrêt ${i} (${z})`).toBe(true);
     if (z !== zones.at(-1)) zones.push(z);
   }
-  expect(zones).toEqual(["Ouverture rapide", "Replier le panneau", "Replier les shells", "Thème clair", "Déconnexion", "rail", "Nouveau shell", "Réduire le shell", "Fermer le shell", "panneau", "Largeur du panneau", "onglets de fichiers", "éditeur", "Hauteur des shells", "onglets de shells", "terminal"]);
+  expect(zones).toEqual(["Ouverture rapide", "Replier le panneau", "Replier les shells", "Thème clair", "Déconnexion", "Arrêter Yaide", "rail", "Nouveau shell", "Réduire le shell", "Fermer le shell", "panneau", "Largeur du panneau", "onglets de fichiers", "éditeur", "Hauteur des shells", "onglets de shells", "terminal"]);
   const contourTerminal = await page.locator(".terminal-zone:visible").evaluate((e) => getComputedStyle(e).outlineStyle);
   expect(contourTerminal).not.toBe("none");
 });
@@ -207,6 +207,7 @@ test("REQ033_AC1_AC8_AC11_AC12_fonds_des_zones_icones_des_commandes_et_arbre_rel
       [ailleurs("Réduire le shell"), "--ink-faint"],
       [ailleurs("Fermer le shell"), "--ink-faint"],
       [ailleurs("Déconnexion"), "--ink-muted"],
+      [ailleurs("Arrêter Yaide"), "--ink-muted"], // AC-162-11 : même couleur que « Déconnexion »
       [ailleurs("Aperçu"), "--ink-muted"],
       [ailleurs("Fermer README.md"), "--ink-muted"],
       [page.getByRole("tab", { name: "Recherche", exact: true }), "--ink-faint"], // rail au repos
@@ -544,10 +545,10 @@ test("REQ031_AC9_REQ037_AC3_REQ036_AC13_REQ031_AC10_REQ028_AC10_Renommer_info_bu
       expect(ouvert.proprietes).toContain("transform");
     });
   });
-  await test.step("REQ031_AC10_barre_de_titre_info_bulles_sous_le_bouton_et_dans_la_fenetre", async () => {
+  await test.step("REQ031_AC10_REQ162_AC10_barre_de_titre_info_bulles_sous_le_bouton_et_dans_la_fenetre", async () => {
     await page.keyboard.press("Shift"); // la info-bulle au focus suit le clavier : après des clics, il faut un appui
     await page.setViewportSize({ width: 800, height: 480 });
-    for (const nom of ["Replier le panneau", "Thème clair", "Déconnexion"]) {
+    for (const nom of ["Replier le panneau", "Thème clair", "Déconnexion", "Arrêter Yaide"]) { // AC-162-10
       const b = page.locator("header").getByRole("button", { name: nom, exact: true });
       await b.focus();
       const bulle = page.getByRole("tooltip");
@@ -602,7 +603,7 @@ test("REQ031_AC1_AC2_AC6_AC8_REQ032_AC13_REQ040_AC13_AC15_AC28_8_AC28_9_AC31_1_c
       toutes.push(...(await commandes(page)));
     }
     const noms = new Set(toutes.map((c) => c.nom));
-    for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Ouverture rapide", "Thème clair", "Replier le panneau", "Replier les shells", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Réduire le shell", "Fermer le shell", "Fermer shell 1", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Pull", "Push"]) {
+    for (const attendu of ["Fichiers", "Recherche", "Git", "Déconnexion", "Arrêter Yaide", "Ouverture rapide", "Thème clair", "Replier le panneau", "Replier les shells", "Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Aperçu", "Nouveau shell", "Réduire le shell", "Fermer le shell", "Fermer shell 1", "Fermer README.md", "Fermer", "Indexer nouveau.txt", "Pull", "Push"]) {
       expect(noms.has(attendu), attendu).toBe(true);
     }
     // AC-031-6 : 24 × 24 px, sauf une action de ligne (20 × 20) et la fermeture d'un onglet (18 × 18).

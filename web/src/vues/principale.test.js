@@ -19,12 +19,68 @@ test("REQ037_AC2_barre_de_titre_symbole_ouverture_rapide_theme_et_deconnexion", 
   const barre = vue.querySelector("header");
   expect(barre.querySelector("svg[aria-hidden=true]")).not.toBeNull();
   const noms = [...barre.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
-  expect(noms).toEqual(["Ouverture rapide", "Replier le panneau", "Replier les shells", "Thème clair", "Déconnexion"]);
+  expect(noms).toEqual(["Ouverture rapide", "Replier le panneau", "Replier les shells", "Thème clair", "Déconnexion", "Arrêter Yaide"]);
   expect(barre.querySelector("button").textContent).toBe("projet");
   expect(barre.textContent).toBe("projet");
   expect(barre.querySelector("[aria-label=Déconnexion]").textContent).toBe("");
   expect(barre.querySelector("nav, [role=menubar]")).toBeNull();
 });
+
+test("REQ162_AC1_AC11_Arreter_Yaide_juste_apres_Deconnexion_icone_power_sans_texte_ni_title_ni_desactive", () => {
+  const { vue } = monter();
+  const noms = [...vue.querySelectorAll("header button")].map((b) => b.getAttribute("aria-label"));
+  expect(noms.slice(-2)).toEqual(["Déconnexion", "Arrêter Yaide"]);
+  const b = vue.querySelector("header [aria-label='Arrêter Yaide']");
+  const sortir = vue.querySelector("header [aria-label=Déconnexion]");
+  expect(b.textContent).toBe("");
+  expect(b.querySelector("svg").getAttribute("data-icone")).toBe("power");
+  expect(b.hasAttribute("title")).toBe(false);
+  expect(b.hasAttribute("aria-keyshortcuts")).toBe(false);
+  expect(b.disabled).toBe(false);
+  expect(b.hasAttribute("disabled")).toBe(false);
+  expect(b.className).toBe(sortir.className);
+});
+
+test("REQ162_AC4_clic_sur_Arreter_Yaide_appelle_arret_puis_surDeconnexion_arret", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => ({ status: 204 })));
+  const { vue, surDeconnexion } = monter();
+  vue.querySelector("header [aria-label='Arrêter Yaide']").click();
+  await new Promise((r) => setTimeout(r, 0));
+  expect(fetch).toHaveBeenCalledWith("/api/arret", expect.objectContaining({ method: "POST" }));
+  expect(surDeconnexion).toHaveBeenCalledWith("arret");
+});
+
+test("REQ162_AC5_clic_sur_Deconnexion_passe_deconnexion_a_surDeconnexion", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => ({ status: 204 })));
+  const { vue, surDeconnexion } = monter();
+  vue.querySelector("header [aria-label=Déconnexion]").click();
+  await new Promise((r) => setTimeout(r, 0));
+  expect(surDeconnexion).toHaveBeenCalledWith("deconnexion");
+});
+
+test("REQ162_AC6_pendant_une_coupure_Arreter_Yaide_dit_connexion_perdue_sans_rien_arreter", () =>
+  avecHorloge(async () => {
+    let coupe = false;
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      const u = String(url);
+      if (u === "/api/session") {
+        if (coupe) throw new Error("coupé");
+        return { status: 204 };
+      }
+      if (u.startsWith("/api/git/etat")) return jsonOk({ branche: "main", detachee: false, branches: ["main"], changements: [] });
+      return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
+    }));
+    const { vue, surDeconnexion } = monter();
+    await vi.advanceTimersByTimeAsync(10);
+    coupe = true;
+    await vi.advanceTimersByTimeAsync(2000);
+    vue.querySelector("header [aria-label='Arrêter Yaide']").click();
+    await vi.advanceTimersByTimeAsync(10);
+    expect([...vue.querySelectorAll("[role=alert]")].some((m) => m.textContent.includes("Connexion perdue. Réessayez au retour."))).toBe(true);
+    expect(fetch).not.toHaveBeenCalledWith("/api/arret", expect.anything());
+    expect(surDeconnexion).not.toHaveBeenCalled();
+    expect(document.querySelector("dialog")).toBeNull();
+  }));
 
 test("REQ037_AC3_le_bouton_central_ouvre_l_ouverture_rapide", () => {
   const ouvert = vi.fn();

@@ -109,7 +109,7 @@ function depotAvecDistant() {
   return { dossier, distant };
 }
 
-test("REQ031_AC10_pendant_un_pull_le_bouton_n_est_pas_attenue", async ({ page }) => {
+test("REQ031_AC10_REQ162_AC10_pendant_un_pull_le_bouton_n_est_pas_attenue", async ({ page }) => {
   const { dossier } = depotAvecDistant();
   // Le serveur du dépôt distant attend un fichier que le test crée : aucune durée fixe.
   const libere = path.join(path.dirname(dossier), "libere-pull");
@@ -125,6 +125,8 @@ test("REQ031_AC10_pendant_un_pull_le_bouton_n_est_pas_attenue", async ({ page })
   // Le panneau peut refaire ses boutons : on relit la valeur jusqu'à ce qu'elle vienne d'un bouton présent.
   try {
     await expect.poll(() => occupe.evaluate((e) => getComputedStyle(e).opacity)).toBe("1");
+    // AC-162-10 : « Arrêter Yaide » n'est jamais atténué, même pendant un pull.
+    await expect.poll(() => page.locator("header").getByRole("button", { name: "Arrêter Yaide" }).evaluate((e) => getComputedStyle(e).opacity)).toBe("1");
     await expect.poll(() => page.getByRole("button", { name: "Push" }).evaluate((e) => getComputedStyle(e).opacity)).not.toBe("1");
   } finally {
     fs.writeFileSync(libere, "");

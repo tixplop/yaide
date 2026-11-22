@@ -18,13 +18,13 @@ async function demarrer(app) {
     app.replaceChildren(vue);
     vue.focaliser?.();
   };
-  const connexion = (expiree) => {
+  const connexion = (expiree, fin) => {
     document.title = "yaide";
-    montrer(vueConnexion({ chemin: projet.chemin, expiree, surSucces: principale }));
+    montrer(vueConnexion({ chemin: projet.chemin, expiree, fin, surSucces: principale }));
   };
   const principale = async () => {
     const [reglages, couleurs] = await Promise.all([charger(), chargerCouleurs()]);
-    montrer(vuePrincipale({ chemin: projet.chemin, reglages, couleursIllisibles: couleurs.illisible, surDeconnexion: () => connexion(false), surExpiree: () => connexion(true) }));
+    montrer(vuePrincipale({ chemin: projet.chemin, reglages, couleursIllisibles: couleurs.illisible, surDeconnexion: (fin) => connexion(false, fin), surExpiree: () => connexion(true) }));
   };
   if (await sessionValide()) principale();
   else connexion(false);

@@ -145,8 +145,13 @@ test("REQ070_parcours_32_alleger_avec_faute_de_frappe", async ({ page }) => {
 
   // 4. Rechargement : plus de bandeau, Fichiers seul, pas de rail droit, aucune requête des fonctions éteintes.
   const requetes = [];
+  // Seules comptent les requêtes de la nouvelle page : une requête de l'ancienne, partie pendant le rechargement, n'en est pas une.
+  let nouvellePage = false;
+  page.on("framenavigated", (f) => {
+    if (f === page.mainFrame()) nouvellePage = true;
+  });
   page.on("request", (r) => {
-    if (/\/api\/(git\/|shells)/.test(new URL(r.url()).pathname)) requetes.push(r.url());
+    if (nouvellePage && /\/api\/(git\/|shells)/.test(new URL(r.url()).pathname)) requetes.push(r.url());
   });
   await page.reload();
   await expect(page.getByRole("tab", { name: "Fichiers", exact: true })).toBeVisible();
@@ -158,13 +163,14 @@ test("REQ070_parcours_32_alleger_avec_faute_de_frappe", async ({ page }) => {
   await expect(enteteBouton(page, "Replier le panneau")).toBeVisible();
   await expect(enteteBouton(page, "Thème clair")).toBeVisible();
   await expect(enteteBouton(page, "Déconnexion")).toBeVisible();
+  await expect(enteteBouton(page, "Arrêter Yaide")).toBeVisible();
   await expect(page.locator("header").getByRole("button", { name: /shells/ })).toHaveCount(0);
   expect(vivant()).toBe(true); // AC-070-4
   expect(requetes).toEqual([]); // AC-070-1, AC-070-3
 
   // 5. Ordre de Tab, touches R, G, A sans effet, palette sans commande.
   await enteteBouton(page, "Ouverture rapide").focus();
-  for (const nom of ["Replier le panneau", "Thème clair", "Déconnexion"]) {
+  for (const nom of ["Replier le panneau", "Thème clair", "Déconnexion", "Arrêter Yaide"]) {
     await page.keyboard.press("Tab");
     await expect(enteteBouton(page, nom)).toBeFocused();
   }

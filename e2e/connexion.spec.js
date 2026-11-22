@@ -179,8 +179,10 @@ test("REQ028_AC1_AC2_AC3_AC4_AC5_AC6_AC7_AC8_apres_connexion_titre_theme_rail_to
     await page.getByRole("button", { name: "Déconnexion" }).focus();
     expect(await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle)).not.toBe("none");
   });
-  await test.step("REQ028_AC8_Tab_va_de_Deconnexion_au_rail_puis_au_panneau", async () => {
+  await test.step("REQ028_AC8_Tab_va_de_Deconnexion_a_Arreter_Yaide_puis_au_rail", async () => {
     await page.getByRole("button", { name: "Déconnexion" }).focus();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "Arrêter Yaide" })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(page.getByRole("tab", { name: "Fichiers" })).toBeFocused();
   });
@@ -208,3 +210,57 @@ test("REQ028_AC1_AC2_AC3_AC4_AC5_AC6_AC7_AC8_apres_connexion_titre_theme_rail_to
   });
 });
 
+
+test("REQ162_AC4_AC7_AC13_arreter_yaide_dialogue_processus_arrete_puis_relance_avec_message_et_texte_garde", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 480 });
+  await seConnecter(page);
+  await page.getByRole("button", { name: "Nouveau shell" }).waitFor();
+  // Deux shells et du texte non sauvegardé.
+  const { shells } = await page.evaluate(() => fetch("/api/shells").then((r) => r.json()));
+  if (shells.length === 0) await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(page.getByRole("tab", { name: /^shell \d+$/ })).toHaveCount(2);
+  await page.getByRole("treeitem", { name: /^src/ }).click();
+  await page.getByRole("treeitem", { name: /^main\.rs/ }).click();
+  await expect(page.getByLabel("Éditeur main.rs")).toBeFocused();
+  await page.keyboard.type("// garde\n");
+  await expect(page.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Arrêter Yaide" }).click();
+  const dialogue = page.getByRole("dialog", { name: "Yaide est arrêté. Vous êtes déconnecté." });
+  await expect(dialogue).toBeVisible();
+  await expect(dialogue).toHaveAccessibleDescription("Relancez Yaide, puis reconnectez-vous ici.");
+  await expect(page.getByLabel("Mot de passe")).toHaveValue("");
+  // AC-162-13 : « Fermer » a le focus et un contour de 2 px malgré le clic, le dialogue tient dans la fenêtre, sans défilement.
+  const fermer = dialogue.getByRole("button", { name: "Fermer" });
+  await expect(fermer).toBeFocused();
+  expect(await fermer.evaluate((e) => [getComputedStyle(e).outlineStyle, getComputedStyle(e).outlineWidth])).toEqual(["solid", "2px"]);
+  const boite = await dialogue.boundingBox();
+  expect(boite.x).toBeGreaterThanOrEqual(0);
+  expect(boite.y).toBeGreaterThanOrEqual(0);
+  expect(boite.x + boite.width).toBeLessThanOrEqual(800);
+  expect(boite.y + boite.height).toBeLessThanOrEqual(480);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  // Le processus Yaide s'arrête.
+  await expect
+    .poll(() => {
+      try {
+        process.kill(yaide.pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    }, { timeout: 5000 })
+    .toBe(false);
+  await fermer.click();
+  await expect(dialogue).toHaveCount(0);
+  await expect(page.getByLabel("Mot de passe")).toBeFocused();
+
+  // Relance à la main, reconnexion : le message d'AC-021-4 et le texte avec son point.
+  yaide = await yaide.relancer();
+  await page.getByLabel("Mot de passe").fill("mdp");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("status").filter({ hasText: "Yaide a été arrêté. 2 shells ont été fermés." })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
+  await expect(page.locator(".cm-content")).toContainText("// garde");
+});
