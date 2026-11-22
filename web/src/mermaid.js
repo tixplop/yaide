@@ -1,4 +1,6 @@
 import mermaid from "mermaid";
+import { mesurer } from "./mermaid-mesure.js";
+import { versWhiteboard } from "./mermaid-dessin.js";
 
 // Chargé à part, au premier diagramme (DEC-086, DEC-087).
 mermaid.initialize({
@@ -39,4 +41,18 @@ async function dessiner(texte) {
   }
 }
 
-window.yaideMermaid = { dessiner };
+/** SVG de mermaid → `{ doc }` (boîtes et flèches libres) ou `{ refus }`. */
+function traduireSvg(svg) {
+  const { primitives, origine } = mesurer(svg);
+  const r = versWhiteboard(primitives, origine);
+  if (r.refus) return r;
+  return { doc: { version: 1, boxes: r.boxes, links: [], arrows: r.arrows } };
+}
+
+/** Texte mermaid → `{ doc }` ou `{ refus }`. */
+async function traduire(texte) {
+  const d = await dessiner(texte);
+  return d ? traduireSvg(d.svg) : { refus: "mermaid ne sait pas le lire." };
+}
+
+window.yaideMermaid = { dessiner, traduire, traduireSvg };

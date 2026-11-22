@@ -138,6 +138,14 @@ describe("versWhiteboard", () => {
     expect(Math.abs(b.y + b.height / 2 - (100 + 19 - 20 + 40))).toBeLessThanOrEqual(1);
   });
 
+  it("REQ154_AC15 : un texte aligné à gauche dans un nœud en devient le texte ; pas une bande qui contient d'autres boîtes", () => {
+    // rect 100 × 40 en (50, 30) ; texte de 30 px de large, à 8 px du bord gauche, à la hauteur du centre
+    let r = vers([rect(), texte({ x: 58, y: 40.5, largeur: 30, lignes: ["Actif"] })]);
+    expect(r.boxes.map((b) => [b.shape, b.text])).toEqual([[undefined, "Actif"]]);
+    r = vers([rect(), rect({ x: 120, y: 40, largeur: 20, hauteur: 20 }), texte({ x: 58, y: 40.5, largeur: 30, lignes: ["Bande"] })]);
+    expect(r.boxes.map((b) => b.text)).toEqual(["", "", "Bande"]);
+  });
+
   it("REQ154_AC22 : un texte au centre d'une boîte sans texte (à 4 px) en devient le texte, sinon boîte text", () => {
     // rect 100 × 40 en (50, 30) : centre (100, 50)
     let r = vers([rect(), texte({ x: 72 + 4, y: 40.5 + 4, lignes: ["Proche"] })]);

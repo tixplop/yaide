@@ -4,7 +4,7 @@ import { TAILLES } from "./jdiag.js";
 // Les types que dessine la bibliothèque mermaid de Yaide, autres que l'organigramme (REQ-154, DEC-107).
 const AUTRES_TYPES = new Set([
   "sequenceDiagram", "classDiagram", "classDiagram-v2", "stateDiagram", "stateDiagram-v2", "erDiagram", "journey", "gantt", "pie",
-  "quadrantChart", "requirementDiagram", "requirement", "gitGraph", "C4Context", "C4Container", "C4Component", "C4Dynamic",
+  "quadrantChart", "requirementDiagram", "gitGraph", "C4Context", "C4Container", "C4Component", "C4Dynamic",
   "C4Deployment", "mindmap", "timeline", "sankey", "sankey-beta", "xychart", "xychart-beta", "block", "block-beta", "packet",
   "packet-beta", "architecture-beta", "kanban", "radar-beta", "treemap", "treeView-beta", "venn-beta", "wardley-beta",
   "usecase-beta", "swimlane-beta", "eventmodeling", "ishikawa", "ishikawa-beta", "cynefin-beta", "agentflow-beta",

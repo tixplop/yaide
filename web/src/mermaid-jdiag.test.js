@@ -117,18 +117,19 @@ describe("depuisMermaid", () => {
   it("REQ154_AC16 : chaque autre type est reconnu, avec le texte normalisé comme modèle", () => {
     const mots = [
       "sequenceDiagram", "classDiagram", "classDiagram-v2", "stateDiagram", "stateDiagram-v2", "erDiagram", "journey", "gantt", "pie",
-      "quadrantChart", "requirementDiagram", "requirement", "gitGraph", "C4Context", "C4Container", "C4Component", "C4Dynamic",
+      "quadrantChart", "requirementDiagram", "gitGraph", "C4Context", "C4Container", "C4Component", "C4Dynamic",
       "C4Deployment", "mindmap", "timeline", "sankey", "sankey-beta", "xychart", "xychart-beta", "block", "block-beta", "packet",
       "packet-beta", "architecture-beta", "kanban", "radar-beta", "treemap", "treeView-beta", "venn-beta", "wardley-beta",
       "usecase-beta", "swimlane-beta", "eventmodeling", "ishikawa", "ishikawa-beta", "cynefin-beta", "agentflow-beta",
       "railroad-beta", "railroad-ebnf-beta", "railroad-abnf-beta", "railroad-peg-beta", "flowchart-elk",
     ];
-    expect(mots).toHaveLength(47);
+    expect(mots).toHaveLength(46);
     for (const mot of mots) {
       const texte = `${mot}\n  a b`;
       expect(depuisMermaid(texte), mot).toEqual({ autre: true, model: texte });
     }
     expect(depuisMermaid("pie title Animaux\n  \"Chiens\" : 3")).toEqual({ autre: true, model: "pie title Animaux\n  \"Chiens\" : 3" });
+    expect(depuisMermaid("requirement\n  a b")).toBeNull();
     expect(depuisMermaid("info")).toBeNull();
     expect(depuisMermaid("Bonjour")).toBeNull();
     const clos = ["```mermaid", "%%{init: {'theme': 'dark'}}%%", "", "  %% commentaire", "sequenceDiagram", "  A->>B: Salut", "```"];

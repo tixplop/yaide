@@ -15,6 +15,7 @@ const OPACITES = [100, 75, 50, 25, 0];
 const MARGE_TEXTE = { largeur: 16, ligne: 18, hauteur: 12 };
 const TOLERANCE_CENTRE = 4;
 const TOLERANCE_LOSANGE = 2;
+const MARGE_GAUCHE = 10;
 const DOT_MAX = 16;
 const EPAISSEUR_FORTE = 3;
 const RIEN = { refus: "il n'a rien à dessiner." };
@@ -296,17 +297,22 @@ export function versWhiteboard(primitives, origine) {
     }
   }
 
-  // Un texte prend la boîte sans texte dont le centre est le sien ; sinon il a sa boîte `text`.
+  // Un texte prend la boîte sans texte dont le centre est le sien ; sinon, la boîte sans texte qui n'en contient aucune
+  // autre, à sa hauteur, dont le bord gauche est à moins de MARGE_GAUCHE de lui (texte aligné à gauche dans son nœud) ;
+  // sinon il a sa boîte `text`.
   const libres_ = elements.filter((e) => e.boite && e.libre);
+  const contient = (h, o) =>
+    o !== h && o.boite.x >= h.boite.x && o.boite.y >= h.boite.y && o.boite.x + o.boite.width <= h.boite.x + h.boite.width && o.boite.y + o.boite.height <= h.boite.y + h.boite.height;
   for (const e of elements) {
     if (!e.texte) continue;
     const { cx, cy, largeur, lignes } = e.texte;
-    const hote = libres_.find(
-      (h) =>
-        h.boite.text === "" &&
-        Math.abs(h.boite.x + h.boite.width / 2 - X(cx)) <= TOLERANCE_CENTRE &&
-        Math.abs(h.boite.y + h.boite.height / 2 - Y(cy)) <= TOLERANCE_CENTRE,
-    );
+    const vides = libres_.filter((h) => h.boite.text === "" && Math.abs(h.boite.y + h.boite.height / 2 - Y(cy)) <= TOLERANCE_CENTRE);
+    const hote =
+      vides.find((h) => Math.abs(h.boite.x + h.boite.width / 2 - X(cx)) <= TOLERANCE_CENTRE) ??
+      vides.find((h) => {
+        const gauche = X(cx) - largeur / 2 - h.boite.x;
+        return gauche >= -1 && gauche <= MARGE_GAUCHE && h.boite.x + h.boite.width >= X(cx) + largeur / 2 && !elements.some((o) => o.boite && contient(h, o));
+      });
     if (hote) {
       hote.boite.text = lignes.join("\n");
       continue;
