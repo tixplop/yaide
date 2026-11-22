@@ -427,3 +427,10 @@ test("REQ149_AC1_REQ156_AC7_dessins_des_cinq_symboles_aux_yeux_pleins_et_de_poin
   expect(tete).toContain("forme-point");
   expect(tete).toContain("forme-barre");
 });
+
+test("REQ159_AC9_chevron_up_existe_et_se_distingue_des_autres_chevrons", () => {
+  expect(NOMS).toContain("chevron-up");
+  expect(icone("chevron-up").innerHTML).toContain("m18 15-6-6-6 6");
+  expect(icone("chevron-up").innerHTML).not.toBe(icone("chevron-down").innerHTML);
+  expect(icone("chevron-up").getAttribute("stroke-width")).toBe("1.6");
+});

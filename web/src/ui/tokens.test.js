@@ -86,6 +86,7 @@ const couleurs = {
   "--accent-soft": ["rgba(0,120,212,.20)", "rgba(0,95,184,.12)"],
   "--selection": ["rgba(38,79,120,.85)", "rgba(173,214,255,.85)"],
   "--find-match": ["rgba(230,160,40,.33)", "rgba(240,170,40,.40)"],
+  "--occurrence": ["rgba(255,214,0,.22)", "rgba(255,214,0,.45)"],
   "--git-added": ["#81b88b", "#2a7034"],
   "--git-modified": ["#e2c08d", "#865300"],
   "--git-deleted": ["#f07a6a", "#b0261c"],
@@ -902,6 +903,21 @@ test("REQ157_AC12_contrastes_du_tableur_dans_les_deux_themes", () => {
       const r = ratio(theme, texte, fond, sous ?? undefined);
       egalA(r, attendu[k], `${texte} sur ${fond}/${sous} (${theme})`);
       expect(r, `${texte} sur ${fond}/${sous} (${theme})`).toBeGreaterThanOrEqual(seuil);
+    }
+  });
+});
+
+test("REQ159_AC13_occurrence_dans_les_deux_themes_et_contraste_de_l_encre_dessus", () => {
+  const attendu = { "--bg-200": [5.8, 13.9], "--ligne-active": [5.2, 13.3], "--code-fond": [5.1, 12.9], "--msg-info": [4.7, 12.2] };
+  THEMES.forEach((theme, k) => {
+    expect(T[theme]["--occurrence"], theme).toBeDefined();
+    const base = jeton(theme, "--bg-200");
+    for (const [fond, valeurs] of Object.entries(attendu)) {
+      const sous = fond === "--bg-200" ? base : poser(jeton(theme, fond), base);
+      const surface = poser(jeton(theme, "--occurrence"), sous);
+      const r = contraste(jeton(theme, "--ink"), surface);
+      expect(r, `--ink sur --occurrence sur ${fond} (${theme})`).toBeGreaterThanOrEqual(4.5);
+      egalA(r, valeurs[k], `--ink sur --occurrence sur ${fond} (${theme})`);
     }
   });
 });

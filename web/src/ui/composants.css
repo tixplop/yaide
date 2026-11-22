@@ -135,6 +135,8 @@
 .ya-badge { display: inline-flex; align-items: center; height: 16px; min-width: 16px; padding: 0 5px; box-sizing: border-box; border-radius: 8px; font-family: var(--font-sans); font-size: 10.5px; font-weight: 600; line-height: 16px; background: var(--bg-400); color: var(--ink); }
 .ya-badge-accent { background: var(--accent); color: var(--on-accent); }
 .ya-badge[hidden] { display: none; }
+.ya-occ { display: inline-block; box-sizing: border-box; min-width: 48px; font-family: var(--font-sans); font-size: 12px; line-height: 16px; font-weight: 400; text-align: center; white-space: nowrap; color: var(--ink-muted); }
+.ya-occ-zero { color: var(--danger); }
 
 .indication { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-2); color: var(--ink-muted); font: var(--texte-base) var(--font-sans); font-family: var(--font-sans); }
 .indication[hidden] { display: none; }

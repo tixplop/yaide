@@ -34,3 +34,37 @@ test("REQ036_AC1_compteur_prend_les_couleurs_et_la_forme_du_composant", () => {
   expect(regle(".ya-badge-accent")).toContain("background: var(--accent)");
   expect(regle(".ya-badge-accent")).toContain("color: var(--on-accent)");
 });
+
+test("REQ159_AC3_compteur_texte_valeur_et_position", () => {
+  const c = compteur({ valeur: 5, variante: "texte" });
+  expect(c.textContent).toBe("5");
+  expect(c.classList.contains("ya-occ")).toBe(true);
+  expect(c.classList.contains("ya-badge")).toBe(false);
+  expect(c.getAttribute("aria-hidden")).toBe("true");
+  expect(c.hidden).toBe(false);
+  expect(compteur({ valeur: 5, variante: "texte", position: 4 }).textContent).toBe("4 sur 5");
+});
+
+test("REQ159_AC3_compteur_texte_a_zero_est_affiche_en_danger", () => {
+  const c = compteur({ valeur: 0, variante: "texte" });
+  expect(c.textContent).toBe("0");
+  expect(c.hidden).toBe(false);
+  expect(c.classList.contains("ya-occ-zero")).toBe(true);
+  expect(regle(".ya-occ-zero")).toContain("color: var(--danger)");
+  expect(compteur({ valeur: 3, variante: "texte" }).classList.contains("ya-occ-zero")).toBe(false);
+});
+
+test("REQ159_AC3_position_refusee_hors_de_la_variante_texte", () => {
+  expect(() => compteur({ valeur: 5, position: 1 })).toThrow(/position/);
+  expect(() => compteur({ valeur: 5, variante: "accent", position: 1 })).toThrow(/position/);
+  for (const p of [0, -1, 1.5, "2"]) expect(() => compteur({ valeur: 5, variante: "texte", position: p }), String(p)).toThrow(/position/);
+  expect(compteur({ valeur: 2 }).textContent).toBe("2");
+  expect(compteur({ valeur: 2, variante: "accent" }).classList.contains("ya-badge-accent")).toBe(true);
+});
+
+test("REQ159_AC3_style_du_compteur_texte", () => {
+  const r = regle(".ya-occ");
+  for (const d of ["font-size: 12px", "line-height: 16px", "font-weight: 400", "color: var(--ink-muted)", "text-align: center", "min-width: 48px", "white-space: nowrap"]) expect(r, d).toContain(d);
+  expect(r).not.toContain("background");
+  expect(r).not.toContain("border-radius");
+});

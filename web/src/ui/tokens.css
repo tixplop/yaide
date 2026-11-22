@@ -26,6 +26,7 @@
   --accent-soft: rgba(0,120,212,0.20);
   --selection: rgba(38,79,120,0.85);
   --find-match: rgba(230,160,40,0.33);
+  --occurrence: rgba(255,214,0,0.22);
   --git-added: #81b88b;
   --git-modified: #e2c08d;
   --git-deleted: #f07a6a;
@@ -87,6 +88,7 @@
   --accent-soft: rgba(0,95,184,0.12);
   --selection: rgba(173,214,255,0.85);
   --find-match: rgba(240,170,40,0.40);
+  --occurrence: rgba(255,214,0,0.45);
   --git-added: #2a7034;
   --git-modified: #865300;
   --git-deleted: #b0261c;
