@@ -12,6 +12,7 @@ import { hybride as extensionHybride, TableauRendu, DiagrammeRendu, tableauxHybr
 import { themeCourant, themeTableur } from "./theme.js";
 import { tableur } from "./tableur.js";
 import { lireCsv, debutChamp, celluleA } from "../csv.js";
+import { rechercheFichier } from "./recherche-fichier.js";
 import { lienDeDocument, ligneDuTitre } from "../references.js";
 
 const MODES = ["edition", "diff"];
@@ -217,7 +218,7 @@ function apercuMmd(nom, texte) {
   return el;
 }
 
-export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, document: cheminDocument, ligne, nom = "", surChangement, surPosition, surLien, surSurvolLien, surTableur } = {}) {
+export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, document: cheminDocument, ligne, nom = "", surChangement, surPosition, surLien, surSurvolLien, surTableur, recherche } = {}) {
   if (!MODES.includes(mode)) throw new Error(`zoneCode : mode inconnu « ${mode} »`);
   const diff = mode === "diff";
   const racine = document.createElement("div");
@@ -259,6 +260,8 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     );
     extensions.push(compartimentLangage.of(langage ? supportLangage(langage) : []));
   }
+  const rech = recherche && !diff ? rechercheFichier({ nom: recherche.nom ?? nom }) : null;
+  if (rech) extensions.push(rech.extension);
   extensions.push(compartimentHybride.of(hybridePossible && hybride ? extensionsHybride() : []));
   extensions.push(
     EditorView.updateListener.of((u) => {
@@ -348,6 +351,10 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   const vue = new EditorView({ state: EditorState.create({ doc: contenu, extensions }), parent: hote });
 
   racine.vue = vue;
+  if (rech) {
+    rech.attacher(vue);
+    racine.recherche = { ouvrir: rech.ouvrir, fermer: rech.fermer, etat: rech.etat, reprendre: rech.reprendre };
+  }
   if (csv) {
     // Tous les appels de focus de l'éditeur vont à la grille quand elle est affichée.
     const focusCm = vue.focus.bind(vue);
