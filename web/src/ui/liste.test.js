@@ -1618,3 +1618,155 @@ test("REQ149_AC10_grille_haut_au_premier_rang_et_bas_au_dernier_gardent_le_focus
     expect(document.activeElement).toBe(cases[depart]);
   }
 });
+
+// Variante `elements` (C-006, REQ-163).
+function elementsDe(extra = {}) {
+  const apres = document.createElement("button");
+  apres.textContent = "Ajouter un déclencheur";
+  const racine = liste({
+    variante: "elements",
+    nom: "Déclencheurs",
+    nomElement: "Déclencheur",
+    vide: "Aucun déclencheur.",
+    apres,
+    lignes: [],
+    ...extra,
+  });
+  document.body.replaceChildren(racine, apres);
+  return { racine, apres };
+}
+const dossier = { id: "d", titre: "Dossier", champ: { valeur: "" }, aide: "Depuis la racine du projet, sous-dossiers compris. « . » : tout le projet." };
+const commit = { id: "c", titre: "Commit", aide: "À chaque commit du dépôt." };
+const fichier = { id: "f", titre: "Fichier", champ: { valeur: "a.md" }, aide: "Depuis la racine du projet." };
+const retraits = (r) => [...r.querySelectorAll("li button")];
+
+test("REQ163_AC7_vide_remplace_la_liste_par_un_texte_status", () => {
+  const { racine } = elementsDe();
+  expect(racine.querySelector("ol")).toBeNull();
+  const s = racine.querySelector('[role="status"]');
+  expect(s.textContent).toBe("Aucun déclencheur.");
+  expect(regle(".ya-elements-vide")).toContain("var(--ink-muted)");
+});
+
+test("REQ163_AC7_ol_nommee_tete_champ_nomme_aide_et_retirer", () => {
+  const { racine } = elementsDe({ lignes: [dossier, commit] });
+  expect(racine.querySelector('[role="status"]')).toBeNull();
+  const ol = racine.querySelector("ol");
+  expect(ol.getAttribute("aria-label")).toBe("Déclencheurs");
+  const lis = [...ol.children];
+  expect(lis).toHaveLength(2);
+  const champ = lis[0].querySelector("input");
+  expect(champ.spellcheck).toBe(false);
+  expect(champ.getAttribute("autocomplete")).toBe("off");
+  expect(champ.placeholder).toBe("");
+  expect(champ.labels[0].textContent).toBe("Déclencheur 1 : Dossier");
+  expect(champ.labels[0].querySelector(".masque").textContent).toBe("Déclencheur 1 : ");
+  const aide = document.getElementById(champ.getAttribute("aria-describedby"));
+  expect(aide.textContent).toContain("sous-dossiers compris");
+  expect(lis[0].querySelector(".ya-element-titre").title).toBe("Dossier");
+  // Sans champ : titre en `span`, aide seule.
+  expect(lis[1].querySelector("input")).toBeNull();
+  expect(lis[1].querySelector("span.ya-element-titre").textContent).toBe("Commit");
+  expect(lis[1].querySelector(".ya-element-aide").textContent).toBe("À chaque commit du dépôt.");
+  expect(retraits(racine).map((b) => b.getAttribute("aria-label"))).toEqual(["Retirer le déclencheur 1", "Retirer le déclencheur 2"]);
+  expect(regle(".ya-element")).toContain("border-left: var(--trait-fort) solid var(--line-strong)");
+  expect(regle(".ya-elements")).toContain("gap: var(--space-3)");
+});
+
+test("REQ163_AC7_erreur_remplace_l_aide_alert_invalid_describedby", () => {
+  const { racine } = elementsDe({ lignes: [{ ...dossier, erreur: "Chemin invalide." }] });
+  const champ = racine.querySelector("input");
+  expect(champ.getAttribute("aria-invalid")).toBe("true");
+  const m = document.getElementById(champ.getAttribute("aria-describedby"));
+  expect(m.getAttribute("role")).toBe("alert");
+  expect(m.textContent).toBe("Chemin invalide.");
+  expect(racine.textContent).not.toContain("sous-dossiers");
+});
+
+test("REQ163_AC7_ajout_prend_le_focus_dans_le_champ_sinon_sur_retirer", () => {
+  const { racine } = elementsDe();
+  racine.ajouter(dossier);
+  expect(racine.querySelector('[role="status"]')).toBeNull();
+  expect(document.activeElement).toBe(racine.querySelector("input"));
+  expect(racine.querySelector("input").labels[0].textContent).toBe("Déclencheur 1 : Dossier");
+  racine.ajouter(commit);
+  expect(document.activeElement.getAttribute("aria-label")).toBe("Retirer le déclencheur 2");
+});
+
+test("REQ163_AC7_saisie_et_retrait_sont_signales", () => {
+  const surSaisie = vi.fn();
+  const surRetrait = vi.fn();
+  const { racine } = elementsDe({ lignes: [fichier], surSaisie, surRetrait });
+  const champ = racine.querySelector("input");
+  champ.value = "b.md";
+  champ.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(surSaisie).toHaveBeenCalledWith("f", "b.md");
+  retraits(racine)[0].click();
+  expect(surRetrait).toHaveBeenCalledWith("f");
+});
+
+test("REQ163_AC8_retrait_focus_sur_le_suivant_renumerote_puis_precedent_puis_ajout", () => {
+  const { racine, apres } = elementsDe({ lignes: [fichier, { ...dossier, id: "d2" }, commit] });
+  // Le 2e part : l'ancien 3e devient le 2e et son bouton a le focus.
+  retraits(racine)[1].click();
+  expect(retraits(racine).map((b) => b.getAttribute("aria-label"))).toEqual(["Retirer le déclencheur 1", "Retirer le déclencheur 2"]);
+  expect(document.activeElement).toBe(retraits(racine)[1]);
+  expect(racine.querySelector("input").labels[0].textContent).toBe("Déclencheur 1 : Fichier");
+  // Le dernier part : focus sur le « Retirer » du précédent.
+  retraits(racine)[1].click();
+  expect(document.activeElement).toBe(retraits(racine)[0]);
+  // Le seul part : le texte vide revient, focus sur le bouton d'ajout.
+  retraits(racine)[0].click();
+  expect(racine.querySelector("ol")).toBeNull();
+  expect(racine.querySelector('[role="status"]').textContent).toBe("Aucun déclencheur.");
+  expect(document.activeElement).toBe(apres);
+});
+
+test("REQ163_AC8_renumerotation_des_champs_apres_retrait_du_premier", () => {
+  const { racine } = elementsDe({ lignes: [fichier, { ...dossier, id: "d2" }] });
+  retraits(racine)[0].click();
+  expect(racine.querySelector("input").labels[0].textContent).toBe("Déclencheur 1 : Dossier");
+  expect(document.activeElement).toBe(retraits(racine)[0]);
+});
+
+test("REQ163_AC7_elements_exige_nom_et_vide", () => {
+  expect(() => liste({ variante: "elements", lignes: [], nomElement: "x", vide: "v" })).toThrow(/nom/);
+  expect(() => liste({ variante: "elements", lignes: [], nom: "x", vide: "v" })).toThrow(/nomElement/);
+  expect(() => liste({ variante: "elements", lignes: [], nom: "x", nomElement: "x" })).toThrow(/vide/);
+});
+
+test("REQ163_AC7_contrastes_des_elements_dans_les_deux_themes", () => {
+  const tokens = readFileSync("web/src/ui/tokens.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  const jetons = (theme) => {
+    const t = {};
+    for (const m of tokens.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      if (!m[1].split(",").map((s) => s.trim()).some((s) => s === ":root" || s === `[data-theme="${theme}"]`)) continue;
+      for (const d of m[2].matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) t[d[1]] = d[2].trim();
+    }
+    return t;
+  };
+  const lum = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const rapport = (a, b) => {
+    const [p, q] = [lum(a), lum(b)].sort((m, n) => n - m);
+    return (p + 0.05) / (q + 0.05);
+  };
+  expect(regle(".ya-element-titre")).toContain("color: var(--ink)");
+  expect(regle(".ya-elements-vide")).toContain("color: var(--ink-muted)");
+  for (const theme of ["dark", "light"]) {
+    const t = jetons(theme);
+    for (const k of Object.keys(t)) {
+      const m = /^var\((--[a-z0-9-]+)\)$/.exec(t[k]);
+      if (m) t[k] = t[m[1]];
+    }
+    const sur = (a, b, seuil, nom) => expect(rapport(t[a], t[b]), `${nom} ${theme}`).toBeGreaterThanOrEqual(seuil);
+    sur("--ink", "--bg-100", 4.5, "titre");
+    sur("--ink-muted", "--bg-100", 4.5, "aide et icône");
+    sur("--danger", "--bg-100", 4.5, "erreur");
+    sur("--line-strong", "--bg-100", 3, "filet");
+    sur("--accent-fg", "--bg-100", 3, "focus");
+    sur("--ink", "--bg-400", 4.5, "icône survolée");
+  }
+});

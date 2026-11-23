@@ -177,8 +177,10 @@ export function menu({ nom, groupes, position, ancre, zone, surFermeture }) {
   if (ancre) {
     ancre.setAttribute("aria-expanded", "true");
     const r = ancre.getBoundingClientRect();
-    // Décalé vers la gauche s'il ne tient pas, jamais retourné de l'autre côté du bouton.
-    depart = { x: Math.min(r.left, fenetre.largeur - taille.largeur), y: r.bottom + 4 };
+    // Décalé vers la gauche s'il ne tient pas ; retourné au-dessus du bouton s'il manque de place dessous et qu'il en reste dessus.
+    let y = r.bottom + 4;
+    if (y + taille.hauteur > fenetre.hauteur && r.top - 4 - taille.hauteur >= 0) y = r.top - 4 - taille.hauteur;
+    depart = { x: Math.min(r.left, fenetre.largeur - taille.largeur), y };
   }
   let p;
   if (zone) {

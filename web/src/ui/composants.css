@@ -5,7 +5,7 @@
 @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 600; font-display: swap; src: url("/polices/JetBrainsMono-SemiBold.woff2") format("woff2"); }
 /* C-001 : bouton. Règles `ya-` de design-system/components/bundle.css. `bouton`, `bouton-*` et `message-*` sont des repères sans style propre. */
 .ya-btn { box-sizing: border-box; font-family: var(--font-sans); font-size: 13px; line-height: 20px; font-weight: 500; height: var(--size-control); padding: 0 var(--space-3); display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--bg-300); color: var(--ink); cursor: pointer; white-space: nowrap; }
-.ya-btn:hover { background: var(--bg-400); }
+.ya-btn:hover, .ya-btn[aria-expanded="true"] { background: var(--bg-400); }
 .ya-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .ya-btn-primary:hover { background: var(--accent); filter: brightness(.88); }
 .ya-btn-danger { color: var(--danger); }
@@ -1008,6 +1008,14 @@ mark.ya-occurrence { background: linear-gradient(var(--occurrence), var(--occurr
   .cm-content .cm-line span.ya-occurrence.ya-occurrence, .cm-content .cm-line .ya-occurrence.ya-occurrence * { color: MarkText; }
   .ya-occurrence-courante { box-shadow: inset 0 0 0 1px Highlight; }
 }
+
+/* Variante `elements` de la liste (déclencheurs d'un agent, REQ-163). */
+.ya-elements { list-style: none; margin: var(--space-1) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.ya-element { border-left: var(--trait-fort) solid var(--line-strong); padding-left: var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); }
+.ya-element-tete { height: 24px; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.ya-element-titre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12.5px/16px var(--font-sans); color: var(--ink); }
+.ya-element-champ { display: flex; flex-direction: column; gap: var(--space-1); }
+.ya-elements-vide { margin: 0; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
 
 .zone-code {
   display: flex;

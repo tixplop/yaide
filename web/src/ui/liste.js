@@ -1,9 +1,10 @@
 import { bouton } from "./bouton.js";
+import { champ as champDe } from "./champ.js";
 import { compteur as compteurDe } from "./compteur.js";
 import { icone } from "./icones.js";
 import { fermerInfoBulleDans, infoBulle } from "./info-bulle.js";
 
-const VARIANTES = ["plate", "arbre", "objets", "passages", "grille"];
+const VARIANTES = ["plate", "arbre", "objets", "passages", "grille", "elements"];
 const COLONNES = 5;
 let compteur = 0;
 
@@ -79,6 +80,123 @@ function listeObjets({ lignes, nom }) {
   // Un bouton qui prend le focus est amené dans la vue de la liste, qui défile seule.
   ul.addEventListener("focusin", (ev) => ev.target.scrollIntoView?.({ block: "nearest" }));
   return ul;
+}
+
+// Variante `elements` (C-006, REQ-163) : éléments réglés dans un formulaire, ajoutés et retirés un à un.
+// `lignes` : { id, titre, champ: { valeur }, aide, erreur }. `racine.ajouter(ligne)` ajoute un élément et lui donne le focus.
+// Un retrait part sans question : le focus va au « Retirer » qui prend sa place, sinon au précédent, sinon à `apres` ;
+// `surRetrait(id)` prévient le formulaire, `surSaisie(id, valeur)` aussi à chaque frappe.
+function listeElements({ lignes, nom, nomElement, vide, apres, surSaisie, surRetrait }) {
+  if (!nom) throw new Error("liste : nom requis avec elements");
+  if (!nomElement) throw new Error("liste : nomElement requis avec elements");
+  if (!vide) throw new Error("liste : vide requis avec elements");
+  const racine = document.createElement("div");
+  racine.className = "liste ya-elements-racine";
+  let ol = null;
+  let texteVide = null;
+
+  const retirer = (li) => li.querySelector(".ya-element-retirer");
+  function numeroter() {
+    [...ol.children].forEach((li, i) => {
+      const n = i + 1;
+      retirer(li).setAttribute("aria-label", `Retirer le ${nomElement.toLowerCase()} ${n}`);
+      const prefixe = li.querySelector(".ya-element-prefixe");
+      if (prefixe) prefixe.textContent = `${nomElement} ${n} : `;
+    });
+  }
+
+  function creer(l, n) {
+    if (!l.titre) throw new Error("liste : titre requis");
+    if (!l.aide) throw new Error("liste : aide requise");
+    const li = document.createElement("li");
+    li.className = "ya-element";
+    li.dataset.id = l.id;
+    const tete = document.createElement("div");
+    tete.className = "ya-element-tete";
+    let titre;
+    let saisie = null;
+    let corps = null;
+    if (l.champ) {
+      const c = champDe({ libelle: l.titre, valeur: l.champ.valeur ?? "", aide: l.erreur ? undefined : l.aide, erreur: l.erreur });
+      saisie = c.querySelector("input");
+      saisie.setAttribute("autocomplete", "off");
+      titre = c.querySelector("label");
+      titre.className = "ya-element-titre";
+      titre.title = l.titre;
+      const prefixe = document.createElement("span");
+      prefixe.className = "masque ya-element-prefixe";
+      prefixe.textContent = `${nomElement} ${n} : `;
+      titre.prepend(prefixe);
+      corps = c;
+      corps.className = "ya-element-champ";
+      corps.querySelector(".champ-aide")?.classList.add("ya-element-aide");
+      saisie.addEventListener("input", () => surSaisie?.(l.id, saisie.value));
+    } else {
+      titre = document.createElement("span");
+      titre.className = "ya-element-titre";
+      titre.textContent = l.titre;
+      titre.title = l.titre;
+    }
+    const b = bouton({ icone: "x", nomAccessible: `Retirer le ${nomElement.toLowerCase()} ${n}`, infoBulle: "Retirer", positionInfoBulle: "gauche" });
+    b.classList.add("ya-element-retirer");
+    b.addEventListener("click", () => {
+      const i = [...ol.children].indexOf(li);
+      fermerInfoBulleDans?.(li);
+      li.remove();
+      surRetrait?.(l.id);
+      if (ol.children.length === 0) {
+        ol.remove();
+        ol = null;
+        montrerVide();
+        apres?.focus();
+        return;
+      }
+      numeroter();
+      retirer(ol.children[Math.min(i, ol.children.length - 1)]).focus();
+    });
+    tete.append(titre, b.enveloppe);
+    li.append(tete);
+    if (corps) li.append(corps);
+    else {
+      const a = document.createElement("div");
+      a.className = "champ-aide ya-element-aide";
+      a.textContent = l.aide;
+      li.append(a);
+    }
+    return { li, saisie, b };
+  }
+
+  function montrerVide() {
+    texteVide = document.createElement("p");
+    texteVide.className = "ya-elements-vide";
+    texteVide.setAttribute("role", "status");
+    texteVide.textContent = vide;
+    racine.append(texteVide);
+  }
+
+  function ajouterSans(l) {
+    if (!ol) {
+      texteVide?.remove();
+      texteVide = null;
+      ol = document.createElement("ol");
+      ol.className = "ya-elements";
+      ol.setAttribute("aria-label", nom);
+      racine.append(ol);
+    }
+    const e = creer(l, ol.children.length + 1);
+    ol.append(e.li);
+    return e;
+  }
+
+  for (const l of lignes) ajouterSans(l);
+  if (!ol) montrerVide();
+
+  racine.ajouter = (l) => {
+    const e = ajouterSans(l);
+    (e.saisie ?? e.b).focus();
+    e.li.scrollIntoView?.({ block: "nearest" });
+  };
+  return racine;
 }
 
 // Variante `passages` (C-006, V-013) : `<ol>` nommé, une `<li>` par passage { chemin, debut, fin, collection, score, texte }.
@@ -183,13 +301,14 @@ function listeGrille({ lignes, groupes, selection, nom, surActiver }) {
   return racine;
 }
 
-export function liste({ variante = "plate", lignes, groupes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, flottante = false, message, nom, focusSurListe = false, surActiver, surBasculer, surMenu, surDepot, surLien }) {
+export function liste({ variante = "plate", lignes, groupes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, flottante = false, message, nom, focusSurListe = false, surActiver, surBasculer, surMenu, surDepot, surLien, nomElement, vide, apres, surSaisie, surRetrait }) {
   if (!VARIANTES.includes(variante)) throw new Error(`liste : variante inconnue « ${variante} »`);
   if (flottante && (variante !== "plate" || pilotage !== "champ")) throw new Error("liste : flottante demande la variante « plate » et le pilotage « champ »");
   if (flottante && !nom) throw new Error("liste : nom requis avec flottante");
   if (message !== undefined && !flottante) throw new Error("liste : message demande flottante");
   if (focusSurListe && (variante !== "plate" || pilotage === "champ")) throw new Error("liste : focusSurListe demande la variante « plate » et le pilotage « focus »");
   if (pilotage === "champ" && !champ) throw new Error("liste : champ requis avec pilotage « champ »");
+  if (variante === "elements") return listeElements({ lignes, nom, nomElement, vide, apres, surSaisie, surRetrait });
   if (variante === "grille") return listeGrille({ lignes, groupes, selection, nom, surActiver });
   if (variante === "objets") return listeObjets({ lignes, nom });
   if (variante === "passages") return listePassages({ lignes, nom, surLien });

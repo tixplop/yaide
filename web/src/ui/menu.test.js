@@ -544,3 +544,58 @@ test("REQ155_AC9_un_cran_de_molette_sur_la_zone_ferme_le_menu_sans_preventDefaul
   zone.dispatchEvent(new Event("wheel"));
   expect(surFermeture).toHaveBeenCalledTimes(1);
 });
+
+function boutonFormulaire(rect) {
+  const b = document.createElement("button");
+  b.textContent = "Ajouter un déclencheur";
+  b.setAttribute("aria-haspopup", "menu");
+  b.setAttribute("aria-expanded", "false");
+  b.getBoundingClientRect = () => rect;
+  document.body.append(b);
+  b.focus();
+  return b;
+}
+
+test("REQ163_AC6_menu_d_un_bouton_de_formulaire_aria_expanded_et_echap_rend_le_focus", () => {
+  const b = boutonFormulaire({ left: 60, right: 200, top: 100, bottom: 128, width: 140, height: 28 });
+  const surChoix = vi.fn();
+  const m = menu({ nom: "Ajouter un déclencheur", ancre: b, surFermeture: () => {}, groupes: [[{ libelle: "Fichier", surChoix }, { libelle: "Dossier" }]] });
+  ouverts.push(m);
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  expect(m.racine.getAttribute("aria-label")).toBe("Ajouter un déclencheur");
+  expect(m.racine.style.left).toBe("60px");
+  expect(m.racine.style.top).toBe("132px");
+  expect(document.activeElement.textContent).toBe("Fichier");
+  document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  expect(document.querySelector(".ya-menu")).toBeNull();
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  expect(document.activeElement).toBe(b);
+  expect(surChoix).not.toHaveBeenCalled();
+});
+
+test("REQ163_AC6_menu_retourne_au_dessus_du_bouton_s_il_manque_de_place_en_bas", () => {
+  const hauteurFenetre = window.innerHeight;
+  window.innerHeight = 300;
+  const espion = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(120);
+  try {
+    const b = boutonFormulaire({ left: 60, right: 200, top: 250, bottom: 278, width: 140, height: 28 });
+    const m = menu({ nom: "Ajouter un déclencheur", ancre: b, surFermeture: () => {}, groupes: [[{ libelle: "Fichier" }]] });
+    ouverts.push(m);
+    // 4 px au-dessus du bouton : 250 - 4 - 120.
+    expect(m.racine.style.top).toBe("126px");
+    m.fermer();
+    // De la place dessous : le menu reste dessous.
+    const c = boutonFormulaire({ left: 60, right: 200, top: 20, bottom: 48, width: 140, height: 28 });
+    const n = menu({ nom: "Ajouter un déclencheur", ancre: c, surFermeture: () => {}, groupes: [[{ libelle: "Fichier" }]] });
+    ouverts.push(n);
+    expect(n.racine.style.top).toBe("52px");
+    n.fermer();
+  } finally {
+    espion.mockRestore();
+    window.innerHeight = hauteurFenetre;
+  }
+});
+
+test("REQ163_AC6_bouton_secondaire_ouvert_garde_son_contour_et_prend_le_fond", () => {
+  expect(regle('.ya-btn[aria-expanded="true"]')).toContain("background: var(--bg-400)");
+});
