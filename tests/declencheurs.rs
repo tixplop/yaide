@@ -1,0 +1,718 @@
+#![allow(non_snake_case)]
+//! Déclencheurs des agents (REQ-163 à REQ-165) : routes et boucle du serveur.
+use serde_json::{json, Value};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::time::Duration;
+
+const EXE: &str = env!("CARGO_BIN_EXE_yaide");
+
+struct Serveur {
+    child: Child,
+    port: u16,
+    cookie: String,
+    projet: PathBuf,
+    racine: PathBuf,
+}
+
+impl Drop for Serveur {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+struct Rep {
+    code: u16,
+    corps: String,
+}
+
+impl Rep {
+    fn json(&self) -> Value {
+        serde_json::from_str(&self.corps).unwrap_or_else(|_| panic!("pas du JSON : {}", self.corps))
+    }
+}
+
+fn port_libre() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
+struct RepBrute {
+    code: u16,
+    entetes: String,
+    corps: String,
+}
+
+fn requete(
+    port: u16,
+    methode: &str,
+    chemin: &str,
+    cookie: &str,
+    origine: &str,
+    corps: &[u8],
+) -> RepBrute {
+    let mut cmd = Command::new("curl");
+    cmd.args(["-sk", "-i", "--max-time", "20", "-X", methode])
+        .arg(format!("https://127.0.0.1:{port}{chemin}"))
+        .args(["-H", &format!("Origin: {origine}")])
+        .args(["--data-binary", "@-"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped());
+    if !cookie.is_empty() {
+        cmd.args(["-H", &format!("Cookie: {cookie}")]);
+    }
+    let mut enfant = cmd.spawn().unwrap();
+    let mut stdin = enfant.stdin.take().unwrap();
+    let donnees = corps.to_vec();
+    let fil = std::thread::spawn(move || {
+        let _ = stdin.write_all(&donnees);
+    });
+    let sortie = enfant.wait_with_output().unwrap();
+    fil.join().unwrap();
+    let texte = String::from_utf8_lossy(&sortie.stdout).into_owned();
+    let code = texte
+        .split_whitespace()
+        .nth(1)
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    let (entetes, corps) = texte
+        .split_once("\r\n\r\n")
+        .map_or((String::new(), String::new()), |(e, c)| {
+            (e.to_string(), c.to_string())
+        });
+    RepBrute {
+        code,
+        entetes,
+        corps,
+    }
+}
+
+impl Serveur {
+    fn appel(&self, methode: &str, chemin: &str, corps: &Value) -> Rep {
+        let origine = format!("https://127.0.0.1:{}", self.port);
+        let corps = if corps.is_null() {
+            String::new()
+        } else {
+            corps.to_string()
+        };
+        let r = requete(
+            self.port,
+            methode,
+            chemin,
+            &self.cookie,
+            &origine,
+            corps.as_bytes(),
+        );
+        Rep {
+            code: r.code,
+            corps: r.corps,
+        }
+    }
+    fn yaide(&self) -> PathBuf {
+        self.projet.join(".yaide")
+    }
+}
+
+/// Dossier de test avec mot de passe défini ; renvoie la racine.
+fn preparer(nom: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!("agent-{nom}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let d = d.canonicalize().unwrap();
+    let mut c = Command::new(EXE)
+        .arg("passwd")
+        .env("XDG_CONFIG_HOME", d.join("cfg"))
+        .env("HOME", &d)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    c.stdin.take().unwrap().write_all(b"mdp\n").unwrap();
+    assert!(c.wait().unwrap().success());
+    d
+}
+
+/// Lance Yaide sur `racine/<projet>` (le dossier est créé s'il manque).
+fn demarrer(racine: &Path, projet: &str) -> Serveur {
+    demarrer_avec_env(racine, projet, &[])
+}
+
+/// Comme `demarrer`, avec des variables d'environnement en plus pour Yaide.
+fn demarrer_avec_env(racine: &Path, projet: &str, env: &[(&str, &str)]) -> Serveur {
+    let projet = racine.join(projet);
+    std::fs::create_dir_all(&projet).unwrap();
+    // Un autre test peut prendre le port entre `port_libre` et le lancement : on réessaie.
+    for _ in 0..5 {
+        let port = port_libre();
+        let child = Command::new(EXE)
+            .arg(&projet)
+            .args(["--port", &port.to_string()])
+            .env("XDG_CONFIG_HOME", racine.join("cfg"))
+            .env("HOME", racine)
+            .env("GIT_CEILING_DIRECTORIES", racine)
+            .env("YAIDE_INTERVALLE_BASE_MS", "100")
+            .envs(env.iter().copied())
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut s = Serveur {
+            child,
+            port,
+            cookie: String::new(),
+            projet: projet.clone(),
+            racine: racine.to_path_buf(),
+        };
+        let origine = format!("https://127.0.0.1:{port}");
+        for _ in 0..1000 {
+            if s.child.try_wait().unwrap().is_some() {
+                break;
+            }
+            if requete(port, "GET", "/api/info", "", &origine, b"").code == 200 {
+                std::thread::sleep(Duration::from_millis(200));
+                if s.child.try_wait().unwrap().is_some() {
+                    break;
+                }
+                let r = requete(port, "POST", "/api/connexion", "", &origine, b"mdp");
+                let ligne = r
+                    .entetes
+                    .lines()
+                    .find(|l| l.to_lowercase().starts_with("set-cookie:"))
+                    .expect("pas de Set-Cookie");
+                s.cookie = ligne[11..].trim().split(';').next().unwrap().to_string();
+                return s;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+    panic!("le serveur ne répond pas");
+}
+
+fn lancer(nom: &str) -> Serveur {
+    demarrer(&preparer(nom), "projet")
+}
+
+/// Arrête l'instance et en relance une sur le même projet.
+fn redemarrer(s: Serveur) -> Serveur {
+    let racine = s.racine.clone();
+    let nom = s.projet.file_name().unwrap().to_owned();
+    drop(s);
+    demarrer(&racine, nom.to_str().unwrap())
+}
+
+type Recues = std::sync::Arc<std::sync::Mutex<Vec<Value>>>;
+
+fn rep_texte(t: &str, delai: u64) -> (u16, Value, u64) {
+    (
+        200,
+        json!({"choices": [{"message": {"content": t}}],
+               "usage": {"prompt_tokens": 7, "completion_tokens": 1}}),
+        delai,
+    )
+}
+
+/// Faux provider : rend les réponses du scénario dans l'ordre (chacune après son délai en ms),
+/// puis « ok » sans délai. Chaque requête reçue est notée.
+fn faux_provider(scenario: Vec<(u16, Value, u64)>) -> (String, Recues) {
+    use axum::body::Bytes;
+    use axum::extract::State;
+    use axum::http::StatusCode;
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex};
+    #[derive(Clone)]
+    struct Etat(Arc<Mutex<VecDeque<(u16, Value, u64)>>>, Recues);
+    async fn rep(State(e): State<Etat>, corps: Bytes) -> (StatusCode, String) {
+        e.1.lock()
+            .unwrap()
+            .push(serde_json::from_slice::<Value>(&corps).unwrap_or(Value::Null));
+        let suivante = e.0.lock().unwrap().pop_front();
+        let (code, v, delai) = suivante.unwrap_or_else(|| rep_texte("ok", 0));
+        tokio::time::sleep(Duration::from_millis(delai)).await;
+        (StatusCode::from_u16(code).unwrap(), v.to_string())
+    }
+    let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    ecoute.set_nonblocking(true).unwrap();
+    let adresse = format!("http://{}", ecoute.local_addr().unwrap());
+    let recues: Recues = Default::default();
+    let etat = Etat(Arc::new(Mutex::new(scenario.into())), recues.clone());
+    std::thread::spawn(move || {
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async move {
+                let app = axum::Router::new().fallback(rep).with_state(etat);
+                let ecoute = tokio::net::TcpListener::from_std(ecoute).unwrap();
+                axum::serve(ecoute, app).await.unwrap();
+            });
+    });
+    (adresse, recues)
+}
+
+/// Faux provider et profil `m` ; avec `cle`, la clé est enregistrée.
+fn configurer(s: &Serveur, adresse: &str, cle: bool) {
+    let mut corps = json!({ "adresse": adresse });
+    if cle {
+        corps["cle"] = json!("sk-x");
+    }
+    let r = s.appel("PUT", "/api/agent/providers/openai", &corps);
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let p = json!({ "nom": "p", "provider": "openai", "modele": "m" });
+    let r = s.appel("PUT", "/api/agent/profils", &p);
+    assert_eq!(r.code, 200, "{}", r.corps);
+}
+
+fn agent(s: &Serveur, nom: &str, declencheurs: Value) -> Rep {
+    s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "nom": nom, "couleur": "vert", "declencheurs": declencheurs }),
+    )
+}
+
+fn fichier(chemin: &str) -> Value {
+    json!({ "type": "fichier", "chemin": chemin })
+}
+
+fn ecrire(s: &Serveur, chemin: &str, texte: &str) {
+    let f = s.projet.join(chemin);
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+    std::fs::write(f, texte).unwrap();
+}
+
+fn conversations(s: &Serveur) -> Vec<Value> {
+    let r = s.appel("GET", "/api/agent/conversations", &Value::Null);
+    assert_eq!(r.code, 200, "{}", r.corps);
+    r.json().as_array().unwrap().clone()
+}
+
+fn lire_conv(s: &Serveur, id: &str) -> Value {
+    s.appel(
+        "GET",
+        &format!("/api/agent/conversations/{id}"),
+        &Value::Null,
+    )
+    .json()
+}
+
+/// Attend jusqu'à `n` conversations (10 s au plus) puis les rend.
+fn attendre_conversations(s: &Serveur, n: usize) -> Vec<Value> {
+    for _ in 0..200 {
+        let l = conversations(s);
+        if l.len() >= n {
+            return l;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("moins de {n} conversations : {:?}", conversations(s));
+}
+
+fn attendre_fin(s: &Serveur, id: &str) {
+    for _ in 0..200 {
+        if lire_conv(s, id)["enCours"] == false {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("le tour ne finit pas");
+}
+
+/// Le temps de deux vérifications (100 ms chacune) avant une modification.
+fn laisser_voir() {
+    std::thread::sleep(Duration::from_millis(600));
+}
+
+fn json_fiche(s: &Serveur, dossier: &str) -> Value {
+    let o = std::fs::read(s.yaide().join(format!("agents/{dossier}/agent.json"))).unwrap();
+    serde_json::from_slice(&o).unwrap()
+}
+
+fn cinq() -> Value {
+    json!([
+        fichier("docs/a.md"),
+        { "type": "dossier", "chemin": "src" },
+        { "type": "commit" },
+        { "type": "commande", "texte": "cargo test" },
+        { "type": "configuration" },
+    ])
+}
+
+#[test]
+fn REQ163_AC1_cinq_declencheurs_dans_l_ordre_apres_redemarrage_reste_inchange() {
+    let s = lancer("d1");
+    let r = s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "nom": "Relecteur", "avatar": "R", "couleur": "vert" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let avant = json_fiche(&s, "relecteur");
+    let r = s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "dossier": "relecteur", "nom": "Relecteur", "avatar": "R",
+                 "couleur": "vert", "declencheurs": cinq() }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let apres = json_fiche(&s, "relecteur");
+    assert_eq!(apres["declencheurs"], cinq());
+    let mut sans = apres.clone();
+    sans.as_object_mut().unwrap().remove("declencheurs");
+    assert_eq!(sans, avant);
+    let s = redemarrer(s);
+    let l = s.appel("GET", "/api/agent/agents", &Value::Null).json();
+    assert_eq!(l["agents"][0]["declencheurs"], cinq());
+}
+
+#[test]
+fn REQ163_AC2_un_retire_les_autres_restent_dans_l_ordre() {
+    let s = lancer("d2");
+    let r = agent(&s, "Relecteur", cinq());
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let mut restants = cinq().as_array().unwrap().clone();
+    restants.remove(1);
+    let r = s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "dossier": "relecteur", "nom": "Relecteur", "couleur": "vert",
+                 "declencheurs": restants }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert_eq!(json_fiche(&s, "relecteur")["declencheurs"], json!(restants));
+}
+
+#[test]
+fn REQ163_AC3_refus_par_champ_et_par_rang_rien_ecrit() {
+    let s = lancer("d3");
+    for chemin in ["", "/etc/passwd", "../x", "a/../../x"] {
+        let r = agent(
+            &s,
+            "Relecteur",
+            json!([{ "type": "commit" }, fichier(chemin)]),
+        );
+        assert_eq!(r.code, 400, "{chemin} : {}", r.corps);
+        assert_eq!(
+            r.json()["erreurs"],
+            json!([{ "champ": "chemin", "declencheur": 1 }])
+        );
+    }
+    let r = agent(
+        &s,
+        "Relecteur",
+        json!([{ "type": "dossier", "chemin": "../x" }, { "type": "commande", "texte": " " }]),
+    );
+    assert_eq!(r.code, 400, "{}", r.corps);
+    assert_eq!(
+        r.json()["erreurs"],
+        json!([{ "champ": "chemin", "declencheur": 0 }, { "champ": "texte", "declencheur": 1 }])
+    );
+    assert!(!s.yaide().join("agents").exists());
+    // Un champ de la fiche en erreur n'empêche pas les erreurs des déclencheurs.
+    let r = s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "nom": "", "couleur": "vert", "declencheurs": [fichier("/x")] }),
+    );
+    assert_eq!(r.code, 400, "{}", r.corps);
+    assert_eq!(
+        r.json()["erreurs"],
+        json!([{ "champ": "nom" }, { "champ": "chemin", "declencheur": 0 }])
+    );
+    assert!(!s.yaide().join("agents").exists());
+    // Une fiche existante reste telle quelle.
+    agent(&s, "Relecteur", json!([fichier("a.md")]));
+    let avant = std::fs::read(s.yaide().join("agents/relecteur/agent.json")).unwrap();
+    let r = s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "dossier": "relecteur", "nom": "Relecteur", "couleur": "vert",
+                 "declencheurs": [fichier("")] }),
+    );
+    assert_eq!(r.code, 400);
+    let apres = std::fs::read(s.yaide().join("agents/relecteur/agent.json")).unwrap();
+    assert_eq!(avant, apres);
+    // `.` désigne tout le projet ; un chemin qui n'existe pas encore est permis.
+    assert_eq!(
+        agent(&s, "Autre", json!([fichier("."), fichier("x/../y/z")])).code,
+        200
+    );
+}
+
+#[test]
+fn REQ164_AC1_AC2_AC5_REQ165_AC1_une_conversation_par_agent_a_l_ecoute() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("d4");
+    configurer(&s, &adresse, true);
+    for (nom, chemin) in [
+        ("Relecteur", "docs/a.md"),
+        ("Testeur", "docs/a.md"),
+        ("Autre", "docs/z.md"),
+    ] {
+        assert_eq!(agent(&s, nom, json!([fichier(chemin)])).code, 200);
+    }
+    assert_eq!(agent(&s, "Sans", json!([])).code, 200);
+    std::fs::write(s.yaide().join("agents/relecteur/AGENTS.md"), "Tu relis.").unwrap();
+    laisser_voir();
+    assert!(conversations(&s).is_empty());
+    // créé
+    ecrire(&s, "docs/a.md", "un");
+    let l = attendre_conversations(&s, 2);
+    std::thread::sleep(Duration::from_millis(500));
+    let l2 = conversations(&s);
+    assert_eq!(l2.len(), 2, "{l:?}");
+    for c in &l2 {
+        assert_eq!(c["titre"], "Évènement : fichier `docs/a.md` créé.");
+    }
+    let mut agents_vus = Vec::new();
+    for c in &l2 {
+        let id = c["id"].as_str().unwrap();
+        attendre_fin(&s, id);
+        let v = lire_conv(&s, id);
+        assert_eq!(v["agents"].as_array().unwrap().len(), 1);
+        agents_vus.push(v["agents"][0]["dossier"].as_str().unwrap().to_string());
+        assert_eq!(v["entrees"][0]["type"], "utilisateur");
+        assert_eq!(
+            v["entrees"][0]["texte"],
+            "Évènement : fichier `docs/a.md` créé."
+        );
+        assert_eq!(v["entrees"][1]["texte"], "ok");
+        if v["agents"][0]["dossier"] == "relecteur" {
+            let reqs = recues.lock().unwrap().clone();
+            let r = reqs
+                .iter()
+                .find(|r| r["messages"].to_string().contains("Tu relis."))
+                .expect("instructions de Relecteur");
+            assert_eq!(r["model"], "m");
+            assert!(r["messages"]
+                .to_string()
+                .contains("Évènement : fichier `docs/a.md` créé."));
+        }
+    }
+    agents_vus.sort();
+    assert_eq!(agents_vus, ["relecteur", "testeur"]);
+    // On peut répondre dans la conversation déclenchée (AC-164-5).
+    let id = l2[0]["id"].as_str().unwrap();
+    let avant = lire_conv(&s, id)["total"].as_u64().unwrap();
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "conversation": id, "texte": "merci" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    attendre_fin(&s, id);
+    let v = lire_conv(&s, id);
+    let e = v["entrees"].as_array().unwrap();
+    assert_eq!(v["total"].as_u64().unwrap(), avant + 2);
+    assert_eq!(e[e.len() - 2]["type"], "utilisateur");
+    assert_eq!(e[e.len() - 2]["texte"], "merci");
+    assert_eq!(e[e.len() - 1]["texte"], "ok");
+    // modifié, réécrit à l'identique, supprimé
+    let fin = |n: usize| {
+        let l = attendre_conversations(&s, n);
+        std::thread::sleep(Duration::from_millis(400));
+        l
+    };
+    ecrire(&s, "docs/a.md", "deux");
+    let l = fin(4);
+    assert_eq!(l.len(), 4);
+    assert_eq!(l[0]["titre"], "Évènement : fichier `docs/a.md` modifié.");
+    ecrire(&s, "docs/a.md", "deux");
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(conversations(&s).len(), 4, "même contenu : rien");
+    std::fs::remove_file(s.projet.join("docs/a.md")).unwrap();
+    let l = fin(6);
+    assert_eq!(l.len(), 6);
+    assert_eq!(l[0]["titre"], "Évènement : fichier `docs/a.md` supprimé.");
+    for c in &l {
+        attendre_fin(&s, c["id"].as_str().unwrap());
+    }
+}
+
+#[test]
+fn REQ164_AC4_aucune_conversation_pendant_un_tour_de_l_agent() {
+    let (adresse, _) = faux_provider(vec![
+        rep_texte("ok", 1500),
+        rep_texte("ok", 1500),
+        rep_texte("ok", 0),
+        rep_texte("ok", 1500),
+    ]);
+    let s = lancer("d5");
+    configurer(&s, &adresse, true);
+    assert_eq!(
+        agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
+        200
+    );
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "1");
+    let id = attendre_conversations(&s, 1)[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    // Le tour est en cours (réponse retardée) : le fichier change sous lui.
+    assert_eq!(lire_conv(&s, &id)["enCours"], true);
+    ecrire(&s, "docs/a.md", "2");
+    ecrire(&s, "docs/b.md", "x");
+    attendre_fin(&s, &id);
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(conversations(&s).len(), 1);
+    // Un tour ouvert par l'utilisateur avec Relecteur compte aussi.
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "agents": ["relecteur"], "texte": "bonjour" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let id2 = r.json()["conversation"].as_str().unwrap().to_string();
+    ecrire(&s, "docs/a.md", "3");
+    attendre_fin(&s, &id2);
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(conversations(&s).len(), 2);
+    // Après la fin du tour : une nouvelle conversation.
+    ecrire(&s, "docs/a.md", "4");
+    let l = attendre_conversations(&s, 3);
+    attendre_fin(&s, l[0]["id"].as_str().unwrap());
+    std::thread::sleep(Duration::from_millis(500));
+    // Une écriture juste après la fin d'un tour compte aussi.
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "agents": ["relecteur"], "texte": "encore" }),
+    );
+    let id3 = r.json()["conversation"].as_str().unwrap().to_string();
+    ecrire(&s, "docs/a.md", "5");
+    attendre_fin(&s, &id3);
+    ecrire(&s, "docs/a.md", "6");
+    attendre_conversations(&s, 5);
+}
+
+#[test]
+fn REQ164_AC6_sans_cle_puis_sans_profil_la_conversation_garde_le_refus() {
+    let (adresse, recues) = faux_provider(vec![]);
+    let s = lancer("d6");
+    assert_eq!(
+        agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
+        200
+    );
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "1");
+    let l = attendre_conversations(&s, 1);
+    let v = lire_conv(&s, l[0]["id"].as_str().unwrap());
+    assert_eq!(v["enCours"], false);
+    assert_eq!(
+        v["entrees"][0]["texte"],
+        "Évènement : fichier `docs/a.md` créé."
+    );
+    assert_eq!(v["entrees"][1]["type"], "message");
+    assert_eq!(v["entrees"][1]["variante"], "erreur");
+    assert_eq!(
+        v["entrees"][1]["texte"],
+        "Aucun profil. Créez-en un avec Ctrl+P, puis > Profils de modèle."
+    );
+    configurer(&s, &adresse, false);
+    ecrire(&s, "docs/a.md", "2");
+    let l = attendre_conversations(&s, 2);
+    let v = lire_conv(&s, l[0]["id"].as_str().unwrap());
+    assert_eq!(
+        v["entrees"][0]["texte"],
+        "Évènement : fichier `docs/a.md` modifié."
+    );
+    assert_eq!(
+        v["entrees"][1]["texte"],
+        "Aucune clé pour OpenAI. Ajoutez-la avec Ctrl+P, puis > Providers LLM."
+    );
+    assert!(
+        recues.lock().unwrap().is_empty(),
+        "aucune requête au provider"
+    );
+}
+
+#[test]
+fn REQ164_AC7_fonction_agents_inactive_puis_reactivee() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("d7");
+    configurer(&s, &adresse, true);
+    assert_eq!(
+        agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
+        200
+    );
+    std::fs::write(
+        s.yaide().join("interface.json"),
+        r#"{"fonctions":{"agents":false}}"#,
+    )
+    .unwrap();
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "1");
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(conversations(&s).is_empty());
+    std::fs::write(
+        s.yaide().join("interface.json"),
+        r#"{"fonctions":{"agents":true}}"#,
+    )
+    .unwrap();
+    laisser_voir();
+    assert!(conversations(&s).is_empty());
+    ecrire(&s, "docs/a.md", "2");
+    attendre_conversations(&s, 1);
+}
+
+#[test]
+fn REQ164_AC8_ce_qui_change_pendant_l_arret_ne_se_soumet_pas() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("d8");
+    configurer(&s, &adresse, true);
+    assert_eq!(
+        agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
+        200
+    );
+    laisser_voir();
+    let racine = s.racine.clone();
+    drop(s);
+    ecrire_hors(&racine, "docs/a.md", "arrêt");
+    let s = demarrer(&racine, "projet");
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(conversations(&s).is_empty());
+    ecrire(&s, "docs/a.md", "après");
+    attendre_conversations(&s, 1);
+}
+
+fn ecrire_hors(racine: &Path, chemin: &str, texte: &str) {
+    let f = racine.join("projet").join(chemin);
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+    std::fs::write(f, texte).unwrap();
+}
+
+#[test]
+fn REQ164_AC9_declencheur_ajoute_puis_retire() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("d9");
+    configurer(&s, &adresse, true);
+    assert_eq!(agent(&s, "Relecteur", json!([])).code, 200);
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "0");
+    std::thread::sleep(Duration::from_millis(800));
+    assert!(conversations(&s).is_empty());
+    let fiche = |d: Value| {
+        s.appel(
+            "PUT",
+            "/api/agent/agents",
+            &json!({ "dossier": "relecteur", "nom": "Relecteur", "couleur": "vert",
+                     "declencheurs": d }),
+        )
+    };
+    assert_eq!(fiche(json!([fichier("docs/a.md")])).code, 200);
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "1");
+    let id = attendre_conversations(&s, 1)[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    attendre_fin(&s, &id);
+    assert_eq!(fiche(json!([])).code, 200);
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "2");
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(conversations(&s).len(), 1);
+}

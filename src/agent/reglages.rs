@@ -54,6 +54,9 @@ struct Fichier {
 pub enum Erreur {
     /// Champs refusés, par nom.
     Champs(Vec<&'static str>),
+    /// Fiche d'agent avec des déclencheurs refusés : rang (depuis 0) et champ, et les autres
+    /// champs refusés.
+    Declencheurs(Vec<&'static str>, Vec<(usize, &'static str)>),
     /// Provider ou profil inconnu.
     Inconnu,
     Systeme(String),

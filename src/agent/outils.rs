@@ -701,12 +701,14 @@ fn sauver_agent(a: &Value, ctx: &Contexte) -> Result<String, String> {
     });
     if let Some(e) = &existant {
         saisie["dossier"] = e.dossier.clone().into();
+        saisie["declencheurs"] = serde_json::to_value(&e.declencheurs).unwrap_or_default();
     }
     let agent = ctx.agents.enregistrer(&saisie).map_err(|e| match e {
         Erreur::Champs(c) if c.contains(&"nom") => {
             "The name is empty or already used by another agent.".to_string()
         }
         Erreur::Champs(c) => format!("Invalid value for: {}.", c.join(", ")),
+        Erreur::Declencheurs(..) => "Invalid triggers.".into(),
         Erreur::Inconnu => "Unknown agent folder.".into(),
         Erreur::Systeme(m) => m,
     })?;
@@ -2209,6 +2211,28 @@ mod tests {
         assert!(!r.echec, "{r:?}");
         assert_eq!(md(&d, "autre", "PERSONA.md"), "");
         assert_eq!(md(&d, "autre", "AGENTS.md"), "");
+    }
+
+    #[tokio::test]
+    async fn REQ163_AC4_save_agent_garde_les_declencheurs_et_list_agents_ne_les_rend_pas() {
+        let d = dossier("save-declencheurs");
+        let c = ctx(&d);
+        let decl = json!([{"type": "fichier", "chemin": "docs/a.md"}, {"type": "commit"}]);
+        c.agents
+            .enregistrer(&json!({"nom": "Relecteur", "couleur": "violet", "declencheurs": decl}))
+            .unwrap();
+        let r = lancer_outil(
+            &c,
+            "save_agent",
+            json!({"folder": "relecteur", "color": "vert"}),
+        )
+        .await;
+        assert!(!r.echec, "{r:?}");
+        let j = agent_json(&d, "relecteur");
+        assert_eq!(j["couleur"], "vert");
+        assert_eq!(j["declencheurs"], decl);
+        let r = lancer_outil(&c, "list_agents", json!({})).await;
+        assert!(!r.contenu.contains("declencheurs") && !r.contenu.contains("docs/a.md"));
     }
 
     #[tokio::test]

@@ -21,6 +21,84 @@ pub struct Agent {
     pub couleur: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profil: Option<String>,
+    /// Absente d'`agent.json` quand elle est vide (REQ-163).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub declencheurs: Vec<Declencheur>,
+}
+
+/// Un déclencheur : `type` parmi `fichier`, `dossier`, `commit`, `commande`, `configuration`.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Declencheur {
+    #[serde(rename = "type")]
+    pub genre: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chemin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub texte: Option<String>,
+}
+
+/// Vérifie la saisie des déclencheurs ; refus : `(rang, champ)`.
+fn declencheurs_de(saisie: &Value) -> Result<Vec<Declencheur>, Vec<(usize, &'static str)>> {
+    let mut sortie = Vec::new();
+    let mut refus = Vec::new();
+    for (i, d) in saisie
+        .get("declencheurs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        let genre = d.get("type").and_then(Value::as_str).unwrap_or("");
+        let champ = |c: &str| {
+            d.get(c)
+                .and_then(Value::as_str)
+                .map(|t| t.trim().to_string())
+        };
+        let mut decl = Declencheur {
+            genre: genre.to_string(),
+            chemin: None,
+            texte: None,
+        };
+        match genre {
+            "fichier" | "dossier" => match champ("chemin") {
+                Some(c) if chemin_du_projet(&c) => decl.chemin = Some(c),
+                _ => refus.push((i, "chemin")),
+            },
+            "commande" => match d.get("texte").and_then(Value::as_str) {
+                Some(t) if !t.trim().is_empty() => decl.texte = Some(t.to_string()),
+                _ => refus.push((i, "texte")),
+            },
+            "commit" | "configuration" => {}
+            _ => refus.push((i, "type")),
+        }
+        sortie.push(decl);
+    }
+    if refus.is_empty() {
+        Ok(sortie)
+    } else {
+        Err(refus)
+    }
+}
+
+/// Relatif, non vide, sans `..` qui sorte du projet ; `.` désigne tout le projet.
+fn chemin_du_projet(c: &str) -> bool {
+    use std::path::Component;
+    if c.is_empty() || c.contains('\0') {
+        return false;
+    }
+    let mut profondeur = 0usize;
+    for p in std::path::Path::new(c).components() {
+        match p {
+            Component::Normal(_) => profondeur += 1,
+            Component::CurDir => {}
+            Component::ParentDir => match profondeur.checked_sub(1) {
+                Some(n) => profondeur = n,
+                None => return false,
+            },
+            _ => return false,
+        }
+    }
+    true
 }
 
 #[derive(Serialize, Debug)]
@@ -162,15 +240,19 @@ impl Agents {
         {
             champs.push("profil");
         }
-        if !champs.is_empty() {
-            return Err(Erreur::Champs(champs));
-        }
+        let declencheurs = declencheurs_de(saisie);
+        let declencheurs = match declencheurs {
+            Ok(d) if champs.is_empty() => d,
+            Ok(_) => return Err(Erreur::Champs(champs)),
+            Err(rangs) => return Err(Erreur::Declencheurs(champs, rangs)),
+        };
         let mut agent = Agent {
             dossier: String::new(),
             nom,
             avatar,
             couleur,
             profil,
+            declencheurs,
         };
         // Le dossier n'est pas dans `agent.json`.
         let mut fiche = serde_json::json!({
@@ -178,6 +260,9 @@ impl Agents {
         });
         if let Some(p) = &agent.profil {
             fiche["profil"] = Value::String(p.clone());
+        }
+        if !agent.declencheurs.is_empty() {
+            fiche["declencheurs"] = serde_json::to_value(&agent.declencheurs).unwrap_or_default();
         }
         let octets =
             serde_json::to_vec_pretty(&fiche).map_err(|e| Erreur::Systeme(e.to_string()))?;
@@ -369,6 +454,34 @@ mod tests {
         let mut t = saisie("Y");
         t["profil"] = json!(id);
         assert_eq!(a.enregistrer(&t).unwrap().profil, Some(id));
+    }
+
+    #[test]
+    fn REQ163_AC5_sans_cle_declencheurs_lu_vide_et_reecrit_sans_la_cle() {
+        let (a, y) = agents("d5");
+        a.enregistrer(&saisie("Relecteur")).unwrap();
+        let f = y.join("agents/relecteur/agent.json");
+        assert!(!std::fs::read_to_string(&f)
+            .unwrap()
+            .contains("declencheurs"));
+        std::fs::write(&f, r#"{"nom":"Relecteur","avatar":"","couleur":"vert"}"#).unwrap();
+        assert!(a.lire("relecteur").unwrap().declencheurs.is_empty());
+        let mut s = saisie("Relecteur");
+        s["dossier"] = json!("relecteur");
+        a.enregistrer(&s).unwrap();
+        assert!(!std::fs::read_to_string(&f)
+            .unwrap()
+            .contains("declencheurs"));
+    }
+
+    #[test]
+    fn REQ163_chemins_du_projet() {
+        for ok in [".", "a", "a/b.md", "a/../b", "./a"] {
+            assert!(chemin_du_projet(ok), "{ok}");
+        }
+        for ko in ["", "/etc/passwd", "..", "../x", "a/../../x"] {
+            assert!(!chemin_du_projet(ko), "{ko}");
+        }
     }
 
     #[test]

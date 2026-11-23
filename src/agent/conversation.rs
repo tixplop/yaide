@@ -2,6 +2,7 @@
 //! Le fichier `.yaide/conversations/<id>.json` est la seule source de l'historique.
 
 use super::agents::{Agent, Agents};
+use super::declencheurs;
 use super::mcp::Mcp;
 use super::outils::{self, Contexte, Limites};
 use super::provider::{self, Appel, Effort, ErreurProvider, Message, Reglage};
@@ -145,6 +146,8 @@ pub struct Gestionnaire {
     registre: Mutex<HashMap<String, Tour>>,
     /// Les serveurs MCP de l'instance, partagés par toutes les conversations (REQ-095).
     mcp: Mcp,
+    /// État des déclencheurs des agents (REQ-164).
+    declencheurs: Mutex<declencheurs::Etat>,
 }
 
 fn maintenant() -> u64 {
@@ -358,6 +361,7 @@ impl Gestionnaire {
             client: provider::client(),
             limites,
             registre: Mutex::new(HashMap::new()),
+            declencheurs: Mutex::new(declencheurs::Etat::default()),
         }
     }
 
@@ -641,6 +645,49 @@ Always give file paths relative to the project root.",
         Ok(id)
     }
 
+    /// Vrai si une conversation où figure l'agent `dossier` a un tour en cours (REQ-164).
+    pub fn agent_occupe(&self, dossier: &str) -> bool {
+        verrou(&self.registre).values().any(|t| {
+            let c = verrou(&t.conv);
+            c.en_cours && c.agents.iter().any(|a| a.dossier == dossier)
+        })
+    }
+
+    /// Enregistre une conversation avec l'agent seul, le message, puis le refus en message
+    /// d'erreur, sans tour ni requête (REQ-164).
+    pub fn enregistrer_refus(&self, agent: &Agent, texte: &str, refus: &str) -> Result<(), String> {
+        let maj = maintenant();
+        let c = Conversation {
+            id: nouvel_id()?,
+            titre: titre(texte),
+            profil: String::new(),
+            cree: maj,
+            maj,
+            en_cours: false,
+            instructions: String::new(),
+            tokens: 0,
+            entrees: vec![
+                Entree::Utilisateur {
+                    texte: texte.to_string(),
+                },
+                message_erreur(refus.to_string(), String::new()),
+            ],
+            agents: vec![AgentConv {
+                dossier: agent.dossier.clone(),
+                nom: agent.nom.clone(),
+                avatar: agent.avatar.clone(),
+                couleur: agent.couleur.clone(),
+                profil: agent.profil.clone(),
+                instructions: self.instructions_agent(agent, &[]),
+                tokens: 0,
+            }],
+            actif: None,
+            restants: Vec::new(),
+            etape: None,
+        };
+        self.sauver(&c)
+    }
+
     /// Arrêt de Yaide : arrête les serveurs MCP et ce qu'ils ont lancé.
     pub async fn arreter_mcp(&self) {
         self.mcp.arreter().await;
@@ -701,7 +748,10 @@ Always give file paths relative to the project root.",
                 }
             }
         }
-        let id = {
+        // Le verrou des déclencheurs : une vérification voit le tour en cours, ou fini et
+        // l'état des agents déjà pris (REQ-164).
+        let mut etat = verrou(&self.declencheurs);
+        let (id, dossiers) = {
             let mut c = verrou(&conv);
             if c.en_cours {
                 c.en_cours = false;
@@ -710,9 +760,24 @@ Always give file paths relative to the project root.",
                 c.maj = maintenant();
                 self.sauver_ou_dire(&c);
             }
-            c.id.clone()
+            (c.id.clone(), c.agents.clone())
         };
         verrou(&self.registre).remove(&id);
+        self.reprendre_etat(&mut etat, &dossiers);
+    }
+
+    /// Les déclencheurs des agents repartent de l'état du moment (fin d'un tour).
+    fn reprendre_etat(&self, etat: &mut declencheurs::Etat, agents: &[AgentConv]) {
+        for a in agents {
+            if let Some(agent) = self.agents.lire(&a.dossier) {
+                declencheurs::rafraichir(etat, &self.projet, &agent);
+            }
+        }
+    }
+
+    /// Les déclencheurs d'un agent : à n'utiliser que par `declencheurs::passer`.
+    pub fn etat_declencheurs(&self) -> &Mutex<declencheurs::Etat> {
+        &self.declencheurs
     }
 
     /// Requête au provider d'un profil. `None` si le provider du profil est inconnu.
@@ -1126,6 +1191,7 @@ Always give file paths relative to the project root.",
 
     /// Arrête le tour en cours. Faux si la conversation n'existe pas.
     pub fn arreter(&self, id: &str) -> bool {
+        let mut etat = verrou(&self.declencheurs);
         let tour = verrou(&self.registre).remove(id);
         match tour {
             Some(t) => {
@@ -1136,6 +1202,9 @@ Always give file paths relative to the project root.",
                     c.maj = maintenant();
                     self.sauver_ou_dire(&c);
                 }
+                let dossiers = c.agents.clone();
+                drop(c);
+                self.reprendre_etat(&mut etat, &dossiers);
                 true
             }
             None => self.lire(id, 0).is_some(),
@@ -1761,6 +1830,7 @@ mod tests {
                 avatar: String::new(),
                 couleur: "violet".into(),
                 profil: profil.map(String::from),
+                declencheurs: Vec::new(),
             }
         }
         fn fichier_agent(&self, a: &Agent, nom: &str, texte: &str) {

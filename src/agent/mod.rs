@@ -1,5 +1,6 @@
 pub mod agents;
 pub mod conversation;
+pub mod declencheurs;
 pub mod jdiag;
 pub mod jdiag_controle;
 pub mod jdiag_trace;

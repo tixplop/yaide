@@ -1159,7 +1159,7 @@ fn json_rep(code: StatusCode, v: serde_json::Value) -> Response {
 fn reponse_reglages(etat: &Etat, res: Result<(), Erreur>) -> Response {
     match res {
         Ok(()) => json_rep(StatusCode::OK, etat.reglages.vue()),
-        Err(Erreur::Inconnu) => StatusCode::NOT_FOUND.into_response(),
+        Err(Erreur::Inconnu | Erreur::Declencheurs(..)) => StatusCode::NOT_FOUND.into_response(),
         Err(Erreur::Champs(c)) if c == ["adresse"] => json_rep(
             StatusCode::BAD_REQUEST,
             serde_json::json!({ "champ": "adresse" }),
@@ -1808,6 +1808,21 @@ async fn agents_enregistrer(State(etat): State<Partage>, corps: Bytes) -> Respon
                 serde_json::json!({ "erreurs": erreurs }),
             )
         }
+        Err(Erreur::Declencheurs(champs, rangs)) => {
+            let mut erreurs: Vec<_> = champs
+                .iter()
+                .map(|c| serde_json::json!({ "champ": c }))
+                .collect();
+            erreurs.extend(
+                rangs.iter().map(
+                    |(rang, champ)| serde_json::json!({ "champ": champ, "declencheur": rang }),
+                ),
+            );
+            json_rep(
+                StatusCode::BAD_REQUEST,
+                serde_json::json!({ "erreurs": erreurs }),
+            )
+        }
         Err(Erreur::Systeme(m)) => json_rep(
             StatusCode::INTERNAL_SERVER_ERROR,
             serde_json::json!({ "erreur": m }),
@@ -1950,6 +1965,17 @@ pub async fn servir(
             tokio::time::sleep(intervalle_verification()).await;
         }
     });
+    let surveillance = etat.clone();
+    let surveillance = tokio::spawn(async move {
+        loop {
+            crate::agent::declencheurs::passer(
+                &surveillance.projet_dir,
+                &surveillance.agents,
+                &surveillance.agent,
+            );
+            tokio::time::sleep(intervalle_verification()).await;
+        }
+    });
     let suivi = etat.clone();
     let veille = tokio::spawn(async move {
         let Ok(client) = version::client() else {
@@ -2066,6 +2092,7 @@ pub async fn servir(
         _ = async { tokio::select! { _ = arret() => {}, _ = etat_arret.arret_demande.notified() => {} } } => {
             veille.abort();
             verification.abort();
+            surveillance.abort();
             etat_arret.opencode.arreter().await;
             agent_arret.arreter_mcp().await;
             registre.arreter().await;
