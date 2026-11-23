@@ -79,7 +79,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/vues/depot-onglets.js — dépôt et persistance des onglets de l'éditeur — depotOnglets
 - web/src/vues/fichiers.js, git.js, recherche.js, ouverture.js — vues Fichiers, Git, Recherche, ouverture rapide — vueFichiers, vueGit, vueOuverture
 - web/src/vues/shells.js — zone des shells — vueShells
-- web/src/vues/agent.js, agents.js, soumission-agent.js — conversation de l'agent, panneau Agents, soumission de fichiers — vueAgent, vueAgents, ouvrirSoumissionAgent
+- web/src/vues/agent.js, agents.js, soumission-agent.js — conversation de l'agent, panneau Agents (fiche : section « Déclencheurs », REQ-163), soumission de fichiers — vueAgent, vueAgents, ouvrirSoumissionAgent
 - web/src/vues/claude.js, opencode.js, sessions-opencode.js — sessions Claude et opencode — vueClaude, vueOpencode
 - web/src/vues/connaissance.js, ajout-connaissance.js — base de connaissance — vueConnaissance, ouvrirAjoutConnaissance
 - web/src/vues/configuration.js, configuration-couleurs.js, providers.js, profils.js, serveurs-mcp.js — dialogue Configuration et panneaux de réglage — ouvrirConfiguration, ouvrirProviders, vueServeursMcp
@@ -118,7 +118,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-085 état de la requête et raisonnement replié, dépliable pendant l'arrivée → src/agent/provider.rs, conversation.rs, web/src/ui/conversation.js, vues/agent.js
 - REQ-052 à REQ-057, REQ-067, REQ-078 providers, profils, agent, outils → src/agent/provider.rs, reglages.rs, conversation.rs, outils.rs, web/src/vues/providers.js, profils.js, agent.js
 - REQ-064 à REQ-066, REQ-097 à REQ-100, REQ-119 agents et sous-agents → src/agent/agents.rs, conversation.rs, outils.rs, web/src/vues/agents.js
-- REQ-163, REQ-164, REQ-165, REQ-166, REQ-167 déclencheurs des agents (types « Fichier », « Commit », « Commande shell » ; boucle lancée par `servir`) → src/agent/agents.rs, declencheurs.rs, conversation.rs (`agent_occupe`, `enregistrer_refus`), outils.rs (`save_agent`), serveur.rs, shells.rs, integration-shell/, tests/declencheurs.rs, tests/shells.rs
+- REQ-163, REQ-164, REQ-165, REQ-166, REQ-167 déclencheurs des agents (types « Fichier », « Commit », « Commande shell » ; boucle lancée par `servir`) → src/agent/agents.rs, declencheurs.rs, conversation.rs (`agent_occupe`, `enregistrer_refus`), outils.rs (`save_agent`), serveur.rs, web/src/vues/agents.js (section « Déclencheurs » de la fiche), shells.rs, integration-shell/, tests/declencheurs.rs, tests/shells.rs
 - REQ-081 réglages communs à tous les projets → src/agent/reglages.rs
 - REQ-095, REQ-096 serveurs MCP → src/agent/mcp.rs, web/src/vues/serveurs-mcp.js
 - REQ-068, REQ-073 session Claude → src/shells.rs, web/src/vues/claude.js

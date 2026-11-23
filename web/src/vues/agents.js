@@ -3,6 +3,8 @@ import { COULEURS, avatar, compterCaracteres } from "../ui/avatar.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { indication } from "../ui/indication.js";
+import { liste } from "../ui/liste.js";
+import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
@@ -12,6 +14,31 @@ const ERREURS = {
   nomPris: "Ce nom est déjà pris. Choisissez-en un autre.",
   avatar: "Avatar : deux caractères au plus.",
 };
+const ERREUR_CHEMIN = "Donnez un chemin dans le projet.";
+const ERREUR_COMMANDE = "Donnez le texte de la commande.";
+// Types de déclencheur (REQ-163) : `type` écrit dans `agent.json`, titre, réglage, aide.
+const TYPES = [
+  { type: "fichier", titre: "Fichier", reglage: "chemin", aide: "Depuis la racine du projet." },
+  { type: "dossier", titre: "Dossier", reglage: "chemin", aide: "Depuis la racine du projet, sous-dossiers compris. « . » : tout le projet." },
+  { type: "commit", titre: "Commit", aide: "À chaque commit du dépôt." },
+  { type: "commande", titre: "Commande shell", reglage: "texte", aide: "Une commande d'un shell de Yaide qui contient ce texte. Les majuscules comptent." },
+  { type: "configuration", titre: "Configuration de Yaide", aide: "À chaque changement des providers, des profils, des serveurs MCP ou des préférences." },
+];
+const AIDE_DECLENCHEURS = "À chaque évènement, l'agent le reçoit dans une nouvelle conversation.";
+
+/** Un chemin relatif, non vide, qui ne sort pas du projet (`.` : tout le projet). */
+function cheminDuProjet(chemin) {
+  const c = chemin.trim();
+  if (!c || c.startsWith("/") || c.includes("\0")) return false;
+  let profondeur = 0;
+  for (const segment of c.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") profondeur--;
+    else profondeur++;
+    if (profondeur < 0) return false;
+  }
+  return true;
+}
 const sansPoint = (t) => String(t ?? "erreur").replace(/\.$/, "");
 const plusieurs = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
 
@@ -33,6 +60,7 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
   let generation = 0; // change à chaque chargement ou ouverture de fiche : une réponse en retard est ignorée
   let fiche = null;
   let detruite = false;
+  let compteurDeclencheurs = 0;
 
   // ---------- Liste ----------
 
@@ -149,6 +177,10 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
       resultat: null,
       enCours: false,
       entrees: {},
+      declencheurs: (a?.declencheurs ?? []).flatMap((d) => {
+        const t = TYPES.find((x) => x.type === d.type);
+        return t ? [{ id: `d${++compteurDeclencheurs}`, type: t.type, valeur: d[t.reglage] ?? "" }] : [];
+      }),
       barre: document.createElement("div"),
       formulaire: document.createElement("div"),
     };
@@ -269,8 +301,69 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
     aide.textContent = f.dossier ? "S'ouvrent dans l'éditeur." : "Enregistrez l'agent pour créer ses fichiers.";
     cFichiers.append(legende, boutons, aide);
 
-    f.formulaire.replaceChildren(cNom, cAvatar, cCouleur, cProfil, cFichiers);
+    f.formulaire.replaceChildren(cNom, cAvatar, cCouleur, cProfil, cFichiers, sectionDeclencheurs(f, entrer, effacerResultat));
     if (f.resultat) f.formulaire.append(message({ texte: f.resultat.texte, variante: f.resultat.variante }));
+  }
+
+  /** Le `fieldset` « Déclencheurs » : aide, liste d'éléments, bouton qui ouvre le menu des cinq types. */
+  function sectionDeclencheurs(f, entrer, effacerResultat) {
+    const section = document.createElement("fieldset");
+    section.className = "agents-declencheurs";
+    const legende = document.createElement("legend");
+    legende.className = "champ-libelle";
+    legende.textContent = "Déclencheurs";
+    const aide = document.createElement("div");
+    aide.className = "champ-aide";
+    aide.id = `agents-declencheurs-aide-${++compteurDeclencheurs}`;
+    aide.textContent = AIDE_DECLENCHEURS;
+    section.setAttribute("aria-describedby", aide.id);
+    const ajouter = bouton({ libelle: "Ajouter un déclencheur", icone: "plus", ouvreMenu: true });
+    const type = (d) => TYPES.find((t) => t.type === d.type);
+    const ligne = (d) => ({
+      id: d.id,
+      titre: type(d).titre,
+      champ: type(d).reglage ? { valeur: d.valeur } : undefined,
+      aide: type(d).aide,
+      erreur: f.erreurs.declencheurs?.[d.id],
+    });
+    const racine = liste({
+      variante: "elements",
+      nom: "Déclencheurs",
+      nomElement: "Déclencheur",
+      vide: "Aucun déclencheur.",
+      apres: ajouter,
+      lignes: f.declencheurs.map(ligne),
+      surSaisie: (id, valeur) => {
+        f.declencheurs.find((d) => d.id === id).valeur = valeur;
+        effacerResultat();
+      },
+      surRetrait: (id) => {
+        f.declencheurs = f.declencheurs.filter((d) => d.id !== id);
+        delete f.erreurs.declencheurs?.[id];
+        effacerResultat();
+      },
+    });
+    racine.addEventListener("keydown", (e) => e.target.tagName === "INPUT" && entrer(e));
+    ajouter.addEventListener("click", () => {
+      menu({
+        nom: "Ajouter un déclencheur",
+        ancre: ajouter,
+        groupes: [
+          TYPES.map((t) => ({
+            libelle: t.titre,
+            surChoix: () => {
+              const d = { id: `d${++compteurDeclencheurs}`, type: t.type, valeur: "" };
+              f.declencheurs.push(d);
+              effacerResultat();
+              racine.ajouter(ligne(d));
+            },
+          })),
+        ],
+        surFermeture: () => {},
+      });
+    });
+    section.append(legende, aide, racine, ajouter.enveloppe ?? ajouter);
+    return section;
   }
 
   function verifier() {
@@ -279,6 +372,11 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
     if (!nom) e.nom = ERREURS.nom;
     else if (agents.some((a) => a.dossier !== fiche.dossier && a.nom.trim().toLowerCase() === nom.toLowerCase())) e.nom = ERREURS.nomPris;
     if (compterCaracteres(fiche.avatar.trim()) > 2) e.avatar = ERREURS.avatar;
+    for (const d of fiche.declencheurs) {
+      const reglage = TYPES.find((t) => t.type === d.type).reglage;
+      const refus = reglage === "chemin" ? !cheminDuProjet(d.valeur) && ERREUR_CHEMIN : reglage === "texte" && !d.valeur.trim() && ERREUR_COMMANDE;
+      if (refus) (e.declencheurs ??= {})[d.id] = refus;
+    }
     return e;
   }
 
@@ -288,15 +386,23 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
     f.erreurs = verifier();
     f.resultat = null;
     const premier = ["nom", "avatar"].find((c) => f.erreurs[c]);
-    if (premier) {
+    const premierDeclencheur = f.declencheurs.find((d) => f.erreurs.declencheurs?.[d.id]);
+    if (premier || premierDeclencheur) {
       dessinerFiche();
-      f.entrees[premier].focus();
+      (premier ? f.entrees[premier] : f.formulaire.querySelector(`[data-id="${premierDeclencheur.id}"] input`)).focus();
       return;
     }
     const saisie = { nom: f.nom.trim(), avatar: f.avatar.trim(), couleur: f.couleur };
     if (f.dossier) saisie.dossier = f.dossier;
     if (f.profil) saisie.profil = f.profil;
+    if (f.declencheurs.length) {
+      saisie.declencheurs = f.declencheurs.map((d) => {
+        const reglage = TYPES.find((t) => t.type === d.type).reglage;
+        return reglage ? { type: d.type, [reglage]: reglage === "chemin" ? d.valeur.trim() : d.valeur } : { type: d.type };
+      });
+    }
     const actif = Object.keys(f.entrees).find((c) => f.entrees[c] === document.activeElement);
+    const idActif = document.activeElement?.closest?.("[data-id]")?.dataset.id;
     f.enCours = true;
     const r = await api.enregistrerAgent(saisie);
     f.enCours = false;
@@ -318,6 +424,7 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
     const erreur = ["nom", "avatar"].find((c) => f.erreurs[c]);
     if (erreur) f.entrees[erreur].focus();
     else if (actif) f.entrees[actif].focus();
+    else if (idActif) f.formulaire.querySelector(`[data-id="${idActif}"] input`)?.focus();
   }
 
   function retourListe() {

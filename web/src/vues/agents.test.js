@@ -325,3 +325,177 @@ test("REQ067_demarrer_rend_les_agents_dans_l_ordre", async () => {
   await attendre();
   expect(cases().every((x) => !x.checked)).toBe(true);
 });
+
+// ---------- Déclencheurs (REQ-163) ----------
+
+const AIDES = {
+  Fichier: "Depuis la racine du projet.",
+  Dossier: "Depuis la racine du projet, sous-dossiers compris. « . » : tout le projet.",
+  Commit: "À chaque commit du dépôt.",
+  "Commande shell": "Une commande d'un shell de Yaide qui contient ce texte. Les majuscules comptent.",
+  "Configuration de Yaide": "À chaque changement des providers, des profils, des serveurs MCP ou des préférences.",
+};
+
+async function ficheRelecteur(agent = RELECTEUR) {
+  const o = await ouvrir([agent]);
+  o.bouton("Modifier Relecteur").click();
+  const ajouter = o.bouton("Ajouter un déclencheur");
+  const choisir = (type) => {
+    ajouter.focus();
+    ajouter.click();
+    [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].find((m) => m.textContent === type).click();
+  };
+  const retirer = (n) => o.bouton(`Retirer le déclencheur ${n}`);
+  return { ...o, ajouter, choisir, retirer };
+}
+
+test("REQ163_AC6_section_menu_des_cinq_types_et_echap", async () => {
+  const { c, ajouter } = await ficheRelecteur();
+  const section = [...c.querySelectorAll("fieldset")].find((f) => f.querySelector("legend")?.textContent === "Déclencheurs");
+  expect(section.previousElementSibling.textContent).toContain("Fichiers");
+  expect(document.getElementById(section.getAttribute("aria-describedby")).textContent).toBe("À chaque évènement, l'agent le reçoit dans une nouvelle conversation.");
+  expect(section.querySelector('[role="status"]').textContent).toBe("Aucun déclencheur.");
+  expect(ajouter.getAttribute("aria-haspopup")).toBe("menu");
+  expect(ajouter.getAttribute("aria-expanded")).toBe("false");
+  ajouter.focus();
+  ajouter.click();
+  const m = document.querySelector('[role="menu"]');
+  expect(m.getAttribute("aria-label")).toBe("Ajouter un déclencheur");
+  expect([...m.querySelectorAll('[role="menuitem"]')].map((x) => x.textContent)).toEqual(Object.keys(AIDES));
+  expect(document.activeElement.textContent).toBe("Fichier");
+  expect(ajouter.getAttribute("aria-expanded")).toBe("true");
+  document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+  expect(c.querySelector("ol")).toBeNull();
+  expect(document.activeElement).toBe(ajouter);
+  expect(ajouter.getAttribute("aria-expanded")).toBe("false");
+});
+
+test("REQ163_AC7_titre_champ_nomme_aide_par_type_et_rien_d_ecrit", async () => {
+  const { api, c, choisir, retirer } = await ficheRelecteur();
+  choisir("Dossier");
+  expect(c.querySelector('[role="status"]')).toBeNull();
+  const ol = c.querySelector('ol[aria-label="Déclencheurs"]');
+  const champ1 = ol.querySelector("input");
+  expect(ol.children[0].querySelector(".ya-element-titre").textContent).toContain("Dossier");
+  expect(champ1.labels[0].textContent).toBe("Déclencheur 1 : Dossier");
+  expect(champ1.value).toBe("");
+  expect(document.activeElement).toBe(champ1);
+  expect(document.getElementById(champ1.getAttribute("aria-describedby")).textContent).toBe(AIDES.Dossier);
+  choisir("Commit");
+  expect(ol.children).toHaveLength(2);
+  expect(ol.children[1].querySelector("input")).toBeNull();
+  expect(ol.children[1].textContent).toContain("À chaque commit du dépôt.");
+  expect(document.activeElement).toBe(retirer(2));
+  for (const type of ["Fichier", "Commande shell", "Configuration de Yaide"]) {
+    choisir(type);
+    const li = ol.lastElementChild;
+    expect(li.querySelector(".ya-element-aide, .champ-aide").textContent).toBe(AIDES[type]);
+  }
+  expect(api.enregistrerAgent).not.toHaveBeenCalled();
+});
+
+test("REQ163_AC1_cinq_types_enregistres_dans_l_ordre_de_la_fiche", async () => {
+  const { api, c, choisir, bouton } = await ficheRelecteur();
+  const champs = () => [...c.querySelectorAll("ol input")];
+  choisir("Fichier");
+  taper(champs().at(-1), "docs/a.md");
+  choisir("Dossier");
+  taper(champs().at(-1), "src");
+  choisir("Commit");
+  choisir("Commande shell");
+  taper(champs().at(-1), "cargo test");
+  choisir("Configuration de Yaide");
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(api.etat.envoyes[0].declencheurs).toEqual([
+    { type: "fichier", chemin: "docs/a.md" },
+    { type: "dossier", chemin: "src" },
+    { type: "commit" },
+    { type: "commande", texte: "cargo test" },
+    { type: "configuration" },
+  ]);
+  expect(c.querySelector(".message").textContent).toBe("Agent « Relecteur » enregistré.");
+  expect(c.querySelectorAll("ol > li")).toHaveLength(5);
+  // Rouverte, la fiche montre les cinq déclencheurs.
+  bouton("Retour aux agents").click();
+  await attendre();
+  bouton("Modifier Relecteur").click();
+  expect([...c.querySelectorAll("ol .ya-element-titre")].map((t) => t.textContent.replace(/^Déclencheur \d : /, ""))).toEqual(["Fichier", "Dossier", "Commit", "Commande shell", "Configuration de Yaide"]);
+  expect(champs().map((i) => i.value)).toEqual(["docs/a.md", "src", "cargo test"]);
+});
+
+test("REQ163_AC2_retrait_enregistre_et_retour_n_ecrit_rien", async () => {
+  const agent = { ...RELECTEUR, declencheurs: [{ type: "fichier", chemin: "a" }, { type: "commit" }, { type: "dossier", chemin: "b" }] };
+  const { api, c, retirer, bouton } = await ficheRelecteur(agent);
+  retirer(2).click();
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(api.etat.envoyes[0].declencheurs).toEqual([{ type: "fichier", chemin: "a" }, { type: "dossier", chemin: "b" }]);
+  retirer(1).click();
+  retirer(1).click();
+  bouton("Enregistrer").click();
+  await attendre();
+  expect("declencheurs" in api.etat.envoyes[1]).toBe(false);
+  // Retour sans enregistrer : aucune écriture de plus.
+  expect(c.querySelector('[role="status"]').textContent).toBe("Aucun déclencheur.");
+  const avant = api.etat.envoyes.length;
+  bouton("Retour aux agents").click();
+  await attendre();
+  expect(api.etat.envoyes).toHaveLength(avant);
+});
+
+test("REQ163_AC8_retrait_renumerote_focus_et_ordre_de_tab", async () => {
+  const agent = {
+    ...RELECTEUR,
+    declencheurs: [{ type: "fichier", chemin: "a" }, { type: "commit" }, { type: "dossier", chemin: "b" }],
+  };
+  const { c, retirer, ajouter, bouton } = await ficheRelecteur(agent);
+  const section = c.querySelector("fieldset.agents-declencheurs");
+  const tabs = [...section.querySelectorAll("button, input")].map((e) => e.getAttribute("aria-label") ?? (e.tagName === "INPUT" ? e.value : e.textContent));
+  expect(tabs).toEqual(["Retirer le déclencheur 1", "a", "Retirer le déclencheur 2", "Retirer le déclencheur 3", "b", "Ajouter un déclencheur"]);
+  const ordre = [...c.querySelectorAll("button, input")];
+  expect(ordre.indexOf(ajouter)).toBeLessThan(ordre.indexOf(bouton("Enregistrer")));
+  retirer(2).click();
+  expect(c.querySelectorAll("ol > li")).toHaveLength(2);
+  expect(document.activeElement).toBe(retirer(2));
+  expect(c.querySelectorAll("ol input")[1].labels[0].textContent).toBe("Déclencheur 2 : Dossier");
+  retirer(2).click();
+  expect(document.activeElement).toBe(retirer(1));
+  retirer(1).click();
+  expect(c.querySelector('[role="status"]').textContent).toBe("Aucun déclencheur.");
+  expect(document.activeElement).toBe(ajouter);
+  expect(bouton("Enregistrer")).toBeTruthy();
+});
+
+test("REQ163_AC3_AC9_refus_sous_le_champ_alert_invalid_focus_et_rien_d_ecrit", async () => {
+  const { api, c, choisir, bouton } = await ficheRelecteur();
+  const champs = () => [...c.querySelectorAll("ol input")];
+  choisir("Dossier");
+  taper(champs()[0], "../x");
+  choisir("Commande shell");
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(api.enregistrerAgent).not.toHaveBeenCalled();
+  const [dossier, commande] = champs();
+  const message = (el) => document.getElementById(el.getAttribute("aria-describedby"));
+  expect(message(dossier).textContent).toBe("Donnez un chemin dans le projet.");
+  expect(message(commande).textContent).toBe("Donnez le texte de la commande.");
+  expect(message(dossier).getAttribute("role")).toBe("alert");
+  expect(dossier.getAttribute("aria-invalid")).toBe("true");
+  expect(commande.getAttribute("aria-invalid")).toBe("true");
+  expect(c.textContent).not.toContain("sous-dossiers compris");
+  expect(document.activeElement).toBe(dossier);
+  // Chemin vide et absolu : mêmes refus ; `.` et `a/../b` passent.
+  for (const mauvais of ["", "/etc/passwd", "a/../../x"]) {
+    taper(champs()[0], mauvais);
+    taper(champs()[1], "cargo");
+    bouton("Enregistrer").click();
+    await attendre();
+    expect(message(champs()[0]).textContent).toBe("Donnez un chemin dans le projet.");
+  }
+  taper(champs()[0], ".");
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(api.etat.envoyes[0].declencheurs).toEqual([{ type: "dossier", chemin: "." }, { type: "commande", texte: "cargo" }]);
+});

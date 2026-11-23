@@ -779,6 +779,9 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .agents-vide { flex: 1; align-items: center; justify-content: center; text-align: center; }
 .agents-fiche { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
 .agents-fiche .champ { max-width: var(--largeur-agent); }
+.agents-declencheurs { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.agents-declencheurs legend { padding: 0; margin-bottom: var(--space-1); }
+.agents-declencheurs > .ya-btn { align-self: flex-start; }
 .agents-ligne-avatar { display: flex; align-items: center; gap: var(--space-2); }
 .agents-ligne-avatar .ya-input { width: 64px; }
 .agents-fichiers { display: flex; flex-wrap: wrap; gap: var(--space-2); }

@@ -1448,3 +1448,132 @@ test("REQ085_parcours_107_l_agent_attend_puis_raisonne_replie_depliable", async 
   // (REQ085_AC17_raisonnements_de_l_ouverture_replies_…_conversation_rouverte_repliee), avec
   // aria-expanded="false", et le journal par tests/agent.rs (REQ085_AC1_AC4_AC5_…_apres_redemarrage).
 });
+
+test("REQ163_AC1_AC2_AC6_AC9_parcours_128_129_declencheurs_de_la_fiche", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  const dossier = depotAgent();
+  yaide = await lancerYaide({ dossier });
+  const dossierAgent = path.join(dossier, ".yaide", "agents", "relecteur");
+  fs.mkdirSync(dossierAgent, { recursive: true });
+  const fichierAgent = path.join(dossierAgent, "agent.json");
+  fs.writeFileSync(fichierAgent, JSON.stringify({ nom: "Relecteur", avatar: "🦉", couleur: "vert" }, null, 2));
+  const lire = () => JSON.parse(fs.readFileSync(fichierAgent, "utf8"));
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  const colonne = page.locator("aside.cadre-agent");
+  const section = colonne.getByRole("group", { name: "Déclencheurs" });
+  const ajouter = colonne.getByRole("button", { name: "Ajouter un déclencheur" });
+  const menu = page.getByRole("menu", { name: "Ajouter un déclencheur" });
+  const ouvrirFiche = async () => {
+    await page.getByRole("button", { name: "Agents", exact: true }).click();
+    await colonne.getByRole("button", { name: "Modifier Relecteur" }).click();
+    await expect(colonne.getByLabel("Nom", { exact: true })).toBeFocused();
+  };
+
+  // P-128 1 et 2 : la section vide, le menu, Échap.
+  await ouvrirFiche();
+  await expect(section).toContainText("À chaque évènement, l'agent le reçoit dans une nouvelle conversation.");
+  await expect(section.getByText("Aucun déclencheur.")).toBeVisible();
+  await expect(ajouter).toHaveAttribute("aria-haspopup", "menu");
+  await expect(ajouter).toHaveAttribute("aria-expanded", "false");
+  await ajouter.click();
+  await expect(ajouter).toHaveAttribute("aria-expanded", "true");
+  await expect(menu.getByRole("menuitem")).toHaveText(["Fichier", "Dossier", "Commit", "Commande shell", "Configuration de Yaide"]);
+  await expect(menu.getByRole("menuitem", { name: "Fichier" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(ajouter).toBeFocused();
+  await expect(section.getByText("Aucun déclencheur.")).toBeVisible();
+
+  // 3 et 4 : cinq déclencheurs, par le clavier ; rien n'est écrit avant « Enregistrer ».
+  const avant = fs.readFileSync(fichierAgent, "utf8");
+  const ajoutAvecSaisie = async (type, texte) => {
+    await ajouter.click();
+    await menu.getByRole("menuitem", { name: type, exact: true }).click();
+    if (texte !== undefined) {
+      await expect(page.locator(":focus")).toHaveAccessibleName(/^Déclencheur \d : /);
+      await page.keyboard.type(texte);
+    } else await expect(page.locator(":focus")).toHaveAccessibleName(/^Retirer le déclencheur \d$/);
+  };
+  await ajoutAvecSaisie("Fichier", "docs/a.md");
+  await ajoutAvecSaisie("Dossier", "src");
+  await ajoutAvecSaisie("Commit");
+  await ajoutAvecSaisie("Commande shell", "cargo test");
+  await ajoutAvecSaisie("Configuration de Yaide");
+  await expect(section.getByRole("list", { name: "Déclencheurs" }).getByRole("listitem")).toHaveCount(5);
+  await expect(section.getByRole("textbox", { name: "Déclencheur 2 : Dossier" })).toHaveValue("src");
+  expect(fs.readFileSync(fichierAgent, "utf8")).toBe(avant);
+
+  // 5 : « Enregistrer » ; `agent.json` a les cinq déclencheurs, le reste n'a pas changé.
+  const enregistrer = colonne.getByRole("button", { name: "Enregistrer", exact: true });
+  await enregistrer.click();
+  await expect(colonne.getByText("Agent « Relecteur » enregistré.")).toBeVisible();
+  await expect(enregistrer).toBeFocused();
+  const cinq = [
+    { type: "fichier", chemin: "docs/a.md" },
+    { type: "dossier", chemin: "src" },
+    { type: "commit" },
+    { type: "commande", texte: "cargo test" },
+    { type: "configuration" },
+  ];
+  expect(lire()).toEqual({ nom: "Relecteur", avatar: "🦉", couleur: "vert", declencheurs: cinq });
+
+  // 6 : Yaide relancé, la fiche rouverte les montre.
+  yaide = await yaide.relancer();
+  await page.reload();
+  await ouvrirFiche();
+  await expect(section.getByRole("textbox")).toHaveCount(3);
+  await expect(section.getByRole("textbox", { name: "Déclencheur 1 : Fichier" })).toHaveValue("docs/a.md");
+  await expect(section.getByRole("textbox", { name: "Déclencheur 2 : Dossier" })).toHaveValue("src");
+  await expect(section.getByRole("textbox", { name: "Déclencheur 4 : Commande shell" })).toHaveValue("cargo test");
+
+  // P-129 : colonne à 240 px, retrait, deux refus.
+  await page.getByRole("separator", { name: "Largeur de l'agent" }).focus();
+  for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowRight");
+  await expect.poll(async () => Math.round((await colonne.boundingBox()).width)).toBe(240);
+  const mesurer = () => page.evaluate(() => {
+    const f = document.querySelector(".agents-fiche");
+    const lignes = [...f.querySelectorAll(".ya-element-tete")].map((t) => {
+      const [titre, retirer] = [t.querySelector(".ya-element-titre"), t.querySelector("button")];
+      const a = titre.getBoundingClientRect();
+      const b = retirer.getBoundingClientRect();
+      return Math.abs(a.top + a.height / 2 - (b.top + b.height / 2));
+    });
+    return { defile: f.scrollWidth - f.clientWidth, lignes };
+  });
+  const cinqLignes = await mesurer();
+  expect(cinqLignes.defile).toBe(0);
+  expect(cinqLignes.lignes).toHaveLength(5);
+  for (const ecart of cinqLignes.lignes) expect(ecart).toBeLessThan(6);
+  await section.getByRole("button", { name: "Retirer le déclencheur 5" }).click();
+  await expect(section.getByRole("button", { name: "Retirer le déclencheur 4" })).toBeFocused();
+  await section.getByRole("textbox", { name: "Déclencheur 2 : Dossier" }).fill("../x");
+  await section.getByRole("textbox", { name: "Déclencheur 4 : Commande shell" }).fill("");
+  await enregistrer.click();
+  const dossierChamp = section.getByRole("textbox", { name: "Déclencheur 2 : Dossier" });
+  const commandeChamp = section.getByRole("textbox", { name: "Déclencheur 4 : Commande shell" });
+  await expect(section.getByRole("alert").filter({ hasText: "Donnez un chemin dans le projet." })).toBeVisible();
+  await expect(section.getByRole("alert").filter({ hasText: "Donnez le texte de la commande." })).toBeVisible();
+  await expect(dossierChamp).toHaveAttribute("aria-invalid", "true");
+  await expect(commandeChamp).toHaveAttribute("aria-invalid", "true");
+  await expect(dossierChamp).toBeFocused();
+  expect(lire().declencheurs).toEqual(cinq);
+  const quatreLignes = await mesurer();
+  expect(quatreLignes.defile).toBe(0);
+  expect(quatreLignes.lignes).toHaveLength(4);
+  for (const ecart of quatreLignes.lignes) expect(ecart).toBeLessThan(6);
+  await section.getByRole("button", { name: "Retirer le déclencheur 4" }).click();
+  await expect(section.getByRole("button", { name: "Retirer le déclencheur 3" })).toBeFocused();
+
+  // 4 : « Retour aux agents » sans écriture, les cinq déclencheurs reviennent.
+  await colonne.getByRole("button", { name: "Retour aux agents" }).click();
+  expect(lire().declencheurs).toEqual(cinq);
+  await colonne.getByRole("button", { name: "Modifier Relecteur" }).click();
+  await expect(section.getByRole("listitem")).toHaveCount(5);
+  await expect(section.getByRole("textbox", { name: "Déclencheur 2 : Dossier" })).toHaveValue("src");
+
+  // AC-163-2 : un retrait enregistré ne laisse que les autres, dans leur ordre.
+  await section.getByRole("button", { name: "Retirer le déclencheur 3" }).click();
+  await enregistrer.click();
+  await expect(colonne.getByText("Agent « Relecteur » enregistré.")).toBeVisible();
+  expect(lire().declencheurs).toEqual([cinq[0], cinq[1], cinq[3], cinq[4]]);
+});
