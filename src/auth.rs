@@ -1,6 +1,10 @@
 use ring::hmac;
 
-pub const NOM_COOKIE: &str = "yaide_session";
+/// Un cookie par port : le navigateur ne distingue pas les ports, et deux instances
+/// ne doivent pas s'effacer mutuellement la session.
+pub fn nom_cookie(port: u16) -> String {
+    format!("yaide_session_{port}")
+}
 pub const DUREE_SESSION: u64 = 30 * 24 * 3600;
 pub const DUREE_BLOCAGE: u64 = 60;
 const ECHECS_MAX: u32 = 5;

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { lancerYaide } from "./aides.js";
+import { lancerYaide, nomLigne } from "./aides.js";
 
 let yaide;
 test.beforeEach(async () => {
@@ -263,4 +263,39 @@ test("REQ162_AC4_AC7_AC13_arreter_yaide_dialogue_processus_arrete_puis_relance_a
   await expect(page.getByRole("status").filter({ hasText: "Yaide a été arrêté. 2 shells ont été fermés." })).toBeVisible();
   await expect(page.getByRole("tab", { name: "main.rs, non sauvegardé" })).toBeVisible();
   await expect(page.locator(".cm-content")).toContainText("// garde");
+});
+
+test("REQ005_AC10_deconnexion_et_arret_sur_un_port_laissent_la_session_de_l_autre", async ({ context }) => {
+  const yaideB = await lancerYaide({ dossier: yaide.dossier, reprise: true });
+  try {
+    const pageA = await context.newPage();
+    const pageB = await context.newPage();
+    const connecter = async (page, y) => {
+      await page.goto(y.origine + "/");
+      await page.getByLabel("Mot de passe").fill("mdp");
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+    };
+    const verifierB = async () => {
+      await expect(pageB.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+      await expect(pageB.getByLabel("Mot de passe")).toHaveCount(0);
+      await expect(pageB.getByRole("dialog")).toHaveCount(0);
+      await pageB.getByRole("treeitem", { name: nomLigne("README.md") }).click();
+      await expect(pageB.getByRole("tab", { name: /README\.md/ })).toBeVisible();
+      await pageB.reload();
+      await expect(pageB.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+      await expect(pageB.getByLabel("Mot de passe")).toHaveCount(0);
+    };
+    await connecter(pageA, yaide);
+    await connecter(pageB, yaideB);
+    await pageA.getByRole("button", { name: "Déconnexion" }).click();
+    await pageA.getByLabel("Mot de passe").waitFor();
+    await verifierB();
+    await connecter(pageA, yaide);
+    await pageA.getByRole("button", { name: "Arrêter Yaide" }).click();
+    await expect(pageA.getByRole("dialog", { name: "Yaide est arrêté. Vous êtes déconnecté." })).toBeVisible();
+    await verifierB();
+  } finally {
+    await yaideB.arreter();
+  }
 });

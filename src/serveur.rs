@@ -27,6 +27,8 @@ const CSP: &str = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src
 struct Etat {
     config: PathBuf,
     projet: String,
+    /// Port d'écoute réel : nomme le cookie de session.
+    port: u16,
     limiteur: tokio::sync::Mutex<auth::Limiteur>,
     projet_dir: PathBuf,
     instance: String,
@@ -58,8 +60,8 @@ fn cle_session(etat: &Etat) -> Vec<u8> {
     std::fs::read(config::fichier_mot_de_passe(&etat.config)).unwrap_or_default()
 }
 
-fn cookie_de(entetes: &HeaderMap) -> Option<String> {
-    let prefixe = format!("{}=", auth::NOM_COOKIE);
+fn cookie_de(etat: &Etat, entetes: &HeaderMap) -> Option<String> {
+    let prefixe = format!("{}=", auth::nom_cookie(etat.port));
     entetes
         .get_all(header::COOKIE)
         .iter()
@@ -71,7 +73,7 @@ fn cookie_de(entetes: &HeaderMap) -> Option<String> {
 fn session_ok(etat: &Etat, entetes: &HeaderMap) -> bool {
     let cle = cle_session(etat);
     !cle.is_empty()
-        && cookie_de(entetes).is_some_and(|c| auth::session_valide(&cle, &c, maintenant()))
+        && cookie_de(etat, entetes).is_some_and(|c| auth::session_valide(&cle, &c, maintenant()))
 }
 
 /// Écriture ou WebSocket : l'`Origin` doit être l'adresse de l'instance.
@@ -227,7 +229,7 @@ async fn connexion(State(etat): State<Partage>, mot_de_passe: String) -> Respons
             header::SET_COOKIE,
             format!(
                 "{}={valeur}; Max-Age={}; Path=/; Secure; HttpOnly; SameSite=Strict",
-                auth::NOM_COOKIE,
+                auth::nom_cookie(etat.port),
                 auth::DUREE_SESSION
             ),
         )],
@@ -235,14 +237,14 @@ async fn connexion(State(etat): State<Partage>, mot_de_passe: String) -> Respons
         .into_response()
 }
 
-async fn deconnexion() -> Response {
+async fn deconnexion(State(etat): State<Partage>) -> Response {
     (
         StatusCode::NO_CONTENT,
         [(
             header::SET_COOKIE,
             format!(
                 "{}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Strict",
-                auth::NOM_COOKIE
+                auth::nom_cookie(etat.port)
             ),
         )],
     )
@@ -252,11 +254,12 @@ async fn deconnexion() -> Response {
 /// Ferme la session comme `deconnexion`, répond, puis arrête Yaide comme sur SIGTERM.
 async fn arreter_yaide(State(etat): State<Partage>) -> Response {
     // Laisse partir la réponse avant que le serveur ne s'arrête.
+    let reponse = deconnexion(State(etat.clone())).await;
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         etat.arret_demande.notify_one();
     });
-    deconnexion().await
+    reponse
 }
 
 /// Sert de sonde : 204 si la session est valide (la garde a déjà répondu 401 sinon).
@@ -1900,9 +1903,14 @@ pub async fn servir(
         Limites::default(),
     ));
     let agent_arret = agent.clone();
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("port d'écoute illisible : {e}"))?
+        .port();
     let etat: Partage = Arc::new(Etat {
         config: config.to_path_buf(),
         projet: projet.display().to_string(),
+        port,
         limiteur: Default::default(),
         projet_dir: projet.to_path_buf(),
         instance: identifiant_instance(),

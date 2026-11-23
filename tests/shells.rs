@@ -778,7 +778,8 @@ fn req162_ac2_arret_ferme_la_session_et_arrete_yaide_et_les_shells() {
         "{texte}"
     );
     assert!(
-        texte.contains("set-cookie: yaide_session=;") && texte.contains("max-age=0"),
+        texte.contains(&format!("set-cookie: yaide_session_{}=;", s.port))
+            && texte.contains("max-age=0"),
         "{texte}"
     );
     let debut = Instant::now();

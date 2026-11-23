@@ -7,7 +7,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/cli.rs — analyse des arguments, aide, saisie du mot de passe — analyser, valider_saisies
 - src/config.rs — dossier de configuration, mot de passe haché (argon2) — dossier_config, definir_mot_de_passe, verifier_mot_de_passe
 - src/tls.rs — certificat auto-signé (rcgen) — assurer_certificat
-- src/auth.rs — sessions, blocage après échecs — creer_session, session_valide, bloque
+- src/auth.rs — sessions (un cookie par port d'écoute), blocage après échecs — creer_session, session_valide, bloque
 - src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir
 - src/fichiers.rs — arborescence et opérations sur les fichiers du projet — lister, lire, ecrire
 - src/depot.rs — dépôt git, `.gitignore`, worktrees — est_un_depot, worktrees
@@ -95,8 +95,8 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - Cargo.toml, package.json, playwright.config.js, vitest.config.js, eslint.config.js — configuration des outils ; install.sh — installation
 
 ## Fonctionnalités
-- REQ-001 à REQ-006 mot de passe, lancement, HTTPS, session → src/cli.rs, config.rs, tls.rs, auth.rs, serveur.rs, web/src/vues/connexion.js
-- REQ-007 à REQ-010, REQ-034, REQ-049, REQ-050, REQ-125 arborescence → src/fichiers.rs, web/src/vues/fichiers.js
+- REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006 mot de passe, lancement, HTTPS, session → src/cli.rs, config.rs, tls.rs, auth.rs, serveur.rs, web/src/vues/connexion.js
+- REQ-007, REQ-008, REQ-009, REQ-010, REQ-034, REQ-049, REQ-050, REQ-125 arborescence → src/fichiers.rs, web/src/vues/fichiers.js
 - REQ-161 recherche dans un whiteboard (boîtes et liens, F3, vue centrée) → web/src/ui/tableau.js, tableau-calculs.js (`centrerObjet`), tableau-dessin.js, ui/panneau-recherche.js, vues/editeur.js, ui/composants.css, e2e/whiteboard.spec.js
 - REQ-160 recherche dans un fichier CSV (grille : cellules ; texte : REQ-159) → web/src/ui/tableur.js, ui/panneau-recherche.js, ui/zone-code.js, vues/editeur.js, ui/composants.css, e2e/tableur.spec.js
 - REQ-159 recherche dans un fichier markdown → web/src/ui/recherche-fichier.js, ui/zone-code.js, vues/editeur.js, ui/compteur.js, ui/composants.css

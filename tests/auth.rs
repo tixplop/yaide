@@ -114,7 +114,10 @@ fn session(port: u16, cookie: &str) -> u16 {
 }
 
 fn lancer(cfg: &Path, projet: &Path) -> Serveur {
-    let port = port_libre();
+    lancer_sur(cfg, projet, port_libre())
+}
+
+fn lancer_sur(cfg: &Path, projet: &Path, port: u16) -> Serveur {
     let child = Command::new(EXE)
         .arg(projet)
         .args(["--port", &port.to_string()])
@@ -219,8 +222,40 @@ fn req005_ac3_deconnexion_efface_le_cookie() {
         &[&origine(s.port), &format!("Cookie: {c}")],
     );
     assert_eq!(r.code, 204);
-    assert!(r.cookie().starts_with("yaide_session="));
+    assert!(r
+        .cookie()
+        .starts_with(&format!("yaide_session_{}=", s.port)));
     assert!(r.entetes().contains("max-age=0"));
+}
+
+#[test]
+fn req005_ac9_un_cookie_par_port() {
+    let d = dossier("s9");
+    let cfg = d.join("cfg");
+    passwd(&cfg, "mdp\n");
+    let a = lancer(&cfg, &d);
+    let b = lancer(&cfg, &d);
+    let ca = connexion(a.port, "mdp");
+    assert!(ca
+        .cookie()
+        .starts_with(&format!("yaide_session_{}=", a.port)));
+    let ca = ca.cookie();
+    let r = requete(
+        a.port,
+        "POST",
+        "/api/deconnexion",
+        "",
+        &[&origine(a.port), &format!("Cookie: {ca}")],
+    );
+    assert!(r
+        .cookie()
+        .starts_with(&format!("yaide_session_{}=", a.port)));
+    assert!(!r.entetes().contains(&format!("yaide_session_{}", b.port)));
+    assert_eq!(session(b.port, &ca), 401);
+    let cb = connexion(b.port, "mdp").cookie();
+    assert!(cb.starts_with(&format!("yaide_session_{}=", b.port)));
+    assert_eq!(session(b.port, &cb), 204);
+    assert_eq!(session(a.port, &cb), 401);
 }
 
 #[test]
@@ -228,11 +263,12 @@ fn req005_ac4_la_session_survit_au_redemarrage() {
     let d = dossier("s4");
     let cfg = d.join("cfg");
     passwd(&cfg, "mdp\n");
+    let port = port_libre();
     let c = {
-        let s = lancer(&cfg, &d);
+        let s = lancer_sur(&cfg, &d, port);
         connexion(s.port, "mdp").cookie()
     };
-    let s2 = lancer(&cfg, &d);
+    let s2 = lancer_sur(&cfg, &d, port);
     assert_eq!(session(s2.port, &c), 204);
 }
 
@@ -279,7 +315,10 @@ fn req006_ac1_sans_session_tout_est_refuse() {
         requete(s.port, "GET", "/api/shells/1/ws", "", &ws).code,
         401
     );
-    assert_eq!(session(s.port, "yaide_session=1.00"), 401);
+    assert_eq!(
+        session(s.port, &format!("yaide_session_{}=1.00", s.port)),
+        401
+    );
     let c = connexion(s.port, "mdp").cookie();
     assert_eq!(session(s.port, &c), 204);
 }
