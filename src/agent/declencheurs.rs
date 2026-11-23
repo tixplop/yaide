@@ -3,8 +3,9 @@
 
 use super::agents::{Agent, Agents, Declencheur};
 use super::conversation::{ErreurEnvoi, Gestionnaire, Refus};
-use super::outils_config::lire_interface;
+use super::outils_config::{lire_config, lire_interface};
 use crate::shells::Commande;
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -62,6 +63,142 @@ pub struct Etat {
     /// Journaux des branches (`logs/refs/heads/`) : nom de la branche → octets déjà lus.
     /// `None` jusqu'à la première vérification, qui ne fait que noter les tailles (REQ-166).
     journaux: Option<HashMap<String, u64>>,
+    /// (dossier de l'agent, chemin) → fichiers du dossier à la dernière vérification.
+    dossiers: HashMap<(String, String), HashMap<String, Empreinte>>,
+    /// Parties de la configuration à la dernière vérification (REQ-168) ; `None` avant la première.
+    config: Option<Vec<(&'static str, Value)>>,
+}
+
+/// Les fichiers d'un dossier du projet, sans les fichiers ignorés par git, `.git/` ni `.yaide/`.
+/// Un fichier dont la taille et la date n'ont pas bougé garde son empreinte.
+fn parcourir(
+    projet: &Path,
+    chemin: &str,
+    avant: Option<&HashMap<String, Empreinte>>,
+) -> HashMap<String, Empreinte> {
+    let git = crate::depot::est_un_depot(projet);
+    let marche = ignore::WalkBuilder::new(projet.join(chemin))
+        .hidden(false)
+        .ignore(false)
+        .git_ignore(git)
+        .git_exclude(git)
+        .git_global(git)
+        .parents(git)
+        .filter_entry(|e| e.file_name() != ".git" && e.file_name() != ".yaide")
+        .build();
+    let mut sortie = HashMap::new();
+    for e in marche.flatten() {
+        if !e.file_type().is_some_and(|t| t.is_file()) {
+            continue;
+        }
+        let rel = e
+            .path()
+            .strip_prefix(projet)
+            .unwrap_or(e.path())
+            .to_string_lossy()
+            .into_owned();
+        let connu = avant.and_then(|a| a.get(&rel));
+        let nouveau = match (connu, e.metadata()) {
+            (Some(a), Ok(m)) if m.len() == a.taille && m.modified().ok() == a.date => {
+                Some(a.clone())
+            }
+            _ => empreinte(e.path()),
+        };
+        if let Some(n) = nouveau {
+            sortie.insert(rel, n);
+        }
+    }
+    sortie
+}
+
+/// Ce qui est arrivé aux fichiers entre deux relevés, par ordre de chemin.
+fn differences(
+    avant: &HashMap<String, Empreinte>,
+    apres: &HashMap<String, Empreinte>,
+) -> Vec<String> {
+    let mut noms: Vec<&String> = avant.keys().chain(apres.keys()).collect();
+    noms.sort();
+    noms.dedup();
+    noms.into_iter()
+        .filter_map(|n| {
+            let c = match (avant.get(n), apres.get(n)) {
+                (None, Some(_)) => "créé",
+                (Some(_), None) => "supprimé",
+                (Some(a), Some(b)) if a.hash != b.hash => "modifié",
+                _ => return None,
+            };
+            Some(format!("- `{n}` {c}"))
+        })
+        .collect()
+}
+
+/// Les quatre parties de la configuration, comparées une à une. Les clés n'en font pas
+/// partie (`has_key` est écarté) ; un fichier illisible compte pour sa partie.
+fn parties(config: &Value) -> Vec<(&'static str, Value)> {
+    let illisibles = |f: &dyn Fn(&str) -> bool| -> Vec<Value> {
+        config["unreadable"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|u| u["file"].as_str().is_some_and(f))
+            .cloned()
+            .collect()
+    };
+    let providers: Vec<Value> = config["providers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|p| {
+            let mut p = p.clone();
+            if let Some(o) = p.as_object_mut() {
+                o.remove("has_key");
+            }
+            p
+        })
+        .collect();
+    let de_config = illisibles(&|f| f.ends_with("config.json"));
+    vec![
+        (
+            "providers",
+            serde_json::json!([providers, de_config.clone()]),
+        ),
+        (
+            "profils",
+            serde_json::json!([config["profiles"], de_config]),
+        ),
+        (
+            "serveurs MCP",
+            serde_json::json!([
+                config["mcp_servers"],
+                illisibles(&|f| f.ends_with("mcp.json"))
+            ]),
+        ),
+        (
+            "interface",
+            serde_json::json!([
+                config["interface"],
+                illisibles(&|f| f.ends_with("interface.json"))
+            ]),
+        ),
+    ]
+}
+
+/// L'évènement de la configuration, s'il y a eu un changement depuis la vérification précédente.
+fn relever_config(etat: &mut Etat, config: &Value) -> Option<String> {
+    let maintenant = parties(config);
+    let avant = etat.config.replace(maintenant.clone())?;
+    let noms: Vec<&str> = maintenant
+        .iter()
+        .zip(&avant)
+        .filter(|(m, a)| m.1 != a.1)
+        .map(|(m, _)| m.0)
+        .collect();
+    (!noms.is_empty()).then(|| {
+        format!(
+            "Évènement : configuration de Yaide changée : {}.\nConfiguration :\n```json\n{config}\n```",
+            noms.join(", ")
+        )
+    })
 }
 
 /// Dossier git commun du dépôt du projet (celui des branches, worktrees compris).
@@ -213,9 +350,12 @@ pub fn verifier(
     actif: bool,
     occupe: impl Fn(&str) -> bool,
     commandes: &[Commande],
+    config: &Value,
 ) -> Vec<(Agent, String)> {
     let mut sortie = Vec::new();
     let mut vivantes = HashSet::new();
+    // Comme les journaux, la configuration avance à chaque vérification.
+    let evenement_config = relever_config(etat, config);
     // Les journaux avancent à chaque vérification, même sans agent à l'écoute.
     let commits = relever_commits(etat, projet);
     let ecoute = |genre: &str| {
@@ -243,6 +383,7 @@ pub fn verifier(
             }
             match d.genre.as_str() {
                 "commit" => evenements.extend(textes_commits.iter().cloned()),
+                "configuration" => evenements.extend(evenement_config.clone()),
                 "commande" => {
                     let t = d.texte.as_deref().unwrap_or("");
                     evenements.extend(
@@ -260,6 +401,7 @@ pub fn verifier(
         }
     }
     etat.fichiers.retain(|k, _| vivantes.contains(k));
+    etat.dossiers.retain(|k, _| vivantes.contains(k));
     sortie
 }
 
@@ -270,12 +412,28 @@ fn verifier_un(
     d: &Declencheur,
     vivantes: &mut HashSet<(String, String)>,
 ) -> Option<String> {
-    if d.genre != "fichier" {
+    if d.genre != "fichier" && d.genre != "dossier" {
         return None;
     }
     let chemin = d.chemin.as_deref()?;
     let cle = (agent.dossier.clone(), chemin.to_string());
     vivantes.insert(cle.clone());
+    if d.genre == "dossier" {
+        let apres = parcourir(projet, chemin, etat.dossiers.get(&cle));
+        let lignes = match etat.dossiers.get(&cle) {
+            // Premier regard : l'état du moment, sans évènement.
+            None => Vec::new(),
+            Some(avant) => differences(avant, &apres),
+        };
+        etat.dossiers.insert(cle, apres);
+        let nom = chemin.trim_end_matches('/');
+        return (!lignes.is_empty()).then(|| {
+            format!(
+                "Évènement : changements dans le dossier `{nom}/` :\n{}",
+                lignes.join("\n")
+            )
+        });
+    }
     let complet = projet.join(chemin);
     match etat.fichiers.get(&cle) {
         // Premier regard : l'état du moment, sans évènement.
@@ -333,6 +491,7 @@ pub fn passer(
         .unwrap_or_else(|e| e.into_inner());
     let liste = agents.lister().agents;
     let commandes = shells.prendre_commandes();
+    let config = lire_config(gestionnaire.reglages(), projet);
     let messages = verifier(
         &mut etat,
         projet,
@@ -340,6 +499,7 @@ pub fn passer(
         actif,
         |d| gestionnaire.agent_occupe(d),
         &commandes,
+        &config,
     );
     drop(etat);
     for (agent, texte) in messages {

@@ -124,7 +124,7 @@ pub fn argument_principal(nom: &str, a: &Value) -> Option<String> {
 
 pub fn lancer(nom: &str, a: &Value, ctx: &Contexte) -> Option<Result<String, String>> {
     Some(match nom {
-        "get_config" => Ok(lire_config(ctx)),
+        "get_config" => Ok(lire_config(&ctx.reglages, &ctx.projet).to_string()),
         "save_provider" => sauver_provider(a, ctx),
         "save_profile" => sauver_profil(a, ctx),
         "save_mcp_server" => sauver_serveur(a, ctx),
@@ -197,15 +197,16 @@ fn effort_en_anglais(e: &Value) -> Value {
         .map_or(Value::Null, |(_, a)| json!(a))
 }
 
-fn lire_config(ctx: &Contexte) -> String {
-    let dossier = ctx.reglages.dossier();
+/// La configuration telle que la rend `get_config` (jamais une clé).
+pub fn lire_config(reglages: &reglages::Reglages, projet: &Path) -> Value {
+    let dossier = reglages.dossier();
     let (f_config, f_mcp, f_interface) = (
         dossier.join("config.json"),
         dossier.join("mcp.json"),
-        chemin_interface(&ctx.projet),
+        chemin_interface(projet),
     );
     let mut illisibles: Vec<Value> = Vec::new();
-    let vue = ctx.reglages.vue();
+    let vue = reglages.vue();
     if let Some(e) = vue["erreur"].as_str() {
         let f = if e.contains("config.json") {
             &f_config
@@ -257,7 +258,7 @@ fn lire_config(ctx: &Contexte) -> String {
             Vec::new()
         }
     };
-    let interface = match lire_interface(&ctx.projet) {
+    let interface = match lire_interface(projet) {
         Ok(i) => json!({
             "collapsed": en_anglais(&i.replis, &REPLIS),
             "features": en_anglais(&i.fonctions, &FONCTIONS),
@@ -279,7 +280,6 @@ fn lire_config(ctx: &Contexte) -> String {
         },
         "unreadable": illisibles,
     })
-    .to_string()
 }
 
 fn requis<'a>(a: &'a Value, cle: &str) -> Result<&'a str, String> {

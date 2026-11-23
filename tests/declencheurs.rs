@@ -1000,3 +1000,224 @@ fn REQ167_AC4_la_commande_bash_d_un_agent_ne_declenche_rien() {
     std::thread::sleep(Duration::from_millis(1500));
     assert_eq!(conversations(&s).len(), 1);
 }
+
+/// Le texte du premier message de la conversation dont ce message contient `morceau`.
+fn texte_avec(s: &Serveur, morceau: &str) -> String {
+    let l = conversations(s);
+    l.iter()
+        .map(|c| texte_conv(s, c))
+        .find(|t| t.contains(morceau))
+        .unwrap_or_else(|| panic!("aucun message avec {morceau:?} dans {l:?}"))
+}
+
+/// Une sonde sur `sonde.txt` : sa conversation arrive juste après une vérification, ce qui
+/// laisse presque 1 s (intervalle de 1 s) pour faire deux changements « entre deux vérifications ».
+fn declencher_sonde(s: &Serveur) {
+    ecrire(s, "sonde.txt", "1");
+    attendre_conversations(s, 1);
+}
+
+#[test]
+fn REQ165_AC2_un_dossier_un_seul_evenement_une_ligne_par_fichier_par_ordre_de_chemin() {
+    let s = demarrer_avec_env(
+        &preparer("dos1"),
+        "projet",
+        &[("YAIDE_INTERVALLE_BASE_MS", "1000")],
+    );
+    ecrire(&s, "docs/a.md", "1");
+    ecrire(&s, "docs/z.md", "stable");
+    assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
+    let d = json!([{ "type": "dossier", "chemin": "docs" }]);
+    assert_eq!(agent(&s, "Relecteur", d).code, 200);
+    std::thread::sleep(Duration::from_millis(2200));
+    declencher_sonde(&s);
+    ecrire(&s, "docs/a.md", "2");
+    ecrire(&s, "docs/sous/c.md", "c");
+    attendre_conversations(&s, 2);
+    assert_eq!(
+        texte_avec(&s, "dossier"),
+        "Évènement : changements dans le dossier `docs/` :\n- `docs/a.md` modifié\n- `docs/sous/c.md` créé"
+    );
+    std::thread::sleep(Duration::from_millis(2500));
+    assert_eq!(conversations(&s).len(), 2);
+}
+
+#[test]
+fn REQ165_AC3_dossier_racine_sans_ignores_ni_yaide_ni_git() {
+    let racine = depot("dos2");
+    std::fs::write(racine.join("projet/.gitignore"), "ignore.txt\n").unwrap();
+    let s = demarrer(&racine, "projet");
+    let d = json!([{ "type": "dossier", "chemin": "." }]);
+    assert_eq!(agent(&s, "Relecteur", d).code, 200);
+    laisser_voir();
+    ecrire(&s, "ignore.txt", "caché");
+    std::fs::write(s.yaide().join("note.txt"), "x").unwrap();
+    git(
+        &s.projet,
+        &racine,
+        &["commit", "-q", "--allow-empty", "-m", "vide"],
+    );
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(conversations(&s).is_empty(), "{:?}", conversations(&s));
+    // Témoin : un fichier visible, lui, est vu, et lui seul.
+    ecrire(&s, "z.md", "z");
+    let l = attendre_conversations(&s, 1);
+    assert_eq!(
+        texte_conv(&s, &l[0]),
+        "Évènement : changements dans le dossier `./` :\n- `z.md` créé"
+    );
+    std::thread::sleep(Duration::from_millis(1000));
+    assert_eq!(conversations(&s).len(), 1);
+}
+
+#[test]
+fn REQ165_AC4_un_renommage_est_une_suppression_et_une_creation() {
+    let s = lancer("dos3");
+    ecrire(&s, "docs/b.md", "contenu");
+    let d = json!([{ "type": "dossier", "chemin": "docs" }]);
+    assert_eq!(agent(&s, "Relecteur", d).code, 200);
+    laisser_voir();
+    std::fs::rename(s.projet.join("docs/b.md"), s.projet.join("docs/c.md")).unwrap();
+    let l = attendre_conversations(&s, 1);
+    assert_eq!(
+        texte_conv(&s, &l[0]),
+        "Évènement : changements dans le dossier `docs/` :\n- `docs/b.md` supprimé\n- `docs/c.md` créé"
+    );
+}
+
+fn configuration() -> Value {
+    json!([{ "type": "configuration" }])
+}
+
+/// Le bloc ```json``` du message, lu.
+fn bloc_config(texte: &str) -> Value {
+    let debut = texte.find("```json\n").expect("bloc json") + 8;
+    let fin = texte.rfind("\n```").expect("fin du bloc");
+    serde_json::from_str(&texte[debut..fin]).expect("json valide")
+}
+
+#[test]
+fn REQ168_AC1_un_profil_cree_donne_la_configuration_sans_cle() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("cfg1");
+    let r = s.appel(
+        "PUT",
+        "/api/agent/providers/openai",
+        &json!({ "adresse": adresse, "cle": "sk-tres-secrete-42" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    laisser_voir();
+    assert_eq!(agent(&s, "Relecteur", configuration()).code, 200);
+    laisser_voir();
+    assert!(conversations(&s).is_empty());
+    let p = json!({ "nom": "p", "provider": "openai", "modele": "m" });
+    assert_eq!(s.appel("PUT", "/api/agent/profils", &p).code, 200);
+    let l = attendre_conversations(&s, 1);
+    let t = texte_conv(&s, &l[0]);
+    assert!(
+        t.starts_with(
+            "Évènement : configuration de Yaide changée : profils.\nConfiguration :\n```json\n"
+        ),
+        "{t}"
+    );
+    let c = bloc_config(&t);
+    assert_eq!(c["profiles"][0]["name"], "p");
+    assert_eq!(c["providers"][0]["has_key"], true);
+    assert!(!t.contains("sk-tres-secrete-42"), "{t}");
+}
+
+#[test]
+fn REQ168_AC2_les_parties_changees_sont_nommees() {
+    let s = demarrer_avec_env(
+        &preparer("cfg2"),
+        "projet",
+        &[("YAIDE_INTERVALLE_BASE_MS", "1000")],
+    );
+    assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
+    assert_eq!(agent(&s, "Relecteur", configuration()).code, 200);
+    std::thread::sleep(Duration::from_millis(2200));
+    declencher_sonde(&s);
+    let r = s.appel(
+        "PUT",
+        "/api/agent/providers/ollama",
+        &json!({ "adresse": "http://localhost:11999/v1" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let mcp = s.racine.join("cfg/yaide/mcp.json");
+    std::fs::create_dir_all(mcp.parent().unwrap()).unwrap();
+    std::fs::write(mcp, r#"{"mcpServers":{"echo":{"command":"node"}}}"#).unwrap();
+    attendre_conversations(&s, 2);
+    let t = texte_avec(&s, "configuration de Yaide");
+    assert!(
+        t.starts_with("Évènement : configuration de Yaide changée : providers, serveurs MCP.\n"),
+        "{t}"
+    );
+    std::thread::sleep(Duration::from_millis(2500));
+    assert_eq!(conversations(&s).len(), 2);
+    std::fs::write(
+        s.yaide().join("interface.json"),
+        r#"{"fonctions":{"git":false}}"#,
+    )
+    .unwrap();
+    attendre_conversations(&s, 3);
+    let t = texte_avec(&s, "changée : interface.");
+    assert!(t.starts_with("Évènement : configuration de Yaide changée : interface.\n"));
+}
+
+#[test]
+fn REQ168_AC3_cle_agent_ou_fichier_reecrit_a_l_identique_ne_declenchent_rien() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("cfg3");
+    let r = s.appel(
+        "PUT",
+        "/api/agent/providers/openai",
+        &json!({ "adresse": adresse }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    laisser_voir();
+    assert_eq!(agent(&s, "Relecteur", configuration()).code, 200);
+    laisser_voir();
+    let r = s.appel(
+        "PUT",
+        "/api/agent/providers/openai",
+        &json!({ "adresse": adresse, "cle": "sk-nouvelle" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let r = s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "dossier": "relecteur", "nom": "Relecteur", "couleur": "rose", "declencheurs": configuration() }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let config = s.racine.join("cfg/yaide/config.json");
+    let octets = std::fs::read(&config).expect("config.json écrit par le provider");
+    std::fs::write(&config, octets).unwrap();
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(conversations(&s).is_empty(), "{:?}", conversations(&s));
+    // Témoin : un vrai changement, lui, est vu.
+    let p = json!({ "nom": "p", "provider": "openai", "modele": "m" });
+    assert_eq!(s.appel("PUT", "/api/agent/profils", &p).code, 200);
+    attendre_conversations(&s, 1);
+}
+
+#[test]
+fn REQ168_AC4_mcp_json_illisible_est_nomme_avec_sa_cause() {
+    let s = lancer("cfg4");
+    let mcp = s.racine.join("cfg/yaide/mcp.json");
+    std::fs::create_dir_all(mcp.parent().unwrap()).unwrap();
+    std::fs::write(&mcp, r#"{"mcpServers":{"echo":{"command":"node"}}}"#).unwrap();
+    laisser_voir();
+    assert_eq!(agent(&s, "Relecteur", configuration()).code, 200);
+    laisser_voir();
+    std::fs::write(&mcp, "{pas du json").unwrap();
+    let l = attendre_conversations(&s, 1);
+    let t = texte_conv(&s, &l[0]);
+    assert!(
+        t.starts_with("Évènement : configuration de Yaide changée : serveurs MCP.\n"),
+        "{t}"
+    );
+    let c = bloc_config(&t);
+    let u = &c["unreadable"][0];
+    assert!(u["file"].as_str().unwrap().ends_with("mcp.json"), "{u}");
+    assert!(!u["cause"].as_str().unwrap().is_empty(), "{u}");
+}

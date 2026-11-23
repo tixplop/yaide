@@ -775,6 +775,10 @@ Always give file paths relative to the project root.",
         }
     }
 
+    pub fn reglages(&self) -> &Arc<Reglages> {
+        &self.reglages
+    }
+
     /// Les déclencheurs d'un agent : à n'utiliser que par `declencheurs::passer`.
     pub fn etat_declencheurs(&self) -> &Mutex<declencheurs::Etat> {
         &self.declencheurs
