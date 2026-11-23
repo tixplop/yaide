@@ -279,7 +279,7 @@ test("REQ011_AC4_AC5_AC6_REQ013_AC1_AC2_AC3_AC4_AC5_REQ014_groupe_onglets_sauveg
   });
 });
 
-test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_REQ102_AC9_parcours_P022", async ({ page, context, browserName }) => {
+test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_AC18_AC19_AC21_AC22_AC25_AC26_REQ029_AC3_REQ102_AC9_parcours_P022", async ({ page, context, browserName }) => {
   await page.clock.install();
   const dossier = await ouvrir(page, (d) => {
     fs.mkdirSync(path.join(d, "site", "img"), { recursive: true });
@@ -350,6 +350,7 @@ test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_RE
     const cadre = () => page.locator('iframe[title="Aperçu"]:visible');
     const vue = () => cadre().contentFrame();
     const bouton = page.getByRole("button", { name: "Aperçu", exact: true });
+    const hybride = page.getByRole("button", { name: "Mode hybride", exact: true });
     const defilement = () => vue().locator("html").evaluate(() => window.scrollY);
     const lignesCode = () => page.locator(".cm-line:visible");
 
@@ -361,12 +362,16 @@ test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_RE
     await expect(bouton).toHaveCount(0);
     await ligne(page, "page.htm").click();
     await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    await expect(hybride).toHaveAttribute("aria-pressed", "false");
+    await hybride.click();
     await editeur(page, "page.htm").click();
     await page.keyboard.type("<h1>Titre</h1>");
     await page.keyboard.press("Control+s");
     await expect(vue().getByRole("heading", { name: "Titre" })).toBeVisible();
     await ligne(page, "index.html").click();
     await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    await expect(hybride).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator(".cm-editor:visible")).toHaveCount(0);
     await expect(vue().getByRole("heading", { name: "Compteur de lignes" })).toHaveCSS("color", "rgb(255, 0, 0)");
     await expect(vue().getByRole("heading", { name: "Sous-titre" })).toHaveCSS("color", "rgb(255, 0, 0)");
     await expect(vue().locator(".note")).toHaveCSS("background-color", "rgb(255, 224, 138)");
@@ -376,10 +381,56 @@ test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_RE
     await expect(vue().locator("#script")).toHaveText("Script de la page");
     expect(await vue().locator("#logo").evaluate((i) => i.naturalWidth)).toBeGreaterThan(0);
     await expect(cadre()).toHaveCSS("background-color", "rgb(255, 255, 255)");
-    await expect(editeur(page, "index.html")).toBeFocused();
+    await expect(onglet(page, /^index\.html/)).toBeFocused();
     expect(await cadre().evaluate((f) => f.ownerDocument.activeElement === f)).toBe(false);
     await expect(page.locator("footer")).toContainText("Ln 1, Col 1");
     expect(dialogues).toEqual([]);
+    // Largeurs (AC-058-21, AC-058-22) : page seule sur toute la largeur, puis moitié-moitié en mode hybride.
+    const zone = page.locator(".zone-code:not([hidden])");
+    const largeurs = async () => [(await zone.boundingBox()).width, (await cadre().boundingBox()).width];
+    const [zl, cl] = await largeurs();
+    expect(Math.abs(zl - cl)).toBeLessThanOrEqual(1);
+    await hybride.click();
+    await expect(hybride).toHaveAttribute("aria-pressed", "true");
+    await expect(bouton).toHaveAttribute("aria-pressed", "false");
+    await expect(hybride).toBeFocused();
+    const ed = await page.locator(".cm-editor:visible").boundingBox();
+    expect(Math.abs(ed.width - (await cadre().boundingBox()).width)).toBeLessThanOrEqual(1);
+    await bouton.click();
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    await expect(hybride).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator(".cm-editor:visible")).toHaveCount(0);
+    await bouton.click();
+    await expect(cadre()).toHaveCount(0);
+    expect((await page.locator(".cm-editor:visible").boundingBox()).width).toBeGreaterThan(zl - 2);
+    await hybride.click();
+    await expect(cadre()).toBeVisible();
+    // Tab, Entrée et Espace (AC-058-26) : depuis l'onglet, vers « Mode hybride » puis « Aperçu ».
+    await bouton.click();
+    await bouton.click();
+    await expect(hybride).toHaveAttribute("aria-pressed", "false");
+    await onglet(page, /^index\.html/).focus();
+    await page.keyboard.press("Tab");
+    await expect(hybride).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(bouton).toBeFocused();
+    await hybride.focus();
+    await page.keyboard.press("Enter");
+    await expect(hybride).toHaveAttribute("aria-pressed", "true");
+    await expect(hybride).toBeFocused();
+    await expect(page.locator(".cm-editor:visible")).toHaveCount(1);
+    await expect(cadre()).toBeVisible();
+    expect(await hybride.evaluate((b) => {
+      const c = getComputedStyle(b);
+      return (c.outlineStyle !== "none" && parseFloat(c.outlineWidth) > 0) || c.boxShadow !== "none";
+    })).toBe(true);
+    await bouton.focus();
+    await page.keyboard.press("Space");
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    await expect(bouton).toBeFocused();
+    await hybride.click();
+    await expect(hybride).toHaveAttribute("aria-pressed", "true");
+    await expect(vue().locator("#etat")).toHaveText("Prêt");
 
     // 2. Frappe sans Ctrl+S : l'aperçu montre le fichier enregistré.
     await vue().locator("body").evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
@@ -416,10 +467,10 @@ test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_RE
     expect(pages).toHaveLength(0);
     expect(page.url()).toBe(urlAvant);
 
-    // 6. Deux clics sur « Aperçu » : la page de l'onglet.
-    await bouton.click();
+    // 6. Deux clics sur « Mode hybride » : la page de l'onglet (AC-058-19).
+    await hybride.click();
     await expect(cadre()).toHaveCount(0);
-    await bouton.click();
+    await hybride.click();
     await expect(vue().getByRole("heading", { name: "Compteur de lignes !" })).toBeVisible();
     await expect(vue().locator("#etat")).toHaveText("Prêt");
 
@@ -446,8 +497,8 @@ test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_REQ029_AC3_RE
     await expect(texte).toHaveCSS("color", "rgb(0, 0, 0)");
     await expect(cadre()).toHaveCSS("background-color", "rgb(255, 255, 255)");
     expect(await style()).toBe(avant);
-    await bouton.click();
-    await bouton.click();
+    await hybride.click();
+    await hybride.click();
     await expect(vue().locator("#etat")).toHaveText("Prêt");
 
     // Sécurité de la page dans le cadre (AC-058-16).

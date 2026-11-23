@@ -512,7 +512,7 @@ test("REQ062_AC1_AC14_bouton_hybride_avant_apercu_sur_markdown_seulement", () =>
   const { e } = monter();
   for (const chemin of ["README.md", "notes.markdown", "NOTES.MD", "index.html", "src/main.rs"]) {
     e.ouvrir({ chemin, contenu: "x", version: "1" });
-    expect(boutonHybride() !== null, chemin).toBe(/\.(md|markdown)$/i.test(chemin));
+    expect(boutonHybride() !== null, chemin).toBe(/\.(md|markdown|html)$/i.test(chemin));
     expect(boutonApercu() !== null, chemin).toBe(/\.(md|markdown|html)$/i.test(chemin));
   }
   e.ouvrir({ chemin: "README.md", contenu: "x", version: "1" });
@@ -520,6 +520,69 @@ test("REQ062_AC1_AC14_bouton_hybride_avant_apercu_sur_markdown_seulement", () =>
   e.ouvrirDiff({ chemin: "README.md", texte: "+a" });
   expect(boutonHybride()).toBeNull();
   expect(boutonApercu()).toBeNull();
+});
+
+test("REQ062_AC14_REQ058_AC21_hybride_precede_apercu_sur_html", () => {
+  const { e } = monter();
+  e.ouvrir({ chemin: "index.html", contenu: "x", version: "1" });
+  expect(boutonHybride().compareDocumentPosition(boutonApercu()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test("REQ058_AC21_AC22_AC25_REQ062_AC12_html_page_seule_puis_boutons_exclusifs_focus_conserve", () => {
+  const { e } = monter();
+  for (const chemin of ["index.html", "page.htm"]) {
+    e.ouvrir({ chemin, contenu: "<p>x</p>", version: "1" });
+    expect(boutonApercu().getAttribute("aria-pressed"), chemin).toBe("true");
+    expect(boutonHybride().getAttribute("aria-pressed"), chemin).toBe("false");
+  }
+  const sansPoint = () => {
+    const t = document.querySelector('[role=tab][aria-label^="page.htm"]');
+    expect(t.getAttribute("aria-label")).not.toContain("non sauvegardé");
+    expect(t.dataset.modifie).not.toBe("true");
+    expect(document.querySelector('[role="alert"], .bandeau')).toBeNull();
+  };
+  boutonHybride().focus();
+  boutonHybride().click();
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
+  expect(document.activeElement).toBe(boutonHybride());
+  sansPoint();
+  boutonApercu().focus();
+  boutonApercu().click();
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+  expect(document.activeElement).toBe(boutonApercu());
+  sansPoint();
+  boutonApercu().click();
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
+  sansPoint();
+});
+
+test("REQ058_AC24_html_rechargee_revient_dans_son_mode", async () => {
+  vi.resetModules();
+  const gardee = [{ chemin: "index.html", hybride: true, apercu: false }, { chemin: "page.htm", apercu: true, hybride: false }];
+  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder: vi.fn(), retrouver: async () => ({ liste: gardee, actif: "index.html", disposition: { arbre: { id: "g1", actif: "index.html" }, courant: "g1" } }) }));
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => "<p>t</p>", json: async () => ({ jeton: "jj" }) })));
+  const { vueEditeur: neuf } = await import("./editeur.js");
+  const e = neuf({ dire: vi.fn() });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  await e.restaurer();
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("true");
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("false");
+  let zone = e.code.querySelector(".zone-code:not([hidden])");
+  expect(zone.classList.contains("zone-code-avec-apercu")).toBe(true);
+  expect(zone.classList.contains("zone-code-page-seule")).toBe(false);
+  expect(zone.querySelector(".cm-editor").closest("[hidden]")).toBeNull();
+  e.ouvrir({ chemin: "page.htm", contenu: "<p>t</p>", version: "1" });
+  expect(boutonHybride().getAttribute("aria-pressed")).toBe("false");
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+  zone = e.code.querySelector(".zone-code:not([hidden])");
+  expect(zone.classList.contains("zone-code-page-seule")).toBe(true);
+  expect(zone.classList.contains("zone-code-avec-apercu")).toBe(false);
+  vi.doUnmock("../onglets-fichiers.js");
+  vi.resetModules();
 });
 
 test("REQ062_AC12_aria_pressed_propre_a_chaque_onglet_focus_conserve", () => {
@@ -596,6 +659,7 @@ test("REQ083_AC2_html_ouvert_avec_l_apercu", () => {
   for (const chemin of ["index.html", "page.htm"]) {
     e.ouvrir({ chemin, contenu: "<p>x</p>", version: "1" });
     expect(boutonApercu().getAttribute("aria-pressed"), chemin).toBe("true");
+    expect(boutonHybride().getAttribute("aria-pressed"), chemin).toBe("false");
     expect(document.querySelector('iframe[title="Aperçu"]'), chemin).not.toBeNull();
   }
 });
@@ -1577,7 +1641,7 @@ test("REQ087_AC1_le_fichier_s_ouvre_dans_le_groupe_de_la_conversation_pas_dans_l
   expect(noms()).toEqual([["Agent 1", "main.rs"], ["autre.txt"]]);
 });
 
-test("REQ058_AC1_AC14_sauvegarde_recharge_les_apercus_html_de_la_page", async () => {
+test("REQ058_AC1_AC14_AC18_AC20_sauvegarde_recharge_les_apercus_html_de_la_page", async () => {
   let jeton = "jj";
   vi.stubGlobal("fetch", vi.fn(async (url) => {
     if (String(url).includes("/api/apercu")) return { ok: true, status: 200, json: async () => ({ jeton }) };
@@ -2482,4 +2546,36 @@ test("REQ008_AC6_sans_menu_le_focus_va_dans_l_editeur", () => {
   const geste = e.lecture(true);
   e.ouvrir({ chemin: "a.txt", contenu: "a", version: "1", geste });
   expect(e.code.contains(document.activeElement)).toBe(true);
+});
+
+test("REQ083_AC10_mmd_sans_bouton_hybride_et_ouverture_sans_modification", () => {
+  const { e } = monter();
+  e.ouvrir({ chemin: "flux.mmd", contenu: "graph TD; A-->B", version: "1" });
+  expect(boutonHybride()).toBeNull();
+  expect(boutonApercu().getAttribute("aria-pressed")).toBe("true");
+  expect(document.querySelector('[role=tab][aria-label^="flux.mmd"]').dataset.modifie).not.toBe("true");
+});
+
+test("REQ083_AC9_html_ouvert_texte_inchange_onglet_sans_point", () => {
+  const { e } = monter();
+  e.ouvrir({ chemin: "index.html", contenu: "<p>x</p>", version: "1" });
+  expect(e.code.querySelector(".zone-code").vue.state.doc.toString()).toBe("<p>x</p>");
+  expect(document.querySelector('[role=tab][aria-label^="index.html"]').dataset.modifie).not.toBe("true");
+  expect(document.activeElement.getAttribute("role")).toBe("tab");
+});
+
+test("REQ058_AC11_REQ083_AC6_html_focus_sur_l_onglet_actif_pas_dans_le_cadre_ctrl_p_ouvre_l_ouverture_rapide", async () => {
+  const { vueOuverture } = await import("./ouverture.js");
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ chemins: ["index.html"] }), headers: new Headers() })));
+  const ouv = vueOuverture({ dire: vi.fn() });
+  const { e } = monter();
+  e.ouvrir({ chemin: "index.html", contenu: "<p>x</p>", version: "1" });
+  const onglet = document.querySelector('[role=tab][aria-label^="index.html"]');
+  expect(document.activeElement).toBe(onglet);
+  expect(onglet.getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement.tagName).not.toBe("IFRAME");
+  expect(document.querySelector("[role=dialog], dialog[open]")).toBeNull();
+  onglet.dispatchEvent(new KeyboardEvent("keydown", { key: "p", ctrlKey: true, bubbles: true, cancelable: true }));
+  expect(document.querySelector("[role=dialog], dialog[open]")).not.toBeNull();
+  ouv.detruire();
 });

@@ -60,16 +60,17 @@ async function ouvrirIndexRapide(page) {
   await page.getByRole("textbox", { name: "Chemin du fichier" }).fill("index");
   await expect(page.getByRole("listbox", { name: "Fichiers proposés" })).toBeVisible();
   await page.keyboard.press("Enter");
-  await expect(editeur(page, "index.html")).toBeFocused();
+  await expect(onglet(page, "index.html")).toBeFocused();
 }
 async function nouveauFichier(page, chemin) {
   await page.getByRole("button", { name: "Nouveau fichier" }).click();
   await page.getByLabel("Chemin").fill(chemin);
   await page.keyboard.press("Enter");
-  await expect(editeur(page, path.basename(chemin))).toBeFocused();
+  if (/\.html?$/.test(chemin)) await expect(onglet(page, path.basename(chemin))).toBeFocused();
+  else await expect(editeur(page, path.basename(chemin))).toBeFocused();
 }
 
-test("REQ083_P053_ouvrir_une_note_et_une_page", async ({ page, browserName }) => {
+test("REQ083_AC1_AC7_AC9_P053_ouvrir_une_note_et_une_page", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
   await page.setViewportSize({ width: 1280, height: 800 });
   const dossier = await ouvrir(page);
@@ -92,13 +93,19 @@ test("REQ083_P053_ouvrir_une_note_et_une_page", async ({ page, browserName }) =>
   // Étape 2 : index.html par Ctrl+P (AC-083-2, AC-083-7).
   await ouvrirIndexRapide(page);
   await expect(apercu(page)).toHaveAttribute("aria-pressed", "true");
-  await expect(hybride(page)).toHaveCount(0);
+  await expect(hybride(page)).toHaveAttribute("aria-pressed", "false");
   await expect(cadre(page)).toBeVisible();
   await expect(cadre(page).contentFrame().getByRole("heading", { name: "Compteur de lignes" })).toBeVisible();
   const g = await largeur(groupe);
+  await expect(page.locator(".cm-editor:visible")).toHaveCount(0);
+  expect(Math.abs((await largeur(cadre(page))) - g)).toBeLessThanOrEqual(2);
+  expect(await cadre(page).evaluate((f) => f.ownerDocument.activeElement === f)).toBe(false);
+  await page.keyboard.press("Control+z");
+  await expect(onglet(page, "index.html")).not.toHaveAccessibleName(/non sauvegardé/);
+  await hybride(page).click();
+  await expect(apercu(page)).toHaveAttribute("aria-pressed", "false");
   expect(Math.abs((await largeur(zone)) - (await largeur(cadre(page))))).toBeLessThanOrEqual(2);
   expect(Math.abs((await largeur(zone)) - g / 2)).toBeLessThanOrEqual(g * 0.1);
-  expect(await cadre(page).evaluate((f) => f.ownerDocument.activeElement === f)).toBe(false);
 
   // Étape 3 : la page montre le fichier enregistré.
   await lignes(page).nth(16).click();
@@ -129,7 +136,7 @@ test("REQ083_P053_ouvrir_une_note_et_une_page", async ({ page, browserName }) =>
   await expect(hybride(page)).toHaveCount(0);
 });
 
-test("REQ083_P054_recherche_fichiers_vides_rechargement", async ({ page, browserName }) => {
+test("REQ058_AC27_REQ083_P054_recherche_fichiers_vides_rechargement", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
   await page.setViewportSize({ width: 1280, height: 800 });
   await ouvrir(page);
@@ -162,6 +169,21 @@ test("REQ083_P054_recherche_fichiers_vides_rechargement", async ({ page, browser
   expect(couleurMarque).toBe(couleurMuted);
   await expect(resultat).toHaveAttribute("aria-selected", "true");
 
+  // Étape 2 bis : résultat de recherche ligne 21 d'index.html (AC-058-27).
+  await page.getByRole("textbox", { name: "Rechercher" }).fill("Compte les lignes");
+  await page.keyboard.press("Enter");
+  const res21 = page.getByRole("listbox", { name: "Résultats de la recherche" }).getByRole("option").filter({ has: page.locator(".liste-numero", { hasText: /^21$/ }) });
+  await res21.click();
+  await expect(cadre(page)).toBeVisible();
+  await expect(page.locator(".cm-editor:visible")).toHaveCount(0);
+  await expect(page.locator("footer")).toContainText(/Ln 21,/);
+  const pos = await page.locator("footer").innerText();
+  await hybride(page).click();
+  await expect(lignes(page).filter({ hasText: "Compte les lignes." })).toBeInViewport();
+  expect(await page.locator("footer").innerText()).toBe(pos);
+  await apercu(page).click();
+  await expect(apercu(page)).toHaveAttribute("aria-pressed", "true");
+
   // Étape 3 : notes.md créé depuis le panneau (AC-083-1).
   await page.getByRole("tab", { name: "Fichiers" }).click();
   await nouveauFichier(page, "notes.md");
@@ -176,11 +198,14 @@ test("REQ083_P054_recherche_fichiers_vides_rechargement", async ({ page, browser
   await expect(cadre(page)).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
   await expect(cadre(page).contentFrame().locator("body")).toHaveText("");
+  await hybride(page).click();
+  await editeur(page, "vide.html").click();
   await page.keyboard.type("<p>Bonjour");
   await page.keyboard.press("Control+s");
   await expect(cadre(page).contentFrame().getByText("Bonjour")).toBeVisible();
 
-  // Étape 5 : clic sur « Aperçu ».
+  // Étape 5 : clics sur « Aperçu » : page seule, puis ni l'un ni l'autre.
+  await apercu(page).click();
   await apercu(page).click();
   await expect(cadre(page)).toHaveCount(0);
   await expect(apercu(page)).toBeFocused();
@@ -190,9 +215,9 @@ test("REQ083_P054_recherche_fichiers_vides_rechargement", async ({ page, browser
     const d = indexedDB.open("yaide", 1);
     d.onsuccess = () => {
       const r = d.result.transaction("cles").objectStore("cles").get("onglets");
-      r.onsuccess = () => ok((r.result?.liste ?? []).find((o) => o.chemin === "site/vide.html")?.apercu);
+      r.onsuccess = () => ok((r.result?.liste ?? []).filter((o) => o.chemin === "site/vide.html").map((o) => `${o.apercu}/${o.hybride}`)[0]);
     };
-  }))).toBe(false);
+  }))).toBe("false/false");
   await page.reload();
   await expect(arbre(page)).toBeVisible();
   await onglet(page, "vide.html").click();
@@ -204,6 +229,7 @@ test("REQ083_P054_recherche_fichiers_vides_rechargement", async ({ page, browser
   }
   await onglet(page, "index.html").click();
   await expect(apercu(page)).toHaveAttribute("aria-pressed", "true");
+  await expect(hybride(page)).toHaveAttribute("aria-pressed", "false");
   await expect(cadre(page)).toBeVisible();
   await ligne(page, "site").click();
   await ligne(page, "vide.html").click();

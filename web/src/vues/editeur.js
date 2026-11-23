@@ -35,7 +35,8 @@ const TEXTE_SUPPRIME = "Fichier supprimé du disque. Ctrl+S le recrée.";
 const TEXTE_IMAGE_SUPPRIMEE = "Fichier supprimé du disque.";
 const estFichier = (o) => !o.claude && !o.opencode && !o.conversationAgent;
 const estTexte = (o) => estFichier(o) && !o.image; // un onglet d'image n'a ni texte, ni disque lu, ni éditeur
-const avecHybride = (chemin) => /\.(md|markdown|csv)$/i.test(chemin);
+const avecHybride = (chemin) => /\.(md|markdown|csv|html?)$/i.test(chemin);
+const estHtml = (chemin) => /\.html?$/i.test(chemin);
 const avecApercu = (chemin) => /\.(md|markdown|html|htm|svg|mmd)$/i.test(chemin);
 
 /**
@@ -366,22 +367,32 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     const noms = nomsOnglets();
     const idActif = estCourant ? actif : g.actif;
     let actionsDroite = [];
+    let hy = null;
+    let ap = null;
     if (o !== diff && estTexte(o) && avecHybride(o.chemin)) {
-      const hy = bouton({ icone: "type", variante: "discret", nomAccessible: "Mode hybride", presse: o.hybride });
+      hy = bouton({ icone: "type", variante: "discret", nomAccessible: "Mode hybride", presse: o.hybride });
       hy.addEventListener("click", () => {
         o.hybride = !o.hybride;
         o.zone.definirHybride(o.hybride);
         hy.setAttribute("aria-pressed", String(o.hybride));
+        if (estHtml(o.chemin) && o.hybride && o.apercu) {
+          o.apercu = false;
+          ap.setAttribute("aria-pressed", "false");
+        }
         garderListe();
       });
       actionsDroite.push(hy.enveloppe);
     }
     if (o !== diff && estTexte(o) && avecApercu(o.chemin)) {
-      const ap = bouton({ icone: "eye", variante: "discret", nomAccessible: "Aperçu", presse: o.apercu });
+      ap = bouton({ icone: "eye", variante: "discret", nomAccessible: "Aperçu", presse: o.apercu });
       ap.addEventListener("click", () => {
         o.apercu = !o.apercu;
         o.zone.definirApercu(o.apercu);
         ap.setAttribute("aria-pressed", String(o.apercu));
+        if (estHtml(o.chemin) && o.apercu && o.hybride) {
+          o.hybride = false;
+          hy.setAttribute("aria-pressed", "false");
+        }
         garderListe();
       });
       actionsDroite.push(ap.enveloppe);
@@ -525,6 +536,11 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       },
       surChangement,
     });
+    if (estHtml(chemin)) {
+      // Page seule : l'éditeur est caché, le focus va sur l'onglet actif (AC-058-11). Ce remplacement de `vue.focus` détourne aussi les appels internes de CodeMirror, sans effet tant que l'éditeur est caché.
+      const focusEditeur = o.zone.vue.focus.bind(o.zone.vue);
+      o.zone.vue.focus = () => (o.apercu ? o.groupe && groupes.get(o.groupe)?.ongl?.querySelector("[role=tab][aria-selected=true]")?.focus() : focusEditeur());
+    }
     o.modifie = o.zone.contenu() !== contenu;
     liste.push(o);
     return o;
@@ -678,7 +694,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   /** `geste` : valeur rendue par `lecture(true)`. Sans valeur, l'ouverture est elle-même un geste. Une image ne se lit pas : `contenu` est absent, la suite est asynchrone. */
   function ouvrir({ chemin, contenu, version, ligne, geste = ++dernierGeste }) {
     if (estImage(chemin) && !trouver(chemin)) return ouvrirImage(chemin, geste);
-    if (!trouver(chemin)) creer({ chemin, contenu, version, hybride: avecHybride(chemin), apercu: /\.(html?|svg|mmd)$/i.test(chemin) });
+    if (!trouver(chemin)) creer({ chemin, contenu, version, hybride: avecHybride(chemin) && !estHtml(chemin), apercu: /\.(html?|svg|mmd)$/i.test(chemin) });
     suiteOuverture({ chemin, ligne, geste });
   }
 
