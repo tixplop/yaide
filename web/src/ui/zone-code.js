@@ -379,12 +379,35 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     if (!diff) vue.dispatch({ effects: compartimentLangage.reconfigure(id ? supportLangage(id) : []) });
   };
   racine.contenu = () => vue.state.doc.toString();
+  // Fichier HTML : « page seule » (apercu) et « côte à côte » (hybride) s'excluent ; les deux faux, l'éditeur seul sans cadre.
+  // Passer de l'un à l'autre ne recrée ni l'éditeur ni le cadre.
+  const html = langage === "html" && !diff;
+  let htmlApercu = false;
+  let htmlHybride = false;
+  function majHtml() {
+    const cadre = htmlApercu || htmlHybride;
+    if (cadre && !ap) {
+      ap = apercuHtml({ adresse: adresseApercu });
+      racine.append(ap);
+    } else if (!cadre && ap) {
+      ap.retirer();
+      ap = null;
+    }
+    hote.hidden = htmlApercu;
+    racine.classList.toggle("zone-code-page-seule", htmlApercu);
+    racine.classList.toggle("zone-code-avec-apercu", htmlHybride);
+  }
   racine.definirApercu = (actif) => {
+    if (html) {
+      htmlApercu = !!actif;
+      if (htmlApercu) htmlHybride = false;
+      return majHtml();
+    }
     if (actif && !ap) {
       if (/\.svg$/i.test(nom)) ap = apercuSvg(nom, racine.contenu());
       else if (/\.mmd$/i.test(nom)) ap = apercuMmd(nom, racine.contenu());
       else {
-        ap = langage === "html" ? apercuHtml({ adresse: adresseApercu }) : creerApercu({ document: cheminDocument, surLien });
+        ap = creerApercu({ document: cheminDocument, surLien });
         ap.maj(racine.contenu());
       }
       racine.append(ap);
@@ -401,6 +424,11 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   let hybrideActif = hybridePossible && hybride;
   racine.definirHybride = (actif) => {
     if (csv) return definirHybrideCsv(!!actif);
+    if (html) {
+      htmlHybride = !!actif;
+      if (htmlHybride) htmlApercu = false;
+      return majHtml();
+    }
     actif = hybridePossible && !!actif;
     if (actif === hybrideActif) return;
     hybrideActif = actif;
@@ -464,6 +492,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     vue.destroy();
   };
   if (apercu) racine.definirApercu(true);
+  else if (html && hybride) racine.definirHybride(true);
 
   racine.aller = (numero) => {
     const doc = vue.state.doc;

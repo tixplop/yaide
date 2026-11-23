@@ -853,3 +853,75 @@ test("REQ153_AC1_remplacer_et_validerSaisie_ecrivent_d_abord_la_cellule_en_saisi
   z.detruire();
   z.remove();
 });
+
+// Fichier HTML : page seule, côte à côte, éditeur seul (REQ-058)
+const htmlZone = (opts = {}) => zoneCode({ contenu: "<h1>Titre</h1>", langage: "html", nom: "index.html", adresseApercu: async () => "/apercu/j/index.html", ...opts });
+const editeurHtml = (z) => z.querySelector(".zone-code-editeur");
+
+test("REQ058_AC22_trois_affichages_du_html", () => {
+  const z = htmlZone({ apercu: true });
+  expect(z.querySelector("iframe.zone-code-cadre")).not.toBeNull();
+  expect(editeurHtml(z).hidden).toBe(true);
+  expect(z.classList.contains("zone-code-page-seule")).toBe(true);
+  expect(z.classList.contains("zone-code-avec-apercu")).toBe(false);
+  z.definirHybride(true);
+  expect(editeurHtml(z).hidden).toBe(false);
+  expect(z.querySelector("iframe")).not.toBeNull();
+  expect(z.classList.contains("zone-code-avec-apercu")).toBe(true);
+  expect(z.classList.contains("zone-code-page-seule")).toBe(false);
+  z.definirHybride(false);
+  expect(z.querySelector("iframe")).toBeNull();
+  expect(editeurHtml(z).hidden).toBe(false);
+  expect(z.classList.contains("zone-code-avec-apercu")).toBe(false);
+  expect(htmlZone({ hybride: true }).querySelector("iframe")).not.toBeNull();
+  expect(htmlZone().querySelector("iframe")).toBeNull();
+});
+
+test("REQ058_AC23_passer_de_l_un_a_l_autre_ne_recree_ni_editeur_ni_cadre", () => {
+  const z = htmlZone({ hybride: true });
+  const cadre = z.querySelector("iframe");
+  const vue = z.vue;
+  vue.dispatch({ changes: { from: 14, insert: " !" }, selection: { anchor: 16 } });
+  z.definirApercu(true);
+  expect(z.querySelector("iframe")).toBe(cadre);
+  expect(z.vue).toBe(vue);
+  expect(z.contenu()).toBe("<h1>Titre</h1> !");
+  z.definirHybride(true);
+  expect(z.querySelector("iframe")).toBe(cadre);
+  expect(z.vue.state.selection.main.head).toBe(16);
+  z.definirHybride(false);
+  expect(z.querySelector("iframe")).toBeNull();
+  z.definirApercu(true);
+  expect(z.querySelector("iframe")).not.toBe(cadre);
+  expect(z.contenu()).toBe("<h1>Titre</h1> !");
+});
+
+test("REQ062_AC21_html_hybride_sans_theme_hybride_ni_retour_a_la_ligne", () => {
+  const z = htmlZone({ contenu: "<h1>Titre</h1>\n<p>fin</p>", hybride: true });
+  document.body.append(z);
+  z.vue.dispatch({ selection: { anchor: z.contenu().length } });
+  const verifier = () => {
+    expect(estHybride(z)).toBe(false);
+    expect(z.vue.contentDOM.classList.contains("cm-lineWrapping")).toBe(false);
+    expect(z.vue.contentDOM.textContent).toContain("<h1>Titre</h1>");
+  };
+  verifier();
+  z.definirHybride(false);
+  z.definirHybride(true);
+  verifier();
+  z.detruire();
+  z.remove();
+});
+
+test("REQ062_AC9_le_mode_hybride_suit_la_frappe", () => {
+  const z = zoneCode({ contenu: "", langage: "markdown", hybride: true });
+  document.body.append(z);
+  z.vue.dispatch({ changes: { from: 0, insert: "## Sous-titre" }, selection: { anchor: 13 } });
+  z.vue.dispatch({ changes: { from: 13, insert: "\nsuite" }, selection: { anchor: 19 } });
+  const ligne = z.vue.contentDOM.querySelector(".cm-hy-titre2");
+  expect(ligne).not.toBeNull();
+  expect(ligne.textContent).toContain("Sous-titre");
+  expect(ligne.textContent).not.toContain("##");
+  z.detruire();
+  z.remove();
+});
