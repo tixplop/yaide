@@ -716,3 +716,287 @@ fn REQ164_AC9_declencheur_ajoute_puis_retire() {
     std::thread::sleep(Duration::from_millis(1500));
     assert_eq!(conversations(&s).len(), 1);
 }
+
+// ---- REQ-166 « Commit », REQ-167 (agent), REQ-164 AC3 ----
+
+fn git(dossier: &Path, racine: &Path, args: &[&str]) -> String {
+    let s = Command::new("git")
+        .arg("-C")
+        .arg(dossier)
+        .args(args)
+        .env("HOME", racine)
+        .env("GIT_CEILING_DIRECTORIES", racine)
+        .env("GIT_EDITOR", "true")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(
+        s.status.success(),
+        "git {args:?} : {}",
+        String::from_utf8_lossy(&s.stderr)
+    );
+    String::from_utf8_lossy(&s.stdout).trim().to_string()
+}
+
+/// Dépôt d'essai `racine/projet` sur `main`, auteur `Test <test@example.com>`, avec un
+/// premier commit qui ajoute `b.md` ; la branche `x` porte un commit de plus que lui.
+fn depot(nom: &str) -> PathBuf {
+    let racine = preparer(nom);
+    let p = racine.join("projet");
+    std::fs::create_dir_all(&p).unwrap();
+    git(&p, &racine, &["init", "-q", "-b", "main"]);
+    git(&p, &racine, &["config", "user.name", "Test"]);
+    git(&p, &racine, &["config", "user.email", "test@example.com"]);
+    std::fs::write(p.join("b.md"), "b").unwrap();
+    git(&p, &racine, &["add", "."]);
+    git(&p, &racine, &["commit", "-q", "-m", "initial"]);
+    git(&p, &racine, &["checkout", "-q", "-b", "x"]);
+    std::fs::write(p.join("x.md"), "x").unwrap();
+    git(&p, &racine, &["add", "."]);
+    git(&p, &racine, &["commit", "-q", "-m", "sur x"]);
+    git(&p, &racine, &["checkout", "-q", "main"]);
+    std::fs::write(p.join("m.md"), "m").unwrap();
+    git(&p, &racine, &["add", "."]);
+    git(&p, &racine, &["commit", "-q", "-m", "sur main"]);
+    racine
+}
+
+fn texte_conv(s: &Serveur, c: &Value) -> String {
+    lire_conv(s, c["id"].as_str().unwrap())["entrees"][0]["texte"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn REQ166_AC1_le_commit_a_son_evenement_complet() {
+    let racine = depot("c1");
+    let s = demarrer(&racine, "projet");
+    assert_eq!(
+        agent(&s, "Relecteur", json!([{ "type": "commit" }])).code,
+        200
+    );
+    laisser_voir();
+    ecrire(&s, "a.md", "a");
+    ecrire(&s, "b.md", "b2");
+    git(&s.projet, &racine, &["add", "a.md", "b.md"]);
+    git(&s.projet, &racine, &["commit", "-q", "-m", "ajoute a"]);
+    let court = git(&s.projet, &racine, &["rev-parse", "--short", "HEAD"]);
+    let l = attendre_conversations(&s, 1);
+    assert_eq!(
+        texte_conv(&s, &l[0]),
+        format!(
+            "Évènement : commit `{court}` sur la branche `main`.\nAuteur : Test <test@example.com>\n\
+             Message : ajoute a\nFichiers :\n- A `a.md`\n- M `b.md`"
+        )
+    );
+}
+
+#[test]
+fn REQ166_AC2_vue_git_puis_worktree_puis_amend() {
+    let racine = depot("c2");
+    let s = demarrer(&racine, "projet");
+    assert_eq!(
+        agent(&s, "Relecteur", json!([{ "type": "commit" }])).code,
+        200
+    );
+    laisser_voir();
+    ecrire(&s, "v.md", "v");
+    let r = requete(
+        s.port,
+        "POST",
+        "/api/git/indexer?chemin=v.md",
+        &s.cookie,
+        &format!("https://127.0.0.1:{}", s.port),
+        b"",
+    );
+    assert_eq!(r.code, 204, "{}", r.corps);
+    let r = requete(
+        s.port,
+        "POST",
+        "/api/git/commit",
+        &s.cookie,
+        &format!("https://127.0.0.1:{}", s.port),
+        b"depuis la vue Git",
+    );
+    assert_eq!(r.code, 204, "{}", r.corps);
+    let l = attendre_conversations(&s, 1);
+    let t = texte_conv(&s, &l[0]);
+    assert!(
+        t.contains("sur la branche `main`.") && t.contains("Message : depuis la vue Git"),
+        "{t}"
+    );
+
+    git(
+        &s.projet,
+        &racine,
+        &["worktree", "add", "-q", "../essai", "-b", "essai"],
+    );
+    let essai = racine.join("essai");
+    std::fs::write(essai.join("w.md"), "w").unwrap();
+    git(&essai, &racine, &["add", "."]);
+    git(&essai, &racine, &["commit", "-q", "-m", "dans essai"]);
+    let l = attendre_conversations(&s, 2);
+    let t = texte_conv(&s, &l[0]);
+    assert!(
+        t.contains("sur la branche `essai`.") && t.contains("- A `w.md`"),
+        "{t}"
+    );
+
+    git(
+        &s.projet,
+        &racine,
+        &["commit", "-q", "--amend", "-m", "corrige"],
+    );
+    let l = attendre_conversations(&s, 3);
+    assert!(texte_conv(&s, &l[0]).contains("Message : corrige"));
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(conversations(&s).len(), 3);
+}
+
+#[test]
+fn REQ166_AC3_pull_en_avance_rapide_et_rebase_ne_sont_pas_des_commits() {
+    let racine = depot("c3");
+    let p = racine.join("projet");
+    // `autre` porte trois commits de plus que `projet`.
+    git(&racine, &racine, &["clone", "-q", "projet", "autre"]);
+    let autre = racine.join("autre");
+    git(&autre, &racine, &["config", "user.name", "Test"]);
+    git(
+        &autre,
+        &racine,
+        &["config", "user.email", "test@example.com"],
+    );
+    for n in 1..=3 {
+        std::fs::write(autre.join(format!("n{n}.md")), "n").unwrap();
+        git(&autre, &racine, &["add", "."]);
+        git(&autre, &racine, &["commit", "-q", "-m", &format!("n{n}")]);
+    }
+    let s = demarrer(&racine, "projet");
+    assert_eq!(
+        agent(&s, "Relecteur", json!([{ "type": "commit" }])).code,
+        200
+    );
+    laisser_voir();
+    git(
+        &p,
+        &racine,
+        &["pull", "-q", "--ff-only", "../autre", "main"],
+    );
+    git(&p, &racine, &["rebase", "-q", "main", "x"]);
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(conversations(&s).is_empty(), "{:?}", conversations(&s));
+}
+
+#[test]
+fn REQ166_AC4_sans_depot_aucune_erreur_et_les_autres_declencheurs_marchent() {
+    let s = lancer("c4");
+    assert_eq!(
+        agent(
+            &s,
+            "Relecteur",
+            json!([{ "type": "commit" }, fichier("docs/a.md")])
+        )
+        .code,
+        200
+    );
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "1");
+    let l = attendre_conversations(&s, 1);
+    assert_eq!(
+        texte_conv(&s, &l[0]),
+        "Évènement : fichier `docs/a.md` créé."
+    );
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(conversations(&s).len(), 1);
+}
+
+#[test]
+fn REQ164_AC3_un_fichier_modifie_puis_commite_entre_deux_verifications_un_seul_message() {
+    let racine = depot("c5");
+    let s = demarrer_avec_env(&racine, "projet", &[("YAIDE_INTERVALLE_BASE_MS", "1000")]);
+    assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
+    assert_eq!(
+        agent(
+            &s,
+            "Relecteur",
+            json!([fichier("docs/a.md"), { "type": "commit" }])
+        )
+        .code,
+        200
+    );
+    std::thread::sleep(Duration::from_millis(2200));
+    // La sonde se déclenche juste après une vérification : on a alors presque 1 s devant nous.
+    ecrire(&s, "sonde.txt", "1");
+    attendre_conversations(&s, 1);
+    ecrire(&s, "docs/a.md", "1");
+    git(&s.projet, &racine, &["add", "docs/a.md"]);
+    git(&s.projet, &racine, &["commit", "-q", "-m", "ajoute docs/a"]);
+    let l = attendre_conversations(&s, 2);
+    let t = texte_conv(&s, &l[0]);
+    let (fichier, commit) = t.split_once("\n\n").expect("une ligne vide");
+    assert_eq!(fichier, "Évènement : fichier `docs/a.md` créé.");
+    assert!(
+        commit.starts_with("Évènement : commit `") && commit.contains("Message : ajoute docs/a"),
+        "{t}"
+    );
+    std::thread::sleep(Duration::from_millis(2500));
+    assert_eq!(conversations(&s).len(), 2);
+}
+
+#[test]
+fn REQ167_AC4_la_commande_bash_d_un_agent_ne_declenche_rien() {
+    let racine = preparer("c6");
+    let bin = racine.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let temoin = racine.join("temoin");
+    std::fs::write(
+        bin.join("cargo"),
+        format!("#!/bin/sh\necho $@ > {}\nexit 101\n", temoin.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(
+        bin.join("cargo"),
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .unwrap();
+    let chemin = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let (adresse, recues) = faux_provider(vec![
+        (
+            200,
+            json!({"choices": [{"message": {"content": null, "tool_calls": [{
+                "id": "c1", "type": "function",
+                "function": {"name": "bash", "arguments": "{\"command\":\"cargo test\"}"}}]}}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 1}}),
+            0,
+        ),
+        rep_texte("fini", 0),
+    ]);
+    let s = demarrer_avec_env(&racine, "projet", &[("PATH", &chemin)]);
+    configurer(&s, &adresse, true);
+    assert_eq!(agent(&s, "Relecteur", json!([])).code, 200);
+    assert_eq!(
+        agent(
+            &s,
+            "Testeur",
+            json!([{ "type": "commande", "texte": "cargo test" }])
+        )
+        .code,
+        200
+    );
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "agents": ["relecteur"], "texte": "lance les tests" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let id = r.json()["conversation"].as_str().unwrap().to_string();
+    attendre_fin(&s, &id);
+    assert!(
+        recues.lock().unwrap().len() >= 2 && temoin.exists(),
+        "la commande n'a pas tourné : {:?}",
+        recues.lock().unwrap().len()
+    );
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(conversations(&s).len(), 1);
+}

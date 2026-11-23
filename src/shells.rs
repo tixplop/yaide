@@ -19,6 +19,150 @@ use tokio::sync::broadcast;
 /// Taille de l'affichage récent gardé par shell.
 pub const TAMPON_MAX: usize = 1024 * 1024;
 
+/// Une commande terminée dans un shell de Yaide, relevée par l'intégration à bash ou zsh.
+#[derive(Clone, Debug)]
+pub struct Commande {
+    pub commande: String,
+    pub dossier: String,
+    pub code: i64,
+}
+
+const AMORCE: &[u8] = b"\x1b]7733;";
+/// Au-delà, un début de séquence sans fin n'en est pas une.
+const MESSAGE_MAX: usize = 16 * 1024;
+
+/// Retire de la sortie d'un shell la séquence de l'intégration, d'un bloc à l'autre :
+/// `d;<commande>` au départ d'une commande, `f;<code>;<dossier>` à son retour à l'invite.
+#[derive(Default)]
+struct Filtre {
+    reste: Vec<u8>,
+    en_cours: Option<String>,
+}
+
+impl Filtre {
+    fn message(&mut self, m: &[u8], commandes: &mut Vec<Commande>) {
+        let m = String::from_utf8_lossy(m);
+        if let Some(c) = m.strip_prefix("d;") {
+            self.en_cours = Some(c.to_string());
+        } else if let Some((code, dossier)) = m.strip_prefix("f;").and_then(|f| f.split_once(';')) {
+            if let (Some(commande), Ok(code)) = (self.en_cours.take(), code.parse()) {
+                commandes.push(Commande {
+                    commande,
+                    dossier: dossier.to_string(),
+                    code,
+                });
+            }
+        }
+    }
+
+    fn filtrer(&mut self, bloc: &[u8], commandes: &mut Vec<Commande>) -> Vec<u8> {
+        let mut r = std::mem::take(&mut self.reste);
+        r.extend_from_slice(bloc);
+        let mut sortie = Vec::with_capacity(r.len());
+        let mut i = 0;
+        while i < r.len() {
+            let Some(p) = r[i..].iter().position(|&b| b == 0x1b) else {
+                sortie.extend_from_slice(&r[i..]);
+                break;
+            };
+            sortie.extend_from_slice(&r[i..i + p]);
+            i += p;
+            let suite = &r[i..];
+            if suite.starts_with(AMORCE) {
+                match suite.iter().position(|&b| b == 7) {
+                    Some(f) => {
+                        self.message(&suite[AMORCE.len()..f], commandes);
+                        i += f + 1;
+                    }
+                    None if suite.len() < MESSAGE_MAX => {
+                        self.reste = suite.to_vec();
+                        break;
+                    }
+                    None => {
+                        sortie.push(0x1b);
+                        i += 1;
+                    }
+                }
+            } else if AMORCE.starts_with(suite) {
+                self.reste = suite.to_vec();
+                break;
+            } else {
+                sortie.push(0x1b);
+                i += 1;
+            }
+        }
+        sortie
+    }
+}
+
+/// Intégration embarquée : les fichiers écrits dans le dossier de configuration au lancement.
+const BASH_RC: &str = include_str!("integration-shell/bash-rc");
+const ZSH_FICHIERS: [(&str, &str); 3] = [
+    (".zshenv", include_str!("integration-shell/zsh/zshenv")),
+    (".zprofile", include_str!("integration-shell/zsh/zprofile")),
+    (".zshrc", include_str!("integration-shell/zsh/zshrc")),
+];
+
+fn ecrire_si_different(chemin: &Path, contenu: &str) -> std::io::Result<()> {
+    if std::fs::read_to_string(chemin).is_ok_and(|c| c == contenu) {
+        return Ok(());
+    }
+    let tmp = chemin.with_extension(format!("tmp{}", std::process::id()));
+    std::fs::write(&tmp, contenu)?;
+    std::fs::rename(&tmp, chemin)
+}
+
+/// Ce qui branche l'intégration à un shell : arguments et variables d'environnement.
+struct Integration {
+    args: Vec<String>,
+    env: Vec<(String, String)>,
+}
+
+/// Arguments et variables qui branchent l'intégration au shell `programme` (bash ou zsh) ;
+/// `None` pour tout autre shell.
+fn integration(programme: &str, dossier: &Path) -> std::io::Result<Option<Integration>> {
+    let nom = Path::new(programme).file_name().and_then(|n| n.to_str());
+    match nom {
+        Some("bash") => {
+            std::fs::create_dir_all(dossier)?;
+            let rc = dossier.join("bash-rc");
+            ecrire_si_different(&rc, BASH_RC)?;
+            Ok(Some(Integration {
+                args: vec!["--rcfile".into(), rc.to_string_lossy().into_owned()],
+                env: Vec::new(),
+            }))
+        }
+        Some("zsh") => {
+            let zsh = dossier.join("zsh");
+            std::fs::create_dir_all(&zsh)?;
+            for (nom, contenu) in ZSH_FICHIERS {
+                ecrire_si_different(&zsh.join(nom), contenu)?;
+            }
+            let ancien = std::env::var("ZDOTDIR").ok().filter(|z| !z.is_empty());
+            let origine = ancien
+                .clone()
+                .or_else(|| std::env::var("HOME").ok())
+                .unwrap_or_default();
+            let mut env = vec![
+                ("ZDOTDIR".to_string(), zsh.to_string_lossy().into_owned()),
+                (
+                    "YAIDE_ZDOTDIR".to_string(),
+                    zsh.to_string_lossy().into_owned(),
+                ),
+                ("YAIDE_ZDOTDIR_ORIG".to_string(), origine),
+            ];
+            if ancien.is_some() {
+                env.push(("YAIDE_ZDOTDIR_DEFINI".to_string(), "1".to_string()));
+            }
+            Ok(Some(Integration {
+                args: Vec::new(),
+                env,
+            }))
+        }
+        _ => Ok(None),
+    }
+}
+
 #[derive(Clone)]
 pub enum Evenement {
     Sortie(Arc<Vec<u8>>),
@@ -50,6 +194,8 @@ pub struct Registre {
     liste: Mutex<Liste>,
     arret: AtomicBool,
     clients: AtomicUsize,
+    /// Commandes terminées, en attente des déclencheurs (REQ-167).
+    commandes: Mutex<Vec<Commande>>,
 }
 
 /// Connexion WebSocket en cours : `Registre::arreter` attend qu'elle soit libérée.
@@ -256,12 +402,25 @@ impl Registre {
             .collect()
     }
 
-    pub fn ouvrir(self: &Arc<Self>, projet: &Path) -> Result<u32, String> {
+    /// Les commandes terminées depuis le dernier appel.
+    pub fn prendre_commandes(&self) -> Vec<Commande> {
+        std::mem::take(&mut *self.commandes.lock().unwrap())
+    }
+
+    /// Un shell ; avec bash ou zsh, l'intégration écrite dans `config` relève les commandes.
+    pub fn ouvrir(self: &Arc<Self>, projet: &Path, config: &Path) -> Result<u32, String> {
         let programme = std::env::var("SHELL")
             .ok()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "/bin/sh".to_string());
-        self.lancer(projet, &programme, &[], false, &[])
+        let reglage = match integration(&programme, &config.join("integration-shell")) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("intégration au shell impossible : {e}");
+                None
+            }
+        };
+        self.lancer(projet, &programme, false, &[], reglage.as_ref())
     }
 
     /// Session Claude : `claude` sans argument dans le dossier du projet, sans les variables
@@ -269,16 +428,16 @@ impl Registre {
     pub fn ouvrir_claude(self: &Arc<Self>, projet: &Path) -> Result<u32, String> {
         let chemin = trouver_claude().ok_or("la commande claude est introuvable dans le PATH")?;
         let programme = chemin.to_string_lossy().into_owned();
-        self.lancer(projet, &programme, &[], true, VARIABLES_CLAUDE_CODE)
+        self.lancer(projet, &programme, true, VARIABLES_CLAUDE_CODE, None)
     }
 
     fn lancer(
         self: &Arc<Self>,
         projet: &Path,
         programme: &str,
-        args: &[&str],
         claude: bool,
         retirer: &[&str],
+        integration: Option<&Integration>,
     ) -> Result<u32, String> {
         let paire = native_pty_system()
             .openpty(PtySize {
@@ -289,11 +448,16 @@ impl Registre {
             })
             .map_err(|e| e.to_string())?;
         let mut cmd = CommandBuilder::new(programme);
-        cmd.args(args);
         cmd.cwd(projet);
         cmd.env("TERM", "xterm-256color");
         for v in retirer {
             cmd.env_remove(v);
+        }
+        if let Some(i) = integration {
+            cmd.args(&i.args);
+            for (k, v) in &i.env {
+                cmd.env(k, v);
+            }
         }
         let mut enfant = paire
             .slave
@@ -337,22 +501,38 @@ impl Registre {
             }
         });
         let s = shell.clone();
+        let mut filtre = integration.map(|_| Filtre::default());
         std::thread::spawn(move || {
             let mut bloc = [0u8; 8192];
             while let Ok(n) = lecteur.read(&mut bloc) {
                 if n == 0 {
                     break;
                 }
+                let donnees = match filtre.as_mut() {
+                    Some(f) => {
+                        let mut finies = Vec::new();
+                        let d = f.filtrer(&bloc[..n], &mut finies);
+                        if !finies.is_empty() {
+                            let mut file = s.registre.commandes.lock().unwrap();
+                            file.extend(finies);
+                            let trop = file.len().saturating_sub(1000);
+                            file.drain(..trop);
+                        }
+                        d
+                    }
+                    None => bloc[..n].to_vec(),
+                };
+                if donnees.is_empty() {
+                    continue;
+                }
                 let mut t = s.tampon.lock().unwrap();
-                t.extend(&bloc[..n]);
+                t.extend(&donnees);
                 if t.len() > TAMPON_MAX {
                     let trop = t.len() - TAMPON_MAX;
                     t.drain(..trop);
                 }
                 // Sans abonné, l'envoi échoue : ce n'est pas une erreur.
-                let _ = s
-                    .diffusion
-                    .send(Evenement::Sortie(Arc::new(bloc[..n].to_vec())));
+                let _ = s.diffusion.send(Evenement::Sortie(Arc::new(donnees)));
             }
             s.terminer();
         });
@@ -445,6 +625,37 @@ mod tests {
         assert_eq!(delai_depuis(Some("abc")), Duration::from_secs(3));
         assert_eq!(delai_depuis(Some("0")), Duration::from_secs(3));
         assert_eq!(delai_depuis(Some("300")), Duration::from_millis(300));
+    }
+
+    fn filtrer_blocs(blocs: &[&[u8]]) -> (Vec<u8>, Vec<Commande>) {
+        let mut f = Filtre::default();
+        let (mut sortie, mut commandes) = (Vec::new(), Vec::new());
+        for b in blocs {
+            sortie.extend(f.filtrer(b, &mut commandes));
+        }
+        (sortie, commandes)
+    }
+
+    #[test]
+    fn le_filtre_retire_la_sequence_meme_coupee_et_releve_la_commande() {
+        let (sortie, cmds) = filtrer_blocs(&[
+            b"$ \x1b]7733;d;cargo te",
+            b"st; x\x07sortie\r\n\x1b",
+            b"]77",
+            b"33;f;101;/p;q\x07$ ",
+        ]);
+        assert_eq!(String::from_utf8(sortie).unwrap(), "$ sortie\r\n$ ");
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(cmds[0].commande, "cargo test; x");
+        assert_eq!(cmds[0].dossier, "/p;q");
+        assert_eq!(cmds[0].code, 101);
+    }
+
+    #[test]
+    fn le_filtre_laisse_passer_les_autres_sequences_et_ignore_une_fin_seule() {
+        let (sortie, cmds) = filtrer_blocs(&[b"[31mrouge[0m", b"x]7733;f;0;/p"]);
+        assert_eq!(sortie, b"[31mrouge[0mx");
+        assert!(cmds.is_empty());
     }
 
     #[tokio::test(start_paused = true)]

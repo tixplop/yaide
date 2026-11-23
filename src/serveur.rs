@@ -290,7 +290,8 @@ async fn liste_shells(State(etat): State<Partage>) -> Response {
 async fn ouvrir_shell(State(etat): State<Partage>) -> Response {
     let registre = etat.shells.clone();
     let projet = etat.projet_dir.clone();
-    let r = tokio::task::spawn_blocking(move || registre.ouvrir(&projet))
+    let config = etat.config.clone();
+    let r = tokio::task::spawn_blocking(move || registre.ouvrir(&projet, &config))
         .await
         .unwrap_or_else(|e| Err(e.to_string()));
     match r {
@@ -1972,6 +1973,7 @@ pub async fn servir(
                 &surveillance.projet_dir,
                 &surveillance.agents,
                 &surveillance.agent,
+                &surveillance.shells,
             );
             tokio::time::sleep(intervalle_verification()).await;
         }

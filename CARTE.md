@@ -13,7 +13,8 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/depot.rs — dépôt git, `.gitignore`, worktrees — est_un_depot, worktrees
 - src/git.rs — état, diff, index, commit, branches, pull/push — etat, commit, synchroniser
 - src/recherche.rs — recherche dans les fichiers et ouverture rapide — chercher, lister
-- src/shells.rs — shells et sessions Claude en pseudo-terminal, survie aux coupures — abonner, ecrire, trouver_claude
+- src/shells.rs — shells et sessions Claude en pseudo-terminal, survie aux coupures ; intégration à bash et zsh (séquence retirée de la sortie, commandes terminées remises aux déclencheurs, REQ-167) — abonner, ecrire, prendre_commandes
+- src/integration-shell/ — fichiers de démarrage embarqués : `bash-rc` (`--rcfile`) et `zsh/` (`ZDOTDIR`), écrits dans le dossier de configuration au lancement d'un shell (REQ-167)
 - src/opencode.rs — processus `opencode serve` du projet — assurer, arreter, disponible
 - src/apercu.rs — jetons et service de l'aperçu HTML — nouveau_jeton, jeton_ok, charger
 - src/version.rs — version, nouvelle version, `yaide update` — etat_maj, demarrer_maj, derniere
@@ -25,7 +26,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/agent/secrets.rs — clés d'API chiffrées (AES-256-GCM) — lire, ecrire
 - src/agent/reglages.rs — providers, profils, réglages du projet et communs — provider, vue, reprendre_du_projet
 - src/agent/agents.rs — agents personnalisés (AGENTS.md, PERSONA.md) et leurs déclencheurs (clé `declencheurs`, validée à l'enregistrement) — lister, lire, enregistrer
-- src/agent/declencheurs.rs — surveillance des déclencheurs par le serveur (déclencheur « Fichier »), soumission aux agents à l'écoute, refus gardé en conversation — verifier, passer, soumettre
+- src/agent/declencheurs.rs — surveillance des déclencheurs par le serveur (« Fichier » ; « Commit » par les journaux de branches, REQ-166 ; « Commande shell », REQ-167), soumission aux agents à l'écoute, refus gardé en conversation — verifier, passer, soumettre
 - src/agent/conversation.rs — boucle de l'agent, conversations, sous-agents, étape de requête en cours en mémoire (REQ-085) — envoyer, envoyer_avec, arreter
 - src/agent/outils.rs — outils de l'agent (fichiers, shell, connaissance, agents) — definitions, executer
 - src/agent/outils_config.rs — outils de l'agent qui modifient la configuration de Yaide — definitions, lancer, lire_interface
@@ -117,7 +118,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-085 état de la requête et raisonnement replié, dépliable pendant l'arrivée → src/agent/provider.rs, conversation.rs, web/src/ui/conversation.js, vues/agent.js
 - REQ-052 à REQ-057, REQ-067, REQ-078 providers, profils, agent, outils → src/agent/provider.rs, reglages.rs, conversation.rs, outils.rs, web/src/vues/providers.js, profils.js, agent.js
 - REQ-064 à REQ-066, REQ-097 à REQ-100, REQ-119 agents et sous-agents → src/agent/agents.rs, conversation.rs, outils.rs, web/src/vues/agents.js
-- REQ-163, REQ-164, REQ-165 déclencheurs des agents (type « Fichier » ; boucle lancée par `servir`) → src/agent/agents.rs, declencheurs.rs, conversation.rs (`agent_occupe`, `enregistrer_refus`), outils.rs (`save_agent`), serveur.rs, tests/declencheurs.rs
+- REQ-163, REQ-164, REQ-165, REQ-166, REQ-167 déclencheurs des agents (types « Fichier », « Commit », « Commande shell » ; boucle lancée par `servir`) → src/agent/agents.rs, declencheurs.rs, conversation.rs (`agent_occupe`, `enregistrer_refus`), outils.rs (`save_agent`), serveur.rs, shells.rs, integration-shell/, tests/declencheurs.rs, tests/shells.rs
 - REQ-081 réglages communs à tous les projets → src/agent/reglages.rs
 - REQ-095, REQ-096 serveurs MCP → src/agent/mcp.rs, web/src/vues/serveurs-mcp.js
 - REQ-068, REQ-073 session Claude → src/shells.rs, web/src/vues/claude.js

@@ -1,0 +1,36 @@
+# Intégration de Yaide à bash (REQ-167) : lit d'abord le ~/.bashrc de l'utilisateur, puis
+# écrit une séquence discrète au début et à la fin de chaque commande. Ni l'invite ni les
+# réglages de l'utilisateur ne changent ; Yaide retire la séquence de la sortie affichée.
+[ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"
+
+# Numéro de la dernière entrée de l'historique ; il ne change pas si la commande n'y entre
+# pas (HISTCONTROL, HISTIGNORE, set +o history) : Yaide ne relève alors aucun évènement.
+__yaide_numero() {
+    local h
+    h=$(HISTTIMEFORMAT= builtin history 1)
+    [[ $h =~ ^[[:space:]]*([0-9]+) ]] && printf '%s' "${BASH_REMATCH[1]}"
+}
+
+__yaide_debut() {
+    local h
+    [[ $(__yaide_numero) != "$__yaide_n" ]] || return 0
+    h=$(HISTTIMEFORMAT= builtin history 1)
+    h=${h//[[:cntrl:]]/ }
+    [[ $h =~ ^[[:space:]]*[0-9]+[[:space:]]+(.*)$ ]] || return 0
+    printf '\033]7733;d;%s\007' "${BASH_REMATCH[1]}"
+}
+
+__yaide_fin() {
+    local s=$?
+    printf '\033]7733;f;%s;%s\007' "$s" "${PWD//[[:cntrl:]]/ }"
+    __yaide_n=$(__yaide_numero)
+    return $s
+}
+
+__yaide_n=$(__yaide_numero)
+PS0=${PS0}'$(__yaide_debut)'
+if [[ $(declare -p PROMPT_COMMAND 2>/dev/null) == "declare -a"* ]]; then
+    PROMPT_COMMAND=(__yaide_fin "${PROMPT_COMMAND[@]}")
+else
+    PROMPT_COMMAND="__yaide_fin${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+fi

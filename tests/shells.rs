@@ -794,3 +794,206 @@ fn req162_ac2_arret_ferme_la_session_et_arrete_yaide_et_les_shells() {
     assert!(statut.expect("Yaide ne s'est pas arrêté").success());
     assert!(attendre(5, || !vivant(pid)), "le shell tourne encore");
 }
+
+// ---- REQ-167 : intégration à bash et zsh ----
+
+fn requete_json(s: &Serveur, methode: &str, chemin: &str, corps: &str) -> (u16, String) {
+    http(s.port, methode, chemin, &s.cookie, corps)
+}
+
+/// Chemin du shell sur la machine, ou `None` (le test est alors sauté avec un message).
+fn chemin_shell(nom: &str) -> Option<String> {
+    let chemin = std::env::split_paths(&std::env::var_os("PATH")?)
+        .map(|d| d.join(nom))
+        .find(|c| c.is_file())?;
+    Some(chemin.to_string_lossy().into_owned())
+}
+
+/// Faux `cargo` (code 101) et faux `claude` qui lance `cargo test`, dans `dossier/bin`.
+fn faux_outils(dossier: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = dossier.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    for (nom, corps) in [
+        ("cargo", "#!/bin/sh\necho RAN$#\nexit 101\n"),
+        (
+            "claude",
+            "#!/bin/sh\ncargo test\necho CLAUDE-FINI\nsleep 30\n",
+        ),
+    ] {
+        std::fs::write(bin.join(nom), corps).unwrap();
+        std::fs::set_permissions(bin.join(nom), std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
+/// Une instance dont le `HOME` (sous `.test-data`) a un `.bashrc` et un `.zshrc` qui
+/// définissent un alias et une invite ; `PATH` commence par les faux outils.
+fn lancer_integration(nom: &str, shell: &str) -> Serveur {
+    let d = std::env::temp_dir().join(format!("shells-{nom}-{}", std::process::id()));
+    let chemin = format!(
+        "{}:{}",
+        d.join("bin").display(),
+        std::env::var("PATH").unwrap()
+    );
+    let s = lancer_avec_env(
+        nom,
+        Some(shell),
+        &[("PATH", &chemin), ("YAIDE_INTERVALLE_BASE_MS", "100")],
+    );
+    let d = s.projet.parent().unwrap().to_path_buf();
+    std::fs::write(
+        d.join(".bashrc"),
+        "alias ll='echo ALIAS-'$((20+1))\nPS1='INVITE> '\nHISTCONTROL=ignorespace\n",
+    )
+    .unwrap();
+    std::fs::write(
+        d.join(".zshrc"),
+        "alias ll='echo ALIAS-'$((20+1))\nPROMPT='INVITE> '\n",
+    )
+    .unwrap();
+    faux_outils(&d);
+    s
+}
+
+fn declarer_agent(s: &Serveur, texte: &str) {
+    let corps = format!(
+        "{{\"nom\":\"Relecteur\",\"couleur\":\"vert\",\"declencheurs\":[{{\"type\":\"commande\",\"texte\":\"{texte}\"}}]}}"
+    );
+    let (code, rep) = requete_json(s, "PUT", "/api/agent/agents", &corps);
+    assert_eq!(code, 200, "{rep}");
+}
+
+fn conversations(s: &Serveur) -> Vec<serde_json::Value> {
+    let (code, corps) = requete_json(s, "GET", "/api/agent/conversations", "");
+    assert_eq!(code, 200, "{corps}");
+    serde_json::from_str::<serde_json::Value>(&corps)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+fn premier_message(s: &Serveur, c: &serde_json::Value) -> String {
+    let (_, corps) = requete_json(
+        s,
+        "GET",
+        &format!("/api/agent/conversations/{}", c["id"].as_str().unwrap()),
+        "",
+    );
+    let v: serde_json::Value = serde_json::from_str(&corps).unwrap();
+    v["entrees"][0]["texte"].as_str().unwrap().to_string()
+}
+
+fn attendre_conversations(s: &Serveur, n: usize) -> Vec<serde_json::Value> {
+    let mut l = Vec::new();
+    attendre(10, || {
+        l = conversations(s);
+        l.len() >= n
+    });
+    assert!(l.len() >= n, "moins de {n} conversations : {l:?}");
+    l
+}
+
+fn parcours_commande(shell: &str) {
+    let Some(chemin) = chemin_shell(shell) else {
+        eprintln!("{shell} absent de la machine : test sauté");
+        return;
+    };
+    let s = lancer_integration(&format!("integ-{shell}"), &chemin);
+    declarer_agent(&s, "cargo test");
+    let id = ouvrir(&s);
+    let mut w = ws(&s, id);
+    let projet = s.projet.to_string_lossy().into_owned();
+    // AC-167-3 : l'invite et l'alias de l'utilisateur marchent, le shell est dans le projet,
+    // et la sortie ne montre rien de l'intégration.
+    lire_jusque(&mut w, "INVITE> ", 20);
+    taper(&mut w, "ll; pwd; echo FIN$((1+1))\n");
+    let vu = lire_jusque(&mut w, "FIN2", 20);
+    assert!(vu.contains("ALIAS-21"), "alias absent : {vu}");
+    assert!(
+        vu.contains(&projet),
+        "le shell n'est pas dans le projet : {vu}"
+    );
+    assert!(
+        !vu.contains("7733") && !vu.contains('\u{7}'),
+        "séquence visible : {vu:?}"
+    );
+    // AC-167-2 : ni `echo cargo`, ni `Cargo test`.
+    taper(&mut w, "echo cargo\n");
+    lire_jusque(&mut w, "cargo\r\n", 20);
+    taper(&mut w, "Cargo test; echo B$((1+1))\n");
+    lire_jusque(&mut w, "B2", 20);
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(conversations(&s).is_empty(), "{:?}", conversations(&s));
+    // AC-167-1 : `cargo test --lib`, sorti en code 101.
+    taper(&mut w, "cargo test --lib\n");
+    lire_jusque(&mut w, "RAN2", 20);
+    let l = attendre_conversations(&s, 1);
+    assert_eq!(
+        premier_message(&s, &l[0]),
+        format!(
+            "Évènement : commande terminée, code de sortie 101.\nCommande : `cargo test --lib`\nDossier : `{projet}`"
+        )
+    );
+    if shell == "bash" {
+        // Une commande qui n'entre pas dans l'historique (HISTCONTROL=ignorespace) : aucun
+        // évènement, et surtout pas celui de la commande précédente.
+        taper(&mut w, " cargo test --lib\n");
+        lire_jusque(&mut w, "RAN2", 20);
+        std::thread::sleep(Duration::from_millis(1500));
+        assert_eq!(conversations(&s).len(), 1, "{:?}", conversations(&s));
+    }
+    // AC-167-2 : `cd src && cargo test` donne un évènement.
+    std::fs::create_dir_all(s.projet.join("src")).unwrap();
+    taper(&mut w, "cd src && cargo test\n");
+    let l = attendre_conversations(&s, 2);
+    assert_eq!(
+        premier_message(&s, &l[0]),
+        format!(
+            "Évènement : commande terminée, code de sortie 101.\nCommande : `cd src && cargo test`\nDossier : `{projet}/src`"
+        )
+    );
+    // La sortie diffusée à un nouveau client, tirée du tampon, ne garde rien non plus.
+    let mut w2 = ws(&s, id);
+    let vu = lire_jusque(&mut w2, "INVITE> ", 20);
+    assert!(!vu.contains("7733"), "séquence dans le tampon : {vu:?}");
+}
+
+#[test]
+fn req167_ac1_ac2_ac3_bash() {
+    parcours_commande("bash");
+}
+
+#[test]
+fn req167_ac1_ac2_ac3_zsh() {
+    parcours_commande("zsh");
+}
+
+#[test]
+fn req167_ac4_session_claude_et_autre_shell_ne_declenchent_rien() {
+    let Some(sh) = chemin_shell("sh") else {
+        return;
+    };
+    let s = lancer_integration("integ-autre", &sh);
+    declarer_agent(&s, "cargo test");
+    // `SHELL=/bin/sh` : le shell marche comme avant, sans évènement.
+    let id = ouvrir(&s);
+    let mut w = ws(&s, id);
+    taper(&mut w, "cargo test; echo FIN$((1+1))\n");
+    let vu = lire_jusque(&mut w, "FIN2", 20);
+    assert!(vu.contains("RAN1"), "le shell ne marche pas : {vu}");
+    assert!(!vu.contains("7733"));
+    // Une session Claude (faux `claude`) qui lance `cargo test`.
+    let (code, corps) = requete_json(&s, "POST", "/api/claude", "");
+    assert_eq!(code, 201, "{corps}");
+    let cid: u32 = corps
+        .trim_start_matches("{\"id\":")
+        .trim_end_matches('}')
+        .parse()
+        .unwrap();
+    let mut wc = ws(&s, cid);
+    let vu = lire_jusque(&mut wc, "CLAUDE-FINI", 20);
+    assert!(vu.contains("RAN1"), "{vu}");
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(conversations(&s).is_empty(), "{:?}", conversations(&s));
+}

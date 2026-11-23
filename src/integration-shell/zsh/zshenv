@@ -1,0 +1,7 @@
+# Intégration de Yaide à zsh (REQ-167) : ZDOTDIR pointe vers ce dossier ; chaque fichier lit
+# celui de l'utilisateur (YAIDE_ZDOTDIR_ORIG : son ZDOTDIR, ou HOME).
+ZDOTDIR=$YAIDE_ZDOTDIR_ORIG
+[[ -r $ZDOTDIR/.zshenv ]] && source $ZDOTDIR/.zshenv
+[[ $ZDOTDIR != $YAIDE_ZDOTDIR_ORIG ]] && YAIDE_ZDOTDIR_DEFINI=1
+YAIDE_ZDOTDIR_ORIG=$ZDOTDIR
+ZDOTDIR=$YAIDE_ZDOTDIR

@@ -1,0 +1,23 @@
+ZDOTDIR=$YAIDE_ZDOTDIR_ORIG
+[[ -r $ZDOTDIR/.zshrc ]] && source $ZDOTDIR/.zshrc
+
+__yaide_debut() {
+    printf '\033]7733;d;%s\007' "${1//[[:cntrl:]]/ }"
+}
+
+__yaide_fin() {
+    local s=$?
+    printf '\033]7733;f;%s;%s\007' "$s" "${PWD//[[:cntrl:]]/ }"
+    return $s
+}
+
+autoload -Uz add-zsh-hook
+add-zsh-hook preexec __yaide_debut
+precmd_functions=(__yaide_fin ${precmd_functions:#__yaide_fin})
+
+if [[ -n $YAIDE_ZDOTDIR_DEFINI ]]; then
+    ZDOTDIR=$YAIDE_ZDOTDIR_ORIG
+else
+    unset ZDOTDIR
+fi
+unset YAIDE_ZDOTDIR YAIDE_ZDOTDIR_ORIG YAIDE_ZDOTDIR_DEFINI
