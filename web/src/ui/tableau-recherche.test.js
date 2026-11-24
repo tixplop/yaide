@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { tableau } from "./tableau.js";
+import { zoneToasts } from "./toasts.js";
 import { centrerObjet } from "./tableau-calculs.js";
 
 const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
@@ -34,10 +35,13 @@ function monter(doc = DOC(), vue = { x: 0, y: 0, zoom: 1 }, outils = OUTILS) {
 }
 beforeEach(() => {
   document.body.innerHTML = "";
+  vi.stubGlobal("requestAnimationFrame", (f) => (f(), 0));
+  document.body.append(zoneToasts());
 });
 afterEach(() => {
   t?.detruire();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const surface = () => t.element.querySelector("[role=application]");
@@ -197,19 +201,20 @@ test("REQ161_AC13_une_occurrence_sous_la_boite_a_outils_ou_sous_le_panneau_est_c
   expect(dernierVue()).toEqual({ x: 120 - 400, y: 60 - 300, zoom: 1 });
 });
 
-test("REQ161_AC13_le_refus_d_un_collage_est_sous_le_panneau_a_50_px", () => {
+test("REQ161_AC13_le_refus_d_un_collage_est_un_toast_hors_de_la_zone_et_la_fenetre_de_recherche_reste_ouverte_a_sa_place", () => {
   monter();
-  const alerte = () => t.element.querySelector("[role=alert]");
-  expect(alerte().classList.contains("ya-message-sous-recherche")).toBe(false);
   ouvrir("serveur");
-  expect(alerte().classList.contains("ya-message-sous-recherche")).toBe(true);
-  expect(css).toMatch(/\.ya-message-flottante\.ya-message-sous-recherche\s*\{\s*top:\s*50px/);
   const e = new Event("paste", { bubbles: true, cancelable: true });
   e.clipboardData = { getData: () => "graph TD\nA --> B\nA@{ shape: rect }", setData() {} };
   surface().dispatchEvent(e);
-  expect(alerte().textContent).toContain("Diagramme mermaid non collé");
-  t.recherche.fermer();
-  expect(alerte().classList.contains("ya-message-sous-recherche")).toBe(false);
+  const toast = document.querySelector(".ya-toast");
+  expect(toast.querySelector(".message-texte").textContent).toContain("Diagramme mermaid non collé");
+  expect(t.element.contains(toast)).toBe(false);
+  expect(t.element.querySelector("[role=alert]")).toBeNull();
+  expect(panneau()).not.toBeNull();
+  expect(t.element.firstElementChild).toBe(panneau().closest(".ya-recherche") ?? panneau());
+  expect(champ().value).toBe("serveur");
+  expect(compte()).not.toBe("");
 });
 
 test("REQ161_AC6_le_compteur_suit_les_ajouts_l_annulation_et_les_suppressions", () => {

@@ -3,7 +3,7 @@ import { estMac } from "../references.js";
 import { indication } from "./indication.js";
 import { menu } from "./menu.js";
 import { versKlaxoon } from "../klaxoon.js";
-import { message } from "./message.js";
+import { afficher, retirer } from "./toasts.js";
 import { depuisMermaid } from "../mermaid-jdiag.js";
 import { chargerMermaid } from "./diagramme.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
@@ -76,7 +76,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   let choisis = []; // les `id` choisis, dans l'ordre de Tab
   let etat = null; // zone `status`
   let detruit = false;
-  let alerte = null; // zone `alert` du refus d'un collage mermaid, vide sans refus
+  const cause = `whiteboard:${prefixe}`; // le toast d'un refus (REQ-172) part au geste suivant ou à la fermeture
   let saisie = null;
   let dessinSeul = 0; // numéro du Ctrl+Maj+V pressé sur la surface, tant que ni `paste` ni une autre touche ne l'ont consommé (0 : aucun)
   let pressees = 0;
@@ -195,7 +195,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     surface = null;
     dessin = null;
     etat = null;
-    alerte = null;
+    retirer(cause);
     editeur = null;
     saisie = null;
     if (doc === null) {
@@ -231,10 +231,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     etat = document.createElement("div");
     etat.className = "masque";
     etat.setAttribute("role", "status");
-    // Une zone vivante déjà dans la page, vide (donc cachée) sans refus : le texte y est posé pour être lu.
-    alerte = message({ texte: "-", variante: "erreur", presentation: "flottante" });
-    alerte.replaceChildren();
-    fond.append(surface, etat, alerte);
+    fond.append(surface, etat);
     element.append(barre.element);
     surface.addEventListener("keydown", surTouche);
     surface.addEventListener("pointerdown", surAppui);
@@ -447,7 +444,6 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       surFermer: () => fermer(),
     });
     element.prepend(panneau.element);
-    alerte?.classList.add("ya-message-sous-recherche");
   }
   function ouvrir() {
     if (doc === null) return;
@@ -463,7 +459,6 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     rech.texte = "";
     panneau?.element.remove();
     panneau = null;
-    alerte?.classList.remove("ya-message-sous-recherche");
     dessiner();
     if (focus) surface?.focus({ preventScroll: true });
   }
@@ -876,9 +871,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     e.preventDefault();
   }
 
-  const effacerRefus = () => {
-    if (alerte?.firstChild) alerte.replaceChildren();
-  };
+  const effacerRefus = () => retirer(cause);
 
   const pluriel = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
 
@@ -902,7 +895,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     }
     enAttente = null;
     if (!accepte || !attente.recu) {
-      alerte.replaceChildren(...message({ texte: "Copie au format Klaxoon impossible : le navigateur a refusé l'accès au presse-papiers. Réessayez.", variante: "erreur", presentation: "flottante" }).childNodes);
+      afficher({ texte: "Copie au format Klaxoon impossible : le navigateur a refusé l'accès au presse-papiers. Réessayez.", variante: "erreur", cause });
       return;
     }
     presse = attente.copie;
@@ -991,7 +984,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   }
 
   function refuser(texte) {
-    alerte.replaceChildren(...message({ texte: `Diagramme mermaid non collé : ${texte}`, variante: "erreur", presentation: "flottante" }).childNodes);
+    afficher({ texte: `Diagramme mermaid non collé : ${texte}`, variante: "erreur", cause });
   }
 
   // Autre type de diagramme : mermaid le dessine, puis le dessin est traduit en boîtes, textes et flèches libres (REQ-154, DEC-107).
@@ -1384,6 +1377,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     },
     detruire() {
       detruit = true;
+      retirer(cause);
       menuOuvert?.fermer();
       observateur?.disconnect();
       document.removeEventListener("selectionchange", surSelection);

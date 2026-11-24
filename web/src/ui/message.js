@@ -10,12 +10,9 @@ const ICONES_BARRE = { info: "circle-arrow-up", erreur: "circle-x", succes: "cir
 export function message({ texte, variante = "info", detail, champs, actions = [], fermable = false, fort = false, presentation = "normale", cause }) {
   if (!texte) throw new Error("message : texte requis");
   if (!VARIANTES.includes(variante)) throw new Error(`message : variante inconnue « ${variante} »`);
-  if (!["normale", "barre", "flottante", "toast"].includes(presentation)) throw new Error(`message : presentation inconnue « ${presentation} »`);
+  if (!["normale", "barre", "toast"].includes(presentation)) throw new Error(`message : presentation inconnue « ${presentation} »`);
   if (presentation === "barre" && (!ICONES_BARRE[variante] || detail || champs?.length || fermable || fort)) {
     throw new Error("message : la présentation barre n'accepte que info, succes et erreur, sans detail, champs, fermable ni fort");
-  }
-  if (presentation === "flottante" && (variante !== "erreur" || detail || champs?.length || actions.length || fermable || fort)) {
-    throw new Error("message : la présentation flottante n'accepte que erreur, sans detail, champs, actions, fermable ni fort");
   }
   if (presentation === "toast" && (champs?.length || actions.length)) throw new Error("message : la présentation toast n'accepte ni champs ni actions");
   if (cause !== undefined && presentation !== "toast") throw new Error("message : cause réservée à la présentation toast");
@@ -44,7 +41,6 @@ export function message({ texte, variante = "info", detail, champs, actions = []
     if (variante === "erreur") m.title = texte;
     if (variante === "succes") m.tabIndex = -1;
   }
-  if (presentation === "flottante") m.classList.add("ya-message-flottante");
   if (presentation === "toast") {
     m.classList.add("ya-toast");
     if (fort) m.setAttribute("role", "alert");

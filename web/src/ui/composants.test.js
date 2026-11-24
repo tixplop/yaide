@@ -396,25 +396,11 @@ test("REQ153_AC14_contrastes_des_disques_du_filet_et_du_cadre_dans_les_deux_them
   }
 });
 
-test("REQ154_AC10_message_flottant_css_position_fond_filet_et_sans_pointeur", () => {
-  a(".ya-message-flottante", "position: absolute");
-  a(".ya-message-flottante", "top: var(--space-3)");
-  a(".ya-message-flottante", "left: var(--space-3)");
-  a(".ya-message-flottante", "right: var(--space-3)");
-  a(".ya-message-flottante", "margin: 0 auto");
-  a(".ya-message-flottante", "width: fit-content");
-  a(".ya-message-flottante", "max-width: 720px");
-  a(".ya-message-flottante", "background: linear-gradient(var(--msg-erreur), var(--msg-erreur)), var(--bg-300)");
-  a(".ya-message-flottante", "box-shadow: inset 2px 0 0 var(--danger), var(--shadow-popover)");
-  a(".ya-message-flottante", "border-radius: var(--radius-md)");
-  a(".ya-message-flottante", "padding: 8px 12px");
-  a(".ya-message-flottante", "font-size: 13px");
-  a(".ya-message-flottante", "line-height: 20px");
-  a(".ya-message-flottante", "color: var(--ink)");
-  a(".ya-message-flottante", "pointer-events: none");
+test("REQ172_AC10_plus_de_message_flottant_dans_la_feuille_de_style", () => {
+  expect(css).not.toContain("ya-message-flottante");
 });
 
-test("REQ154_AC10_contrastes_du_message_flottant_dans_les_deux_themes", () => {
+test("REQ154_AC10_contrastes_du_fond_erreur_dans_les_deux_themes", () => {
   const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
   const rgb = (hex) => [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16));
   const lum = (c) => {

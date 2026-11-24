@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { tableau } from "./tableau.js";
+import { zoneToasts } from "./toasts.js";
 
 const chargerMock = vi.hoisted(() => vi.fn());
 vi.mock("./diagramme.js", async (orig) => ({ ...(await orig()), chargerMermaid: chargerMock }));
@@ -39,6 +40,8 @@ function monter(doc = DOC()) {
 }
 beforeEach(() => {
   document.body.innerHTML = "";
+  vi.stubGlobal("requestAnimationFrame", (f) => (f(), 0));
+  document.body.append(zoneToasts());
   chargerMock.mockReset();
 });
 afterEach(() => {
@@ -46,9 +49,10 @@ afterEach(() => {
   style = null;
   t?.detruire();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 const surface = () => t.element.querySelector("[role=application]");
-const alerte = () => t.element.querySelector("[role=alert]");
+const texteToasts = () => [...document.querySelectorAll(".ya-toast .message-texte")].map((e) => e.textContent).join("");
 const statut = () => t.element.querySelector("[role=status]");
 const touche = (key, opts = {}) => surface().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts }));
 const coller = (texte) => {
@@ -118,7 +122,7 @@ test("REQ154_AC19_chargement_rejete_rien_ne_change_puis_reessai", async () => {
   coller(SEQ);
   await attendre();
   expect(changements.length).toBe(0);
-  expect(alerte().textContent).toBe("Diagramme mermaid non collé : la bibliothèque mermaid n'a pas pu être chargée.");
+  expect(texteToasts()).toBe("Diagramme mermaid non collé : la bibliothèque mermaid n'a pas pu être chargée.");
   expect(surface().classList.contains("ya-attente")).toBe(false);
   coller("graph TD\nA --> B");
   await attendre();
@@ -128,7 +132,7 @@ test("REQ154_AC19_chargement_rejete_rien_ne_change_puis_reessai", async () => {
   coller(SEQ);
   await attendre();
   expect(dernier().model).toBe(SEQ_N);
-  expect(alerte().textContent).toBe("");
+  expect(texteToasts()).toBe("");
 });
 
 test("REQ154_AC20_attente_curseur_progress_et_resultat_apres_attente", async () => {
@@ -146,7 +150,7 @@ test("REQ154_AC20_attente_curseur_progress_et_resultat_apres_attente", async () 
   expect(getComputedStyle(surface()).cursor).toBe("progress");
   expect(getComputedStyle(t.element.querySelector('[data-id="b1"]')).cursor).toBe("progress");
   expect(getComputedStyle(t.element.querySelector(".ya-tableau-outils button")).cursor).not.toBe("progress");
-  expect(alerte().textContent).toBe("");
+  expect(texteToasts()).toBe("");
   expect(statut().textContent).toBe(avant);
   t.element.querySelector('[data-id="b1"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
   expect(surface().getAttribute("aria-activedescendant")).not.toBeNull();
@@ -158,7 +162,7 @@ test("REQ154_AC20_attente_curseur_progress_et_resultat_apres_attente", async () 
   expect(dernier().boxes.length).toBe(3);
   expect(surface().hasAttribute("aria-activedescendant")).toBe(false);
   expect(document.activeElement).toBe(surface());
-  expect(alerte().textContent).toBe("");
+  expect(texteToasts()).toBe("");
   expect(vues.length).toBeGreaterThan(vuesAvant);
   expect(vues.at(-1).zoom).toBeLessThanOrEqual(1);
 });
@@ -169,12 +173,11 @@ test("REQ154_AC20_onglet_detruit_pendant_l_attente", async () => {
   monter();
   surface().focus();
   coller(SEQ);
-  const zone = t.element;
   t.detruire();
   fin({ traduire: async () => traduit() });
   await attendre();
   expect(changements.length).toBe(0);
-  expect(zone.querySelector("[role=alert]")?.textContent ?? "").toBe("");
+  expect(texteToasts()).toBe("");
 });
 
 test("REQ154_AC21_AC6_refus_de_mermaid_message_exact", async () => {
@@ -187,17 +190,18 @@ test("REQ154_AC21_AC6_refus_de_mermaid_message_exact", async () => {
     surface().focus();
     coller(SEQ);
     await attendre();
-    expect(alerte().textContent).toBe(attendu);
+    expect(texteToasts()).toBe(attendu);
     expect(changements.length).toBe(0);
     expect(vues).toHaveLength(0);
     expect(document.activeElement).toBe(surface());
     expect(document.body.textContent).not.toContain("seuls les organigrammes");
     surface().dispatchEvent(new Event("pointerdown", { bubbles: true }));
-    expect(alerte().textContent).toBe("");
+    expect(texteToasts()).toBe("");
     collerSeul(SEQ);
     await attendre();
-    expect(alerte().textContent).toBe(attendu);
+    expect(texteToasts()).toBe(attendu);
     t.detruire();
     document.body.innerHTML = "";
+    document.body.append(zoneToasts());
   }
 });

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { tableau } from "./tableau.js";
+import { zoneToasts } from "./toasts.js";
 import { versKlaxoon } from "../klaxoon.js";
 
 const DOC = () => ({
@@ -46,17 +47,20 @@ function simulerCopie({ accepte = true, envoyer = true } = {}) {
 }
 beforeEach(() => {
   document.body.innerHTML = "";
+  vi.stubGlobal("requestAnimationFrame", (f) => (f(), 0));
+  document.body.append(zoneToasts());
   compte = 0;
   vi.spyOn(crypto, "randomUUID").mockImplementation(() => `00000000-0000-4000-8000-${String(++compte).padStart(12, "0")}`);
 });
 afterEach(() => {
   t?.detruire();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   delete document.execCommand;
 });
 
 const surface = () => t.element.querySelector("[role=application]");
-const alerte = () => t.element.querySelector("[role=alert]");
+const texteToasts = () => [...document.querySelectorAll(".ya-toast .message-texte")].map((e) => e.textContent).join("");
 const statut = () => t.element.querySelector("[role=status]");
 const obj = (id) => t.element.querySelector(`[data-id="${id}"]`);
 const menuOuvert = () => document.querySelector("[role=menu]");
@@ -212,7 +216,7 @@ test("REQ155_AC8_status_apres_la_copie_et_commande_desactivee", async () => {
   clic(commande());
   await attendre();
   expect(statut().textContent).toBe("Copié au format Klaxoon : 2 boîtes, 1 lien.");
-  expect(alerte().textContent).toBe("");
+  expect(texteToasts()).toBe("");
   expect(menuOuvert()).toBeNull();
   expect(document.activeElement).toBe(surface());
   expect(choisies()).toEqual(["a1", "b1", "b2", "l1"]);
@@ -254,9 +258,9 @@ test("REQ155_AC9_pas_de_connecteur_clic_ailleurs_molette_refus_et_boite_a_outils
   surface().dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 40 }));
   expect(menuOuvert()).toBeNull();
   coller("graph TD\nA --> B\nA@{ shape: rect }");
-  expect(alerte().textContent).not.toBe("");
+  expect(texteToasts()).not.toBe("");
   droit(surface());
-  expect(alerte().textContent).toBe("");
+  expect(texteToasts()).toBe("");
   expect(menuOuvert()).not.toBeNull();
   touche("Escape");
   const e = droit(t.element.querySelector("[role=toolbar]"));
@@ -306,7 +310,12 @@ test("REQ155_AC10_refus_du_presse_papiers_rien_n_est_retenu", async () => {
   simulerCopie({ accepte: false, envoyer: false });
   droit(obj("b2"));
   clic(commande());
-  expect(alerte().textContent).toBe(REFUS_COPIE);
+  expect(texteToasts()).toBe(REFUS_COPIE);
+  const toast = document.querySelector(".ya-toast");
+  expect(toast.getAttribute("role")).toBe("alert");
+  expect(toast.dataset.cause).toMatch(/^whiteboard:/);
+  expect(toast.querySelectorAll("button")).toHaveLength(1);
+  expect(toast.querySelector("button").getAttribute("aria-label")).toBe("Fermer");
   expect(document.activeElement).toBe(surface());
   await attendre();
   expect(statut().textContent).not.toMatch(/Klaxoon/);
@@ -315,10 +324,10 @@ test("REQ155_AC10_refus_du_presse_papiers_rien_n_est_retenu", async () => {
   expect(changements[0].boxes.at(-1).text).toBe("Début");
   clic(surface());
   surface().dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0 }));
-  expect(alerte().textContent).toBe("");
+  expect(texteToasts()).toBe("");
   // execCommand accepte mais le copy n'arrive pas : même refus
   simulerCopie({ accepte: true, envoyer: false });
   droit(obj("b2"));
   clic(commande());
-  expect(alerte().textContent).toBe(REFUS_COPIE);
+  expect(texteToasts()).toBe(REFUS_COPIE);
 });

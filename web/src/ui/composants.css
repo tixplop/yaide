@@ -112,9 +112,6 @@
 .ya-toast .message-texte { grid-column: 1; grid-row: 1; min-width: 0; margin: 2px 0; overflow-wrap: anywhere; }
 .ya-toast > pre { grid-column: 1; grid-row: 2; margin-top: 2px; max-height: 96px; font-size: 12px; line-height: 16px; }
 .ya-toast > :last-child:not(.message-texte):not(pre) { grid-column: 2; grid-row: 1; align-self: start; }
-/* C-003, présentation « flottante » : refus posé en haut de la zone d'un whiteboard, sans icône ni croix. */
-.ya-message-flottante:empty { display: none; }
-.ya-message-flottante { position: absolute; top: var(--space-3); left: var(--space-3); right: var(--space-3); margin: 0 auto; width: fit-content; max-width: 720px; padding: 8px 12px; background: linear-gradient(var(--msg-erreur), var(--msg-erreur)), var(--bg-300); border-left: 0; box-shadow: inset 2px 0 0 var(--danger), var(--shadow-popover); border-radius: var(--radius-md); font-size: 13px; line-height: 20px; color: var(--ink); pointer-events: none; }
 .message-actions { display: flex; gap: var(--space-2); }
 .message-detail { flex-basis: 100%; margin: 0; max-height: var(--hauteur-detail); overflow: auto; font: var(--texte-petit) var(--font-mono); white-space: pre-wrap; }
 /* C-003 avec `champs` (REQ-072) : sans fond propre, filet --info, champs en grille de deux colonnes (une sous 30rem = 480 px). */
@@ -855,7 +852,6 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-tableau-zone[hidden] { display: none; }
 /* Recherche dans un whiteboard (REQ-161) : la zone isole ses couches ; le panneau et la boîte à outils sont en z-index 1, et le refus d'un collage passe dessous. */
 .ya-tableau-zone { isolation: isolate; }
-.ya-message-flottante.ya-message-sous-recherche { top: 50px; }
 .ya-tableau { box-sizing: border-box; flex: 1; height: 100%; min-width: 0; min-height: 0; display: flex; overflow: hidden; background: var(--bg-200); }
 .ya-tableau:focus-within { outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
 .ya-tableau[hidden] { display: none; }

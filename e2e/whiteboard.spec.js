@@ -591,7 +591,7 @@ test("REQ154_parcours_P114_P119_AC154_14_AC154_19_AC154_20_AC154_21_AC154_22_AC1
     await ligne(page, "plan.jdiag").click();
     const surface = page.getByRole("application", { name: "plan.jdiag" });
     await expect(surface).toBeFocused();
-    const alerte = surface.locator("xpath=..").locator('[role="alert"]');
+    const alerte = page.locator('.ya-toast[data-cause^="whiteboard:"]');
     const statut = surface.locator("xpath=..").getByRole("status").filter({ hasText: "Diagramme mermaid collé" });
     // Zone de 900 px de large : la fenêtre est réglée d'après la zone mesurée.
     const largeurZone = (await surface.locator("xpath=..").boundingBox()).width;
@@ -616,26 +616,23 @@ test("REQ154_parcours_P114_P119_AC154_14_AC154_19_AC154_20_AC154_21_AC154_22_AC1
     expect(await curseur(surface)).toBe("progress");
     expect(await curseur(boite("Début"))).toBe("progress");
     expect(await curseur(page.getByRole("button", { name: "Choisir" }))).not.toBe("progress");
-    await expect(alerte).toBeEmpty();
+    await expect(alerte).toHaveCount(0);
     await expect(statut).toHaveCount(0);
     await boite("Début").click({ position: { x: 8, y: 8 } });
     expect(await surface.getAttribute("aria-activedescendant")).not.toBeNull();
     liberer();
     await expect(alerte).toHaveText("Diagramme mermaid non collé : mermaid ne sait pas le lire.");
     await expect(surface).not.toHaveClass(/ya-attente/);
-    const zone = await surface.locator("xpath=..").boundingBox();
-    const m = await alerte.boundingBox();
-    proche(m.y, zone.y + 12);
-    proche(m.x + m.width / 2, zone.x + zone.width / 2);
-    expect(await alerte.evaluate((e) => getComputedStyle(e).pointerEvents)).toBe("none");
+    await expect(alerte).toHaveAttribute("role", "alert");
+    await expect(alerte.getByRole("button", { name: "Fermer" })).toBeVisible();
+    await expect(surface.locator("xpath=..").locator('[role="alert"]')).toHaveCount(0);
     await expect(point).toHaveCount(0);
     await expect(boites).toHaveCount(2);
     await expect(surface).toBeFocused();
     // Étape 2 : un clic sur une partie vide efface le message ; la séquence corrigée remplace le dessin.
     const rs = await surface.boundingBox();
     await page.mouse.click(rs.x + rs.width - 60, rs.y + rs.height - 200);
-    await expect(alerte).toBeEmpty();
-    await expect(alerte).toBeHidden();
+    await expect(alerte).toHaveCount(0);
     await expect(surface).toBeFocused();
     await copierTexte(sequence);
     await page.keyboard.press("Control+v");
@@ -652,7 +649,7 @@ test("REQ154_parcours_P114_P119_AC154_14_AC154_19_AC154_20_AC154_21_AC154_22_AC1
     expect(nouvelles).not.toContain(ancienne[0]);
     await expect(surface.locator('[aria-roledescription="lien"]')).toHaveCount(0);
     await expect(statut).toHaveText(`Diagramme mermaid collé : ${n} boîtes, ${f} flèches libres.`);
-    await expect(alerte).toBeEmpty();
+    await expect(alerte).toHaveCount(0);
     expect(await surface.getAttribute("aria-activedescendant")).toBeNull();
     await expect(surface).toBeFocused();
     await zoomMax();
@@ -721,8 +718,8 @@ test("REQ154_parcours_P114_P119_AC154_14_AC154_19_AC154_20_AC154_21_AC154_22_AC1
     await expect(surface2.getByText("oui", { exact: true })).toBeVisible();
     await expect(surface2.locator('[aria-roledescription="lien"] [stroke-dasharray]')).toHaveCount(1);
     await expect(page.getByRole("tab", { name: /^flux\.jdiag.*, non sauvegardé/ })).toBeVisible();
-    const alerte2 = surface2.locator("xpath=..").locator('[role="alert"]');
-    await expect(alerte2).toBeEmpty();
+    const alerte2 = page.locator('.ya-toast[data-cause^="whiteboard:"]');
+    await expect(alerte2).toHaveCount(0);
     await expect(surface2.locator("xpath=..").getByRole("status").filter({ hasText: "Diagramme mermaid collé" })).toHaveText("Diagramme mermaid collé : 4 boîtes, 3 liens.");
     await expect(surface2).toBeFocused();
     expect(await surface2.getAttribute("aria-activedescendant")).toBeNull();
@@ -877,7 +874,7 @@ test("REQ155_parcours_P115_P116_AC155_1_AC155_2_AC155_3_AC155_5_AC155_7_AC155_8"
     const zone = surface.locator("xpath=..");
     const zoneBoard = surface.locator("xpath=../..");
     const statut = zone.locator('[role="status"]');
-    const alerte = zone.locator('[role="alert"]');
+    const alerte = page.locator('.ya-toast[data-cause^="whiteboard:"]');
     const menu = page.getByRole("menu", { name: "Actions sur la sélection" });
     const commande = menu.getByRole("menuitem", { name: "Copier au format Klaxoon" });
     const objet = (role, t) => (t ? surface.locator(`[aria-roledescription="${role}"]`).filter({ hasText: t }) : surface.locator(`[aria-roledescription="${role}"]`));
@@ -939,7 +936,7 @@ test("REQ155_parcours_P115_P116_AC155_1_AC155_2_AC155_3_AC155_5_AC155_7_AC155_8"
     await commande.click();
     await expect(menu).toHaveCount(0);
     await expect(statut).toHaveText("Copié au format Klaxoon : 2 boîtes, 1 lien.");
-    await expect(alerte).toBeEmpty();
+    await expect(alerte).toHaveCount(0);
     await expect(surface).toBeFocused();
     expect(await surface.getAttribute("aria-activedescendant")).toBe(actif);
     await sansPoint();

@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { tableau } from "./tableau.js";
+import { zoneToasts } from "./toasts.js";
 
-const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
 const DOC = () => ({
   version: 1,
   boxes: [
@@ -29,14 +28,17 @@ function monter(doc = DOC()) {
 }
 beforeEach(() => {
   document.body.innerHTML = "";
+  vi.stubGlobal("requestAnimationFrame", (f) => (f(), 0));
+  document.body.append(zoneToasts());
 });
 afterEach(() => {
   t?.detruire();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const surface = () => t.element.querySelector("[role=application]");
-const alerte = () => t.element.querySelector("[role=alert]");
+const texteToasts = () => [...document.querySelectorAll(".ya-toast .message-texte")].map((e) => e.textContent).join("");
 const statut = () => t.element.querySelector("[role=status]");
 const obj = (id) => t.element.querySelector(`[data-id="${id}"]`);
 const touche = (key, opts = {}, cible = surface()) => {
@@ -83,7 +85,7 @@ test("REQ154_AC1_AC13_collage_remplace_le_dessin_affiche_tout_et_annonce", async
   expect(document.activeElement).toBe(surface());
   await attendre();
   expect(statut().textContent).toBe("Diagramme mermaid collé : 4 boîtes, 3 liens.");
-  expect(alerte().textContent).toBe("");
+  expect(texteToasts()).toBe("");
   coller("graph TD; A");
   await attendre();
   expect(statut().textContent).toBe("Diagramme mermaid collé : 1 boîte, aucun lien.");
@@ -95,20 +97,25 @@ test("REQ154_AC1_AC13_collage_remplace_le_dessin_affiche_tout_et_annonce", async
   expect(statut().textContent).toBe("Modification annulée.");
 });
 
-test("REQ154_AC11_la_zone_alert_existe_vide_et_cachee_apres_la_surface_et_le_refus_la_remplit", () => {
+test("REQ154_AC11_AC21_le_refus_est_un_toast_erreur_avec_fermer_cause_whiteboard_et_aucune_zone_alert", () => {
   monter();
-  expect(alerte().textContent).toBe("");
-  expect(alerte().matches(":empty")).toBe(true);
-  expect(css).toMatch(/\.ya-message-flottante:empty\s*\{\s*display:\s*none/);
-  expect(surface().compareDocumentPosition(alerte()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  surface().focus();
+  expect(t.element.querySelector("[role=alert]")).toBeNull();
+  expect(document.querySelector(".ya-toast")).toBeNull();
   coller(ILLISIBLE);
-  expect(alerte().textContent).toBe(REFUS);
-  expect(alerte().matches(":empty")).toBe(false);
-  expect(alerte().classList.contains("ya-message-flottante")).toBe(true);
-  expect(alerte().classList.contains("message-erreur")).toBe(true);
+  const toast = document.querySelector(".ya-toast");
+  expect(toast.getAttribute("role")).toBe("alert");
+  expect(toast.classList.contains("message-erreur")).toBe(true);
+  expect(toast.dataset.cause).toMatch(/^whiteboard:/);
+  expect(toast.querySelector(".message-texte").textContent).toBe(REFUS);
+  expect(toast.querySelectorAll("button")).toHaveLength(1);
+  expect(toast.querySelector("button").getAttribute("aria-label")).toBe("Fermer");
+  expect(t.element.querySelector("[role=alert]")).toBeNull();
+  expect(t.element.contains(toast)).toBe(false);
+  expect(document.activeElement).toBe(surface());
 });
 
-test("REQ154_AC6_AC10_refus_ne_change_rien_garde_le_focus_et_part_au_geste_suivant", () => {
+test("REQ154_AC6_AC10_AC12_refus_ne_change_rien_garde_le_focus_et_part_au_geste_suivant", () => {
   monter();
   surface().focus();
   const e = coller(ILLISIBLE);
@@ -116,12 +123,12 @@ test("REQ154_AC6_AC10_refus_ne_change_rien_garde_le_focus_et_part_au_geste_suiva
   expect(changements).toHaveLength(0);
   expect(vues).toHaveLength(0);
   expect(document.activeElement).toBe(surface());
-  expect(alerte().textContent).toBe(REFUS);
+  expect(texteToasts()).toBe(REFUS);
   // un nouveau refus remplace le message
   coller("graph TD\n  A -->");
-  expect(alerte().textContent).toBe("Diagramme mermaid non collé : la ligne 2 n'est pas comprise.");
+  expect(texteToasts()).toBe("Diagramme mermaid non collé : la ligne 2 n'est pas comprise.");
   coller("graph TD");
-  expect(alerte().textContent).toBe("Diagramme mermaid non collé : il n'a aucun nœud.");
+  expect(texteToasts()).toBe("Diagramme mermaid non collé : il n'a aucun nœud.");
   expect(changements).toHaveLength(0);
   touche("z", { ctrlKey: true });
   expect(changements).toHaveLength(0);
@@ -131,34 +138,39 @@ test("REQ154_AC6_AC10_refus_ne_change_rien_garde_le_focus_et_part_au_geste_suiva
     () => surface().dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 10 })),
     () => touche("Escape"),
     () => touche("ArrowLeft"),
+    () => touche("Tab"),
     () => t.element.querySelector("[role=toolbar]").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })),
   ];
   for (const geste of gestes) {
     coller(ILLISIBLE);
-    expect(alerte().textContent).not.toBe("");
+    expect(texteToasts()).not.toBe("");
     geste();
-    expect(alerte().textContent).toBe("");
+    expect(texteToasts()).toBe("");
   }
   // même refus deux fois de suite : le Ctrl+V vide la zone, le collage la réécrit
   coller(ILLISIBLE);
   touche("v", { ctrlKey: true });
-  expect(alerte().textContent).toBe("");
+  expect(texteToasts()).toBe("");
   coller(ILLISIBLE);
-  expect(alerte().textContent).toBe(REFUS);
+  coller(ILLISIBLE);
+  expect(document.querySelectorAll(".ya-toast")).toHaveLength(1);
+  expect(texteToasts()).toBe(REFUS);
 });
 
 test("REQ154_AC10_le_message_reste_sans_geste_et_part_quand_le_fichier_devient_illisible", async () => {
   monter();
   coller(ILLISIBLE);
   await attendre();
-  expect(alerte().textContent).toBe(REFUS);
+  expect(texteToasts()).toBe(REFUS);
   t.element.remove();
   document.body.append(t.element);
-  expect(alerte().textContent).toBe(REFUS);
+  expect(texteToasts()).toBe(REFUS);
   t.definirDocument(null);
-  expect(t.element.querySelector("[role=alert]")).toBeNull();
+  expect(texteToasts()).toBe("");
   t.definirDocument(DOC());
-  expect(alerte().textContent).toBe("");
+  coller(ILLISIBLE);
+  t.detruire();
+  expect(texteToasts()).toBe("");
 });
 
 test("REQ154_AC7_AC137_11_autre_texte_colle_la_copie_ou_rien_et_la_saisie_garde_son_paste", () => {
@@ -263,7 +275,7 @@ test("REQ154_AC18_AC23_ctrl_maj_v_recree_le_dessin_garde_le_modele_et_s_annule_e
   expect(surface().hasAttribute("aria-activedescendant")).toBe(false);
   expect(document.activeElement).toBe(surface());
   expect(vues.at(-1).zoom).toBeLessThanOrEqual(1);
-  expect(alerte().textContent).toBe("");
+  expect(texteToasts()).toBe("");
   await attendre();
   expect(statut().textContent).toBe("Diagramme mermaid collé : 2 boîtes, 1 lien.");
   touche("z", { ctrlKey: true });
