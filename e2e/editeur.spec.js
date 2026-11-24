@@ -433,7 +433,13 @@ test("REQ058_AC1_AC2_AC5_AC6_AC8_AC9_AC11_AC12_AC13_AC14_AC15_AC16_AC18_AC19_AC2
     await expect(vue().locator("#etat")).toHaveText("Prêt");
 
     // 2. Frappe sans Ctrl+S : l'aperçu montre le fichier enregistré.
-    await vue().locator("body").evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    // La mise en page se stabilise après le passage en mode hybride : on attend que la page soit défilable.
+    await expect.poll(() => vue().locator("html").evaluate((e) => e.scrollHeight - innerHeight)).toBeGreaterThan(100);
+    // Deux images d'attente : la page prévient l'éditeur de son défilement à l'image suivant l'événement.
+    await vue().locator("body").evaluate(async () => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    });
     const bas = await defilement();
     expect(bas).toBeGreaterThan(100);
     await lignesCode().nth(ligneH1).click();

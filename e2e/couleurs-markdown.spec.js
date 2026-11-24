@@ -214,10 +214,12 @@ test("REQ115_AC13_AC14_puce_coloree_dans_l_apercu_et_l_hybride_enregistrer_les_c
         const s = v.state.selection.main;
         return { de: s.from, a: s.to, texte: v.state.sliceDoc(s.from, s.to), editeur: v.scrollDOM.scrollTop, apercu: a.scrollTop };
       });
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       const v = document.querySelector(".zone-code").vue;
       const debut = v.state.doc.toString().indexOf("Installer");
       v.dispatch({ selection: { anchor: debut, head: debut + "Installer".length }, scrollIntoView: true });
+      // CodeMirror applique le défilement à la mesure, à l'image suivante : on l'attend avant de poser le nôtre.
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       v.scrollDOM.scrollTop = 400;
       document.querySelector(".zone-code-apercu").scrollTop = 300;
     });

@@ -110,8 +110,9 @@ test("REQ007_AC1_AC2_AC3_AC5_AC6_AC8_REQ008_AC5_REQ009_AC5_REQ034_AC1_AC4_AC14_A
     const alerte = page.getByRole("alert").filter({ hasText: "notes.bin est un fichier binaire. Yaide ne l'ouvre pas." });
     await expect(alerte).toBeVisible();
     await ligne(page, "gros.log").click();
-    await expect(page.getByRole("alert").filter({ hasText: "gros.log dépasse 5 Mo. Yaide ne l'ouvre pas." })).toBeVisible();
-    await page.getByRole("button", { name: "Fermer", exact: true }).click();
+    const alerteGros = page.getByRole("alert").filter({ hasText: "gros.log dépasse 5 Mo. Yaide ne l'ouvre pas." });
+    await expect(alerteGros).toBeVisible();
+    await alerteGros.getByRole("button", { name: "Fermer", exact: true }).click();
     await expect(page.getByRole("alert").filter({ hasText: "gros.log" })).toHaveCount(0);
   });
   await page.reload();
