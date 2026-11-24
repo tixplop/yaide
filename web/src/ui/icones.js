@@ -17,7 +17,8 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 Icônes Lucide (ISC) utilisées ici : power, panel-left-close, panel-left-open, panel-right-close, panel-bottom-close, panel-bottom-open, bot, message-square-plus, history, send-horizontal, circle-stop, circle-dashed, circle-check, circle-x, circle-arrow-up, type, users, user-plus, sliders-horizontal, text-align-start, text-align-center, text-align-end, arrow-left, asterisk, code-xml, circle-minus, brain, messages-square, server, copy, clipboard-paste, square-dashed, bring-to-front, send-to-back, mouse-pointer-2, circle, diamond, baseline, workflow, move-up-right, square-plus, zoom-out, zoom-in, scan, bold, italic, underline, strikethrough, shapes.
-Dessinées pour Yaide : couleur-texte, opacite-100, opacite-75, opacite-50, opacite-25, opacite-0, taille-petit, taille-normal, taille-grand, taille-tres-grand, epaisseur-fin, epaisseur-moyen, epaisseur-epais, position-haut, position-milieu, position-bas ; les vingt-cinq contenus `symbole-<shape>` (REQ-149) sont de Lucide (database, user-round, users-round, lock, lock-open, circle-check, circle-x, network, wifi, ethernet-port, server, cloud, monitor, smartphone, file-text, mail, settings, triangle-alert, brick-wall, hard-drive, globe, smile, meh, frown), sauf `symbole-pipe`, dessiné pour Yaide ; `forme-point` et `forme-barre` (REQ-156) sont pleins, dessinés pour Yaide.
+Icônes Lucide (ISC) de la barre « Mise en forme » (REQ-170) : heading, code, text-quote, list-ordered, square-code, table, separator-horizontal.
+Dessinées pour Yaide : liste-puces, couleur-texte, opacite-100, opacite-75, opacite-50, opacite-25, opacite-0, taille-petit, taille-normal, taille-grand, taille-tres-grand, epaisseur-fin, epaisseur-moyen, epaisseur-epais, position-haut, position-milieu, position-bas ; les vingt-cinq contenus `symbole-<shape>` (REQ-149) sont de Lucide (database, user-round, users-round, lock, lock-open, circle-check, circle-x, network, wifi, ethernet-port, server, cloud, monitor, smartphone, file-text, mail, settings, triangle-alert, brick-wall, hard-drive, globe, smile, meh, frown), sauf `symbole-pipe`, dessiné pour Yaide ; `forme-point` et `forme-barre` (REQ-156) sont pleins, dessinés pour Yaide.
 
 ---
 
@@ -120,6 +121,14 @@ const CHEMINS = {
   "italic": "<path d=\"M19 4h-9\"/><path d=\"M14 20H5\"/><path d=\"M15 4 9 20\"/>",
   "underline": "<path d=\"M6 4v6a6 6 0 0 0 12 0V4\"/><path d=\"M4 20h16\"/>",
   "strikethrough": "<path d=\"M16 4H9a3 3 0 0 0-2.83 4\"/><path d=\"M14 12a4 4 0 0 1 0 8H6\"/><path d=\"M4 12h16\"/>",
+  "heading": "<path d=\"M6 12h12\"/><path d=\"M6 20V4\"/><path d=\"M18 20V4\"/>",
+  "code": "<path d=\"m16 18 6-6-6-6\"/><path d=\"m8 6-6 6 6 6\"/>",
+  "text-quote": "<path d=\"M17 6H3\"/><path d=\"M21 12H8\"/><path d=\"M21 18H8\"/><path d=\"M3 12v6\"/>",
+  "liste-puces": "<circle cx=\"4.5\" cy=\"6\" r=\"1.6\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"4.5\" cy=\"12\" r=\"1.6\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"4.5\" cy=\"18\" r=\"1.6\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M9 6h12\"/><path d=\"M9 12h12\"/><path d=\"M9 18h12\"/>",
+  "list-ordered": "<path d=\"M10 12h11\"/><path d=\"M10 18h11\"/><path d=\"M10 6h11\"/><path d=\"M4 10h2\"/><path d=\"M4 6h1v4\"/><path d=\"M6 18H4c0-1 2-2 2-3s-1-1.5-2-1\"/>",
+  "square-code": "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"m10 9-3 3 3 3\"/><path d=\"m14 15 3-3-3-3\"/>",
+  "table": "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M3 9h18\"/><path d=\"M3 15h18\"/><path d=\"M12 3v18\"/>",
+  "separator-horizontal": "<path d=\"M3 12h18\"/><path d=\"m8 8 4-4 4 4\"/><path d=\"m16 16-4 4-4-4\"/>",
   "text-align-start": "<path d=\"M21 5H3\"/><path d=\"M15 12H3\"/><path d=\"M17 19H3\"/>",
   "text-align-center": "<path d=\"M21 5H3\"/><path d=\"M17 12H7\"/><path d=\"M19 19H5\"/>",
   "text-align-end": "<path d=\"M21 5H3\"/><path d=\"M21 12H9\"/><path d=\"M21 19H7\"/>",

@@ -1,10 +1,11 @@
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history, undo } from "@codemirror/commands";
+import { syntaxTree, ensureSyntaxTree } from "@codemirror/language";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { afterEach, expect, test } from "vitest";
 import { zoneCode } from "./zone-code.js";
-import { gras, italique, souligne, codeEnLigne, extensionMiseEnForme } from "./mise-en-forme.js";
+import { gras, italique, souligne, codeEnLigne, extensionMiseEnForme, titre, citation, listePuces, listeNumerotee, lien, tableau, separateur, blocCode } from "./mise-en-forme.js";
 
 Range.prototype.getClientRects ??= () => [];
 
@@ -217,4 +218,127 @@ test("REQ169_AC9_ctrl_b_i_u_pris_avant_codemirror_navigateur_neutralise_focus_ga
     expect(document.activeElement).toBe(v.contentDOM);
   }
   z.detruire();
+});
+
+const posFin = (v) => v.state.selection.main.head;
+
+test("REQ170_AC3_titre_cycle_texte_h1_h2_h3_texte_et_h4_redevient_texte", () => {
+  const v = vue("Intro", 2);
+  for (const attendu of ["# Intro", "## Intro", "### Intro", "Intro", "# Intro"]) {
+    appliquer(v, titre);
+    expect(texte(v)).toBe(attendu);
+  }
+  const w = vue("#### Quatre", 0);
+  appliquer(w, titre);
+  expect(texte(w)).toBe("Quatre");
+  const x = vue("###### Six\n# Un\ntexte", 0, 20);
+  appliquer(x, titre);
+  expect(texte(x)).toBe("Six\n## Un\n# texte");
+});
+
+test("REQ170_AC4_listes_ajout_retrait_numerotation_remplacement_et_lignes_vides", () => {
+  const v = vue("a\nb", 0, 3);
+  appliquer(v, listePuces);
+  expect(texte(v)).toBe("- a\n- b");
+  expect(choisi(v)).toBe("a\n- b");
+  appliquer(v, listePuces);
+  expect(texte(v)).toBe("a\nb");
+  appliquer(v, listeNumerotee);
+  expect(texte(v)).toBe("1. a\n2. b");
+  appliquer(v, listePuces);
+  expect(texte(v)).toBe("- a\n- b");
+  appliquer(v, listeNumerotee);
+  expect(texte(v)).toBe("1. a\n2. b");
+  appliquer(v, listeNumerotee);
+  expect(texte(v)).toBe("a\nb");
+  appliquer(v, citation);
+  expect(texte(v)).toBe("> a\n> b");
+  appliquer(v, citation);
+  expect(texte(v)).toBe("a\nb");
+  const w = vue("a\n\nb\n* c", 0, 8);
+  appliquer(w, listeNumerotee);
+  expect(texte(w)).toBe("1. a\n\n2. b\n3. c");
+  const x = vue("a\n\nb", 0, 4);
+  appliquer(x, listePuces);
+  expect(texte(x)).toBe("- a\n\n- b");
+  const y = vue("a\n- b", 0, 5);
+  appliquer(y, listePuces);
+  expect(texte(y)).toBe("- a\n- b");
+  const z = vue("", 0);
+  appliquer(z, listePuces);
+  expect(texte(z)).toBe("- ");
+  expect(posFin(z)).toBe(2);
+});
+
+test("REQ170_AC5_lien_choisit_url_ou_texte", () => {
+  const v = vue("Yaide", 0, 5);
+  appliquer(v, lien);
+  expect(texte(v)).toBe("[Yaide](url)");
+  expect(choisi(v)).toBe("url");
+  const w = vue("a  b", 2);
+  appliquer(w, lien);
+  expect(texte(w)).toBe("a [texte](url) b");
+  expect(choisi(w)).toBe("texte");
+});
+
+const TABLEAU = "| Colonne 1 | Colonne 2 |\n| --- | --- |\n|  |  |\n|  |  |";
+
+test("REQ170_AC6_tableau_insere_sous_la_ligne_sans_doubler_la_ligne_vide", () => {
+  const v = vue("Intro", 2);
+  appliquer(v, tableau);
+  expect(texte(v)).toBe(`Intro\n\n${TABLEAU}\n`);
+  expect(posFin(v)).toBe(texte(v).length);
+  const w = vue("Intro\n\nSuite", 2);
+  appliquer(w, tableau);
+  expect(texte(w)).toBe(`Intro\n\n${TABLEAU}\n\nSuite`);
+  expect(w.state.doc.lineAt(posFin(w)).text).toBe("");
+  const x = vue("Intro\nSuite", 2);
+  appliquer(x, tableau);
+  expect(texte(x)).toBe(`Intro\n\n${TABLEAU}\n\nSuite`);
+  expect(x.state.doc.lineAt(posFin(x)).text).toBe("");
+  const y = vue("", 0);
+  appliquer(y, tableau);
+  expect(texte(y)).toBe(`\n${TABLEAU}\n`);
+});
+
+test("REQ170_AC7_separateur_et_intro_n_est_pas_un_titre_setext", () => {
+  const v = vue("Intro", 5);
+  appliquer(v, separateur);
+  expect(texte(v)).toBe("Intro\n\n---\n");
+  expect(posFin(v)).toBe(texte(v).length);
+  let setext = false;
+  let regle = false;
+  ensureSyntaxTree(v.state, v.state.doc.length, 5000);
+  syntaxTree(v.state).iterate({ enter: (n) => { if (n.name === "SetextHeading2") setext = true; if (n.name === "HorizontalRule") regle = true; } });
+  expect(setext).toBe(false);
+  expect(regle).toBe(true);
+});
+
+test("REQ170_AC8_bloc_de_code_vide_sous_une_ligne_ou_autour_du_texte_choisi", () => {
+  const v = vue("", 0);
+  appliquer(v, blocCode);
+  expect(texte(v)).toBe("```\n\n```");
+  expect(posFin(v)).toBe(4);
+  const w = vue("texte", 5);
+  appliquer(w, blocCode);
+  expect(texte(w)).toBe("texte\n```\n\n```");
+  expect(posFin(w)).toBe(10);
+  const x = vue("fn", 0, 2);
+  appliquer(x, blocCode);
+  expect(texte(x)).toBe("```\nfn\n```");
+  expect(choisi(x)).toBe("fn");
+});
+
+test("REQ170_AC9_une_transaction_isolee_par_action_et_un_undo_rend_le_texte_d_avant", () => {
+  const actions = [titre, citation, listePuces, listeNumerotee, lien, tableau, separateur, blocCode];
+  for (const action of actions) {
+    const v = vue("mot", 0, 3);
+    v.dispatch({ changes: { from: 3, insert: "s" }, userEvent: "input.type" });
+    const avant = texte(v);
+    v.dispatch({ selection: { anchor: 0, head: 4 } });
+    appliquer(v, action);
+    expect(texte(v), action.name).not.toBe(avant);
+    undo(v);
+    expect(texte(v), action.name).toBe(avant);
+  }
 });

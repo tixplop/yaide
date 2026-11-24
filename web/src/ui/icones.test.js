@@ -445,3 +445,20 @@ test("REQ162_AC1_icone_power_au_format_de_lucide_distincte_de_log_out", () => {
   expect(s.innerHTML).toContain("M18.4 6.6a9 9 0 1 1-12.77.04");
   expect(s.innerHTML).not.toBe(icone("log-out").innerHTML);
 });
+
+test("REQ170_AC12_icones_de_la_barre_mise_en_forme_au_trait_du_sprite", () => {
+  const noms = ["heading", "bold", "italic", "underline", "strikethrough", "code", "link", "text-quote", "liste-puces", "list-ordered", "square-code", "table", "separator-horizontal"];
+  for (const n of noms) {
+    expect(NOMS, n).toContain(n);
+    const s = icone(n);
+    expect(s.getAttribute("viewBox"), n).toBe("0 0 24 24");
+    expect(s.getAttribute("stroke"), n).toBe("currentColor");
+    expect(s.getAttribute("aria-hidden"), n).toBe("true");
+    expect(s.querySelector("path, circle, rect"), n).not.toBeNull();
+  }
+  expect(icone("heading").innerHTML).toContain("M6 12h12");
+  expect(icone("square-code").innerHTML).toContain("m10 9-3 3 3 3");
+  expect(icone("separator-horizontal").innerHTML).toContain("m8 8 4-4 4 4");
+  expect(icone("liste-puces").querySelectorAll("circle").length).toBe(3);
+  expect(new Set(noms.map((n) => icone(n).innerHTML)).size).toBe(noms.length);
+});

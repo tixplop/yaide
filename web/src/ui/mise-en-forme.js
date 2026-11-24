@@ -1,4 +1,4 @@
-import { EditorSelection, Prec, StateEffect, StateField } from "@codemirror/state";
+import { ChangeSet, EditorSelection, Prec, StateEffect, StateField } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 
 // Mise en forme markdown (REQ-169) : chaque action prend un EditorState et rend une transaction isolée dans
@@ -90,6 +90,110 @@ export function codeEnLigne(etat) {
   const { from, to } = etat.selection.main;
   if (from === to) return transaction(etat, { changes: { from, insert: "``" }, selection: EditorSelection.single(from + 1) });
   return accentGrave(etat);
+}
+
+// Lignes visées par la sélection principale : celles qu'elle touche (la dernière est écartée si la sélection s'arrête
+// à son début), ou celle du curseur.
+function lignesVisees(etat) {
+  const { from, to } = etat.selection.main;
+  const doc = etat.doc;
+  const premiere = doc.lineAt(from).number;
+  let derniere = doc.lineAt(to).number;
+  if (to > from && doc.line(derniere).from === to) derniere -= 1;
+  const lignes = [];
+  for (let n = premiere; n <= derniere; n++) lignes.push(doc.line(n));
+  return lignes;
+}
+
+const vide = (ligne) => ligne.text.trim() === "";
+
+// Applique `remplacer(ligne, rang)` (`null` : ligne inchangée) aux lignes non vides visées, ou à la ligne vide du curseur
+// quand elle est seule. La sélection suit son texte.
+function parLigne(etat, remplacer) {
+  let lignes = lignesVisees(etat);
+  const pleines = lignes.filter((l) => !vide(l));
+  if (pleines.length > 0) lignes = pleines;
+  else if (lignes.length > 1) return transaction(etat, { selection: etat.selection });
+  const changes = [];
+  lignes.forEach((ligne, rang) => {
+    const c = remplacer(ligne, rang);
+    if (c) changes.push(c);
+  });
+  const jeu = ChangeSet.of(changes, etat.doc.length);
+  return transaction(etat, { changes: jeu, selection: EditorSelection.create([etat.selection.main.map(jeu, 1)]) });
+}
+
+// Titre : texte, `# `, `## `, `### `, puis texte ; de `####` à `######`, texte.
+export function titre(etat) {
+  return parLigne(etat, (ligne) => {
+    const m = /^(#{1,6}) /.exec(ligne.text);
+    const niveau = m ? m[1].length : 0;
+    const marque = niveau < 3 ? `${"#".repeat(niveau + 1)} ` : "";
+    return { from: ligne.from, to: ligne.from + (m ? m[0].length : 0), insert: marque };
+  });
+}
+
+// Marque de tête d'une ligne : ajoutée à toutes, ou retirée si toutes l'ont déjà ; `autres` : marques remplacées.
+function marquer(etat, aDeja, autres, marque) {
+  const pleines = lignesVisees(etat).filter((l) => !vide(l));
+  const cibles = pleines.length > 0 ? pleines : lignesVisees(etat);
+  const retirer = pleines.length > 0 && cibles.every((l) => aDeja.test(l.text));
+  return parLigne(etat, (ligne, rang) => {
+    const existante = ligne.text.match(aDeja) ?? ligne.text.match(autres);
+    const longueur = existante ? existante[0].length : 0;
+    return { from: ligne.from, to: ligne.from + longueur, insert: retirer ? "" : marque(rang) };
+  });
+}
+
+export const citation = (etat) => marquer(etat, /^> /, /^(?!)/, () => "> ");
+export const listePuces = (etat) => marquer(etat, /^- /, /^([*+] |\d+\. )/, () => "- ");
+export const listeNumerotee = (etat) => marquer(etat, /^\d+\. /, /^([-*+] )/, (rang) => `${rang + 1}. `);
+
+// Lien : `[sélection](url)` avec `url` choisi ; sans sélection `[texte](url)` avec `texte` choisi.
+export function lien(etat) {
+  const { from, to } = etat.selection.main;
+  if (from === to) {
+    return transaction(etat, { changes: { from, insert: "[texte](url)" }, selection: EditorSelection.single(from + 1, from + 6) });
+  }
+  return transaction(etat, {
+    changes: [{ from, insert: "[" }, { from: to, insert: "](url)" }],
+    selection: EditorSelection.single(to + 3, to + 6),
+  });
+}
+
+// Insère `bloc` sous la ligne du curseur, séparé du texte voisin par une ligne vide (jamais doublée) ; le curseur va
+// sur la ligne vide qui suit.
+function insererSous(etat, bloc) {
+  const doc = etat.doc;
+  const ligne = doc.lineAt(etat.selection.main.head);
+  const suivante = ligne.number < doc.lines ? doc.line(ligne.number + 1) : null;
+  let pos = ligne.to;
+  let tete = "\n\n";
+  if (vide(ligne)) tete = "\n";
+  else if (suivante && vide(suivante)) {
+    pos = suivante.to;
+    tete = "\n";
+  }
+  const insere = `${tete}${bloc}\n`;
+  return transaction(etat, { changes: { from: pos, insert: insere }, selection: EditorSelection.single(pos + insere.length) });
+}
+
+export const tableau = (etat) => insererSous(etat, "| Colonne 1 | Colonne 2 |\n| --- | --- |\n|  |  |\n|  |  |");
+export const separateur = (etat) => insererSous(etat, "---");
+
+// Bloc de code : autour du texte choisi ; sans sélection, un bloc vide (sur la ligne si elle est vide, sinon sous elle).
+export function blocCode(etat) {
+  const { from, to, head } = etat.selection.main;
+  if (from !== to) return blocDeCode(etat);
+  const ligne = etat.doc.lineAt(head);
+  const videLigne = ligne.text === "";
+  const pos = videLigne ? ligne.from : ligne.to;
+  const insere = videLigne ? "```\n\n```" : "\n```\n\n```";
+  return transaction(etat, {
+    changes: { from: pos, to: videLigne ? ligne.to : pos, insert: insere },
+    selection: EditorSelection.single(pos + insere.indexOf("\n\n") + 1),
+    effects: [frappes.of(null)],
+  });
 }
 
 function agir(action) {
