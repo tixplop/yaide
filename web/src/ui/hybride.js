@@ -61,6 +61,40 @@ class CaseCochee extends WidgetType {
   }
 }
 
+// Image `![[nom]]` (REQ-175) : remplace toute la balise ; un clic place le curseur au début de la balise, dans l'éditeur.
+class ImageMd extends WidgetType {
+  constructor(src, nom, modele) {
+    super();
+    this.src = src;
+    this.nom = nom;
+    this.modele = modele;
+  }
+  eq(autre) {
+    return autre.src === this.src && autre.nom === this.nom;
+  }
+  toDOM(vue) {
+    const img = this.modele.cloneNode();
+    img.alt = this.nom;
+    img.draggable = false;
+    img.removeAttribute("title");
+    img.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      vue.dispatch({ selection: { anchor: vue.posAtDOM(img) } });
+      vue.focus();
+    });
+    return img;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
+
+// Nouvelle lecture des balises `![[nom]]` : `true` reprend aussi les images en échec (liste des fichiers ou connexion revenues), `false` redessine seulement.
+export const majImagesHybride = StateEffect.define();
+
+const BALISE_IMAGE = /!\[\[([^[\]\n]*)\]\]/g;
+const DANS_CODE = new Set(["InlineCode", "FencedCode", "CodeBlock"]);
+
 const TITRES = { ATXHeading1: 1, ATXHeading2: 2, ATXHeading3: 3, ATXHeading4: 4, ATXHeading5: 5, ATXHeading6: 6, SetextHeading1: 1, SetextHeading2: 2 };
 const STYLES = { StrongEmphasis: ["EmphasisMark", "cm-hy-gras"], Emphasis: ["EmphasisMark", "cm-hy-italique"], Strikethrough: ["StrikethroughMark", "cm-hy-barre"] };
 
@@ -69,7 +103,9 @@ const STYLES = { StrongEmphasis: ["EmphasisMark", "cm-hy-gras"], Emphasis: ["Emp
 //   { debut, fin, classe }                  style posé sur le texte
 //   { debut, fin, masque: true }            marque retirée du DOM
 //   { debut, fin, widget: "puce" | "trait" } marque remplacée par un ornement
-export function decorationsHybride(etat, plages = [{ from: 0, to: etat.doc.length }]) {
+//   { debut, fin, widget: "image", src, nom, modele }  balise `![[nom]]` remplacée par l'image chargée
+// `images` : nom → adresse ou null ; `chargees` : adresse → `img` chargée ; `charger(adresse)` lance le chargement d'une image absente.
+export function decorationsHybride(etat, plages = [{ from: 0, to: etat.doc.length }], { images, chargees, charger } = {}) {
   const doc = etat.doc;
   const sortie = [];
   const lignesVues = new Set();
@@ -195,6 +231,30 @@ export function decorationsHybride(etat, plages = [{ from: 0, to: etat.doc.lengt
       },
     });
   }
+  if (images) {
+    const vues = new Set();
+    for (const { from, to } of plages) {
+      for (let n = doc.lineAt(from).number; n <= doc.lineAt(to).number; n++) {
+        const l = doc.line(n);
+        if (!l.text.includes("![[")) continue;
+        for (const m of l.text.matchAll(BALISE_IMAGE)) {
+          const debut = l.from + m.index;
+          const fin = debut + m[0].length;
+          if (vues.has(debut)) continue;
+          vues.add(debut);
+          let dansCode = false;
+          for (let p = syntaxTree(etat).resolveInner(debut, 1); p; p = p.parent) if (DANS_CODE.has(p.name)) dansCode = true;
+          const src = dansCode ? null : images(m[1]);
+          if (!src) continue;
+          if (touche(debut, fin)) {
+            style(debut, debut + 3, "cm-hy-marque");
+            style(fin - 2, fin, "cm-hy-marque");
+          } else if (chargees?.has(src)) sortie.push({ debut, fin, widget: "image", src, nom: m[1], modele: chargees.get(src) });
+          else charger?.(src);
+        }
+      }
+    }
+  }
   sortie.push(...marquesSelectionFond(etat, sortie));
   return sortie.sort((a, b) => a.debut - b.debut || (b.ligne ? 1 : 0) - (a.ligne ? 1 : 0) || b.fin - a.fin);
 }
@@ -209,6 +269,7 @@ function enDecoration(d) {
     return ligneCache.get(d.classe).range(d.debut);
   }
   if (d.masque) return masque.range(d.debut, d.fin);
+  if (d.widget === "image") return Decoration.replace({ widget: new ImageMd(d.src, d.nom, d.modele) }).range(d.debut, d.fin);
   if (d.widget === "case") return Decoration.replace({ widget: new CaseCochee(d.cochee, d.nom) }).range(d.debut, d.fin);
   if (d.widget) return ornements[d.widget].range(d.debut, d.fin);
   if (!marquesCache.has(d.classe)) marquesCache.set(d.classe, Decoration.mark({ class: d.classe }));
@@ -239,8 +300,8 @@ function marquesSelectionFond(etat, decos) {
   return sortie;
 }
 
-function construire(vue) {
-  return Decoration.set(decorationsHybride(vue.state, vue.visibleRanges).map(enDecoration), true);
+function construire(vue, options) {
+  return Decoration.set(decorationsHybride(vue.state, vue.visibleRanges, options).map(enDecoration), true);
 }
 
 // Bornes [debut, fin] du texte d'une cellule dans la source (espaces autour exclus), ou null si la cellule n'existe pas.
@@ -1010,14 +1071,45 @@ function suiviDesLiens({ surLien, surSurvol }) {
 }
 
 // Extension CodeMirror du mode hybride. Le document n'est jamais modifié : seules des décorations sont posées.
-export function hybride({ surLien, surSurvol } = {}) {
+// `images` : nom → adresse de l'image ou null ; `chargees` : table adresse → `img` chargée, partagée avec l'aperçu.
+export function hybride({ surLien, surSurvol, images, chargees = new Map() } = {}) {
   const plugin = ViewPlugin.fromClass(
     class {
       constructor(vue) {
-        this.decorations = construire(vue);
+        this.vue = vue;
+        this.enChargement = new Set();
+        this.echecs = new Set();
+        this.options = images ? { images, chargees, charger: (src) => this.charger(src) } : undefined;
+        this.decorations = construire(vue, this.options);
+      }
+      // La balise reste en texte jusqu'au `load` ; un échec n'est retenté qu'à la demande suivante (`majImagesHybride`).
+      charger(src) {
+        if (this.enChargement.has(src) || this.echecs.has(src)) return;
+        this.enChargement.add(src);
+        const neuve = new Image();
+        neuve.className = "ya-image-md";
+        neuve.draggable = false;
+        neuve.onload = () => {
+          this.enChargement.delete(src);
+          chargees.set(src, neuve);
+          this.relire();
+        };
+        neuve.onerror = () => {
+          this.enChargement.delete(src);
+          this.echecs.add(src);
+        };
+        neuve.src = src;
+      }
+      relire() {
+        if (!this.detruit) this.vue.dispatch({ effects: majImagesHybride.of(false) });
       }
       update(u) {
-        if (u.docChanged || u.selectionSet || u.viewportChanged || syntaxTree(u.state) !== syntaxTree(u.startState)) this.decorations = construire(u.view);
+        const relue = u.transactions.some((t) => t.effects.some((e) => e.is(majImagesHybride)));
+        if (u.transactions.some((t) => t.effects.some((e) => e.is(majImagesHybride) && e.value))) this.echecs = new Set();
+        if (relue || u.docChanged || u.selectionSet || u.viewportChanged || syntaxTree(u.state) !== syntaxTree(u.startState)) this.decorations = construire(u.view, this.options);
+      }
+      destroy() {
+        this.detruit = true;
       }
     },
     { decorations: (p) => p.decorations },

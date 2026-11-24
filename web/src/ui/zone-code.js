@@ -10,7 +10,7 @@ import { chargerMermaid, adresseDiagramme } from "./diagramme.js";
 import { couleurs } from "./couleurs-code.js";
 import { extensionMiseEnForme } from "./mise-en-forme.js";
 import { barreMd } from "./barre-md.js";
-import { hybride as extensionHybride, TableauRendu, DiagrammeRendu, tableauxHybride, diagrammesRendus, validerSaisie } from "./hybride.js";
+import { hybride as extensionHybride, TableauRendu, DiagrammeRendu, tableauxHybride, diagrammesRendus, validerSaisie, majImagesHybride } from "./hybride.js";
 import { themeCourant, themeTableur } from "./theme.js";
 import { tableur } from "./tableur.js";
 import { lireCsv, debutChamp, celluleA } from "../csv.js";
@@ -245,7 +245,8 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   const compartimentLangage = new Compartment();
   const compartimentHybride = new Compartment();
   const hybridePossible = langage === "markdown" && !diff;
-  const extensionsHybride = () => [extensionHybride({ surLien: suivreLien, surSurvol: surSurvolLien }), numerosDesTitres, numerosDesTableaux, numerosDesDiagrammes, clavierTableau, extensionMiseEnForme, EditorView.lineWrapping];
+  const imagesChargees = new Map(); // images `![[nom]]` chargées de l'onglet, gardées d'un aperçu à l'autre
+  const extensionsHybride = () => [extensionHybride({ surLien: suivreLien, surSurvol: surSurvolLien, images, chargees: imagesChargees }), numerosDesTitres, numerosDesTableaux, numerosDesDiagrammes, clavierTableau, extensionMiseEnForme, EditorView.lineWrapping];
   const extensions = [
     compartiment.of(themeCourant() === "dark" ? themeSombre : themeClair),
     lineNumbers(),
@@ -409,7 +410,6 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     const de = l.from + m[1].length + 1;
     vue.dispatch({ changes: { from: de, to: de + 1, insert: m[2] === " " ? "x" : " " }, userEvent: "input.case" });
   }
-  const imagesChargees = new Map(); // images `![[nom]]` chargées de l'onglet, gardées d'un aperçu à l'autre
   racine.definirApercu = (actif) => {
     if (html) {
       htmlApercu = !!actif;
@@ -432,7 +432,10 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     racine.classList.toggle("zone-code-avec-apercu", actif);
   };
   racine.rechargerApercu = () => ap?.recharger?.();
-  racine.majImages = () => ap?.majImages?.();
+  racine.majImages = () => {
+    ap?.majImages?.();
+    if (hybrideActif) vue.dispatch({ effects: majImagesHybride.of(true) });
+  };
   racine.definirCoupe = (oui) => ap?.definirCoupe?.(oui);
   // Bascule du mode hybride : la première ligne visible reste en haut, rien d'autre ne bouge (pas de surChangement).
   let hybrideActif = hybridePossible && hybride;

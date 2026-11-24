@@ -1237,4 +1237,5 @@ body { margin: 0; }
 .ya-image[hidden] { display: none; }
 
 /* Image `![[nom]]` d'un document markdown (REQ-175). */
+.cm-hybride .ya-image-md { cursor: text; }
 .ya-image-md { display: inline-block; vertical-align: text-bottom; max-width: 100%; height: auto; border: 0; background: var(--apercu-page); }

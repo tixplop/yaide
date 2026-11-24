@@ -6,7 +6,7 @@ import { history, undo, redo, undoDepth } from "@codemirror/commands";
 import { afterEach, expect, test, vi } from "vitest";
 import { apercu } from "./apercu.js";
 import { zoneCode } from "./zone-code.js";
-import { diagrammesHybride, bornesCellule, texteSaisie, sourceApres, validerSaisie, fondsRegles, decorationsHybride, hybride, lienA, tableauxHybride, insererColonne, insererLigne, supprimerColonne, supprimerLigne, zonesAides } from "./hybride.js";
+import { majImagesHybride, diagrammesHybride, bornesCellule, texteSaisie, sourceApres, validerSaisie, fondsRegles, decorationsHybride, hybride, lienA, tableauxHybride, insererColonne, insererLigne, supprimerColonne, supprimerLigne, zonesAides } from "./hybride.js";
 
 // Le curseur est en fin de document : une dernière ligne « fin » le tient loin des lignes testées.
 function deco(texte, { curseur, plages } = {}) {
@@ -1421,3 +1421,175 @@ test("REQ171_AC9_AC10_nom_tabindex_focus_inchange_sans_puce_contour_ink", () => 
   expect(css).toMatch(/\.ya-case-hy:hover \{[^}]*border-color: var\(--ink\)/);
   m.fin();
 });
+
+// Image `![[nom]]` (REQ-175) : `load` et `error` sont simulés, jsdom ne charge rien.
+function imagesH() {
+  const creees = [];
+  vi.stubGlobal("Image", class {
+    constructor() {
+      const img = document.createElement("img");
+      creees.push(img);
+      return img;
+    }
+  });
+  const adresses = (nom) => (nom === "logo.png" ? "/apercu/j/img/logo.png" : nom === "casse.png" ? "/apercu/j/casse.png" : null);
+  return { creees, adresses };
+}
+const DOCI = "avant\n\n![[logo.png]]\nfin";
+function montrerImages(doc = DOCI, anchor = 0) {
+  const { creees, adresses } = imagesH();
+  const chargees = new Map();
+  const m = monterH(doc, anchor, { images: adresses, chargees });
+  const imgs = () => [...m.parent.querySelectorAll("img.ya-image-md")];
+  const charger = (i = 0) => creees[i].dispatchEvent(new Event("load"));
+  return { ...m, creees, chargees, imgs, charger };
+}
+
+test("REQ175_AC4_AC12_image_a_la_place_de_la_balise_hors_curseur_texte_tant_que_non_chargee", () => {
+  const m = montrerImages();
+  const ligne = () => m.parent.querySelectorAll(".cm-line")[2];
+  expect(ligne().textContent).toBe("![[logo.png]]"); // pas chargée : texte, pas de place réservée
+  expect(m.imgs().length).toBe(0);
+  m.charger();
+  expect(m.imgs().length).toBe(1);
+  expect(ligne().textContent).not.toMatch(/\[|\]/);
+  expect(m.imgs()[0].getAttribute("src")).toBe("/apercu/j/img/logo.png");
+  m.vue.dispatch({ selection: { anchor: m.vue.state.doc.line(3).from + 1 } });
+  expect(m.imgs().length).toBe(0);
+  expect(ligne().textContent).toBe("![[logo.png]]");
+  m.vue.dispatch({ selection: { anchor: 0 } });
+  expect(m.imgs().length).toBe(1);
+  m.fin();
+});
+
+test("REQ175_AC4_mode_hybride_eteint_la_balise_reste_du_texte", () => {
+  const { creees, adresses } = imagesH();
+  const z = zoneCode({ contenu: DOCI, langage: "markdown", hybride: true, document: "a.md", images: adresses });
+  document.body.append(z);
+  creees.forEach((i) => i.dispatchEvent(new Event("load")));
+  expect(z.querySelectorAll(".cm-content img.ya-image-md").length).toBe(1);
+  z.definirHybride(false);
+  expect(z.querySelector(".cm-content").textContent).toContain("![[logo.png]]");
+  expect(z.querySelector(".cm-content img.ya-image-md")).toBeNull();
+  z.detruire();
+  z.remove();
+});
+
+test("REQ175_AC3_balises_sans_image_gardent_leur_texte_en_hybride", () => {
+  const doc = "x\n\n![[absent.png]]\n![[notes.md]]\n![[https://exemple.org/x.png]]\n![[logo.png|300]]\n`![[logo.png]]`\n```\n![[logo.png]]\n```\nfin";
+  const m = montrerImages(doc);
+  m.creees.forEach((i) => i.dispatchEvent(new Event("load")));
+  expect(m.imgs().length).toBe(0);
+  expect(m.creees.length).toBe(0);
+  const lignes = [...m.parent.querySelectorAll(".cm-line")].map((l) => l.textContent);
+  expect(lignes).toContain("![[absent.png]]");
+  expect(lignes).toContain("![[notes.md]]");
+  expect(lignes).toContain("![[logo.png|300]]");
+  expect(lignes.filter((l) => l.includes("![[logo.png]]")).length).toBe(2);
+  m.fin();
+});
+
+test("REQ175_AC12_balise_dont_le_contenu_n_est_pas_une_image_reste_en_texte", () => {
+  const m = montrerImages("x\n\n![[casse.png]]\nfin");
+  m.creees[0].dispatchEvent(new Event("error"));
+  expect(m.imgs().length).toBe(0);
+  expect(m.parent.querySelectorAll(".cm-line")[2].textContent).toBe("![[casse.png]]");
+  m.vue.dispatch({ selection: { anchor: 1 } });
+  expect(m.creees.length).toBe(1); // pas de nouvelle requête à chaque changement
+  m.fin();
+});
+
+test("REQ175_AC5_clic_sur_l_image_place_le_curseur_au_debut_de_la_balise", () => {
+  const m = montrerImages();
+  m.charger();
+  const e = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, ctrlKey: true });
+  m.imgs()[0].dispatchEvent(e);
+  expect(e.defaultPrevented).toBe(true);
+  expect(m.vue.state.selection.main.head).toBe(m.vue.state.doc.line(3).from);
+  expect(m.imgs().length).toBe(0);
+  expect(m.parent.querySelectorAll(".cm-line")[2].textContent).toBe("![[logo.png]]");
+  expect(m.vue.hasFocus || document.activeElement === m.vue.contentDOM).toBe(true);
+  m.fin();
+});
+
+test("REQ175_AC6_texte_et_annulation_inchanges_image_apparait_apres_la_frappe", () => {
+  const m = montrerImages("avant\n");
+  m.vue.dispatch({ selection: { anchor: 6 } });
+  m.vue.dispatch({ changes: { from: 6, insert: "![[logo.png]]\nfin" }, selection: { anchor: 6 + 14 } });
+  m.charger();
+  expect(m.imgs().length).toBe(1);
+  expect(m.vue.state.doc.toString()).toBe("avant\n![[logo.png]]\nfin");
+  undo(m.vue);
+  expect(m.vue.state.doc.toString()).toBe("avant\n");
+  expect(m.imgs().length).toBe(0);
+  m.fin();
+});
+
+test("REQ175_AC6_hybride_et_apercu_actifs_ensemble_montrent_chacun_l_image", () => {
+  const { creees, adresses } = imagesH();
+  const z = zoneCode({ contenu: "x\n\n![[logo.png]]\nfin", langage: "markdown", hybride: true, apercu: true, document: "a.md", images: adresses });
+  document.body.append(z);
+  creees.forEach((i) => i.dispatchEvent(new Event("load")));
+  expect(z.querySelectorAll(".cm-content img.ya-image-md").length).toBe(1);
+  expect(z.querySelectorAll(".zone-code-apercu img.ya-image-md").length).toBe(1);
+  z.detruire();
+  z.remove();
+});
+
+test("REQ175_AC9_alt_draggable_sans_title_hors_tab_curseur_texte", () => {
+  const m = montrerImages();
+  m.charger();
+  const img = m.imgs()[0];
+  expect(img.alt).toBe("logo.png");
+  expect(img.draggable).toBe(false);
+  expect(img.hasAttribute("title")).toBe(false);
+  expect(img.hasAttribute("tabindex")).toBe(false);
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  expect(css).toMatch(/\.cm-hybride \.ya-image-md \{[^}]*cursor: text/);
+  m.fin();
+});
+
+test("REQ175_AC10_meme_img_apres_une_frappe_ailleurs_sans_nouvelle_requete", () => {
+  const m = montrerImages();
+  m.charger();
+  const img = m.imgs()[0];
+  m.vue.dispatch({ changes: { from: 0, insert: "x" } });
+  m.vue.dispatch({ changes: { from: m.vue.state.doc.length, insert: "yz" } });
+  expect(m.imgs()[0]).toBe(img);
+  expect(m.creees.length).toBe(1);
+  m.fin();
+});
+
+test("REQ175_AC11_marques_en_muted_sur_la_ligne_du_curseur_et_nom_en_ink", () => {
+  const r = deco("![[logo.png]]\n![[absent.png]]", { curseur: 0 });
+  const etat = r.etat;
+  const liste = decorationsHybride(etat, undefined, { images: (n) => (n === "logo.png" ? "/a/logo.png" : null), chargees: new Map() });
+  expect(liste.filter((d) => d.classe === "cm-hy-marque").map((d) => r.doc.slice(d.debut, d.fin))).toEqual(["![[", "]]"]);
+  expect(liste.filter((d) => r.doc.slice(d.debut, d.fin).includes("absent")).length).toBe(0);
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  expect(css).toMatch(/cm-hy-marque[^}]*--ink-muted/);
+});
+
+test("REQ175_AC12_balise_non_chargee_reprise_apres_majImages", () => {
+  const m = montrerImages("x\n\n![[logo.png]]\nfin");
+  m.creees[0].dispatchEvent(new Event("error"));
+  m.vue.dispatch({ selection: { anchor: 1 } });
+  expect(m.creees.length).toBe(1);
+  m.vue.dispatch({ effects: majImagesHybride.of(true) });
+  expect(m.creees.length).toBe(2);
+  m.creees[1].dispatchEvent(new Event("load"));
+  expect(m.imgs().length).toBe(1);
+  m.fin();
+});
+
+test("REQ175_AC12_une_image_chargee_ne_relance_pas_les_balises_en_echec", () => {
+  const m = montrerImages("x\n\n![[casse.png]]\n![[logo.png]]\nfin");
+  expect(m.creees.length).toBe(2);
+  m.creees[0].dispatchEvent(new Event("error")); // casse.png
+  m.charger(1); // logo.png
+  expect(m.imgs().length).toBe(1);
+  expect(m.creees.length).toBe(2);
+  m.fin();
+});
+
+afterEach(() => vi.unstubAllGlobals());
