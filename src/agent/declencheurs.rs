@@ -12,6 +12,60 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
+/// Nombre d'entrées gardées dans le journal des tours déclenchés (DEC-113).
+const JOURNAL_MAX: usize = 100;
+
+/// Journal en mémoire des débuts, fins et refus des tours déclenchés (REQ-173).
+#[derive(Default)]
+pub struct Journal {
+    dernier: u64,
+    entrees: std::collections::VecDeque<Value>,
+}
+
+impl Journal {
+    /// Ajoute une entrée : `sorte` est `debut`, `fin`, `erreur` ou `refus` (avec sa phrase).
+    pub fn ajouter(&mut self, agent: &str, sorte: &str, evenement: &str, phrase: Option<&str>) {
+        self.dernier += 1;
+        let mut e = serde_json::json!({
+            "numero": self.dernier, "agent": agent, "sorte": sorte, "evenement": evenement,
+        });
+        if let Some(p) = phrase {
+            e["phrase"] = Value::String(p.to_string());
+        }
+        self.entrees.push_back(e);
+        if self.entrees.len() > JOURNAL_MAX {
+            self.entrees.pop_front();
+        }
+    }
+
+    /// Le numéro du moment et les entrées numérotées après `depuis` (aucune sans `depuis`).
+    pub fn lire(&self, depuis: Option<u64>) -> Value {
+        let entrees: Vec<&Value> = match depuis {
+            Some(n) => self
+                .entrees
+                .iter()
+                .filter(|e| e["numero"].as_u64() > Some(n))
+                .collect(),
+            None => Vec::new(),
+        };
+        serde_json::json!({ "numero": self.dernier, "entrees": entrees })
+    }
+}
+
+/// L'évènement d'un message déclenché, pour le journal : première ligne sans « Évènement : »,
+/// sans « . » ou « : » final, coupée à 80 caractères suivis de « … ».
+pub fn evenement_court(message: &str) -> String {
+    let ligne = message.lines().next().unwrap_or("").trim();
+    let ligne = ligne.strip_prefix("Évènement :").unwrap_or(ligne).trim();
+    let ligne = ligne.trim_end_matches(['.', ':']).trim_end();
+    if ligne.chars().count() > 80 {
+        let coupe: String = ligne.chars().take(80).collect();
+        format!("{coupe}…")
+    } else {
+        ligne.to_string()
+    }
+}
+
 /// Ce qu'on sait d'un fichier : taille, date, puis empreinte du contenu (comme REQ-110).
 #[derive(Clone, Debug, PartialEq)]
 struct Empreinte {
@@ -463,12 +517,14 @@ fn phrase_de_refus(r: &Refus) -> String {
 
 /// Soumet le message à l'agent seul ; un refus est enregistré dans une conversation.
 pub fn soumettre(gestionnaire: &Arc<Gestionnaire>, agent: &Agent, texte: &str) {
-    match gestionnaire.envoyer_avec(None, "", std::slice::from_ref(agent), texte) {
+    match gestionnaire.envoyer_declenche(agent, texte) {
         Ok(_) => {}
         Err(ErreurEnvoi::Refus(r)) => {
-            if let Err(e) = gestionnaire.enregistrer_refus(agent, texte, &phrase_de_refus(&r)) {
+            let phrase = phrase_de_refus(&r);
+            if let Err(e) = gestionnaire.enregistrer_refus(agent, texte, &phrase) {
                 eprintln!("déclencheur de {} : {e}", agent.nom);
             }
+            gestionnaire.journaliser(&agent.nom, "refus", &evenement_court(texte), Some(&phrase));
         }
         Err(e) => eprintln!("déclencheur de {} : {e:?}", agent.nom),
     }

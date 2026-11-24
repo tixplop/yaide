@@ -148,6 +148,10 @@ pub struct Gestionnaire {
     mcp: Mcp,
     /// État des déclencheurs des agents (REQ-164).
     declencheurs: Mutex<declencheurs::Etat>,
+    /// Journal des tours déclenchés (REQ-173) et, par conversation, le tour déclenché
+    /// qui n'a pas fini : (agent, évènement).
+    journal: Mutex<declencheurs::Journal>,
+    declenches: Mutex<HashMap<String, (String, String)>>,
 }
 
 fn maintenant() -> u64 {
@@ -362,6 +366,8 @@ impl Gestionnaire {
             limites,
             registre: Mutex::new(HashMap::new()),
             declencheurs: Mutex::new(declencheurs::Etat::default()),
+            journal: Mutex::new(declencheurs::Journal::default()),
+            declenches: Mutex::new(HashMap::new()),
         }
     }
 
@@ -506,6 +512,45 @@ Always give file paths relative to the project root.",
         agents: &[Agent],
         texte: &str,
     ) -> Result<String, ErreurEnvoi> {
+        self.envoyer_marque(conversation, profil, agents, texte, None)
+    }
+
+    /// Soumission d'un déclencheur : nouvelle conversation avec l'agent seul, tour marqué
+    /// comme déclenché et annoncé au journal (REQ-173).
+    pub fn envoyer_declenche(
+        self: &Arc<Self>,
+        agent: &Agent,
+        texte: &str,
+    ) -> Result<String, ErreurEnvoi> {
+        let marque = (agent.nom.clone(), declencheurs::evenement_court(texte));
+        self.envoyer_marque(None, "", std::slice::from_ref(agent), texte, Some(marque))
+    }
+
+    /// Ajoute une entrée au journal des tours déclenchés.
+    pub fn journaliser(&self, agent: &str, sorte: &str, evenement: &str, phrase: Option<&str>) {
+        verrou(&self.journal).ajouter(agent, sorte, evenement, phrase);
+    }
+
+    /// Le journal des tours déclenchés après l'entrée `depuis` (REQ-173).
+    pub fn lire_journal(&self, depuis: Option<u64>) -> Value {
+        verrou(&self.journal).lire(depuis)
+    }
+
+    /// Fin d'un tour déclenché : seul celui qui retire la marque écrit la fin.
+    fn finir_declenche(&self, id: &str, sorte: &str) {
+        if let Some((agent, evenement)) = verrou(&self.declenches).remove(id) {
+            self.journaliser(&agent, sorte, &evenement, None);
+        }
+    }
+
+    fn envoyer_marque(
+        self: &Arc<Self>,
+        conversation: Option<&str>,
+        profil: &str,
+        agents: &[Agent],
+        texte: &str,
+        declenche: Option<(String, String)>,
+    ) -> Result<String, ErreurEnvoi> {
         let refus = |motif, provider| Err(ErreurEnvoi::Refus(Refus { motif, provider }));
         let mut registre = verrou(&self.registre);
         let existant = match conversation {
@@ -634,6 +679,10 @@ Always give file paths relative to the project root.",
             }
         };
         let id = verrou(&conv).id.clone();
+        if let Some((agent, evenement)) = declenche {
+            self.journaliser(&agent, "debut", &evenement, None);
+            verrou(&self.declenches).insert(id.clone(), (agent, evenement));
+        }
         let tache = tokio::spawn(self.clone().tour(conv.clone()));
         registre.insert(
             id.clone(),
@@ -753,6 +802,11 @@ Always give file paths relative to the project root.",
         let mut etat = verrou(&self.declencheurs);
         let (id, dossiers) = {
             let mut c = verrou(&conv);
+            let erreur = matches!(
+                c.entrees.last(),
+                Some(Entree::Message { variante, .. }) if variante == "erreur"
+            );
+            self.finir_declenche(&c.id, if erreur { "erreur" } else { "fin" });
             if c.en_cours {
                 c.en_cours = false;
                 c.actif = None;
@@ -1201,6 +1255,7 @@ Always give file paths relative to the project root.",
             Some(t) => {
                 t.abort.abort();
                 let mut c = verrou(&t.conv);
+                self.finir_declenche(id, "erreur");
                 if c.en_cours {
                     ranger(&mut c, false);
                     c.maj = maintenant();

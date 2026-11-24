@@ -1887,6 +1887,11 @@ async fn agent_conversation(
     }
 }
 
+async fn agent_declenchements(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let depuis = q.get("depuis").and_then(|d| d.parse().ok());
+    json_rep(StatusCode::OK, etat.agent.lire_journal(depuis))
+}
+
 async fn agent_arreter(State(etat): State<Partage>, CheminUrl(id): CheminUrl<String>) -> Response {
     if etat.agent.arreter(&id) {
         json_rep(StatusCode::OK, serde_json::json!({}))
@@ -2070,6 +2075,7 @@ pub async fn servir(
         .route("/api/connaissance/recherche", post(connaissance_chercher))
         .route("/api/agent/messages", post(agent_message))
         .route("/api/agent/conversations", get(agent_conversations))
+        .route("/api/agent/declenchements", get(agent_declenchements))
         .route("/api/agent/conversations/{id}", get(agent_conversation))
         .route("/api/agent/conversations/{id}/arreter", post(agent_arreter))
         .route("/api/git/etat", get(git_etat))

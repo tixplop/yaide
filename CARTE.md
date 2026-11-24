@@ -26,8 +26,8 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/agent/secrets.rs — clés d'API chiffrées (AES-256-GCM) — lire, ecrire
 - src/agent/reglages.rs — providers, profils, réglages du projet et communs — provider, vue, reprendre_du_projet
 - src/agent/agents.rs — agents personnalisés (AGENTS.md, PERSONA.md) et leurs déclencheurs (clé `declencheurs`, validée à l'enregistrement) — lister, lire, enregistrer
-- src/agent/declencheurs.rs — surveillance des déclencheurs par le serveur (« Fichier » et « Dossier », REQ-165 ; « Commit » par les journaux de branches, REQ-166 ; « Commande shell », REQ-167 ; « Configuration de Yaide » par `get_config`, REQ-168), soumission aux agents à l'écoute, refus gardé en conversation — verifier, passer, soumettre
-- src/agent/conversation.rs — boucle de l'agent, conversations, sous-agents, étape de requête en cours en mémoire (REQ-085) — envoyer, envoyer_avec, arreter
+- src/agent/declencheurs.rs — surveillance des déclencheurs par le serveur (« Fichier » et « Dossier », REQ-165 ; « Commit » par les journaux de branches, REQ-166 ; « Commande shell », REQ-167 ; « Configuration de Yaide » par `get_config`, REQ-168), soumission aux agents à l'écoute, refus gardé en conversation ; journal en mémoire des débuts, fins et refus des tours déclenchés, lu par `GET /api/agent/declenchements` (REQ-173) — verifier, passer, soumettre, Journal
+- src/agent/conversation.rs — boucle de l'agent, conversations, sous-agents, étape de requête en cours en mémoire (REQ-085), tours déclenchés marqués à la soumission et inscrits au journal (REQ-173) — envoyer, envoyer_avec, arreter
 - src/agent/outils.rs — outils de l'agent (fichiers, shell, connaissance, agents) — definitions, executer
 - src/agent/outils_config.rs — outils de l'agent qui modifient la configuration de Yaide (`lire_config` : la vue de `get_config`, REQ-168) — definitions, lancer, lire_interface
 - src/agent/mcp.rs — serveurs MCP (rmcp, stdio), `mcp.json` — preparer, appeler, lister_serveurs

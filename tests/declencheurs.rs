@@ -1221,3 +1221,198 @@ fn REQ168_AC4_mcp_json_illisible_est_nomme_avec_sa_cause() {
     assert!(u["file"].as_str().unwrap().ends_with("mcp.json"), "{u}");
     assert!(!u["cause"].as_str().unwrap().is_empty(), "{u}");
 }
+
+// ---- REQ-173 : journal des tours déclenchés ----
+
+fn journal(s: &Serveur, depuis: Option<u64>) -> Value {
+    let chemin = match depuis {
+        Some(n) => format!("/api/agent/declenchements?depuis={n}"),
+        None => "/api/agent/declenchements".to_string(),
+    };
+    let r = s.appel("GET", &chemin, &Value::Null);
+    assert_eq!(r.code, 200, "{}", r.corps);
+    r.json()
+}
+
+/// Attend `n` entrées au moins (10 s) et rend le journal depuis le début.
+fn attendre_journal(s: &Serveur, n: usize) -> Vec<Value> {
+    for _ in 0..200 {
+        let l = journal(s, Some(0))["entrees"].as_array().unwrap().clone();
+        if l.len() >= n {
+            return l;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("moins de {n} entrées : {}", journal(s, Some(0)));
+}
+
+fn sortes(l: &[Value], agent: &str) -> Vec<String> {
+    l.iter()
+        .filter(|e| e["agent"] == agent)
+        .map(|e| e["sorte"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn REQ173_AC1_debut_puis_fin_avec_le_texte_de_l_evenement() {
+    let (adresse, _) = faux_provider(vec![rep_texte("ok", 800)]);
+    let s = lancer("j1");
+    configurer(&s, &adresse, true);
+    assert_eq!(
+        agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
+        200
+    );
+    laisser_voir();
+    let avant = journal(&s, None)["numero"].as_u64().unwrap();
+    ecrire(&s, "docs/a.md", "1");
+    let l = attendre_journal(&s, 2);
+    assert_eq!(l[0]["agent"], "Relecteur");
+    assert_eq!(l[0]["sorte"], "debut");
+    assert_eq!(l[0]["evenement"], "fichier `docs/a.md` créé");
+    assert_eq!(l[1]["agent"], "Relecteur");
+    assert_eq!(l[1]["sorte"], "fin");
+    assert_eq!(l[1]["evenement"], "fichier `docs/a.md` créé");
+    assert!(l[1]["numero"].as_u64().unwrap() > l[0]["numero"].as_u64().unwrap());
+    // `depuis` ne rend que ce qui suit.
+    let j = journal(&s, Some(l[0]["numero"].as_u64().unwrap()));
+    assert_eq!(j["entrees"].as_array().unwrap().len(), 1);
+    assert_eq!(j["entrees"][0]["sorte"], "fin");
+    assert_eq!(avant, 0);
+}
+
+#[test]
+fn REQ173_AC2_erreur_du_provider_puis_arreter_finissent_en_erreur() {
+    let (adresse, _) = faux_provider(vec![
+        (500, json!({"error": {"message": "boum"}}), 0),
+        rep_texte("ok", 5000),
+    ]);
+    let s = lancer("j2");
+    configurer(&s, &adresse, true);
+    assert_eq!(
+        agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
+        200
+    );
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "1");
+    let l = attendre_journal(&s, 2);
+    assert_eq!(sortes(&l, "Relecteur"), ["debut", "erreur"]);
+    assert_eq!(l[1]["evenement"], "fichier `docs/a.md` créé");
+    // Tour arrêté par « Arrêter ».
+    std::thread::sleep(Duration::from_millis(400));
+    ecrire(&s, "docs/a.md", "2");
+    let l = attendre_journal(&s, 3);
+    assert_eq!(l[2]["sorte"], "debut");
+    let id = conversations(&s)[0]["id"].as_str().unwrap().to_string();
+    assert_eq!(lire_conv(&s, &id)["enCours"], true);
+    let r = s.appel(
+        "POST",
+        &format!("/api/agent/conversations/{id}/arreter"),
+        &Value::Null,
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let l = attendre_journal(&s, 4);
+    assert_eq!(l[3]["sorte"], "erreur");
+    assert_eq!(l[3]["evenement"], "fichier `docs/a.md` modifié");
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(attendre_journal(&s, 4).len(), 4);
+}
+
+#[test]
+fn REQ173_AC3_un_refus_est_une_seule_entree_avec_sa_phrase() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("j3");
+    configurer(&s, &adresse, false);
+    assert_eq!(
+        agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
+        200
+    );
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "1");
+    let l = attendre_journal(&s, 1);
+    std::thread::sleep(Duration::from_millis(800));
+    let l2 = attendre_journal(&s, 1);
+    assert_eq!(l.len(), 1);
+    assert_eq!(l2.len(), 1, "{l2:?}");
+    assert_eq!(l[0]["agent"], "Relecteur");
+    assert_eq!(l[0]["sorte"], "refus");
+    assert_eq!(l[0]["evenement"], "fichier `docs/a.md` créé");
+    assert_eq!(
+        l[0]["phrase"],
+        "Aucune clé pour OpenAI. Ajoutez-la avec Ctrl+P, puis > Providers LLM."
+    );
+}
+
+#[test]
+fn REQ173_AC4_deux_agents_et_evenement_dossier() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("j4");
+    configurer(&s, &adresse, true);
+    let d = json!([{ "type": "dossier", "chemin": "docs" }]);
+    assert_eq!(agent(&s, "Relecteur", d.clone()).code, 200);
+    assert_eq!(agent(&s, "Testeur", d).code, 200);
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "1");
+    let l = attendre_journal(&s, 4);
+    for nom in ["Relecteur", "Testeur"] {
+        assert_eq!(sortes(&l, nom), ["debut", "fin"], "{l:?}");
+    }
+    for e in &l {
+        assert_eq!(e["evenement"], "changements dans le dossier `docs/`");
+    }
+}
+
+#[test]
+fn REQ173_AC4_evenement_long_coupe_a_80_caracteres() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("j4b");
+    configurer(&s, &adresse, true);
+    let nom = format!("docs/{}.md", "é".repeat(100));
+    assert_eq!(agent(&s, "Relecteur", json!([fichier(&nom)])).code, 200);
+    laisser_voir();
+    ecrire(&s, &nom, "1");
+    let l = attendre_journal(&s, 1);
+    let e = l[0]["evenement"].as_str().unwrap();
+    assert_eq!(e.chars().count(), 81);
+    assert!(e.ends_with('…'));
+    assert!(e.starts_with("fichier `docs/éé"));
+}
+
+#[test]
+fn REQ173_AC5_reponse_de_l_utilisateur_et_conversation_ouverte_sans_entree() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("j5");
+    configurer(&s, &adresse, true);
+    assert_eq!(
+        agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
+        200
+    );
+    // Sans `depuis` : le numéro du moment, aucune entrée.
+    let j = journal(&s, None);
+    assert_eq!(j["numero"], 0);
+    assert_eq!(j["entrees"].as_array().unwrap().len(), 0);
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "1");
+    attendre_journal(&s, 2);
+    let id = conversations(&s)[0]["id"].as_str().unwrap().to_string();
+    attendre_fin(&s, &id);
+    let j = journal(&s, None);
+    assert!(j["numero"].as_u64().unwrap() >= 2);
+    assert_eq!(j["entrees"].as_array().unwrap().len(), 0);
+    // L'utilisateur répond dans la conversation déclenchée, puis en ouvre une autre.
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "conversation": id, "texte": "merci" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    attendre_fin(&s, &id);
+    let r = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({ "agents": ["relecteur"], "texte": "bonjour" }),
+    );
+    let id2 = r.json()["conversation"].as_str().unwrap().to_string();
+    attendre_fin(&s, &id2);
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(attendre_journal(&s, 2).len(), 2);
+}
