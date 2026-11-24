@@ -161,6 +161,18 @@ export function lien(etat) {
   });
 }
 
+// Image : `![[sélection]]`, sélection gardée ; sans sélection `![[image.png]]` avec `image.png` choisi.
+export function image(etat) {
+  const { from, to } = etat.selection.main;
+  if (from === to) {
+    return transaction(etat, { changes: { from, insert: "![[image.png]]" }, selection: EditorSelection.single(from + 3, from + 12) });
+  }
+  return transaction(etat, {
+    changes: [{ from, insert: "![[" }, { from: to, insert: "]]" }],
+    selection: EditorSelection.single(from + 3, to + 3),
+  });
+}
+
 // Insère `bloc` sous la ligne du curseur, séparé du texte voisin par une ligne vide (jamais doublée) ; le curseur va
 // sur la ligne vide qui suit.
 function insererSous(etat, bloc) {

@@ -7,7 +7,7 @@ vi.mock("../references.js", async (original) => ({ ...(await original()), estMac
 
 Range.prototype.getClientRects ??= () => [];
 
-const NOMS = ["Titre", "Gras", "Italique", "Souligné", "Barré", "Code en ligne", "Lien", "Citation", "Liste à puces", "Liste numérotée", "Bloc de code", "Tableau", "Séparateur"];
+const NOMS = ["Titre", "Gras", "Italique", "Souligné", "Barré", "Code en ligne", "Lien", "Image", "Citation", "Liste à puces", "Liste numérotée", "Bloc de code", "Tableau", "Séparateur"];
 
 function zone(options = {}) {
   const z = zoneCode({ contenu: "un mot ici", langage: "markdown", nom: "README.md", hybride: true, ...options });
@@ -86,14 +86,14 @@ test("REQ170_AC9_une_action_de_la_barre_se_defait_d_un_seul_annuler", async () =
   expect(texte(z)).toBe("un mot ici");
 });
 
-test("REQ170_AC10_role_nom_treize_boutons_ordre_info_bulles_et_raccourcis", () => {
+test("REQ170_AC10_role_nom_quatorze_boutons_ordre_info_bulles_et_raccourcis", () => {
   const z = zone();
   const b = barre(z);
   expect(b.getAttribute("aria-label")).toBe("Mise en forme");
   expect(b.getAttribute("aria-controls")).toBe(z.vue.contentDOM.id);
   expect(z.vue.contentDOM.id).not.toBe("");
   expect(b.querySelectorAll(".ya-barre-md-groupe").length).toBe(4);
-  expect([...b.querySelectorAll(".ya-barre-md-groupe")].map((g) => g.querySelectorAll("button").length)).toEqual([1, 6, 4, 2]);
+  expect([...b.querySelectorAll(".ya-barre-md-groupe")].map((g) => g.querySelectorAll("button").length)).toEqual([1, 7, 4, 2]);
   expect(boutons(z).map((x) => x.getAttribute("aria-label"))).toEqual(NOMS);
   expect(bt(z, "Gras").getAttribute("aria-keyshortcuts")).toBe("Control+B");
   expect(bt(z, "Italique").getAttribute("aria-keyshortcuts")).toBe("Control+I");
@@ -124,6 +124,9 @@ test("REQ170_AC10_AC16_info_bulle_avec_raccourci_au_dessus_du_bouton", () => {
   bt(z, "Souligné").enveloppe.dispatchEvent(new Event("pointerleave"));
   const lien = survoler("Lien");
   expect(lien.textContent).toBe("Lien");
+  bt(z, "Lien").enveloppe.dispatchEvent(new Event("pointerleave"));
+  expect(survoler("Image").textContent).toBe("Image");
+  expect(bt(z, "Image").hasAttribute("aria-keyshortcuts")).toBe(false);
   // C-012 `dessus` : le bas de la bulle (76 + 24) ne descend pas sous le haut du bouton (100).
   expect(parseFloat(lien.style.top) + 24).toBeLessThanOrEqual(100);
 });
@@ -161,10 +164,10 @@ test("REQ170_AC11_AC13_un_seul_arret_de_tab_fleches_debut_fin_sans_boucler", () 
   touche(document.activeElement, "ArrowRight");
   touche(document.activeElement, "ArrowRight");
   touche(document.activeElement, "ArrowLeft");
-  // Les flèches d'un groupe à l'autre suivent l'ordre des treize boutons.
+  // Les flèches d'un groupe à l'autre suivent l'ordre des quatorze boutons.
   const ordre = [];
   touche(document.activeElement, "Home");
-  for (let i = 0; i < 13; i++) {
+  for (let i = 0; i < 14; i++) {
     ordre.push(document.activeElement.getAttribute("aria-label"));
     touche(document.activeElement, "ArrowRight");
   }

@@ -408,7 +408,7 @@ export function apercu({ document: cheminDocument, surLien, surCase, images, cha
       const src = span.dataset.imageMd;
       const img = chargees.get(src);
       if (img) {
-        const e = img.isConnected && el.contains(img) ? img.cloneNode() : img;
+        const e = el.contains(img) ? img.cloneNode() : img;
         e.alt = span.dataset.nom;
         span.replaceWith(e);
       } else if (!enChargement.has(src) && !echecs.has(src)) {

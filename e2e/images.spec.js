@@ -310,3 +310,192 @@ test("REQ121_AC2_AC4_AC6_AC8_AC9_parcours_P089_apercu_svg", async ({ page }) => 
     await yaide.arreter();
   }
 });
+
+// P-135 et P-136 : bouton « Image » de la barre « Mise en forme », images `![[nom]]` du mode hybride et de l'aperçu
+// (REQ-170, REQ-175). Un seul lancement de Yaide ; les cas fins sont prouvés par les tests de composant.
+test("REQ175_AC1_AC7_AC8_AC13_AC14_REQ170_AC18_parcours_P135_P136_image_dans_le_guide", async ({ page }) => {
+  const dossier = depotExemple();
+  const gris = (y, t) => t.fill(128);
+  ecrire(dossier, "img/architecture.png", png(1600, 900, 0, gris));
+  ecrire(dossier, "img/ok.png", disque(16, [0, 160, 0]));
+  ecrire(dossier, "img/capture.png", png(4000, 3000, 0, gris));
+  ecrire(dossier, "img/photo.jpg", JPEG);
+  ecrire(dossier, "img/PHOTO.JPG", JPEG);
+  ecrire(dossier, "img/anim.gif", GIF);
+  ecrire(dossier, "img/image.webp", WEBP);
+  ecrire(dossier, "img/dessin.svg", ACTIF_SVG);
+  ecrire(dossier, "docs/guide.md", "# Guide\n\nTexte du guide.\n\n\n\nFin du guide.\n\nLe voyant ![[ok.png]] dit que le serveur répond.\n");
+  ecrire(dossier, "docs/grande.md", "Début\n\n\n\n![[capture.png]]\n\nFin\n");
+  ecrire(dossier, "docs/formats.md", ["architecture.png", "img/architecture.png", "../img/architecture.png", "photo.jpg", "anim.gif", "image.webp", "dessin.svg", "PHOTO.JPG"].map((n) => `![[${n}]]`).join("\n\n") + "\n");
+  const yaide = await lancerYaide({ dossier });
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const requetes = espionner(page);
+    await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+    await ligne(page, "docs").click();
+    await ligne(page, "guide.md").click();
+    const barre = page.getByRole("toolbar", { name: "Mise en forme" });
+    const contenu = page.locator(".cm-content:visible");
+    const etat = page.getByText(/Ln \d+, Col \d+/);
+    const lignes = contenu.locator(".cm-line");
+    const apercu = page.locator(".zone-code-apercu:visible");
+    // Largeur du texte d'une zone : celle de la ligne moins son remplissage.
+    const largeurTexte = (loc) => loc.evaluate((e) => { const s = getComputedStyle(e); return e.getBoundingClientRect().width - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight); });
+
+    // P-135, étape 1 : clic sur « Image » sur la ligne 5 vide.
+    await expect(lignes.nth(8).locator("img.ya-image-md")).toHaveCount(1);
+    await lignes.nth(4).click();
+    await barre.getByRole("button", { name: "Image" }).click();
+    await expect(lignes.nth(4)).toHaveText("![[image.png]]");
+    await expect(etat).toHaveText("Ln 5, Col 13");
+    await expect(contenu).toBeFocused();
+    expect(await page.evaluate(() => getSelection().toString())).toBe("image.png");
+    // AC-175-13 : le voyant est dans la phrase, à sa taille, fond blanc.
+    const voyant = lignes.nth(8).locator("img.ya-image-md");
+    await expect.poll(() => largeurNaturelle(voyant)).toBe(16);
+    const v = await boite(voyant);
+    proche(v.w, 16);
+    proche(v.h, 16);
+    expect(await voyant.evaluate((i) => getComputedStyle(i).verticalAlign)).toBe("text-bottom");
+    expect(await fond(voyant)).toBe(BLANC);
+    expect(await voyant.evaluate((i) => { const s = getComputedStyle(i); return [s.borderTopWidth, s.boxShadow, s.borderRadius]; })).toEqual(["0px", "none", "0px"]);
+    await expect(lignes.nth(8)).toHaveText(/^Le voyant\s*dit que le serveur répond\.$/);
+    expect(await lignes.nth(8).evaluate((l) => l.getClientRects().length)).toBe(1);
+    expect((await boite(voyant)).y).toBeLessThan((await boite(lignes.nth(8))).y + (await boite(lignes.nth(8))).h);
+
+    // Étapes 2 et 3 : fichier absent, la balise reste en texte ; on la corrige.
+    await page.keyboard.type("archi.png");
+    await page.keyboard.press("ArrowDown");
+    await expect(lignes.nth(4)).toHaveText("![[archi.png]]");
+    await expect(lignes.nth(4).locator("img.ya-image-md")).toHaveCount(0);
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("Home");
+    await page.keyboard.press("Shift+End");
+    await page.keyboard.type("![[architecture.png]]");
+
+    // Étape 4 : curseur ailleurs, le schéma remplace la balise, à la largeur du texte.
+    await lignes.nth(6).click();
+    await page.keyboard.press("End");
+    const schema = lignes.nth(4).locator("img.ya-image-md");
+    await expect.poll(() => largeurNaturelle(schema)).toBe(1600);
+    const s1 = await boite(schema);
+    expect(s1.w).toBeLessThan(1600);
+    proche(s1.w, await largeurTexte(lignes.nth(4)), 1);
+    proche(s1.h * 16, s1.w * 9, 16);
+    expect(await page.locator(".cm-scroller:visible").evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+
+    // Étape 5 : la frappe ailleurs ne recharge pas l'image ; Ctrl+Z ; Ctrl+S écrit la balise en clair.
+    const poignee = await schema.elementHandle();
+    await page.keyboard.type(" Le port par défaut est 7070.");
+    expect(await poignee.evaluate((i) => i.isConnected)).toBe(true);
+    expect(await boite(schema)).toEqual(s1);
+    await page.keyboard.press("Control+z");
+    await expect(lignes.nth(6)).toHaveText("Fin du guide.");
+    await page.keyboard.press("Control+s");
+    await expect.poll(() => fs.readFileSync(path.join(dossier, "docs/guide.md"), "utf8")).toContain("![[architecture.png]]");
+
+    // P-136, étape 1 : aperçu dans une fenêtre de 1024 px, schéma des deux côtés, rien ne défile en largeur.
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+    await expect(apercu).toBeVisible();
+    const schemaApercu = apercu.locator("img").first();
+    await expect.poll(() => largeurNaturelle(schemaApercu)).toBe(1600);
+    const largeurs = async () => [(await boite(schema)).w, (await boite(schemaApercu)).w];
+    const [e1, a1] = await largeurs();
+    proche(e1, await largeurTexte(lignes.nth(4)), 1);
+    proche(a1, await largeurTexte(apercu), 40);
+    expect(a1).toBeLessThan(1600);
+    expect(await apercu.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+    expect(await page.locator(".cm-scroller:visible").evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+    const voyantApercu = apercu.locator('img[alt="ok.png"]');
+    await expect.poll(() => largeurNaturelle(voyantApercu)).toBe(16);
+    proche((await boite(voyantApercu)).w, 16);
+
+    // AC-170-18 : « Image » juste à droite de « Lien », même rang, avec deux rangs à 1024 px.
+    const bouton = (nom) => barre.getByRole("button", { name: nom, exact: true });
+    const rangs = async () => new Set((await barre.getByRole("button").evaluateAll((bs) => bs.map((x) => Math.round(x.getBoundingClientRect().top))))).size;
+    const lienImage = async () => {
+      const [l, i, t] = [await boite(bouton("Lien")), await boite(bouton("Image")), await boite(bouton("Titre"))];
+      expect(Math.abs(l.y - i.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(l.y - t.y)).toBeLessThanOrEqual(1);
+      proche(i.x, l.x + l.w, 12);
+      expect(i.x).toBeGreaterThan(l.x);
+    };
+    await expect(bouton("Image")).not.toHaveAttribute("aria-keyshortcuts");
+    expect(await rangs()).toBe(2);
+    await lienImage();
+
+    // Étape 2 : la poignée du panneau vers la droite, les deux schémas suivent leur largeur.
+    const separateur = page.getByRole("separator", { name: "Largeur du panneau" });
+    await separateur.focus();
+    for (let i = 0; i < 12; i++) await page.keyboard.press("ArrowRight");
+    await expect.poll(async () => (await largeurs())[0]).toBeLessThan(e1 - 20);
+    const [e2, a2] = await largeurs();
+    expect(a2).toBeLessThan(a1 - 20);
+    proche(e2, await largeurTexte(lignes.nth(4)), 1);
+    expect(await apercu.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+    for (let i = 0; i < 12; i++) await page.keyboard.press("ArrowLeft");
+
+    // AC-170-18 : éditeur de 400 px, un seul rang ; de 380 px, deux rangs, « Lien » et « Image » sur le premier.
+    const zone = page.locator(".zone-code-editeur:visible");
+    await zone.evaluate((e) => { e.style.flex = "0 0 400px"; });
+    expect(await rangs()).toBe(1);
+    await lienImage();
+    await zone.evaluate((e) => { e.style.flex = "0 0 380px"; });
+    expect(await rangs()).toBe(2);
+    await lienImage();
+    await zone.evaluate((e) => { e.style.flex = ""; });
+
+    // Étape 3 : clic sur le schéma de l'éditeur, le curseur au début de la balise ; l'aperçu garde l'image.
+    await schema.click();
+    await expect(etat).toHaveText("Ln 5, Col 1");
+    await expect(lignes.nth(4)).toHaveText("![[architecture.png]]");
+    await expect(schemaApercu).toBeVisible();
+    expect(page.context().pages().length).toBe(1);
+    // Étape 4 : sans mode hybride, tout le texte brut et pas de barre ; l'aperçu garde le schéma.
+    await page.getByRole("button", { name: "Mode hybride" }).click();
+    await expect(barre).toHaveCount(0);
+    await expect(page.locator(".cm-content:visible .cm-line", { hasText: "![[architecture.png]]" })).toHaveCount(1);
+    await expect(page.locator(".cm-content:visible img.ya-image-md")).toHaveCount(0);
+    await expect(schemaApercu).toBeVisible();
+    await page.getByRole("button", { name: "Mode hybride" }).click();
+
+    // AC-175-8 et AC-175-14 : 4000 × 3000 seule sur la ligne 5, dans l'éditeur et dans l'aperçu.
+    await ligne(page, "grande.md").click();
+    await expect(barre).toBeVisible();
+    await expect(apercu).toHaveCount(0);
+    await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+    await expect(apercu).toBeVisible();
+    const grande = lignes.nth(4).locator("img.ya-image-md");
+    await expect.poll(() => largeurNaturelle(grande)).toBe(4000);
+    const g = await boite(grande);
+    proche(g.w, await largeurTexte(lignes.nth(4)), 1);
+    proche(g.h * 4, g.w * 3, 4);
+    const ligne1 = await lignes.nth(0).evaluate((l) => l.getBoundingClientRect().left + parseFloat(getComputedStyle(l).paddingLeft));
+    proche(g.x, ligne1, 1);
+    expect(await page.locator(".cm-scroller:visible").evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+    const numeros = await page.locator(".cm-editor:visible .cm-lineNumbers .cm-gutterElement").evaluateAll((els) => els.filter((e) => e.offsetHeight > 0).map((e) => e.textContent));
+    expect(numeros).toEqual(["1", "2", "3", "4", "5", "6", "7", "8"]);
+    const numero5 = page.locator(".cm-editor:visible .cm-lineNumbers .cm-gutterElement", { hasText: /^5$/ });
+    proche((await boite(numero5)).y, (await boite(lignes.nth(4))).y, 2);
+    const grandeApercu = apercu.locator("img").first();
+    await expect.poll(() => largeurNaturelle(grandeApercu)).toBe(4000);
+    proche((await boite(grandeApercu)).w, await largeurTexte(apercu), 40);
+    expect(await apercu.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+
+    // AC-175-1 : chaque forme de chemin et chaque format s'affiche dans l'aperçu.
+    await ligne(page, "formats.md").click();
+    await expect(apercu).toHaveCount(0);
+    await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+    await expect(apercu).toBeVisible();
+    for (const n of ["architecture.png", "img/architecture.png", "../img/architecture.png", "photo.jpg", "anim.gif", "image.webp", "dessin.svg", "PHOTO.JPG"]) {
+      await expect.poll(() => largeurNaturelle(apercu.locator(`img[alt="${n}"]`)), { message: n }).toBeGreaterThan(0);
+    }
+
+    // AC-175-7 : rien ne part vers une autre origine et le SVG n'exécute rien.
+    expect(await page.evaluate(() => [window.__script, window.__onload])).toEqual([undefined, undefined]);
+    expect(requetes().filter((u) => new URL(u).origin !== yaide.origine)).toEqual([]);
+  } finally {
+    await yaide.arreter();
+  }
+});

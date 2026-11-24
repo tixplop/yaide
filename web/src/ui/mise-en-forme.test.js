@@ -5,7 +5,7 @@ import { syntaxTree, ensureSyntaxTree } from "@codemirror/language";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { afterEach, expect, test } from "vitest";
 import { zoneCode } from "./zone-code.js";
-import { gras, italique, souligne, codeEnLigne, extensionMiseEnForme, titre, citation, listePuces, listeNumerotee, lien, tableau, separateur, blocCode } from "./mise-en-forme.js";
+import { gras, italique, souligne, codeEnLigne, extensionMiseEnForme, titre, citation, listePuces, listeNumerotee, lien, image, tableau, separateur, blocCode } from "./mise-en-forme.js";
 
 Range.prototype.getClientRects ??= () => [];
 
@@ -281,6 +281,19 @@ test("REQ170_AC5_lien_choisit_url_ou_texte", () => {
   expect(choisi(w)).toBe("texte");
 });
 
+test("REQ170_AC17_image_entoure_la_selection_ou_insere_image_png_choisi", () => {
+  const v = vue("logo", 0, 4);
+  appliquer(v, image);
+  expect(texte(v)).toBe("![[logo]]");
+  expect(choisi(v)).toBe("logo");
+  const w = vue("a  b", 2);
+  appliquer(w, image);
+  expect(texte(w)).toBe("a ![[image.png]] b");
+  expect(choisi(w)).toBe("image.png");
+  undo(w);
+  expect(texte(w)).toBe("a  b");
+});
+
 const TABLEAU = "| Colonne 1 | Colonne 2 |\n| --- | --- |\n|  |  |\n|  |  |";
 
 test("REQ170_AC6_tableau_insere_sous_la_ligne_sans_doubler_la_ligne_vide", () => {
@@ -330,7 +343,7 @@ test("REQ170_AC8_bloc_de_code_vide_sous_une_ligne_ou_autour_du_texte_choisi", ()
 });
 
 test("REQ170_AC9_une_transaction_isolee_par_action_et_un_undo_rend_le_texte_d_avant", () => {
-  const actions = [titre, citation, listePuces, listeNumerotee, lien, tableau, separateur, blocCode];
+  const actions = [titre, citation, listePuces, listeNumerotee, lien, image, tableau, separateur, blocCode];
   for (const action of actions) {
     const v = vue("mot", 0, 3);
     v.dispatch({ changes: { from: 3, insert: "s" }, userEvent: "input.type" });

@@ -379,6 +379,16 @@ test("REQ175_AC12_texte_jusqu_au_load_puis_image_texte_si_error", () => {
   el.remove();
 });
 
+test("REQ175_AC1_meme_image_trois_fois_dans_le_document_s_affiche_trois_fois", () => {
+  const creees = imagesSimulees();
+  const el = apercu({ document: "a.md", images: adresse });
+  // Aperçu pas encore dans la page (zone masquée) : la même image doit quand même être clonée.
+  el.maj("![[logo.png]]\n\n![[logo.png]]\n\n![[logo.png]]");
+  creees[0].dispatchEvent(new Event("load"));
+  expect(el.querySelectorAll("img").length).toBe(3);
+  expect(el.querySelectorAll("p")[0].querySelector("img")).not.toBe(null);
+});
+
 test("REQ175_AC9_attributs_de_l_image", () => {
   const creees = imagesSimulees();
   const el = apercu({ document: "a.md", images: adresse });
