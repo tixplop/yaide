@@ -18,7 +18,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/opencode.rs — processus `opencode serve` du projet — assurer, arreter, disponible
 - src/apercu.rs — jetons et service de l'aperçu HTML — nouveau_jeton, jeton_ok, charger
 - src/version.rs — version, nouvelle version, `yaide update` — etat_maj, demarrer_maj, derniere
-- src/connaissance.rs — base de connaissance vectorielle (collections, pointeurs, mise à jour) — valider, lire_config, ecrire_config
+- src/connaissance.rs — base de connaissance vectorielle (collections, pointeurs, mise à jour, dossiers suivis REQ-176) — valider, lire_config, ecrire_config
 - src/decoupage.rs — découpage des fichiers en passages — decouper, valider
 - src/agent/mod.rs — déclare les modules de l'agent
 - src/agent/provider.rs — providers LLM (formats OpenAI et Anthropic, requêtes en `stream`), embeddings — client, envoyer, embeddings
@@ -133,7 +133,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-072, REQ-074 à REQ-077, REQ-084, REQ-088 à REQ-091 session opencode → src/opencode.rs, web/src/opencode.js, vues/opencode.js, vues/sessions-opencode.js, ui/completion.js
 - REQ-087, REQ-101 liens de fichiers et de documents → web/src/references.js, ui/apercu.js
 - REQ-102 copier-coller en texte simple → web/src/ui/copie.js
-- REQ-103 à REQ-114, REQ-124 base de connaissance → src/connaissance.rs, decoupage.rs, web/src/vues/connaissance.js, ajout-connaissance.js
+- REQ-103, REQ-104, REQ-105, REQ-106, REQ-107, REQ-108, REQ-109, REQ-110, REQ-111, REQ-112, REQ-113, REQ-114, REQ-124, REQ-176 base de connaissance → src/connaissance.rs, decoupage.rs, web/src/vues/connaissance.js, ajout-connaissance.js
 - REQ-126 soumettre des fichiers à un agent → web/src/vues/soumission-agent.js
 - REQ-118 formater le document → web/src/formatage.js, vues/principale.js
 - REQ-122, REQ-123 mermaid → web/src/mermaid.js, ui/diagramme.js, ui/apercu.js

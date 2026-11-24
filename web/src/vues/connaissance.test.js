@@ -584,7 +584,7 @@ test("REQ106_fermer_pendant_une_recherche_puis_rouvrir_remet_Rechercher_a_la_rep
   expect(parNom("Recherche…")).toBeUndefined();
 });
 
-test("REQ110_collection_vide_0_fichier_Aucun_fichier_et_suppression_Elle_est_vide", async () => {
+test("REQ110_AC8_collection_vide_0_fichier_Aucun_fichier_et_suppression_Elle_est_vide", async () => {
   const VIDE = { nom: "changelog", fichiers: 0, passages: 0 };
   const m = monter(etat([VIDE]), {
     "GET /api/connaissance/collections/changelog": rep({ nom: "changelog", fichiers: [] }),

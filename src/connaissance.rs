@@ -4,7 +4,7 @@
 use crate::agent::provider::{self, ErreurProvider, Provider};
 use crate::decoupage::{decouper, Decoupage};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 const LOT: usize = 64;
@@ -85,6 +85,23 @@ struct Collection {
     /// Choisi à la création, définitif ; absent d'un ancien `passages.json` : le défaut.
     #[serde(default)]
     decoupage: Decoupage,
+    /// Dossiers ajoutés, suivis : leurs fichiers nouveaux entrent d'eux-mêmes (REQ-176).
+    /// Absent d'un ancien `passages.json` : aucun.
+    #[serde(default)]
+    dossiers: Vec<String>,
+}
+
+impl Collection {
+    /// Fixe la dimension au premier fichier à vecteurs ; refuse un changement de dimension.
+    fn verifier_dimension(&mut self, f: &Fichier) -> Result<(), String> {
+        if let Some(v) = f.vecteurs.first() {
+            if self.dimension != 0 && v.len() != self.dimension {
+                return Err("La dimension des vecteurs du provider a changé.".into());
+            }
+            self.dimension = v.len();
+        }
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -567,6 +584,7 @@ impl Base {
                 dimension: 0,
                 fichiers: Vec::new(),
                 decoupage,
+                dossiers: Vec::new(),
             },
         };
         let portee = portee.trim_matches('/');
@@ -579,6 +597,11 @@ impl Base {
         coll.fichiers
             .retain(|f| !dans_portee(&f.chemin) || fichiers.iter().any(|(c, _, _)| *c == f.chemin));
         let retires = avant - coll.fichiers.len();
+        let dossier_neuf =
+            self.projet.join(portee).is_dir() && !coll.dossiers.iter().any(|d| d == portee);
+        if dossier_neuf {
+            coll.dossiers.push(portee.to_string());
+        }
 
         let mut inchanges = 0;
         let mut nouveaux: VecDeque<Fichier> = VecDeque::new();
@@ -613,7 +636,7 @@ impl Base {
         let mut echec: Option<Erreur> = None;
         let mut curseur = 0;
         let mut ajoutes = 0;
-        let mut a_ecrire = retires > 0;
+        let mut a_ecrire = retires > 0 || (dossier_neuf && exact.is_some());
         let mut cree = exact.is_some();
         for lot in textes.chunks(LOT) {
             match acces.vecteurs(lot).await {
@@ -762,8 +785,16 @@ struct Entree {
     decoupage: Decoupage,
 }
 
+#[derive(Default)]
+struct Nouveaux {
+    presents: HashSet<String>,
+    neufs: BTreeMap<String, Vec<Entree>>,
+}
+
 enum Action {
     Retirer,
+    /// Fichier nouveau d'un dossier suivi (REQ-176).
+    Ajouter(Box<Fichier>),
     Toucher(u64, u128),
     Remplacer(Box<Fichier>),
 }
@@ -821,22 +852,48 @@ impl Base {
         let Ok(Some(connues)) = suspects else {
             return;
         };
-        echecs.verrou().retain(|c, _| connues.contains_key(c));
+        let base = self.clone();
+        let nouveaux = tokio::task::spawn_blocking(move || base.nouveaux_des_dossiers()).await;
+        let Ok(nouveaux) = nouveaux else {
+            return;
+        };
+        echecs
+            .verrou()
+            .retain(|c, _| connues.contains_key(c) || nouveaux.presents.contains(c));
         let notes = echecs.verrou().clone();
         let base = self.clone();
         let suspects = tokio::task::spawn_blocking(move || {
-            let mut v = Vec::new();
+            let mut v: Vec<(String, Vec<Entree>)> = Vec::new();
+            let mut neufs = nouveaux.neufs;
             for (chemin, entrees) in connues {
+                let neuf = neufs.remove(&chemin).unwrap_or_default();
                 let stat = std::fs::metadata(base.projet.join(&chemin))
                     .ok()
                     .map(|m| taille_date(&crate::fichiers::version_de(&m)));
-                if let Some((t, d)) = stat {
-                    if entrees.iter().all(|e| e.taille == t && e.date == d) {
-                        continue;
-                    }
-                    if notes.get(&chemin).is_some_and(|n| n.0 == t && n.1 == d) {
-                        continue;
-                    }
+                let (a_jour, ecarte) = match stat {
+                    Some((t, d)) => (
+                        entrees.iter().all(|e| e.taille == t && e.date == d),
+                        notes.get(&chemin).is_some_and(|n| n.0 == t && n.1 == d),
+                    ),
+                    None => (false, false),
+                };
+                if ecarte {
+                    continue;
+                }
+                let mut a_voir = if a_jour { Vec::new() } else { entrees };
+                a_voir.extend(neuf);
+                if !a_voir.is_empty() {
+                    v.push((chemin, a_voir));
+                }
+            }
+            for (chemin, entrees) in neufs {
+                let stat = std::fs::metadata(base.projet.join(&chemin))
+                    .ok()
+                    .map(|m| taille_date(&crate::fichiers::version_de(&m)));
+                let ecarte = stat
+                    .is_some_and(|(t, d)| notes.get(&chemin).is_some_and(|n| n.0 == t && n.1 == d));
+                if ecarte {
+                    continue;
                 }
                 v.push((chemin, entrees));
             }
@@ -851,6 +908,48 @@ impl Base {
                 .mettre_a_jour(verrou, echecs, client, acces, &chemin, &entrees, false)
                 .await;
         }
+    }
+
+    /// Fichiers des dossiers suivis (REQ-176) : `presents` tous, `neufs` ceux qu'une collection
+    /// qui suit leur dossier n'a pas encore, avec une entrée sans empreinte par collection.
+    /// Un dossier absent du disque ne donne rien.
+    fn nouveaux_des_dossiers(&self) -> Nouveaux {
+        let mut res = Nouveaux::default();
+        let Ok(noms) = self.noms_collections() else {
+            return res;
+        };
+        for nom in noms {
+            let Ok(c) = self.lire_sans_vecteurs(&nom) else {
+                continue;
+            };
+            let connus: HashSet<&str> = c.fichiers.iter().map(|f| f.chemin.as_str()).collect();
+            let existants: Vec<String> = c
+                .dossiers
+                .iter()
+                .filter(|d| self.projet.join(d).is_dir())
+                .cloned()
+                .collect();
+            let Ok(cibles) = parcourir(&self.projet, &existants) else {
+                continue;
+            };
+            for chemin in cibles.into_iter().flat_map(|c| c.fichiers) {
+                res.presents.insert(chemin.clone());
+                if connus.contains(chemin.as_str()) {
+                    continue;
+                }
+                let entrees = res.neufs.entry(chemin).or_default();
+                if !entrees.iter().any(|e| e.collection == nom) {
+                    entrees.push(Entree {
+                        collection: nom.clone(),
+                        empreinte: String::new(),
+                        taille: 0,
+                        date: 0,
+                        decoupage: c.decoupage,
+                    });
+                }
+            }
+        }
+        res
     }
 
     /// Fichiers visés par une mise à jour manuelle (REQ-111) : un chemin de fichier présent dans
@@ -935,7 +1034,20 @@ impl Base {
                         .appliquer(verrou, &e.collection, chemin, Action::Retirer)
                         .await;
                 }
-                echecs.effacer(chemin);
+                // Un fichier nouveau écarté (binaire, trop gros) n'est relu qu'après un changement.
+                let neuf = entrees.iter().any(|e| e.empreinte.is_empty());
+                let stat = std::fs::metadata(self.projet.join(chemin))
+                    .ok()
+                    .map(|m| taille_date(&crate::fichiers::version_de(&m)));
+                match stat {
+                    Some((t, d)) if neuf => echecs.noter(
+                        chemin,
+                        t,
+                        d,
+                        "Ce fichier n'est pas un texte lisible.".into(),
+                    ),
+                    _ => echecs.effacer(chemin),
+                }
                 return Ok(false);
             }
         };
@@ -981,14 +1093,12 @@ impl Base {
                 passages: calculs[i].1.clone(),
                 vecteurs: calculs[i].2.clone(),
             };
-            let r = self
-                .appliquer(
-                    verrou,
-                    &e.collection,
-                    chemin,
-                    Action::Remplacer(Box::new(f)),
-                )
-                .await;
+            let action = if e.empreinte.is_empty() {
+                Action::Ajouter(Box::new(f))
+            } else {
+                Action::Remplacer(Box::new(f))
+            };
+            let r = self.appliquer(verrou, &e.collection, chemin, action).await;
             if let Err(m) = r {
                 return echec(m.into());
             }
@@ -1048,26 +1158,25 @@ impl Base {
         let (collection, chemin) = (collection.to_string(), chemin.to_string());
         tokio::task::spawn_blocking(move || {
             let mut c = base.charger(&collection)?;
-            let Some(i) = c.fichiers.iter().position(|f| f.chemin == chemin) else {
-                return Ok(());
-            };
-            match action {
-                Action::Retirer => {
+            let i = c.fichiers.iter().position(|f| f.chemin == chemin);
+            match (action, i) {
+                (Action::Retirer, Some(i)) => {
                     c.fichiers.remove(i);
                 }
-                Action::Toucher(t, d) => {
+                (Action::Toucher(t, d), Some(i)) => {
                     c.fichiers[i].taille = t;
                     c.fichiers[i].date = d;
                 }
-                Action::Remplacer(f) => {
-                    if let Some(v) = f.vecteurs.first() {
-                        if c.dimension != 0 && v.len() != c.dimension {
-                            return Err("La dimension des vecteurs du provider a changé.".into());
-                        }
-                        c.dimension = v.len();
-                    }
+                (Action::Remplacer(f) | Action::Ajouter(f), Some(i)) => {
+                    c.verifier_dimension(&f)?;
                     c.fichiers[i] = *f;
                 }
+                (Action::Ajouter(f), None) => {
+                    c.verifier_dimension(&f)?;
+                    c.fichiers.push(*f);
+                    c.fichiers.sort_by(|a, b| a.chemin.cmp(&b.chemin));
+                }
+                (_, None) => return Ok(()),
             }
             base.enregistrer(&c)
         })
@@ -2069,5 +2178,12 @@ mod tests {
             e.cause
         );
         assert!(e.cause.contains("illisible"));
+    }
+
+    #[test]
+    fn REQ176_AC9_collection_sans_champ_dossiers_se_lit_sans_dossier_suivi() {
+        let c: Collection =
+            serde_json::from_str(r#"{"nom":"vieille","dimension":2,"fichiers":[]}"#).unwrap();
+        assert!(c.dossiers.is_empty());
     }
 }
