@@ -94,7 +94,7 @@ export function dialogue({ titre, contenu = [], actions = [], focusInitial, posi
       el.close();
       el.remove();
       if (focusFermeture) focusFermeture.focus();
-      else if (rendreFocus) origine?.focus?.();
+      else if (rendreFocus) origine?.focus?.({ preventScroll: true });
     },
     // Pose l'aide sous le titre, après coup (texte connu après le chargement), reliée par aria-describedby.
     definirAide(a) {

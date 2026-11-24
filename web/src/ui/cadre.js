@@ -229,7 +229,7 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   };
   const depart = principal.groupes ?? feuilleUnique;
   racine.definirGroupes(depart, principal.groupeCourant ?? feuillesDe(depart)[0].id);
-  main.append(zone("div", "cadre-bandeaux", principal.bandeaux), groupes, ...(avec.shells ? [poignees.shells, zoneShells] : []));
+  main.append(groupes, ...(avec.shells ? [poignees.shells, zoneShells] : []));
 
   const branche = zone("span", "ya-status-branche");
   const lien = zone("span", "ya-status-lien");
@@ -362,7 +362,7 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
     for (const cle of ["panneau", "agent", "shells"]) if (poignees[cle] && !choisies[cle] && !poignees[cle].hidden) poignees[cle].definir({ valeur: mesures[cle]() });
     majPoignees();
   };
-  // La place des groupes change avec la fenêtre, le panneau, les shells ou un bandeau.
+  // La place des groupes change avec la fenêtre, le panneau, les shells ou une question d'onglet.
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(majPoignees).observe(groupes);
   racine.definirTailles(tailles);
   racine.definirReplis(replis);

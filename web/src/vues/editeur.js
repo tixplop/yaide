@@ -40,7 +40,7 @@ const estHtml = (chemin) => /\.html?$/i.test(chemin);
 const avecApercu = (chemin) => /\.(md|markdown|html|htm|svg|mmd)$/i.test(chemin);
 
 /**
- * Éditeur de V-002. `dire({ texte, variante, fermable })` affiche un bandeau ; `ouvrirRapide()` ouvre V-006.
+ * Éditeur de V-002. `dire({ texte, variante, detail })` affiche un toast ; `ouvrirRapide()` ouvre V-006.
  * `surAttente(texte)` : phrase des sauvegardes attendant le retour de la connexion (vide s'il n'y en a plus).
  * `surActif({ position, langage })` : l'onglet actif et sa position pour la barre d'état (`null` sans onglet ; sur un diff, la position seule).
  * `surSauvegarde()` : une sauvegarde a réussi (l'état git a pu changer).
@@ -1590,6 +1590,8 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   return {
     barre,
     fil,
+    /** Le focus va dans l'onglet actif du groupe courant, ou sur « Ouvrir un fichier » (repli des toasts). */
+    focusActif,
     code,
     /** Zone de la question de l'onglet actif du premier groupe (C-003 dans `questionOnglet`). */
     question: questionOnglet,

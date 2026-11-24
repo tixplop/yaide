@@ -33,7 +33,7 @@ function texteErreur(r) {
 }
 
 /**
- * V-003. `dire({ texte, variante, fermable })` affiche un bandeau.
+ * V-003. `dire({ texte, variante, detail })` affiche un toast.
  * `projet` : nom affiché dans l'en-tête. `estDepot()` dit si le dossier est un dépôt git ; `surCommit()` mène au message de commit.
  * `lireEtat()` demande la lecture de l'état git, qui revient par `definirStatuts(Map | null)` (voir `statuts.js`).
  * `agents` : la fonction `agents` est active (commande « Ajouter à la base de connaissance… ») ; `surConfigurer({ surFermeture })` ouvre la configuration de la base ;
@@ -74,8 +74,8 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   let deplacement = false; // des déplacements sont en cours
   let aRedessiner = false;
   let relireEnAttente = false;
-  let messageDepot = null; // bandeau du dernier dépôt
-  let messageCopie = null; // bandeau du dernier collage
+  let messageDepot = null; // toast du dernier dépôt
+  let messageCopie = null; // toast du dernier collage
   let copies = []; // chemins copiés (REQ-125), dans l'ordre de l'arbre, sans enfant d'un dossier aussi copié
   let collage = false; // un collage est en cours
   const mac = estMac();

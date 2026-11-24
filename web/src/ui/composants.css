@@ -87,7 +87,7 @@
 .message-erreur { background: var(--msg-erreur); border-left-color: var(--danger); }
 .message-fort { background: var(--warning); color: var(--bg-000); font-weight: 600; border-left-color: var(--warning); }
 .message-texte { flex: 1; }
-/* Bandeaux empilés (REQ-115) : un filet haut sépare le message du précédent. */
+/* Messages empilés (REQ-115) : un filet haut sépare le message du précédent. */
 .message + .message { border-top: var(--trait) solid var(--line); }
 /* C-003, présentation « barre » : en ligne dans la barre d'état, sans fond ni filet. */
 .ya-message-barre { flex-wrap: nowrap; gap: 6px; height: 18px; padding: 0 var(--space-1); margin: 0 calc(-1 * var(--space-1)); background: none; border-left: 0; border-radius: var(--radius-sm); font: inherit; min-width: 0; }
@@ -442,7 +442,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-panel-title { margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 16px; font-weight: var(--graisse-forte); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); }
 .cadre-panneau-corps { flex: 1 1 0; min-height: 0; overflow: auto; }
 .cadre-principal { background: var(--bg-200); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.cadre-bandeaux, .cadre-onglets, .cadre-question, .cadre-fil { flex: 0 0 auto; }
+.cadre-onglets, .cadre-question, .cadre-fil { flex: 0 0 auto; }
 .cadre-code { flex: 1 1 0; min-height: 0; container-type: size; }
 /* Groupes de l'éditeur (REQ-079) : une découpe met ses deux parts côte à côte (ligne) ou l'une sur l'autre (colonne), à parts égales, séparées par un filet. */
 .cadre-groupes { flex: 1 1 0; min-height: 0; min-width: 0; display: flex; }

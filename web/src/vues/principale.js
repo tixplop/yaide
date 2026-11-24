@@ -3,7 +3,7 @@ import { bouton } from "../ui/bouton.js";
 import { cadre } from "../ui/cadre.js";
 import { borner, limites } from "../ui/poignee.js";
 import { ecrire, lire } from "../stockage.js";
-import { message } from "../ui/message.js";
+import { afficher, changerTexte, retirer } from "../ui/toasts.js";
 import { onglets } from "../ui/onglets.js";
 import { reprendreDernierChoix } from "../opencode.js";
 import { vueConnaissance } from "./connaissance.js";
@@ -75,7 +75,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     const r = await ouvrirClaude();
     if (detruite) return;
     if (r.coupure) return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
-    if (r.erreur !== undefined) return dire({ texte: `Impossible d'ouvrir une session Claude : ${String(r.erreur).replace(/\.$/, "")}.`, variante: "alerte", fermable: true });
+    if (r.erreur !== undefined) return dire({ texte: `Impossible d'ouvrir une session Claude : ${String(r.erreur).replace(/\.$/, "")}.`, variante: "alerte" });
     editeur.ouvrirClaude({ id: r.id });
   });
   const boutonOpencode = bouton({ icone: "code-xml", nomAccessible: "opencode", infoBulle: "Nouvelle session opencode", positionInfoBulle: "gauche" });
@@ -91,7 +91,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     boutonOpencode.removeAttribute("aria-disabled");
     if (detruite) return;
     if (r.coupure) return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
-    if (r.erreur !== undefined || id === undefined) return dire({ texte: `Impossible d'ouvrir une session opencode : ${String(r.erreur ?? "réponse illisible").replace(/\.$/, "")}.`, variante: "alerte", fermable: true });
+    if (r.erreur !== undefined || id === undefined) return dire({ texte: `Impossible d'ouvrir une session opencode : ${String(r.erreur ?? "réponse illisible").replace(/\.$/, "")}.`, variante: "alerte" });
     editeur.ouvrirOpencode({ sessionId: id });
   });
   const boutonSessions = bouton({ icone: "messages-square", nomAccessible: "Sessions opencode", positionInfoBulle: "gauche" });
@@ -114,8 +114,9 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     replierAgent(true);
     boutonAgents.poserFocus();
   });
-  const boutonPanneau = bouton({ icone: "panel-left-close", nomAccessible: "Replier le panneau" });
-  let panneauReplie = false;
+  // Panneau replié par `.yaide/interface.json` : replié dès le montage, jamais affiché puis replié (AC-069-11).
+  let panneauReplie = Boolean(imposes.panneau);
+  const boutonPanneau = bouton(panneauReplie ? { icone: "panel-left-open", nomAccessible: "Déplier le panneau" } : { icone: "panel-left-close", nomAccessible: "Replier le panneau" });
   let agentReplie = true;
   boutonPanneau.addEventListener("click", () => {
     replierPanneau(!panneauReplie);
@@ -187,7 +188,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       editeur.ouvrir({ chemin, contenu: r.contenu, version: r.version, geste });
     } else {
       const texte = r.coupure ? TEXTE_COUPURE : `Impossible d'ouvrir ${nom} : ${String(r.message ?? "erreur").replace(/\.$/, "")}.`;
-      dire({ texte, variante: "alerte", fermable: true });
+      dire({ texte, variante: "alerte" });
     }
     editeur.lecture(false);
   }
@@ -218,27 +219,25 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     },
   });
 
-  // Bandeaux : la coupure d'abord, puis un seul message à la fois.
-  const bandeaux = document.createElement("div");
-  const places = { coupure: [], message: [] };
-  const montrerBandeau = (nom, ...elements) => {
-    for (const ancien of places[nom]) ancien.remove();
-    places[nom] = elements.filter(Boolean);
-    bandeaux.append(...places[nom]);
-  };
+  // Messages : des toasts (REQ-172) ; la coupure est un toast fort, retiré au retour.
   let etat = "connecte";
   let attenteTexte = "";
+  let coupureAffichee = false;
   function montrerCoupure() {
-    if (etat !== "coupe") return montrerBandeau("coupure", null);
+    if (etat !== "coupe") {
+      coupureAffichee = false;
+      return retirer("connexion");
+    }
     const texte = ["Connexion perdue. Modifications gardées.", attenteTexte].filter(Boolean).join(" ");
-    montrerBandeau("coupure", message({ texte, variante: "alerte", fort: true }));
+    if (coupureAffichee) changerTexte("connexion", texte);
+    else afficher({ texte, variante: "alerte", fort: true, cause: "connexion" });
+    coupureAffichee = true;
   }
-  function dire({ texte, variante, detail, fermable = false }) {
-    const m = message({ texte, variante, detail, fermable });
-    montrerBandeau("message", m);
-    return m;
+  // « Connexion perdue. Réessayez au retour. » part au retour de la connexion : il porte sa cause.
+  function dire({ texte, variante, detail }) {
+    return afficher({ texte, variante, detail, cause: texte === TEXTE_COUPURE ? "reessayer" : undefined });
   }
-  const illisible = (fichier) => message({ texte: `${fichier} est illisible. Corrigez-le, puis rechargez la page.`, variante: "alerte", fermable: true });
+  const illisible = (fichier) => afficher({ texte: `${fichier} est illisible. Corrigez-le, puis rechargez la page.`, variante: "alerte", cause: `illisible:${fichier}` });
 
   let fichiers = null; // créé après l'éditeur, dont les premiers rappels arrivent avant
   let git = null; // créé après l'arbre, dont la première lecture le demande
@@ -293,17 +292,14 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       if (id === "formater") return editeur.formater();
       if (id === "configuration") {
         panneauConfig = ouvrirConfiguration({
-          surFermeture: () => { panneauConfig = null; avant?.focus?.(); },
-          surCouleursEnregistrees: () => {
-            const reste = places.message.filter((m) => !m.textContent.includes(".yaide/markdown.json est illisible."));
-            montrerBandeau("message", ...reste);
-          },
+          surFermeture: () => { panneauConfig = null; avant?.focus?.({ preventScroll: true }); },
+          surCouleursEnregistrees: () => retirer("illisible:.yaide/markdown.json"),
         });
         return;
       }
       const ouvrirPanneau = { providers: ouvrirProviders, profils: ouvrirProfils }[id];
       if (!ouvrirPanneau) return;
-      panneauConfig = ouvrirPanneau({ surFermeture: () => { panneauConfig = null; editeur.relireReglagesAgents(); avant?.focus?.(); } });
+      panneauConfig = ouvrirPanneau({ surFermeture: () => { panneauConfig = null; editeur.relireReglagesAgents(); avant?.focus?.({ preventScroll: true }); } });
     },
   });
   fichiers = vueFichiers({
@@ -341,7 +337,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   }) : { corps: null, estDepot: () => false, rafraichir() {}, relire() {}, montrer() {}, focuserMessage() {}, detruire() {} };
   // Worktree choisi disparu (REQ-086) : le choix est déjà revenu au projet.
   const desabonnerWorktree = abonnerWorktree(({ disparu }) => {
-    if (disparu) dire({ texte: `Le worktree ${disparu} a disparu : retour au projet.`, variante: "info", fermable: true });
+    if (disparu) dire({ texte: `Le worktree ${disparu} a disparu : retour au projet.`, variante: "info" });
   });
   const agents = avec.agents ? vueAgents({ surFichier, surDemarrer }) : null;
   const restauration = editeur.restaurer();
@@ -364,8 +360,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     agent: { titre: "Agents", repli: repliAgent.enveloppe, corps: avec.agents ? [agents.corps] : [] },
     railDroit: { commandes: avec.agents ? [boutonAgent.enveloppe, boutonAgents.enveloppe] : [], pied: boutonMcp ? [boutonBase.enveloppe, boutonMcp.enveloppe] : [] },
     fonctions: avec,
-    principal: { bandeaux, groupes: editeur.groupes(), shells },
+    principal: { groupes: editeur.groupes(), shells },
     barreEtat: barre,
+    replis: { panneau: panneauReplie },
+    repliToasts: () => editeur.focusActif(),
     surChangement: (zone, taille) => {
       choisies[zone] = taille;
       racine.definirTailles({ [zone]: taille });
@@ -387,15 +385,15 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   // Sans shell à l'arrivée : la zone reste hors page le temps de lire la liste.
   racine.definirShellsVisibles(false);
 
-  // Poignées : limites recalculées à chaque changement de la fenêtre, des bandeaux ou de la question d'onglet.
+  // Poignées : limites recalculées à chaque changement de la fenêtre, de la question d'onglet.
   // La taille choisie ne change que par un glissé ou une flèche ; la taille affichée est la choisie, bornée.
   function recalculer() {
     if (detruite) return;
-    const hauteurs = bandeaux.offsetHeight + Math.max(0, ...editeur.questions().map((q) => q.offsetHeight));
+    const hauteurs = Math.max(0, ...editeur.questions().map((q) => q.offsetHeight));
     const lim = limites({
       L: window.innerWidth,
       H: window.innerHeight,
-      bandeaux: hauteurs,
+      questions: hauteurs,
       panneau: { replie: panneauReplie, choisie: choisies.panneau },
       agent: { replie: agentReplie, choisie: choisies.agent },
     });
@@ -419,7 +417,6 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   function observerQuestions() {
     if (!observateur) return;
     observateur.disconnect();
-    observateur.observe(bandeaux);
     for (const q of editeur.questions()) observateur.observe(q);
   }
   observerQuestions();
@@ -434,7 +431,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
   // Repli gardé : le panneau reste replié, et le focus va sur « Ouvrir un fichier » s'il n'y a aucun onglet.
   if (reglages.illisible || couleursIllisibles) {
-    montrerBandeau("message", reglages.illisible && illisible(".yaide/interface.json"), couleursIllisibles && illisible(".yaide/markdown.json"));
+    if (reglages.illisible) illisible(".yaide/interface.json");
+    if (couleursIllisibles) illisible(".yaide/markdown.json");
   }
   Promise.all([lire("replis"), restauration]).then(([precedents]) => {
     if (detruite) return;
@@ -445,6 +443,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       agents.afficher({ focus: false });
     }
     if (gardes?.panneau && !panneauReplie) replierPanneau(true);
+    else if (imposes.panneau) ecrire("replis", gardeReplis());
     if (!panneauReplie) return;
     if (document.activeElement && document.activeElement !== document.body) return;
     racine.querySelector(".editeur-code button")?.focus();
@@ -519,7 +518,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       majEtat();
       editeur.definirEtat(nouvel);
       if (nouvel !== "coupe") {
-        if (places.message.some((m) => m.textContent.includes(TEXTE_COUPURE))) montrerBandeau("message", null);
+        retirer("reessayer");
         // Une lecture de l'état git perdue pendant la coupure : personne d'autre ne la relance.
         if (retour) git.rafraichir();
       }

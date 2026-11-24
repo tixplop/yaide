@@ -779,7 +779,7 @@ test("REQ078_AC16_demarrer_en_coupure_bandeau_sans_onglet", async () => {
     throw new Error("coupé");
   }));
   [...corpsAgents(vue).querySelectorAll("button")].find((b) => b.textContent === "Démarrer une conversation").click();
-  await vi.waitFor(() => expect([...vue.querySelectorAll(".cadre-bandeaux [role=alert]")].some((a) => a.textContent.includes("Réessayez au retour."))).toBe(true));
+  await vi.waitFor(() => expect([...vue.querySelectorAll(".ya-toasts [role=alert]")].some((a) => a.textContent.includes("Réessayez au retour."))).toBe(true));
   expect(vue.querySelectorAll(".agent-corps")).toHaveLength(0);
 });
 

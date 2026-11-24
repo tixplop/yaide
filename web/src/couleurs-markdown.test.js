@@ -176,3 +176,15 @@ test("REQ117_AC5_appliquer_remplace_la_feuille_et_suit_les_fonds_regles", async 
   expect(document.adoptedStyleSheets).toHaveLength(0);
   expect(marques()).toBe(0);
 });
+
+test("REQ115_AC13_la_puce_reglee_colore_la_puce_de_l_apercu_et_du_hybride_pas_le_numero", async () => {
+  const { readFileSync } = await import("node:fs");
+  vi.stubGlobal("CSSStyleSheet", FausseFeuille);
+  vi.stubGlobal("fetch", faux('{"sombre":{"puce":{"couleur":"#ff8800"}}}'));
+  await charger();
+  expect(document.adoptedStyleSheets[0].texte).toContain("--md-puce-couleur: #ff8800");
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  expect(css).toContain(".zone-code-apercu ul > li::marker { color: var(--md-puce-couleur, inherit); }");
+  expect(css).toContain(".cm-hy-puce { color: var(--md-puce-couleur, var(--ink-muted)); }");
+  expect(css).not.toMatch(/ol > li::marker/);
+});

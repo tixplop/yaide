@@ -148,3 +148,15 @@ test("REQ172_AC5_entrees_invalides", () => {
   expect(() => afficher({ texte: "a", variante: "zzz" })).toThrow(/variante/);
   expect(() => changerTexte("rien", "t")).not.toThrow();
 });
+
+test("REQ172_AC4_remove_de_l_element_rendu_retire_le_toast_et_le_meme_message_revient_sans_compter_double", () => {
+  const a = afficher({ texte: "A", variante: "erreur" });
+  expect(afficher({ texte: "A", variante: "erreur" })).toBe(a);
+  expect(textes()).toEqual(["A"]);
+  a.remove();
+  expect(toasts()).toHaveLength(0);
+  afficher({ texte: "A", variante: "erreur" });
+  expect(textes()).toEqual(["A"]);
+  for (const t of ["B", "C", "D"]) afficher({ texte: t, variante: "erreur" });
+  expect(textes()).toEqual(["A", "B", "C", "D"]);
+});

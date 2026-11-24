@@ -33,7 +33,7 @@ function enlever(t, forcerFocus) {
   const avaitFocus = forcerFocus || t.el.contains(document.activeElement);
   clearTimeout(t.timer);
   liste.splice(i, 1);
-  t.el.remove();
+  Element.prototype.remove.call(t.el);
   if (!avaitFocus) return;
   const voisin = [...liste.slice(i), ...liste.slice(0, i).reverse()].map(fermerDe).find(Boolean);
   if (voisin) voisin.focus();
@@ -45,7 +45,7 @@ export function afficher({ texte, variante = "info", detail, fort = false, cause
   const existant = liste.find((t) => t.texte === texte);
   if (existant) {
     armer(existant);
-    return;
+    return existant.el;
   }
   const el = message({ texte, variante: fort ? "alerte" : variante, detail, fort, presentation: "toast", cause });
   const t = { el, texte, variante: fort ? "alerte" : variante, fort, cause, timer: undefined, survol: false, focus: false };
@@ -77,9 +77,12 @@ export function afficher({ texte, variante = "info", detail, fort = false, cause
     },
     true,
   );
+  // Les vues gardent l'élément rendu et le retirent par `remove()` : il passe par la zone, qui rend le focus.
+  el.remove = () => enlever(t, false);
   liste.push(t);
   zone.append(el);
   armer(t);
+  return el;
 }
 
 export function retirer(cause) {

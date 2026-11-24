@@ -22,7 +22,7 @@ function monter() {
     barreTitre: { projet: "projet", chemin: "/home/x/projet", actions: [p("actions")] },
     rail: { onglets: p("rail"), commandes: [p("cmd")] },
     panneau: { titre: "Fichiers", corps: p("corps") },
-    principal: { bandeaux: p("bandeau"), ongletsFichiers: p("of"), questionOnglet: p("q"), fil: p("fil"), code: p("code"), shells: p("shells") },
+    principal: { ongletsFichiers: p("of"), questionOnglet: p("q"), fil: p("fil"), code: p("code"), shells: p("shells") },
     barreEtat: { branche: "main", position: "Ln 6, Col 31", langage: "Rust" },
   });
   document.body.append(c);
@@ -46,9 +46,9 @@ test("REQ028_AC8_ordre_dom_barre_rail_panneau_principal_puis_onglets_code_shells
   expect(c.children[3].getAttribute("aria-label")).toBe("Largeur du panneau");
   const textes = [...c.querySelector("main").children].map((e) => e.textContent);
   // Les quatre zones de l'éditeur sont dans l'enveloppe d'un groupe (REQ-079), dans le même ordre.
-  expect(textes).toEqual(["bandeau", "ofqfilcode", "", "shells"]);
+  expect(textes).toEqual(["ofqfilcode", "", "shells"]);
   expect([...c.querySelector(".cadre-groupe").children].map((e) => e.textContent)).toEqual(["of", "q", "fil", "code"]);
-  expect(c.querySelector("main").children[2].getAttribute("aria-label")).toBe("Hauteur des shells");
+  expect(c.querySelector("main").children[1].getAttribute("aria-label")).toBe("Hauteur des shells");
 });
 
 test("REQ028_AC2_titre_de_panneau_h2_corps_defilant_et_aucun_pied", () => {

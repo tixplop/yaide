@@ -38,7 +38,7 @@ function texteArret(n) {
 }
 
 /**
- * Zone des shells de V-002. `dire({ texte, variante, fermable })` affiche un message dans les bandeaux.
+ * Zone des shells de V-002. `dire({ texte, variante, detail })` affiche un toast.
  * `surZone(oui, replie)` : la zone a au moins un shell visible, ou n'en a aucun ; `replie` : elle est repliée.
  * `replieImpose` : `true` ou `false` remplace le repli gardé à la restauration.
  * `repli` : le bouton « Replier les shells », que la vue principale place dans la barre de titre.

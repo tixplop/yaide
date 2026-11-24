@@ -3,11 +3,11 @@ const jeton = (nom) => parseFloat(getComputedStyle(document.documentElement).get
 const entre = (v, min, max) => Math.max(min, Math.min(max, v));
 
 /**
- * Limites des poignées en pixels (C-011). `L` et `H` : taille de la fenêtre ; `bandeaux` : hauteur des bandeaux et de la question d'onglet ;
+ * Limites des poignées en pixels (C-011). `L` et `H` : taille de la fenêtre ; `questions` : hauteur de la question d'onglet (les toasts flottent, ils ne comptent pas) ;
  * `panneau` et `agent` : { replie, choisie } (taille choisie en pixels, token par défaut ; panneau déplié et agent replié par défaut).
  * Rend aussi les largeurs affichées `Pa` et `Aa` (0 si repliée : l'agent cède d'abord) et le `seuil` sous lequel les deux colonnes ne tiennent pas.
  */
-export function limites({ L, H, bandeaux = 0, panneau = {}, agent = {}, railDroit = true }) {
+export function limites({ L, H, questions = 0, panneau = {}, agent = {}, railDroit = true }) {
   const sansAgent = agent === null; // agents désactivés : pas de colonne, pas de seuil
   agent ??= {};
   const largeur = Math.max(L, jeton("--largeur-min"));
@@ -31,7 +31,7 @@ export function limites({ L, H, bandeaux = 0, panneau = {}, agent = {}, railDroi
     agent: { min: minA, max: Math.min(maxA, P - Pa) },
     shells: {
       min: minShells,
-      max: Math.max(minShells, hauteur - jeton("--size-titlebar") - jeton("--size-status") - epaisseur - bandeaux - jeton("--hauteur-editeur-min")),
+      max: Math.max(minShells, hauteur - jeton("--size-titlebar") - jeton("--size-status") - epaisseur - questions - jeton("--hauteur-editeur-min")),
     },
   };
 }

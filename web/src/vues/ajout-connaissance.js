@@ -65,7 +65,7 @@ function suivre({ numero, dire, actif }) {
 /**
  * Dialogue « Ajouter à la base de connaissance » (V-003, REQ-104).
  * `noms` : les chemins tels qu'ils s'affichent (un dossier finit par `/`) ; `chemins` : ceux que reçoit le serveur, dans le même ordre.
- * `dire` : bandeaux ; `surConfigurer({ surFermeture })` : ouvre la configuration de la base ; `surRetour()` : rend le focus à la ligne visée.
+ * `dire` : toasts ; `surConfigurer({ surFermeture })` : ouvre la configuration de la base ; `surRetour()` : rend le focus à la ligne visée.
  */
 export async function ouvrirAjoutConnaissance({ noms, chemins, dire, surConfigurer, surRetour, actif = () => true }) {
   const etat = await lireConnaissance();

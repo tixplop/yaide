@@ -4,6 +4,7 @@ import * as oc from "../opencode.js";
 import * as worktree from "../worktree.js";
 import { ecrire, lire } from "../stockage.js";
 import { charger as chargerCouleurs } from "../couleurs-markdown.js";
+import { afficher } from "../ui/toasts.js";
 import { simulerServeur, ETAT_GIT, monter, attendre, avecHorloge, poignees, simulerShells, onglets, barreTitre, aside, paletteCommandes, nomsCommandes, agentCol, boutonAgentDe, boutonAgentsDe, champAgent, clavier, largeur, jsonOk, fauxServeur, corpsAgents, titreColonne, simulerOpencode, boutonClaudeDe, ongletsOc, nomDuChamp, nomsRailDroit, boutonOcDe, ongletsClaude, ligne } from "./principale.aides.js";
 
 vi.mock("../couleurs-markdown.js", async (orig) => ({ ...(await orig()), charger: vi.fn(async () => ({ illisible: false })), lire: vi.fn(async () => ({ sombre: {}, clair: {} })) }));
@@ -496,7 +497,7 @@ test("REQ078_AC16_coupure_bandeau_sans_onglet", async () => {
   }));
   const { vue } = monter();
   await attendre();
-  const bandeau = () => [...vue.querySelectorAll(".cadre-bandeaux [role=alert]")].find((a) => a.textContent.includes("Réessayez au retour."));
+  const bandeau = () => [...vue.querySelectorAll(".ya-toasts [role=alert]")].find((a) => a.textContent.includes("Réessayez au retour."));
   expect(bandeau()).toBeUndefined();
   const avant = document.activeElement;
   const nb = () => appels.filter((u) => u === "/api/agent/reglages").length;
@@ -710,7 +711,8 @@ test("REQ086_AC2_AC3_AC7_barre_d_etat_et_rail_suivent_le_worktree_choisi_puis_ba
   // relecture des 3 s : l'état demandé est refusé, le choix revient au projet.
   await vi.advanceTimersByTimeAsync(3000);
   await attendre();
-  const bandeau = [...vue.querySelectorAll("[role=status]")].find((m) => m.textContent.includes("a disparu"));
+  await vi.advanceTimersByTimeAsync(50);
+  const bandeau = [...vue.querySelectorAll(".ya-toasts [role=status]")].find((m) => m.textContent.includes("a disparu"));
   expect(bandeau.textContent).toContain("Le worktree essai a disparu : retour au projet.");
   expect(bandeau.querySelector("button")).not.toBeNull();
   expect(vue.querySelector("footer").textContent).toBe("mainServeur : Connecté");
@@ -1244,8 +1246,10 @@ test("REQ115_AC10_markdown_illisible_donne_un_bandeau_alerte_ferme_sans_focus_de
   simulerServeur(ETAT_GIT([]));
   const { vue } = monter({ couleursIllisibles: true });
   await attendre();
+  await vi.waitFor(() => expect(alertes(vue)).toHaveLength(1));
   const [bandeau, ...autres] = alertes(vue);
   expect(autres).toEqual([]);
+  expect(bandeau.closest(".ya-toasts")).not.toBeNull();
   expect(bandeau.querySelector(".message-texte").textContent).toBe(TEXTE_MD);
   ligne(vue, "main.rs").click();
   await vi.waitFor(() => expect(vue.querySelector(".cm-content")).not.toBeNull());
@@ -1263,7 +1267,7 @@ test("REQ115_AC10_markdown_illisible_donne_un_bandeau_alerte_ferme_sans_focus_de
 
 test("REQ115_AC10_AC11_deux_fichiers_illisibles_deux_bandeaux_interface_d_abord_chaque_fermer_retire_le_sien", async () => {
   const { vue } = monter({ reglages: { illisible: true }, couleursIllisibles: true });
-  await attendre();
+  await vi.waitFor(() => expect(alertes(vue)).toHaveLength(2));
   const [premier, second] = alertes(vue);
   expect(alertes(vue)).toHaveLength(2);
   expect(premier.querySelector(".message-texte").textContent).toBe(TEXTE_IF);
@@ -1325,7 +1329,7 @@ test("REQ117_AC19_enregistrer_les_couleurs_retire_le_seul_bandeau_de_markdown_js
     return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
   }));
   const { vue } = monter({ reglages: { illisible: true, fonctions: { agents: false, shells: false } }, couleursIllisibles: true });
-  expect(alertes(vue)).toHaveLength(2);
+  await vi.waitFor(() => expect(alertes(vue)).toHaveLength(2));
   const entree = paletteCommandes(">");
   entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
   await new Promise((r) => setTimeout(r, 0));
@@ -1471,4 +1475,113 @@ test("REQ126_AC10_AC12_coupure_gardee_dans_le_dialogue_puis_onglet_actif_focus_d
   expect(document.activeElement.labels?.[0]?.textContent).toBe("Message à l'agent");
   expect(document.activeElement.value).toBe("");
   expect(ligne(vue, "a.md").getAttribute("aria-selected")).toBe("true");
+});
+
+// ---- REQ-172 : les messages de la vue principale sont des toasts ----
+
+const textesToasts = (vue) => [...vue.querySelectorAll(".ya-toasts .ya-toast")].map((t) => t.querySelector(".message-texte").textContent);
+
+test("REQ172_AC1_deux_messages_dans_la_zone_des_toasts_le_plus_recent_en_bas_rien_au_dessus_des_onglets", async () => {
+  simulerServeur(ETAT_GIT([]));
+  const { vue } = monter({ reglages: { illisible: true }, couleursIllisibles: true });
+  await vi.waitFor(() => expect(textesToasts(vue)).toEqual([TEXTE_IF, TEXTE_MD]));
+  expect(vue.querySelector(".cadre-bandeaux")).toBeNull();
+  expect(vue.querySelector("main .ya-toast")).toBeNull();
+});
+
+test("REQ172_AC2_AC10_coupure_toast_fort_sans_Fermer_texte_allonge_a_Ctrl_S_garde_parmi_quatre_erreurs_retire_au_retour", () =>
+  avecHorloge(async () => {
+    let coupe = false;
+    simulerServeur(ETAT_GIT([]));
+    const base = fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+      if (String(url) === "/api/session") {
+        if (coupe) throw new Error("coupé");
+        return { status: 204 };
+      }
+      if (init?.method === "PUT") return jsonOk({ version: "2" });
+      return base(url, init);
+    }));
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(10);
+    ligne(vue, "main.rs").click();
+    await vi.advanceTimersByTimeAsync(50);
+    const code = vue.querySelector(".zone-code").vue;
+    code.dispatch({ changes: { from: 0, insert: "x" } });
+    const coupure = () => vue.querySelector(".ya-toast[data-cause=connexion]");
+    expect(coupure()).toBeNull();
+    coupe = true;
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(coupure().querySelector(".message-texte").textContent).toBe("Connexion perdue. Modifications gardées.");
+    expect(coupure().getAttribute("role")).toBe("alert");
+    expect(coupure().querySelector("button")).toBeNull();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(coupure().querySelector(".message-texte").textContent).toBe("Connexion perdue. Modifications gardées. main.rs sera sauvegardé au retour.");
+    for (const n of [1, 2, 3, 4]) afficher({ texte: `Erreur ${n}`, variante: "erreur" });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(textesToasts(vue)).toEqual(["Connexion perdue. Modifications gardées. main.rs sera sauvegardé au retour.", "Erreur 2", "Erreur 3", "Erreur 4"]);
+    coupe = false;
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(coupure()).toBeNull();
+    expect(textesToasts(vue)).toEqual(["Erreur 2", "Erreur 3", "Erreur 4"]);
+  }));
+
+test("REQ172_AC5_Fermer_du_dernier_toast_rend_le_focus_a_l_editeur_actif_sinon_a_Ouvrir_un_fichier", async () => {
+  simulerServeur(ETAT_GIT([]));
+  const { vue } = monter();
+  await attendre();
+  afficher({ texte: "Erreur seule", variante: "erreur" });
+  await attendre();
+  vue.querySelector(".ya-toast button[aria-label=Fermer]").focus();
+  vue.querySelector(".ya-toast button[aria-label=Fermer]").click();
+  expect(document.activeElement.textContent).toBe("Ouvrir un fichier");
+  ligne(vue, "main.rs").click();
+  await vi.waitFor(() => expect(vue.querySelector(".cm-content")).not.toBeNull());
+  afficher({ texte: "Autre erreur", variante: "erreur" });
+  await attendre();
+  vue.querySelector(".ya-toast button[aria-label=Fermer]").focus();
+  vue.querySelector(".ya-toast button[aria-label=Fermer]").click();
+  expect(document.activeElement.closest(".cm-content")).not.toBeNull();
+});
+
+// ---- REQ-069 : fichier de réglages illisible, panneau replié dès le chargement ----
+
+test("REQ069_AC10_illisible_le_focus_va_dans_l_editeur_Fermer_retire_le_toast_il_revient_au_rechargement", async () => {
+  simulerServeur(ETAT_GIT([]));
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "onglets" ? { liste: [{ chemin: "main.rs" }], actif: "main.rs" } : undefined));
+  let { vue } = monter({ reglages: { illisible: true } });
+  await vi.waitFor(() => expect(textesToasts(vue)).toEqual([TEXTE_IF]));
+  await vi.waitFor(() => expect(document.activeElement.closest(".cm-content")).not.toBeNull());
+  expect(document.activeElement.closest(".ya-toasts")).toBeNull();
+  vue.querySelector(".ya-toast button[aria-label=Fermer]").click();
+  expect(textesToasts(vue)).toEqual([]);
+  vues_detruire(vue);
+  ({ vue } = monter({ reglages: { illisible: true } }));
+  await vi.waitFor(() => expect(textesToasts(vue)).toEqual([TEXTE_IF]));
+  vues_detruire(vue);
+  ({ vue } = monter({ reglages: {} }));
+  await attendre();
+  await attendre();
+  expect(textesToasts(vue)).toEqual([]);
+});
+
+function vues_detruire(vue) {
+  vue.detruire();
+  document.body.replaceChildren();
+}
+
+test("REQ069_AC11_replis_panneau_vrai_garde_deplie_le_panneau_n_est_jamais_affiche_pendant_le_chargement", async () => {
+  largeur(1280);
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "replis" ? { panneau: false } : undefined));
+  const { vue } = monter({ reglages: { replis: { panneau: true } } });
+  const panneau = aside(vue);
+  const affichages = [];
+  new MutationObserver(() => affichages.push(panneau.hidden)).observe(panneau, { attributes: true, attributeFilter: ["hidden"] });
+  expect(panneau.hidden).toBe(true);
+  await attendre();
+  await attendre();
+  await new Promise((r) => setTimeout(r, 50));
+  expect(panneau.hidden).toBe(true);
+  expect(affichages).not.toContain(false);
 });

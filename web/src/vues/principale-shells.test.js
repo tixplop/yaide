@@ -593,8 +593,11 @@ test("REQ068_AC5_raccourcis_ignores_dans_le_terminal_claude", async () => {
 test("REQ069_AC9_bandeau_illisible_sans_focus", async () => {
   const { vue } = monter({ reglages: { illisible: true } });
   await attendre();
-  const m = [...vue.querySelectorAll("[role=alert]")].find((e) => e.textContent.includes(".yaide/interface.json est illisible. Corrigez-le, puis rechargez la page."));
-  expect(m).toBeDefined();
+  let m;
+  await vi.waitFor(() => {
+    m = [...vue.querySelectorAll(".ya-toasts [role=alert]")].find((e) => e.textContent.includes(".yaide/interface.json est illisible. Corrigez-le, puis rechargez la page."));
+    expect(m).toBeDefined();
+  });
   expect(m.contains(document.activeElement)).toBe(false);
   expect(m.querySelector("button")).not.toBeNull();
   vues.forEach((v) => v.detruire());
@@ -604,24 +607,29 @@ test("REQ069_AC9_bandeau_illisible_sans_focus", async () => {
   expect(sans.vue.textContent).not.toContain("illisible");
 });
 
-test("REQ115_AC11_un_message_suivant_remplace_les_deux_bandeaux_illisibles", async () => {
+test("REQ115_AC11_un_message_suivant_s_ajoute_aux_deux_toasts_illisibles", async () => {
   simulerClaude({ ouverture: { status: 503, corps: "pas de pty\n" } });
   const { vue } = monter({ reglages: { illisible: true }, couleursIllisibles: true });
-  const illisibles = () => [...vue.querySelectorAll("[role=alert]")].filter((a) => a.textContent.includes("est illisible."));
-  expect(illisibles()).toHaveLength(2);
+  const illisibles = () => [...vue.querySelectorAll(".ya-toasts [role=alert]")].filter((a) => a.textContent.includes("est illisible."));
+  await vi.waitFor(() => expect(illisibles()).toHaveLength(2));
   await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
   boutonClaudeDe(vue).click();
   await vi.waitFor(() => expect(vue.textContent).toContain("Impossible d'ouvrir une session Claude : pas de pty."));
-  expect(illisibles()).toEqual([]);
+  // Ni retiré ni remplacé : le troisième message vient en dernier, sous les deux autres.
+  await vi.waitFor(() => expect([...vue.querySelectorAll(".ya-toast:not([data-cause=connexion])")].map((t) => t.querySelector(".message-texte").textContent)).toEqual([
+    ".yaide/interface.json est illisible. Corrigez-le, puis rechargez la page.",
+    ".yaide/markdown.json est illisible. Corrigez-le, puis rechargez la page.",
+    "Impossible d'ouvrir une session Claude : pas de pty.",
+  ]));
 });
 
 test("REQ069_AC2_AC3_AC5_cles_de_replis_l_emportent_sur_le_navigateur", async () => {
   largeur(1280);
   vi.mocked(lire).mockImplementation(async (cle) => (cle === "replis" ? { panneau: false, agent: true } : undefined));
   let { vue } = monter({ reglages: { replis: { panneau: true, agent: false } } });
-  await vi.waitFor(() => expect(aside(vue).hidden).toBe(true));
+  await vi.waitFor(() => expect(agentCol(vue).hidden).toBe(false));
+  expect(aside(vue).hidden).toBe(true);
   expect(barreTitre(vue, "Déplier le panneau")).not.toBeNull();
-  expect(agentCol(vue).hidden).toBe(false);
   vues.forEach((v) => v.detruire());
   document.body.replaceChildren();
   vi.mocked(lire).mockImplementation(async (cle) => (cle === "replis" ? { panneau: true, agent: false } : undefined));
@@ -706,8 +714,8 @@ test("REQ041_AC7_coupure_croix_puis_suppr_sans_dialogue", () =>
     actif.focus();
     actif.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
     await vi.advanceTimersByTimeAsync(50);
-    expect(refus().length).toBeGreaterThanOrEqual(1);
-    expect(refus()[0]).not.toBe(premier);
+    // Le même message deux fois de suite : un seul toast (AC-172-4).
+    expect(refus()).toEqual([premier]);
     expect(document.querySelector("dialog[open]")).toBeNull();
     expect(document.activeElement).toBe(actif);
     expect(onglets(vue)).toEqual(["shell 1", "shell 2"]);

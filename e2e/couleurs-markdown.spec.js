@@ -179,3 +179,66 @@ test("REQ115_AC2_AC3_AC5_AC6_AC8_parcours_83_couleurs_du_rendu_markdown", async 
     await yaide.arreter();
   }
 });
+
+test("REQ115_AC13_AC14_puce_coloree_dans_l_apercu_et_l_hybride_enregistrer_les_couleurs_ne_bouge_ni_selection_ni_defilement", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const dossier = depotExemple();
+  const remplissage = Array.from({ length: 60 }, (_, i) => `Ligne ${i + 1} de remplissage.\n`).join("\n");
+  fs.writeFileSync(path.join(dossier, "README.md"), `# Titre\n\n- une puce\n\n1. un numéro\n\n${remplissage}\n## Installer\n\n${remplissage}\nFin\n`);
+  fs.mkdirSync(path.join(dossier, ".yaide"));
+  fs.writeFileSync(path.join(dossier, ".yaide", "markdown.json"), JSON.stringify({ sombre: { puce: { couleur: "#ff8800" } } }));
+  const yaide = await lancerYaide({ dossier });
+  try {
+    await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+    await page.getByRole("tree", { name: "Fichiers" }).getByRole("treeitem", { name: nomLigne("README.md") }).click();
+    await expect(page.getByRole("button", { name: "Mode hybride", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+    const apercu = page.getByRole("region", { name: "Aperçu" });
+    await expect(apercu).toBeVisible();
+    const editeur = page.locator(".cm-content:visible");
+    await editeur.click();
+    await page.keyboard.press("Control+Home");
+    // AC-115-13 : puce orange (aperçu et hybride), numéro de la couleur du texte.
+    const marqueur = (sel) => apercu.locator(sel).first().evaluate((e) => [getComputedStyle(e, "::marker").color, getComputedStyle(e).color]);
+    const [puce] = await marqueur("ul > li");
+    expect(puce).toBe("rgb(255, 136, 0)");
+    const [numero, texte] = await marqueur("ol > li");
+    expect(numero).toBe(texte);
+    expect(await editeur.locator(".cm-hy-puce").first().evaluate((e) => getComputedStyle(e).color)).toBe("rgb(255, 136, 0)");
+
+    // AC-115-14 : « Installer » sélectionné, éditeur et aperçu défilés ; « Enregistrer » ne bouge rien.
+    const etat = () =>
+      page.evaluate(() => {
+        const v = document.querySelector(".zone-code").vue;
+        const a = document.querySelector(".zone-code-apercu");
+        const s = v.state.selection.main;
+        return { de: s.from, a: s.to, texte: v.state.sliceDoc(s.from, s.to), editeur: v.scrollDOM.scrollTop, apercu: a.scrollTop };
+      });
+    await page.evaluate(() => {
+      const v = document.querySelector(".zone-code").vue;
+      const debut = v.state.doc.toString().indexOf("Installer");
+      v.dispatch({ selection: { anchor: debut, head: debut + "Installer".length }, scrollIntoView: true });
+      v.scrollDOM.scrollTop = 400;
+      document.querySelector(".zone-code-apercu").scrollTop = 300;
+    });
+    const avant = await etat();
+    expect(avant.texte).toBe("Installer");
+    expect(avant.editeur).toBeGreaterThan(0);
+    expect(avant.apercu).toBeGreaterThan(0);
+    await page.keyboard.press("Control+p");
+    await page.keyboard.type(">conf");
+    await page.keyboard.press("Enter");
+    const dlg = page.getByRole("dialog", { name: "Configuration" });
+    await expect(dlg).toBeVisible();
+    await dlg.getByRole("tab", { name: "Couleurs markdown", exact: true }).click();
+    await dlg.getByRole("button", { name: "Ardoise", exact: true }).click();
+    await dlg.getByRole("button", { name: "Enregistrer", exact: true }).click();
+    await expect(dlg.getByRole("status")).toHaveText("Couleurs enregistrées.");
+    await dlg.getByRole("button", { name: "Fermer", exact: true }).click();
+    await expect(dlg).toBeHidden();
+    await expect.poll(() => apercu.getByRole("heading", { name: "Titre", exact: true }).evaluate((e) => getComputedStyle(e).color)).toBe("rgb(138, 180, 248)");
+    expect(await etat()).toEqual(avant);
+  } finally {
+    await yaide.arreter();
+  }
+});

@@ -21,23 +21,23 @@ const touche = (p, key, init = {}) => {
   return e;
 };
 
-test("REQ032_AC9_limites_a_800_par_480_sans_bandeau", () => {
-  const l = limites({ L: 800, H: 480, bandeaux: 0 });
+test("REQ032_AC9_limites_a_800_par_480_sans_question", () => {
+  const l = limites({ L: 800, H: 480, questions: 0 });
   expect({ panneau: l.panneau, shells: l.shells }).toEqual({ panneau: { min: 240, max: 360 }, shells: { min: 120, max: 299 } });
 });
 
-test("REQ032_AC9_limites_grande_fenetre_et_bandeaux", () => {
-  const l = limites({ L: 1600, H: 1000, bandeaux: 40 });
+test("REQ032_AC9_limites_grande_fenetre_et_questions", () => {
+  const l = limites({ L: 1600, H: 1000, questions: 40 });
   expect(l.panneau).toEqual({ min: 240, max: 360 });
   expect(l.shells).toEqual({ min: 120, max: 1000 - 35 - 22 - 4 - 40 - 120 });
 });
 
 test("REQ032_AC6_limites_figees_sous_800_par_480", () => {
-  expect(limites({ L: 500, H: 300, bandeaux: 0 })).toEqual(limites({ L: 800, H: 480, bandeaux: 0 }));
+  expect(limites({ L: 500, H: 300, questions: 0 })).toEqual(limites({ L: 800, H: 480, questions: 0 }));
 });
 
-test("REQ032_AC4_bandeaux_trop_hauts_la_borne_basse_l_emporte", () => {
-  expect(limites({ L: 800, H: 480, bandeaux: 400 }).shells).toEqual({ min: 120, max: 120 });
+test("REQ032_AC4_questions_trop_hautes_la_borne_basse_l_emporte", () => {
+  expect(limites({ L: 800, H: 480, questions: 400 }).shells).toEqual({ min: 120, max: 120 });
 });
 
 test("REQ032_AC4_borner_ramene_dans_les_limites", () => {
