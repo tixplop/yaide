@@ -1317,3 +1317,19 @@ test("REQ157_AC7_zones_des_aides_avec_l_option_tableur", () => {
   expect(zone(404, 65)?.sorte).toBe("inserer-colonne"); // sans l'option : REQ-153 inchangé
   expect(zonesAides({ lignes: colonne, pointeur: { x: 150, y: 65 } })).toBeNull();
 });
+
+test("REQ169_AC6_souligne_balises_masquees_hors_du_curseur_et_en_muted_sur_la_ligne", () => {
+  const hors = deco("un <u>mot</u> ici", { curseur: 18 });
+  expect(stylees(hors, "cm-hy-souligne")).toEqual(["mot"]);
+  expect(masques(hors)).toEqual(["<u>", "</u>"]);
+  const sur = deco("un <u>mot</u> ici", { curseur: 5 });
+  expect(stylees(sur, "cm-hy-souligne")).toEqual(["mot"]);
+  expect(masques(sur)).toEqual([]);
+  expect(visibles(sur)).toEqual(["<u>", "</u>"]);
+});
+
+test("REQ169_AC6_balise_u_sans_fermeture_et_autres_balises_restent_du_texte", () => {
+  const r = deco("un <u>mot et <b>x</b>");
+  expect(stylees(r, "cm-hy-souligne")).toEqual([]);
+  expect(masques(r)).toEqual([]);
+});

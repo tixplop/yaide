@@ -107,7 +107,20 @@ export function decorationsHybride(etat, plages = [{ from: 0, to: etat.doc.lengt
           }
         }
         else if (nom === "Table" || nom === "HTMLBlock") l(n.from, n.to, "cm-hy-mono");
-        else if (STYLES[nom]) {
+        else if (nom === "HTMLTag" && doc.sliceString(n.from, n.to) === "<u>") {
+          // Souligné (REQ-169) : `<u>` et la première `</u>` qui suit dans le même paragraphe.
+          let f = n.node.nextSibling;
+          // Comme l'aperçu : un `<u>` suivi d'un autre `<u>` avant sa fermeture n'est pas apparié.
+          while (f && !(f.name === "HTMLTag" && doc.sliceString(f.from, f.to) === "</u>")) {
+            if (f.name === "HTMLTag" && doc.sliceString(f.from, f.to) === "<u>") f = null;
+            else f = f.nextSibling;
+          }
+          if (f) {
+            style(n.to, f.from, "cm-hy-souligne");
+            marque(n.from, n.to);
+            marque(f.from, f.to);
+          }
+        } else if (STYLES[nom]) {
           const marques = n.node.getChildren(STYLES[nom][0]);
           if (marques.length >= 2) {
             const [ouvre, ferme] = [marques[0], marques[marques.length - 1]];

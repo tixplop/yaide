@@ -271,3 +271,17 @@ test("REQ122_AC6_clic_sur_l_img_ne_navigue_pas", async () => {
   expect(surLien).not.toHaveBeenCalled();
   expect(el2.querySelectorAll(".ya-diagramme a").length).toBe(0);
 });
+
+test("REQ169_AC6_apercu_souligne_u_et_echappe_les_autres_balises", () => {
+  const el = apercu({ document: "a.md" });
+  document.body.append(el);
+  el.maj("un <u>mot</u> et **<u>gras</u>**, `<u>code</u>`, <b>x</b> <script>y</script> <u>seul \\<u>a\\</u> &lt;u&gt;b&lt;/u&gt;");
+  const u = [...el.querySelectorAll("u")].map((n) => n.textContent);
+  expect(u).toEqual(["mot", "gras"]);
+  expect(el.querySelector("b, script")).toBeNull();
+  expect(el.textContent).toContain("<b>x</b>");
+  expect(el.textContent).toContain("<script>y</script>");
+  expect(el.textContent).toContain("<u>seul");
+  expect(el.textContent).toContain("<u>a</u> <u>b</u>");
+  expect(el.querySelector("code").textContent).toBe("<u>code</u>");
+});

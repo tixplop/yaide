@@ -8,6 +8,7 @@ import { apercuHtml } from "./apercu-html.js";
 import { image } from "./image.js";
 import { chargerMermaid, adresseDiagramme } from "./diagramme.js";
 import { couleurs } from "./couleurs-code.js";
+import { extensionMiseEnForme } from "./mise-en-forme.js";
 import { hybride as extensionHybride, TableauRendu, DiagrammeRendu, tableauxHybride, diagrammesRendus, validerSaisie } from "./hybride.js";
 import { themeCourant, themeTableur } from "./theme.js";
 import { tableur } from "./tableur.js";
@@ -243,7 +244,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   const compartimentLangage = new Compartment();
   const compartimentHybride = new Compartment();
   const hybridePossible = langage === "markdown" && !diff;
-  const extensionsHybride = () => [extensionHybride({ surLien: suivreLien, surSurvol: surSurvolLien }), numerosDesTitres, numerosDesTableaux, numerosDesDiagrammes, clavierTableau, EditorView.lineWrapping];
+  const extensionsHybride = () => [extensionHybride({ surLien: suivreLien, surSurvol: surSurvolLien }), numerosDesTitres, numerosDesTableaux, numerosDesDiagrammes, clavierTableau, extensionMiseEnForme, EditorView.lineWrapping];
   const extensions = [
     compartiment.of(themeCourant() === "dark" ? themeSombre : themeClair),
     lineNumbers(),

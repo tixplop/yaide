@@ -38,6 +38,43 @@ function creerMarkdown(options) {
 
 const md = creerMarkdown({ linkify: false });
 
+// Seules balises HTML rendues (REQ-169) : `<u>` et `</u>` appariées, dans un même paragraphe, deviennent un souligné.
+md.core.ruler.before("text_join", "souligne", (etat) => {
+  for (const bloc of etat.tokens) {
+    if (bloc.type !== "inline") continue;
+    const evenements = [];
+    bloc.children.forEach((t, i) => {
+      if (t.type !== "text") return;
+      for (const m of t.content.matchAll(/<(\/?)u>/g)) evenements.push({ i, index: m.index, ferme: !!m[1], pris: false });
+    });
+    let ouvert = null;
+    for (const e of evenements) {
+      if (!e.ferme) ouvert = e;
+      else if (ouvert) { ouvert.pris = e.pris = true; ouvert = null; }
+    }
+    if (!evenements.some((e) => e.pris)) continue;
+    const enfants = [];
+    bloc.children.forEach((t, i) => {
+      const ici = evenements.filter((e) => e.i === i && e.pris);
+      if (!ici.length) return enfants.push(t);
+      let pos = 0;
+      const texte = (contenu) => {
+        if (!contenu) return;
+        const x = new etat.Token("text", "", 0);
+        x.content = contenu;
+        enfants.push(x);
+      };
+      for (const e of ici) {
+        texte(t.content.slice(pos, e.index));
+        enfants.push(new etat.Token(e.ferme ? "u_close" : "u_open", "u", e.ferme ? -1 : 1));
+        pos = e.index + (e.ferme ? 4 : 3);
+      }
+      texte(t.content.slice(pos));
+    });
+    bloc.children = enfants;
+  }
+});
+
 // Bloc ```mermaid : `pre` sans langage, marqué de son rang ; l'aperçu le remplace par le dessin (REQ-122).
 const fenceDefaut = md.renderer.rules.fence;
 md.renderer.rules.fence = (tokens, i, options, env, self) => {

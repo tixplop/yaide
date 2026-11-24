@@ -1156,6 +1156,7 @@ body { margin: 0; }
 .cm-line.cm-hy-titre6 { color: var(--md-titre6-couleur, var(--ink)); }
 .cm-hy-gras { font-weight: var(--graisse-forte); color: var(--md-gras-couleur, inherit); }
 .cm-hy-italique { font-style: italic; color: var(--md-italique-couleur, inherit); }
+.cm-hy-souligne { text-decoration: underline; }
 .cm-hy-barre { text-decoration: line-through; color: var(--md-barre-couleur, inherit); }
 .cm-hy-code { padding: 0 var(--space-1); border-radius: var(--radius-xs); font: var(--texte-code-ligne) var(--font-mono); color: var(--md-code-couleur, var(--ink)); background-color: var(--md-code-fond, var(--code-fond)); }
 :is(.cm-hy-lien, .cm-line.cm-hy-titre1, .cm-line.cm-hy-titre2, .cm-line.cm-hy-titre3, .cm-line.cm-hy-titre4, .cm-line.cm-hy-titre5, .cm-line.cm-hy-titre6, .cm-line.cm-hy-citation) .cm-hy-code { color: var(--md-code-couleur, inherit); }
