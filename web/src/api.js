@@ -207,6 +207,17 @@ export async function listerChemins() {
   return erreurServeur(r);
 }
 
+/** Journal des tours déclenchés (REQ-173) : `{ numero, entrees: [{ numero, agent, sorte, evenement, phrase? }] }`, ou null. Sans `depuis`, aucune entrée. */
+export async function declenchements(depuis) {
+  const r = await appeler(depuis === undefined ? "/api/agent/declenchements" : `/api/agent/declenchements?depuis=${depuis}`);
+  if (!r?.ok) return null;
+  try {
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
 /** `{ providers: [{ id, nom, adresse, cle, cleObligatoire }], profils, erreur }`, `{ cause, message }` ou `{ coupure: true }`. */
 export async function reglagesAgent() {
   const r = await appeler("/api/agent/reglages");

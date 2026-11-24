@@ -562,3 +562,22 @@ pub fn passer(
         soumettre(gestionnaire, &agent, &texte);
     }
 }
+
+#[cfg(test)]
+mod tests_journal {
+    use super::evenement_court;
+
+    #[test]
+    fn req173_ac6_evenement_court_coupe_la_premiere_ligne_a_80_caracteres() {
+        let long = "é".repeat(120);
+        let attendu = format!("{}…", "é".repeat(80));
+        assert_eq!(
+            evenement_court(&format!("Évènement : {long}.\nSuite")),
+            attendu
+        );
+        assert_eq!(
+            evenement_court("Évènement : fichier `docs/a.md` modifié.\nx"),
+            "fichier `docs/a.md` modifié"
+        );
+    }
+}

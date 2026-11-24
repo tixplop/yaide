@@ -1577,3 +1577,32 @@ test("REQ163_AC1_AC2_AC6_AC9_parcours_128_129_declencheurs_de_la_fiche", async (
   await expect(colonne.getByText("Agent « Relecteur » enregistré.")).toBeVisible();
   expect(lire().declencheurs).toEqual([cinq[0], cinq[1], cinq[3], cinq[4]]);
 });
+
+test("REQ173_AC1_parcours_133_toasts_du_debut_et_de_la_fin_d_un_tour_declenche", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  let liberer;
+  faux = await lancerFauxProvider([{ ...reponse({ texte: "Relu." }), retenir: new Promise((ok) => (liberer = ok)) }]);
+  const dossier = depotAgent();
+  fs.mkdirSync(path.join(dossier, "docs"));
+  fs.writeFileSync(path.join(dossier, "docs", "a.md"), "avant\n");
+  const dossierAgent = path.join(dossier, ".yaide", "agents", "relecteur");
+  fs.mkdirSync(dossierAgent, { recursive: true });
+  fs.writeFileSync(path.join(dossierAgent, "agent.json"), JSON.stringify({ nom: "Relecteur", avatar: "", couleur: "vert", declencheurs: [{ type: "fichier", chemin: "docs/a.md" }] }));
+  await page.clock.install();
+  yaide = await lancerYaide({ dossier });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await reglerAnthropic(page);
+  // Le focus est dans l'éditeur d'un fichier ouvert.
+  await page.getByRole("treeitem", { name: nomLigne("README.md") }).dblclick();
+  await page.locator(".cm-content:visible").click();
+  await expect(page.locator(".cm-content:visible")).toBeFocused();
+  // Le numéro du moment est pris, puis `docs/a.md` est modifié par l'API.
+  await avancer(page, async () => {}, { pas: 3000 });
+  await page.evaluate(() => fetch("/api/fichier?chemin=docs%2Fa.md", { method: "PUT", body: "apres\n" }));
+  const toasts = page.locator(".ya-toasts");
+  await avancer(page, () => expect(toasts.getByRole("status").filter({ hasText: "Relecteur démarre : fichier `docs/a.md` modifié." })).toHaveCount(1), { pas: 3000, timeout: 20000 });
+  await expect(page.locator(".cm-content:visible")).toBeFocused();
+  liberer();
+  await avancer(page, () => expect(toasts.getByRole("status").filter({ hasText: "Relecteur a terminé : fichier `docs/a.md` modifié." })).toHaveCount(1), { pas: 3000, timeout: 20000 });
+  await expect(page.locator(".cm-content:visible")).toBeFocused();
+});

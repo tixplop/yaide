@@ -1,4 +1,4 @@
-import { claudeDisponible, creerChemin, creerSession, arret, deconnexion, lireFichier, opencodeDisponible, ouvrirClaude, reglagesAgent } from "../api.js";
+import { claudeDisponible, creerChemin, declenchements, creerSession, arret, deconnexion, lireFichier, opencodeDisponible, ouvrirClaude, reglagesAgent } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { cadre } from "../ui/cadre.js";
 import { borner, limites } from "../ui/poignee.js";
@@ -528,10 +528,26 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   // Relecture de l'état git, et de l'arbre s'il est affiché, toutes les 3 s ; la suivante part à la fin de la précédente.
   const INTERVALLE_RELECTURE = 3000;
   let minuteurRelecture = setTimeout(relire, INTERVALLE_RELECTURE);
+  // Journal des tours déclenchés (REQ-173) : le numéro du moment est pris au chargement, rien n'est montré avant.
+  let numeroJournal;
+  const lireJournal = async () => {
+    const r = await declenchements(numeroJournal);
+    if (detruite || !r) return;
+    if (numeroJournal !== undefined) for (const e of r.entrees ?? []) annoncer(e);
+    numeroJournal = r.numero;
+  };
+  if (avec.agents) lireJournal();
+  function annoncer({ agent, sorte, evenement, phrase }) {
+    const court = `${evenement}.`; // le serveur a déjà coupé l'évènement à 80 caractères (`evenement_court`)
+    if (sorte === "debut") afficher({ texte: `${agent} démarre : ${court}`, variante: "info" });
+    else if (sorte === "fin") afficher({ texte: `${agent} a terminé : ${court}`, variante: "succes" });
+    else if (sorte === "erreur") afficher({ texte: `${agent} s'est arrêté avant la fin : ${court}`, variante: "erreur" });
+    else if (sorte === "refus") afficher({ texte: `${agent} n'a pas pu démarrer : ${phrase}`, variante: "erreur" });
+  }
   async function relire() {
     if (etat !== "coupe") {
       try {
-        await Promise.all([git.relire(), fichiers.corps.hidden || panneauReplie ? null : fichiers.relire()]);
+        await Promise.all([git.relire(), fichiers.corps.hidden || panneauReplie ? null : fichiers.relire(), avec.agents ? lireJournal() : null]);
       } catch {
         // Une réponse illisible ne doit pas arrêter la boucle : la suivante réessaie.
       }

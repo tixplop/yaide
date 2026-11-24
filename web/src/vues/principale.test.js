@@ -1585,3 +1585,123 @@ test("REQ069_AC11_replis_panneau_vrai_garde_deplie_le_panneau_n_est_jamais_affic
   expect(panneau.hidden).toBe(true);
   expect(affichages).not.toContain(false);
 });
+
+// ---- T-411 : toasts des agents déclenchés (REQ-173) ----
+
+/** Serveur simulé du journal : `s.numero` part du dernier numéro des entrées initiales ; il est le numéro du moment, `s.entrees` les entrées, `s.coupe` coupe la route. */
+function simulerJournal(entrees = []) {
+  const s = { numero: entrees.at(-1)?.numero ?? 0, entrees, coupe: false, appels: [] };
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const u = String(url);
+    if (u === "/api/session") return { status: 204 };
+    if (u.startsWith("/api/git/etat")) return jsonOk({ branche: "main", detachee: false, branches: ["main"], changements: [] });
+    if (u.startsWith("/api/agent/declenchements")) {
+      s.appels.push(u);
+      if (s.coupe) throw new TypeError("coupure");
+      const depuis = u.includes("depuis=") ? Number(u.split("depuis=")[1]) : null;
+      return jsonOk({ numero: s.numero, entrees: depuis === null ? [] : s.entrees.filter((e) => e.numero > depuis) });
+    }
+    return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
+  }));
+  const ajouter = (agent, sorte, evenement, phrase) => {
+    s.numero += 1;
+    s.entrees.push({ numero: s.numero, agent, sorte, evenement, ...(phrase ? { phrase } : {}) });
+  };
+  return { s, ajouter };
+}
+
+const toastsAgents = (vue) => [...vue.querySelectorAll(".ya-toasts > *")].map((m) => ({ role: m.getAttribute("role"), texte: m.querySelector(".message-texte").textContent, boutons: [...m.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent) }));
+const EVT = "fichier `docs/a.md` modifié";
+
+test("REQ173_AC1_AC6_la_relecture_toutes_les_3_s_montre_le_debut_puis_la_fin", () =>
+  avecHorloge(async () => {
+    const { ajouter } = simulerJournal();
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(50);
+    const focus = document.activeElement;
+    ajouter("Relecteur", "debut", EVT);
+    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(toastsAgents(vue)).toEqual([{ role: "status", texte: "Relecteur démarre : fichier `docs/a.md` modifié.", boutons: ["Fermer"] }]);
+    ajouter("Relecteur", "fin", EVT);
+    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(toastsAgents(vue).map((t) => [t.role, t.texte])).toEqual([
+      ["status", "Relecteur démarre : fichier `docs/a.md` modifié."],
+      ["status", "Relecteur a terminé : fichier `docs/a.md` modifié."],
+    ]);
+    expect(document.activeElement).toBe(focus);
+  }));
+
+test("REQ173_AC2_AC6_une_fin_en_erreur_reste_en_alerte", () =>
+  avecHorloge(async () => {
+    const { ajouter } = simulerJournal();
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(50);
+    ajouter("Relecteur", "erreur", EVT);
+    await vi.advanceTimersByTimeAsync(3050);
+    expect(toastsAgents(vue)).toEqual([{ role: "alert", texte: "Relecteur s'est arrêté avant la fin : fichier `docs/a.md` modifié.", boutons: ["Fermer"] }]);
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(toastsAgents(vue)).toHaveLength(1);
+  }));
+
+test("REQ173_AC3_AC6_un_refus_donne_un_seul_toast_d_erreur", () =>
+  avecHorloge(async () => {
+    const { ajouter } = simulerJournal();
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(50);
+    ajouter("Relecteur", "refus", EVT, "Aucune clé pour OpenAI. Ajoutez-la avec Ctrl+P, puis > Providers LLM.");
+    await vi.advanceTimersByTimeAsync(3050);
+    expect(toastsAgents(vue)).toEqual([{ role: "alert", texte: "Relecteur n'a pas pu démarrer : Aucune clé pour OpenAI. Ajoutez-la avec Ctrl+P, puis > Providers LLM.", boutons: ["Fermer"] }]);
+  }));
+
+test("REQ173_AC4_deux_agents_dans_l_ordre_d_arrivee_et_dossier", () =>
+  avecHorloge(async () => {
+    const { ajouter } = simulerJournal();
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(50);
+    ajouter("Relecteur", "debut", "changements dans le dossier `docs/`");
+    ajouter("Testeur", "debut", "changements dans le dossier `docs/`");
+    await vi.advanceTimersByTimeAsync(3050);
+    expect(toastsAgents(vue).map((t) => t.texte)).toEqual([
+      "Relecteur démarre : changements dans le dossier `docs/`.",
+      "Testeur démarre : changements dans le dossier `docs/`.",
+    ]);
+  }));
+
+test("REQ173_AC6_un_evenement_de_120_caracteres_est_coupe_a_80", () =>
+  avecHorloge(async () => {
+    const { ajouter } = simulerJournal();
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(50);
+    ajouter("Relecteur", "debut", `${"x".repeat(80)}…`); // ce que le serveur envoie pour 120 caractères
+    await vi.advanceTimersByTimeAsync(3050);
+    expect(toastsAgents(vue)[0].texte).toBe(`Relecteur démarre : ${"x".repeat(80)}….`);
+  }));
+
+test("REQ173_AC5_le_chargement_prend_le_numero_sans_rien_afficher_et_la_coupure_reprend_au_retour", () =>
+  avecHorloge(async () => {
+    const { s, ajouter } = simulerJournal([{ numero: 1, agent: "Relecteur", sorte: "debut", evenement: EVT }]);
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(toastsAgents(vue)).toEqual([]);
+    expect(s.appels[0]).toBe("/api/agent/declenchements");
+    await vi.advanceTimersByTimeAsync(3050);
+    expect(s.appels.at(-1)).toBe("/api/agent/declenchements?depuis=1");
+    expect(toastsAgents(vue)).toEqual([]);
+    s.coupe = true;
+    ajouter("Relecteur", "fin", EVT);
+    await vi.advanceTimersByTimeAsync(3050);
+    s.coupe = false;
+    await vi.advanceTimersByTimeAsync(3050);
+    expect(s.appels.at(-1)).toBe("/api/agent/declenchements?depuis=1");
+    expect(toastsAgents(vue).map((t) => t.texte)).toEqual(["Relecteur a terminé : fichier `docs/a.md` modifié."]);
+  }));
+
+test("REQ173_la_fonction_agents_desactivee_ne_relit_pas_le_journal", () =>
+  avecHorloge(async () => {
+    const { s } = simulerJournal();
+    monter({ reglages: { fonctions: { agents: false } } });
+    await vi.advanceTimersByTimeAsync(6100);
+    expect(s.appels).toEqual([]);
+  }));

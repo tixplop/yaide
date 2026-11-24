@@ -40,7 +40,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/index.html — page unique ; web/dist/ est produit par esbuild
 - web/src/main.js — démarrage : thème, connexion, vue principale — titre
 - web/src/theme-initial.js — thème appliqué avant le premier affichage
-- web/src/api.js — appels HTTP et WebSocket vers le serveur — info, sessionValide, connexion
+- web/src/api.js — appels HTTP et WebSocket vers le serveur (dont `declenchements`, REQ-173) — info, sessionValide, connexion
 - web/src/connexion.js — surveille la connexion au serveur — surveiller
 - web/src/stockage.js, brouillons.js, disque.js — IndexedDB, modifications gardées, décision face au disque — lire/ecrire, decider, decisionDisque
 - web/src/disposition.js — arbre des groupes de l'éditeur (diviser, tailles) — couper, retirerGroupe, valider
@@ -75,7 +75,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/ui/tableau.js — composant whiteboard : surface, gestes, clavier, historique Ctrl+Z/Ctrl+Y, copier (`copy`) et coller (`paste`, dont l'organigramme mermaid, les autres types par `mermaid.traduire` avec attente `ya-attente`, Ctrl+Maj+V qui en garde le modèle, et le refus en toast `whiteboard:<onglet>` qui part au geste suivant, REQ-154, REQ-172 ; recherche `recherche` : `ouvrir`/`fermer`, F3, objet choisi et vue centrée, REQ-161 ; menu « Actions sur la sélection » (clic droit, Menu, Maj+F10) et copie Klaxoon par `execCommand("copy")`, REQ-155) — tableau
 - web/src/ui/tableau-texte.js — texte d'une boîte ou d'un lien et styles d'une partie du texte : rendu, lecture du DOM de la saisie, bascule, couleur, insertion (REQ-146) — rendreTexte, lireTexte, basculer
 - web/src/ui/tableau-calculs.js, tableau-dessin.js, tableau-edition.js, tableau-outils.js — géométrie (dont `centrerObjet`, REQ-161, la zone de texte des symboles, `connecteursAffiches` : ronds à 6 px hors du côté de « Point » et « Barre », points d'attache `connecteurs` au bord, `decalageAnneau`, REQ-156), rendu SVG (dont le dessin des symboles, REQ-149, celui de « Point » et « Barre » pleins avec anneau du choix, cible et zones de prise, REQ-156, `anneauxPleines`, et les classes `align-*` `valign-*` du texte des boîtes, REQ-150), copier/coller/plan/rattachement, boîte à outils (dont le bouton « Symboles » et son dialogue, REQ-149, « Point » et « Barre » sans saisie de texte, REQ-156, et le rang « Alignement » et « Position verticale du texte », REQ-133, REQ-150) — extremitesFleche, milieuTrace, dessinBoite, coller, boiteOutils
-- web/src/vues/principale.js — fenêtre : rails, panneaux, zones, Ctrl+P ; `dire`, la coupure (cause `connexion`) et les fichiers illisibles passent par les toasts, REQ-172 — vuePrincipale
+- web/src/vues/principale.js — fenêtre : rails, panneaux, zones, Ctrl+P ; `dire`, la coupure (cause `connexion`) et les fichiers illisibles passent par les toasts, REQ-172 ; journal des tours déclenchés relu avec l'état git toutes les 3 s, un toast par entrée, REQ-173 — vuePrincipale
 - web/src/vues/principale.aides.js — aides des tests de la vue principale
 - web/src/vues/editeur.js — groupes d'onglets : fichiers, images, whiteboards (zoneWhiteboard), sessions, Ctrl+F des onglets markdown (REQ-159), CSV (REQ-160) et whiteboard lisible (REQ-161) ; sur un `.csv`, bouton « Mode hybride » et message `role="alert"` « Tableur indisponible » dans `questionOnglet` (REQ-157) ; sur un `.html`, « Mode hybride » et « Aperçu » s'excluent, page seule à l'ouverture, focus sur l'onglet (REQ-058, REQ-062, REQ-083) — vueEditeur
 - web/src/vues/depot-onglets.js — dépôt et persistance des onglets de l'éditeur — depotOnglets
@@ -101,6 +101,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 ## Fonctionnalités
 - REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006 mot de passe, lancement, HTTPS, session → src/cli.rs, config.rs, tls.rs, auth.rs, serveur.rs, web/src/vues/connexion.js
 - REQ-007, REQ-008, REQ-009, REQ-010, REQ-034, REQ-049, REQ-050, REQ-125 arborescence → src/fichiers.rs, web/src/vues/fichiers.js
+- REQ-173 toasts des agents déclenchés (début, fin, erreur, refus) → web/src/vues/principale.js, api.js (`declenchements`), e2e/agent.spec.js
 - REQ-172 toasts, partie design system (présentation `toast` de `message`, zone des toasts du cadre, option `repliToasts`, token `--largeur-toast`) ; refus d'un collage mermaid ou d'une copie Klaxoon en toast (REQ-154, REQ-155) → web/src/ui/tableau.js, toasts.js, ui/message.js, ui/cadre.js, ui/tokens.css, ui/composants.css
 - REQ-169, REQ-170 raccourcis et barre « Mise en forme » du mode hybride markdown → web/src/ui/mise-en-forme.js, ui/barre-md.js, ui/zone-code.js, ui/composants.css, e2e/mise-en-forme.spec.js
 - REQ-161 recherche dans un whiteboard (boîtes et liens, F3, vue centrée) → web/src/ui/tableau.js, tableau-calculs.js (`centrerObjet`), tableau-dessin.js, ui/panneau-recherche.js, vues/editeur.js, ui/composants.css, e2e/whiteboard.spec.js
