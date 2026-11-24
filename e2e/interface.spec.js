@@ -351,10 +351,12 @@ test("REQ033_AC3_AC10_messages_info_succes_alerte_erreur_relus_au_style_calcule"
   const jetons = ["--msg-info", "--msg-succes", "--msg-alerte", "--msg-erreur", "--git-added", "--warning", "--danger"];
   const relire = (message, fond, bord) => dansLesDeuxThemes(page, async (theme) => {
     const t = await resoudre(page, jetons);
-    expect(await lire(message, "backgroundColor"), `${theme} : fond`).toBe(t[fond]);
-    if (bord) expect(await lire(message, "borderLeftColor"), `${theme} : barre`).toBe(t[bord]);
+    // Un toast pose sa teinte en dégradé sur --bg-300 et sa barre en ombre interne ; un message de panneau, en fond et bordure.
+    const toast = await message.evaluate((e) => e.classList.contains("ya-toast"));
+    expect(await lire(message, toast ? "backgroundImage" : "backgroundColor"), `${theme} : fond`)[toast ? "toContain" : "toBe"](t[fond]);
+    if (bord) expect(await lire(message, toast ? "boxShadow" : "borderLeftColor"), `${theme} : barre`)[toast ? "toContain" : "toBe"](t[bord]);
   });
-  // info : l'arrêt de Yaide ferme un shell. Le bandeau est unique : on relit chaque message dès qu'il paraît.
+  // info : l'arrêt de Yaide ferme un shell. Les toasts sont relus dès qu'ils paraissent.
   yaide = await yaide.relancer();
   const info = page.locator(".message-info").filter({ hasText: "Yaide a été arrêté." });
   await expect(info).toBeVisible({ timeout: 15000 });

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { lancerRelais } from "./relais.js";
-import { depotExemple, lancerYaide, gardeContient, nomLigne, ouvrirYaide, avancer } from "./aides.js";
+import { depotExemple, lancerYaide, gardeContient, nomLigne, ouvrirYaide, avancer, fauxGithub } from "./aides.js";
 
 let yaide;
 test.afterEach(() => yaide?.arreter());
@@ -399,5 +399,113 @@ test("REQ071_parcours_35_illisible_puis_coupure_a_800_par_480", async ({ page })
     // Rechargement : plus de bandeau, Git absent. Prouvé par le parcours 32, étape 4 (bandeau disparu, Fichiers seul).
   } finally {
     relais.fermer();
+  }
+});
+
+test("REQ172_AC6_AC7_AC8_AC9_parcours_134_toasts_a_800_par_480_puis_1280_par_800", async ({ page }) => {
+  const dossier = depotExemple();
+  // Quatre fichiers binaires aux noms de 74 caractères : chaque refus fait un toast de 120 caractères.
+  const noms = [1, 2, 3, 4].map((n) => `b${n}-`.padEnd(74, "x"));
+  for (const nom of noms) fs.writeFileSync(path.join(dossier, nom), Buffer.from([0, 1, 2, 0]));
+  const github = await fauxGithub();
+  yaide = await lancerYaide({ dossier, releases: github.url });
+  try {
+    await page.setViewportSize({ width: 800, height: 480 });
+    await ouvrirYaide(page, yaide.origine);
+    const toasts = page.locator(".ya-toast");
+    const boite = (sel) => page.locator(sel).first().evaluate((e) => e.getBoundingClientRect().toJSON());
+    for (const nom of noms) await page.getByRole("treeitem", { name: nomLigne(nom) }).click();
+    await expect(toasts).toHaveCount(4);
+    for (const nom of noms) await expect(toasts.filter({ hasText: nom })).toHaveText(new RegExp(`^${nom} est un fichier binaire\\. Yaide ne l'ouvre pas\\.`));
+
+    // AC-172-7 : dans la fenêtre, au-dessus de la barre d'état, à gauche du rail droit, sans défilement de la page.
+    const petit = await page.evaluate(() => {
+      const r = (s) => document.querySelector(s).getBoundingClientRect();
+      const etat = r(".cadre-etat");
+      const rail = r(".cadre-rail-droit");
+      return {
+        boites: [...document.querySelectorAll(".ya-toast")].map((e) => e.getBoundingClientRect().toJSON()),
+        etatHaut: etat.top,
+        railGauche: rail.left,
+        defile: document.documentElement.scrollHeight - innerHeight,
+        large: innerWidth,
+      };
+    });
+    expect(petit.boites).toHaveLength(4);
+    for (const b of petit.boites) {
+      expect(b.top).toBeGreaterThanOrEqual(0);
+      expect(b.left).toBeGreaterThanOrEqual(0);
+      expect(b.bottom).toBeLessThanOrEqual(petit.etatHaut);
+      expect(b.right).toBeLessThanOrEqual(petit.railGauche);
+    }
+    expect(petit.defile).toBe(0);
+
+    // AC-172-9 : 1280 × 800.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(toasts).toHaveCount(4);
+    const grand = await page.evaluate(() => {
+      const r = (s) => document.querySelector(s).getBoundingClientRect();
+      const t = [...document.querySelectorAll(".ya-toast")];
+      return {
+        largeurs: t.map((e) => e.getBoundingClientRect().width),
+        bas: Math.max(...t.map((e) => e.getBoundingClientRect().bottom)),
+        droite: Math.max(...t.map((e) => e.getBoundingClientRect().right)),
+        etatHaut: r(".cadre-etat").top,
+        railGauche: r(".cadre-rail-droit").left,
+        styles: t.map((e) => [getComputedStyle(e).animationName, getComputedStyle(e).transitionDuration]),
+      };
+    });
+    for (const l of grand.largeurs) expect(l).toBe(360);
+    expect(grand.etatHaut - grand.bas).toBe(12);
+    expect(grand.railGauche - grand.droite).toBe(12);
+    for (const st of grand.styles) expect(st).toEqual(["none", "0s"]);
+    const apres = { code: await boite(".cadre-code"), shells: await boite(".cadre-shells") };
+    // Les tailles de l'éditeur et des shells à 1280 × 800 sont celles d'avant l'arrivée des toasts : on les relit sans toast.
+    await page.evaluate(() => document.querySelectorAll(".ya-toast button[aria-label='Fermer']").forEach((b) => b.click()));
+    await expect(toasts).toHaveCount(0);
+    const sans = { code: await boite(".cadre-code"), shells: await boite(".cadre-shells") };
+    expect(apres).toEqual(sans);
+    for (const nom of noms) await page.getByRole("treeitem", { name: nomLigne(nom) }).click();
+    await expect(toasts).toHaveCount(4);
+
+    // AC-172-6 : Tab depuis le rail droit → « Mettre à jour » → les quatre « Fermer », du plus ancien au plus récent.
+    const maj = page.locator(".cadre-etat").getByRole("button", { name: "Mettre à jour" });
+    await expect(maj).toBeVisible();
+    await page.locator(".cadre-rail-droit button").last().focus();
+    await page.keyboard.press("Tab");
+    await expect(maj).toBeFocused();
+    for (const nom of noms) {
+      await page.keyboard.press("Tab");
+      const f = await page.evaluate(() => {
+        const a = document.activeElement;
+        return { nom: a.getAttribute("aria-label"), dans: Boolean(a.closest(".ya-toast")), texte: document.getElementById(a.getAttribute("aria-describedby"))?.textContent };
+      });
+      expect(f.nom).toBe("Fermer");
+      expect(f.dans).toBe(true);
+      expect(f.texte).toContain(nom);
+    }
+
+    // AC-172-8 : un dialogue ouvert reste au-dessus des toasts.
+    await page.keyboard.press("Control+p");
+    const dialogue = page.getByRole("dialog", { name: "Ouvrir un fichier" });
+    await expect(dialogue).toBeVisible();
+    expect(await dialogue.evaluate((d) => d.matches(":modal"))).toBe(true);
+    expect(await page.evaluate(() => {
+      const t = document.querySelector(".ya-toast").getBoundingClientRect();
+      return Boolean(document.elementFromPoint(t.left + t.width / 2, t.top + t.height / 2)?.closest("dialog"));
+    })).toBe(true);
+    await page.keyboard.press("Escape");
+
+    // AC-172-9 : sans rail droit, le bord droit des toasts est à 12 px du bord de la fenêtre.
+    fs.mkdirSync(path.join(dossier, ".yaide"), { recursive: true });
+    fs.writeFileSync(path.join(dossier, ".yaide", "interface.json"), '{ "fonctions": { "agents": false } }\n');
+    await page.reload();
+    await page.getByRole("button", { name: "Nouveau shell" }).waitFor();
+    await page.getByRole("treeitem", { name: nomLigne(noms[0]) }).click();
+    await expect(toasts).toHaveCount(1);
+    expect(await page.locator(".cadre-rail-droit").count()).toBe(0);
+    expect(await toasts.first().evaluate((e) => innerWidth - e.getBoundingClientRect().right)).toBe(12);
+  } finally {
+    github.fermer();
   }
 });
