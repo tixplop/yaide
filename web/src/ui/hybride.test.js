@@ -135,7 +135,7 @@ test("REQ062_AC7_tableau_image_html_aucune_marque_masquee", () => {
   const r = deco("| a | b |\n|---|---|\n| 1 | 2 |\n\n![alt](http://x/i.png)\n\n<script>alert(1)</script>\n\ntexte <img src=x onerror=alert(1)> fin\n\n- [ ] tâche\n\nnote[^1] et \\*échappé\\*");
   expect(lignes(r, "cm-hy-mono")).toEqual(["| a | b |", "|---|---|", "| 1 | 2 |", "<script>alert(1)</script>"]);
   expect(r.liste.filter((d) => d.masque)).toEqual([]);
-  expect(r.liste.filter((d) => d.widget).map((d) => r.doc.slice(d.debut, d.fin))).toEqual(["-"]);
+  expect(r.liste.filter((d) => d.widget).map((d) => r.doc.slice(d.debut, d.fin))).toEqual(["- [ ] "]); // REQ-171 : une case, pas une puce
   // Rien n'est créé hors du texte : seuls des styles et des ornements, sans lien.
   expect(stylees(r, "cm-hy-lien")).toEqual([]);
   expect(r.liste.every((d) => d.masque || d.widget || d.classe?.startsWith("cm-hy-"))).toBe(true);
@@ -1332,4 +1332,92 @@ test("REQ169_AC6_balise_u_sans_fermeture_et_autres_balises_restent_du_texte", ()
   const r = deco("un <u>mot et <b>x</b>");
   expect(stylees(r, "cm-hy-souligne")).toEqual([]);
   expect(masques(r)).toEqual([]);
+});
+
+// Cases à cocher (REQ-171) : curseur ligne 1, case en ligne 3.
+const CASES = "avant\n\n- [ ] à faire\n- [x] fait\n- [X] gros\n  - [ ] imbriquée\n> - [ ] citée\n1. [ ] numérotée\n";
+function montrerCases(doc = CASES, anchor = 0) {
+  const m = monterH(doc, anchor);
+  const cases = () => [...m.parent.querySelectorAll("input.ya-case-hy")];
+  const clicCase = (i) => {
+    const c = cases()[i];
+    c.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+  };
+  return { ...m, cases, clicCase };
+}
+
+test("REQ171_AC5_case_a_la_place_de_la_marque_cochee_pour_x_texte_sur_la_ligne_du_curseur", () => {
+  const m = montrerCases();
+  const c = m.cases();
+  expect(c.map((i) => i.checked)).toEqual([false, true, true, false, false]);
+  expect(c[0].type).toBe("checkbox");
+  const ligne = m.parent.querySelectorAll(".cm-line")[2];
+  expect(ligne.textContent).toBe("à faire");
+  expect(m.parent.querySelectorAll(".cm-line")[7].textContent).toBe("1. [ ] numérotée"); // pas une case
+  m.vue.dispatch({ selection: { anchor: m.vue.state.doc.line(3).from + 2 } });
+  const l3 = m.parent.querySelectorAll(".cm-line")[2];
+  expect(l3.textContent).toBe("- [ ] à faire");
+  expect(l3.querySelector("input")).toBeNull();
+  expect(l3.querySelector(".cm-hy-marque").textContent).toBe("- [ ] ");
+  expect(m.cases().length).toBe(4);
+  m.fin();
+});
+
+test("REQ171_AC6_clic_coche_sans_bouger_curseur_une_transaction_ctrl_z", () => {
+  const m = montrerCases();
+  m.vue.dispatch({ selection: { anchor: 2, head: 4 } });
+  const e = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 });
+  m.cases()[0].dispatchEvent(e);
+  expect(e.defaultPrevented).toBe(true);
+  const avant = m.vue.state.doc.toString();
+  m.clicCase(0);
+  expect(m.vue.state.doc.toString()).toBe(avant.replace("- [ ] à faire", "- [x] à faire"));
+  expect(m.vue.state.selection.main.from).toBe(2);
+  expect(m.vue.state.selection.main.to).toBe(4);
+  expect(m.cases()[0].checked).toBe(true);
+  const ligne = m.parent.querySelectorAll(".cm-line")[2];
+  expect(ligne.textContent).toBe("à faire");
+  undo(m.vue);
+  expect(m.vue.state.doc.toString()).toBe(avant);
+  expect(m.cases()[0].checked).toBe(false);
+  m.clicCase(1); // [x] -> [ ]
+  expect(m.vue.state.doc.line(4).text).toBe("- [ ] fait");
+  m.clicCase(2); // [X] -> [ ]
+  expect(m.vue.state.doc.line(5).text).toBe("- [ ] gros");
+  m.fin();
+});
+
+test("REQ171_AC3_liste_imbriquee_et_citation_une_seule_ligne_change", () => {
+  const m = montrerCases();
+  expect(m.cases().length).toBe(5);
+  const avant = m.vue.state.doc.toString().split("\n");
+  for (const [i, n] of [[3, 6], [4, 7]]) {
+    m.clicCase(i);
+    const apres = m.vue.state.doc.toString().split("\n");
+    const diff = apres.map((x, k) => (x === avant[k] ? -1 : k + 1)).filter((k) => k > 0);
+    expect(diff).toEqual([n]);
+    undo(m.vue);
+  }
+  expect(m.vue.state.doc.line(6).text).toBe("  - [ ] imbriquée");
+  m.fin();
+});
+
+test("REQ171_AC9_AC10_nom_tabindex_focus_inchange_sans_puce_contour_ink", () => {
+  const m = montrerCases();
+  const c = m.cases()[0];
+  expect(c.getAttribute("aria-label")).toBe("à faire");
+  expect(c.tabIndex).toBe(-1);
+  m.vue.focus();
+  const focus = document.activeElement;
+  expect(focus).toBe(m.vue.contentDOM);
+  m.clicCase(0);
+  expect(document.activeElement).toBe(focus);
+  expect(m.vue.state.selection.main.head).toBe(0);
+  const ligne = m.parent.querySelectorAll(".cm-line")[2];
+  expect(ligne.textContent).not.toMatch(/[•[\]]/);
+  expect(ligne.querySelector(".cm-hy-puce")).toBeNull();
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  expect(css).toMatch(/\.ya-case-hy \{[^}]*border: var\(--trait\) solid var\(--ink-muted\)/);
+  expect(css).toMatch(/\.ya-case-hy:hover \{[^}]*border-color: var\(--ink\)/);
+  m.fin();
 });

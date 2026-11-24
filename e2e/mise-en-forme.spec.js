@@ -140,3 +140,88 @@ test("REQ169_AC9_REQ170_AC6_AC12_AC14_AC15_AC16_parcours_P130_P131_barre_mise_en
     await yaide.arreter();
   }
 });
+
+// P-132 : cases à cocher du mode hybride et de l'aperçu (REQ-171).
+test("REQ171_AC5_AC6_AC7_AC8_AC9_AC10_parcours_P132_cases_a_cocher", async ({ page }) => {
+  const dossier = depotExemple();
+  const source = ["# Projet", "", "## À faire", "- [ ] Envoyer le devis", "- [x] Réserver la salle", "- [ ] Préparer les tests", "  - [ ] Tests de l'analyse", "", "", "Notes : 1", ""].join("\n");
+  const fichier = path.join(dossier, "notes.md");
+  fs.writeFileSync(fichier, source);
+  const yaide = await lancerYaide({ dossier });
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+    await ligne(page, "notes.md").click();
+    const contenu = page.locator(".cm-content:visible");
+    const etat = page.getByText(/Ln \d+, Col \d+/);
+    await contenu.click();
+    await page.keyboard.press("Control+Home");
+    for (let i = 0; i < 9; i++) await page.keyboard.press("ArrowDown");
+    for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowRight");
+    await expect(etat).toHaveText("Ln 10, Col 9");
+    await page.getByRole("button", { name: "Aperçu", exact: true }).click();
+    const apercu = page.locator(".zone-code-apercu:visible");
+    await expect(apercu.getByRole("checkbox")).toHaveCount(4);
+    const cases = contenu.locator("input.ya-case-hy");
+    await expect(cases).toHaveCount(4);
+    // Ni puce ni crochets sur les lignes des cases.
+    await expect(contenu.locator(".cm-line", { hasText: "Envoyer le devis" })).toHaveText("Envoyer le devis");
+    await expect(cases.nth(1)).toBeChecked();
+    await expect(apercu.getByRole("checkbox", { name: "Réserver la salle" })).toBeChecked();
+
+    await contenu.focus();
+    await expect(etat).toHaveText("Ln 10, Col 9");
+    // Clic sur la case de l'éditeur : coche des deux côtés, curseur et focus inchangés.
+    await cases.first().click();
+    await expect(cases.first()).toBeChecked();
+    await expect(apercu.getByRole("checkbox", { name: "Envoyer le devis" })).toBeChecked();
+    await expect(etat).toHaveText("Ln 10, Col 9");
+    await expect(contenu).toBeFocused();
+    expect(await page.evaluate(() => document.activeElement.classList.contains("cm-content"))).toBe(true);
+    await expect(contenu.locator(".cm-line", { hasText: "Envoyer le devis" })).toHaveText("Envoyer le devis");
+    // Le contour passe à --ink au survol.
+    await cases.nth(2).hover();
+    const [contour, ink] = await cases.nth(2).evaluate((c) => {
+      const t = document.createElement("span");
+      t.style.color = "var(--ink)";
+      document.body.append(t);
+      const ink = getComputedStyle(t).color;
+      t.remove();
+      return [getComputedStyle(c).borderTopColor, ink];
+    });
+    expect(contour).toBe(ink);
+    await page.mouse.move(0, 0);
+
+    // Échap puis Tab : la case de l'aperçu a le focus ; Tab deux fois, Espace coche la troisième.
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Tab");
+    const premiere = apercu.getByRole("checkbox", { name: "Envoyer le devis" });
+    await expect(premiere).toBeFocused();
+    expect(await premiere.evaluate((c) => getComputedStyle(c).outlineWidth)).toBe("2px");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    const troisieme = apercu.getByRole("checkbox", { name: "Préparer les tests" });
+    await expect(troisieme).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(troisieme).toBeChecked();
+    await expect(troisieme).toBeFocused();
+    await expect(cases.nth(2)).toBeChecked();
+
+    // Clic en fin de ligne 10, Ctrl+Z : la dernière case se décoche des deux côtés, en un pas.
+    await contenu.locator(".cm-line", { hasText: "Notes : 1" }).click({ position: { x: 300, y: 5 } });
+    await expect(etat).toHaveText("Ln 10, Col 10");
+    await page.keyboard.press("Control+z");
+    await expect(troisieme).not.toBeChecked();
+    await expect(cases.nth(2)).not.toBeChecked();
+    await expect(apercu.getByRole("checkbox", { name: "Envoyer le devis" })).toBeChecked();
+
+    // Haut jusqu'à la ligne 4 : texte avec marques ; les autres lignes gardent leurs cases. Ctrl+S écrit `[x]`.
+    for (let i = 0; i < 6; i++) await page.keyboard.press("ArrowUp");
+    await expect(contenu.locator(".cm-line", { hasText: "Envoyer le devis" })).toHaveText("- [x] Envoyer le devis");
+    await expect(cases).toHaveCount(3);
+    await page.keyboard.press("Control+s");
+    await expect.poll(() => fs.readFileSync(fichier, "utf8")).toBe(source.replace("- [ ] Envoyer", "- [x] Envoyer"));
+  } finally {
+    await yaide.arreter();
+  }
+});

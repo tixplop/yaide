@@ -30,6 +30,37 @@ class Ornement extends WidgetType {
   }
 }
 
+// Case à cocher (REQ-171) : remplace `- [ ] ` ; un clic échange `[ ]` et `[x]` sans prendre le focus ni bouger la sélection.
+class CaseCochee extends WidgetType {
+  constructor(cochee, nom) {
+    super();
+    this.cochee = cochee;
+    this.nom = nom;
+  }
+  eq(autre) {
+    return autre.cochee === this.cochee && autre.nom === this.nom;
+  }
+  toDOM(vue) {
+    const c = document.createElement("input");
+    c.type = "checkbox";
+    c.className = "ya-case-hy";
+    c.tabIndex = -1;
+    c.checked = this.cochee;
+    c.setAttribute("aria-label", this.nom);
+    c.addEventListener("mousedown", (e) => e.preventDefault());
+    c.addEventListener("click", (e) => {
+      e.preventDefault(); // le rendu suit le texte, pas l'inverse
+      const pos = vue.posAtDOM(c);
+      const l = vue.state.doc.lineAt(pos);
+      const m = /^[-*+][ \t]+\[( |x|X)\]/.exec(l.text.slice(pos - l.from));
+      if (!m) return;
+      const de = pos + m[0].length - 2;
+      vue.dispatch({ changes: { from: de, to: de + 1, insert: m[1] === " " ? "x" : " " }, userEvent: "input.case", annotations: isolateHistory.of("full") });
+    });
+    return c;
+  }
+}
+
 const TITRES = { ATXHeading1: 1, ATXHeading2: 2, ATXHeading3: 3, ATXHeading4: 4, ATXHeading5: 5, ATXHeading6: 6, SetextHeading1: 1, SetextHeading2: 2 };
 const STYLES = { StrongEmphasis: ["EmphasisMark", "cm-hy-gras"], Emphasis: ["EmphasisMark", "cm-hy-italique"], Strikethrough: ["StrikethroughMark", "cm-hy-barre"] };
 
@@ -52,10 +83,10 @@ export function decorationsHybride(etat, plages = [{ from: 0, to: etat.doc.lengt
     if (fin > debut) sortie.push({ debut, fin, classe });
   };
   // Marque : retirée, sauf sur une ligne active (ou si elle contient un saut de ligne) où elle reste en --ink-muted.
-  const marque = (debut, fin, widget) => {
+  const marque = (debut, fin, widget, donnees) => {
     if (fin <= debut) return;
     if (touche(debut, fin) || doc.lineAt(debut).number !== doc.lineAt(fin).number) sortie.push({ debut, fin, classe: "cm-hy-marque" });
-    else if (widget) sortie.push({ debut, fin, widget });
+    else if (widget) sortie.push({ debut, fin, widget, ...donnees });
     else sortie.push({ debut, fin, masque: true });
   };
   const avecEspace = (n) => (doc.sliceString(n.to, n.to + 1) === " " ? n.to + 1 : n.to);
@@ -151,7 +182,15 @@ export function decorationsHybride(etat, plages = [{ from: 0, to: etat.doc.lengt
         } else if (nom === "URL") {
           if (!["Link", "Image", "Autolink", "LinkReference"].includes(n.node.parent?.name)) style(n.from, n.to, "cm-hy-lien");
         } else if (nom === "Image") return false;
-        else if (nom === "ListMark" && n.node.parent.parent?.name === "BulletList") marque(n.from, n.to, "puce");
+        else if (nom === "ListMark" && n.node.parent.parent?.name === "BulletList") {
+          const t = n.node.nextSibling;
+          const m = t?.name === "Task" ? t.getChild("TaskMarker") : null;
+          if (m && m.to - m.from === 3 && doc.sliceString(m.to, m.to + 1) === " " && doc.lineAt(m.to).number === doc.lineAt(n.from).number) {
+            const cochee = doc.sliceString(m.from + 1, m.from + 2) !== " ";
+            const texte = doc.sliceString(m.to + 1, doc.lineAt(m.to).to).trim();
+            marque(n.from, m.to + 1, "case", { cochee, nom: texte });
+          } else marque(n.from, n.to, "puce");
+        }
         else if (nom === "HorizontalRule") marque(n.from, n.to, "trait");
       },
     });
@@ -170,6 +209,7 @@ function enDecoration(d) {
     return ligneCache.get(d.classe).range(d.debut);
   }
   if (d.masque) return masque.range(d.debut, d.fin);
+  if (d.widget === "case") return Decoration.replace({ widget: new CaseCochee(d.cochee, d.nom) }).range(d.debut, d.fin);
   if (d.widget) return ornements[d.widget].range(d.debut, d.fin);
   if (!marquesCache.has(d.classe)) marquesCache.set(d.classe, Decoration.mark({ class: d.classe }));
   return marquesCache.get(d.classe).range(d.debut, d.fin);
