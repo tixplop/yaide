@@ -9,6 +9,7 @@ import { image } from "./image.js";
 import { chargerMermaid, adresseDiagramme } from "./diagramme.js";
 import { couleurs } from "./couleurs-code.js";
 import { extensionMiseEnForme } from "./mise-en-forme.js";
+import { barreMd } from "./barre-md.js";
 import { hybride as extensionHybride, TableauRendu, DiagrammeRendu, tableauxHybride, diagrammesRendus, validerSaisie } from "./hybride.js";
 import { themeCourant, themeTableur } from "./theme.js";
 import { tableur } from "./tableur.js";
@@ -423,6 +424,15 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   racine.definirCoupe = (oui) => ap?.definirCoupe?.(oui);
   // Bascule du mode hybride : la première ligne visible reste en haut, rien d'autre ne bouge (pas de surChangement).
   let hybrideActif = hybridePossible && hybride;
+  // Barre « Mise en forme » (REQ-170) : créée une fois, posée et retirée avec le mode hybride, sans toucher à l'éditeur.
+  let barre = null;
+  function majBarre() {
+    if (hybrideActif) {
+      barre ??= barreMd({ vue });
+      if (!barre.isConnected) hote.prepend(barre);
+    } else barre?.remove();
+  }
+  majBarre();
   racine.definirHybride = (actif) => {
     if (csv) return definirHybrideCsv(!!actif);
     if (html) {
@@ -433,6 +443,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     actif = hybridePossible && !!actif;
     if (actif === hybrideActif) return;
     hybrideActif = actif;
+    majBarre();
     const haut = vue.lineBlockAtHeight(vue.scrollDOM.scrollTop);
     // Première ligne visible dans un tableau ou un diagramme dessiné : c'est le haut du bloc rendu qui va au bord haut, sans la marge de 5 px.
     const tableau = actif && [...tableauxHybride(vue.state), ...diagrammesRendus(vue.state)].find((t) => t.debut <= haut.from && haut.from <= t.fin);
@@ -489,6 +500,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
   racine.detruire = () => {
     document.removeEventListener("yaide-theme", suivreTheme);
     ap?.retirer?.();
+    barre?.detruire();
     tab?.detruire();
     vue.destroy();
   };
