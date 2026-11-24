@@ -925,3 +925,34 @@ test("REQ062_AC9_le_mode_hybride_suit_la_frappe", () => {
   z.detruire();
   z.remove();
 });
+
+test("REQ171_AC2_AC3_AC4_clic_sur_une_case_ne_change_que_les_crochets_en_un_pas", async () => {
+  const { undo } = await import("@codemirror/commands");
+  const texte = "- [ ] à faire\n- [X] fait\n  - [ ] sous\n\n> - [ ] c\n1. [ ] num\n";
+  const surChangement = vi.fn();
+  const fetchEspion = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("coupure"));
+  const z = zoneCode({ contenu: texte, langage: "markdown", apercu: true, surChangement });
+  document.body.append(z);
+  const cases = () => [...z.querySelectorAll(".zone-code-apercu input[type=checkbox]")];
+  cases()[0].click();
+  expect(z.contenu()).toBe(texte.replace("- [ ] à faire", "- [x] à faire"));
+  expect(surChangement).toHaveBeenCalledTimes(1);
+  expect(cases()[0].checked).toBe(true);
+  cases()[0].click();
+  expect(z.contenu()).toBe(texte);
+  cases()[1].click(); // `[X]` décoché
+  expect(z.contenu()).toBe(texte.replace("[X]", "[ ]"));
+  cases()[3].click(); // citation
+  expect(z.contenu()).toBe(texte.replace("[X]", "[ ]").replace("> - [ ] c", "> - [x] c"));
+  undo(z.vue);
+  expect(z.contenu()).toBe(texte.replace("[X]", "[ ]"));
+  cases()[2].click(); // imbriquée
+  expect(z.contenu()).toContain("  - [x] sous");
+  expect(z.contenu()).toContain("1. [ ] num");
+  expect(fetchEspion).not.toHaveBeenCalled(); // aucune requête : marche pendant une coupure
+  fetchEspion.mockRestore();
+});
+
+test("REQ171_AC10_contour_de_focus_de_la_case_de_l_apercu_en_accent_fg_de_2px", () => {
+  expect(css).toMatch(/\.zone-code-apercu \.ya-tache input:focus-visible\s*{[^}]*outline:\s*var\(--trait-fort\) solid var\(--accent-fg\)/);
+});

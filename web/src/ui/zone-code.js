@@ -399,6 +399,16 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     racine.classList.toggle("zone-code-page-seule", htmlApercu);
     racine.classList.toggle("zone-code-avec-apercu", htmlHybride);
   }
+  // Case de l'aperçu (REQ-171) : `[ ]` et `[x]` s'échangent sur la ligne source, rien d'autre ne change.
+  const CASE = /^((?:[ \t]*(?:>|[-*+]|\d+[.)]))*[ \t]+)\[( |x|X)\](?=[ \t])/;
+  function basculerCase(index) {
+    if (index < 0 || index >= vue.state.doc.lines) return;
+    const l = vue.state.doc.line(index + 1);
+    const m = CASE.exec(l.text);
+    if (!m) return;
+    const de = l.from + m[1].length + 1;
+    vue.dispatch({ changes: { from: de, to: de + 1, insert: m[2] === " " ? "x" : " " }, userEvent: "input.case" });
+  }
   racine.definirApercu = (actif) => {
     if (html) {
       htmlApercu = !!actif;
@@ -409,7 +419,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
       if (/\.svg$/i.test(nom)) ap = apercuSvg(nom, racine.contenu());
       else if (/\.mmd$/i.test(nom)) ap = apercuMmd(nom, racine.contenu());
       else {
-        ap = creerApercu({ document: cheminDocument, surLien });
+        ap = creerApercu({ document: cheminDocument, surLien, surCase: basculerCase });
         ap.maj(racine.contenu());
       }
       racine.append(ap);

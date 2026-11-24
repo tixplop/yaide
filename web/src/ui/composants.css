@@ -825,6 +825,9 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-chat-agent .ya-note-titre { margin: 0 0 var(--space-1); color: var(--info); font-weight: var(--graisse-forte); }
 .ya-chat-agent .ya-tache { list-style: none; }
 .ya-tache input { appearance: none; box-sizing: border-box; position: relative; width: 14px; height: 14px; margin: 0 6px 0 -20px; vertical-align: -2px; border: var(--trait) solid var(--ink-muted); border-radius: var(--radius-xs); opacity: 1; }
+.zone-code-apercu .ya-tache { list-style: none; }
+.zone-code-apercu .ya-tache input:hover { border-color: var(--ink); background: var(--hover); }
+.zone-code-apercu .ya-tache input:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: var(--trait-fort); }
 .ya-tache input:checked::before { content: ""; position: absolute; left: 2px; top: 2px; width: 8px; height: 4px; border: solid var(--ink); border-width: 0 0 2px 2px; transform: rotate(-45deg); }
 
 /* C-006 : liste de suggestions flottante (REQ-089 à REQ-091). */

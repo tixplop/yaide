@@ -259,6 +259,27 @@ mdReponse.core.ruler.after("inline", "reponse", (state) => {
   }
 });
 
+// Aperçu : mêmes cases, actives, avec la ligne source de l'élément (REQ-171).
+md.core.ruler.after("inline", "cases", (state) => {
+  const tokens = state.tokens;
+  const piles = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === "bullet_list_open") piles.push("b");
+    else if (t.type === "ordered_list_open") piles.push("o");
+    else if (t.type === "bullet_list_close" || t.type === "ordered_list_close") piles.pop();
+    else if (t.type === "list_item_open" && piles.at(-1) === "b" && tokens[i + 1]?.type === "paragraph_open" && tokens[i + 2]?.type === "inline") {
+      const inline = tokens[i + 2];
+      const m = retirerMarque(inline, MARQUE_CASE);
+      if (!m) continue;
+      t.attrJoin("class", "ya-tache");
+      const x = new state.Token("html_inline", "", 0);
+      x.content = `<input type="checkbox" class="ya-coche" data-ligne="${inline.map[0]}"${m[1] !== " " ? " checked" : ""}>`;
+      inline.children.unshift(x);
+    }
+  }
+});
+
 let stylesPoses = false;
 function poserCouleurs() {
   if (stylesPoses) return;
@@ -273,7 +294,7 @@ export function rendreReponse(texte) {
   return mdReponse.render(String(texte ?? ""));
 }
 
-export function apercu({ document: cheminDocument, surLien } = {}) {
+export function apercu({ document: cheminDocument, surLien, surCase } = {}) {
   const el = document.createElement("div");
   el.className = "zone-code-apercu";
   el.setAttribute("aria-label", "Aperçu");
@@ -355,6 +376,11 @@ export function apercu({ document: cheminDocument, surLien } = {}) {
   el.maj = (texte, document = courant) => {
     courant = document;
     el.innerHTML = rendreMarkdown(texte, { document });
+    for (const c of el.querySelectorAll("input.ya-coche")) {
+      const li = c.closest("li").cloneNode(true);
+      li.querySelectorAll("ul, ol").forEach((l) => l.remove());
+      c.setAttribute("aria-label", li.textContent.trim());
+    }
     actuels = new Map([...el.querySelectorAll("pre[data-diagramme]")].map((p) => [Number(p.dataset.diagramme), p.textContent]));
     for (const r of [...dessins.keys()]) if (!actuels.has(r)) dessins.delete(r);
     poser();
@@ -379,7 +405,14 @@ export function apercu({ document: cheminDocument, surLien } = {}) {
     titre.scrollIntoView?.({ block: "start" });
     titre.focus();
   };
-  el.addEventListener("click", suivre);
+  el.addEventListener("click", (e) => {
+    const c = e.target.closest?.("input.ya-coche");
+    if (!c || !el.contains(c)) return suivre(e);
+    if (!surCase) return e.preventDefault(); // sans rappel, la case ne se coche pas à l'écran
+    const rang = [...el.querySelectorAll("input.ya-coche")].indexOf(c);
+    surCase(Number(c.dataset.ligne));
+    el.querySelectorAll("input.ya-coche")[rang]?.focus(); // le nouveau rendu a remplacé la case
+  });
   el.addEventListener("auxclick", (e) => {
     if (e.button === 1) suivre(e);
   });

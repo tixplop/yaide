@@ -285,3 +285,51 @@ test("REQ169_AC6_apercu_souligne_u_et_echappe_les_autres_balises", () => {
   expect(el.textContent).toContain("<u>a</u> <u>b</u>");
   expect(el.querySelector("code").textContent).toBe("<u>code</u>");
 });
+
+const cases = (el) => [...el.querySelectorAll("input[type=checkbox]")];
+
+test("REQ171_AC1_AC8_cases_actives_sans_crochets_et_texte_restant", () => {
+  const el = apercu({ document: "a.md" });
+  document.body.append(el);
+  el.maj("- [ ] à faire\n- [x] fait\n\n1. [ ] num\n\n- [ab] autre\n\n```\n- [ ] code\n```\n");
+  const c = cases(el);
+  expect(c.length).toBe(2);
+  expect(c.map((i) => [i.disabled, i.checked, i.hasAttribute("tabindex")])).toEqual([[false, false, false], [false, true, false]]);
+  expect(c.map((i) => i.getAttribute("aria-label"))).toEqual(["à faire", "fait"]);
+  const li = [...el.querySelectorAll("li.ya-tache")].map((l) => l.textContent.trim());
+  expect(li).toEqual(["à faire", "fait"]);
+  expect(el.textContent).toContain("1. [ ] num".replace("1. ", "")); // « [ ] num » reste du texte
+  expect(el.textContent).toContain("[ab] autre");
+  expect(el.textContent).toContain("- [ ] code");
+});
+
+test("REQ171_AC3_AC8_ligne_source_imbriquee_citation_et_nom_sans_sous_liste", () => {
+  const surCase = vi.fn();
+  const el = apercu({ document: "a.md", surCase });
+  document.body.append(el);
+  el.maj("- [ ] a\n  - [x] b\n\n> - [ ] c\n");
+  const c = cases(el);
+  expect(c.map((i) => i.dataset.ligne)).toEqual(["0", "1", "3"]);
+  expect(c[0].getAttribute("aria-label")).toBe("a");
+  c[2].click();
+  expect(surCase).toHaveBeenCalledWith(3);
+  c[1].click();
+  expect(surCase).toHaveBeenLastCalledWith(1);
+});
+
+test("REQ171_AC8_focus_rendu_a_la_case_de_meme_rang_apres_le_rendu", () => {
+  const el = apercu({ document: "a.md", surCase: () => el.maj("- [ ] a\n- [x] b\n") });
+  document.body.append(el);
+  el.maj("- [ ] a\n- [ ] b\n");
+  cases(el)[1].click();
+  expect(document.activeElement).toBe(cases(el)[1]);
+  expect(cases(el)[1].checked).toBe(true);
+});
+
+test("REQ044_AC11_tab_seulement_liens_et_cases", () => {
+  const el = apercu({ document: "a.md" });
+  document.body.append(el);
+  el.maj("[l](https://x.org)\n\n- [ ] a\n\n```\ncode\n```\n\n| a |\n|---|\n| b |\n");
+  const arrets = [...el.querySelectorAll("a, input, pre, table, [tabindex]")].filter((n) => n.tabIndex >= 0);
+  expect(arrets.map((n) => n.tagName)).toEqual(["A", "INPUT"]);
+});

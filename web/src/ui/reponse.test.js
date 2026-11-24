@@ -140,8 +140,8 @@ test("REQ077_apercu_inchange", () => {
   h.innerHTML = rendreMarkdown("> [!NOTE] x\n\n- [ ] a\n\nhttps://exemple.org/a");
   expect(h.querySelector(".ya-note")).toBeNull();
   expect(h.querySelector("blockquote").textContent.trim()).toBe("[!NOTE] x");
-  expect(h.querySelector("li").textContent).toBe("[ ] a");
-  expect(h.querySelector("input")).toBeNull();
+  expect(h.querySelector("li").textContent).toBe("a"); // case active depuis REQ-171
+  expect(h.querySelector("input").disabled).toBe(false);
   expect(h.querySelector("a")).toBeNull();
 });
 
