@@ -1235,3 +1235,6 @@ body { margin: 0; }
 .zone-code .ya-image { border-left: var(--trait) solid var(--line); }
 .ya-image:focus { outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
 .ya-image[hidden] { display: none; }
+
+/* Image `![[nom]]` d'un document markdown (REQ-175). */
+.ya-image-md { display: inline-block; vertical-align: text-bottom; max-width: 100%; height: auto; border: 0; background: var(--apercu-page); }

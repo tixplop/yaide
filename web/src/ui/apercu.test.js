@@ -333,3 +333,90 @@ test("REQ044_AC11_tab_seulement_liens_et_cases", () => {
   const arrets = [...el.querySelectorAll("a, input, pre, table, [tabindex]")].filter((n) => n.tabIndex >= 0);
   expect(arrets.map((n) => n.tagName)).toEqual(["A", "INPUT"]);
 });
+
+// Images `![[nom]]` (REQ-175) : `load` et `error` sont simulés, jsdom ne charge rien.
+function imagesSimulees() {
+  const creees = [];
+  vi.stubGlobal("Image", class {
+    constructor() {
+      const img = document.createElement("img");
+      creees.push(img);
+      return img;
+    }
+  });
+  return creees;
+}
+afterEach(() => vi.unstubAllGlobals());
+const adresse = (nom) => (nom === "logo.png" ? "/apercu/j/img/logo.png" : nom === "casse.png" ? "/apercu/j/casse.png" : null);
+
+test("REQ175_AC3_balises_sans_image_gardent_leur_texte", () => {
+  const creees = imagesSimulees();
+  const el = apercu({ document: "a.md", images: adresse });
+  document.body.append(el);
+  el.maj("![[absent.png]] ![[notes.md]] ![[logo.png|300]] `![[logo.png]]`\n\n```\n![[logo.png]]\n```");
+  expect(el.querySelectorAll("img").length).toBe(0);
+  expect(creees.length).toBe(0);
+  expect(el.textContent).toContain("![[absent.png]] ![[notes.md]] ![[logo.png|300]]");
+  expect(el.querySelector("code").textContent).toBe("![[logo.png]]");
+  expect(el.querySelector("pre").textContent).toContain("![[logo.png]]");
+  el.remove();
+});
+
+test("REQ175_AC12_texte_jusqu_au_load_puis_image_texte_si_error", () => {
+  const creees = imagesSimulees();
+  const el = apercu({ document: "a.md", images: adresse });
+  document.body.append(el);
+  el.maj("Voici ![[logo.png]] et ![[casse.png]].");
+  expect(creees.length).toBe(2);
+  expect(el.querySelector("img")).toBe(null);
+  expect(el.textContent.trim()).toBe("Voici ![[logo.png]] et ![[casse.png]].");
+  creees[0].dispatchEvent(new Event("load"));
+  creees[1].dispatchEvent(new Event("error"));
+  const img = el.querySelector("img");
+  expect(el.querySelectorAll("img").length).toBe(1);
+  expect(img.getAttribute("src")).toBe("/apercu/j/img/logo.png");
+  expect(el.textContent.trim()).toBe("Voici  et ![[casse.png]].");
+  el.remove();
+});
+
+test("REQ175_AC9_attributs_de_l_image", () => {
+  const creees = imagesSimulees();
+  const el = apercu({ document: "a.md", images: adresse });
+  document.body.append(el);
+  el.maj("![[logo.png]]");
+  creees[0].dispatchEvent(new Event("load"));
+  const img = el.querySelector("img");
+  expect(img.className).toBe("ya-image-md");
+  expect(img.getAttribute("alt")).toBe("logo.png");
+  expect(img.getAttribute("draggable")).toBe("false");
+  for (const a of ["title", "tabindex", "width", "height"]) expect(img.hasAttribute(a)).toBe(false);
+  el.remove();
+});
+
+test("REQ175_AC10_meme_element_sans_nouvelle_requete", () => {
+  const creees = imagesSimulees();
+  const el = apercu({ document: "a.md", images: adresse });
+  document.body.append(el);
+  el.maj("![[logo.png]]\n\nun");
+  creees[0].dispatchEvent(new Event("load"));
+  const img = el.querySelector("img");
+  el.maj("![[logo.png]]\n\nun deux");
+  expect(el.querySelector("img")).toBe(img);
+  expect(el.querySelectorAll("img").length).toBe(1);
+  expect(creees.length).toBe(1);
+  el.remove();
+});
+
+test("REQ175_AC10_meme_img_apres_apercu_masque_puis_reaffiche", () => {
+  const creees = imagesSimulees();
+  const z = zoneCode({ contenu: "![[logo.png]]", document: "a.md", images: adresse, apercu: true });
+  document.body.append(z);
+  creees[0].dispatchEvent(new Event("load"));
+  const img = z.querySelector(".zone-code-apercu img");
+  expect(img).not.toBe(null);
+  z.definirApercu(false);
+  z.definirApercu(true);
+  expect(z.querySelector(".zone-code-apercu img")).toBe(img);
+  expect(creees.length).toBe(1);
+  z.remove();
+});

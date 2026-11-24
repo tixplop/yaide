@@ -220,7 +220,7 @@ function apercuMmd(nom, texte) {
   return el;
 }
 
-export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, document: cheminDocument, ligne, nom = "", surChangement, surPosition, surLien, surSurvolLien, surTableur, recherche } = {}) {
+export function zoneCode({ contenu = "", langage, mode = "edition", apercu = false, hybride = false, adresseApercu, images, document: cheminDocument, ligne, nom = "", surChangement, surPosition, surLien, surSurvolLien, surTableur, recherche } = {}) {
   if (!MODES.includes(mode)) throw new Error(`zoneCode : mode inconnu « ${mode} »`);
   const diff = mode === "diff";
   const racine = document.createElement("div");
@@ -409,6 +409,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     const de = l.from + m[1].length + 1;
     vue.dispatch({ changes: { from: de, to: de + 1, insert: m[2] === " " ? "x" : " " }, userEvent: "input.case" });
   }
+  const imagesChargees = new Map(); // images `![[nom]]` chargées de l'onglet, gardées d'un aperçu à l'autre
   racine.definirApercu = (actif) => {
     if (html) {
       htmlApercu = !!actif;
@@ -419,7 +420,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
       if (/\.svg$/i.test(nom)) ap = apercuSvg(nom, racine.contenu());
       else if (/\.mmd$/i.test(nom)) ap = apercuMmd(nom, racine.contenu());
       else {
-        ap = creerApercu({ document: cheminDocument, surLien, surCase: basculerCase });
+        ap = creerApercu({ document: cheminDocument, surLien, surCase: basculerCase, images, chargees: imagesChargees });
         ap.maj(racine.contenu());
       }
       racine.append(ap);
@@ -431,6 +432,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     racine.classList.toggle("zone-code-avec-apercu", actif);
   };
   racine.rechargerApercu = () => ap?.recharger?.();
+  racine.majImages = () => ap?.majImages?.();
   racine.definirCoupe = (oui) => ap?.definirCoupe?.(oui);
   // Bascule du mode hybride : la première ligne visible reste en haut, rien d'autre ne bouge (pas de surChangement).
   let hybrideActif = hybridePossible && hybride;

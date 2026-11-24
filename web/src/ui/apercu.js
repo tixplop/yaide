@@ -38,6 +38,30 @@ function creerMarkdown(options) {
 
 const md = creerMarkdown({ linkify: false });
 
+// `![[nom]]` dont `env.images(nom)` donne l'adresse de l'image (REQ-175) : un `span` qui garde le texte ; l'aperçu le remplace par l'image chargée.
+md.inline.ruler.before("image", "image_md", (state, silent) => {
+  const s = state.src;
+  const p = state.pos;
+  if (!s.startsWith("![[", p) || !state.env?.images) return false;
+  const fin = s.indexOf("]]", p + 3);
+  if (fin < 0) return false;
+  const nom = s.slice(p + 3, fin);
+  if (/[[\]\n]/.test(nom)) return false;
+  const src = state.env.images(nom);
+  if (!src) return false;
+  if (!silent) {
+    const t = state.push("image_md", "", 0);
+    t.content = nom;
+    t.meta = { src };
+  }
+  state.pos = fin + 2;
+  return true;
+});
+md.renderer.rules.image_md = (tokens, i) => {
+  const t = tokens[i];
+  return `<span data-image-md="${md.utils.escapeHtml(t.meta.src)}" data-nom="${md.utils.escapeHtml(t.content)}">${md.utils.escapeHtml(`![[${t.content}]]`)}</span>`;
+};
+
 // Seules balises HTML rendues (REQ-169) : `<u>` et `</u>` appariées, dans un même paragraphe, deviennent un souligné.
 md.core.ruler.before("text_join", "souligne", (etat) => {
   for (const bloc of etat.tokens) {
@@ -104,8 +128,9 @@ md.renderer.rules.link_open = (tokens, i, options, env, self) => {
 
 // Le HTML brut est échappé (html: false) et les liens javascript: sont refusés par markdown-it.
 // `document` : chemin du fichier affiché, pour résoudre les liens relatifs.
-export function rendreMarkdown(texte, { document } = {}) {
-  return md.render(String(texte ?? ""), { document });
+// `images` : nom écrit dans `![[nom]]` → adresse de l'image, ou null (la balise reste du texte).
+export function rendreMarkdown(texte, { document, images } = {}) {
+  return md.render(String(texte ?? ""), { document, images });
 }
 
 const mdReponse = creerMarkdown({ linkify: true });
@@ -294,7 +319,7 @@ export function rendreReponse(texte) {
   return mdReponse.render(String(texte ?? ""));
 }
 
-export function apercu({ document: cheminDocument, surLien, surCase } = {}) {
+export function apercu({ document: cheminDocument, surLien, surCase, images, chargees = new Map() } = {}) {
   const el = document.createElement("div");
   el.className = "zone-code-apercu";
   el.setAttribute("aria-label", "Aperçu");
@@ -373,9 +398,49 @@ export function apercu({ document: cheminDocument, surLien, surCase } = {}) {
     minuteur = setTimeout(dessiner, 100);
   }
 
+  // Images `![[nom]]` : adresse → `img` chargée (`chargees` : table de l'onglet, gardée quand l'aperçu est masqué). La balise reste en texte jusqu'au `load` (ni message, ni place réservée).
+  const enChargement = new Set();
+  let echecs = new Set();
+  let dernier;
+
+  const poserImages = () => {
+    for (const span of el.querySelectorAll("span[data-image-md]")) {
+      const src = span.dataset.imageMd;
+      const img = chargees.get(src);
+      if (img) {
+        const e = img.isConnected && el.contains(img) ? img.cloneNode() : img;
+        e.alt = span.dataset.nom;
+        span.replaceWith(e);
+      } else if (!enChargement.has(src) && !echecs.has(src)) {
+        enChargement.add(src);
+        const neuve = new Image();
+        neuve.className = "ya-image-md";
+        neuve.draggable = false;
+        neuve.alt = span.dataset.nom;
+        neuve.onload = () => {
+          enChargement.delete(src);
+          chargees.set(src, neuve);
+          poserImages();
+        };
+        neuve.onerror = () => {
+          enChargement.delete(src);
+          echecs.add(src);
+        };
+        neuve.src = src;
+      }
+    }
+  };
+
+  // La liste des fichiers ou le jeton vient d'arriver : le texte est rendu de nouveau.
+  el.majImages = () => {
+    echecs = new Set();
+    if (dernier !== undefined) el.maj(dernier);
+  };
+
   el.maj = (texte, document = courant) => {
     courant = document;
-    el.innerHTML = rendreMarkdown(texte, { document });
+    dernier = texte;
+    el.innerHTML = rendreMarkdown(texte, { document, images });
     for (const c of el.querySelectorAll("input.ya-coche")) {
       const li = c.closest("li").cloneNode(true);
       li.querySelectorAll("ul, ol").forEach((l) => l.remove());
@@ -384,6 +449,7 @@ export function apercu({ document: cheminDocument, surLien, surCase } = {}) {
     actuels = new Map([...el.querySelectorAll("pre[data-diagramme]")].map((p) => [Number(p.dataset.diagramme), p.textContent]));
     for (const r of [...dessins.keys()]) if (!actuels.has(r)) dessins.delete(r);
     poser();
+    poserImages();
     if (actuels.size) planifier();
   };
 

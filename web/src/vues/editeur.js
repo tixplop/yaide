@@ -1,4 +1,4 @@
-import { adresseApercu, ecrireFichier, fermerShell, jetonApercu, lireFichier, oublierJetonApercu, listeShells, versionsFichiers } from "../api.js";
+import { adresseApercu, ecrireFichier, fermerShell, jetonApercu, lireFichier, listerChemins, oublierJetonApercu, listeShells, versionsFichiers } from "../api.js";
 import { decider, texteAttente } from "../brouillons.js";
 import { decisionDisque } from "../disque.js";
 import { formatable, formater as formaterTexte } from "../formatage.js";
@@ -18,6 +18,7 @@ import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { zoneCode } from "../ui/zone-code.js";
 import { vueAgent } from "./agent.js";
+import { resoudreImage } from "../images-md.js";
 import { depuisProjet, lienDeDocument, ligneDuTitre, estMac } from "../references.js";
 import { depotOnglets } from "./depot-onglets.js";
 import { vueClaude } from "./claude.js";
@@ -489,6 +490,33 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   // ---- Ouvrir, renommer, supprimer ----
 
+  // Images `![[nom]]` (REQ-175) : liste des fichiers du projet et jeton de l'aperçu, gardés en mémoire ; relus au plus toutes les 5 s.
+  let fichiersProjet = null;
+  let jetonImages = null;
+  let listeLueA = 0;
+  let listeEnCours = false;
+  function chargerImages() {
+    if (listeEnCours || Date.now() - listeLueA < 5000) return;
+    listeEnCours = true;
+    Promise.all([listerChemins(), jetonApercu()])
+      .then(([r, jeton]) => {
+        const change = jeton !== jetonImages || (r.chemins && JSON.stringify(r.chemins) !== JSON.stringify(fichiersProjet));
+        if (r.chemins) fichiersProjet = r.chemins;
+        jetonImages = jeton;
+        if (change) for (const o of liste) o.zone?.majImages?.();
+      })
+      .catch(() => {})
+      .finally(() => {
+        listeLueA = Date.now();
+        listeEnCours = false;
+      });
+  }
+  const adresseImage = (o) => (nom) => {
+    chargerImages();
+    const chemin = jetonImages ? resoudreImage(nom, o.chemin, fichiersProjet) : null;
+    return chemin ? adresseApercu(jetonImages, chemin) : null;
+  };
+
   function creer({ chemin, contenu, version, texte, apercu = false, hybride = false }) {
     const o = { chemin, groupe: courant, disque: contenu, version, apercu, hybride, modifie: false };
     const surChangement = (t) => {
@@ -513,6 +541,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       document: chemin,
       apercu,
       hybride,
+      images: adresseImage(o),
       surLien: ({ adresse, element }) => {
         const lien = lienDeDocument(adresse, o.chemin, cheminProjet);
         if (lien?.sorte === "fichier") ouvrirReference(o, lien, element);
