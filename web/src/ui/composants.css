@@ -99,6 +99,19 @@
 .ya-message-barre.message-info .message-texte, .ya-message-barre.message-succes .message-texte { white-space: nowrap; }
 .ya-message-barre.message-erreur .message-texte { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ya-message-barre:focus { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
+/* C-003, présentation « toast » (REQ-172) : bloc de --largeur-toast posé dans la zone des toasts de C-010, il apparaît d'un coup. */
+.ya-toasts { position: fixed; z-index: 10; bottom: calc(var(--size-status) + var(--space-3)); right: calc(var(--size-activity) + var(--space-3)); width: var(--largeur-toast); max-height: calc(100vh - var(--size-titlebar) - var(--size-status) - 2 * var(--space-3)); display: flex; flex-direction: column; justify-content: flex-end; gap: var(--space-2); overflow-y: auto; pointer-events: none; }
+.cadre-sans-rail-droit > .ya-toasts { right: var(--space-3); }
+.ya-toast { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 var(--space-2); align-items: start; flex: none; box-sizing: border-box; width: var(--largeur-toast); padding: 7px 3px 7px 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); font-size: 13px; line-height: 20px; color: var(--ink); pointer-events: auto; }
+.ya-toast + .ya-toast { border-top: 1px solid var(--line-strong); }
+.ya-toast.message-info { background: linear-gradient(var(--msg-info), var(--msg-info)), var(--bg-300); box-shadow: inset 2px 0 0 var(--info), var(--shadow-popover); }
+.ya-toast.message-succes { background: linear-gradient(var(--msg-succes), var(--msg-succes)), var(--bg-300); box-shadow: inset 2px 0 0 var(--git-added), var(--shadow-popover); }
+.ya-toast.message-alerte { background: linear-gradient(var(--msg-alerte), var(--msg-alerte)), var(--bg-300); box-shadow: inset 2px 0 0 var(--warning), var(--shadow-popover); }
+.ya-toast.message-erreur { background: linear-gradient(var(--msg-erreur), var(--msg-erreur)), var(--bg-300); box-shadow: inset 2px 0 0 var(--danger), var(--shadow-popover); }
+.ya-toast.message-fort { grid-template-columns: minmax(0, 1fr); background: var(--warning); border-color: var(--warning); color: var(--bg-000); font-weight: 600; box-shadow: var(--shadow-popover); padding-right: 11px; }
+.ya-toast .message-texte { grid-column: 1; grid-row: 1; min-width: 0; margin: 2px 0; overflow-wrap: anywhere; }
+.ya-toast > pre { grid-column: 1; grid-row: 2; margin-top: 2px; max-height: 96px; font-size: 12px; line-height: 16px; }
+.ya-toast > :last-child:not(.message-texte):not(pre) { grid-column: 2; grid-row: 1; align-self: start; }
 /* C-003, présentation « flottante » : refus posé en haut de la zone d'un whiteboard, sans icône ni croix. */
 .ya-message-flottante:empty { display: none; }
 .ya-message-flottante { position: absolute; top: var(--space-3); left: var(--space-3); right: var(--space-3); margin: 0 auto; width: fit-content; max-width: 720px; padding: 8px 12px; background: linear-gradient(var(--msg-erreur), var(--msg-erreur)), var(--bg-300); border-left: 0; box-shadow: inset 2px 0 0 var(--danger), var(--shadow-popover); border-radius: var(--radius-md); font-size: 13px; line-height: 20px; color: var(--ink); pointer-events: none; }

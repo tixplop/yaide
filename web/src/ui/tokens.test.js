@@ -935,3 +935,32 @@ test("REQ160_AC10_REQ161_AC9_encre_sur_occurrence_posee_sur_bg_200", () => {
   });
   expect(composants).toMatch(/mark\.ya-occurrence\s*\{[^}]*linear-gradient\(var\(--occurrence\), var\(--occurrence\)\), var\(--bg-200\)/);
 });
+
+test("REQ172_AC8_largeur_du_toast_et_contrastes_dans_les_deux_themes", () => {
+  for (const theme of THEMES) expect(T[theme]["--largeur-toast"], theme).toBe("360px");
+  const roles = ["info", "succes", "alerte", "erreur"];
+  const filets = ["--info", "--git-added", "--warning", "--danger"];
+  // [texte, fond, fond dessous, seuil, [sombre, clair]] : tableau des contrastes de design-system.md (toast).
+  const paires = [
+    ...roles.map((r, i) => ["--ink", `--msg-${r}`, "--bg-300", 4.5, [[7.03, 6.87, 6.49, 7.19][i], [13.33, 13.5, 13.41, 13.09][i]]]),
+    ...roles.map((r, i) => [filets[i], `--msg-${r}`, "--bg-300", 3, [[4.55, 4.81, 6.03, 4.23][i], [5.1, 4.96, 5.26, 5.31][i]]]),
+    ...roles.map((r, i) => ["--ink-muted", `--msg-${r}`, "--bg-300", 3, [[4.32, 4.22, 3.98, 4.41][i], [5.41, 5.48, 5.44, 5.31][i]]]),
+    ["--accent-fg", "--msg-info", "--bg-300", 3, [4.55, 5.1]],
+    ["--accent-fg", "--msg-erreur", "--bg-300", 3, [4.66, 5.01]],
+    ["--line-strong", "--bg-000", null, 3, [3.74, 3.03]],
+    ["--line-strong", "--bg-100", null, 3, [3.63, 3.25]],
+    ["--line-strong", "--bg-200", null, 3, [3.48, 3.45]],
+    ["--warning", "--bg-000", null, 3, [10.28, 5.67]],
+    ["--warning", "--bg-100", null, 3, [9.96, 6.08]],
+    ["--warning", "--bg-200", null, 3, [9.54, 6.46]],
+    ["--bg-000", "--warning", null, 4.5, [10.2, 5.6]],
+  ];
+  THEMES.forEach((theme, k) => {
+    for (const [texte, fond, sous, seuil, attendu] of paires) {
+      const r = ratio(theme, texte, fond, sous ?? undefined);
+      // Le tableau vient de `contrastes.sh` (couleurs mélangées arrondies par le navigateur) : le calcul exact s'en écarte jusqu'à 0,12.
+      expect(Math.abs(r - attendu[k]), `${texte} sur ${fond}/${sous} (${theme}) : ${r} au lieu de ${attendu[k]}`).toBeLessThanOrEqual(0.12);
+      expect(r, `${texte} sur ${fond}/${sous} (${theme})`).toBeGreaterThanOrEqual(seuil);
+    }
+  });
+});

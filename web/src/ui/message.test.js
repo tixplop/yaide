@@ -161,3 +161,21 @@ test("REQ154_AC10_message_flottante_alerte_sans_icone_ni_croix_et_refus_des_autr
     expect(() => message({ texte: "a", variante: "erreur", presentation: "flottante", ...o })).toThrow(/flottante/);
   }
 });
+
+test("REQ172_AC5_AC6_message_toast_role_fermer_decrit_par_le_texte_et_fort_sans_fermer", () => {
+  const e = message({ texte: "Lien refusé", variante: "erreur", presentation: "toast", detail: "sortie", cause: "x" });
+  expect(e.classList.contains("ya-toast")).toBe(true);
+  expect(e.getAttribute("role")).toBe("alert");
+  expect(e.dataset.cause).toBe("x");
+  expect(e.querySelector(".message-detail").textContent).toBe("sortie");
+  const f = e.querySelector("button[aria-label='Fermer']");
+  expect(f.getAttribute("aria-describedby")).toBe(e.querySelector(".message-texte").id);
+  expect(message({ texte: "a", presentation: "toast" }).getAttribute("role")).toBe("status");
+  expect(message({ texte: "a", variante: "succes", presentation: "toast" }).getAttribute("role")).toBe("status");
+  const fort = message({ texte: "Coupure", variante: "alerte", fort: true, presentation: "toast" });
+  expect(fort.getAttribute("role")).toBe("alert");
+  expect(fort.classList.contains("message-fort")).toBe(true);
+  expect(fort.querySelector("button")).toBeNull();
+  expect(() => message({ texte: "a", presentation: "toast", actions: [bouton({ libelle: "Oui" })] })).toThrow(/toast/);
+  expect(() => message({ texte: "a", cause: "x" })).toThrow(/cause/);
+});

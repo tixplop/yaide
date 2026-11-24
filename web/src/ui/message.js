@@ -7,16 +7,18 @@ let compteur = 0;
 
 const ICONES_BARRE = { info: "circle-arrow-up", erreur: "circle-x", succes: "circle-check" };
 
-export function message({ texte, variante = "info", detail, champs, actions = [], fermable = false, fort = false, presentation = "normale" }) {
+export function message({ texte, variante = "info", detail, champs, actions = [], fermable = false, fort = false, presentation = "normale", cause }) {
   if (!texte) throw new Error("message : texte requis");
   if (!VARIANTES.includes(variante)) throw new Error(`message : variante inconnue « ${variante} »`);
-  if (!["normale", "barre", "flottante"].includes(presentation)) throw new Error(`message : presentation inconnue « ${presentation} »`);
+  if (!["normale", "barre", "flottante", "toast"].includes(presentation)) throw new Error(`message : presentation inconnue « ${presentation} »`);
   if (presentation === "barre" && (!ICONES_BARRE[variante] || detail || champs?.length || fermable || fort)) {
     throw new Error("message : la présentation barre n'accepte que info, succes et erreur, sans detail, champs, fermable ni fort");
   }
   if (presentation === "flottante" && (variante !== "erreur" || detail || champs?.length || actions.length || fermable || fort)) {
     throw new Error("message : la présentation flottante n'accepte que erreur, sans detail, champs, actions, fermable ni fort");
   }
+  if (presentation === "toast" && (champs?.length || actions.length)) throw new Error("message : la présentation toast n'accepte ni champs ni actions");
+  if (cause !== undefined && presentation !== "toast") throw new Error("message : cause réservée à la présentation toast");
   if (champs?.length && (variante !== "info" || fort)) throw new Error("message : champs réservés à la variante info");
   const m = document.createElement(champs?.length ? "form" : "div");
   m.className = `message message-${variante}${fort ? " message-fort" : ""}`;
@@ -43,6 +45,11 @@ export function message({ texte, variante = "info", detail, champs, actions = []
     if (variante === "succes") m.tabIndex = -1;
   }
   if (presentation === "flottante") m.classList.add("ya-message-flottante");
+  if (presentation === "toast") {
+    m.classList.add("ya-toast");
+    if (fort) m.setAttribute("role", "alert");
+    if (cause !== undefined) m.dataset.cause = cause;
+  }
   const t = document.createElement("span");
   t.className = "message-texte";
   t.textContent = texte;
@@ -67,7 +74,7 @@ export function message({ texte, variante = "info", detail, champs, actions = []
       a.append(...actions);
       m.append(a);
     }
-    if (fermable) {
+    if (fermable || presentation === "toast") {
       const f = bouton({ icone: "x", variante: "discret", nomAccessible: "Fermer" });
       // La croix est décrite par le texte du message : deux croix affichées ensemble se distinguent (REQ-115).
       t.id = `message-texte-${++compteur}`;

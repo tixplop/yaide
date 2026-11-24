@@ -1,5 +1,6 @@
 import { icone } from "./icones.js";
 import { bouton } from "./bouton.js";
+import { zoneToasts } from "./toasts.js";
 import { message } from "./message.js";
 import { fermerInfoBulleDans, infoBulle } from "./info-bulle.js";
 import { appliquer as borneMouvement, bornesAria, limitesPoignee, partDe, partDepuis } from "../disposition.js";
@@ -36,9 +37,10 @@ export function symbole(taille) {
  * `barreEtat` : { branche, lien ({ geste, suite } ou rien), position, langage, version, connexion (`connecte` par défaut, ou `deconnecte`), maj: { etat, derniere, raison }, surMaj } (textes, ou rien ; `etat` : aucune, disponible, encours, echec, installee ; `surMaj` : clic sur « Mettre à jour ») ; `agent` : { titre, repli, corps } (colonne à droite) ; `railDroit` : { commandes, pied } (listes de boutons, dans l'ordre ; `pied`, vide par défaut, au bas du rail après les commandes) ;
  * `tailles` : { panneau, agent, shells } en pixels ; `replis` : { panneau, agent, shells } (faux par défaut, vrai pour l'agent) ;
  * `fonctions` : { recherche, git, shells, agents, claude } (vrais par défaut) : `shells` et `agents` faux ne créent ni zone, ni poignée, ni commandes ; `racine.ajouterCommandeDroite(el)` crée le rail droit au besoin.
+ * `repliToasts` : rappel qui donne le focus quand le dernier toast fermé ne laisse aucun voisin (zone des toasts, REQ-172).
  * `surChangement(zone, taille)` et `surFin(zone, taille)` viennent des poignées.
  */
-export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, railDroit = {}, principal = {}, barreEtat = {}, tailles = {}, replis = {}, fonctions, surChangement, surFin } = {}) {
+export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, railDroit = {}, principal = {}, barreEtat = {}, tailles = {}, replis = {}, fonctions, surChangement, surFin, repliToasts } = {}) {
   const avec = { shells: fonctions?.shells !== false, agents: fonctions?.agents !== false };
   // Sans `fonctions`, le rail droit existe toujours ; avec, il n'est créé que s'il porte une commande.
   const avecRailDroit = fonctions === undefined || Boolean(railDroit.commandes?.length || railDroit.pied?.length);
@@ -292,7 +294,7 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   };
   racine.definirEtat(barreEtat);
 
-  racine.append(haut, colonne, aside, poignees.panneau, main, ...(avec.agents ? [poignees.agent, colonneAgent] : []), ...(rd ? [rd] : []), etat);
+  racine.append(haut, colonne, aside, poignees.panneau, main, ...(avec.agents ? [poignees.agent, colonneAgent] : []), ...(rd ? [rd] : []), etat, zoneToasts({ repli: repliToasts }));
   racine.classList.toggle("cadre-sans-rail-droit", !rd);
   // Le rail droit est créé au besoin (« Claude » arrive après la lecture de `claudeDisponible()`).
   racine.ajouterCommandeDroite = (el) => {

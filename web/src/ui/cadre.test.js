@@ -42,7 +42,7 @@ test("REQ028_AC4_zones_semantiques_header_nav_aside_main", () => {
 test("REQ028_AC8_ordre_dom_barre_rail_panneau_principal_puis_onglets_code_shells", () => {
   const c = monter();
   const noms = [...c.children].map((e) => e.tagName.toLowerCase());
-  expect(noms).toEqual(["header", "div", "aside", "div", "main", "div", "aside", "div", "footer"]);
+  expect(noms).toEqual(["header", "div", "aside", "div", "main", "div", "aside", "div", "footer", "div"]);
   expect(c.children[3].getAttribute("aria-label")).toBe("Largeur du panneau");
   const textes = [...c.querySelector("main").children].map((e) => e.textContent);
   // Les quatre zones de l'éditeur sont dans l'enveloppe d'un groupe (REQ-079), dans le même ordre.
@@ -1226,4 +1226,35 @@ test("REQ101_AC12_regles_css_de_l_indication_du_pointeur_et_du_titre_atteint", (
 test("REQ162_AC1_largeur_des_actions_de_la_barre_de_titre_des_deux_cotes", () => {
   expect(tokens).toMatch(/--largeur-actions-titre:\s*128px;/);
   expect(regle(".ya-titlebar")).toContain("grid-template-columns: minmax(var(--largeur-actions-titre), 1fr) minmax(240px, 560px) minmax(var(--largeur-actions-titre), 1fr)");
+});
+
+test("REQ172_AC5_AC6_le_cadre_cree_la_zone_des_toasts_apres_le_footer_et_lui_passe_le_repli", async () => {
+  const { afficher } = await import("./toasts.js");
+  const repli = vi.fn();
+  const c = cadre({ principal: { code: p("code") }, barreEtat: { branche: "main" }, repliToasts: repli });
+  document.body.append(c);
+  const zone = c.querySelector(":scope > .ya-toasts");
+  expect(zone).not.toBeNull();
+  expect(zone.children).toHaveLength(0);
+  expect(c.querySelector(":scope > footer").compareDocumentPosition(zone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(c.lastElementChild).toBe(zone);
+  afficher({ texte: "Mal", variante: "erreur" });
+  zone.querySelector("button[aria-label='Fermer']").click();
+  expect(repli).toHaveBeenCalledTimes(1);
+});
+
+test("REQ172_AC9_regles_de_la_zone_et_du_toast_sans_animation", () => {
+  const z = regle(".ya-toasts");
+  expect(z).toContain("position: fixed");
+  expect(z).toContain("z-index: 10");
+  expect(z).toContain("bottom: calc(var(--size-status) + var(--space-3))");
+  expect(z).toContain("right: calc(var(--size-activity) + var(--space-3))");
+  expect(z).toContain("width: var(--largeur-toast)");
+  expect(z).toContain("pointer-events: none");
+  expect(regle(".cadre-sans-rail-droit > .ya-toasts")).toContain("right: var(--space-3)");
+  expect(regle(".ya-toast")).toContain("pointer-events: auto");
+  expect(regle(".ya-toast")).toContain("border-radius: var(--radius-md)");
+  expect(regle(".ya-toast.message-erreur")).toContain("box-shadow: inset 2px 0 0 var(--danger), var(--shadow-popover)");
+  expect(regle(".ya-toast.message-fort")).toContain("background: var(--warning)");
+  expect(css).not.toMatch(/\.ya-toast[^{]*\{[^}]*(animation|transition)/);
 });
