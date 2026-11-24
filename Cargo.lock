@@ -300,6 +300,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "croner"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c0d18af839fad650d1673db4e2e40cfad3288dcb84a13670a9014e8d0978008"
+dependencies = [
+ "chrono",
+]
+
+[[package]]
 name = "crossbeam-deque"
 version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2275,6 +2284,8 @@ dependencies = [
  "argon2",
  "axum",
  "axum-server",
+ "chrono",
+ "croner",
  "globset",
  "ignore",
  "libc",

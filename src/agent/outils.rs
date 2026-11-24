@@ -2236,6 +2236,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn REQ174_AC5_save_agent_garde_le_declencheur_planification() {
+        let d = dossier("save-planification");
+        let c = ctx(&d);
+        let decl = json!([{"type": "planification", "cron": "0 9 * * 1-5"}]);
+        c.agents
+            .enregistrer(&json!({"nom": "Relecteur", "couleur": "violet", "declencheurs": decl}))
+            .unwrap();
+        let r = lancer_outil(
+            &c,
+            "save_agent",
+            json!({"folder": "relecteur", "color": "vert"}),
+        )
+        .await;
+        assert!(!r.echec, "{r:?}");
+        let j = agent_json(&d, "relecteur");
+        assert_eq!(j["couleur"], "vert");
+        assert_eq!(j["declencheurs"], decl);
+    }
+
+    #[tokio::test]
     async fn REQ097_AC4_modification() {
         let d = dossier("save-modif");
         let c = ctx(&d);

@@ -26,7 +26,7 @@ pub struct Agent {
     pub declencheurs: Vec<Declencheur>,
 }
 
-/// Un déclencheur : `type` parmi `fichier`, `dossier`, `commit`, `commande`, `configuration`.
+/// Un déclencheur : `type` parmi `fichier`, `dossier`, `commit`, `commande`, `configuration`, `planification`.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Declencheur {
     #[serde(rename = "type")]
@@ -35,6 +35,9 @@ pub struct Declencheur {
     pub chemin: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texte: Option<String>,
+    /// Expression cron à cinq champs d'une « planification » (REQ-174).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cron: Option<String>,
 }
 
 /// Vérifie la saisie des déclencheurs ; refus : `(rang, champ)`.
@@ -58,6 +61,7 @@ fn declencheurs_de(saisie: &Value) -> Result<Vec<Declencheur>, Vec<(usize, &'sta
             genre: genre.to_string(),
             chemin: None,
             texte: None,
+            cron: None,
         };
         match genre {
             "fichier" | "dossier" => match champ("chemin") {
@@ -67,6 +71,10 @@ fn declencheurs_de(saisie: &Value) -> Result<Vec<Declencheur>, Vec<(usize, &'sta
             "commande" => match d.get("texte").and_then(Value::as_str) {
                 Some(t) if !t.trim().is_empty() => decl.texte = Some(t.to_string()),
                 _ => refus.push((i, "texte")),
+            },
+            "planification" => match champ("cron") {
+                Some(c) if super::declencheurs::lire_cron(&c).is_some() => decl.cron = Some(c),
+                _ => refus.push((i, "cron")),
             },
             "commit" | "configuration" => {}
             _ => refus.push((i, "type")),

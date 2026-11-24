@@ -1477,7 +1477,7 @@ test("REQ163_AC1_AC2_AC6_AC9_parcours_128_129_declencheurs_de_la_fiche", async (
   await expect(ajouter).toHaveAttribute("aria-expanded", "false");
   await ajouter.click();
   await expect(ajouter).toHaveAttribute("aria-expanded", "true");
-  await expect(menu.getByRole("menuitem")).toHaveText(["Fichier", "Dossier", "Commit", "Commande shell", "Configuration de Yaide"]);
+  await expect(menu.getByRole("menuitem")).toHaveText(["Fichier", "Dossier", "Commit", "Commande shell", "Configuration de Yaide", "Planification"]);
   await expect(menu.getByRole("menuitem", { name: "Fichier" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
@@ -1576,6 +1576,48 @@ test("REQ163_AC1_AC2_AC6_AC9_parcours_128_129_declencheurs_de_la_fiche", async (
   await enregistrer.click();
   await expect(colonne.getByText("Agent « Relecteur » enregistré.")).toBeVisible();
   expect(lire().declencheurs).toEqual([cinq[0], cinq[1], cinq[3], cinq[4]]);
+});
+
+test("REQ174_AC6_fiche_a_cinq_declencheurs_defilee_en_bas_le_menu_des_six_commandes_est_entier_au_dessus_du_bouton", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
+  const dossier = depotAgent();
+  const dossierAgent = path.join(dossier, ".yaide", "agents", "relecteur");
+  fs.mkdirSync(dossierAgent, { recursive: true });
+  const cinq = [
+    { type: "fichier", chemin: "docs/a.md" },
+    { type: "dossier", chemin: "src" },
+    { type: "commit" },
+    { type: "commande", texte: "cargo test" },
+    { type: "planification", cron: "0 9 * * 1-5" },
+  ];
+  fs.writeFileSync(path.join(dossierAgent, "agent.json"), JSON.stringify({ nom: "Relecteur", avatar: "", couleur: "vert", declencheurs: cinq }));
+  yaide = await lancerYaide({ dossier });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  const colonne = page.locator("aside.cadre-agent");
+  await page.getByRole("button", { name: "Agents", exact: true }).click();
+  await colonne.getByRole("button", { name: "Modifier Relecteur" }).click();
+  const ajouter = colonne.getByRole("button", { name: "Ajouter un déclencheur" });
+  await ajouter.scrollIntoViewIfNeeded();
+  await ajouter.evaluate((b) => {
+    for (let e = b.parentElement; e; e = e.parentElement) e.scrollTop = e.scrollHeight;
+  });
+  await ajouter.click();
+  const menu = page.getByRole("menu", { name: "Ajouter un déclencheur" });
+  const items = menu.getByRole("menuitem");
+  await expect(items).toHaveCount(6);
+  await expect(items.last()).toHaveText("Planification");
+  const bouton = await ajouter.boundingBox();
+  const boite = await menu.boundingBox();
+  const fenetre = page.viewportSize();
+  expect(boite.y).toBeGreaterThanOrEqual(0);
+  expect(boite.y + boite.height).toBeLessThanOrEqual(fenetre.height);
+  expect(boite.y + boite.height).toBeLessThanOrEqual(bouton.y + 1);
+  for (let i = 0; i < 6; i++) {
+    const m = await items.nth(i).boundingBox();
+    expect(m.y).toBeGreaterThanOrEqual(boite.y - 1);
+    expect(m.y + m.height).toBeLessThanOrEqual(boite.y + boite.height + 1);
+  }
 });
 
 test("REQ173_AC1_parcours_133_toasts_du_debut_et_de_la_fin_d_un_tour_declenche", async ({ page, browserName }) => {

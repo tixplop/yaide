@@ -5,6 +5,9 @@ use super::agents::{Agent, Agents, Declencheur};
 use super::conversation::{ErreurEnvoi, Gestionnaire, Refus};
 use super::outils_config::{lire_config, lire_interface};
 use crate::shells::Commande;
+use chrono::{NaiveDateTime, Timelike};
+use croner::parser::{CronParser, Seconds};
+use croner::Cron;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -121,6 +124,43 @@ pub struct Etat {
     dossiers: HashMap<(String, String), HashMap<String, Empreinte>>,
     /// Parties de la configuration à la dernière vérification (REQ-168) ; `None` avant la première.
     config: Option<Vec<(&'static str, Value)>>,
+    /// (dossier de l'agent, expression) → dernière minute vérifiée (REQ-174).
+    minutes: HashMap<(String, String), NaiveDateTime>,
+}
+
+/// Lit une expression cron à cinq champs (REQ-174, DEC-112) ; `None` si elle est illisible.
+pub fn lire_cron(expression: &str) -> Option<Cron> {
+    if expression.split_whitespace().count() != 5 {
+        return None;
+    }
+    CronParser::builder()
+        .seconds(Seconds::Disallowed)
+        .build()
+        .parse(expression)
+        .ok()
+}
+
+/// L'évènement d'une planification atteinte à cette minute, une seule fois par minute.
+/// La minute est notée même quand l'agent est muet : une minute passée n'est jamais rattrapée.
+fn relever_planification(
+    etat: &mut Etat,
+    agent: &Agent,
+    expression: &str,
+    maintenant: NaiveDateTime,
+    muet: bool,
+) -> Option<String> {
+    let minute = maintenant.with_second(0)?.with_nanosecond(0)?;
+    let cle = (agent.dossier.clone(), expression.to_string());
+    if etat.minutes.insert(cle, minute) == Some(minute) {
+        return None;
+    }
+    if muet || !lire_cron(expression)?.is_time_matching(&minute).ok()? {
+        return None;
+    }
+    Some(format!(
+        "Évènement : planification `{expression}` atteinte.\nHeure : {}",
+        minute.format("%Y-%m-%d %H:%M")
+    ))
 }
 
 /// Les fichiers d'un dossier du projet, sans les fichiers ignorés par git, `.git/` ni `.yaide/`.
@@ -397,6 +437,7 @@ pub fn rafraichir(etat: &mut Etat, projet: &Path, agent: &Agent) {
 
 /// Une vérification : les messages à soumettre, un par agent concerné.
 /// `occupe` dit si un agent a un tour en cours ; `actif` si la fonction `agents` l'est.
+#[allow(clippy::too_many_arguments)]
 pub fn verifier(
     etat: &mut Etat,
     projet: &Path,
@@ -405,6 +446,7 @@ pub fn verifier(
     occupe: impl Fn(&str) -> bool,
     commandes: &[Commande],
     config: &Value,
+    maintenant: NaiveDateTime,
 ) -> Vec<(Agent, String)> {
     let mut sortie = Vec::new();
     let mut vivantes = HashSet::new();
@@ -432,7 +474,7 @@ pub fn verifier(
             if let Some(e) = verifier_un(etat, projet, a, d, &mut vivantes) {
                 evenements.push(e);
             }
-            if muet {
+            if muet && d.genre != "planification" {
                 continue;
             }
             match d.genre.as_str() {
@@ -447,6 +489,10 @@ pub fn verifier(
                             .map(texte_commande),
                     );
                 }
+                "planification" => {
+                    let expression = d.cron.as_deref().unwrap_or("");
+                    evenements.extend(relever_planification(etat, a, expression, maintenant, muet));
+                }
                 _ => {}
             }
         }
@@ -456,6 +502,14 @@ pub fn verifier(
     }
     etat.fichiers.retain(|k, _| vivantes.contains(k));
     etat.dossiers.retain(|k, _| vivantes.contains(k));
+    etat.minutes.retain(|(dossier, expression), _| {
+        agents.iter().any(|a| {
+            a.dossier == *dossier
+                && a.declencheurs
+                    .iter()
+                    .any(|d| d.cron.as_deref() == Some(expression))
+        })
+    });
     sortie
 }
 
@@ -556,6 +610,7 @@ pub fn passer(
         |d| gestionnaire.agent_occupe(d),
         &commandes,
         &config,
+        chrono::Local::now().naive_local(),
     );
     drop(etat);
     for (agent, texte) in messages {
@@ -579,5 +634,137 @@ mod tests_journal {
             evenement_court("Évènement : fichier `docs/a.md` modifié.\nx"),
             "fichier `docs/a.md` modifié"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests_planification {
+    use super::*;
+    use chrono::NaiveDate;
+
+    fn agent(dossier: &str, cron: &str) -> Agent {
+        Agent {
+            dossier: dossier.into(),
+            nom: dossier.into(),
+            avatar: String::new(),
+            couleur: "vert".into(),
+            profil: None,
+            declencheurs: vec![Declencheur {
+                genre: "planification".into(),
+                chemin: None,
+                texte: None,
+                cron: Some(cron.into()),
+            }],
+        }
+    }
+
+    fn le(jour: u32, h: u32, m: u32, s: u32) -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(2026, 11, jour)
+            .unwrap()
+            .and_hms_opt(h, m, s)
+            .unwrap()
+    }
+
+    /// Une vérification à `t` ; `occupe` dit si l'agent est en plein tour.
+    fn passe(etat: &mut Etat, agents: &[Agent], t: NaiveDateTime, occupe: bool) -> Vec<String> {
+        let projet = std::env::temp_dir().join("yaide-planification-inexistant");
+        verifier(
+            etat,
+            &projet,
+            agents,
+            true,
+            |_| occupe,
+            &[],
+            &serde_json::json!({}),
+            t,
+        )
+        .into_iter()
+        .map(|(_, texte)| texte)
+        .collect()
+    }
+
+    #[test]
+    fn req174_ac3_lundi_0930_une_fois_samedi_et_0931_rien() {
+        let a = [agent("relecteur", "30 9 * * 1-5")];
+        let mut etat = Etat::default();
+        // Lundi 2026-11-23.
+        let r = passe(&mut etat, &a, le(23, 9, 30, 1), false);
+        assert_eq!(
+            r,
+            ["Évènement : planification `30 9 * * 1-5` atteinte.\nHeure : 2026-11-23 09:30"]
+        );
+        assert!(passe(&mut etat, &a, le(23, 9, 30, 4), false).is_empty());
+        assert!(passe(&mut etat, &a, le(23, 9, 30, 58), false).is_empty());
+        assert!(passe(&mut etat, &a, le(23, 9, 31, 1), false).is_empty());
+        // Samedi 2026-11-28.
+        assert!(passe(&mut etat, &a, le(28, 9, 30, 1), false).is_empty());
+    }
+
+    #[test]
+    fn req174_ac4_pas_de_15_minutes_agent_occupe_et_demarrage_tardif() {
+        let a = [agent("relecteur", "*/15 * * * *")];
+        let mut etat = Etat::default();
+        // Lancé à 10:07 : rien pour 10:00.
+        assert!(passe(&mut etat, &a, le(23, 10, 7, 0), false).is_empty());
+        assert_eq!(passe(&mut etat, &a, le(23, 10, 15, 0), false).len(), 1);
+        assert!(passe(&mut etat, &a, le(23, 10, 16, 1), false).is_empty());
+        assert_eq!(passe(&mut etat, &a, le(23, 10, 30, 2), false).len(), 1);
+        let mut etat = Etat::default();
+        assert_eq!(passe(&mut etat, &a, le(23, 10, 0, 1), false).len(), 1);
+        // Plein tour de 10:14 à 10:16 : rien pour 10:15, ni pendant ni après.
+        assert!(passe(&mut etat, &a, le(23, 10, 14, 30), true).is_empty());
+        assert!(passe(&mut etat, &a, le(23, 10, 15, 1), true).is_empty());
+        assert!(passe(&mut etat, &a, le(23, 10, 15, 4), true).is_empty());
+        assert!(passe(&mut etat, &a, le(23, 10, 16, 1), false).is_empty());
+        assert!(passe(&mut etat, &a, le(23, 10, 16, 4), false).is_empty());
+        assert_eq!(passe(&mut etat, &a, le(23, 10, 30, 1), false).len(), 1);
+    }
+
+    #[test]
+    fn req174_ac5_expression_illisible_ignoree_les_autres_marchent() {
+        let mut ko = agent("ko", "toutes les heures");
+        ko.declencheurs.push(Declencheur {
+            genre: "planification".into(),
+            chemin: None,
+            texte: None,
+            cron: None,
+        });
+        let a = [ko, agent("ok", "30 9 * * *")];
+        let mut etat = Etat::default();
+        let projet = std::env::temp_dir().join("yaide-planification-inexistant");
+        let r = verifier(
+            &mut etat,
+            &projet,
+            &a,
+            true,
+            |_| false,
+            &[],
+            &serde_json::json!({}),
+            le(23, 9, 30, 1),
+        );
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].0.dossier, "ok");
+    }
+
+    #[test]
+    fn req174_lire_cron_cinq_champs_noms_anglais() {
+        for ok in [
+            "0 9 * * 1-5",
+            "*/10 * * * *",
+            "0 0 1,15 jan mon",
+            "5 4 * * sun",
+        ] {
+            assert!(lire_cron(ok).is_some(), "{ok}");
+        }
+        for ko in [
+            "",
+            "* * *",
+            "61 * * * *",
+            "toutes les heures",
+            "0 0 9 * * 1",
+            "@daily",
+        ] {
+            assert!(lire_cron(ko).is_none(), "{ko}");
+        }
     }
 }

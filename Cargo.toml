@@ -21,6 +21,8 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls-no-p
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rmcp = { version = "=3.9.0", default-features = false, features = ["client", "transport-async-rw"] }
+croner = { version = "5.0.0", default-features = false, features = ["chrono"] }
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 
 [dev-dependencies]
 tungstenite = "0.29"

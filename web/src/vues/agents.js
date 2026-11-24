@@ -16,6 +16,7 @@ const ERREURS = {
 };
 const ERREUR_CHEMIN = "Donnez un chemin dans le projet.";
 const ERREUR_COMMANDE = "Donnez le texte de la commande.";
+const ERREUR_CRON = "Donnez une expression cron à cinq champs, par exemple 0 9 * * 1-5.";
 // Types de déclencheur (REQ-163) : `type` écrit dans `agent.json`, titre, réglage, aide.
 const TYPES = [
   { type: "fichier", titre: "Fichier", reglage: "chemin", aide: "Depuis la racine du projet." },
@@ -23,7 +24,42 @@ const TYPES = [
   { type: "commit", titre: "Commit", aide: "À chaque commit du dépôt." },
   { type: "commande", titre: "Commande shell", reglage: "texte", aide: "Une commande d'un shell de Yaide qui contient ce texte. Les majuscules comptent." },
   { type: "configuration", titre: "Configuration de Yaide", aide: "À chaque changement des providers, des profils, des serveurs MCP ou des préférences." },
+  { type: "planification", titre: "Planification", reglage: "cron", aide: "Expression cron : minute, heure, jour du mois, mois, jour de la semaine, à l'heure de la machine de Yaide." },
 ];
+// Champs d'une expression cron : bornes, et noms anglais acceptés (REQ-174).
+const NOMS_MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const NOMS_JOURS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const CHAMPS_CRON = [
+  { min: 0, max: 59 },
+  { min: 0, max: 23 },
+  { min: 1, max: 31 },
+  { min: 1, max: 12, noms: NOMS_MOIS, decalage: 1 },
+  { min: 0, max: 7, noms: NOMS_JOURS, decalage: 0 },
+];
+
+/** Une expression cron à cinq champs : `*`, listes, intervalles, pas, noms anglais. */
+function cronValide(expression) {
+  const champs = expression.trim().split(/\s+/);
+  if (champs.length !== 5) return false;
+  return champs.every((champ, i) => {
+    const { min, max, noms, decalage } = CHAMPS_CRON[i];
+    const valeur = (v) => {
+      const n = noms?.indexOf(v.toLowerCase());
+      if (n >= 0) return n + decalage;
+      return /^\d+$/.test(v) ? Number(v) : NaN;
+    };
+    return champ.split(",").every((element) => {
+      const [plage, pas, trop] = element.split("/");
+      if (trop !== undefined || (pas !== undefined && !/^[1-9]\d*$/.test(pas))) return false;
+      if (plage === "*") return true;
+      const [a, b, autre] = plage.split("-");
+      if (autre !== undefined || a === "") return false;
+      const debut = valeur(a);
+      const fin = b === undefined ? debut : valeur(b);
+      return debut >= min && fin <= max && debut <= fin;
+    });
+  });
+}
 const AIDE_DECLENCHEURS = "À chaque évènement, l'agent le reçoit dans une nouvelle conversation.";
 
 /** Un chemin relatif, non vide, qui ne sort pas du projet (`.` : tout le projet). */
@@ -305,7 +341,7 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
     if (f.resultat) f.formulaire.append(message({ texte: f.resultat.texte, variante: f.resultat.variante }));
   }
 
-  /** Le `fieldset` « Déclencheurs » : aide, liste d'éléments, bouton qui ouvre le menu des cinq types. */
+  /** Le `fieldset` « Déclencheurs » : aide, liste d'éléments, bouton qui ouvre le menu des six types. */
   function sectionDeclencheurs(f, entrer, effacerResultat) {
     const section = document.createElement("fieldset");
     section.className = "agents-declencheurs";
@@ -374,7 +410,10 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
     if (compterCaracteres(fiche.avatar.trim()) > 2) e.avatar = ERREURS.avatar;
     for (const d of fiche.declencheurs) {
       const reglage = TYPES.find((t) => t.type === d.type).reglage;
-      const refus = reglage === "chemin" ? !cheminDuProjet(d.valeur) && ERREUR_CHEMIN : reglage === "texte" && !d.valeur.trim() && ERREUR_COMMANDE;
+      const refus =
+        reglage === "chemin" ? !cheminDuProjet(d.valeur) && ERREUR_CHEMIN
+        : reglage === "texte" ? !d.valeur.trim() && ERREUR_COMMANDE
+        : reglage === "cron" && !cronValide(d.valeur) && ERREUR_CRON;
       if (refus) (e.declencheurs ??= {})[d.id] = refus;
     }
     return e;
@@ -398,7 +437,7 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
     if (f.declencheurs.length) {
       saisie.declencheurs = f.declencheurs.map((d) => {
         const reglage = TYPES.find((t) => t.type === d.type).reglage;
-        return reglage ? { type: d.type, [reglage]: reglage === "chemin" ? d.valeur.trim() : d.valeur } : { type: d.type };
+        return reglage ? { type: d.type, [reglage]: reglage === "texte" ? d.valeur : d.valeur.trim() } : { type: d.type };
       });
     }
     const actif = Object.keys(f.entrees).find((c) => f.entrees[c] === document.activeElement);

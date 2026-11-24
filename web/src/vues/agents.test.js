@@ -334,7 +334,9 @@ const AIDES = {
   Commit: "À chaque commit du dépôt.",
   "Commande shell": "Une commande d'un shell de Yaide qui contient ce texte. Les majuscules comptent.",
   "Configuration de Yaide": "À chaque changement des providers, des profils, des serveurs MCP ou des préférences.",
+  Planification: "Expression cron : minute, heure, jour du mois, mois, jour de la semaine, à l'heure de la machine de Yaide.",
 };
+const REFUS_CRON = "Donnez une expression cron à cinq champs, par exemple 0 9 * * 1-5.";
 
 async function ficheRelecteur(agent = RELECTEUR) {
   const o = await ouvrir([agent]);
@@ -349,7 +351,7 @@ async function ficheRelecteur(agent = RELECTEUR) {
   return { ...o, ajouter, choisir, retirer };
 }
 
-test("REQ163_AC6_section_menu_des_cinq_types_et_echap", async () => {
+test("REQ163_AC6_section_menu_des_six_types_et_echap", async () => {
   const { c, ajouter } = await ficheRelecteur();
   const section = [...c.querySelectorAll("fieldset")].find((f) => f.querySelector("legend")?.textContent === "Déclencheurs");
   expect(section.previousElementSibling.textContent).toContain("Fichiers");
@@ -498,4 +500,50 @@ test("REQ163_AC3_AC9_refus_sous_le_champ_alert_invalid_focus_et_rien_d_ecrit", a
   bouton("Enregistrer").click();
   await attendre();
   expect(api.etat.envoyes[0].declencheurs).toEqual([{ type: "dossier", chemin: "." }, { type: "commande", texte: "cargo" }]);
+});
+
+test("REQ174_AC1_AC163_6_planification_derniere_du_menu_champ_nomme_focus_aide_et_saisie", async () => {
+  const { api, c, ajouter, choisir, bouton } = await ficheRelecteur();
+  ajouter.focus();
+  ajouter.click();
+  const items = [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map((x) => x.textContent);
+  expect(items).toHaveLength(6);
+  expect(items.at(-1)).toBe("Planification");
+  document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  choisir("Planification");
+  const ol = c.querySelector('ol[aria-label="Déclencheurs"]');
+  const champ = ol.querySelector("input");
+  expect(ol.children[0].querySelector(".ya-element-titre").textContent).toContain("Planification");
+  expect(champ.labels[0].textContent).toBe("Déclencheur 1 : Planification");
+  expect(champ.value).toBe("");
+  expect(document.activeElement).toBe(champ);
+  expect(document.getElementById(champ.getAttribute("aria-describedby")).textContent).toBe(AIDES.Planification);
+  taper(champ, " 0 9 * * 1-5 ");
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(api.etat.envoyes[0].declencheurs).toEqual([{ type: "planification", cron: "0 9 * * 1-5" }]);
+});
+
+test("REQ174_AC2_AC6_refus_a_la_place_de_l_aide_invalid_describedby_focus_et_rien_d_ecrit", async () => {
+  const { api, c, choisir, bouton } = await ficheRelecteur();
+  choisir("Planification");
+  const champ = () => c.querySelector("ol input");
+  for (const mauvais of ["toutes les heures", "61 * * * *", "* * *", "", "0 9 * * 1-5 2026", "*/0 * * * *"]) {
+    taper(champ(), mauvais);
+    bouton("Enregistrer").click();
+    await attendre();
+    const message = document.getElementById(champ().getAttribute("aria-describedby"));
+    expect(message.textContent, mauvais).toBe(REFUS_CRON);
+    expect(message.getAttribute("role")).toBe("alert");
+    expect(champ().getAttribute("aria-invalid")).toBe("true");
+    expect(c.textContent).not.toContain("Expression cron :");
+    expect(document.activeElement).toBe(champ());
+  }
+  expect(api.enregistrerAgent).not.toHaveBeenCalled();
+  for (const bon of ["*/10 9 1,15 jan mon-fri", "0 0 * * 7", "5 4 * * SUN"]) {
+    taper(champ(), bon);
+    bouton("Enregistrer").click();
+    await attendre();
+    expect(api.etat.envoyes.at(-1).declencheurs).toEqual([{ type: "planification", cron: bon }]);
+  }
 });

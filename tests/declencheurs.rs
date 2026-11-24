@@ -442,6 +442,46 @@ fn REQ163_AC3_refus_par_champ_et_par_rang_rien_ecrit() {
 }
 
 #[test]
+fn REQ174_AC1_planification_ecrite_dans_agent_json_et_relue_apres_redemarrage() {
+    let s = lancer("p1");
+    let decl = json!([{ "type": "planification", "cron": "0 9 * * 1-5" }]);
+    let r = agent(&s, "Relecteur", decl.clone());
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert_eq!(json_fiche(&s, "relecteur")["declencheurs"], decl);
+    let s = redemarrer(s);
+    let l = s.appel("GET", "/api/agent/agents", &Value::Null).json();
+    assert_eq!(l["agents"][0]["declencheurs"], decl);
+}
+
+#[test]
+fn REQ174_AC2_quatre_saisies_refusees_rien_ecrit() {
+    let s = lancer("p2");
+    for cron in [
+        "toutes les heures",
+        "61 * * * *",
+        "* * *",
+        "",
+        "0 9 * * 1-5 2026",
+    ] {
+        let r = agent(
+            &s,
+            "Relecteur",
+            json!([{ "type": "commit" }, { "type": "planification", "cron": cron }]),
+        );
+        assert_eq!(r.code, 400, "{cron} : {}", r.corps);
+        assert_eq!(
+            r.json()["erreurs"],
+            json!([{ "champ": "cron", "declencheur": 1 }])
+        );
+    }
+    let r = agent(&s, "Relecteur", json!([{ "type": "planification" }]));
+    assert_eq!(r.code, 400, "{}", r.corps);
+    assert!(!s.yaide().join("agents").exists());
+    let ok = json!([{ "type": "planification", "cron": "*/10 9 1,15 jan mon-fri" }]);
+    assert_eq!(agent(&s, "Relecteur", ok).code, 200);
+}
+
+#[test]
 fn REQ164_AC1_AC2_AC5_REQ165_AC1_une_conversation_par_agent_a_l_ecoute() {
     let (adresse, recues) = faux_provider(vec![]);
     let s = lancer("d4");
