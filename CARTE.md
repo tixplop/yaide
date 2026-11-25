@@ -40,7 +40,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/index.html — page unique ; web/dist/ est produit par esbuild
 - web/src/main.js — démarrage : thème, connexion, vue principale — titre
 - web/src/theme-initial.js — thème appliqué avant le premier affichage
-- web/src/api.js — appels HTTP et WebSocket vers le serveur (dont `declenchements`, REQ-173) — importerChemin (REQ-180), copierVersWindows (REQ-181), lireEnvironnements (REQ-182), info, sessionValide, connexion
+- web/src/api.js — appels HTTP et WebSocket vers le serveur (dont `declenchements`, REQ-173) — importerChemin (REQ-180), copierVersWindows (REQ-181), lireEnvironnements (REQ-182), racineOpencode (appels d'opencode par l'environnement de la session, REQ-184), info, sessionValide, connexion
 - web/src/connexion.js — surveille la connexion au serveur — surveiller
 - web/src/stockage.js, brouillons.js, disque.js — IndexedDB, modifications gardées, décision face au disque — lire/ecrire, decider, decisionDisque
 - web/src/disposition.js — arbre des groupes de l'éditeur (diviser, tailles) — couper, retirerGroupe, valider
@@ -50,7 +50,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/statuts.js — mots du statut git — statutsDe
 - web/src/worktree.js — worktree choisi, partagé entre vues — choisir, abonner
 - web/src/version.js — version et mise à jour dans l'interface — suivreVersion
-- web/src/opencode.js — état des sessions opencode (modèle, attentes, contexte) — abonner, modeleSession
+- web/src/opencode.js — état des sessions opencode (modèle, attentes, contexte ; environnement de chaque session, un flux d'événements et un catalogue de modèles par serveur, REQ-184) — abonner, modeleSession
 - web/src/opencode-captures/ — captures JSON d'opencode pour les tests
 - web/src/reglages-interface.js — `.yaide/interface.json` — analyser, charger, serialiser
 - web/src/couleurs-markdown.js — couleurs réglables du rendu markdown — analyser, appliquer, charger
@@ -79,7 +79,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/ui/tableau-texte.js — texte d'une boîte ou d'un lien et styles d'une partie du texte : rendu, lecture du DOM de la saisie, bascule, couleur, insertion (REQ-146) — rendreTexte, lireTexte, basculer
 - web/src/ui/tableau-calculs.js, tableau-dessin.js, tableau-edition.js, tableau-outils.js — géométrie (dont `centrerObjet`, REQ-161, la zone de texte des symboles, `connecteursAffiches` : ronds à 6 px hors du côté de « Point » et « Barre », points d'attache `connecteurs` au bord, `decalageAnneau`, REQ-156), rendu SVG (dont le dessin des symboles, REQ-149, celui de « Point » et « Barre » pleins avec anneau du choix, cible et zones de prise, REQ-156, `anneauxPleines`, et les classes `align-*` `valign-*` du texte des boîtes, REQ-150), copier/coller/plan/rattachement, boîte à outils (dont le bouton « Symboles » et son dialogue, REQ-149, « Point » et « Barre » sans saisie de texte, REQ-156, et le rang « Alignement » et « Position verticale du texte », REQ-133, REQ-150) — extremitesFleche, milieuTrace, dessinBoite, coller, boiteOutils
 - web/src/vues/principale.js, principale.aides.js (aides des tests) — fenêtre : rails, panneaux, zones, Ctrl+P ; `dire`, la coupure (cause `connexion`) et les fichiers illisibles passent par les toasts, REQ-172 ; journal des tours déclenchés relu avec l'état git toutes les 3 s, un toast par entrée, REQ-173 — vuePrincipale
-- web/src/vues/editeur.js — groupes d'onglets : fichiers, images, whiteboards (zoneWhiteboard), sessions, Ctrl+F des onglets markdown (REQ-159), CSV (REQ-160) et whiteboard lisible (REQ-161) ; sur un `.csv`, bouton « Mode hybride » et message `role="alert"` « Tableur indisponible » dans `questionOnglet` (REQ-157) ; whiteboards `![[x.jdiag]]` d'un markdown lus par la route de l'aperçu (REQ-179) ; sur un `.html`, « Mode hybride » et « Aperçu » s'excluent, page seule à l'ouverture, focus sur l'onglet (REQ-058, REQ-062, REQ-083) — vueEditeur
+- web/src/vues/editeur.js — groupes d'onglets : fichiers, images, whiteboards (zoneWhiteboard), sessions, Ctrl+F des onglets markdown (REQ-159), CSV (REQ-160) et whiteboard lisible (REQ-161) ; sur un `.csv`, bouton « Mode hybride » et message `role="alert"` « Tableur indisponible » dans `questionOnglet` (REQ-157) ; onglets opencode avec leur `environnement` gardé, repris par leurs sous-agents (REQ-184) ; whiteboards `![[x.jdiag]]` d'un markdown lus par la route de l'aperçu (REQ-179) ; sur un `.html`, « Mode hybride » et « Aperçu » s'excluent, page seule à l'ouverture, focus sur l'onglet (REQ-058, REQ-062, REQ-083) — vueEditeur
 - web/src/vues/depot-onglets.js — dépôt et persistance des onglets de l'éditeur — depotOnglets
 - web/src/vues/fichiers.js, git.js, recherche.js, ouverture.js — vues Fichiers, Git, Recherche, ouverture rapide — vueFichiers, vueGit, vueOuverture
 - web/src/vues/explorateur.js — lit les fichiers et dossiers d'un collage venu de l'explorateur du bureau (REQ-180) — lireElements
@@ -132,7 +132,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-081 réglages communs à tous les projets → src/agent/reglages.rs
 - REQ-095, REQ-096 serveurs MCP → src/agent/mcp.rs, web/src/vues/serveurs-mcp.js (REQ-182, REQ-054, REQ-070, REQ-116, REQ-118, REQ-177 : panneau « Environnements » et sa commande de Ctrl+P → vues/environnements.js, ouverture.js, principale.js)
 - REQ-068, REQ-073, REQ-183 session Claude (REQ-183 : lancée avec un environnement ; REQ-182 : `environnements.json`) → src/shells.rs, environnements.rs, serveur.rs, web/src/api.js, web/src/vues/claude.js, shells.js, principale.js (menus du clic droit), tests/environnements.rs, e2e/environnements.spec.js
-- REQ-072, REQ-074 à REQ-077, REQ-084, REQ-088 à REQ-091 session opencode → src/opencode.rs, web/src/opencode.js, vues/opencode.js, vues/sessions-opencode.js, ui/completion.js
+- REQ-072, REQ-074 à REQ-077, REQ-084, REQ-088 à REQ-091, REQ-184 session opencode (REQ-184 : avec un environnement) → src/opencode.rs, web/src/opencode.js, vues/opencode.js, vues/editeur.js, vues/principale.js, vues/sessions-opencode.js, ui/completion.js
 - REQ-087, REQ-101 liens de fichiers et de documents → web/src/references.js, ui/apercu.js
 - REQ-102 copier-coller en texte simple → web/src/ui/copie.js
 - REQ-103, REQ-104, REQ-105, REQ-106, REQ-107, REQ-108, REQ-109, REQ-110, REQ-111, REQ-112, REQ-113, REQ-114, REQ-124, REQ-176 base de connaissance → src/connaissance.rs, decoupage.rs, web/src/vues/connaissance.js, ajout-connaissance.js

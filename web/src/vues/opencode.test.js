@@ -86,10 +86,10 @@ function suite(etat, id) {
   return etat.resultat;
 }
 
-async function monter({ modele, demandes, choix, contexte, sousAgent = false, api, surOuvrir = vi.fn(), surQuestion = vi.fn(), ouvrirReference } = {}) {
+async function monter({ modele, demandes, choix, contexte, environnement, sousAgent = false, api, surOuvrir = vi.fn(), surQuestion = vi.fn(), ouvrirReference } = {}) {
   const { oc, etat } = fauxOc({ modele, demandes, choix, contexte });
   const apiFausse = api ?? { envoyer: vi.fn(async () => ({ donnees: null })), interrompre: vi.fn(async () => ({ donnees: null })) };
-  const vue = vueOpencode({ sessionId: "s1", sousAgent, surOuvrir, surQuestion, ouvrirReference, oc, api: apiFausse });
+  const vue = vueOpencode({ sessionId: "s1", environnement, sousAgent, surOuvrir, surQuestion, ouvrirReference, oc, api: apiFausse });
   vues.push(vue);
   document.body.append(vue.corps);
   await vi.advanceTimersByTimeAsync(0);
@@ -180,6 +180,21 @@ describe("vue opencode", () => {
     etat.changer();
     expect(fil.textContent).toContain("et la fin");
     expect(document.body.textContent).not.toContain("Écrivez un message pour commencer.");
+  });
+
+  it("REQ184_AC2_message_et_arret_partent_avec_l_environnement_de_l_onglet_et_l_abonnement_aussi", async () => {
+    const { oc, api } = await monter({ environnement: "prod", modele: { enCours: true, entrees: [user("m1", "go")] } });
+    expect(oc.abonner).toHaveBeenCalledWith("s1", expect.any(Function), "prod");
+    btn("Arrêter").click();
+    expect(api.interrompre).toHaveBeenCalledWith("s1", "prod");
+  });
+
+  it("REQ184_AC2_envoi_sans_tour_en_cours_avec_l_environnement", async () => {
+    const { api } = await monter({ environnement: "prod" });
+    taper("bonjour");
+    entree();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.envoyer).toHaveBeenCalledWith("s1", "bonjour", undefined, "prod");
   });
 
   it("REQ072_AC6_arreter_puis_arrete_et_envoi_revient", async () => {

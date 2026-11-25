@@ -58,7 +58,7 @@ const avecApercu = (chemin) => /\.(md|markdown|html|htm|svg|mmd)$/i.test(chemin)
  * Un onglet Agent (REQ-078) l'est aussi : `{ conversationAgent: true, numero, conversation }` (`conversation` : `null` tant que rien n'est écrit).
  * Le champ `agent` d'un onglet désigne un sous-agent opencode : l'onglet Agent a son propre drapeau.
  * Chaque onglet a un `groupe` ; `barre`, `fil`, `code` et `question` sont ceux du premier groupe, `groupes()` rend l'arbre de tous.
- * Rend `{ definirStatuts(statuts), barre, fil, code, groupes(), questions(), deplacer(id, groupe, zone), lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirAgent({ equipe, message }), relireReglagesAgents(), ouvrirOpencode({ sessionId, titre }), renomme(…), supprime(…), restaurer(), detruire() }`.
+ * Rend `{ definirStatuts(statuts), barre, fil, code, groupes(), questions(), deplacer(id, groupe, zone), lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirAgent({ equipe, message }), relireReglagesAgents(), ouvrirOpencode({ sessionId, titre, environnement }), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
 export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {}, surCtrlS = () => {}, surGroupes = () => {}, surLien = () => {}, claude = true, agents = true }) {
   const liste = []; // { chemin, groupe, zone, disque (texte de base), version (de base), apercu, hybride, modifie, question, supprime, avis }
@@ -273,7 +273,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   function garde(o) {
     if (o.claude) return { groupe: o.groupe, claude: true, id: o.id, numero: o.numero, instance: o.instance };
     if (o.conversationAgent) return { groupe: o.groupe, conversationAgent: true, numero: o.numero, conversation: o.conversation };
-    if (o.opencode) return o.agent === undefined ? { groupe: o.groupe, opencode: true, id: o.id, numero: o.numero, ...(o.titre === undefined ? {} : { titre: o.titre }) } : { groupe: o.groupe, opencode: true, id: o.id, agent: o.agent, titre: o.titre };
+    if (o.opencode) {
+      const env = o.environnement === undefined ? {} : { environnement: o.environnement };
+      return o.agent === undefined ? { groupe: o.groupe, opencode: true, id: o.id, numero: o.numero, ...(o.titre === undefined ? {} : { titre: o.titre }), ...env } : { groupe: o.groupe, opencode: true, id: o.id, agent: o.agent, titre: o.titre, ...env };
+    }
     if (o.image) return { groupe: o.groupe, chemin: o.chemin };
     return { groupe: o.groupe, chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) };
   }
@@ -988,8 +991,9 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   // ---- Onglets opencode (REQ-072) ----
 
-  function creerOpencode({ id, numero, agent, titre }, apres) {
+  function creerOpencode({ id, numero, agent, titre, environnement }, apres) {
     const o = { opencode: true, id, groupe: courant, chemin: OPENCODE + id, modifie: false, marque: false };
+    if (typeof environnement === "string" && environnement) o.environnement = environnement; // serveur de l'environnement (REQ-184)
     if (agent === undefined) {
       o.numero = numero;
       if (typeof titre === "string" && titre) o.titre = titre; // session rouverte par « Sessions opencode »
@@ -997,8 +1001,9 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     o.vue = vueOpencode({
       sessionId: id,
       cheminProjet,
+      environnement: o.environnement,
       sousAgent: agent !== undefined,
-      surOuvrir: ouvrirSousAgent,
+      surOuvrir: (sous) => ouvrirSousAgent({ ...sous, environnement: o.environnement }),
       ouvrirReference: (ref, lien) => ouvrirReference(o, ref, lien),
       surQuestion: (oui) => {
         if (o.marque === oui) return;
@@ -1015,17 +1020,17 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   }
 
   /** Ouvre « opencode <n> » (plus petit numéro libre) à droite des onglets, actif, le focus dans « Message à opencode ». */
-  function ouvrirOpencode({ sessionId, titre }) {
+  function ouvrirOpencode({ sessionId, titre, environnement }) {
     dernierGeste++;
-    const o = trouver(OPENCODE + sessionId) ?? creerOpencode({ id: sessionId, titre, numero: plusPetitNumeroLibre(liste.filter((x) => x.numero !== undefined && x.opencode).map((x) => x.numero)) });
+    const o = trouver(OPENCODE + sessionId) ?? creerOpencode({ id: sessionId, titre, environnement, numero: plusPetitNumeroLibre(liste.filter((x) => x.numero !== undefined && x.opencode).map((x) => x.numero)) });
     activerOpencode(o);
   }
 
   /** Ouvre l'onglet d'un sous-agent à droite de l'onglet actif, ou active celui qui existe. */
-  function ouvrirSousAgent({ id, agent, titre }) {
+  function ouvrirSousAgent({ id, agent, titre, environnement }) {
     dernierGeste++;
     const i = liste.findIndex((x) => x.chemin === actif);
-    const o = trouver(OPENCODE + id) ?? creerOpencode({ id, agent, titre }, i + 1);
+    const o = trouver(OPENCODE + id) ?? creerOpencode({ id, agent, titre, environnement }, i + 1);
     activerOpencode(o);
   }
 

@@ -1185,3 +1185,62 @@ describe("occupation du contexte (REQ-076)", () => {
     expect(oc.contexteSession("ses_a")).toEqual({ tokens: 210000, fenetre: 200000, pourcent: 105 });
   });
 });
+
+describe("sessions avec un environnement (REQ-184)", () => {
+  /** Faux relais : note chaque requête ; les sessions `ep` (parent de `ef`) et `ss` (sans environnement) existent. */
+  function relais() {
+    const appels = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url, options = {}) => {
+        const u = String(url);
+        appels.push(`${options.method ?? "GET"} ${u}`);
+        if (/\/session\?parentID=ep$/.test(u)) return reponse(200, { data: [{ id: "ef", parentID: "ep" }] });
+        if (/\/session\?parentID=/.test(u)) return reponse(200, { data: [] });
+        if (/\/message/.test(u)) return reponse(200, { data: [], cursor: {} });
+        if (/\/permission$|\/form$/.test(u)) return reponse(200, { data: [] });
+        if (/\/model/.test(u)) return reponse(200, { data: [] });
+        if (/\/session\/[^/?]+$/.test(u)) return reponse(200, { data: { id: u.split("/").at(-1) } });
+        return reponse(204);
+      }),
+    );
+    return appels;
+  }
+
+  it("REQ184_AC2_AC3_un_flux_par_environnement_et_chaque_appel_par_la_route_de_son_serveur", async () => {
+    const appels = relais();
+    const finProd = oc.abonner("ep", vi.fn(), "prod");
+    const finSans = oc.abonner("ss", vi.fn());
+    expect(FauxEventSource.instances.map((e) => e.url)).toEqual(["/api/opencode/env/prod/api/event", "/api/opencode/api/event"]);
+    const [fluxProd, fluxSans] = FauxEventSource.instances;
+    fluxProd.ouvrir();
+    await oc.pret("ep");
+    // Le flux de prod ne lance que les sessions de prod, y compris les sous-agents (leur historique, leurs demandes).
+    expect(appels.some((a) => a.includes("/session/ss"))).toBe(false);
+    expect(appels).toContain("GET /api/opencode/env/prod/api/session/ep");
+    expect(appels).toContain("GET /api/opencode/env/prod/api/session?parentID=ep");
+    expect(appels).toContain("GET /api/opencode/env/prod/api/session/ef/permission");
+    expect(appels).toContain("GET /api/opencode/env/prod/api/session/ef/form");
+    expect(appels.some((a) => a.startsWith("GET /api/opencode/api/"))).toBe(false);
+    fluxSans.ouvrir();
+    await oc.pret("ss");
+    expect(appels).toContain("GET /api/opencode/api/session/ss");
+    // Une autorisation, une réponse de formulaire et un choix de modèle passent par le serveur de leur onglet.
+    oc.abonner("ef", vi.fn(), "prod");
+    await oc.repondreAutorisation("ep", "p1", "once");
+    await oc.repondreQuestion("ep", "f1", { a: 1 });
+    await oc.ignorerQuestion("ep", "f2");
+    expect(appels).toContain("POST /api/opencode/env/prod/api/session/ep/permission/p1/reply");
+    expect(appels).toContain("POST /api/opencode/env/prod/api/session/ep/form/f1/reply");
+    expect(appels).toContain("DELETE /api/opencode/env/prod/api/session/ep/form/f2");
+    await oc.repondreAutorisation("ss", "p2", "once");
+    expect(appels).toContain("POST /api/opencode/api/session/ss/permission/p2/reply");
+    // Fermer le dernier onglet de prod ferme son flux seul.
+    finProd();
+    expect(fluxProd.fermee).toBe(false); // « ef » reste abonné à prod
+    finSans();
+    expect(fluxSans.fermee).toBe(true);
+    oc.reinitialiser();
+    expect(fluxProd.fermee).toBe(true);
+  });
+});

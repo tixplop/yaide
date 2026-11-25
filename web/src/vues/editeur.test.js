@@ -2665,3 +2665,29 @@ test("REQ179_AC1_AC3_AC10_whiteboard_lu_par_la_route_de_l_apercu_balise_en_texte
   expect(apercu().textContent).not.toContain("![[plan.jdiag]]");
   expect(document.querySelector("[role=alert]")).toBeNull();
 });
+
+test("REQ184_AC3_AC4_onglet_avec_environnement_garde_son_nom_et_le_donne_a_ses_sous_agents_apres_rechargement", async () => {
+  const { e } = monterOc({}, true);
+  await e.restaurer();
+  e.ouvrirOpencode({ sessionId: "s1", environnement: "prod" });
+  expect(faux.oc[0].environnement).toBe("prod");
+  e.ouvrirOpencode({ sessionId: "s2" });
+  expect(faux.oc[1].environnement).toBeUndefined();
+  faux.oc[0].surOuvrir({ id: "sa1", agent: "explore", titre: "Chercher" });
+  expect(faux.oc[2].environnement).toBe("prod");
+  faux.oc[1].surOuvrir({ id: "sa2", agent: "general", titre: "Lire" });
+  expect(faux.oc[3].environnement).toBeUndefined();
+  const g = await derniereGarde();
+  const parId = (l) => Object.fromEntries(l.map((x) => [x.id, x]));
+  expect(parId(g.liste)).toEqual(parId([
+    { ...ocGarde("s1", 1), environnement: "prod" },
+    { ...saGarde("sa1", "explore", "Chercher"), environnement: "prod" },
+    ocGarde("s2", 2),
+    saGarde("sa2", "general", "Lire"),
+  ]));
+  // Rechargement : les onglets repartent avec leur environnement.
+  gardes(g.liste, "\0oc:s1");
+  const { e: e2 } = monterOc({}, true);
+  await e2.restaurer();
+  expect(Object.fromEntries(faux.oc.map((v) => [v.sessionId, v.environnement]))).toEqual({ s1: "prod", sa1: "prod", s2: undefined, sa2: undefined });
+});

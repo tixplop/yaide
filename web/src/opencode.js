@@ -3,7 +3,6 @@
 // La forme des événements est celle relevée sur opencode 2.2.5 : `e2e/capturer-opencode.js`, `opencode-captures/`.
 import * as api from "./api.js";
 
-const SOURCE = "/api/opencode/api/event";
 const OUTILS_SOUS_AGENT = new Set(["subagent"]);
 const ATTENTE_RELANCE_MS = 2000;
 const CHEMIN = ".yaide/opencode.json";
@@ -18,12 +17,20 @@ const abonnes = new Map();
 /** id de demande → { type: "autorisation" | "question", sessionId, … }, dans l'ordre d'arrivée. */
 const demandes = new Map();
 
-/** Catalogue des modèles, un seul pour la page : `etat` vaut chargement, pret ou illisible. */
-const catalogue = { etat: "chargement", modeles: [], defaut: null, lancees: 0 };
+/** id de session → nom de l'environnement de l'onglet qui la porte (absent : sans environnement, REQ-184). */
+const envs = new Map();
+const envDe = (id) => envs.get(id);
+const cleEnv = (env) => env ?? "";
 
-let source = null;
-let ouvert = false;
-let relance = null;
+/** Catalogue des modèles de chaque serveur (clé : l'environnement) : `etat` vaut chargement, pret ou illisible. */
+const catalogues = new Map();
+function catalogueDe(env) {
+  if (!catalogues.has(cleEnv(env))) catalogues.set(cleEnv(env), { etat: "chargement", modeles: [], defaut: null, lancees: 0 });
+  return catalogues.get(cleEnv(env));
+}
+
+/** Un flux d'événements par serveur utilisé (clé : l'environnement) : `{ env, es, ouvert, relance }`. */
+const flux = new Map();
 
 // --- Aides --------------------------------------------------------------------------------------
 
@@ -246,7 +253,7 @@ function appliquerEvenement(s, ev) {
   return true;
 }
 
-function traiter(ev) {
+function traiter(ev, env) {
   const d = ev?.data;
   if (!d || typeof ev.type !== "string") return;
   let sid = d.sessionID ?? d.form?.sessionID;
@@ -263,7 +270,7 @@ function traiter(ev) {
       break;
     }
     case "model.updated":
-      lireCatalogue();
+      lireCatalogue(env);
       return;
     case "session.renamed":
       info(d.sessionID).titre = d.title;
@@ -382,7 +389,7 @@ async function lireHistorique(id) {
   const donnees = [];
   let curseur = null;
   for (let page = 0; page < 500; page++) {
-    const r = await api.messages(id, curseur);
+    const r = await api.messages(id, curseur, envDe(id));
     if (!r.donnees) return r;
     donnees.push(...(r.donnees.data ?? []));
     const suivant = r.donnees.cursor?.next;
@@ -394,12 +401,13 @@ async function lireHistorique(id) {
 
 /** Les sessions descendantes de `id` (filles, petites-filles…), avec leurs informations. */
 async function descendantes(id, vues = new Set([id])) {
-  const r = await api.sessionsFilles(id);
+  const r = await api.sessionsFilles(id, envDe(id));
   if (!r.donnees) return { erreur: r };
   const tout = [];
   for (const f of r.donnees.data ?? []) {
     if (vues.has(f.id)) continue;
     vues.add(f.id);
+    if (envDe(id) !== undefined) envs.set(f.id, envDe(id));
     noterSession(f);
     tout.push(f.id);
     const sous = await descendantes(f.id, vues);
@@ -460,7 +468,7 @@ async function synchroniserSession(s) {
   const id = s.id;
   const seq = s.execSeq;
   const modelSeq = info(id).modelSeq ?? 0;
-  const [rs, rm, rd] = await Promise.all([api.session(id), lireHistorique(id), descendantes(id)]);
+  const [rs, rm, rd] = await Promise.all([api.session(id, envDe(id)), lireHistorique(id), descendantes(id)]);
   if (rs.disparue || rm.disparue) {
     s.disparue = true;
     notifier(id);
@@ -487,7 +495,7 @@ async function synchroniserSession(s) {
   const lues = new Set();
   await Promise.all(
     famille.map(async (sid) => {
-      const [ra, rq] = await Promise.all([api.autorisations(sid), api.questions(sid)]);
+      const [ra, rq] = await Promise.all([api.autorisations(sid, envDe(id)), api.questions(sid, envDe(id))]);
       for (const p of ra.donnees?.data ?? []) {
         lues.add(p.id);
         demandes.set(p.id, { type: "autorisation", id: p.id, sessionId: p.sessionID, action: p.action, ressources: p.resources ?? [] });
@@ -504,14 +512,15 @@ async function synchroniserSession(s) {
 
 // --- Catalogue des modèles -----------------------------------------------------------------------
 
-function notifierTous() {
-  for (const id of [...abonnes.keys()]) notifier(id);
+function notifierTous(env) {
+  for (const id of [...abonnes.keys()]) if (envDe(id) === env) notifier(id);
 }
 
 /** Relit les modèles et le modèle par défaut ; seule la relecture la plus récente compte. */
-async function lireCatalogue() {
+async function lireCatalogue(env) {
+  const catalogue = catalogueDe(env);
   const numero = ++catalogue.lancees;
-  const [rm, rd] = await Promise.all([api.modelesOpencode(), api.modeleParDefaut()]);
+  const [rm, rd] = await Promise.all([api.modelesOpencode(env), api.modeleParDefaut(env)]);
   if (numero !== catalogue.lancees) return;
   if (rm.donnees && rd.donnees) {
     catalogue.modeles = (rm.donnees.data ?? []).filter((m) => m.enabled);
@@ -520,7 +529,7 @@ async function lireCatalogue() {
   } else {
     catalogue.etat = "illisible";
   }
-  notifierTous();
+  notifierTous(env);
 }
 
 // --- Flux d'événements ---------------------------------------------------------------------------
@@ -532,18 +541,21 @@ function lancer(id) {
   });
 }
 
-function ouvrirSource() {
-  if (source || abonnes.size === 0) return;
-  const es = new EventSource(SOURCE);
-  source = es;
+function ouvrirSource(env) {
+  const cle = cleEnv(env);
+  if (flux.get(cle)?.es || ![...abonnes.keys()].some((id) => envDe(id) === env)) return;
+  const f = flux.get(cle) ?? { env, es: null, ouvert: false, relance: null };
+  flux.set(cle, f);
+  const es = new EventSource(`${api.racineOpencode(env)}/event`);
+  f.es = es;
   es.onopen = () => {
-    ouvert = true;
-    lireCatalogue();
-    for (const id of abonnes.keys()) lancer(id);
+    f.ouvert = true;
+    lireCatalogue(env);
+    for (const id of abonnes.keys()) if (envDe(id) === env) lancer(id);
   };
   es.onmessage = (e) => {
     try {
-      traiter(JSON.parse(e.data));
+      traiter(JSON.parse(e.data), env);
     } catch {
       // Événement illisible : ignoré.
     }
@@ -551,36 +563,40 @@ function ouvrirSource() {
   es.onerror = () => {
     if (es.readyState !== 2) return; // Le navigateur se reconnecte seul.
     es.close();
-    source = null;
-    ouvert = false;
-    catalogue.etat = "illisible";
-    notifierTous();
-    clearTimeout(relance);
-    relance = setTimeout(ouvrirSource, ATTENTE_RELANCE_MS);
+    f.es = null;
+    f.ouvert = false;
+    catalogueDe(env).etat = "illisible";
+    notifierTous(env);
+    clearTimeout(f.relance);
+    f.relance = setTimeout(() => ouvrirSource(env), ATTENTE_RELANCE_MS);
   };
 }
 
-function fermerSource() {
-  clearTimeout(relance);
-  source?.close();
-  source = null;
-  ouvert = false;
+function fermerSource(env) {
+  const f = flux.get(cleEnv(env));
+  if (!f) return;
+  clearTimeout(f.relance);
+  f.es?.close();
+  flux.delete(cleEnv(env));
 }
 
 // --- Interface du module ---------------------------------------------------------------------------
 
 /**
  * Suit une session : `rappel` est appelé à chaque changement de la session, de ses descendantes ou de
- * leurs demandes. Rend la fonction de désabonnement. Un seul flux d'événements sert toute la page.
+ * leurs demandes. Rend la fonction de désabonnement. `environnement` : celui de l'onglet (REQ-184). Un flux
+ * d'événements sert tous les onglets d'un même serveur : un par environnement utilisé, plus celui sans environnement.
  */
-export function abonner(sessionId, rappel) {
+export function abonner(sessionId, rappel, environnement) {
+  if (environnement === undefined) envs.delete(sessionId);
+  else envs.set(sessionId, environnement);
   if (!abonnes.has(sessionId)) abonnes.set(sessionId, new Set());
   abonnes.get(sessionId).add(rappel);
   if (!sessions.has(sessionId)) {
     magasin(sessionId);
-    if (ouvert) lancer(sessionId);
+    if (flux.get(cleEnv(environnement))?.ouvert) lancer(sessionId);
   }
-  ouvrirSource();
+  ouvrirSource(environnement);
   return () => {
     const rappels = abonnes.get(sessionId);
     if (!rappels) return;
@@ -588,7 +604,7 @@ export function abonner(sessionId, rappel) {
     if (rappels.size > 0) return;
     abonnes.delete(sessionId);
     sessions.delete(sessionId);
-    if (abonnes.size === 0) fermerSource();
+    if (![...abonnes.keys()].some((id) => envDe(id) === environnement)) fermerSource(environnement);
   };
 }
 
@@ -666,21 +682,21 @@ function retirer(sessionId, id) {
 
 /** Répond à une autorisation ("once", "always" ou "reject") ; réussie, elle disparaît de tous les onglets. */
 export async function repondreAutorisation(sessionId, id, decision) {
-  const r = await api.repondreAutorisation(sessionId, id, decision);
+  const r = await api.repondreAutorisation(sessionId, id, decision, envDe(sessionId));
   if (!("donnees" in r) && !r.disparue) return r;
   retirer(sessionId, id);
   return r;
 }
 
 export async function repondreQuestion(sessionId, id, reponse) {
-  const r = await api.repondreQuestion(sessionId, id, reponse);
+  const r = await api.repondreQuestion(sessionId, id, reponse, envDe(sessionId));
   if (!("donnees" in r) && !r.disparue) return r;
   retirer(sessionId, id);
   return r;
 }
 
 export async function ignorerQuestion(sessionId, id) {
-  const r = await api.ignorerQuestion(sessionId, id);
+  const r = await api.ignorerQuestion(sessionId, id, envDe(sessionId));
   if (!("donnees" in r) && !r.disparue) return r;
   retirer(sessionId, id);
   return r;
@@ -696,6 +712,7 @@ const variante = (v) => (v && v !== "default" ? v : null);
 export function choixModele(sessionId) {
   const i = infos.get(sessionId) ?? {};
   const valeur = i.choix ?? i.model;
+  const catalogue = catalogueDe(envDe(sessionId));
   const base = valeur ?? catalogue.defaut;
   const courant = base ? { cle: cleModele(base.providerID, base.id), id: base.id, providerID: base.providerID, variante: valeur ? variante(valeur.variant) : null } : null;
   const modeles = catalogue.modeles.map((m) => ({ cle: cleModele(m.providerID, m.id), id: m.id, providerID: m.providerID, fenetre: m.limit?.context || 0, texte: `${m.name} · ${m.providerID}`, variantes: (m.variants ?? []).map((v) => v.id) }));
@@ -724,7 +741,7 @@ export async function choisirModele(sessionId, cle, variante) {
   i.choix = choix;
   notifier(sessionId);
   // Les demandes d'une session partent l'une après l'autre : en parallèle, le serveur peut garder un choix plus ancien.
-  const appel = (i.chaineChoix ?? Promise.resolve()).then(() => api.choisirModele(sessionId, choix));
+  const appel = (i.chaineChoix ?? Promise.resolve()).then(() => api.choisirModele(sessionId, choix, envDe(sessionId)));
   i.chaineChoix = appel.catch(() => {});
   const r = await appel;
   if (numero === i.choixSeq) {
@@ -757,7 +774,7 @@ export function contexteSession(sessionId) {
  * À appeler entre la création de la session et l'ouverture de l'onglet : lui donne le dernier choix gardé du projet,
  * s'il est utilisable. Ne rejette jamais, n'écrit jamais le fichier.
  */
-export async function reprendreDernierChoix(sessionId) {
+export async function reprendreDernierChoix(sessionId, environnement) {
   try {
     const f = await api.lireFichier(CHEMIN);
     if (typeof f.contenu !== "string") return;
@@ -769,13 +786,14 @@ export async function reprendreDernierChoix(sessionId) {
     }
     const chaine = (v) => typeof v === "string" && v !== "";
     if (!lu || typeof lu !== "object" || !chaine(lu.id) || !chaine(lu.providerID) || (lu.variant !== undefined && typeof lu.variant !== "string")) return;
-    await lireCatalogue();
+    await lireCatalogue(environnement);
+    const catalogue = catalogueDe(environnement);
     if (catalogue.etat !== "pret") return;
     const m = catalogue.modeles.find((x) => x.id === lu.id && x.providerID === lu.providerID);
     if (!m) return;
     const choix = { id: lu.id, providerID: lu.providerID };
     if (lu.variant && (m.variants ?? []).some((v) => v.id === lu.variant)) choix.variant = lu.variant;
-    const r = await api.choisirModele(sessionId, choix);
+    const r = await api.choisirModele(sessionId, choix, environnement);
     if (!("donnees" in r)) return;
     const i = info(sessionId);
     i.model = choix;
@@ -787,10 +805,9 @@ export async function reprendreDernierChoix(sessionId) {
 
 /** Remet le module à zéro (tests). */
 export function reinitialiser() {
-  catalogue.etat = "chargement";
-  catalogue.modeles = [];
-  catalogue.defaut = null;
-  fermerSource();
+  catalogues.clear();
+  for (const f of [...flux.values()]) fermerSource(f.env);
+  envs.clear();
   sessions.clear();
   infos.clear();
   abonnes.clear();

@@ -363,14 +363,16 @@ export async function opencodeDisponible() {
   return (await r.json()).disponible === true;
 }
 
-const OC = "/api/opencode/api";
+/** Racine de l'API d'opencode relayée par Yaide : celle du serveur de l'environnement `environnement` (REQ-184), sinon celle sans environnement. */
+export const racineOpencode = (environnement) => (environnement === undefined ? "/api/opencode/api" : `/api/opencode/env/${q(environnement)}/api`);
 
 /**
  * Appel de l'API d'opencode, relayée par Yaide. Rend `{ donnees }` (corps JSON, null s'il est vide),
  * `{ coupure: true }`, `{ erreur: raison }` (503 ou autre échec) ou `{ disparue: true }` (404).
+ * `environnement` : nom de l'environnement de la session, `undefined` sans environnement.
  */
-async function appelOpencode(chemin, options) {
-  const r = await appeler(`${OC}${chemin}`, options);
+async function appelOpencode(chemin, options, environnement) {
+  const r = await appeler(`${racineOpencode(environnement)}${chemin}`, options);
   if (!r) return { coupure: true };
   if (r.status === 404) return { disparue: true };
   const texte = await r.text().catch(() => "");
@@ -392,37 +394,38 @@ async function appelOpencode(chemin, options) {
 
 const json = (methode, corps) => ({ method: methode, headers: { "content-type": "application/json" }, body: JSON.stringify(corps) });
 
+// Chaque appel prend, en dernier, l'environnement de sa session (REQ-184).
 /** `dossier` : le dossier du projet. Rend `{ donnees: { data: session } }` (voir `appelOpencode`). */
-export const creerSession = (dossier) => appelOpencode("/session", json("POST", { location: { directory: dossier } }));
-export const session = (id) => appelOpencode(`/session/${q(id)}`);
+export const creerSession = (dossier, env) => appelOpencode("/session", json("POST", { location: { directory: dossier } }), env);
+export const session = (id, env) => appelOpencode(`/session/${q(id)}`, undefined, env);
 /** Une page de l'historique, du plus ancien au plus récent ; `curseur` : `cursor.next` de la page précédente. */
-export const messages = (id, curseur) => appelOpencode(`/session/${q(id)}/message?limit=200&${curseur ? `cursor=${q(curseur)}` : "order=asc"}`);
-export const sessionsFilles = (id) => appelOpencode(`/session?parentID=${q(id)}`);
-/** Sessions racines du dossier du projet, la plus récente d'abord (50 par défaut) : `{ donnees: { data: [...] } }`. */
+export const messages = (id, curseur, env) => appelOpencode(`/session/${q(id)}/message?limit=200&${curseur ? `cursor=${q(curseur)}` : "order=asc"}`, undefined, env);
+export const sessionsFilles = (id, env) => appelOpencode(`/session?parentID=${q(id)}`, undefined, env);
+/** Sessions racines du dossier du projet, la plus récente d'abord (50 par défaut) : `{ donnees: { data: [...] } }`. Toujours sur le serveur sans environnement. */
 export const sessionsOpencode = (dossier) => appelOpencode(`/session?directory=${q(dossier)}&parentID=null&order=desc`);
 const pieces = ({ files, skills } = {}) => ({ ...(files?.length ? { files } : {}), ...(skills?.length ? { skills } : {}) });
-export const envoyer = (id, texte, joints) => appelOpencode(`/session/${q(id)}/prompt`, json("POST", { text: texte, ...pieces(joints) }));
+export const envoyer = (id, texte, joints, env) => appelOpencode(`/session/${q(id)}/prompt`, json("POST", { text: texte, ...pieces(joints) }), env);
 const lieu = (dossier) => `location%5Bdirectory%5D=${q(dossier)}`;
 /** Commandes, skills et fichiers d'opencode pour le dossier du projet : `{ donnees: { data: [...] } }`. */
-export const commandesOpencode = (dossier) => appelOpencode(`/command?${lieu(dossier)}`);
-export const skillsOpencode = (dossier) => appelOpencode(`/skill?${lieu(dossier)}`);
-export const chercherFichiersOpencode = (dossier, texte) => appelOpencode(`/fs/find?${lieu(dossier)}&query=${q(texte)}&limit=20`);
+export const commandesOpencode = (dossier, env) => appelOpencode(`/command?${lieu(dossier)}`, undefined, env);
+export const skillsOpencode = (dossier, env) => appelOpencode(`/skill?${lieu(dossier)}`, undefined, env);
+export const chercherFichiersOpencode = (dossier, texte, env) => appelOpencode(`/fs/find?${lieu(dossier)}&query=${q(texte)}&limit=20`, undefined, env);
 /** `POST /session/{id}/command` : `name`, `text`, et `files` et `skills` s'ils ne sont pas vides. */
-export const executerCommande = (id, { name, text, files, skills }) => appelOpencode(`/session/${q(id)}/command`, json("POST", { name, text, ...pieces({ files, skills }) }));
-export const interrompre = (id) => appelOpencode(`/session/${q(id)}/interrupt`, { method: "POST" });
-export const autorisations = (sessionId) => appelOpencode(`/session/${q(sessionId)}/permission`);
+export const executerCommande = (id, { name, text, files, skills }, env) => appelOpencode(`/session/${q(id)}/command`, json("POST", { name, text, ...pieces({ files, skills }) }), env);
+export const interrompre = (id, env) => appelOpencode(`/session/${q(id)}/interrupt`, { method: "POST" }, env);
+export const autorisations = (sessionId, env) => appelOpencode(`/session/${q(sessionId)}/permission`, undefined, env);
 /** `decision` : "once", "always" ou "reject". */
-export const repondreAutorisation = (sessionId, id, decision) => appelOpencode(`/session/${q(sessionId)}/permission/${q(id)}/reply`, json("POST", { decision }));
-export const questions = (sessionId) => appelOpencode(`/session/${q(sessionId)}/form`);
+export const repondreAutorisation = (sessionId, id, decision, env) => appelOpencode(`/session/${q(sessionId)}/permission/${q(id)}/reply`, json("POST", { decision }), env);
+export const questions = (sessionId, env) => appelOpencode(`/session/${q(sessionId)}/form`, undefined, env);
 /** `reponse` : valeurs par clé de champ. */
-export const repondreQuestion = (sessionId, id, reponse) => appelOpencode(`/session/${q(sessionId)}/form/${q(id)}/reply`, json("POST", { answer: reponse }));
-export const ignorerQuestion = (sessionId, id) => appelOpencode(`/session/${q(sessionId)}/form/${q(id)}`, { method: "DELETE" });
+export const repondreQuestion = (sessionId, id, reponse, env) => appelOpencode(`/session/${q(sessionId)}/form/${q(id)}/reply`, json("POST", { answer: reponse }), env);
+export const ignorerQuestion = (sessionId, id, env) => appelOpencode(`/session/${q(sessionId)}/form/${q(id)}`, { method: "DELETE" }, env);
 
-export const modelesOpencode = () => appelOpencode("/model");
-export const modeleParDefaut = () => appelOpencode("/model/default");
+export const modelesOpencode = (env) => appelOpencode("/model", undefined, env);
+export const modeleParDefaut = (env) => appelOpencode("/model/default", undefined, env);
 /** `variant` n'est envoyé que s'il a une valeur. */
-export const choisirModele = (sessionId, { id, providerID, variant }) =>
-  appelOpencode(`/session/${q(sessionId)}/model`, json("POST", { model: { id, providerID, ...(variant ? { variant } : {}) } }));
+export const choisirModele = (sessionId, { id, providerID, variant }, env) =>
+  appelOpencode(`/session/${q(sessionId)}/model`, json("POST", { model: { id, providerID, ...(variant ? { variant } : {}) } }), env);
 
 /** `{ version, derniere, maj, installee }`, ou null sans réponse valide. */
 export async function lireVersion() {

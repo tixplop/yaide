@@ -1963,3 +1963,110 @@ test("REQ177_AC15_coupure_bibliotheque_pas_chargee_puis_reessai_et_autre_echec",
   await vi.waitFor(() => expect(telechargements).toEqual(["notes.pdf"]));
   await vi.waitFor(() => expect(toastsExport(vue)).toEqual([]));
 });
+
+// ---- REQ-184 : session opencode avec un environnement ----
+
+/** `simulerOpencode` plus la liste des environnements et la création de session sur le serveur de `prod` (`creationProd` : { status, corps } ou une promesse d'elle). */
+function simulerOpencodeEnv({ creationProd = { status: 200, corps: { data: { id: "ses_prod" } } } } = {}) {
+  const appels = simulerOpencode();
+  vi.stubGlobal("EventSource", class { constructor(url) { appels.push(`FLUX ${url}`); } close() {} });
+  const base = globalThis.fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+    const chemin = String(url).split("?")[0];
+    if (chemin === "/api/environnements") {
+      appels.push("GET /api/environnements");
+      return jsonOk({ fichier: "environnements.json", environnements: [{ nom: "prod", variables: { YA_ENV: "prod" } }, { nom: "Dev", variables: {} }] });
+    }
+    if (chemin === "/api/opencode/env/prod/api/session" && opts.method === "POST") {
+      appels.push(`POST ${chemin} ${opts.body}`);
+      const c = await creationProd;
+      return { ok: c.status < 400, status: c.status, json: async () => c.corps, text: async () => JSON.stringify(c.corps) };
+    }
+    if (chemin.startsWith("/api/opencode/env/prod/api/")) {
+      appels.push(`${opts.method ?? "GET"} ${chemin}`);
+      return { ok: true, status: 200, text: async () => JSON.stringify({ data: [] }) };
+    }
+    return base(url, opts);
+  }));
+  return appels;
+}
+
+const menuOc = () => document.querySelector("[role=menu]");
+const choixMenu = () => [...document.querySelectorAll("[role=menuitem]")];
+const clicDroitOc = (b) => b.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+
+test("REQ184_AC1_AC2_AC8_AC9_menu_d_opencode_session_sur_le_serveur_de_prod_onglet_opencode_2_focus_dans_le_message", async () => {
+  const appels = simulerOpencodeEnv();
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  const b = boutonOcDe(vue);
+  expect(b.getAttribute("aria-haspopup")).toBe("menu");
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  b.click();
+  await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(1));
+  expect(appels.filter((a) => a.startsWith("POST /api/opencode/api/session"))).toHaveLength(1);
+  // jsdom ne mesure rien : bouton à 752 px dans une fenêtre de 800, menu de 200 px de large.
+  const largeur = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(200);
+  b.getBoundingClientRect = () => ({ left: 752, right: 800, top: 100, bottom: 148, width: 48, height: 48 });
+  clicDroitOc(b);
+  await vi.waitFor(() => expect(menuOc()).not.toBeNull());
+  expect(menuOc().getAttribute("aria-label")).toBe("Nouvelle session opencode avec un environnement");
+  expect(choixMenu().map((c) => c.textContent)).toEqual(["Dev", "prod"]);
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  // Le menu s'ouvre à gauche du bouton : son bord droit à 4 px du bord gauche du bouton (752 - 4 - 200).
+  expect(menuOc().style.left).toBe("548px");
+  expect(menuOc().style.top).toBe("100px");
+  largeur.mockRestore();
+  choixMenu()[1].click();
+  await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(2));
+  expect(appels.filter((a) => a.startsWith("POST /api/opencode/env/prod/api/session "))).toHaveLength(1);
+  expect(appels.filter((a) => a.startsWith("POST /api/opencode/api/session"))).toHaveLength(1);
+  const o2 = ongletsOc(vue).find((t) => t.getAttribute("aria-label") === "opencode 2");
+  expect(o2.getAttribute("aria-selected")).toBe("true");
+  await vi.waitFor(() => expect(nomDuChamp(document.activeElement)).toBe("Message à opencode"));
+  // Un flux d'événements par serveur : celui de prod s'ouvre avec son onglet.
+  await vi.waitFor(() => expect(appels.filter((a) => a.startsWith("FLUX "))).toEqual(["FLUX /api/opencode/api/event", "FLUX /api/opencode/env/prod/api/event"]));
+});
+
+test("REQ184_AC8_AC9_serveur_en_demarrage_aria_busy_focus_garde_aucun_menu_et_un_second_choix_n_ouvre_rien", async () => {
+  let fin;
+  const appels = simulerOpencodeEnv({ creationProd: new Promise((r) => (fin = r)) });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  const b = boutonOcDe(vue);
+  b.focus();
+  clicDroitOc(b);
+  await vi.waitFor(() => expect(menuOc()).not.toBeNull());
+  choixMenu()[1].click();
+  await vi.waitFor(() => expect(b.getAttribute("aria-busy")).toBe("true"));
+  expect(document.activeElement).toBe(b);
+  const evt = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+  b.dispatchEvent(evt);
+  clavier(b, "ContextMenu");
+  clavier(b, "F10", { shiftKey: true });
+  await attendre();
+  expect(menuOc()).toBeNull();
+  expect(evt.defaultPrevented).toBe(true);
+  b.click();
+  await attendre();
+  fin({ status: 200, corps: { data: { id: "ses_prod" } } });
+  await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(1));
+  expect(b.hasAttribute("aria-busy") && b.getAttribute("aria-busy") === "true").toBe(false);
+  expect(appels.filter((a) => a.startsWith("POST /api/opencode/env/prod/api/session "))).toHaveLength(1);
+  expect(appels.filter((a) => a.startsWith("POST /api/opencode/api/session"))).toHaveLength(0);
+});
+
+test("REQ184_AC7_environnement_supprime_bandeau_et_aucun_onglet", async () => {
+  simulerOpencodeEnv({ creationProd: { status: 404, corps: { message: "l'environnement prod n'existe plus" } } });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  const b = boutonOcDe(vue);
+  b.focus();
+  clicDroitOc(b);
+  await vi.waitFor(() => expect(menuOc()).not.toBeNull());
+  choixMenu()[1].click();
+  await vi.waitFor(() => expect(vue.textContent).toContain("Impossible d'ouvrir une session opencode : l'environnement prod n'existe plus."));
+  expect(ongletsOc(vue).length).toBe(0);
+  expect(b.getAttribute("aria-busy")).not.toBe("true");
+  expect(document.activeElement).toBe(b);
+});

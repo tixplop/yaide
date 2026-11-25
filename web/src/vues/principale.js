@@ -94,22 +94,37 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     if (r.erreur !== undefined) return dire({ texte: `Impossible d'ouvrir une session Claude : ${String(r.erreur).replace(/\.$/, "")}.`, variante: "alerte" });
     editeur.ouvrirClaude({ id: r.id });
   }
-  const boutonOpencode = bouton({ icone: "code-xml", nomAccessible: "opencode", infoBulle: "Nouvelle session opencode", positionInfoBulle: "gauche" });
-  boutonOpencode.addEventListener("click", async () => {
+  const boutonOpencode = bouton({
+    icone: "code-xml",
+    nomAccessible: "opencode",
+    infoBulle: "Nouvelle session opencode",
+    positionInfoBulle: "gauche",
+    menuContextuel: () =>
+      menuDuRail({
+        nom: "Nouvelle session opencode avec un environnement",
+        commandes: commandesEnvironnements((nom) => lancerOpencode(nom)),
+        ancre: boutonOpencode,
+        ancrage: "rail-droit",
+      }),
+  });
+  boutonOpencode.addEventListener("click", () => lancerOpencode());
+  /** `environnement` : la session est créée sur le serveur de cet environnement (REQ-184), sinon sur celui sans environnement. */
+  async function lancerOpencode(environnement) {
     if (boutonOpencode.getAttribute("aria-busy") === "true") return;
     boutonOpencode.definirOccupe(true);
     boutonOpencode.setAttribute("aria-disabled", "true");
-    const r = await creerSession(chemin);
+    const r = await creerSession(chemin, environnement);
     const id = r.donnees?.data?.id;
     // Le dernier choix est repris avant l'onglet, le bouton restant occupé (REQ-075).
-    if (!detruite && !r.coupure && r.erreur === undefined && id !== undefined) await reprendreDernierChoix(id);
+    if (!detruite && !r.coupure && !r.disparue && r.erreur === undefined && id !== undefined) await reprendreDernierChoix(id, ...(environnement === undefined ? [] : [environnement]));
     boutonOpencode.definirOccupe(false);
     boutonOpencode.removeAttribute("aria-disabled");
     if (detruite) return;
     if (r.coupure) return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
+    if (r.disparue && environnement !== undefined) return dire({ texte: `Impossible d'ouvrir une session opencode : l'environnement ${environnement} n'existe plus.`, variante: "alerte" });
     if (r.erreur !== undefined || id === undefined) return dire({ texte: `Impossible d'ouvrir une session opencode : ${String(r.erreur ?? "réponse illisible").replace(/\.$/, "")}.`, variante: "alerte" });
-    editeur.ouvrirOpencode({ sessionId: id });
-  });
+    editeur.ouvrirOpencode({ sessionId: id, environnement });
+  }
   const boutonSessions = bouton({ icone: "messages-square", nomAccessible: "Sessions opencode", positionInfoBulle: "gauche" });
   boutonSessions.setAttribute("aria-haspopup", "dialog");
   const sessions = vueSessionsOpencode({

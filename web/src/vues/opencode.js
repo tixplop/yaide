@@ -36,10 +36,11 @@ const sansRetours = (t) => (t ?? "").replace(/\s+/g, " ").trim();
 /**
  * V-002, session opencode (C-015, C-003). `oc` : le modèle de `opencode.js` ; `api` : `envoyer`, `interrompre`.
  * `surOuvrir({ id, agent, titre })` ouvre l'onglet d'un sous-agent ; `surQuestion(vrai|faux)` dit si une demande attend.
- * `cheminProjet` : le chemin absolu du projet, dossier des commandes, fichiers et skills.
+ * `cheminProjet` : le chemin absolu du projet, dossier des commandes, fichiers et skills. `environnement` : celui de l'onglet (REQ-184).
  * Rend `{ corps, focus(), detruire() }`.
  */
-export function vueOpencode({ sessionId, cheminProjet = "", sousAgent = false, surOuvrir, surQuestion, ouvrirReference, oc = ocReel, api = apiReelle }) {
+export function vueOpencode({ sessionId, cheminProjet = "", environnement, sousAgent = false, surOuvrir, surQuestion, ouvrirReference, oc = ocReel, api = apiReelle }) {
+  const suite = environnement === undefined ? [] : [environnement]; // dernier argument des appels de `api` (REQ-184)
   const corps = document.createElement("div");
   corps.className = "session";
 
@@ -103,7 +104,7 @@ export function vueOpencode({ sessionId, cheminProjet = "", sousAgent = false, s
     saisie.barre.prepend(listeModele.enveloppe, listeEffort.enveloppe, compteur);
     champ.addEventListener("input", majBoutons);
     saisie.arreter.addEventListener("click", () => {
-      api.interrompre(sessionId);
+      api.interrompre(sessionId, ...suite);
     });
   }
   corps.append(zoneFil, bas);
@@ -118,7 +119,7 @@ export function vueOpencode({ sessionId, cheminProjet = "", sousAgent = false, s
       "/": {
         nom: "Commandes",
         async suggestions(texte) {
-          const toutes = donneesDe(await api.commandesOpencode(cheminProjet));
+          const toutes = donneesDe(await api.commandesOpencode(cheminProjet, ...suite));
           commandes = toutes.map((c) => c.name);
           if (toutes.length === 0) return { message: "Aucune commande." };
           const t = texte.toLowerCase();
@@ -136,7 +137,7 @@ export function vueOpencode({ sessionId, cheminProjet = "", sousAgent = false, s
       "@": {
         nom: "Fichiers et dossiers",
         async suggestions(texte) {
-          const trouves = donneesDe(await api.chercherFichiersOpencode(cheminProjet, texte)).filter((f) => f.path !== "/");
+          const trouves = donneesDe(await api.chercherFichiersOpencode(cheminProjet, texte, ...suite)).filter((f) => f.path !== "/");
           const lignes = trouves.map((f) => {
             const type = f.type === "directory" ? { icone: "folder", couleur: "ink-muted" } : iconeDe(f.path.slice(f.path.lastIndexOf("/") + 1));
             return {
@@ -154,7 +155,7 @@ export function vueOpencode({ sessionId, cheminProjet = "", sousAgent = false, s
       $: {
         nom: "Skills",
         async suggestions(texte) {
-          const tous = donneesDe(await api.skillsOpencode(cheminProjet));
+          const tous = donneesDe(await api.skillsOpencode(cheminProjet, ...suite));
           if (tous.length === 0) return { message: "Aucun skill." };
           const t = texte.toLowerCase();
           const lignes = tous
@@ -263,8 +264,8 @@ export function vueOpencode({ sessionId, cheminProjet = "", sousAgent = false, s
     const skills = joints.filter((j) => j.declencheur === "$").map((j) => ({ id: j.donnee.id, mention: mention(j) }));
     const commande = /^\/(\S+)(?:\s([\s\S]*))?$/.exec(texte);
     let r;
-    if (commande && commandes.includes(commande[1])) r = await api.executerCommande(sessionId, { name: commande[1], text: commande[2] ?? "", files, skills });
-    else r = await (files.length || skills.length ? api.envoyer(sessionId, texte, { files, skills }) : api.envoyer(sessionId, texte));
+    if (commande && commandes.includes(commande[1])) r = await api.executerCommande(sessionId, { name: commande[1], text: commande[2] ?? "", files, skills }, ...suite);
+    else r = await (files.length || skills.length ? api.envoyer(sessionId, texte, { files, skills }, ...suite) : api.envoyer(sessionId, texte, ...(suite.length ? [undefined, ...suite] : [])));
     envoi = false;
     if (detruite) return;
     if (r.disparue) {
@@ -344,7 +345,7 @@ export function vueOpencode({ sessionId, cheminProjet = "", sousAgent = false, s
     }
   }
 
-  const desabonner = oc.abonner(sessionId, dessiner);
+  const desabonner = oc.abonner(sessionId, dessiner, environnement);
   Promise.resolve(oc.pret(sessionId)).then(() => {
     charge = true;
     dessiner();
