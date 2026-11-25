@@ -26,7 +26,8 @@ import { statutsDe } from "../statuts.js";
 import { suivreVersion } from "../version.js";
 import { abonner as abonnerWorktree, dansWorktree } from "../worktree.js";
 import { mettreAJourApresSauvegarde } from "./ajout-connaissance.js";
-import { vueShells } from "./shells.js";
+import { commandesEnvironnements, vueShells } from "./shells.js";
+import { menuDuRail } from "../ui/menu.js";
 
 const PANNEAUX = [
   { id: "fichiers", icone: "files", raccourci: "F", nomAccessible: "Fichiers", touche: "f", titre: "Fichiers" },
@@ -72,14 +73,27 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const boutonAgent = bouton({ icone: "bot", nomAccessible: "Agent", infoBulle: "Nouvelle session Agent", raccourci: "A", positionInfoBulle: "gauche" });
   const boutonAgents = bouton({ icone: "users", nomAccessible: "Agents", positionInfoBulle: "gauche", actif: false });
   const repliAgent = bouton({ icone: "panel-right-close", nomAccessible: "Replier l'agent", positionInfoBulle: "gauche" });
-  const boutonClaude = bouton({ icone: "asterisk", nomAccessible: "Claude", infoBulle: "Nouvelle session Claude", positionInfoBulle: "gauche" });
-  boutonClaude.addEventListener("click", async () => {
-    const r = await ouvrirClaude();
+  const boutonClaude = bouton({
+    icone: "asterisk",
+    nomAccessible: "Claude",
+    infoBulle: "Nouvelle session Claude",
+    positionInfoBulle: "gauche",
+    menuContextuel: () =>
+      menuDuRail({
+        nom: "Nouvelle session Claude avec un environnement",
+        commandes: commandesEnvironnements((nom) => lancerClaude(nom)),
+        ancre: boutonClaude,
+        ancrage: "rail-droit",
+      }),
+  });
+  boutonClaude.addEventListener("click", () => lancerClaude());
+  async function lancerClaude(environnement) {
+    const r = await ouvrirClaude(environnement);
     if (detruite) return;
     if (r.coupure) return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
     if (r.erreur !== undefined) return dire({ texte: `Impossible d'ouvrir une session Claude : ${String(r.erreur).replace(/\.$/, "")}.`, variante: "alerte" });
     editeur.ouvrirClaude({ id: r.id });
-  });
+  }
   const boutonOpencode = bouton({ icone: "code-xml", nomAccessible: "opencode", infoBulle: "Nouvelle session opencode", positionInfoBulle: "gauche" });
   boutonOpencode.addEventListener("click", async () => {
     if (boutonOpencode.getAttribute("aria-busy") === "true") return;

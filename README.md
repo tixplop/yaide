@@ -136,6 +136,13 @@ Si la commande `opencode` (version 2) est dans le `PATH` du serveur au moment o�
 - Après une mise à jour d'opencode, `node e2e/capturer-opencode.js` relève de nouveau le contrat de son API (dans `web/src/opencode-captures/`).
 - **Raisonnement.** Quand le modèle rend son raisonnement, il s'affiche replié sous « Raisonnement » ; un clic ou Entrée le déplie.
 
+## Environnements
+
+Un environnement est un nom et des variables (`NOM=valeur`), pour tous vos projets, gardés dans `environnements.json` du dossier de configuration. Ouvrez Ctrl+P, tapez `>`, choisissez « Environnements », puis créez-les.
+
+- Clic droit sur « Nouveau shell », « Claude » ou « opencode » (ou la touche Menu, ou Maj+F10, quand le bouton a le focus) : le menu liste vos environnements par ordre alphabétique. En choisir un lance le shell ou la session comme un clic simple, avec ses variables en plus de celles de Yaide.
+- Un clic simple lance toujours sans environnement. Modifier un environnement ne change pas les shells déjà ouverts.
+
 ## Base de connaissance
 
 Yaide peut indexer les fichiers de votre projet pour les interroger par le sens, sans chercher un mot exact.

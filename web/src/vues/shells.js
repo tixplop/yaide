@@ -1,8 +1,8 @@
-import { fermerShell, listeShells, ouvrirShell } from "../api.js";
+import { fermerShell, listeShells, lireEnvironnements, ouvrirShell } from "../api.js";
 import { ecrire, lire } from "../stockage.js";
 import { bouton } from "../ui/bouton.js";
 import { dialogue } from "../ui/dialogue.js";
-import { menu } from "../ui/menu.js";
+import { menu, menuDuRail } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { terminal } from "../ui/terminal.js";
@@ -10,6 +10,21 @@ import { terminal } from "../ui/terminal.js";
 export const PAUSE_REPRISE = 1000;
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const codage = new TextEncoder();
+
+/**
+ * Commandes du menu « avec un environnement » (REQ-183), relues à chaque ouverture : un groupe avec les noms par ordre alphabétique,
+ * ou la seule commande désactivée qui dit pourquoi il n'y en a pas. `choisir(nom)` lance l'ouverture.
+ */
+export function commandesEnvironnements(choisir) {
+  return async () => {
+    const r = await lireEnvironnements();
+    if (r.coupure) return [[{ libelle: TEXTE_COUPURE, desactive: true }]];
+    if (!Array.isArray(r.environnements)) return [[{ libelle: "Environnements illisibles. Ouvrez Ctrl+P, puis > Environnements.", desactive: true }]];
+    if (r.environnements.length === 0) return [[{ libelle: "Aucun environnement. Créez-en un avec Ctrl+P, puis > Environnements.", desactive: true }]];
+    const noms = r.environnements.map((e) => e.nom).sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
+    return [noms.map((nom) => ({ libelle: nom, surChoix: () => choisir(nom) }))];
+  };
+}
 
 /**
  * Branche `flux` sur la WebSocket du shell `id` ; les messages vont au flux.
@@ -62,7 +77,19 @@ export function vueShells({ dire, surZone = () => {}, replieImpose }) {
   let menuReduits = null;
   let replie = false;
 
-  const boutonNouveau = bouton({ icone: "terminal", variante: "discret", nomAccessible: "Nouveau shell", positionInfoBulle: "droite" });
+  const boutonNouveau = bouton({
+    icone: "terminal",
+    variante: "discret",
+    nomAccessible: "Nouveau shell",
+    positionInfoBulle: "droite",
+    menuContextuel: () =>
+      menuDuRail({
+        nom: "Nouveau shell avec un environnement",
+        commandes: commandesEnvironnements((nom) => nouveau(nom)),
+        ancre: boutonNouveau,
+        ancrage: "rail-gauche",
+      }),
+  });
   const boutonReduire = bouton({ icone: "minimize-2", variante: "discret", nomAccessible: "Réduire le shell", positionInfoBulle: "droite", desactive: true });
   const boutonReduits = bouton({ icone: "layers", variante: "discret", nomAccessible: "Shells réduits", positionInfoBulle: "droite", desactive: true, ouvreMenu: true });
   const boutonFermer = bouton({ icone: "square-x", variante: "discret", nomAccessible: "Fermer le shell", positionInfoBulle: "droite", desactive: true });
@@ -349,9 +376,9 @@ export function vueShells({ dire, surZone = () => {}, replieImpose }) {
     brancher(s);
   }
 
-  async function nouveau() {
+  async function nouveau(environnement) {
     if (etat === "coupe") return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
-    const r = await ouvrirShell();
+    const r = await ouvrirShell(environnement);
     if (r.coupure) return dire({ texte: TEXTE_COUPURE, variante: "alerte" });
     if (r.erreur) return dire({ texte: `Impossible d'ouvrir un shell : ${r.erreur}.`, variante: "erreur" });
     // Sans shell ouvert, Yaide a pu redémarrer sans que la page le sache : on relit l'instance.
