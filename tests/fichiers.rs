@@ -167,6 +167,21 @@ impl Serveur {
 }
 
 fn lancer(nom: &str) -> Serveur {
+    lancer_avec(nom, "")
+}
+
+/// Serveur dont le `PATH` ne contient ni `powershell.exe` ni `wslpath`, même sous WSL.
+fn lancer_hors_wsl(nom: &str) -> Serveur {
+    lancer_avec(nom, "hors")
+}
+
+/// Faux `wslpath` (rend `W:<chemin>`) et faux `powershell.exe` en tête du `PATH` du serveur :
+/// le second note ses arguments et `YAIDE_P*` dans `appels`.
+fn lancer_wsl(nom: &str) -> Serveur {
+    lancer_avec(nom, "wsl")
+}
+
+fn lancer_avec(nom: &str, mode: &str) -> Serveur {
     let d = std::env::temp_dir().join(format!("fichiers-{nom}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
@@ -186,7 +201,35 @@ fn lancer(nom: &str) -> Serveur {
     let projet = d.join("projet");
     std::fs::create_dir_all(&projet).unwrap();
     let port = port_libre();
+    let mut path = std::env::var("PATH").unwrap();
+    if mode == "hors" {
+        let vide = d.join("vide");
+        std::fs::create_dir_all(&vide).unwrap();
+        path = vide.display().to_string();
+    }
+    if mode == "wsl" {
+        let faux = d.join("faux");
+        std::fs::create_dir_all(&faux).unwrap();
+        let ecrire = |nom: &str, script: String| {
+            let f = faux.join(nom);
+            std::fs::write(&f, script).unwrap();
+            std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        ecrire(
+            "wslpath",
+            "#!/bin/sh\n[ \"$1\" = -w ] || exit 1\nprintf 'W:%s\\n' \"$2\"\n".into(),
+        );
+        ecrire(
+            "powershell.exe",
+            format!(
+                "#!/bin/sh\n{{ echo \"ARGS:$*\"; echo \"P0=$YAIDE_P0\"; echo \"P1=$YAIDE_P1\"; echo \"P2=$YAIDE_P2\"; echo \"WSLENV=$WSLENV\"; echo FIN; }} >> \"{}/appels\"\n",
+                d.display()
+            ),
+        );
+        path = format!("{}:{path}", faux.display());
+    }
     let child = Command::new(EXE)
+        .env("PATH", path)
         .arg(&projet)
         .args(["--port", &port.to_string()])
         .env("XDG_CONFIG_HOME", &cfg)
@@ -917,4 +960,117 @@ fn req180_ac8_refus_hors_du_projet() {
     assert!(!s.projet.parent().unwrap().join("x").exists());
     assert_eq!(std::fs::read_dir(s.projet.join("src")).unwrap().count(), 1);
     assert_eq!(s.importer("src", "y", "autre", b"").code, 400);
+}
+
+impl Serveur {
+    fn windows(&self, chemins: &[&str]) -> Rep {
+        let liste: Vec<String> = chemins
+            .iter()
+            .map(|c| format!("\"{}\"", c.replace('\\', "\\\\").replace('"', "\\\"")))
+            .collect();
+        self.appel(
+            "POST",
+            "/api/fichiers/presse-papiers-windows",
+            format!("{{\"chemins\":[{}]}}", liste.join(",")).as_bytes(),
+        )
+    }
+    fn appels(&self) -> String {
+        std::fs::read_to_string(self.projet.parent().unwrap().join("appels")).unwrap_or_default()
+    }
+}
+
+#[test]
+fn req181_ac1_un_lancement_chemins_windows_dans_l_ordre() {
+    let s = lancer_wsl("ac181-1");
+    s.ecrire_disque("a.txt", b"a");
+    s.ecrire_disque("photos/2024/b.jpg", b"b");
+    let r = s.windows(&["a.txt", "photos"]);
+    assert_eq!((r.code, r.corps.as_str()), (200, "{\"wsl\":true}"));
+    let a = s.appels();
+    assert_eq!(a.matches("FIN").count(), 1, "{a}");
+    assert!(a.contains("ARGS:-NoProfile -NonInteractive -Command Set-Clipboard -LiteralPath $env:YAIDE_P0, $env:YAIDE_P1\n"), "{a}");
+    let p = s.projet.display();
+    assert!(a.contains(&format!("P0=W:{p}/a.txt\n")), "{a}");
+    assert!(a.contains(&format!("P1=W:{p}/photos\n")), "{a}");
+    assert!(
+        a.contains("YAIDE_P0:YAIDE_P1\n") && !a.contains("::"),
+        "{a}"
+    );
+}
+
+#[test]
+fn req181_ac2_worktree_chemins_du_worktree() {
+    let s = lancer_wsl("ac181-2");
+    git(&s.projet, &["init", "-q"]);
+    s.ecrire_disque("a.txt", b"a");
+    git(&s.projet, &["add", "."]);
+    git(
+        &s.projet,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "i",
+        ],
+    );
+    git(
+        &s.projet,
+        &["worktree", "add", "-q", "../essai", "-b", "essai"],
+    );
+    let r = s.windows(&["../essai/a.txt"]);
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let wt = s.projet.parent().unwrap().join("essai/a.txt");
+    assert!(
+        s.appels().contains(&format!("P0=W:{}\n", wt.display())),
+        "{}",
+        s.appels()
+    );
+}
+
+#[test]
+fn req181_ac3_nom_special_tel_quel_hors_du_texte_de_la_commande() {
+    let s = lancer_wsl("ac181-3");
+    s.ecrire_disque("l'été $1.txt", b"x");
+    let r = s.windows(&["l'été $1.txt"]);
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let a = s.appels();
+    assert!(a.contains("P0=W:") && a.contains("/l'été $1.txt\n"), "{a}");
+    let args = a.lines().find(|l| l.starts_with("ARGS:")).unwrap();
+    assert!(!args.contains("été") && !args.contains("$1"), "{args}");
+}
+
+#[test]
+fn req181_ac4_chemins_hors_projet_refuses_rien_lance() {
+    let s = lancer_wsl("ac181-4");
+    let hors = s.projet.parent().unwrap().join("hors");
+    std::fs::create_dir_all(&hors).unwrap();
+    std::fs::write(hors.join("secret.txt"), "s").unwrap();
+    s.ecrire_disque("a.txt", b"a");
+    std::os::unix::fs::symlink(&hors, s.projet.join("sortie")).unwrap();
+    std::os::unix::fs::symlink(hors.join("secret.txt"), s.projet.join("lien.txt")).unwrap();
+    let absolu = hors.to_str().unwrap().to_string();
+    for c in [
+        "../x",
+        "/etc/passwd",
+        &absolu,
+        "sortie",
+        "lien.txt",
+        "sortie/secret.txt",
+    ] {
+        assert_eq!(s.windows(&[c]).code, 403, "{c}");
+        assert_eq!(s.windows(&["a.txt", c]).code, 403, "a.txt + {c}");
+    }
+    assert_eq!(s.appels(), "", "powershell.exe ne doit pas être lancé");
+}
+
+#[test]
+fn req181_ac5_hors_wsl_rien_lance() {
+    let s = lancer_hors_wsl("ac181-5");
+    s.ecrire_disque("a.txt", b"a");
+    let r = s.windows(&["a.txt"]);
+    assert_eq!((r.code, r.corps.as_str()), (200, "{\"wsl\":false}"));
+    assert_eq!(s.appels(), "");
 }

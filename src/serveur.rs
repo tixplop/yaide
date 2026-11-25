@@ -6,7 +6,7 @@ use crate::agent::reglages::{Erreur, Reglages};
 use crate::decoupage::Decoupage;
 use crate::{
     auth, commande_mise_a_jour, config, connaissance, depot, fichiers, git, opencode, recherche,
-    shells, version,
+    shells, version, windows,
 };
 use axum::body::Bytes;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
@@ -707,6 +707,51 @@ async fn importer_fichier(
         )
             .into_response(),
         Err(e) => erreur_fichier(e),
+    }
+}
+
+async fn presse_papiers_windows(State(etat): State<Partage>, corps: axum::body::Bytes) -> Response {
+    let chemins: Vec<String> = match corps_json(&corps)
+        .and_then(|v| serde_json::from_value::<Vec<String>>(v.get("chemins")?.clone()).ok())
+        .filter(|c| !c.is_empty())
+    {
+        Some(c) => c,
+        None => return erreur_fichier(fichiers::Erreur::Invalide("Liste de chemins invalide.")),
+    };
+    let resolus = sur_disque(&etat, move |p| {
+        let mut cache = None;
+        chemins
+            .iter()
+            .map(|c| {
+                let (racine, rel) = fichiers::aiguiller(p, c, &mut cache)?;
+                fichiers::resoudre(&racine, &rel)
+            })
+            .collect::<Result<Vec<_>, _>>()
+    })
+    .await;
+    let resolus = match resolus {
+        Ok(r) => r,
+        Err(e) => return erreur_fichier(e),
+    };
+    if !windows::disponible() {
+        return json_rep(StatusCode::OK, serde_json::json!({ "wsl": false }));
+    }
+    let res = tokio::task::spawn_blocking(move || {
+        windows::copier(&resolus, std::time::Duration::from_secs(10))
+    })
+    .await;
+    match res {
+        Ok(Ok(())) => json_rep(StatusCode::OK, serde_json::json!({ "wsl": true })),
+        Ok(Err(e)) => json_rep(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({
+                "cause": "windows",
+                "message": e.raison,
+                "raison": e.raison,
+                "detail": e.detail,
+            }),
+        ),
+        Err(e) => erreur_fichier(fichiers::Erreur::Autre(e.to_string())),
     }
 }
 
@@ -2096,6 +2141,10 @@ pub async fn servir(
         .route(
             "/api/fichiers/importer",
             post(importer_fichier).layer(DefaultBodyLimit::disable()),
+        )
+        .route(
+            "/api/fichiers/presse-papiers-windows",
+            post(presse_papiers_windows),
         )
         .route("/api/fichiers/versions", post(versions_fichiers))
         .route("/api/recherche", get(chercher))

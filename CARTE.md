@@ -6,10 +6,10 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/main.rs — point d'entrée : lit la ligne de commande, lance le serveur ou une sous-commande — main
 - src/cli.rs — analyse des arguments, aide, saisie du mot de passe — analyser, valider_saisies
 - src/config.rs — dossier de configuration, mot de passe haché (argon2) — dossier_config, definir_mot_de_passe, verifier_mot_de_passe
-- src/tls.rs — certificat auto-signé (rcgen) — assurer_certificat
-- src/auth.rs — sessions (un cookie par port d'écoute), blocage après échecs — creer_session, session_valide, bloque
-- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180)
-- src/fichiers.rs — arborescence et opérations sur les fichiers du projet — lister, lire, ecrire, importer (REQ-180)
+- src/auth.rs — sessions (un cookie par port d'écoute), blocage après échecs ; `src/tls.rs` : certificat auto-signé (rcgen) — creer_session, session_valide, bloque
+- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180, route presse-papiers-windows REQ-181)
+- src/windows.rs — presse-papiers de Windows rempli par powershell.exe dans WSL (REQ-181) — disponible, copier
+- src/fichiers.rs — arborescence et opérations sur les fichiers du projet  — lister, lire, ecrire, importer (REQ-180)
 - src/depot.rs — dépôt git, `.gitignore`, worktrees — est_un_depot, worktrees
 - src/git.rs — état, diff, index, commit, branches, pull/push — etat, commit, synchroniser
 - src/recherche.rs — recherche dans les fichiers et ouverture rapide — chercher, lister
@@ -40,7 +40,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/index.html — page unique ; web/dist/ est produit par esbuild
 - web/src/main.js — démarrage : thème, connexion, vue principale — titre
 - web/src/theme-initial.js — thème appliqué avant le premier affichage
-- web/src/api.js — appels HTTP et WebSocket vers le serveur (dont `declenchements`, REQ-173) — importerChemin (REQ-180), info, sessionValide, connexion
+- web/src/api.js — appels HTTP et WebSocket vers le serveur (dont `declenchements`, REQ-173) — importerChemin (REQ-180), copierVersWindows (REQ-181), info, sessionValide, connexion
 - web/src/connexion.js — surveille la connexion au serveur — surveiller
 - web/src/stockage.js, brouillons.js, disque.js — IndexedDB, modifications gardées, décision face au disque — lire/ecrire, decider, decisionDisque
 - web/src/disposition.js — arbre des groupes de l'éditeur (diviser, tailles) — couper, retirerGroupe, valider
@@ -103,7 +103,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 
 ## Fonctionnalités
 - REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006 mot de passe, lancement, HTTPS, session → src/cli.rs, config.rs, tls.rs, auth.rs, serveur.rs, web/src/vues/connexion.js
-- REQ-007, REQ-008, REQ-009, REQ-010, REQ-034, REQ-049, REQ-050, REQ-125, REQ-180 arborescence → src/fichiers.rs, web/src/vues/fichiers.js, explorateur.js
+- REQ-007, REQ-008, REQ-009, REQ-010, REQ-034, REQ-049, REQ-050, REQ-125, REQ-180, REQ-181 arborescence → src/fichiers.rs, src/windows.rs, web/src/vues/fichiers.js, explorateur.js
 - REQ-173 toasts des agents déclenchés (début, fin, erreur, refus) → web/src/vues/principale.js, api.js (`declenchements`), e2e/agent.spec.js
 - REQ-172 toasts, partie design system (présentation `toast` de `message`, zone des toasts du cadre, option `repliToasts`, token `--largeur-toast`) ; refus d'un collage mermaid ou d'une copie Klaxoon en toast (REQ-154, REQ-155) → web/src/ui/tableau.js, toasts.js, ui/message.js, ui/cadre.js, ui/tokens.css, ui/composants.css
 - REQ-169, REQ-170 raccourcis et barre « Mise en forme » du mode hybride markdown → web/src/ui/mise-en-forme.js, ui/barre-md.js, ui/zone-code.js, ui/composants.css, e2e/mise-en-forme.spec.js

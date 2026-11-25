@@ -155,6 +155,17 @@ export async function importerChemin(dans, nom, type, corps) {
     return { coupure: true };
   }
 }
+/** Met `chemins` dans le presse-papiers de Windows (WSL). Rend `{ wsl }`, `{ cause, message, detail? }` ou `{ coupure: true }`. */
+export async function copierVersWindows(chemins) {
+  const r = await appeler("/api/fichiers/presse-papiers-windows", { method: "POST", body: JSON.stringify({ chemins }) });
+  if (!r) return { coupure: true };
+  if (!r.ok) return erreurServeur(r);
+  try {
+    return { wsl: (await r.json()).wsl === true };
+  } catch {
+    return { coupure: true };
+  }
+}
 export const supprimerChemin = (chemin) => action(`/api/fichier?chemin=${q(chemin)}`, { method: "DELETE" });
 
 /** Écrit le fichier. `version` : celle lue ou écrite en dernier. Rend `{ version }`, `{ cause, message }` ou `{ coupure: true }`. */

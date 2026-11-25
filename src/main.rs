@@ -17,6 +17,7 @@ mod serveur;
 mod shells;
 mod tls;
 mod version;
+mod windows;
 
 use cli::Commande;
 
