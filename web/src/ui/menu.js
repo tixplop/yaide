@@ -68,10 +68,12 @@ const surPerteDeFocus = () => ouvert?.fermer();
 
 // `ancre` : bouton d'en-tête qui ouvre le menu ; sans `position`, le menu s'ouvre 4 px sous lui, sur son bord gauche.
 // `zone` : élément (surface d'un whiteboard) qui porte le menu ; `position` est alors au pointeur, et le menu reste dans la zone.
-export function menu({ nom, groupes, position, ancre, zone, surFermeture }) {
+// `ancrage` (avec `ancre`) : menu d'une commande du rail, `rail-gauche` (à droite du bouton) ou `rail-droit` (à gauche), 4 px du bouton, à la hauteur de son haut.
+export function menu({ nom, groupes, position, ancre, ancrage, zone, surFermeture }) {
   if (!nom) throw new Error("menu : nom requis");
   if (typeof surFermeture !== "function") throw new Error("menu : surFermeture requis");
   if (ancre !== undefined && typeof ancre.getBoundingClientRect !== "function") throw new Error("menu : ancre doit être un élément");
+  if (ancrage !== undefined && (!ancre || !["rail-gauche", "rail-droit"].includes(ancrage))) throw new Error("menu : ancrage demande une ancre et vaut rail-gauche ou rail-droit");
   if (!ancre && (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y))) throw new Error("menu : position requise");
   const pleins = groupes.filter((g) => g.length > 0);
   for (const c of pleins.flat()) {
@@ -79,13 +81,15 @@ export function menu({ nom, groupes, position, ancre, zone, surFermeture }) {
   }
   if (zone !== undefined && typeof zone.getBoundingClientRect !== "function") throw new Error("menu : zone doit être un élément");
   ouvert?.fermer();
-  const origine = document.activeElement;
+  // Menu d'une commande du rail : le focus revient toujours au bouton.
+  const origine = ancrage ? ancre : document.activeElement;
 
   const racine = document.createElement("div");
   racine.className = "menu ya-menu";
   racine.setAttribute("role", "menu");
   racine.setAttribute("aria-label", nom);
   racine.setAttribute("popover", "manual");
+  if (ancrage) racine.classList.add("ya-menu-rail");
   // Le menu du navigateur ne s'ouvre jamais par-dessus celui de Yaide.
   racine.addEventListener("contextmenu", (e) => e.preventDefault());
   const commandes = [];
@@ -177,10 +181,15 @@ export function menu({ nom, groupes, position, ancre, zone, surFermeture }) {
   if (ancre) {
     ancre.setAttribute("aria-expanded", "true");
     const r = ancre.getBoundingClientRect();
+    if (ancrage) {
+      const x = ancrage === "rail-gauche" ? r.right + 4 : r.left - 4 - taille.largeur;
+      depart = { x: Math.max(4, Math.min(x, fenetre.largeur - taille.largeur - 4)), y: r.top };
+    } else {
     // Décalé vers la gauche s'il ne tient pas ; retourné au-dessus du bouton s'il manque de place dessous et qu'il en reste dessus.
     let y = r.bottom + 4;
     if (y + taille.hauteur > fenetre.hauteur && r.top - 4 - taille.hauteur >= 0) y = r.top - 4 - taille.hauteur;
     depart = { x: Math.min(r.left, fenetre.largeur - taille.largeur), y };
+    }
   }
   let p;
   if (zone) {
@@ -188,9 +197,14 @@ export function menu({ nom, groupes, position, ancre, zone, surFermeture }) {
     p = placer(depart, taille, { gauche: r.left, haut: r.top, largeur: r.width, hauteur: r.height }, 4);
     // Un cran de molette ou un pincer ferme le menu ; l'événement continue vers la zone.
     zone.addEventListener("wheel", fermer, { passive: true });
+  } else if (ancrage) {
+    // Remonté pour rester entier dans la fenêtre.
+    p = { left: depart.x, top: Math.max(4, Math.min(depart.y, fenetre.hauteur - taille.hauteur - 4)) };
   } else p = placer(depart, taille, fenetre);
   racine.style.left = `${p.left}px`;
   racine.style.top = `${p.top}px`;
+  // Une commande coupée par « … » garde son texte entier en `title`.
+  if (ancrage) for (const l of racine.querySelectorAll(".menu-libelle")) if (l.scrollWidth > l.clientWidth) l.title = l.textContent;
 
   // La commande disparaît ; la suivante prend le focus si elle l'avait, sinon la précédente.
   function retirer(libelle) {
@@ -225,4 +239,23 @@ export function menu({ nom, groupes, position, ancre, zone, surFermeture }) {
   window.addEventListener("resize", surPerteDeFocus);
   commandes[0]?.focus();
   return { racine, fermer, retirer };
+}
+
+const enAttente = new WeakSet();
+
+/**
+ * Menu d'une commande du rail (C-001 `menuContextuel`) : `commandes` est une fonction qui rend (ou promet) les groupes,
+ * appelée à chaque ouverture ; le menu s'ouvre à leur arrivée. Un second appel pendant l'attente ne fait rien (rend null).
+ */
+export async function menuDuRail({ nom, commandes, ancre, ancrage, surFermeture = () => {} }) {
+  if (typeof commandes !== "function") throw new Error("menu : commandes doit être une fonction");
+  if (enAttente.has(ancre)) return null;
+  enAttente.add(ancre);
+  let groupes;
+  try {
+    groupes = await commandes();
+  } finally {
+    enAttente.delete(ancre);
+  }
+  return menu({ nom, groupes, ancre, ancrage, surFermeture });
 }

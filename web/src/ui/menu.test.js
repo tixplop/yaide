@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { liste } from "./liste.js";
-import { menu, placer } from "./menu.js";
+import { menu, menuDuRail, placer } from "./menu.js";
+import { bouton } from "./bouton.js";
 
 const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
 const regle = (sel) => {
@@ -598,4 +599,137 @@ test("REQ163_AC6_menu_retourne_au_dessus_du_bouton_s_il_manque_de_place_en_bas",
 
 test("REQ163_AC6_bouton_secondaire_ouvert_garde_son_contour_et_prend_le_fond", () => {
   expect(regle('.ya-btn[aria-expanded="true"]')).toContain("background: var(--bg-400)");
+});
+
+// Bouton du rail posé à `rect`, dans une fenêtre de 800 × 480 ; `largeur` et `hauteur` : taille du menu.
+function dansFenetre(rect, fn, { largeur = 200, hauteur = 80 } = {}) {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  window.innerWidth = 800;
+  window.innerHeight = 480;
+  const a = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(largeur);
+  const b = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(hauteur);
+  try {
+    const bt = bouton({ icone: "asterisk", nomAccessible: "Claude", menuContextuel: () => {} });
+    bt.getBoundingClientRect = () => ({ left: rect.left, right: rect.left + 48, top: rect.top, bottom: rect.top + 48, width: 48, height: 48 });
+    document.body.append(bt.enveloppe);
+    return fn(bt);
+  } finally {
+    a.mockRestore();
+    b.mockRestore();
+    window.innerWidth = w;
+    window.innerHeight = h;
+  }
+}
+const groupesEnv = [[{ libelle: "dev" }, { libelle: "local" }, { libelle: "prod" }]];
+
+test("REQ183_AC7_menu_du_rail_a_droite_du_bouton_role_nom_focus_clavier_et_echap_rend_le_focus", () => {
+  dansFenetre({ left: 0, top: 100 }, (bt) => {
+    bt.focus();
+    const m = menu({ nom: "Nouveau shell avec un environnement", ancre: bt, ancrage: "rail-gauche", surFermeture: () => {}, groupes: groupesEnv });
+    ouverts.push(m);
+    expect(m.racine.getAttribute("role")).toBe("menu");
+    expect(m.racine.getAttribute("aria-label")).toBe("Nouveau shell avec un environnement");
+    // 4 px à droite du bouton (bord droit 48), à la hauteur de son haut.
+    expect(m.racine.style.left).toBe("52px");
+    expect(m.racine.style.top).toBe("100px");
+    expect(bt.getAttribute("aria-expanded")).toBe("true");
+    const items = [...m.racine.querySelectorAll('[role="menuitem"]')];
+    expect(document.activeElement).toBe(items[0]);
+    cle(items[0], "ArrowDown");
+    expect(document.activeElement).toBe(items[1]);
+    cle(items[1], "ArrowUp");
+    expect(document.activeElement).toBe(items[0]);
+    cle(items[0], "Escape");
+    expect(document.querySelector(".ya-menu")).toBeNull();
+    expect(bt.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(bt);
+    // Entrée choisit la commande.
+    const surChoix = vi.fn();
+    const m2 = menu({ nom: "x", ancre: bt, ancrage: "rail-gauche", surFermeture: () => {}, groupes: [[{ libelle: "prod", surChoix }]] });
+    ouverts.push(m2);
+    cle(m2.racine.querySelector('[role="menuitem"]'), "Enter");
+    expect(surChoix).toHaveBeenCalledTimes(1);
+  });
+});
+
+test("REQ183_AC7_menu_du_rail_droit_en_miroir_et_remonte_pour_tenir_dans_800_x_480", () => {
+  // Rail droit : bord droit du menu à 4 px du bord gauche du bouton (752) → gauche = 752 - 4 - 200.
+  dansFenetre({ left: 752, top: 100 }, (bt) => {
+    const m = menu({ nom: "Nouvelle session Claude avec un environnement", ancre: bt, ancrage: "rail-droit", surFermeture: () => {}, groupes: groupesEnv });
+    ouverts.push(m);
+    expect(m.racine.style.left).toBe("548px");
+    expect(m.racine.style.top).toBe("100px");
+    m.fermer();
+  });
+  // Bouton près du bas : remonté pour rester entier (480 - 80 - 4).
+  dansFenetre({ left: 0, top: 432 }, (bt) => {
+    const m = menu({ nom: "x", ancre: bt, ancrage: "rail-gauche", surFermeture: () => {}, groupes: groupesEnv });
+    ouverts.push(m);
+    expect(m.racine.style.top).toBe("396px");
+    m.fermer();
+  });
+});
+
+test("REQ183_AC7_menu_du_rail_largeur_de_la_plus_longue_et_coupure_avec_title", () => {
+  expect(regle(".ya-menu-rail")).toMatch(/width: max-content/);
+  expect(regle(".ya-menu-rail")).toMatch(/max-width: calc\(100vw - 2 \* var\(--space-1\)\)/);
+  expect(regle(".ya-menu-rail .menu-libelle")).toMatch(/text-overflow: ellipsis/);
+  vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function () {
+    return this.textContent.length > 20 ? 500 : 50;
+  });
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+  try {
+    dansFenetre({ left: 0, top: 100 }, (bt) => {
+      const longue = "variable-tres-longue-pour-la-fenetre";
+      const m = menu({ nom: "x", ancre: bt, ancrage: "rail-gauche", surFermeture: () => {}, groupes: [[{ libelle: "dev" }, { libelle: longue }]] });
+      ouverts.push(m);
+      const l = [...m.racine.querySelectorAll(".menu-libelle")];
+      expect(l[0].hasAttribute("title")).toBe(false);
+      expect(l[1].title).toBe(longue);
+      m.fermer();
+    });
+  } finally {
+    vi.restoreAllMocks();
+  }
+  expect(() => menu({ nom: "x", ancrage: "rail-gauche", position: { x: 1, y: 1 }, surFermeture: () => {}, groupes: [[{ libelle: "a" }]] })).toThrow(/ancrage/);
+});
+
+test("REQ183_AC7_commandes_par_promesse_le_menu_s_ouvre_a_l_arrivee_un_second_appel_n_en_ouvre_pas_un_autre", async () => {
+  await dansFenetre({ left: 0, top: 100 }, async (bt) => {
+    let rendre;
+    const commandes = vi.fn(() => new Promise((r) => (rendre = r)));
+    const premier = menuDuRail({ nom: "x", commandes, ancre: bt, ancrage: "rail-gauche" });
+    const second = await menuDuRail({ nom: "x", commandes, ancre: bt, ancrage: "rail-gauche" });
+    expect(second).toBeNull();
+    expect(commandes).toHaveBeenCalledTimes(1);
+    expect(document.querySelector(".ya-menu")).toBeNull();
+    rendre(groupesEnv);
+    const m = await premier;
+    ouverts.push(m);
+    expect(document.querySelectorAll(".ya-menu")).toHaveLength(1);
+    expect(m.racine.textContent).not.toMatch(/Chargement/);
+    // Relues à chaque ouverture.
+    m.fermer();
+    commandes.mockResolvedValueOnce([[{ libelle: "delta" }]]);
+    const m2 = await menuDuRail({ nom: "x", commandes, ancre: bt, ancrage: "rail-gauche" });
+    ouverts.push(m2);
+    expect(commandes).toHaveBeenCalledTimes(2);
+    expect(m2.racine.textContent).toBe("delta");
+  });
+});
+
+test("REQ183_AC8_commande_desactivee_seule_prend_le_focus_avec_contour_entree_ne_fait_rien", () => {
+  dansFenetre({ left: 0, top: 100 }, (bt) => {
+    const surChoix = vi.fn();
+    const m = menu({ nom: "x", ancre: bt, ancrage: "rail-gauche", surFermeture: () => {}, groupes: [[{ libelle: "Aucun environnement. Créez-en un avec Ctrl+P, puis > Environnements.", desactive: true, surChoix }]] });
+    ouverts.push(m);
+    const c = m.racine.querySelector('[role="menuitem"]');
+    expect(c.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(c);
+    expect(regle('.ya-menu .menu-commande[aria-disabled="true"]:focus')).toMatch(/outline: var\(--trait\) solid var\(--accent-fg\)/);
+    cle(c, "Enter");
+    expect(surChoix).not.toHaveBeenCalled();
+    expect(document.querySelector(".ya-menu")).not.toBeNull();
+  });
 });

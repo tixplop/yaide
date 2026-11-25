@@ -348,6 +348,8 @@
 }
 .ya-menu { padding: var(--space-1); font-size: 13px; max-height: calc(100vh - 2 * var(--space-1)); overflow-y: auto; }
 .ya-menu .menu-commande { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); box-sizing: border-box; height: 26px; padding: 0 10px; border-radius: var(--radius-xs); background: transparent; color: var(--ink); cursor: default; white-space: nowrap; }
+.ya-menu-rail { width: max-content; max-width: calc(100vw - 2 * var(--space-1)); }
+.ya-menu-rail .menu-libelle { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ya-menu .menu-commande:focus { background: var(--accent); color: var(--on-accent); outline: none; }
 .menu-libelle { flex: 1 1 auto; }
 .ya-menu .menu-touche { font-size: 12px; opacity: .75; }
@@ -415,7 +417,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .cadre-rail-commandes .ya-icon-btn { width: var(--size-activity); height: var(--size-activity); border-radius: 0; color: var(--ink-faint); }
 .cadre-rail-commandes .ya-icon-btn:hover { color: var(--ink); background: transparent; }
 .cadre-rail-commandes .ya-icon-btn { position: relative; }
-.cadre-rail-commandes .ya-icon-btn[aria-expanded="true"] { color: var(--ink); }
+.cadre-rail-commandes .ya-icon-btn[aria-expanded="true"], .cadre-rail-commandes .ya-icon-btn[aria-expanded="true"]:hover { background: var(--bg-400); color: var(--ink); }
 .cadre-rail-commandes .ya-icon-btn.ya-focus-garde { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
 .cadre-rail-commandes .ya-badge { position: absolute; right: 6px; bottom: 6px; height: 14px; min-width: 14px; font-size: 9.5px; line-height: 14px; }
 .cadre-rail-commandes .ya-icon-btn svg { width: var(--taille-icone-rail); height: var(--taille-icone-rail); }

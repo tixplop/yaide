@@ -48,7 +48,9 @@ export function bouton({
   actif,
   pastilles,
   inactif = false,
+  menuContextuel,
 }) {
+  if (menuContextuel !== undefined && (typeof menuContextuel !== "function" || !icone || libelle)) throw new Error("bouton : menuContextuel demande une fonction et une commande à icône");
   if (!libelle && !icone) throw new Error("bouton : libelle requis");
   if (!VARIANTES.includes(variante)) throw new Error(`bouton : variante inconnue « ${variante} »`);
   if (!TAILLES.includes(taille)) throw new Error(`bouton : taille inconnue « ${taille} »`);
@@ -82,6 +84,20 @@ export function bouton({
   if (ouvreMenu) {
     b.setAttribute("aria-haspopup", "menu");
     b.setAttribute("aria-expanded", "false");
+  }
+  // Commande du rail avec menu au clic droit : `contextmenu`, Menu et Maj+F10 appellent `menuContextuel`, jamais le menu du navigateur.
+  // En cours (`aria-busy`), rien ne s'ouvre. Le menu pose lui-même `aria-expanded`.
+  if (menuContextuel) {
+    b.setAttribute("aria-haspopup", "menu");
+    b.setAttribute("aria-expanded", "false");
+    const ouvrir = (ev) => {
+      ev.preventDefault();
+      if (b.getAttribute("aria-busy") !== "true") menuContextuel();
+    };
+    b.addEventListener("contextmenu", ouvrir);
+    b.addEventListener("keydown", (ev) => {
+      if (ev.key === "ContextMenu" || (ev.key === "F10" && ev.shiftKey)) ouvrir(ev);
+    });
   }
   // Commande qui ouvre un dialogue : `definirOuvert` suit son état (fond `--bg-400`, icône `--ink`).
   if (ouvreDialogue) b.setAttribute("aria-haspopup", "dialog");
@@ -166,6 +182,8 @@ export function bouton({
     const enveloppe = document.createElement("span");
     enveloppe.className = "bouton-enveloppe";
     enveloppe.append(b);
+    // Menu ouvert, pas d'info-bulle : cet écouteur passe avant celui de l'info-bulle.
+    if (menuContextuel) enveloppe.addEventListener("pointerenter", (ev) => b.getAttribute("aria-expanded") === "true" && ev.stopImmediatePropagation(), true);
     bulle = creerInfoBulle({ texte: raccourci ? `${nom} (${raccourci})` : nom, ancre: b, enveloppe, position: positionInfoBulle ?? (taille === "disque" ? "dessus" : undefined) });
     b.enveloppe = enveloppe;
   }

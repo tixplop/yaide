@@ -609,3 +609,78 @@ test("REQ153_AC14_css_du_disque_zone_de_20_px_centree_disque_de_16_px", () => {
   expect(regle(".ya-icon-btn-disque:active::before")).toContain("inset 0 0 0 1px var(--ink)");
   expect(regle(".ya-icon-btn-disque svg")).toContain("width: 12px");
 });
+
+function ctx(opts = {}) {
+  const menuContextuel = vi.fn();
+  const b = bouton({ icone: "asterisk", nomAccessible: "Claude", infoBulle: "Nouvelle session Claude", menuContextuel, ...opts });
+  document.body.append(b.enveloppe);
+  return { b, menuContextuel };
+}
+const touche = (b, init) => {
+  const e = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+  b.dispatchEvent(e);
+  return e;
+};
+
+test("REQ183_AC7_menuContextuel_contextmenu_menu_et_maj_f10_sans_menu_du_navigateur_clic_inchange", () => {
+  const { b, menuContextuel } = ctx();
+  const clic = vi.fn();
+  b.addEventListener("click", clic);
+  const e = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+  b.dispatchEvent(e);
+  expect(e.defaultPrevented).toBe(true);
+  expect(menuContextuel).toHaveBeenCalledTimes(1);
+  expect(touche(b, { key: "ContextMenu" }).defaultPrevented).toBe(true);
+  expect(menuContextuel).toHaveBeenCalledTimes(2);
+  expect(touche(b, { key: "F10", shiftKey: true }).defaultPrevented).toBe(true);
+  expect(menuContextuel).toHaveBeenCalledTimes(3);
+  // F10 seule, Entrée et Espace : rien. Le clic suit son chemin.
+  expect(touche(b, { key: "F10" }).defaultPrevented).toBe(false);
+  touche(b, { key: "Enter" });
+  touche(b, { key: " " });
+  expect(menuContextuel).toHaveBeenCalledTimes(3);
+  b.click();
+  expect(clic).toHaveBeenCalledTimes(1);
+  expect(menuContextuel).toHaveBeenCalledTimes(3);
+  // Aspect et nom inchangés.
+  expect(b.getAttribute("aria-label")).toBe("Claude");
+  expect(b.hasAttribute("title")).toBe(false);
+});
+
+test("REQ183_AC7_menuContextuel_aria_haspopup_menu_et_aria_expanded_sans_infobulle_menu_ouvert", async () => {
+  const { b } = ctx();
+  expect(b.getAttribute("aria-haspopup")).toBe("menu");
+  expect(b.getAttribute("aria-expanded")).toBe("false");
+  b.definirOuvert(true);
+  expect(b.getAttribute("aria-expanded")).toBe("true");
+  // Menu ouvert : le survol n'affiche pas d'info-bulle.
+  vi.useFakeTimers();
+  try {
+    b.enveloppe.dispatchEvent(new Event("pointerenter"));
+    vi.advanceTimersByTime(1000);
+    expect(document.querySelector('[role="tooltip"]')?.dataset.ouverte).not.toBe("true");
+    b.definirOuvert(false);
+    b.enveloppe.dispatchEvent(new Event("pointerenter"));
+    vi.advanceTimersByTime(1000);
+    expect(document.querySelector('[role="tooltip"]').dataset.ouverte).toBe("true");
+  } finally {
+    vi.useRealTimers();
+  }
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  expect(css).toMatch(/\.cadre-rail-commandes \.ya-icon-btn\[aria-expanded="true"\][^{]*\{ background: var\(--bg-400\); color: var\(--ink\); \}/);
+});
+
+test("REQ184_AC8_menuContextuel_bouton_en_cours_n_ouvre_rien_mais_bloque_le_menu_du_navigateur", () => {
+  const { b, menuContextuel } = ctx();
+  b.definirOccupe(true);
+  const e = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+  b.dispatchEvent(e);
+  expect(e.defaultPrevented).toBe(true);
+  expect(touche(b, { key: "ContextMenu" }).defaultPrevented).toBe(true);
+  expect(touche(b, { key: "F10", shiftKey: true }).defaultPrevented).toBe(true);
+  expect(menuContextuel).not.toHaveBeenCalled();
+  b.definirOccupe(false);
+  b.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+  expect(menuContextuel).toHaveBeenCalledTimes(1);
+  expect(() => bouton({ libelle: "x", menuContextuel: () => {} })).toThrow(/menuContextuel/);
+});
