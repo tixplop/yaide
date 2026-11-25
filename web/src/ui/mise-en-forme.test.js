@@ -5,7 +5,7 @@ import { syntaxTree, ensureSyntaxTree } from "@codemirror/language";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { afterEach, expect, test } from "vitest";
 import { zoneCode } from "./zone-code.js";
-import { gras, italique, souligne, codeEnLigne, extensionMiseEnForme, titre, citation, listePuces, listeNumerotee, lien, image, tableau, separateur, blocCode } from "./mise-en-forme.js";
+import { gras, italique, souligne, codeEnLigne, extensionMiseEnForme, titre, citation, listePuces, listeNumerotee, lien, image, whiteboard, tableau, separateur, blocCode } from "./mise-en-forme.js";
 
 Range.prototype.getClientRects ??= () => [];
 
@@ -343,7 +343,7 @@ test("REQ170_AC8_bloc_de_code_vide_sous_une_ligne_ou_autour_du_texte_choisi", ()
 });
 
 test("REQ170_AC9_une_transaction_isolee_par_action_et_un_undo_rend_le_texte_d_avant", () => {
-  const actions = [titre, citation, listePuces, listeNumerotee, lien, image, tableau, separateur, blocCode];
+  const actions = [titre, citation, listePuces, listeNumerotee, lien, image, whiteboard, tableau, separateur, blocCode];
   for (const action of actions) {
     const v = vue("mot", 0, 3);
     v.dispatch({ changes: { from: 3, insert: "s" }, userEvent: "input.type" });
@@ -354,4 +354,21 @@ test("REQ170_AC9_une_transaction_isolee_par_action_et_un_undo_rend_le_texte_d_av
     undo(v);
     expect(texte(v), action.name).toBe(avant);
   }
+});
+
+test("REQ170_AC19_whiteboard_ajoute_jdiag_sauf_s_il_finit_deja_par_jdiag_ou_insere_whiteboard_choisi", () => {
+  const v = vue("plan", 0, 4);
+  appliquer(v, whiteboard);
+  expect(texte(v)).toBe("![[plan.jdiag]]");
+  expect(choisi(v)).toBe("plan");
+  const m = vue("docs/Plan.JDIAG", 0, 15);
+  appliquer(m, whiteboard);
+  expect(texte(m)).toBe("![[docs/Plan.JDIAG]]");
+  expect(choisi(m)).toBe("docs/Plan.JDIAG");
+  const w = vue("a  b", 2);
+  appliquer(w, whiteboard);
+  expect(texte(w)).toBe("a ![[whiteboard.jdiag]] b");
+  expect(choisi(w)).toBe("whiteboard");
+  undo(w);
+  expect(texte(w)).toBe("a  b");
 });

@@ -173,6 +173,20 @@ export function image(etat) {
   });
 }
 
+// Whiteboard : `![[sélection.jdiag]]` (`.jdiag` ajouté s'il manque, casse ignorée), sélection gardée sur le même texte ;
+// sans sélection `![[whiteboard.jdiag]]` avec `whiteboard` seul choisi.
+export function whiteboard(etat) {
+  const { from, to } = etat.selection.main;
+  if (from === to) {
+    return transaction(etat, { changes: { from, insert: "![[whiteboard.jdiag]]" }, selection: EditorSelection.single(from + 3, from + 13) });
+  }
+  const fin = /\.jdiag$/i.test(etat.sliceDoc(from, to)) ? "]]" : ".jdiag]]";
+  return transaction(etat, {
+    changes: [{ from, insert: "![[" }, { from: to, insert: fin }],
+    selection: EditorSelection.single(from + 3, to + 3),
+  });
+}
+
 // Insère `bloc` sous la ligne du curseur, séparé du texte voisin par une ligne vide (jamais doublée) ; le curseur va
 // sur la ligne vide qui suit.
 function insererSous(etat, bloc) {

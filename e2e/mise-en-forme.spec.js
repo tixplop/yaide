@@ -21,7 +21,7 @@ test("REQ169_AC9_REQ170_AC6_AC12_AC14_AC15_AC16_parcours_P130_P131_barre_mise_en
     const editeur = page.locator(".cm-editor:visible");
     const contenu = page.locator(".cm-content:visible");
     await expect(barre).toBeVisible();
-    await expect(barre.getByRole("button")).toHaveCount(14);
+    await expect(barre.getByRole("button")).toHaveCount(15);
 
     // AC-170-12 : barre sous le fil d'Ariane, éditeur et ligne 1 sous la barre.
     const fil = await rect(page.locator(".ya-crumbs:visible"));
@@ -124,7 +124,7 @@ test("REQ169_AC9_REQ170_AC6_AC12_AC14_AC15_AC16_parcours_P130_P131_barre_mise_en
     expect(Math.abs((await rect(apercu)).y - bb.y)).toBeLessThanOrEqual(1);
     expect(await rangs()).toBeLessThanOrEqual(2);
 
-    // Éditeur de 320 px : quatorze boutons entiers, deux rangs, pas de défilement, ligne 1 sous la barre.
+    // Éditeur de 320 px : quinze boutons entiers, deux rangs, pas de défilement, ligne 1 sous la barre.
     await page.locator(".zone-code-editeur:visible").evaluate((e) => { e.style.flex = "0 0 320px"; });
     expect(await rangs()).toBe(2);
     const etroit = await rect(barre);

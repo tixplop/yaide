@@ -7,7 +7,7 @@ vi.mock("../references.js", async (original) => ({ ...(await original()), estMac
 
 Range.prototype.getClientRects ??= () => [];
 
-const NOMS = ["Titre", "Gras", "Italique", "Souligné", "Barré", "Code en ligne", "Lien", "Image", "Citation", "Liste à puces", "Liste numérotée", "Bloc de code", "Tableau", "Séparateur"];
+const NOMS = ["Titre", "Gras", "Italique", "Souligné", "Barré", "Code en ligne", "Lien", "Image", "Whiteboard", "Citation", "Liste à puces", "Liste numérotée", "Bloc de code", "Tableau", "Séparateur"];
 
 function zone(options = {}) {
   const z = zoneCode({ contenu: "un mot ici", langage: "markdown", nom: "README.md", hybride: true, ...options });
@@ -86,14 +86,14 @@ test("REQ170_AC9_une_action_de_la_barre_se_defait_d_un_seul_annuler", async () =
   expect(texte(z)).toBe("un mot ici");
 });
 
-test("REQ170_AC10_role_nom_quatorze_boutons_ordre_info_bulles_et_raccourcis", () => {
+test("REQ170_AC10_role_nom_quinze_boutons_ordre_info_bulles_et_raccourcis", () => {
   const z = zone();
   const b = barre(z);
   expect(b.getAttribute("aria-label")).toBe("Mise en forme");
   expect(b.getAttribute("aria-controls")).toBe(z.vue.contentDOM.id);
   expect(z.vue.contentDOM.id).not.toBe("");
   expect(b.querySelectorAll(".ya-barre-md-groupe").length).toBe(4);
-  expect([...b.querySelectorAll(".ya-barre-md-groupe")].map((g) => g.querySelectorAll("button").length)).toEqual([1, 7, 4, 2]);
+  expect([...b.querySelectorAll(".ya-barre-md-groupe")].map((g) => g.querySelectorAll("button").length)).toEqual([1, 8, 4, 2]);
   expect(boutons(z).map((x) => x.getAttribute("aria-label"))).toEqual(NOMS);
   expect(bt(z, "Gras").getAttribute("aria-keyshortcuts")).toBe("Control+B");
   expect(bt(z, "Italique").getAttribute("aria-keyshortcuts")).toBe("Control+I");
@@ -127,6 +127,9 @@ test("REQ170_AC10_AC16_info_bulle_avec_raccourci_au_dessus_du_bouton", () => {
   bt(z, "Lien").enveloppe.dispatchEvent(new Event("pointerleave"));
   expect(survoler("Image").textContent).toBe("Image");
   expect(bt(z, "Image").hasAttribute("aria-keyshortcuts")).toBe(false);
+  bt(z, "Image").enveloppe.dispatchEvent(new Event("pointerleave"));
+  expect(survoler("Whiteboard").textContent).toBe("Whiteboard");
+  expect(bt(z, "Whiteboard").hasAttribute("aria-keyshortcuts")).toBe(false);
   // C-012 `dessus` : le bas de la bulle (76 + 24) ne descend pas sous le haut du bouton (100).
   expect(parseFloat(lien.style.top) + 24).toBeLessThanOrEqual(100);
 });
@@ -164,10 +167,10 @@ test("REQ170_AC11_AC13_un_seul_arret_de_tab_fleches_debut_fin_sans_boucler", () 
   touche(document.activeElement, "ArrowRight");
   touche(document.activeElement, "ArrowRight");
   touche(document.activeElement, "ArrowLeft");
-  // Les flèches d'un groupe à l'autre suivent l'ordre des quatorze boutons.
+  // Les flèches d'un groupe à l'autre suivent l'ordre des quinze boutons.
   const ordre = [];
   touche(document.activeElement, "Home");
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 15; i++) {
     ordre.push(document.activeElement.getAttribute("aria-label"));
     touche(document.activeElement, "ArrowRight");
   }
@@ -232,4 +235,34 @@ test("REQ170_AC12_contrastes_des_paires_de_la_barre_dans_les_deux_themes", () =>
   const composants = readFileSync("web/src/ui/composants.css", "utf8");
   expect(composants).toMatch(/\.ya-barre-md\s*{[^}]*flex-wrap:\s*wrap/);
   expect(composants).toMatch(/\.ya-barre-md\s*{[^}]*background:\s*var\(--bg-200\)/);
+});
+
+test("REQ170_AC19_AC20_clic_sur_whiteboard_insere_la_balise_focus_editeur_flechesdroite", () => {
+  const z = zone({ contenu: "un plan ici" });
+  z.vue.dispatch({ selection: { anchor: 3, head: 7 } });
+  bt(z, "Whiteboard").click();
+  expect(texte(z)).toBe("un ![[plan.jdiag]] ici");
+  expect(z.vue.hasFocus).toBe(true);
+  expect(bt(z, "Whiteboard").querySelector("svg")).not.toBeNull();
+  bt(z, "Image").focus();
+  touche(document.activeElement, "ArrowRight");
+  expect(document.activeElement).toBe(bt(z, "Whiteboard"));
+  touche(document.activeElement, "ArrowRight");
+  expect(document.activeElement).toBe(bt(z, "Citation"));
+  const w = zone({ contenu: "" });
+  bt(w, "Whiteboard").click();
+  expect(texte(w)).toBe("![[whiteboard.jdiag]]");
+  expect(choisi(w)).toBe("whiteboard");
+});
+
+test("REQ170_AC20_ligne_5_vide_curseur_col_14_texte_sans_image_marques_en_muted", () => {
+  const z = zone({ contenu: "a\nb\nc\nd\n", document: "a.md", images: (n) => (n === "whiteboard.jdiag" ? "data:image/svg+xml;charset=utf-8,x" : null) });
+  z.vue.dispatch({ selection: { anchor: z.vue.state.doc.line(5).from } });
+  bt(z, "Whiteboard").click();
+  const doc = z.vue.state.doc;
+  expect(doc.line(5).text).toBe("![[whiteboard.jdiag]]");
+  expect(z.vue.state.selection.main.head).toBe(doc.line(5).from + 13); // Ln 5, Col 14
+  expect(z.querySelector(".cm-content img")).toBeNull();
+  const marques = [...z.querySelectorAll(".cm-content .cm-hy-marque")].map((e) => e.textContent);
+  expect(marques).toEqual(expect.arrayContaining(["![[", "]]"]));
 });

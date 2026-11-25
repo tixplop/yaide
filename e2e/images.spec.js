@@ -411,17 +411,20 @@ test("REQ175_AC1_AC7_AC8_AC13_AC14_REQ170_AC18_parcours_P135_P136_image_dans_le_
     await expect.poll(() => largeurNaturelle(voyantApercu)).toBe(16);
     proche((await boite(voyantApercu)).w, 16);
 
-    // AC-170-18 : « Image » juste à droite de « Lien », même rang, avec deux rangs à 1024 px.
+    // AC-170-18 : « Image » juste à droite de « Lien », « Whiteboard » juste à droite d'« Image », même rang, avec deux rangs à 1024 px.
     const bouton = (nom) => barre.getByRole("button", { name: nom, exact: true });
     const rangs = async () => new Set((await barre.getByRole("button").evaluateAll((bs) => bs.map((x) => Math.round(x.getBoundingClientRect().top))))).size;
     const lienImage = async () => {
-      const [l, i, t] = [await boite(bouton("Lien")), await boite(bouton("Image")), await boite(bouton("Titre"))];
+      const [l, i, t, w] = [await boite(bouton("Lien")), await boite(bouton("Image")), await boite(bouton("Titre")), await boite(bouton("Whiteboard"))];
       expect(Math.abs(l.y - i.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(i.y - w.y)).toBeLessThanOrEqual(1);
+      proche(w.x, i.x + i.w, 12);
       expect(Math.abs(l.y - t.y)).toBeLessThanOrEqual(1);
       proche(i.x, l.x + l.w, 12);
       expect(i.x).toBeGreaterThan(l.x);
     };
     await expect(bouton("Image")).not.toHaveAttribute("aria-keyshortcuts");
+    await expect(bouton("Whiteboard")).not.toHaveAttribute("aria-keyshortcuts");
     expect(await rangs()).toBe(2);
     await lienImage();
 
@@ -436,12 +439,12 @@ test("REQ175_AC1_AC7_AC8_AC13_AC14_REQ170_AC18_parcours_P135_P136_image_dans_le_
     expect(await apercu.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
     for (let i = 0; i < 12; i++) await page.keyboard.press("ArrowLeft");
 
-    // AC-170-18 : éditeur de 400 px, un seul rang ; de 380 px, deux rangs, « Lien » et « Image » sur le premier.
+    // AC-170-18 : éditeur de 430 px, un seul rang ; de 400 px, deux rangs, « Lien », « Image » et « Whiteboard » sur le premier.
     const zone = page.locator(".zone-code-editeur:visible");
-    await zone.evaluate((e) => { e.style.flex = "0 0 400px"; });
+    await zone.evaluate((e) => { e.style.flex = "0 0 430px"; });
     expect(await rangs()).toBe(1);
     await lienImage();
-    await zone.evaluate((e) => { e.style.flex = "0 0 380px"; });
+    await zone.evaluate((e) => { e.style.flex = "0 0 400px"; });
     expect(await rangs()).toBe(2);
     await lienImage();
     await zone.evaluate((e) => { e.style.flex = ""; });

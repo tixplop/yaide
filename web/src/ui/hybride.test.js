@@ -6,6 +6,7 @@ import { history, undo, redo, undoDepth } from "@codemirror/commands";
 import { afterEach, expect, test, vi } from "vitest";
 import { apercu } from "./apercu.js";
 import { zoneCode } from "./zone-code.js";
+import { whiteboard } from "./mise-en-forme.js";
 import { majImagesHybride, diagrammesHybride, bornesCellule, texteSaisie, sourceApres, validerSaisie, fondsRegles, decorationsHybride, hybride, lienA, tableauxHybride, insererColonne, insererLigne, supprimerColonne, supprimerLigne, zonesAides } from "./hybride.js";
 
 // Le curseur est en fin de document : une dernière ligne « fin » le tient loin des lignes testées.
@@ -1589,6 +1590,88 @@ test("REQ175_AC12_une_image_chargee_ne_relance_pas_les_balises_en_echec", () => 
   m.charger(1); // logo.png
   expect(m.imgs().length).toBe(1);
   expect(m.creees.length).toBe(2);
+  m.fin();
+});
+
+// Whiteboard `![[plan.jdiag]]` (REQ-179) : le crochet `images` rend l'adresse `data:` du dessin, ou null.
+const DATA_PLAN = "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2220%22%2F%3E";
+function montrerWhiteboard(doc = "x\n\n![[plan.jdiag]]\nfin", anchor = 0) {
+  const creees = [];
+  vi.stubGlobal("Image", class {
+    constructor() {
+      const img = document.createElement("img");
+      creees.push(img);
+      return img;
+    }
+  });
+  const surLien = vi.fn();
+  const m = monterH(doc, anchor, { images: (n) => (n === "plan.jdiag" ? DATA_PLAN : null), chargees: new Map(), surLien });
+  const imgs = () => [...m.parent.querySelectorAll("img.ya-image-md")];
+  return { ...m, creees, surLien, imgs, ligne: (i) => m.parent.querySelectorAll(".cm-line")[i].textContent };
+}
+
+test("REQ179_AC4_AC9_AC10_AC12_dessin_a_la_place_de_la_balise_clic_curseur_texte_meme_img", () => {
+  const m = montrerWhiteboard();
+  expect(m.ligne(2)).toBe("![[plan.jdiag]]"); // AC-179-10 : texte tant que le dessin n'est pas lu
+  expect(m.imgs().length).toBe(0);
+  m.creees[0].dispatchEvent(new Event("load"));
+  const img = m.imgs()[0];
+  expect(m.imgs().length).toBe(1);
+  expect(m.ligne(2)).not.toMatch(/\[|\]/); // AC-179-12
+  expect(img.getAttribute("src")).toBe(DATA_PLAN);
+  expect(img.alt).toBe("plan.jdiag"); // AC-179-9
+  expect(img.draggable).toBe(false);
+  expect(img.hasAttribute("title")).toBe(false);
+  expect(img.hasAttribute("tabindex")).toBe(false);
+  expect(readFileSync("web/src/ui/composants.css", "utf8")).toMatch(/\.cm-hybride \.ya-image-md \{[^}]*cursor: text/);
+  expect(readFileSync("web/src/ui/composants.css", "utf8")).toMatch(/\.ya-image-md \{[^}]*border: 0/);
+  m.vue.dispatch({ changes: { from: 0, insert: "y" } });
+  expect(m.imgs()[0]).toBe(img);
+  expect(m.creees.length).toBe(1);
+  // AC-179-4 : le curseur sur la ligne 3 rend la balise en texte ; le clic sur le dessin place le curseur au début.
+  m.vue.dispatch({ selection: { anchor: m.vue.state.doc.line(3).from + 2 } });
+  expect(m.imgs().length).toBe(0);
+  expect(m.ligne(2)).toBe("![[plan.jdiag]]");
+  m.vue.dispatch({ selection: { anchor: 0 } });
+  m.imgs()[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+  expect(m.vue.state.selection.main.head).toBe(m.vue.state.doc.line(3).from);
+  expect(m.ligne(2)).toBe("![[plan.jdiag]]");
+  expect(m.surLien).not.toHaveBeenCalled(); // aucun onglet ne s'ouvre
+  m.fin();
+});
+
+test("REQ179_AC11_ctrl_clic_sur_le_dessin_place_le_curseur_sans_ouvrir_de_lien", () => {
+  const m = montrerWhiteboard();
+  m.creees[0].dispatchEvent(new Event("load"));
+  const e = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, ctrlKey: true });
+  m.imgs()[0].dispatchEvent(e);
+  expect(e.defaultPrevented).toBe(true);
+  expect(m.vue.state.selection.main.head).toBe(m.vue.state.doc.line(3).from);
+  expect(m.surLien).not.toHaveBeenCalled();
+  m.fin();
+});
+
+test("REQ179_AC3_whiteboard_vide_illisible_absent_taille_ou_code_restent_du_texte", () => {
+  const doc = "x\n\n![[vide.jdiag]]\n![[casse.jdiag]]\n![[absent.jdiag]]\n![[plan.jdiag|300]]\n`![[plan.jdiag]]`\nfin";
+  const m = montrerWhiteboard(doc);
+  expect(m.creees.length).toBe(0);
+  expect(m.imgs().length).toBe(0);
+  const lignes = [...m.parent.querySelectorAll(".cm-line")].map((l) => l.textContent);
+  for (const t of ["![[vide.jdiag]]", "![[casse.jdiag]]", "![[absent.jdiag]]", "![[plan.jdiag|300]]"]) expect(lignes).toContain(t);
+  expect(lignes.filter((l) => l.includes("![[plan.jdiag]]")).length).toBe(1); // celle du code en ligne
+  m.fin();
+});
+
+test("REQ170_AC19_balise_inseree_puis_nom_tape_le_whiteboard_s_affiche_apres_le_curseur_ailleurs", () => {
+  const m = montrerWhiteboard("x\n\n\nfin", 3);
+  m.vue.dispatch(whiteboard(m.vue.state));
+  expect(m.vue.state.sliceDoc(m.vue.state.selection.main.from, m.vue.state.selection.main.to)).toBe("whiteboard");
+  m.vue.dispatch(m.vue.state.replaceSelection("plan"));
+  m.vue.dispatch({ selection: { anchor: 0 } });
+  expect(m.vue.state.doc.line(3).text).toBe("![[plan.jdiag]]");
+  m.creees[0].dispatchEvent(new Event("load"));
+  expect(m.imgs().length).toBe(1);
+  expect(m.imgs()[0].alt).toBe("plan.jdiag");
   m.fin();
 });
 

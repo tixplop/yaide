@@ -1,8 +1,8 @@
 import { bouton } from "./bouton.js";
 import { estMac } from "../references.js";
-import { gras, italique, souligne, barre, codeEnLigne, lien, image, titre, citation, listePuces, listeNumerotee, blocCode, tableau, separateur } from "./mise-en-forme.js";
+import { gras, italique, souligne, barre, codeEnLigne, lien, image, whiteboard, titre, citation, listePuces, listeNumerotee, blocCode, tableau, separateur } from "./mise-en-forme.js";
 
-// Barre « Mise en forme » (REQ-170, C-008) : quatorze boutons à icône en quatre groupes, posés au-dessus d'un éditeur
+// Barre « Mise en forme » (REQ-170, C-008) : quinze boutons à icône en quatre groupes, posés au-dessus d'un éditeur
 // markdown en mode hybride. Chaque bouton applique une action de `mise-en-forme.js` à l'éditeur, qui garde le focus.
 
 const GROUPES = [
@@ -15,6 +15,7 @@ const GROUPES = [
     ["Code en ligne", "code", codeEnLigne],
     ["Lien", "link", lien],
     ["Image", "image", image],
+    ["Whiteboard", "workflow", whiteboard],
   ],
   [
     ["Citation", "text-quote", citation],
