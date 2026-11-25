@@ -13,7 +13,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/depot.rs — dépôt git, `.gitignore`, worktrees — est_un_depot, worktrees
 - src/git.rs — état, diff, index, commit, branches, pull/push — etat, commit, synchroniser
 - src/recherche.rs — recherche dans les fichiers et ouverture rapide — chercher, lister
-- src/shells.rs — shells et sessions Claude en pseudo-terminal, survie aux coupures, variables d'un environnement ; intégration à bash et zsh (séquence retirée de la sortie, commandes terminées remises aux déclencheurs, REQ-167) — abonner, ecrire, prendre_commandes
+- src/shells.rs — shells et sessions Claude en pseudo-terminal, survie aux coupures, variables d'un environnement ; session Claude lancée avec CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 (REQ-102, DEC-122) ; intégration à bash et zsh (séquence retirée de la sortie, commandes terminées remises aux déclencheurs, REQ-167) — abonner, ecrire, prendre_commandes
 - src/integration-shell/ — fichiers de démarrage embarqués : `bash-rc` (`--rcfile`) et `zsh/` (`ZDOTDIR`), écrits dans le dossier de configuration au lancement d'un shell (REQ-167)
 - src/opencode.rs — processus `opencode serve` du projet, un par environnement utilisé plus celui sans environnement (REQ-184) — assurer, arreter, disponible
 - src/apercu.rs — jetons et service de l'aperçu HTML — nouveau_jeton, jeton_ok, charger

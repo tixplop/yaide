@@ -1105,6 +1105,27 @@ fn req183_ac2_ac3_claude_avec_environnement_variables_de_l_environnement_l_empor
 }
 
 #[test]
+fn req102_ac12_environnement_l_emporte_sur_l_ecran_alterne_et_shell_sans_variable() {
+    let (path, temoin) = faux_claude_env("env-alterne");
+    let s = lancer_avec_env("env-alterne", Some("/bin/sh"), &[("PATH", &path)]);
+    definir_env(
+        &s,
+        "plein",
+        "{\"CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN\":\"0\"}",
+    );
+    ouvrir_avec(&s, "/api/claude", "plein");
+    assert!(attendre(10, || std::fs::read_to_string(&temoin)
+        .map(|t| t.contains("FINI"))
+        .unwrap_or(false)));
+    let t = std::fs::read_to_string(&temoin).unwrap();
+    assert!(
+        t.lines()
+            .any(|l| l == "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=0"),
+        "{t}"
+    );
+}
+
+#[test]
 fn req183_ac3_shell_lang_de_l_environnement_et_commande_remise_aux_declencheurs() {
     let Some(chemin) = chemin_shell("bash") else {
         eprintln!("bash absent de la machine : test sauté");

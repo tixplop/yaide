@@ -354,6 +354,19 @@ fn req068_ac3_commande_arguments_et_dossier_du_projet() {
 }
 
 #[test]
+fn req102_ac12_claude_sans_ecran_alterne() {
+    let (path, temoin) = faux_claude("sans-alterne");
+    let s = lancer("sans-alterne", &path);
+    let _id = ouvrir(&s);
+    let t = lire_temoin(&temoin);
+    assert!(
+        t.lines()
+            .any(|l| l == "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1"),
+        "{t}"
+    );
+}
+
+#[test]
 fn req068_ac20_session_lancee_depuis_claude_code() {
     let (path, temoin) = faux_claude("imbrique");
     let s = lancer_avec_env(

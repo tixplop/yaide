@@ -470,6 +470,10 @@ impl Registre {
         for v in retirer {
             cmd.env_remove(v);
         }
+        if claude {
+            // Affichage classique de Claude Code : le terminal sélectionne et copie (DEC-122).
+            cmd.env("CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN", "1");
+        }
         for (k, v) in variables {
             cmd.env(k, v);
         }
