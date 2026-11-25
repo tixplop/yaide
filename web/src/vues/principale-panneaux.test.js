@@ -596,7 +596,7 @@ test("REQ070_AC11_ordre_de_tab_sans_les_fonctions_absentes", async () => {
   expect(noms.at(-1)).toBe("Claude");
 });
 
-test("REQ070_vue_gardee_absente_retombe_sur_fichiers", async () => {
+test("REQ070_AC16_vue_gardee_absente_retombe_sur_fichiers", async () => {
   simulerTout();
   // La vue affichée n'est pas enregistrée : le panneau démarre toujours sur Fichiers, seule vue restante.
   const { vue } = monter({ reglages: { fonctions: { git: false, recherche: false } } });
@@ -837,4 +837,42 @@ test("REQ086_AC6_onglet_modifie_garde_au_changement_de_choix_et_ctrl_s_ecrit_ver
   await attendre();
   expect(puts.some((u) => u.includes("chemin=../essai/main.rs"))).toBe(true);
   expect(appels.length).toBeGreaterThan(0);
+});
+
+test("REQ070_AC10_replis_d_une_fonction_desactivee_sans_effet", async () => {
+  simulerTout();
+  vi.mocked(lire).mockImplementation(async (cle) => (cle === "replis" ? { shells: false, agent: false } : undefined));
+  const { vue } = monter({ reglages: { fonctions: { shells: false, agents: false }, replis: { shells: false, agent: false } } });
+  await attendre();
+  await attendre();
+  expect(agentCol(vue)).toBeNull();
+  expect(vue.querySelector(".cadre-shells")).toBeNull();
+  expect(vue.querySelector(".cadre-rail-commandes")).toBeNull();
+  expect(vue.querySelector("header [aria-label='Replier les shells']")).toBeNull();
+});
+
+test("REQ070_AC13_aucun_onglet_git_ni_zone_des_shells_meme_cache_du_debut_a_la_fin", async () => {
+  simulerTout();
+  const vus = [];
+  const inspecter = (racine) => {
+    if (racine.querySelector("[role=tab][aria-label=Git], .cadre-shells, [aria-label='Replier les shells'], [aria-label='Déplier les shells']")) vus.push(racine.className);
+  };
+  const obs = new MutationObserver((lots) => lots.forEach((l) => l.addedNodes.forEach((n) => n.querySelector && inspecter(n))));
+  obs.observe(document.body, { childList: true, subtree: true });
+  const { vue } = monter({ reglages: { fonctions: { git: false, shells: false } } });
+  inspecter(vue);
+  await attendre();
+  await attendre();
+  inspecter(vue);
+  obs.disconnect();
+  expect(vus).toEqual([]);
+});
+
+test("REQ070_AC15_shells_desactives_boutons_de_la_barre_de_titre_dans_l_ordre", async () => {
+  simulerTout();
+  const { vue } = monter({ reglages: { fonctions: { shells: false } } });
+  await attendre();
+  const noms = [...vue.querySelectorAll("header button")].map((b) => b.getAttribute("aria-label"));
+  expect(noms.some((n) => /shells/.test(n ?? ""))).toBe(false);
+  expect(noms.filter((n) => n && !/shells/.test(n)).slice(-4)).toEqual(["Replier le panneau", "Thème clair", "Déconnexion", "Arrêter Yaide"]);
 });

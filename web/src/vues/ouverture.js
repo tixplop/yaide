@@ -12,6 +12,7 @@ const COMMANDES = [
   { id: "providers", nom: "Providers LLM" },
   { id: "profils", nom: "Profils de modèle" },
   { id: "configuration", nom: "Configuration" },
+  { id: "environnements", nom: "Environnements" },
 ];
 const nomDe = (chemin) => chemin.split("/").pop();
 
@@ -47,7 +48,7 @@ export function filtrer(chemins, texte) {
 /**
  * V-006. Ctrl+P (sauf dans un shell) ou `ouvrir()` affiche le dialogue.
  * Rappels : `surOuvrir({ chemin, contenu, version, geste })`, `geste = surLecture(true)`, `surLecture(false)`.
- * `commandes` : les commandes proposées (seulement « Configuration » si les agents sont désactivés).
+ * `commandes` : les commandes proposées (« Configuration » et « Environnements » seulement si les agents sont désactivés).
  * `peutFormater()` : vrai si l'onglet actif se formate ; « Formater le document » s'ajoute alors (REQ-118), calculé à chaque frappe.
  * `peutExporter()` : vrai si l'onglet actif est un fichier texte ; « Exporter en PDF » s'ajoute alors en dernier (REQ-177), après « Formater le document ».
  * Un texte qui commence par `>` liste les commandes : `surCommande(id, avant)`, `avant` étant l'élément qui avait le focus avant l'ouverture.

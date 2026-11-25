@@ -1154,7 +1154,7 @@ test("REQ118_AC1_AC5_AC8_AC11_parcours_87", async ({ page, browserName }) => {
   // Étapes 1 et 2.
   await commande(">");
   const options = palette.getByRole("option");
-  await expect(options).toHaveText(["Providers LLM", "Profils de modèle", "Configuration", "Formater le document", "Exporter en PDF"]);
+  await expect(options).toHaveText(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Formater le document", "Exporter en PDF"]);
   await expect(options.first()).toHaveAttribute("aria-selected", "true");
   await page.keyboard.type("form");
   await expect(options).toHaveCount(1);
@@ -1212,7 +1212,7 @@ test("REQ118_AC1_AC5_AC8_AC11_parcours_87", async ({ page, browserName }) => {
   await page.keyboard.press("Backspace");
   await page.keyboard.press("Backspace");
   await page.keyboard.press("Backspace");
-  await expect(options).toHaveText(["Providers LLM", "Profils de modèle", "Configuration", "Exporter en PDF"]);
+  await expect(options).toHaveText(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Exporter en PDF"]);
   await page.keyboard.press("Escape");
   await expect(editeur(page, "main.rs")).toBeFocused();
 });

@@ -5,7 +5,7 @@ import { lancerYaide, ouvrirYaide, depotExemple, nomLigne } from "./aides.js";
 
 test.skip(({ browserName }) => browserName !== "chromium", "Chromium seul (DEC-037)");
 
-test("AC-117-5_AC-116-1_AC-116-6_AC-116-7_AC-117-18_parcours_85_86_dialogue_configuration", async ({ page }) => {
+test("REQ116_AC1_AC6_AC7_REQ117_AC5_AC18_parcours_85_86_dialogue_configuration", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const dossier = depotExemple();
   fs.writeFileSync(path.join(dossier, "README.md"), "# Titre\n\nUn paragraphe.\n\nFin\n");

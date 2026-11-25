@@ -985,6 +985,23 @@ test("REQ070_AC6_onglets_claude_gardes_caches_puis_rendus", async () => {
   vi.resetModules();
 });
 
+test("REQ070_AC17_claude_desactive_l_onglet_actif_est_le_fichier_et_le_focus_est_dans_son_editeur", async () => {
+  vi.resetModules();
+  const gardee = [{ chemin: "main.rs" }, { claude: true, id: "t0", numero: 1, instance: "i1" }];
+  vi.doMock("../onglets-fichiers.js", async (orig) => ({ ...(await orig()), garder: vi.fn(), retrouver: async () => ({ liste: gardee, actif: "t0", disposition: { arbre: { id: "g1", actif: "t0" }, courant: "g1" } }) }));
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, headers: new Headers({ "x-version": "1" }), text: async () => "x" })));
+  const { vueEditeur: neuf } = await import("./editeur.js");
+  const e = neuf({ dire: vi.fn(), claude: false });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  await e.restaurer();
+  expect(nomsOnglets()).toEqual(["main.rs"]);
+  expect(document.querySelector("[role=tab][aria-selected=true]").textContent).toContain("main.rs");
+  expect(document.activeElement.closest(".cm-editor")).not.toBeNull();
+  vi.doUnmock("../onglets-fichiers.js");
+  vi.resetModules();
+});
+
 test("REQ018_brouillon_garde_identique_au_disque_n_est_ni_modifie_ni_en_conflit", async () => {
   vi.resetModules();
   const gardee = [{ chemin: "a.txt", texte: "sur le disque", base: "ancien", version: "1" }];

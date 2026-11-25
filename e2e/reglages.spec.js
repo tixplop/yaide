@@ -85,7 +85,7 @@ const brouillonVide = (page) =>
     )
     .toBe(false);
 
-test("REQ070_parcours_32_alleger_avec_faute_de_frappe", async ({ page }) => {
+test("REQ070_AC4_AC9_AC18_parcours_32_alleger_avec_faute_de_frappe", async ({ page }) => {
   const dossier = depotExemple();
   yaide = await lancerYaide({ dossier, claude: fauxClaude() });
   const fichier = path.join(dossier, ".yaide", "interface.json");
@@ -197,7 +197,8 @@ test("REQ070_parcours_32_alleger_avec_faute_de_frappe", async ({ page }) => {
   await page.keyboard.press("Control+p");
   await page.keyboard.type(">");
   // L'onglet actif est interface.json (JSON) : « Formater le document » s'ajoute (REQ-118) puis « Exporter en PDF » (REQ-177), aucune commande des fonctions éteintes.
-  await expect(page.getByRole("option")).toHaveCount(3);
+  await expect(page.getByRole("option")).toHaveCount(4);
+  await expect(page.getByRole("option", { name: "Environnements" })).toBeVisible();
   await expect(page.getByRole("option", { name: "Exporter en PDF" })).toBeVisible();
   await expect(page.getByRole("option", { name: "Configuration" })).toBeVisible();
   await expect(page.getByRole("option", { name: "Formater le document" })).toBeVisible();
@@ -225,7 +226,7 @@ test("REQ070_parcours_32_alleger_avec_faute_de_frappe", async ({ page }) => {
   process.kill(pid);
 });
 
-test("REQ070_parcours_33_claude_seul_a_800_par_480", async ({ page }) => {
+test("REQ070_AC10_AC14_parcours_33_claude_seul_a_800_par_480", async ({ page }) => {
   await page.clock.install();
   const dossier = depotExemple();
   yaide = await lancerYaide({ dossier, claude: fauxClaude() });
@@ -290,6 +291,47 @@ test("REQ070_parcours_33_claude_seul_a_800_par_480", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Claude 1", exact: true })).toBeVisible();
 });
 
+test("REQ070_AC12_AC15_chaque_fonction_desactivee_seule_rails_entiers_et_ouverture_rapide_centree", async ({ page }) => {
+  const dossier = depotExemple();
+  yaide = await lancerYaide({ dossier, claude: fauxClaude() });
+  const fichier = path.join(dossier, ".yaide", "interface.json");
+  await page.setViewportSize({ width: 800, height: 480 });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  fs.mkdirSync(path.dirname(fichier), { recursive: true });
+  const mesures = () =>
+    page.evaluate(() => {
+      const r = (s) => document.querySelector(s);
+      const de = document.documentElement;
+      const rails = [".cadre-rail", ".cadre-rail-droit"].map((s) => r(s)).filter(Boolean);
+      return {
+        defilement: rails.map((e) => e.scrollHeight - e.clientHeight),
+        hauteurs: [...new Set([...document.querySelectorAll(".cadre-rail [role=tab], .cadre-rail button, .cadre-rail-droit button")].map((e) => e.getBoundingClientRect().height))],
+        page: [de.scrollHeight - innerHeight, de.scrollWidth - innerWidth],
+      };
+    });
+  for (const fonction of ["recherche", "git", "shells", "agents", "claude"]) {
+    fs.writeFileSync(fichier, JSON.stringify({ fonctions: { [fonction]: false } }) + "\n");
+    await page.reload();
+    await expect(page.getByRole("tab", { name: "Fichiers", exact: true })).toBeVisible();
+    const m = await mesures();
+    expect(m.defilement.every((d) => d === 0), fonction).toBe(true);
+    expect(m.hauteurs, fonction).toEqual([48]);
+    expect(m.page, fonction).toEqual([0, 0]);
+  }
+
+  // AC-070-15 : shells désactivés, « Ouverture rapide » reste au centre de la fenêtre.
+  fs.writeFileSync(fichier, JSON.stringify({ fonctions: { shells: false } }) + "\n");
+  for (const largeur of [800, 1280]) {
+    await page.setViewportSize({ width: largeur, height: 800 });
+    await page.reload();
+    await expect(enteteBouton(page, "Ouverture rapide")).toBeVisible();
+    const noms = await page.locator("header button").evaluateAll((l) => l.map((b) => b.getAttribute("aria-label")));
+    expect(noms.slice(-4)).toEqual(["Replier le panneau", "Thème clair", "Déconnexion", "Arrêter Yaide"]);
+    const b = await enteteBouton(page, "Ouverture rapide").boundingBox();
+    expect(Math.abs(b.x + b.width / 2 - largeur / 2)).toBeLessThanOrEqual(2);
+  }
+});
+
 const dialoguePrefs = (page) => page.getByRole("dialog", { name: "Configuration" });
 const SAVED = "Préférences enregistrées. Rechargez la page pour les appliquer.";
 
@@ -308,10 +350,11 @@ test("REQ071_parcours_34_regler_sans_json", async ({ page }) => {
   await expect(page.getByRole("textbox", { name: "Éditeur main.rs" })).toBeFocused();
   await expect(page.locator(".cadre-rail-droit")).toHaveCount(0);
 
-  // 1-2. Ctrl+P, `>` : une seule commande ; Entrée ouvre le dialogue.
+  // 1-2. Ctrl+P, `>` : « Configuration » en premier ; Entrée ouvre le dialogue.
   await page.keyboard.press("Control+p");
   await page.keyboard.type(">");
-  await expect(page.getByRole("option")).toHaveCount(2);
+  await expect(page.getByRole("option")).toHaveCount(3);
+  await expect(page.getByRole("option", { name: "Environnements" })).toBeVisible();
   await page.keyboard.press("Enter");
   const dlg = dialoguePrefs(page);
   await expect(dlg).toBeVisible();

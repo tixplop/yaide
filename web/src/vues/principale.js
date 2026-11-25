@@ -7,6 +7,7 @@ import { afficher, changerTexte, retirer } from "../ui/toasts.js";
 import { onglets } from "../ui/onglets.js";
 import { reprendreDernierChoix } from "../opencode.js";
 import { vueConnaissance } from "./connaissance.js";
+import { vueEnvironnements } from "./environnements.js";
 import { vueServeursMcp } from "./serveurs-mcp.js";
 import { vueSessionsOpencode } from "./sessions-opencode.js";
 import { surveiller } from "../connexion.js";
@@ -283,9 +284,11 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   });
   // V-008 et V-009 ; à sa fermeture, le focus revient à l'élément d'avant Ctrl+P.
   let panneauConfig = null;
+  let focusApresEnvironnements = null;
+  const environnements = vueEnvironnements({ surFermeture: () => focusApresEnvironnements?.() });
   const ouverture = vueOuverture({
     dire,
-    commandes: avec.agents ? undefined : [{ id: "configuration", nom: "Configuration" }],
+    commandes: avec.agents ? undefined : [{ id: "configuration", nom: "Configuration" }, { id: "environnements", nom: "Environnements" }],
     surOuvrir: editeur.ouvrir,
     surLecture: editeur.lecture,
     peutFormater: editeur.peutFormater,
@@ -299,6 +302,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
           surCouleursEnregistrees: () => retirer("illisible:.yaide/markdown.json"),
         });
         return;
+      }
+      if (id === "environnements") {
+        focusApresEnvironnements = () => avant?.focus?.({ preventScroll: true });
+        return environnements.ouvrir();
       }
       const ouvrirPanneau = { providers: ouvrirProviders, profils: ouvrirProfils }[id];
       if (!ouvrirPanneau) return;

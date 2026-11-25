@@ -109,7 +109,7 @@ test("REQ027_AC6_ligne_courante_et_navigation", async () => {
   v.detruire();
 });
 
-test("REQ027_AC1_entree_ouvre_le_fichier_courant", async () => {
+test("REQ054_AC3_REQ027_AC1_entree_ouvre_le_fichier_courant", async () => {
   const fetch = vi.fn(async (url) =>
     url.startsWith("/api/chemins")
       ? json({ chemins: ["README.md", "src/main.rs"] })
@@ -195,7 +195,7 @@ test("REQ054_AC1_chevron_liste_les_commandes_sans_fichier", async () => {
   const { entree, v } = await ouvrir();
   taper(entree, ">");
   const lignes = [...document.querySelectorAll("dialog [role=option]")];
-  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration"]);
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements"]);
   expect(document.querySelector("dialog").textContent).not.toContain("main.rs");
   v.detruire();
 });
@@ -245,8 +245,8 @@ test("REQ054_AC1_AC2_AC7_trois_commandes_et_configuration", async () => {
   const { entree, declencheur, v } = await ouvrir({ surCommande });
   taper(entree, ">");
   const toutes = [...document.querySelectorAll("dialog [role=option]")];
-  expect(toutes).toHaveLength(3);
-  expect(toutes.map((l) => l.getAttribute("aria-selected"))).toEqual(["true", "false", "false"]);
+  expect(toutes).toHaveLength(4);
+  expect(toutes.map((l) => l.getAttribute("aria-selected"))).toEqual(["true", "false", "false", "false"]);
   touche(entree, "ArrowDown");
   touche(entree, "ArrowDown");
   expect(entree.getAttribute("aria-activedescendant")).toBe(toutes[2].id);
@@ -261,20 +261,32 @@ test("REQ054_AC1_AC2_AC7_trois_commandes_et_configuration", async () => {
   expect(lignes[0].querySelector("b.liste-trouve").textContent).toBe("Conf");
   touche(e2, "Enter");
   expect(surCommande).toHaveBeenCalledTimes(2);
+  v.ouvrir();
+  const e3 = document.querySelector("dialog input");
+  taper(e3, ">env");
+  const env = [...document.querySelectorAll("dialog [role=option]")];
+  expect(env.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Environnements"]);
+  expect(env[0].querySelector("b.liste-trouve").textContent).toBe("Env");
+  touche(e3, "Enter");
+  expect(surCommande).toHaveBeenLastCalledWith("environnements", expect.anything());
   v.detruire();
 });
 
-test("REQ070_AC5_AC19_agents_desactives_seule_configuration", async () => {
+test("REQ054_AC8_REQ070_AC5_AC19_agents_desactives_configuration_puis_environnements", async () => {
   simuler(json({ chemins: ["src/main.rs"] }));
   const surCommande = vi.fn();
-  const { entree } = await ouvrir({ surCommande, commandes: [{ id: "configuration", nom: "Configuration" }] });
+  const { entree } = await ouvrir({ surCommande, commandes: [{ id: "configuration", nom: "Configuration" }, { id: "environnements", nom: "Environnements" }] });
   taper(entree, ">");
   const lignes = [...document.querySelectorAll("dialog [role=option]")];
-  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Configuration"]);
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Configuration", "Environnements"]);
   expect(lignes[0].getAttribute("aria-selected")).toBe("true");
   expect(entree.getAttribute("aria-activedescendant")).toBe(lignes[0].id);
   taper(entree, ">prov");
   expect(document.querySelector("dialog").textContent).toContain("Aucune commande trouvée.");
+  taper(entree, ">env");
+  const seule = [...document.querySelectorAll("dialog [role=option]")];
+  expect(seule.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Environnements"]);
+  expect(seule[0].querySelector("b.liste-trouve").textContent).toBe("Env");
   taper(entree, "main");
   expect(document.querySelector("dialog [role=listbox]").textContent).toContain("src/main.rs");
   taper(entree, ">");
@@ -288,13 +300,13 @@ test("REQ118_AC9_AC10_AC11_formater_en_dernier_seulement_si_l_onglet_peut_se_for
   let peut = false;
   const { entree, declencheur, v } = await ouvrir({ surCommande, peutFormater: () => peut });
   taper(entree, ">");
-  expect([...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration"]);
+  expect([...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements"]);
   taper(entree, ">form");
   expect(document.querySelector("dialog").textContent).toContain("Aucune commande trouvée.");
   peut = true;
   taper(entree, ">");
   const lignes = [...document.querySelectorAll("dialog [role=option]")];
-  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Formater le document"]);
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Formater le document"]);
   taper(entree, ">form");
   const une = [...document.querySelectorAll("dialog [role=option]")];
   expect(une).toHaveLength(1);
@@ -308,9 +320,9 @@ test("REQ118_AC9_AC10_AC11_formater_en_dernier_seulement_si_l_onglet_peut_se_for
 
 test("REQ118_AC10_formater_suit_les_agents_desactives", async () => {
   simuler(json({ chemins: [] }));
-  const { entree, v } = await ouvrir({ commandes: [{ id: "configuration", nom: "Configuration" }], peutFormater: () => true });
+  const { entree, v } = await ouvrir({ commandes: [{ id: "configuration", nom: "Configuration" }, { id: "environnements", nom: "Environnements" }], peutFormater: () => true });
   taper(entree, ">");
-  expect([...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent)).toEqual(["Configuration", "Formater le document"]);
+  expect([...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent)).toEqual(["Configuration", "Environnements", "Formater le document"]);
   v.detruire();
 });
 
@@ -325,10 +337,10 @@ test("REQ177_AC6_AC7_AC9_REQ118_AC9_AC10_AC11_exporter_en_dernier_apres_formater
   expect(document.querySelector("dialog").textContent).toContain("Aucune commande trouvée.");
   exporte = true;
   taper(entree, ">");
-  expect(noms()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Exporter en PDF"]);
+  expect(noms()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Exporter en PDF"]);
   formate = true;
   taper(entree, ">");
-  expect(noms()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Formater le document", "Exporter en PDF"]);
+  expect(noms()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Formater le document", "Exporter en PDF"]);
   taper(entree, ">pdf");
   const une = [...document.querySelectorAll("dialog [role=option]")];
   expect(une).toHaveLength(1);
@@ -342,9 +354,9 @@ test("REQ177_AC6_AC7_AC9_REQ118_AC9_AC10_AC11_exporter_en_dernier_apres_formater
 
 test("REQ177_AC7_REQ118_AC10_agents_desactives_configuration_puis_exporter", async () => {
   simuler(json({ chemins: [] }));
-  const { entree, v } = await ouvrir({ commandes: [{ id: "configuration", nom: "Configuration" }], peutExporter: () => true });
+  const { entree, v } = await ouvrir({ commandes: [{ id: "configuration", nom: "Configuration" }, { id: "environnements", nom: "Environnements" }], peutExporter: () => true });
   taper(entree, ">");
-  expect([...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent)).toEqual(["Configuration", "Exporter en PDF"]);
+  expect([...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent)).toEqual(["Configuration", "Environnements", "Exporter en PDF"]);
   v.detruire();
 });
 

@@ -87,7 +87,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/vues/agent.js, agents.js, soumission-agent.js — conversation de l'agent, panneau Agents (fiche : section « Déclencheurs », REQ-163, REQ-174), soumission de fichiers — vueAgent, vueAgents, ouvrirSoumissionAgent
 - web/src/vues/claude.js, opencode.js, sessions-opencode.js — sessions Claude et opencode — vueClaude, vueOpencode
 - web/src/vues/connaissance.js, ajout-connaissance.js — base de connaissance — vueConnaissance, ouvrirAjoutConnaissance
-- web/src/vues/configuration.js, configuration-couleurs.js, providers.js, profils.js, serveurs-mcp.js — dialogue Configuration et panneaux de réglage — ouvrirConfiguration, ouvrirProviders, vueServeursMcp
+- web/src/vues/configuration.js, configuration-couleurs.js, providers.js, profils.js, serveurs-mcp.js, environnements.js — dialogue Configuration et panneaux de réglage — ouvrirConfiguration, ouvrirProviders, vueServeursMcp, vueEnvironnements
 - web/src/vues/connexion.js — écran de connexion, dialogue de fin de session après Déconnexion ou arrêt (REQ-162) — vueConnexion
 
 ## Tests
@@ -130,7 +130,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-064 à REQ-066, REQ-097 à REQ-100, REQ-119 agents et sous-agents → src/agent/agents.rs, conversation.rs, outils.rs, web/src/vues/agents.js
 - REQ-163, REQ-164, REQ-165, REQ-166, REQ-167, REQ-174 déclencheurs des agents (types « Fichier », « Commit », « Commande shell » ; boucle lancée par `servir`) → src/agent/agents.rs, declencheurs.rs, conversation.rs (`agent_occupe`, `enregistrer_refus`), outils.rs (`save_agent`), serveur.rs, web/src/vues/agents.js (section « Déclencheurs » de la fiche), shells.rs, integration-shell/, tests/declencheurs.rs, tests/shells.rs
 - REQ-081 réglages communs à tous les projets → src/agent/reglages.rs
-- REQ-095, REQ-096 serveurs MCP → src/agent/mcp.rs, web/src/vues/serveurs-mcp.js
+- REQ-095, REQ-096 serveurs MCP → src/agent/mcp.rs, web/src/vues/serveurs-mcp.js (REQ-182, REQ-054, REQ-070, REQ-116, REQ-118, REQ-177 : panneau « Environnements » et sa commande de Ctrl+P → vues/environnements.js, ouverture.js, principale.js)
 - REQ-068, REQ-073, REQ-183 session Claude (REQ-183 : lancée avec un environnement ; REQ-182 : `environnements.json`) → src/shells.rs, environnements.rs, serveur.rs, web/src/api.js, web/src/vues/claude.js, tests/environnements.rs
 - REQ-072, REQ-074 à REQ-077, REQ-084, REQ-088 à REQ-091 session opencode → src/opencode.rs, web/src/opencode.js, vues/opencode.js, vues/sessions-opencode.js, ui/completion.js
 - REQ-087, REQ-101 liens de fichiers et de documents → web/src/references.js, ui/apercu.js
