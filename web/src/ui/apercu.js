@@ -133,6 +133,11 @@ export function rendreMarkdown(texte, { document, images } = {}) {
   return md.render(String(texte ?? ""), { document, images });
 }
 
+/** Jetons de `texte` avec les règles de l'aperçu, pour l'export en PDF (REQ-177) : `![[nom]]` y devient toujours un jeton `image_md`. */
+export function jetonsMarkdown(texte) {
+  return md.parse(String(texte ?? ""), { images: () => "pdf" });
+}
+
 const mdReponse = creerMarkdown({ linkify: true });
 // Seules les adresses http:// et https:// deviennent des liens.
 mdReponse.linkify.set({ fuzzyLink: false, fuzzyEmail: false, fuzzyIP: false }).add("ftp:", null).add("mailto:", null).add("//", null);

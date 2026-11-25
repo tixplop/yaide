@@ -1,4 +1,6 @@
 // Export en PDF : parties sans DOM, partagées avec le navigateur (REQ-177, DEC-115).
+import { jetonsMarkdown } from "./ui/apercu.js";
+import { lienDeDocument } from "./references.js";
 
 export const POLICE_TEXTE = "Helvetica";
 export const POLICE_CODE = "JetBrainsMono";
@@ -88,6 +90,351 @@ export function definitionTexte(texte, nom, encre) {
     // lineHeight 1.136 : 10 pt × (1020 + 300) / 1000 × 1.136 = 15 pt avec les métriques de JetBrains Mono.
     defaultStyle: { font: POLICE_CODE, fontSize: 10, lineHeight: 1.136, color: encre },
     content: contenu,
+    ideogrammes,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Markdown : les jetons de l'aperçu, traduits en éléments `pdfmake` (C-008 « Document PDF »).
+
+const PX = 0.75; // 1 px de l'aperçu = 0,75 pt
+const COLONNE = 170 * MM;
+const HAUTEUR_PAGE = (297 - 40) * MM;
+const FH = 0.925; // hauteur de ligne d'Helvetica pour pdfmake (ascendante + descendante), par point de corps
+const FM = 1.32; // idem JetBrains Mono
+const TEXTE = 10.5;
+const ESPACE = 10.5; // marge sous un bloc (1 em de l'aperçu)
+const CODE_BLOC = 10.125;
+const CODE_LIGNE = 9.75;
+const TITRES = { 1: [15, 21], 2: [12, 16.5], 3: [10.5, 15], 4: [10.5, 15], 5: [10.5, 15], 6: [10.5, 15] };
+
+const hauteur = (interligne, taille, facteur) => interligne / (taille * facteur);
+
+// Part de `--info` dans `--msg-info` (`color-mix(in srgb, var(--info) 14%, transparent)` de `ui/tokens.css`) : à tenir égale à ce token.
+const PART_MSG_INFO = 0.14;
+
+// `--info` mêlé à du blanc selon `part`, en `#rrggbb`.
+function melangeSurBlanc(hex, part) {
+  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return "#" + c.map((v) => Math.round(v * part + 255 * (1 - part)).toString(16).padStart(2, "0")).join("");
+}
+
+function fermeture(jetons, i) {
+  let niveau = 0;
+  for (let j = i; j < jetons.length; j++) {
+    niveau += jetons[j].nesting;
+    if (niveau === 0) return j;
+  }
+  return jetons.length - 1;
+}
+
+/**
+ * Définition `pdfmake` d'un document markdown rendu comme l'aperçu en thème clair.
+ * `couleurs` : `{ ink, info, apercuFond, apercuEntete, apercuPage, lineStrong, reglees }`, les valeurs claires des tokens et la partie claire
+ * de `.yaide/markdown.json` (`reglees`, de `analyser(...).clair`), lues par l'appelant.
+ * `images` : `{ [nom]: { png, largeur, hauteur } }`, `png` en URL `data:image/png;base64,…`, taille en px. Clé : le nom écrit dans
+ * `![[nom]]`, ou le texte du bloc mermaid tel que l'aperçu le dessine. Une clé absente : la balise ou le bloc reste du texte.
+ */
+export function definitionMarkdown(texte, nom, { couleurs, images = {} }) {
+  const { ink, info, apercuFond, apercuEntete, apercuPage, lineStrong } = couleurs;
+  const reglees = couleurs.reglees ?? {};
+  const msgInfo = melangeSurBlanc(info, PART_MSG_INFO); // `--msg-info` posé sur `--apercu-page` (blanc)
+  const couleurDe = (element, propriete, defaut) => reglees[element]?.[propriete] ?? defaut;
+  let ideogrammes = false;
+
+  // Texte → morceaux `pdfmake`, chacun dans la première police qui a ses caractères.
+  const runs = (chaine, police, style) => {
+    const { morceaux: m, ideogrammes: i } = morceaux(chaine, police);
+    if (i) ideogrammes = true;
+    return m.map((x) => ({ ...style, text: x.texte, font: x.police }));
+  };
+
+  // Éléments en ligne d'un jeton `inline` → suite de morceaux de texte et d'images `{ image: nom }`.
+  const enLigne = (enfants, base, avecImages) => {
+    const sortie = [];
+    let gras = false;
+    let italique = false;
+    let barre = false;
+    let souligne = false;
+    let lien = null;
+    const style = () => {
+      const s = { color: base.couleur };
+      if (gras) { s.bold = true; s.color = couleurDe("gras", "couleur", s.color); }
+      if (italique) { s.italics = true; s.color = couleurDe("italique", "couleur", s.color); }
+      const deco = [];
+      if (barre) { deco.push("lineThrough"); s.color = couleurDe("barre", "couleur", s.color); }
+      if (souligne) deco.push("underline");
+      if (lien) {
+        deco.push("underline");
+        s.color = couleurDe("lien", "couleur", info);
+        if (lien.web) s.link = lien.adresse;
+      }
+      if (deco.length) s.decoration = deco;
+      if (base.gras) s.bold = true;
+      return s;
+    };
+    for (const t of enfants) {
+      switch (t.type) {
+        case "text": sortie.push(...runs(t.content, POLICE_TEXTE, style())); break;
+        case "softbreak": sortie.push(...runs(" ", POLICE_TEXTE, style())); break;
+        case "hardbreak": sortie.push({ text: "\n", font: POLICE_TEXTE }); break;
+        case "image": sortie.push(...runs(t.content, POLICE_TEXTE, style())); break;
+        case "code_inline": {
+          const s = style();
+          s.color = couleurDe("code", "couleur", base.couleur);
+          s.background = couleurDe("code", "fond", apercuFond);
+          s.fontSize = CODE_LIGNE;
+          s.lineHeight = hauteur(15, CODE_LIGNE, FM);
+          sortie.push(...runs(t.content, POLICE_CODE, s));
+          break;
+        }
+        case "image_md": {
+          const image = images[t.content];
+          if (image && avecImages) sortie.push({ image: t.content });
+          else sortie.push(...runs(`![[${t.content}]]`, POLICE_TEXTE, style()));
+          break;
+        }
+        case "strong_open": gras = true; break;
+        case "strong_close": gras = false; break;
+        case "em_open": italique = true; break;
+        case "em_close": italique = false; break;
+        case "s_open": barre = true; break;
+        case "s_close": barre = false; break;
+        case "u_open": souligne = true; break;
+        case "u_close": souligne = false; break;
+        case "link_open": {
+          const adresse = t.attrGet("href");
+          lien = { adresse, web: lienDeDocument(adresse, nom)?.sorte === "web" };
+          break;
+        }
+        case "link_close": lien = null; break;
+        default: break; // case à cocher (traitée par la liste)
+      }
+    }
+    return sortie;
+  };
+
+  const imageNoeud = (cle, largeur, marge) => {
+    const { png, largeur: w, hauteur: h } = images[cle];
+    const k = Math.min(1, largeur / (w * PX), HAUTEUR_PAGE / (h * PX));
+    return { image: png, width: w * PX * k, height: h * PX * k, unbreakable: true, margin: [0, 0, 0, marge] };
+  };
+
+  // Un jeton `inline` : paragraphes de texte, entrecoupés des images qui s'y trouvent.
+  const paragraphes = (inline, ctx, taille, interligne, extra = {}) => {
+    const noeuds = [];
+    let courant = [];
+    const vider = () => {
+      if (courant.length) noeuds.push({ text: courant, fontSize: taille, lineHeight: hauteur(interligne, taille, FH), margin: [0, 0, 0, ctx.marge], ...extra });
+      courant = [];
+    };
+    for (const r of enLigne(inline.children ?? [], { couleur: ctx.couleur, gras: extra.bold }, ctx.images)) {
+      if (r.image !== undefined) {
+        vider();
+        noeuds.push(imageNoeud(r.image, ctx.largeur, ctx.marge));
+      } else courant.push(r);
+    }
+    vider();
+    return noeuds;
+  };
+
+  const sansMarge = (noeuds) => {
+    const dernier = noeuds.at(-1);
+    if (dernier?.margin) dernier.margin = [0, 0, 0, 0];
+    return noeuds;
+  };
+
+  const blocCode = (contenu, ctx) => {
+    const fond = couleurDe("bloc_code", "fond", apercuFond);
+    const couleur = couleurDe("bloc_code", "couleur", ink);
+    const lignes = contenu.replace(/\n$/, "").split("\n");
+    const corps = lignes.map((l) => {
+      // eslint-disable-next-line no-control-regex
+      const propre = l.replace(/\t/g, "    ").replace(/[\x00-\x1f\x7f]/g, "");
+      const parts = runs(propre, POLICE_CODE, { color: couleur });
+      return [{ text: parts.length ? parts : " ", preserveLeadingSpaces: true, fontSize: CODE_BLOC, lineHeight: hauteur(15.75, CODE_BLOC, FM), fillColor: fond }];
+    });
+    return {
+      table: { widths: ["*"], body: corps },
+      layout: {
+        hLineWidth: () => 0,
+        vLineWidth: () => 0,
+        paddingLeft: () => 9,
+        paddingRight: () => 9,
+        paddingTop: (i) => (i === 0 ? 6 : 0),
+        paddingBottom: (i) => (i === corps.length - 1 ? 6 : 0),
+      },
+      margin: [0, 0, 0, ctx.marge],
+    };
+  };
+
+  const tableau = (jetons, debut, fin, ctx) => {
+    const rangees = [];
+    const colonnes = jetons.slice(debut, fin).filter((x, k, a) => x.type === "th_open" && a.slice(0, k).every((y) => y.type !== "tr_close")).length || 1;
+    let entete = false;
+    let paire = 0;
+    for (let i = debut + 1; i < fin; i++) {
+      const t = jetons[i];
+      if (t.type === "thead_open") entete = true;
+      else if (t.type === "thead_close") entete = false;
+      else if (t.type === "tbody_open") paire = 0;
+      else if (t.type === "tr_open") {
+        const cellules = [];
+        const fermer = fermeture(jetons, i);
+        const rang = paire;
+        if (!entete) paire++;
+        for (let j = i + 1; j < fermer; j++) {
+          if (jetons[j].type !== "th_open" && jetons[j].type !== "td_open") continue;
+          const cell = jetons[j + 1];
+          const base = entete
+            ? { couleur: couleurDe("entete_tableau", "couleur", ink), fond: couleurDe("entete_tableau", "fond", apercuEntete), gras: true }
+            : { couleur: couleurDe("tableau", "couleur", ink), fond: rang % 2 === 1 ? couleurDe("tableau", "fond", apercuFond) : null };
+          const contenu = paragraphes(cell, { ...ctx, couleur: base.couleur, marge: 0, largeur: ctx.largeur / colonnes - 12 }, TEXTE, 15, base.gras ? { bold: true } : {});
+          const noeud = contenu.length === 1 ? contenu[0] : { stack: contenu.length ? contenu : [{ text: " " }] };
+          cellules.push({ ...noeud, fillColor: base.fond ?? undefined });
+          j = fermeture(jetons, j);
+        }
+        rangees.push(cellules);
+        i = fermer;
+      }
+    }
+    const bordure = couleurDe("tableau", "bordure", lineStrong);
+    return {
+      table: { dontBreakRows: true, widths: rangees[0].map(() => "auto"), body: rangees },
+      layout: {
+        hLineWidth: () => 0.75,
+        vLineWidth: () => 0.75,
+        hLineColor: () => bordure,
+        vLineColor: () => bordure,
+        paddingTop: () => 3,
+        paddingBottom: () => 3,
+        paddingLeft: () => 6,
+        paddingRight: () => 6,
+      },
+      margin: [0, ESPACE * 0.5, 0, ctx.marge],
+    };
+  };
+
+  const caseACocher = (fait) => ({
+    width: 15,
+    canvas: [
+      { type: "rect", x: 0, y: 2, w: 10.5, h: 10.5, r: 1.5, lineWidth: 0.75, lineColor: fait ? info : lineStrong, ...(fait ? { color: info } : {}) },
+      ...(fait ? [{ type: "polyline", lineWidth: 1.3, lineColor: apercuPage, points: [{ x: 2.5, y: 7.6 }, { x: 4.6, y: 9.8 }, { x: 8, y: 4.6 }] }] : []),
+    ],
+  });
+
+  const liste = (jetons, debut, fin, ctx) => {
+    const ordonnee = jetons[debut].type === "ordered_list_open";
+    const marqueur = couleurDe("puce", "couleur", ctx.couleur);
+    const items = [];
+    for (let i = debut + 1; i < fin; i++) {
+      const fermer = fermeture(jetons, i);
+      const li = jetons[i];
+      const tache = /(^|\s)ya-tache(\s|$)/.test(li.attrGet("class") ?? "");
+      let corps = blocs(jetons, i + 1, fermer, { ...ctx, marge: 0, largeur: ctx.largeur - 15 });
+      if (tache) {
+        const coche = jetons[i + 2]?.children?.find((c) => c.type === "html_inline" && c.content.startsWith("<input"));
+        const fait = / checked/.test(coche?.content ?? "");
+        items.push({ columns: [caseACocher(fait), { width: "*", stack: corps }], columnGap: 0, listType: "none", margin: [-15, 0, 0, 0] });
+      } else {
+        items.push(corps.length === 1 && !corps[0].ul && !corps[0].ol ? { ...corps[0], markerColor: marqueur } : { stack: corps, markerColor: marqueur });
+      }
+      i = fermer;
+    }
+    const noeud = ordonnee ? { ol: items } : { ul: items };
+    const debutListe = Number(jetons[debut].attrGet("start"));
+    if (ordonnee && debutListe) noeud.start = debutListe;
+    noeud.margin = [0, 0, 0, ctx.marge];
+    return noeud;
+  };
+
+  // Les blocs de `jetons[debut..fin)`, au niveau le plus haut de cette plage.
+  function blocs(jetons, debut, fin, ctx) {
+    const sortie = [];
+    for (let i = debut; i < fin; i++) {
+      const t = jetons[i];
+      switch (t.type) {
+        case "heading_open": {
+          const n = Number(t.tag.slice(1));
+          const [taille, interligne] = TITRES[n];
+          const noeuds = paragraphes(jetons[i + 1], { ...ctx, couleur: couleurDe(`titre${n}`, "couleur", ink) }, taille, interligne, { bold: true, headlineLevel: n });
+          for (const x of noeuds) if (x.text) x.margin = [0, 3, 0, 6];
+          sortie.push(...noeuds);
+          i = fermeture(jetons, i);
+          break;
+        }
+        case "paragraph_open":
+          sortie.push(...paragraphes(jetons[i + 1], { ...ctx, marge: t.hidden ? 0 : ctx.marge }, TEXTE, 15));
+          i = fermeture(jetons, i);
+          break;
+        case "bullet_list_open":
+        case "ordered_list_open": {
+          const f = fermeture(jetons, i);
+          sortie.push(liste(jetons, i, f, ctx));
+          i = f;
+          break;
+        }
+        case "blockquote_open": {
+          const f = fermeture(jetons, i);
+          const couleur = couleurDe("citation", "couleur", ink);
+          const interieur = sansMarge(blocs(jetons, i + 1, f, { ...ctx, couleur, marge: 6, largeur: ctx.largeur - 18 }));
+          const bordure = couleurDe("citation", "bordure", info);
+          const fond = couleurDe("citation", "fond", msgInfo);
+          sortie.push({
+            table: { widths: ["*"], body: [[{ stack: interieur.length ? interieur : [{ text: " " }], fillColor: fond }]] },
+            layout: {
+              hLineWidth: () => 0,
+              vLineWidth: (k) => (k === 0 ? 3 * PX : 0),
+              vLineColor: () => bordure,
+              paddingLeft: () => 9,
+              paddingRight: () => 9,
+              paddingTop: () => 6,
+              paddingBottom: () => 6,
+            },
+            margin: [0, ESPACE * 0.5, 0, ctx.marge],
+          });
+          i = f;
+          break;
+        }
+        case "fence":
+        case "code_block": {
+          const mermaid = t.type === "fence" && t.info.trim().split(/\s+/)[0] === "mermaid";
+          if (mermaid && ctx.images && images[t.content]) sortie.push(imageNoeud(t.content, ctx.largeur, ctx.marge));
+          else sortie.push(blocCode(t.content, ctx));
+          break;
+        }
+        case "hr":
+          sortie.push({
+            canvas: [{ type: "line", x1: 0, y1: 0, x2: ctx.largeur, y2: 0, lineWidth: 0.75, lineColor: couleurDe("separateur", "couleur", lineStrong) }],
+            margin: [0, ESPACE * 0.5, 0, ctx.marge + ESPACE * 0.5],
+          });
+          break;
+        case "table_open": {
+          const f = fermeture(jetons, i);
+          sortie.push(tableau(jetons, i, f, ctx));
+          i = f;
+          break;
+        }
+        default: break;
+      }
+    }
+    return sortie;
+  }
+
+  const jetons = jetonsMarkdown(texte);
+  const contenu = blocs(jetons, 0, jetons.length, { couleur: couleurDe("texte", "couleur", ink), largeur: COLONNE, marge: ESPACE, images: true });
+  sansMarge(contenu);
+  return {
+    info: { title: nom },
+    compress: false,
+    pageSize: "A4",
+    pageOrientation: "portrait",
+    pageMargins: [20 * MM, 20 * MM, 20 * MM, 20 * MM],
+    defaultStyle: { font: POLICE_TEXTE, fontSize: TEXTE, lineHeight: hauteur(15, TEXTE, FH), color: couleurDe("texte", "couleur", ink) },
+    // Un titre ne finit jamais une page : s'il est le dernier de la sienne et que la suite est sur la suivante, il passe avec elle.
+    pageBreakBefore: (courant, { getFollowingNodesOnPage, getNodesOnNextPage }) =>
+      courant.headlineLevel !== undefined && getFollowingNodesOnPage().length === 0 && getNodesOnNextPage().length > 0,
+    content: contenu.length ? contenu : [{ text: " " }],
     ideogrammes,
   };
 }
