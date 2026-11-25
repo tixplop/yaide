@@ -50,9 +50,13 @@ export async function listeShells() {
   return r.json();
 }
 
-/** Renvoie `{ id }`, ou `{ erreur }` (texte du serveur) ; `{ coupure: true }` sans réponse. */
-export async function ouvrirShell() {
-  const r = await appeler("/api/shells", { method: "POST" });
+/** Corps facultatif d'ouverture : `{ environnement }` si un nom est donné (REQ-183). */
+const avecEnvironnement = (environnement) =>
+  environnement === undefined ? { method: "POST" } : json("POST", { environnement });
+
+/** Renvoie `{ id }`, ou `{ erreur }` (texte du serveur) ; `{ coupure: true }` sans réponse. `environnement` : nom d'un environnement de REQ-182. */
+export async function ouvrirShell(environnement) {
+  const r = await appeler("/api/shells", avecEnvironnement(environnement));
   if (!r) return { coupure: true };
   if (r.status === 201) return r.json();
   return { erreur: (await r.text()).trim() || `erreur ${r.status}` };
@@ -66,8 +70,8 @@ export async function claudeDisponible() {
 }
 
 /** Renvoie `{ id }`, `{ erreur: raison }` (503) ; `{ coupure: true }` sans réponse. */
-export async function ouvrirClaude() {
-  const r = await appeler("/api/claude", { method: "POST" });
+export async function ouvrirClaude(environnement) {
+  const r = await appeler("/api/claude", avecEnvironnement(environnement));
   if (!r) return { coupure: true };
   if (r.status === 201) return r.json();
   return { erreur: (await r.text()).trim() || `erreur ${r.status}` };
@@ -461,6 +465,28 @@ export const lireServeursMcp = () => appelMcp("/api/agent/mcp");
 /** `saisie` : `{ ancien?, nom, command, args: [ligne], env: [ligne NOM=valeur] }`. Rend la liste à jour. */
 export const enregistrerServeurMcp = (saisie) => appelMcp("/api/agent/mcp/serveurs", json("PUT", saisie));
 export const supprimerServeurMcp = (nom) => appelMcp(`/api/agent/mcp/serveurs/${q(nom)}`, { method: "DELETE" });
+
+/**
+ * Routes des environnements (`environnements.json` du dossier de configuration). Rend `{ fichier, environnements: [{ nom, variables: { NOM: valeur } }] }`,
+ * `{ fichier, champ, message }` (saisie refusée, 400), `{ fichier, cause, message, detail? }` ou `{ coupure: true }`.
+ */
+async function appelEnvironnements(chemin, options) {
+  const r = await appeler(chemin, options);
+  if (!r) return { coupure: true };
+  let corps;
+  try {
+    corps = await r.json();
+  } catch {
+    return { cause: "erreur", message: `erreur ${r.status}` };
+  }
+  if (r.ok) return corps;
+  return { fichier: corps.fichier, champ: corps.champ, cause: corps.cause, message: corps.message, detail: corps.detail };
+}
+
+export const lireEnvironnements = () => appelEnvironnements("/api/environnements");
+/** `saisie` : `{ ancien?, nom, variables: { NOM: valeur } }`. Rend la liste à jour. */
+export const enregistrerEnvironnement = (saisie) => appelEnvironnements("/api/environnements", json("PUT", saisie));
+export const supprimerEnvironnement = (nom) => appelEnvironnements(`/api/environnements/${q(nom)}`, { method: "DELETE" });
 
 let jetonApercuGarde = null;
 

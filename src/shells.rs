@@ -408,7 +408,12 @@ impl Registre {
     }
 
     /// Un shell ; avec bash ou zsh, l'intégration écrite dans `config` relève les commandes.
-    pub fn ouvrir(self: &Arc<Self>, projet: &Path, config: &Path) -> Result<u32, String> {
+    pub fn ouvrir(
+        self: &Arc<Self>,
+        projet: &Path,
+        config: &Path,
+        variables: &[(String, String)],
+    ) -> Result<u32, String> {
         let programme = std::env::var("SHELL")
             .ok()
             .filter(|s| !s.is_empty())
@@ -420,15 +425,26 @@ impl Registre {
                 None
             }
         };
-        self.lancer(projet, &programme, false, &[], reglage.as_ref())
+        self.lancer(projet, &programme, false, &[], variables, reglage.as_ref())
     }
 
     /// Session Claude : `claude` sans argument dans le dossier du projet, sans les variables
     /// d'une session Claude Code parente (sinon Claude Code refuse de démarrer).
-    pub fn ouvrir_claude(self: &Arc<Self>, projet: &Path) -> Result<u32, String> {
+    pub fn ouvrir_claude(
+        self: &Arc<Self>,
+        projet: &Path,
+        variables: &[(String, String)],
+    ) -> Result<u32, String> {
         let chemin = trouver_claude().ok_or("la commande claude est introuvable dans le PATH")?;
         let programme = chemin.to_string_lossy().into_owned();
-        self.lancer(projet, &programme, true, VARIABLES_CLAUDE_CODE, None)
+        self.lancer(
+            projet,
+            &programme,
+            true,
+            VARIABLES_CLAUDE_CODE,
+            variables,
+            None,
+        )
     }
 
     fn lancer(
@@ -437,6 +453,7 @@ impl Registre {
         programme: &str,
         claude: bool,
         retirer: &[&str],
+        variables: &[(String, String)],
         integration: Option<&Integration>,
     ) -> Result<u32, String> {
         let paire = native_pty_system()
@@ -452,6 +469,9 @@ impl Registre {
         cmd.env("TERM", "xterm-256color");
         for v in retirer {
             cmd.env_remove(v);
+        }
+        for (k, v) in variables {
+            cmd.env(k, v);
         }
         if let Some(i) = integration {
             cmd.args(&i.args);

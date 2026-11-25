@@ -9,6 +9,7 @@ mod config;
 mod connaissance;
 mod decoupage;
 mod depot;
+mod environnements;
 mod fichiers;
 mod git;
 mod opencode;

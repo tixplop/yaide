@@ -829,17 +829,22 @@ fn faux_outils(dossier: &std::path::Path) {
 /// Une instance dont le `HOME` (sous `.test-data`) a un `.bashrc` et un `.zshrc` qui
 /// définissent un alias et une invite ; `PATH` commence par les faux outils.
 fn lancer_integration(nom: &str, shell: &str) -> Serveur {
+    lancer_integration_avec(nom, shell, &[])
+}
+
+fn lancer_integration_avec(nom: &str, shell: &str, extra: &[(&str, &str)]) -> Serveur {
     let d = std::env::temp_dir().join(format!("shells-{nom}-{}", std::process::id()));
     let chemin = format!(
         "{}:{}",
         d.join("bin").display(),
         std::env::var("PATH").unwrap()
     );
-    let s = lancer_avec_env(
-        nom,
-        Some(shell),
-        &[("PATH", &chemin), ("YAIDE_INTERVALLE_BASE_MS", "100")],
-    );
+    let mut env = vec![
+        ("PATH", chemin.as_str()),
+        ("YAIDE_INTERVALLE_BASE_MS", "100"),
+    ];
+    env.extend_from_slice(extra);
+    let s = lancer_avec_env(nom, Some(shell), &env);
     let d = s.projet.parent().unwrap().to_path_buf();
     std::fs::write(
         d.join(".bashrc"),
@@ -996,4 +1001,144 @@ fn req167_ac4_session_claude_et_autre_shell_ne_declenchent_rien() {
     assert!(vu.contains("RAN1"), "{vu}");
     std::thread::sleep(Duration::from_millis(1500));
     assert!(conversations(&s).is_empty(), "{:?}", conversations(&s));
+}
+
+// REQ-183 : lancement avec un environnement.
+
+fn ouvrir_avec(s: &Serveur, chemin: &str, environnement: &str) -> u32 {
+    let corps = format!("{{\"environnement\":\"{environnement}\"}}");
+    let (code, rep) = requete_json(s, "POST", chemin, &corps);
+    assert_eq!(code, 201, "{rep}");
+    rep.trim_start_matches("{\"id\":")
+        .trim_end_matches('}')
+        .parse()
+        .unwrap()
+}
+
+fn definir_env(s: &Serveur, nom: &str, variables: &str) {
+    let corps = format!("{{\"nom\":\"{nom}\",\"variables\":{variables}}}");
+    let (code, rep) = requete_json(s, "PUT", "/api/environnements", &corps);
+    assert_eq!(code, 200, "{rep}");
+}
+
+fn echo_var(w: &mut Ws, var: &str) -> String {
+    taper(w, &format!("echo \"<${{{var}}}>\"; echo FIN$((1+1))\n"));
+    let vu = lire_jusque(w, "FIN2", 20);
+    let debut = vu.rfind(&format!("echo \"<${{{var}}}>\"")).unwrap_or(0);
+    let apres = &vu[debut..];
+    apres
+        .lines()
+        .map(|l| l.rsplit('\r').next().unwrap_or(l).trim_end())
+        .find(|l| l.starts_with('<') && l.ends_with('>'))
+        .unwrap_or_else(|| panic!("pas de valeur : {vu:?}"))
+        .to_string()
+}
+
+#[test]
+fn req183_ac1_ac4_shell_avec_environnement_sans_corps_vide_modification_pour_le_suivant() {
+    let s = lancer("env-shell", Some("/bin/sh"));
+    definir_env(&s, "prod", "{\"YA_ENV\":\"prod\"}");
+    let mut avec = ws(&s, ouvrir_avec(&s, "/api/shells", "prod"));
+    assert_eq!(echo_var(&mut avec, "YA_ENV"), "<prod>");
+    let mut sans = ws(&s, ouvrir(&s));
+    assert_eq!(echo_var(&mut sans, "YA_ENV"), "<>");
+    // AC-183-4 : modifié après l'ouverture.
+    let corps = "{\"ancien\":\"prod\",\"nom\":\"prod\",\"variables\":{\"YA_ENV\":\"prod2\"}}";
+    assert_eq!(requete_json(&s, "PUT", "/api/environnements", corps).0, 200);
+    assert_eq!(echo_var(&mut avec, "YA_ENV"), "<prod>");
+    let mut suivant = ws(&s, ouvrir_avec(&s, "/api/shells", "prod"));
+    assert_eq!(echo_var(&mut suivant, "YA_ENV"), "<prod2>");
+}
+
+/// Faux `claude` : note son dossier et son environnement, puis garde le terminal.
+fn faux_claude_env(nom: &str) -> (String, PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = dossier(&format!("bin-{nom}"));
+    let temoin = bin.join("temoin");
+    let script = format!(
+        "#!/bin/sh\n{{ echo \"args=$*\"; echo \"pwd=$(pwd)\"; env; echo FINI; }} > '{}'\nexec sleep 30\n",
+        temoin.display()
+    );
+    let f = bin.join("claude");
+    std::fs::write(&f, script).unwrap();
+    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
+    (format!("{}:/usr/bin:/bin", bin.display()), temoin)
+}
+
+#[test]
+fn req183_ac2_ac3_claude_avec_environnement_variables_de_l_environnement_l_emportent() {
+    let (path, temoin) = faux_claude_env("env-claude");
+    let s = lancer_avec_env(
+        "env-claude",
+        Some("/bin/sh"),
+        &[
+            ("PATH", &path),
+            ("LANG", "fr_FR.UTF-8"),
+            ("CLAUDECODE", "1"),
+        ],
+    );
+    definir_env(
+        &s,
+        "prod",
+        "{\"YA_ENV\":\"prod\",\"LANG\":\"C.UTF-8\",\"CLAUDECODE\":\"1\"}",
+    );
+    ouvrir_avec(&s, "/api/claude", "prod");
+    assert!(attendre(10, || std::fs::read_to_string(&temoin)
+        .map(|t| t.contains("FINI"))
+        .unwrap_or(false)));
+    let t = std::fs::read_to_string(&temoin).unwrap();
+    assert!(t.starts_with("args=\n"), "{t}");
+    assert!(t.contains(&format!("pwd={}\n", s.projet.display())), "{t}");
+    for v in ["YA_ENV=prod", "LANG=C.UTF-8", "CLAUDECODE=1"] {
+        assert!(t.lines().any(|l| l == v), "{v} : {t}");
+    }
+    // Un clic simple : pas de YA_ENV, et CLAUDECODE retiré.
+    let _ = std::fs::remove_file(&temoin);
+    let (code, rep) = requete_json(&s, "POST", "/api/claude", "");
+    assert_eq!(code, 201, "{rep}");
+    assert!(attendre(10, || std::fs::read_to_string(&temoin)
+        .map(|t| t.contains("FINI"))
+        .unwrap_or(false)));
+    let t = std::fs::read_to_string(&temoin).unwrap();
+    assert!(!t.contains("YA_ENV="), "{t}");
+    assert!(!t.lines().any(|l| l.starts_with("CLAUDECODE=")), "{t}");
+}
+
+#[test]
+fn req183_ac3_shell_lang_de_l_environnement_et_commande_remise_aux_declencheurs() {
+    let Some(chemin) = chemin_shell("bash") else {
+        eprintln!("bash absent de la machine : test sauté");
+        return;
+    };
+    let s = lancer_integration_avec("env-integ", &chemin, &[("LANG", "fr_FR.UTF-8")]);
+    declarer_agent(&s, "cargo test");
+    definir_env(&s, "prod", "{\"LANG\":\"C.UTF-8\",\"YA_ENV\":\"prod\"}");
+    let mut w = ws(&s, ouvrir_avec(&s, "/api/shells", "prod"));
+    lire_jusque(&mut w, "INVITE> ", 20);
+    assert_eq!(echo_var(&mut w, "LANG"), "<C.UTF-8>");
+    taper(&mut w, "cargo test --lib\n");
+    lire_jusque(&mut w, "RAN2", 20);
+    let l = attendre_conversations(&s, 1);
+    assert!(premier_message(&s, &l[0]).contains("Commande : `cargo test --lib`"));
+}
+
+#[test]
+fn req183_ac5_environnement_absent_404_et_rien_de_lance() {
+    let (path, temoin) = faux_claude_env("env-absent");
+    let s = lancer_avec_env("env-absent", Some("/bin/sh"), &[("PATH", &path)]);
+    for (chemin,) in [("/api/shells",), ("/api/claude",)] {
+        let (code, rep) = requete_json(&s, "POST", chemin, "{\"environnement\":\"prod\"}");
+        assert_eq!(code, 404, "{chemin} {rep}");
+        assert_eq!(rep, "l'environnement prod n'existe plus");
+    }
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&liste(&s)).unwrap()["shells"],
+        serde_json::json!([])
+    );
+    assert!(!temoin.exists());
+    // Corps invalide : 400.
+    assert_eq!(
+        requete_json(&s, "POST", "/api/shells", "pas du json").0,
+        400
+    );
 }

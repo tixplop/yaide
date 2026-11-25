@@ -4,6 +4,7 @@ use crate::agent::mcp;
 use crate::agent::outils::Limites;
 use crate::agent::reglages::{Erreur, Reglages};
 use crate::decoupage::Decoupage;
+use crate::environnements;
 use crate::{
     auth, commande_mise_a_jour, config, connaissance, depot, fichiers, git, opencode, recherche,
     shells, version, windows,
@@ -117,7 +118,8 @@ async fn garde(State(etat): State<Partage>, req: Request, next: Next) -> Respons
     }
     // Un GET vers opencode qui vient d'une autre origine est refusé aussi (sans `Origin` : accepté).
     if lecture
-        && req.uri().path().starts_with("/api/opencode")
+        && (req.uri().path().starts_with("/api/opencode")
+            || req.uri().path().starts_with("/api/environnements"))
         && req.headers().contains_key(header::ORIGIN)
         && !origine_ok(&req)
     {
@@ -169,11 +171,11 @@ async fn servir_apercu_racine(
     servir_apercu(State(etat), CheminUrl((jeton, String::new()))).await
 }
 
-fn texte(code: StatusCode, msg: &'static str) -> Response {
+fn texte(code: StatusCode, msg: impl Into<String>) -> Response {
     (
         code,
         [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-        msg,
+        msg.into(),
     )
         .into_response()
 }
@@ -288,11 +290,48 @@ async fn liste_shells(State(etat): State<Partage>) -> Response {
     ([(header::CONTENT_TYPE, "application/json")], corps).into_response()
 }
 
-async fn ouvrir_shell(State(etat): State<Partage>) -> Response {
+/// Les variables de l'environnement demandé par le corps facultatif `{"environnement": nom}` :
+/// vide sans corps ; 404 si l'environnement n'est plus dans le fichier.
+#[allow(clippy::result_large_err)]
+fn variables_demandees(etat: &Etat, corps: &Bytes) -> Result<Vec<(String, String)>, Response> {
+    if corps.is_empty() {
+        return Ok(Vec::new());
+    }
+    let Some(v) = corps_json(corps) else {
+        return Err(corps_invalide());
+    };
+    let nom = match &v["environnement"] {
+        serde_json::Value::Null => return Ok(Vec::new()),
+        serde_json::Value::String(n) => n.clone(),
+        _ => return Err(corps_invalide()),
+    };
+    let fichier = etat.config.join("environnements.json");
+    match environnements::lister(&fichier) {
+        Ok(l) => match l.into_iter().find(|e| e.nom == nom) {
+            Some(e) => Ok(e.variables.0),
+            None => Err(texte(
+                StatusCode::NOT_FOUND,
+                format!("l'environnement {nom} n'existe plus"),
+            )),
+        },
+        Err(environnements::Erreur::Illisible(_)) => Err(texte(
+            StatusCode::CONFLICT,
+            format!("{} est illisible", fichier.display()),
+        )),
+        Err(environnements::Erreur::Systeme(m)) => Err(texte(StatusCode::INTERNAL_SERVER_ERROR, m)),
+        Err(_) => Err(corps_invalide()),
+    }
+}
+
+async fn ouvrir_shell(State(etat): State<Partage>, corps: Bytes) -> Response {
+    let variables = match variables_demandees(&etat, &corps) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
     let registre = etat.shells.clone();
     let projet = etat.projet_dir.clone();
     let config = etat.config.clone();
-    let r = tokio::task::spawn_blocking(move || registre.ouvrir(&projet, &config))
+    let r = tokio::task::spawn_blocking(move || registre.ouvrir(&projet, &config, &variables))
         .await
         .unwrap_or_else(|e| Err(e.to_string()));
     match r {
@@ -316,10 +355,14 @@ async fn claude_disponible() -> Response {
     ([(header::CONTENT_TYPE, "application/json")], corps).into_response()
 }
 
-async fn ouvrir_claude(State(etat): State<Partage>) -> Response {
+async fn ouvrir_claude(State(etat): State<Partage>, corps: Bytes) -> Response {
+    let variables = match variables_demandees(&etat, &corps) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
     let registre = etat.shells.clone();
     let projet = etat.projet_dir.clone();
-    let r = tokio::task::spawn_blocking(move || registre.ouvrir_claude(&projet))
+    let r = tokio::task::spawn_blocking(move || registre.ouvrir_claude(&projet, &variables))
         .await
         .unwrap_or_else(|e| Err(e.to_string()));
     match r {
@@ -1412,6 +1455,93 @@ async fn mcp_supprimer(State(etat): State<Partage>, CheminUrl(nom): CheminUrl<St
     reponse_mcp(&fichier, r)
 }
 
+fn reponse_environnements(
+    fichier: &Path,
+    r: Result<Vec<environnements::Environnement>, environnements::Erreur>,
+) -> Response {
+    use environnements::Erreur as E;
+    let fichier = fichier.display().to_string();
+    match r {
+        Ok(l) => {
+            #[derive(serde::Serialize)]
+            struct Liste<'a> {
+                fichier: &'a str,
+                environnements: &'a [environnements::Environnement],
+            }
+            let corps = serde_json::to_string(&Liste {
+                fichier: &fichier,
+                environnements: &l,
+            })
+            .unwrap_or_default();
+            (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, "application/json")],
+                corps,
+            )
+                .into_response()
+        }
+        Err(E::Refus(champ, message)) => json_rep(
+            StatusCode::BAD_REQUEST,
+            serde_json::json!({ "fichier": fichier, "champ": champ, "message": message }),
+        ),
+        Err(E::Illisible(detail)) => json_rep(
+            StatusCode::CONFLICT,
+            serde_json::json!({
+                "fichier": fichier,
+                "cause": "illisible",
+                "message": format!("{fichier} est illisible. Corrigez-le, puis rouvrez Environnements."),
+                "detail": detail,
+            }),
+        ),
+        Err(E::Inconnu) => json_rep(
+            StatusCode::NOT_FOUND,
+            serde_json::json!({ "fichier": fichier, "cause": "inconnu", "message": format!("Cet environnement n'est plus dans {fichier}.") }),
+        ),
+        Err(E::Systeme(m)) => json_rep(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "fichier": fichier, "cause": "ecriture", "message": m }),
+        ),
+    }
+}
+
+async fn environnements_liste(State(etat): State<Partage>) -> Response {
+    let fichier = etat.config.join("environnements.json");
+    reponse_environnements(&fichier, environnements::lister(&fichier))
+}
+
+/// `{ ancien?, nom, variables: { NOM: valeur } }`.
+async fn environnements_enregistrer(State(etat): State<Partage>, corps: Bytes) -> Response {
+    #[derive(serde::Deserialize)]
+    struct Corps {
+        ancien: Option<String>,
+        #[serde(flatten)]
+        env: environnements::Environnement,
+    }
+    let Ok(c) = serde_json::from_slice::<Corps>(&corps) else {
+        return corps_invalide();
+    };
+    let fichier = etat.config.join("environnements.json");
+    let f = fichier.clone();
+    let r = tokio::task::spawn_blocking(move || {
+        environnements::enregistrer(&f, c.ancien.as_deref(), c.env)
+    })
+    .await
+    .unwrap_or_else(|e| Err(environnements::Erreur::Systeme(e.to_string())));
+    reponse_environnements(&fichier, r)
+}
+
+async fn environnements_supprimer(
+    State(etat): State<Partage>,
+    CheminUrl(nom): CheminUrl<String>,
+) -> Response {
+    let fichier = etat.config.join("environnements.json");
+    let f = fichier.clone();
+    let r = tokio::task::spawn_blocking(move || environnements::supprimer(&f, &nom))
+        .await
+        .unwrap_or_else(|e| Err(environnements::Erreur::Systeme(e.to_string())));
+    reponse_environnements(&fichier, r)
+}
+
 fn refus_base(code: StatusCode, cause: &str, message: impl Into<String>) -> Response {
     json_rep(
         code,
@@ -2123,6 +2253,14 @@ pub async fn servir(
         .route("/api/session", get(session))
         .route("/api/shells", get(liste_shells).post(ouvrir_shell))
         .route("/api/claude", get(claude_disponible).post(ouvrir_claude))
+        .route(
+            "/api/environnements",
+            get(environnements_liste).put(environnements_enregistrer),
+        )
+        .route(
+            "/api/environnements/{nom}",
+            delete(environnements_supprimer),
+        )
         .route("/api/opencode", get(opencode_disponible))
         .route("/api/opencode/api/{*chemin}", any(relais_opencode))
         .route("/api/shells/{id}", delete(fermer_shell))

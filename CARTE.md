@@ -5,15 +5,15 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 ## Serveur (Rust, `src/`)
 - src/main.rs — point d'entrée : lit la ligne de commande, lance le serveur ou une sous-commande — main
 - src/cli.rs — analyse des arguments, aide, saisie du mot de passe — analyser, valider_saisies
-- src/config.rs — dossier de configuration, mot de passe haché (argon2) — dossier_config, definir_mot_de_passe, verifier_mot_de_passe
+- src/config.rs — dossier de configuration, mot de passe haché (argon2) ; `src/environnements.rs` : `environnements.json` de l'utilisateur, droits 600 (REQ-182) — dossier_config, definir_mot_de_passe, verifier_mot_de_passe
 - src/auth.rs — sessions (un cookie par port d'écoute), blocage après échecs ; `src/tls.rs` : certificat auto-signé (rcgen) — creer_session, session_valide, bloque
-- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180, route presse-papiers-windows REQ-181)
+- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180, route presse-papiers-windows REQ-181, routes environnements REQ-182, ouverture avec environnement REQ-183)
 - src/windows.rs — presse-papiers de Windows rempli par powershell.exe dans WSL (REQ-181) — disponible, copier
 - src/fichiers.rs — arborescence et opérations sur les fichiers du projet  — lister, lire, ecrire, importer (REQ-180)
 - src/depot.rs — dépôt git, `.gitignore`, worktrees — est_un_depot, worktrees
 - src/git.rs — état, diff, index, commit, branches, pull/push — etat, commit, synchroniser
 - src/recherche.rs — recherche dans les fichiers et ouverture rapide — chercher, lister
-- src/shells.rs — shells et sessions Claude en pseudo-terminal, survie aux coupures ; intégration à bash et zsh (séquence retirée de la sortie, commandes terminées remises aux déclencheurs, REQ-167) — abonner, ecrire, prendre_commandes
+- src/shells.rs — shells et sessions Claude en pseudo-terminal, survie aux coupures, variables d'un environnement ; intégration à bash et zsh (séquence retirée de la sortie, commandes terminées remises aux déclencheurs, REQ-167) — abonner, ecrire, prendre_commandes
 - src/integration-shell/ — fichiers de démarrage embarqués : `bash-rc` (`--rcfile`) et `zsh/` (`ZDOTDIR`), écrits dans le dossier de configuration au lancement d'un shell (REQ-167)
 - src/opencode.rs — processus `opencode serve` du projet — assurer, arreter, disponible
 - src/apercu.rs — jetons et service de l'aperçu HTML — nouveau_jeton, jeton_ok, charger
@@ -40,7 +40,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/index.html — page unique ; web/dist/ est produit par esbuild
 - web/src/main.js — démarrage : thème, connexion, vue principale — titre
 - web/src/theme-initial.js — thème appliqué avant le premier affichage
-- web/src/api.js — appels HTTP et WebSocket vers le serveur (dont `declenchements`, REQ-173) — importerChemin (REQ-180), copierVersWindows (REQ-181), info, sessionValide, connexion
+- web/src/api.js — appels HTTP et WebSocket vers le serveur (dont `declenchements`, REQ-173) — importerChemin (REQ-180), copierVersWindows (REQ-181), lireEnvironnements (REQ-182), info, sessionValide, connexion
 - web/src/connexion.js — surveille la connexion au serveur — surveiller
 - web/src/stockage.js, brouillons.js, disque.js — IndexedDB, modifications gardées, décision face au disque — lire/ecrire, decider, decisionDisque
 - web/src/disposition.js — arbre des groupes de l'éditeur (diviser, tailles) — couper, retirerGroupe, valider
@@ -91,7 +91,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/vues/connexion.js — écran de connexion, dialogue de fin de session après Déconnexion ou arrêt (REQ-162) — vueConnexion
 
 ## Tests
-- tests/*.rs — intégration Rust, un fichier par domaine (socle, auth, fichiers, git, shells, agent, declencheurs, connaissance, opencode, mise_a_jour…)
+- tests/*.rs — intégration Rust, un fichier par domaine (socle, environnements, auth, fichiers, git, shells, agent, declencheurs, connaissance, opencode, mise_a_jour…)
 - tests/faux-mcp.mjs, faux-opencode.mjs — faux serveurs MCP et opencode
 - web/src/**/*.test.js — Vitest, composants et vues
 - e2e/*.spec.js — Playwright, un fichier par parcours ; e2e/aides.js, faux-provider.js, relais.js, capturer-opencode.js — aides communes
@@ -131,7 +131,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-163, REQ-164, REQ-165, REQ-166, REQ-167, REQ-174 déclencheurs des agents (types « Fichier », « Commit », « Commande shell » ; boucle lancée par `servir`) → src/agent/agents.rs, declencheurs.rs, conversation.rs (`agent_occupe`, `enregistrer_refus`), outils.rs (`save_agent`), serveur.rs, web/src/vues/agents.js (section « Déclencheurs » de la fiche), shells.rs, integration-shell/, tests/declencheurs.rs, tests/shells.rs
 - REQ-081 réglages communs à tous les projets → src/agent/reglages.rs
 - REQ-095, REQ-096 serveurs MCP → src/agent/mcp.rs, web/src/vues/serveurs-mcp.js
-- REQ-068, REQ-073 session Claude → src/shells.rs, web/src/vues/claude.js
+- REQ-068, REQ-073, REQ-183 session Claude (REQ-183 : lancée avec un environnement ; REQ-182 : `environnements.json`) → src/shells.rs, environnements.rs, serveur.rs, web/src/api.js, web/src/vues/claude.js, tests/environnements.rs
 - REQ-072, REQ-074 à REQ-077, REQ-084, REQ-088 à REQ-091 session opencode → src/opencode.rs, web/src/opencode.js, vues/opencode.js, vues/sessions-opencode.js, ui/completion.js
 - REQ-087, REQ-101 liens de fichiers et de documents → web/src/references.js, ui/apercu.js
 - REQ-102 copier-coller en texte simple → web/src/ui/copie.js
