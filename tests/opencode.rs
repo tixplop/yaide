@@ -710,3 +710,177 @@ fn REQ073_AC6_nohup_ignore_sighup() {
     signaler_et_attendre_la_sortie(&mut s, "TERM");
     assert!(attendre(|| !vivant(pid), 5));
 }
+
+// --- Un serveur par environnement (REQ-184, DEC-120) ---
+
+/// Écrit `environnements.json` : `[(nom, [(variable, valeur)])]`.
+fn definir_environnements(s: &Serveur, envs: &[(&str, &[(&str, &str)])]) {
+    let liste: Vec<serde_json::Value> = envs
+        .iter()
+        .map(|(n, v)| {
+            let vars: serde_json::Map<String, serde_json::Value> = v
+                .iter()
+                .map(|(k, x)| (k.to_string(), serde_json::json!(x)))
+                .collect();
+            serde_json::json!({ "nom": n, "variables": vars })
+        })
+        .collect();
+    let dossier = s.dir.join("cfg/yaide");
+    std::fs::create_dir_all(&dossier).unwrap();
+    std::fs::write(
+        dossier.join("environnements.json"),
+        serde_json::json!({ "environnements": liste }).to_string(),
+    )
+    .unwrap();
+}
+
+const INFO: &str = "/api/opencode/api/info";
+const INFO_PROD: &str = "/api/opencode/env/prod/api/info";
+
+#[test]
+fn REQ184_AC1_AC2_AC5_second_serveur_avec_les_variables_de_l_environnement() {
+    let s = lancer("env-un", &[]);
+    definir_environnements(
+        &s,
+        &[(
+            "prod",
+            &[
+                ("YA_ENV", "prod"),
+                ("PWD", "/tmp"),
+                ("OPENCODE_SERVER_PASSWORD", "x"),
+            ],
+        )],
+    );
+    assert_eq!(http(&s, "GET", INFO, "").2, "{\"env\":null}");
+    let (code, _, _) = http(&s, "POST", "/api/opencode/env/prod/api/session", "{}");
+    assert_eq!(code, 200);
+    // Une seconde session `prod` et la route sans environnement : pas de nouveau serveur.
+    assert_eq!(
+        http(&s, "POST", "/api/opencode/env/prod/api/session", "{}").0,
+        200
+    );
+    assert_eq!(http(&s, "GET", INFO, "").2, "{\"env\":null}");
+    assert_eq!(http(&s, "GET", INFO_PROD, "").2, "{\"env\":\"prod\"}");
+    let l = s.lancements();
+    assert_eq!(l.len(), 2, "un serveur sans environnement, un seul `prod`");
+    assert!(l[0]["YA_ENV"].is_null(), "le premier n'a pas YA_ENV");
+    assert_eq!(l[1]["YA_ENV"], "prod");
+    assert_eq!(
+        l[1]["args"].as_array().unwrap()[..4],
+        l[0]["args"].as_array().unwrap()[..4]
+    );
+    assert_ne!(l[1]["args"][4], l[0]["args"][4], "port propre");
+    assert_eq!(l[1]["args"].as_array().unwrap().len(), 5);
+    assert_eq!(Path::new(l[1]["cwd"].as_str().unwrap()), s.projet());
+    // `PWD` et mot de passe : ceux de Yaide, malgré l'environnement.
+    assert_eq!(Path::new(l[1]["PWD"].as_str().unwrap()), s.projet());
+    assert_eq!(l[1]["mdp"], true);
+    let mdp = s.mdp();
+    assert_eq!(mdp.len(), 43);
+    assert_ne!(mdp, "x");
+    let (_, tete, corps) = http(&s, "GET", INFO_PROD, "");
+    assert!(!tete.contains(&mdp) && !corps.contains(&mdp));
+    assert!(vivant(l[0]["pid"].as_i64().unwrap()));
+}
+
+#[test]
+fn REQ184_AC4_environnement_supprime_ou_serveur_arrete() {
+    let s = lancer("env-quatre", &[]);
+    definir_environnements(&s, &[("prod", &[("YA_ENV", "v1")])]);
+    assert_eq!(http(&s, "GET", INFO_PROD, "").0, 200);
+    let l = s.lancements();
+    assert_eq!(l.len(), 1);
+    assert_eq!(l[0]["YA_ENV"], "v1");
+    // Serveur `prod` arrêté, variables modifiées : relancé avec les variables actuelles.
+    let pid = l[0]["pid"].as_i64().unwrap();
+    let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+    assert!(attendre(|| !vivant(pid), 5));
+    definir_environnements(&s, &[("prod", &[("YA_ENV", "v2")])]);
+    assert_eq!(http(&s, "GET", INFO_PROD, "").0, 200);
+    let l = s.lancements();
+    assert_eq!(l.len(), 2);
+    assert_eq!(l[1]["YA_ENV"], "v2");
+    // Environnement supprimé : la route passe par le serveur sans environnement.
+    definir_environnements(&s, &[]);
+    assert_eq!(http(&s, "GET", INFO_PROD, "").0, 200);
+    let l = s.lancements();
+    assert_eq!(l.len(), 3);
+    assert!(l[2]["YA_ENV"].is_null());
+    assert_eq!(http(&s, "GET", INFO, "").0, 200);
+    assert_eq!(s.lancements().len(), 3, "même serveur sans environnement");
+}
+
+#[test]
+fn REQ184_AC6_sigterm_arrete_tous_les_serveurs() {
+    let mut s = lancer("env-sigterm", &[]);
+    definir_environnements(&s, &[("prod", &[("YA_ENV", "prod")])]);
+    assert_eq!(http(&s, "GET", INFO, "").0, 200);
+    assert_eq!(http(&s, "GET", INFO_PROD, "").0, 200);
+    let pids: Vec<i64> = s
+        .lancements()
+        .iter()
+        .map(|l| l["pid"].as_i64().unwrap())
+        .collect();
+    assert_eq!(pids.len(), 2);
+    assert!(pids.iter().all(|&p| vivant(p)));
+    let _ = Command::new("kill")
+        .args(["-TERM", &s.child.id().to_string()])
+        .output();
+    assert!(attendre(|| s.child.try_wait().unwrap().is_some(), 10));
+    assert!(attendre(|| pids.iter().all(|&p| !vivant(p)), 5));
+}
+
+#[test]
+fn REQ184_AC7_session_d_un_environnement_absent_404_et_refus_401_403() {
+    let s = lancer("env-sept", &[]);
+    definir_environnements(&s, &[("dev", &[])]);
+    let (code, _, corps) = http(&s, "POST", "/api/opencode/env/prod/api/session", "{}");
+    assert_eq!(code, 404);
+    assert_eq!(corps, "l'environnement prod n'existe plus");
+    assert!(s.lancements().is_empty(), "rien n'est lancé");
+    let origine = format!("Origin: https://127.0.0.1:{}", s.port);
+    let cookie = format!("Cookie: {}", s.cookie);
+    let chemin = "/api/opencode/env/dev/api/session";
+    assert_eq!(
+        curl(s.port, "POST", chemin, std::slice::from_ref(&origine), "{}").0,
+        401
+    );
+    assert_eq!(
+        curl(
+            s.port,
+            "GET",
+            "/api/opencode/env/dev/api/info",
+            &[origine],
+            ""
+        )
+        .0,
+        401
+    );
+    assert_eq!(
+        curl(s.port, "POST", chemin, std::slice::from_ref(&cookie), "{}").0,
+        403
+    );
+    assert_eq!(
+        curl(
+            s.port,
+            "GET",
+            "/api/opencode/env/dev/api/info",
+            &[cookie, "Origin: https://evil.example".into()],
+            ""
+        )
+        .0,
+        403
+    );
+    assert!(s.lancements().is_empty());
+}
+
+#[test]
+fn REQ184_AC7_fichier_illisible_404_et_rien_de_lance() {
+    let s = lancer("env-illisible", &[]);
+    let dossier = s.dir.join("cfg/yaide");
+    std::fs::create_dir_all(&dossier).unwrap();
+    std::fs::write(dossier.join("environnements.json"), "{ pas du json").unwrap();
+    let (code, _, _) = http(&s, "POST", "/api/opencode/env/prod/api/session", "{}");
+    assert_eq!(code, 404);
+    assert!(s.lancements().is_empty(), "rien n'est lancé");
+}

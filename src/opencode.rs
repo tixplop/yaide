@@ -1,6 +1,7 @@
 //! Serveur `opencode serve` de la machine, lancé par Yaide dans le projet (DEC-050).
 
 use ring::rand::{SecureRandom, SystemRandom};
+use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -11,6 +12,7 @@ use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
+use crate::environnements;
 use crate::shells::{delai_sigkill, descendants, signaler_pid, vivant};
 
 pub const RAISON_PAR_DEFAUT: &str = "le serveur opencode ne répond pas";
@@ -73,66 +75,102 @@ struct Lance {
     enfant: Child,
 }
 
-/// Le serveur opencode de l'instance : un seul à la fois, relancé s'il s'est arrêté.
+/// Un serveur de la table, avec son verrou de lancement.
+type Entree = Arc<Mutex<Option<Lance>>>;
+
+/// Les serveurs opencode de l'instance (DEC-120) : celui sans environnement et un par environnement
+/// utilisé, chacun relancé s'il s'est arrêté.
 #[derive(Default)]
 pub struct Opencode {
-    lance: Mutex<Option<Lance>>,
+    lances: MutexStd<HashMap<Option<String>, Entree>>,
     /// Posé dès le début de l'arrêt de Yaide : plus aucun lancement.
     arret: AtomicBool,
 }
 
+/// Les variables de l'environnement `nom` dans `fichier`, ou `None` s'il n'y est plus (ou si le
+/// fichier est illisible).
+fn variables_de(fichier: &Path, nom: &str) -> Option<Vec<(String, String)>> {
+    environnements::lister(fichier)
+        .ok()?
+        .into_iter()
+        .find(|e| e.nom == nom)
+        .map(|e| e.variables.0)
+}
+
 impl Opencode {
     /// Port et mot de passe d'un serveur prêt, lancé au besoin. Les demandes simultanées
-    /// attendent le même lancement. Erreur : la raison, en texte.
-    pub async fn assurer(&self, projet: &Path) -> Result<(u16, String), String> {
+    /// attendent le même lancement. `environnement` : nom lu dans `fichier_env` au lancement ;
+    /// absent du fichier, c'est le serveur sans environnement qui répond. Erreur : la raison.
+    pub async fn assurer(
+        &self,
+        projet: &Path,
+        fichier_env: &Path,
+        environnement: Option<&str>,
+    ) -> Result<(u16, String), String> {
         if self.arret.load(Ordering::SeqCst) {
             return Err("Yaide s'arrête".to_string());
         }
-        let mut lance = self.lance.lock().await;
+        let (cle, variables) =
+            match environnement.and_then(|n| variables_de(fichier_env, n).map(|v| (n, v))) {
+                Some((n, v)) => (Some(n.to_string()), v),
+                None => (None, Vec::new()),
+            };
+        let entree = self.lances.lock().unwrap().entry(cle).or_default().clone();
+        let mut lance = entree.lock().await;
         if let Some(l) = lance.as_mut() {
             if matches!(l.enfant.try_wait(), Ok(None)) {
                 return Ok((l.port, l.mdp.clone()));
             }
             *lance = None;
         }
-        let nouveau = demarrer(projet, &self.arret).await?;
+        let nouveau = demarrer(projet, &variables, &self.arret).await?;
         let r = (nouveau.port, nouveau.mdp.clone());
         *lance = Some(nouveau);
         Ok(r)
     }
 
-    /// Arrêt de Yaide : SIGTERM au groupe du serveur et à ses descendants (même dans une autre
-    /// session Unix), SIGKILL à ce qui reste après 3 s, même si le chef du groupe a déjà quitté.
+    /// Arrêt de Yaide : tous les serveurs s'arrêtent ensemble, chacun avec la règle d'`arreter_un`.
     pub async fn arreter(&self) {
         self.arret.store(true, Ordering::SeqCst);
-        let mut lance = self.lance.lock().await;
-        let Some(mut l) = lance.take() else {
-            return;
-        };
-        let Some(pgid) = l.enfant.id() else {
-            return;
-        };
-        let pgid = pgid as i32;
-        let suivis = descendants(pgid);
-        signaler(pgid, libc::SIGTERM);
-        for &p in &suivis {
-            signaler_pid(p, libc::SIGTERM);
+        let entrees: Vec<Entree> = self.lances.lock().unwrap().values().cloned().collect();
+        let mut taches = tokio::task::JoinSet::new();
+        for e in entrees {
+            taches.spawn(async move {
+                if let Some(l) = e.lock().await.take() {
+                    arreter_un(l).await;
+                }
+            });
         }
-        let debut = Instant::now();
-        let delai = delai_sigkill();
-        while debut.elapsed() < delai {
-            let chef_fini = matches!(l.enfant.try_wait(), Ok(Some(_)));
-            if chef_fini && !suivis.iter().any(|&p| vivant(p)) && !groupe_vivant(pgid) {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        signaler(pgid, libc::SIGKILL);
-        for &p in &suivis {
-            signaler_pid(p, libc::SIGKILL);
-        }
-        let _ = l.enfant.wait().await;
+        while taches.join_next().await.is_some() {}
     }
+}
+
+/// SIGTERM au groupe du serveur et à ses descendants (même dans une autre session Unix),
+/// SIGKILL à ce qui reste après 3 s, même si le chef du groupe a déjà quitté.
+async fn arreter_un(mut l: Lance) {
+    let Some(pgid) = l.enfant.id() else {
+        return;
+    };
+    let pgid = pgid as i32;
+    let suivis = descendants(pgid);
+    signaler(pgid, libc::SIGTERM);
+    for &p in &suivis {
+        signaler_pid(p, libc::SIGTERM);
+    }
+    let debut = Instant::now();
+    let delai = delai_sigkill();
+    while debut.elapsed() < delai {
+        let chef_fini = matches!(l.enfant.try_wait(), Ok(Some(_)));
+        if chef_fini && !suivis.iter().any(|&p| vivant(p)) && !groupe_vivant(pgid) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    signaler(pgid, libc::SIGKILL);
+    for &p in &suivis {
+        signaler_pid(p, libc::SIGKILL);
+    }
+    let _ = l.enfant.wait().await;
 }
 
 /// Reste-t-il un processus dans le groupe `pgid` ?
@@ -163,7 +201,11 @@ fn derniere_ligne(tampon: &MutexStd<Vec<u8>>) -> String {
         .map_or_else(|| RAISON_PAR_DEFAUT.to_string(), str::to_string)
 }
 
-async fn demarrer(projet: &Path, arret: &AtomicBool) -> Result<Lance, String> {
+async fn demarrer(
+    projet: &Path,
+    variables: &[(String, String)],
+    arret: &AtomicBool,
+) -> Result<Lance, String> {
     let chemin = trouver().ok_or(RAISON_PAR_DEFAUT)?;
     let port = port_libre()?;
     let mut octets = [0u8; 32];
@@ -180,6 +222,7 @@ async fn demarrer(projet: &Path, arret: &AtomicBool) -> Result<Lance, String> {
             &port.to_string(),
         ])
         .current_dir(projet)
+        .envs(variables.iter().map(|(k, v)| (k, v)))
         .env("PWD", projet)
         .env("OPENCODE_SERVER_PASSWORD", &mdp)
         .stdin(Stdio::null())
@@ -271,7 +314,7 @@ mod tests {
     async fn assurer_apres_arreter_refuse() {
         let o = Opencode::default();
         o.arreter().await;
-        let r = o.assurer(Path::new("/")).await;
+        let r = o.assurer(Path::new("/"), Path::new("/nulle"), None).await;
         assert_eq!(r, Err("Yaide s'arrête".to_string()));
     }
 

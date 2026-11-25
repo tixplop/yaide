@@ -1,4 +1,5 @@
 // Faux `opencode` pour les tests : sans dépendance, petit et lisible.
+// Le témoin note aussi `YA_ENV` (null si absent), `PWD` et la présence du mot de passe (REQ-184).
 // Variables : FAUX_OPENCODE_VERSION, FAUX_OPENCODE_TEMOIN, FAUX_OPENCODE_ECHEC.
 // Arrêt (REQ-073) : FAUX_OPENCODE_SIGNAUX=ignorer ignore SIGHUP et SIGTERM ; FAUX_OPENCODE_DETACHE=1 lance au `serve`
 // un `sh` dans sa propre session qui ignore HUP et TERM (PID dans <témoin>.detache) ; FAUX_OPENCODE_MEMBRE=1 lance
@@ -345,7 +346,7 @@ if (args[0] === "serve") {
   const mdp = process.env.OPENCODE_SERVER_PASSWORD ?? "";
   const temoin = process.env.FAUX_OPENCODE_TEMOIN;
   if (temoin) {
-    const ligne = { args, cwd: process.cwd(), PWD: process.env.PWD, mdp: mdp !== "", pid: process.pid };
+    const ligne = { args, cwd: process.cwd(), PWD: process.env.PWD, YA_ENV: process.env.YA_ENV ?? null, mdp: mdp !== "", pid: process.pid };
     fs.appendFileSync(temoin, JSON.stringify(ligne) + "\n");
     fs.writeFileSync(temoin + ".mdp", mdp);
   }
@@ -380,7 +381,7 @@ function serveur(mdp, args) {
       const chemin = req.url.split("?")[0];
       if (ETAT) gerer(req, res, chemin, new URL(req.url, "http://x"));
       else if (req.method === "GET" && chemin === "/api/info") {
-        res.writeHead(200, { "content-type": "application/json" }).end("{}");
+        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ env: process.env.YA_ENV ?? null }));
       } else if (req.method === "GET" && chemin === "/api/event") {
         res.writeHead(200, { "content-type": "text/event-stream" });
         res.write('data: {"n":1}\n\n');

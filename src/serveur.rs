@@ -388,13 +388,51 @@ async fn opencode_disponible() -> Response {
 
 /// Relais vers `/api/<chemin>` du serveur opencode : statut, `content-type` et corps au fil de l'eau.
 async fn relais_opencode(State(etat): State<Partage>, req: Request) -> Response {
-    // Chemin brut, encodage intact : ni `.`/`..` (même encodés), ni décodage de `%2F` ou `%3F`.
     let brut = req
         .uri()
         .path()
         .strip_prefix("/api/opencode")
         .unwrap_or("")
         .to_string();
+    relayer_opencode(etat, req, None, brut).await
+}
+
+/// Même relais vers le serveur de l'environnement `nom` (REQ-184). Créer une session pour un
+/// environnement qui n'est plus dans le fichier : 404, rien n'est lancé.
+async fn relais_opencode_env(
+    State(etat): State<Partage>,
+    CheminUrl((nom, _)): CheminUrl<(String, String)>,
+    req: Request,
+) -> Response {
+    // Chemin brut après le nom, encodage intact.
+    let brut = req
+        .uri()
+        .path()
+        .strip_prefix("/api/opencode/env/")
+        .and_then(|r| r.split_once('/'))
+        .map_or(String::new(), |(_, reste)| format!("/{reste}"));
+    if req.method() == Method::POST && brut == "/api/session" {
+        let fichier = etat.config.join("environnements.json");
+        match environnements::lister(&fichier) {
+            Ok(l) if l.iter().any(|e| e.nom == nom) => {}
+            _ => {
+                return texte(
+                    StatusCode::NOT_FOUND,
+                    format!("l'environnement {nom} n'existe plus"),
+                )
+            }
+        }
+    }
+    relayer_opencode(etat, req, Some(nom), brut).await
+}
+
+async fn relayer_opencode(
+    etat: Partage,
+    req: Request,
+    environnement: Option<String>,
+    brut: String,
+) -> Response {
+    // Chemin brut, encodage intact : ni `.`/`..` (même encodés), ni décodage de `%2F` ou `%3F`.
     if brut.split('/').any(|s| {
         matches!(
             s.to_ascii_lowercase().as_str(),
@@ -403,7 +441,15 @@ async fn relais_opencode(State(etat): State<Partage>, req: Request) -> Response 
     }) {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let (port, mdp) = match etat.opencode.assurer(&etat.projet_dir).await {
+    let (port, mdp) = match etat
+        .opencode
+        .assurer(
+            &etat.projet_dir,
+            &etat.config.join("environnements.json"),
+            environnement.as_deref(),
+        )
+        .await
+    {
         Ok(p) => p,
         Err(raison) => {
             return (
@@ -2263,6 +2309,10 @@ pub async fn servir(
         )
         .route("/api/opencode", get(opencode_disponible))
         .route("/api/opencode/api/{*chemin}", any(relais_opencode))
+        .route(
+            "/api/opencode/env/{nom}/api/{*chemin}",
+            any(relais_opencode_env),
+        )
         .route("/api/shells/{id}", delete(fermer_shell))
         .route("/api/shells/{id}/ws", get(ws_shell))
         .route("/api/fichiers", get(liste_fichiers))

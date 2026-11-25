@@ -7,7 +7,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/cli.rs — analyse des arguments, aide, saisie du mot de passe — analyser, valider_saisies
 - src/config.rs — dossier de configuration, mot de passe haché (argon2) ; `src/environnements.rs` : `environnements.json` de l'utilisateur, droits 600 (REQ-182) — dossier_config, definir_mot_de_passe, verifier_mot_de_passe
 - src/auth.rs — sessions (un cookie par port d'écoute), blocage après échecs ; `src/tls.rs` : certificat auto-signé (rcgen) — creer_session, session_valide, bloque
-- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180, route presse-papiers-windows REQ-181, routes environnements REQ-182, ouverture avec environnement REQ-183)
+- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180, route presse-papiers-windows REQ-181, routes environnements REQ-182, ouverture avec environnement REQ-183, relais opencode par environnement REQ-184)
 - src/windows.rs — presse-papiers de Windows rempli par powershell.exe dans WSL (REQ-181) — disponible, copier
 - src/fichiers.rs — arborescence et opérations sur les fichiers du projet  — lister, lire, ecrire, importer (REQ-180)
 - src/depot.rs — dépôt git, `.gitignore`, worktrees — est_un_depot, worktrees
@@ -15,7 +15,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/recherche.rs — recherche dans les fichiers et ouverture rapide — chercher, lister
 - src/shells.rs — shells et sessions Claude en pseudo-terminal, survie aux coupures, variables d'un environnement ; intégration à bash et zsh (séquence retirée de la sortie, commandes terminées remises aux déclencheurs, REQ-167) — abonner, ecrire, prendre_commandes
 - src/integration-shell/ — fichiers de démarrage embarqués : `bash-rc` (`--rcfile`) et `zsh/` (`ZDOTDIR`), écrits dans le dossier de configuration au lancement d'un shell (REQ-167)
-- src/opencode.rs — processus `opencode serve` du projet — assurer, arreter, disponible
+- src/opencode.rs — processus `opencode serve` du projet, un par environnement utilisé plus celui sans environnement (REQ-184) — assurer, arreter, disponible
 - src/apercu.rs — jetons et service de l'aperçu HTML — nouveau_jeton, jeton_ok, charger
 - src/version.rs — version, nouvelle version, `yaide update` — etat_maj, demarrer_maj, derniere
 - src/connaissance.rs — base de connaissance vectorielle (collections, pointeurs, mise à jour, dossiers suivis REQ-176) — valider, lire_config, ecrire_config
