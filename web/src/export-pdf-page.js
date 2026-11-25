@@ -7,6 +7,7 @@ import { resoudreImage } from "./images-md.js";
 import { jetonsMarkdown } from "./ui/apercu.js";
 import { adresseDiagramme, chargerMermaid, dessinerTexte } from "./ui/diagramme.js";
 import { afficher, retirer } from "./ui/toasts.js";
+import { dessinerWhiteboard } from "./ui/whiteboard-image.js";
 
 const COUPURE = "connexion perdue";
 const ATTENTE = 1000;
@@ -86,7 +87,7 @@ function parcourir(jetons, visiter) {
   }
 }
 
-// Images `![[nom]]` et diagrammes mermaid du document : `{ [clé]: { png, largeur, hauteur } }`. Ceux qui manquent ou ne se lisent pas restent du texte.
+// Images et whiteboards `![[nom]]` et diagrammes mermaid du document : `{ [clé]: { png, largeur, hauteur } }`. Ceux qui manquent ou ne se lisent pas restent du texte.
 async function rassembler(chemin, texte) {
   const images = {};
   const noms = new Set();
@@ -109,6 +110,18 @@ async function rassembler(chemin, texte) {
         throw coupure();
       }
       if (!r.ok) continue;
+      if (/\.jdiag$/i.test(fichier)) {
+        // Whiteboard (REQ-179) : le dessin de l'aperçu, en PNG à l'échelle 2 comme mermaid, à sa taille annoncée.
+        let d = null;
+        try {
+          d = dessinerWhiteboard(await r.text());
+        } catch {
+          // illisible : la balise reste du texte
+        }
+        const dessin = d && (await chargerImage(adresseDiagramme(d.svg)));
+        if (dessin) images[nom] = enPng(dessin, d.largeur, d.hauteur, ECHELLE_DIAGRAMME);
+        continue;
+      }
       const img = await chargerImage(await enAdresse(await r.blob()));
       if (img) images[nom] = enPng(img, img.naturalWidth || 300, img.naturalHeight || 150);
     }
