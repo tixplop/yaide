@@ -94,6 +94,7 @@ fn est_publique(m: &Method, chemin: &str) -> bool {
         chemin,
         "/" | "/main.js"
             | "/mermaid.js"
+            | "/pdf.js"
             | "/main.css"
             | "/tokens.css"
             | "/composants.css"
@@ -1009,6 +1010,7 @@ async fn version_maj(State(etat): State<Partage>) -> Response {
 const INDEX: &[u8] = include_bytes!("../web/dist/index.html");
 const MAIN_JS: &[u8] = include_bytes!("../web/dist/main.js");
 const MERMAID_JS: &[u8] = include_bytes!("../web/dist/mermaid.js");
+const PDF_JS: &[u8] = include_bytes!("../web/dist/pdf.js");
 
 async fn chercher(State(etat): State<Partage>, Query(q): Requete) -> Response {
     let requete = param(&q, "q").to_string();
@@ -1080,6 +1082,13 @@ async fn mermaid_js() -> impl IntoResponse {
     )
 }
 
+async fn pdf_js() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        PDF_JS,
+    )
+}
+
 const MAIN_CSS: &[u8] = include_bytes!("../web/dist/main.css");
 const TOKENS_CSS: &[u8] = include_bytes!("../web/dist/tokens.css");
 const COMPOSANTS_CSS: &[u8] = include_bytes!("../web/dist/composants.css");
@@ -1087,7 +1096,7 @@ const COMPOSANTS_CSS: &[u8] = include_bytes!("../web/dist/composants.css");
 const THEME_JS: &[u8] = include_bytes!("../web/dist/theme.js");
 
 /// Polices et licence embarquées : nom, type MIME, contenu.
-const POLICES: [(&str, &str, &[u8]); 4] = [
+const POLICES: [(&str, &str, &[u8]); 7] = [
     (
         "JetBrainsMono-Regular.woff2",
         "font/woff2",
@@ -1107,6 +1116,21 @@ const POLICES: [(&str, &str, &[u8]); 4] = [
         "OFL.txt",
         "text/plain; charset=utf-8",
         include_bytes!("../web/dist/polices/OFL.txt"),
+    ),
+    (
+        "JetBrainsMono-Regular.ttf",
+        "font/ttf",
+        include_bytes!("../web/dist/polices/JetBrainsMono-Regular.ttf"),
+    ),
+    (
+        "NotoSansSC-Regular.ttf",
+        "font/ttf",
+        include_bytes!("../web/dist/polices/NotoSansSC-Regular.ttf"),
+    ),
+    (
+        "OFL-NotoSansCJK.txt",
+        "text/plain; charset=utf-8",
+        include_bytes!("../web/dist/polices/OFL-NotoSansCJK.txt"),
     ),
 ];
 
@@ -2002,6 +2026,7 @@ pub async fn servir(
         .route("/", get(index))
         .route("/main.js", get(main_js))
         .route("/mermaid.js", get(mermaid_js))
+        .route("/pdf.js", get(pdf_js))
         .route("/main.css", get(|| async { css(MAIN_CSS) }))
         .route("/tokens.css", get(|| async { css(TOKENS_CSS) }))
         .route("/composants.css", get(|| async { css(COMPOSANTS_CSS) }))

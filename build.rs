@@ -4,6 +4,7 @@ fn main() {
         "index.html",
         "main.js",
         "mermaid.js",
+        "pdf.js",
         "tokens.css",
         "composants.css",
         "theme.js",
@@ -11,6 +12,9 @@ fn main() {
         "polices/JetBrainsMono-Italic.woff2",
         "polices/JetBrainsMono-SemiBold.woff2",
         "polices/OFL.txt",
+        "polices/JetBrainsMono-Regular.ttf",
+        "polices/NotoSansSC-Regular.ttf",
+        "polices/OFL-NotoSansCJK.txt",
     ] {
         if !std::path::Path::new("web/dist").join(f).exists() {
             panic!("web/dist/{f} est absent : lancez d'abord `npm run build`.");

@@ -62,6 +62,8 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/mermaid-dessin.js — dessin mesuré de mermaid (primitives) → boîtes et flèches libres du whiteboard, ou refus (REQ-154, DEC-107) — versWhiteboard
 - web/src/mermaid-mesure.js — dessin SVG de mermaid posé hors écran, mesuré (matrices, styles, textes) → primitives (REQ-154, DEC-107) — mesurer
 - web/src/mermaid.js — bibliothèque mermaid, bundle à part chargé au premier diagramme (avec mermaid-mesure.js et mermaid-dessin.js) — `window.yaideMermaid` : dessiner, traduire (texte → `{ doc }` ou `{ refus }`), traduireSvg
+- web/src/pdf.js — bibliothèque pdfmake, bundle à part chargé au premier export ; polices JetBrains Mono et Noto Sans SC lues depuis `/polices/` (`.ttf`) — `window.yaidePdf.produire`
+- web/src/export-pdf.js — export en PDF sans DOM : nom du PDF, définition d'un fichier texte, choix de la police par caractère — nomPdf, definitionTexte, morceaux
 - web/src/ui/ — design system : composants (`bouton` dont la taille `disque` des aides du tableau rendu, REQ-153 ; `champ`, `menu` (option `zone` : menu porté par la surface d'un whiteboard, REQ-155 ; ouvert par `ancre`, retourné au-dessus du bouton s'il manque de place, REQ-163), `dialogue` (position `milieu`, option `focusFermeture`, REQ-162), `onglets`, `liste` (variante `elements` : éléments d'un formulaire, `ajouter`, REQ-163), `message` (présentations `barre` et `toast`, REQ-172), `toasts` (zone des toasts créée par le cadre, `afficher`, `retirer`, `changerTexte`, REQ-172), `cadre`, `poignee`, `info-bulle`, `indication`, `compteur` (variante `texte`, REQ-159), `avatar`, `image`) ; `dialogueChoix` (dialogue « Choix sans bouton principal » avec la `grille` de `liste`, REQ-149 : option `groupes`, un rang à part par groupe, REQ-156 ; `forme-point` et `forme-barre` de `icones.js` sont pleins) ; `icones.js` (dont `chevron-up`, REQ-159 ; `shapes` et les vingt-cinq `symbole-<shape>`, REQ-149) ; `tokens.css`, `composants.css`, `theme.js` (`themeCourant`, `themeWhiteboard`, `themeTableur` et leurs `changer…`, REQ-143, REQ-158), `polices/`
 - web/src/ui/apercu.js, apercu-html.js, hybride.js, diagramme.js — rendu markdown (balises `<u>` rendues en souligné, aperçu et mode hybride, REQ-169 ; cases à cocher actives de l'aperçu, `surCase`, et widget `CaseCochee` du mode hybride, REQ-171 ; images `![[nom]]` de l'aperçu, `images`, et widget `ImageMd` du mode hybride, `majImagesHybride`, REQ-175), aperçu HTML, mode hybride (tableaux rendus dont les cellules se modifient sur place, `validerSaisie`, disques au survol qui ajoutent ou retirent lignes et colonnes, `zonesAides`, `aidesSurvol` (partagé avec le tableur), REQ-153 ; diagrammes mermaid rendus, REQ-152 ; `diagrammesHybride`/`diagrammesRendus` ; dessins partagés par `diagramme.js`), mermaid — rendreMarkdown, apercuHtml, decorationsHybride
 - web/src/ui/mise-en-forme.js — actions de mise en forme markdown (une transaction isolée chacune : `gras`, `italique`, `souligne`, `barre`, `codeEnLigne`, `accentGrave` à trois temps ; actions de lignes et d'insertion `titre`, `citation`, `listePuces`, `listeNumerotee`, `lien`, `image`, `blocCode`, `tableau`, `separateur`, REQ-170), raccourcis Ctrl+B/I/U et frappe de `` ` `` posés avec le mode hybride, REQ-169 — extensionMiseEnForme, gras, accentGrave
@@ -96,7 +98,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 
 ## Construction
 - build.rs — vérifie que `web/dist/` existe avant la compilation Rust
-- esbuild.mjs — empaquette `main.js` et `mermaid.js`, copie index, CSS, polices vers `web/dist/`
+- esbuild.mjs — empaquette `main.js`, `mermaid.js` et `pdf.js`, copie index, CSS, polices vers `web/dist/`
 - Cargo.toml, package.json, playwright.config.js, vitest.config.js, eslint.config.js — configuration des outils ; install.sh — installation
 
 ## Fonctionnalités
@@ -137,6 +139,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-126 soumettre des fichiers à un agent → web/src/vues/soumission-agent.js
 - REQ-118 formater le document → web/src/formatage.js, vues/principale.js
 - REQ-122, REQ-123 mermaid → web/src/mermaid.js, ui/diagramme.js, ui/apercu.js
+- REQ-177 export en PDF (socle : bibliothèque, polices, fichier texte) → web/src/pdf.js, export-pdf.js, src/serveur.rs (`/pdf.js`, polices `.ttf`)
 - REQ-152 diagrammes mermaid dessinés en mode hybride → ui/hybride.js, ui/diagramme.js, ui/zone-code.js
 - REQ-153 tableau rendu modifiable, aides au survol → ui/hybride.js, ui/bouton.js, ui/zone-code.js, vues/editeur.js, ui/icones.js, ui/composants.css
 - REQ-156 point et barre (`dot`, `bar`) : format et outils de l'agent → web/src/jdiag.js, src/agent/jdiag.rs, jdiag_controle.rs, jdiag_trace.rs, outils.rs ; dessin, anneau du choix et connecteurs : web/src/ui/tableau-calculs.js, tableau-dessin.js, tableau.js, composants.css ; dessins du dialogue Symboles : web/src/ui/icones.js, liste.js

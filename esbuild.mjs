@@ -29,6 +29,15 @@ const mm = await build({
   write: false,
 });
 for (const f of mm.outputFiles) ecrire(f.path, f.contents);
+const pdf = await build({
+  entryPoints: ["web/src/pdf.js"],
+  bundle: true,
+  minify: true,
+  format: "iife",
+  outfile: "web/dist/pdf.js",
+  write: false,
+});
+for (const f of pdf.outputFiles) ecrire(f.path, f.contents);
 for (const f of ["tokens.css", "composants.css"]) copier(`web/src/ui/${f}`, `web/dist/${f}`);
 copier("web/index.html", "web/dist/index.html");
 copier("web/src/theme-initial.js", "web/dist/theme.js");
