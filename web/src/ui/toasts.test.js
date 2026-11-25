@@ -32,6 +32,14 @@ test("REQ172_AC3_info_et_succes_partent_apres_6_s_et_l_erreur_reste", () => {
   expect(textes()).toEqual(["Alerte"]);
 });
 
+test("REQ177_AC13_un_toast_permanent_info_reste_jusqu_a_son_retrait", () => {
+  afficher({ texte: "Export de notes.md en PDF…", variante: "info", cause: "export", permanent: true });
+  vi.advanceTimersByTime(60000);
+  expect(textes()).toEqual(["Export de notes.md en PDF…"]);
+  retirer("export");
+  expect(textes()).toEqual([]);
+});
+
 test("REQ172_AC3_pointeur_ou_focus_arretent_le_delai_qui_repart_pour_6_s", () => {
   afficher({ texte: "Indexé", variante: "succes" });
   const t = toasts()[0];

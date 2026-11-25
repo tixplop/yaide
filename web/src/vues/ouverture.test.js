@@ -314,6 +314,40 @@ test("REQ118_AC10_formater_suit_les_agents_desactives", async () => {
   v.detruire();
 });
 
+test("REQ177_AC6_AC7_AC9_REQ118_AC9_AC10_AC11_exporter_en_dernier_apres_formater", async () => {
+  simuler(json({ chemins: ["src/main.rs"] }));
+  const surCommande = vi.fn();
+  let formate = false;
+  let exporte = false;
+  const { entree, declencheur, v } = await ouvrir({ surCommande, peutFormater: () => formate, peutExporter: () => exporte });
+  const noms = () => [...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent);
+  taper(entree, ">pdf");
+  expect(document.querySelector("dialog").textContent).toContain("Aucune commande trouvée.");
+  exporte = true;
+  taper(entree, ">");
+  expect(noms()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Exporter en PDF"]);
+  formate = true;
+  taper(entree, ">");
+  expect(noms()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Formater le document", "Exporter en PDF"]);
+  taper(entree, ">pdf");
+  const une = [...document.querySelectorAll("dialog [role=option]")];
+  expect(une).toHaveLength(1);
+  expect(une[0].getAttribute("aria-selected")).toBe("true");
+  expect(une[0].querySelector("b.liste-trouve").textContent).toBe("pdf".toUpperCase());
+  touche(entree, "Enter");
+  expect(surCommande).toHaveBeenCalledWith("exporter", declencheur);
+  expect(document.querySelector("dialog")).toBeNull();
+  v.detruire();
+});
+
+test("REQ177_AC7_REQ118_AC10_agents_desactives_configuration_puis_exporter", async () => {
+  simuler(json({ chemins: [] }));
+  const { entree, v } = await ouvrir({ commandes: [{ id: "configuration", nom: "Configuration" }], peutExporter: () => true });
+  taper(entree, ">");
+  expect([...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent)).toEqual(["Configuration", "Exporter en PDF"]);
+  v.detruire();
+});
+
 test("REQ120_AC2_ctrl_p_ouvre_une_image_sans_la_lire", async () => {
   const fetch = vi.fn(async () => json({ chemins: ["img/logo.png", "src/main.rs"] }));
   vi.stubGlobal("fetch", fetch);

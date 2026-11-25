@@ -21,7 +21,7 @@ export function zoneToasts({ repli: rappel } = {}) {
 function armer(t) {
   clearTimeout(t.timer);
   t.timer = undefined;
-  if ((t.variante === "info" || t.variante === "succes") && !t.fort && !t.survol && !t.focus) {
+  if ((t.variante === "info" || t.variante === "succes") && !t.fort && !t.permanent && !t.survol && !t.focus) {
     t.timer = setTimeout(() => enlever(t, false), DELAI);
   }
 }
@@ -40,7 +40,8 @@ function enlever(t, forcerFocus) {
   else repli();
 }
 
-export function afficher({ texte, variante = "info", detail, fort = false, cause } = {}) {
+// `permanent` : un toast info ou succes qui ne part pas au bout de 6 s ; son appelant le retire (`retirer`) ou sa croix.
+export function afficher({ texte, variante = "info", detail, fort = false, cause, permanent = false } = {}) {
   if (!zone) throw new Error("toasts : zone absente, créez le cadre d'abord");
   const existant = liste.find((t) => t.texte === texte);
   if (existant) {
@@ -48,7 +49,7 @@ export function afficher({ texte, variante = "info", detail, fort = false, cause
     return existant.el;
   }
   const el = message({ texte, variante: fort ? "alerte" : variante, detail, fort, presentation: "toast", cause });
-  const t = { el, texte, variante: fort ? "alerte" : variante, fort, cause, timer: undefined, survol: false, focus: false };
+  const t = { el, texte, variante: fort ? "alerte" : variante, fort, permanent, cause, timer: undefined, survol: false, focus: false };
   if (liste.length >= MAX) {
     const ancien = liste.find((x) => !x.fort);
     if (ancien) enlever(ancien, false);

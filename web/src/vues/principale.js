@@ -16,6 +16,7 @@ import { vueEditeur } from "./editeur.js";
 import { vueFichiers } from "./fichiers.js";
 import { vueGit } from "./git.js";
 import { vueOuverture } from "./ouverture.js";
+import { exporterEnPdf } from "../export-pdf-page.js";
 import { ouvrirConfiguration } from "./configuration.js";
 import { ouvrirProfils } from "./profils.js";
 import { ouvrirProviders } from "./providers.js";
@@ -288,8 +289,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     surOuvrir: editeur.ouvrir,
     surLecture: editeur.lecture,
     peutFormater: editeur.peutFormater,
+    peutExporter: editeur.peutExporter,
     surCommande: (id, avant) => {
       if (id === "formater") return editeur.formater();
+      if (id === "exporter") return exporterEnPdf(editeur.pourExport());
       if (id === "configuration") {
         panneauConfig = ouvrirConfiguration({
           surFermeture: () => { panneauConfig = null; avant?.focus?.({ preventScroll: true }); },

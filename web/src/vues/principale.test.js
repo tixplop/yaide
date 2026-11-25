@@ -1358,7 +1358,7 @@ test("REQ118_AC11_commande_en_dernier_et_entree_formate_avec_le_focus_dans_l_edi
   await vi.waitFor(() => expect(vue.querySelector(".zone-code:not([hidden])")).not.toBeNull());
   expect(document.querySelector("dialog")).toBeNull();
   const e2 = paletteCommandes(">");
-  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Formater le document"]);
+  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Formater le document", "Exporter en PDF"]);
   e2.value = ">form";
   e2.dispatchEvent(new Event("input", { bubbles: true }));
   expect(nomsCommandes()).toEqual(["Formater le document"]);
@@ -1367,6 +1367,62 @@ test("REQ118_AC11_commande_en_dernier_et_entree_formate_avec_le_focus_dans_l_edi
   expect(document.querySelector("dialog")).toBeNull();
   expect(zone.vue.state.doc.toString()).toBe('{\n  "b": 1\n}\n');
   expect(document.activeElement).toBe(zone.vue.contentDOM);
+});
+
+async function ouvrirJson(contenu) {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const u = String(url);
+    if (u === "/api/chemins") return jsonOk({ chemins: ["a.json"] });
+    if (u === "/api/git/etat") return jsonOk({ branche: "main", detachee: false, branches: ["main"], changements: [] });
+    if (u.startsWith("/api/fichiers?")) return jsonOk({ entrees: [] });
+    if (u === "/api/session") return { status: 204 };
+    if (u === "/api/agent/reglages") return jsonOk({ providers: [], profils: [] });
+    if (u.startsWith("/api/fichier?chemin=a.json")) return { ok: true, status: 200, text: async () => contenu, headers: { get: () => "v1" } };
+    return { ok: false, status: 404, json: async () => ({ cause: "introuvable", message: "absent" }) };
+  }));
+  const { vue } = monter();
+  const entree = paletteCommandes("a.json");
+  await vi.waitFor(() => expect(document.querySelector("dialog [role=option]")).not.toBeNull());
+  entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(vue.querySelector(".zone-code:not([hidden])")).not.toBeNull());
+  return { vue, zone: vue.querySelector(".zone-code:not([hidden])") };
+}
+const formaterParPalette = () => {
+  const e = paletteCommandes(">form");
+  e.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+};
+
+test("REQ118_AC13_focus_dans_l_arborescence_une_ligne_courante_form_en_gras_puis_focus_dans_l_editeur", async () => {
+  const { vue, zone } = await ouvrirJson('{"b":1}');
+  vue.querySelector("[role=tree]")?.focus();
+  const e = paletteCommandes(">form");
+  const lignes = [...document.querySelectorAll("dialog [role=option]")];
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Formater le document"]);
+  expect(lignes[0].getAttribute("aria-selected")).toBe("true");
+  expect(lignes[0].querySelector("b.liste-trouve").textContent).toBe("Form");
+  e.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  expect(document.activeElement).toBe(zone.vue.contentDOM);
+});
+
+test("REQ118_AC14_json_invalide_message_avec_fermer_curseur_et_texte_inchanges", async () => {
+  const { vue, zone } = await ouvrirJson('{"a":1,}');
+  zone.vue.dispatch({ selection: { anchor: 4 } });
+  formaterParPalette();
+  const alerte = () => [...vue.querySelectorAll("[role=alert]")].find((a) => a.textContent.includes("Formatage impossible : ce JSON n'est pas valide."));
+  await vi.waitFor(() => expect(alerte()).toBeDefined());
+  expect(zone.vue.state.selection.main.head).toBe(4);
+  expect(vue.querySelector("footer").textContent).toContain("Ln 1, Col 5");
+  alerte().querySelector("button[aria-label=Fermer]").click();
+  expect(alerte()).toBeUndefined();
+  expect(zone.vue.state.doc.toString()).toBe('{"a":1,}');
+});
+
+test("REQ118_AC15_longue_ligne_apres_formatage_curseur_au_debut_ln_1_col_1", async () => {
+  const { vue, zone } = await ouvrirJson(`{"a":"${"x".repeat(3000)}"}`);
+  zone.vue.dispatch({ selection: { anchor: 2900 } });
+  formaterParPalette();
+  expect(zone.vue.state.selection.main.head).toBe(0);
+  expect(vue.querySelector("footer").textContent).toContain("Ln 1, Col 1");
 });
 
 // ---- REQ-124 : Ctrl+S met à jour le fichier dans la base, seulement avec les agents ----
@@ -1705,3 +1761,180 @@ test("REQ173_la_fonction_agents_desactivee_ne_relit_pas_le_journal", () =>
     await vi.advanceTimersByTimeAsync(6100);
     expect(s.appels).toEqual([]);
   }));
+
+// ---- REQ-177 : « Exporter en PDF » de Ctrl+P ----
+function serveurNotes(contenu = "# Titre\n\nDu **gras**.") {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const u = String(url);
+    if (u === "/api/chemins") return jsonOk({ chemins: ["docs/notes.md", "plan.jdiag"] });
+    if (u === "/api/git/etat") return jsonOk({ branche: "main", detachee: false, branches: ["main"], changements: [] });
+    if (u.startsWith("/api/fichiers?")) return jsonOk({ entrees: [] });
+    if (u === "/api/session") return { status: 204 };
+    if (u === "/api/agent/reglages") return jsonOk({ providers: [], profils: [] });
+    if (u.startsWith("/api/fichier?chemin=docs")) return { ok: true, status: 200, text: async () => contenu, headers: { get: () => "v1" } };
+    if (u.startsWith("/api/fichier?chemin=plan.jdiag")) return { ok: true, status: 200, text: async () => "{}", headers: { get: () => "v1" } };
+    return { ok: false, status: 404, json: async () => ({ cause: "introuvable", message: "absent" }) };
+  }));
+}
+
+async function ouvrirNotes() {
+  const { vue } = monter();
+  const entree = paletteCommandes("notes");
+  await vi.waitFor(() => expect(document.querySelector("dialog [role=option]")).not.toBeNull());
+  entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(vue.querySelector(".zone-code:not([hidden])")).not.toBeNull());
+  return { vue, zone: vue.querySelector(".zone-code:not([hidden])") };
+}
+
+// `produire` est la bibliothèque PDF (déjà « chargée ») ; `telechargements` recueille les noms des liens `a download`.
+function simulerPdf(produire) {
+  const telechargements = [];
+  window.yaidePdf = { produire };
+  URL.createObjectURL = vi.fn(() => "blob:test");
+  URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function () {
+    telechargements.push(this.download);
+  });
+  return telechargements;
+}
+const exporterParPalette = () => {
+  const e = paletteCommandes(">pdf");
+  e.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+};
+const toastsExport = (vue) => [...vue.querySelectorAll(".ya-toasts > *")].map((m) => ({ role: m.getAttribute("role"), texte: m.querySelector(".message-texte").textContent }));
+
+afterEach(() => {
+  delete window.yaidePdf;
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+test("REQ177_AC6_aucun_onglet_pas_de_commande_pdf", async () => {
+  serveurNotes();
+  const { vue } = monter();
+  paletteCommandes(">pdf");
+  expect(document.querySelector("dialog").textContent).toContain("Aucune commande trouvée.");
+  document.querySelector("dialog input").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  // Un whiteboard actif : pas d'export non plus.
+  const entree = paletteCommandes("plan");
+  await vi.waitFor(() => expect(document.querySelector("dialog [role=option]")).not.toBeNull());
+  entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(fetch.mock.calls.some(([u]) => String(u).startsWith("/api/fichier?chemin=plan.jdiag"))).toBe(true));
+  await attendre();
+  await attendre();
+  expect([...vue.querySelectorAll("[role=tab]")].map((t) => t.textContent).join()).toContain("plan.jdiag");
+  paletteCommandes(">pdf");
+  expect(document.querySelector("dialog").textContent).toContain("Aucune commande trouvée.");
+});
+
+test("REQ177_AC7_AC9_REQ118_AC9_notes_md_propose_exporter_en_dernier_et_entree_rend_le_focus_a_l_editeur", async () => {
+  serveurNotes();
+  const telechargements = simulerPdf(async () => new Blob(["%PDF"]));
+  const { vue, zone } = await ouvrirNotes();
+  zone.vue.dispatch({ selection: { anchor: 3 } });
+  paletteCommandes(">");
+  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Exporter en PDF"]);
+  const e = paletteCommandes(">pdf");
+  const lignes = [...document.querySelectorAll("dialog [role=option]")];
+  expect(lignes).toHaveLength(1);
+  expect(lignes[0].getAttribute("aria-selected")).toBe("true");
+  expect(lignes[0].querySelector("b.liste-trouve").textContent).toBe("PDF");
+  e.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(document.activeElement).toBe(zone.vue.contentDOM);
+  await vi.waitFor(() => expect(telechargements).toEqual(["notes.pdf"]));
+  expect(zone.vue.state.selection.main.head).toBe(3);
+  expect(toastsExport(vue)).toEqual([]); // réussi : aucun message
+});
+
+test("REQ177_AC3_AC8_export_du_texte_affiche_sans_rien_changer_a_l_onglet", async () => {
+  serveurNotes("abc");
+  let definition;
+  const telechargements = simulerPdf(async (d) => {
+    definition = d;
+    return new Blob(["%PDF"]);
+  });
+  const { zone } = await ouvrirNotes();
+  zone.vue.dispatch({ changes: { from: 3, insert: " NONENREGISTRE" } });
+  exporterParPalette();
+  zone.vue.dispatch({ changes: { from: 0, insert: "APRES " } }); // tapé juste après Entrée
+  await vi.waitFor(() => expect(telechargements).toEqual(["notes.pdf"]));
+  const texte = JSON.stringify(definition);
+  expect(texte).toContain("abc NONENREGISTRE");
+  expect(texte).not.toContain("APRES");
+  expect(definition.info.title).toBe("notes.md");
+  expect(zone.vue.state.doc.toString()).toBe("APRES abc NONENREGISTRE");
+});
+
+test("REQ177_AC15_coupure_pendant_la_production_toast_de_coupure_rien_telecharge", async () => {
+  serveurNotes();
+  const telechargements = simulerPdf(async () => {
+    throw new Error("connexion perdue");
+  });
+  const { vue } = await ouvrirNotes();
+  exporterParPalette();
+  await vi.waitFor(() => expect(toastsExport(vue)).toEqual([{ role: "alert", texte: "Export en PDF impossible : connexion perdue. Réessayez au retour." }]));
+  expect(telechargements).toEqual([]);
+});
+
+test("REQ177_AC13_AC14_toast_d_attente_au_bout_d_une_seconde_un_seul_export_a_la_fois", async () => {
+  serveurNotes();
+  let finir;
+  const produire = vi.fn(() => new Promise((r) => (finir = () => r(new Blob(["%PDF"])))));
+  const telechargements = simulerPdf(produire);
+  const { vue } = await ouvrirNotes();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  exporterParPalette();
+  await vi.advanceTimersByTimeAsync(900);
+  expect(toastsExport(vue)).toEqual([]);
+  await vi.advanceTimersByTimeAsync(200);
+  await vi.waitFor(() => expect(toastsExport(vue)).toEqual([{ role: "status", texte: "Export de notes.md en PDF…" }]));
+  await vi.advanceTimersByTimeAsync(10000);
+  expect(toastsExport(vue)).toHaveLength(1); // reste au-delà de 6 s
+  exporterParPalette(); // AC-177-14 : rien de plus ne part
+  expect(document.querySelector("dialog")).toBeNull();
+  finir();
+  await vi.advanceTimersByTimeAsync(10);
+  expect(produire).toHaveBeenCalledTimes(1);
+  expect(telechargements).toEqual(["notes.pdf"]);
+  expect(toastsExport(vue)).toEqual([]);
+});
+
+test("REQ177_AC13_sa_croix_retire_le_toast_sans_arreter_l_export", async () => {
+  serveurNotes();
+  let finir;
+  const telechargements = simulerPdf(() => new Promise((r) => (finir = () => r(new Blob(["%PDF"])))));
+  const { vue } = await ouvrirNotes();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  exporterParPalette();
+  await vi.advanceTimersByTimeAsync(1100);
+  vue.querySelector(".ya-toasts button[aria-label=Fermer]").click();
+  expect(toastsExport(vue)).toEqual([]);
+  finir();
+  await vi.advanceTimersByTimeAsync(10);
+  expect(telechargements).toEqual(["notes.pdf"]);
+});
+
+test("REQ177_AC15_coupure_bibliotheque_pas_chargee_puis_reessai_et_autre_echec", async () => {
+  serveurNotes();
+  const { vue, zone } = await ouvrirNotes();
+  // Bibliothèque absente et réseau coupé : le script ne se charge pas.
+  const ajout = vi.spyOn(document.head, "append").mockImplementation((s) => queueMicrotask(() => s.onerror()));
+  exporterParPalette();
+  await vi.waitFor(() => expect(toastsExport(vue).map((t) => t.role)).toEqual(["alert"]));
+  await vi.waitFor(() => expect(toastsExport(vue)[0].texte).toBe("Export en PDF impossible : connexion perdue. Réessayez au retour."));
+  expect(document.activeElement).toBe(zone.vue.contentDOM);
+  ajout.mockRestore();
+  // Autre échec : la raison, sans le nom d'onglet que `pdf.js` y met.
+  simulerPdf(async () => {
+    throw new Error("notes.md : police absente.");
+  });
+  exporterParPalette();
+  await vi.waitFor(() => expect(toastsExport(vue)[0].texte).toBe("Export en PDF impossible : police absente. Réessayez."));
+  expect(toastsExport(vue)).toHaveLength(1);
+  // Retour de la connexion : l'export réussit et le toast part.
+  const telechargements = simulerPdf(async () => new Blob(["%PDF"]));
+  exporterParPalette();
+  await vi.waitFor(() => expect(telechargements).toEqual(["notes.pdf"]));
+  await vi.waitFor(() => expect(toastsExport(vue)).toEqual([]));
+});

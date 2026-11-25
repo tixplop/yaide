@@ -196,8 +196,9 @@ test("REQ070_parcours_32_alleger_avec_faute_de_frappe", async ({ page }) => {
   await expect(page.getByRole("tab", { name: /^(Recherche|Git)$/ })).toHaveCount(0);
   await page.keyboard.press("Control+p");
   await page.keyboard.type(">");
-  // L'onglet actif est interface.json (JSON) : « Formater le document » s'ajoute (REQ-118), aucune commande des fonctions éteintes.
-  await expect(page.getByRole("option")).toHaveCount(2);
+  // L'onglet actif est interface.json (JSON) : « Formater le document » s'ajoute (REQ-118) puis « Exporter en PDF » (REQ-177), aucune commande des fonctions éteintes.
+  await expect(page.getByRole("option")).toHaveCount(3);
+  await expect(page.getByRole("option", { name: "Exporter en PDF" })).toBeVisible();
   await expect(page.getByRole("option", { name: "Configuration" })).toBeVisible();
   await expect(page.getByRole("option", { name: "Formater le document" })).toBeVisible();
   await page.keyboard.type("prov");
@@ -310,7 +311,7 @@ test("REQ071_parcours_34_regler_sans_json", async ({ page }) => {
   // 1-2. Ctrl+P, `>` : une seule commande ; Entrée ouvre le dialogue.
   await page.keyboard.press("Control+p");
   await page.keyboard.type(">");
-  await expect(page.getByRole("option")).toHaveCount(1);
+  await expect(page.getByRole("option")).toHaveCount(2);
   await page.keyboard.press("Enter");
   const dlg = dialoguePrefs(page);
   await expect(dlg).toBeVisible();

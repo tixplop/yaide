@@ -1319,6 +1319,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     const langage = langagePourFichier(nomDe(o.chemin));
     return formatable(langage) ? langage : null;
   };
+  const ongletExportable = () => {
+    const o = trouver(actif);
+    return o && estTexte(o) && !o.whiteboard ? o : null;
+  };
   let alerteFormatage = null;
   function formater() {
     const langage = langageFormatable();
@@ -1661,6 +1665,13 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     fermerDiff,
     /** Vrai si l'onglet actif est un fichier JSON ou XML (REQ-118). */
     peutFormater: () => langageFormatable() !== null,
+    /** Vrai si l'onglet actif est un fichier texte de l'éditeur (REQ-177). */
+    peutExporter: () => ongletExportable() !== null,
+    /** `{ chemin, texte, focus }` de l'onglet actif : le texte affiché à l'instant, enregistré ou non (REQ-177) ; null sans fichier texte. */
+    pourExport() {
+      const o = ongletExportable();
+      return o && { chemin: o.chemin, texte: o.zone.vue.state.doc.toString(), focus: () => o.zone.vue.focus() };
+    },
     /** Met en forme le texte de l'onglet actif en une seule modification, ou dit pourquoi c'est impossible. */
     formater,
     /** Chemin du fichier dont le diff est ouvert, ou null. */

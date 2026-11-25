@@ -48,10 +48,11 @@ export function filtrer(chemins, texte) {
  * V-006. Ctrl+P (sauf dans un shell) ou `ouvrir()` affiche le dialogue.
  * Rappels : `surOuvrir({ chemin, contenu, version, geste })`, `geste = surLecture(true)`, `surLecture(false)`.
  * `commandes` : les commandes proposées (seulement « Configuration » si les agents sont désactivés).
- * `peutFormater()` : vrai si l'onglet actif se formate ; « Formater le document » s'ajoute alors en dernier (REQ-118), calculé à chaque frappe.
+ * `peutFormater()` : vrai si l'onglet actif se formate ; « Formater le document » s'ajoute alors (REQ-118), calculé à chaque frappe.
+ * `peutExporter()` : vrai si l'onglet actif est un fichier texte ; « Exporter en PDF » s'ajoute alors en dernier (REQ-177), après « Formater le document ».
  * Un texte qui commence par `>` liste les commandes : `surCommande(id, avant)`, `avant` étant l'élément qui avait le focus avant l'ouverture.
  */
-export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}, surCommande = () => {}, commandes: toutes = COMMANDES, peutFormater = () => false }) {
+export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}, surCommande = () => {}, commandes: toutes = COMMANDES, peutFormater = () => false, peutExporter = () => false }) {
   let detruit = false;
   let dlg = null;
 
@@ -91,7 +92,9 @@ export function vueOuverture({ dire, surOuvrir = () => {}, surLecture = () => {}
 
     function afficherCommandes() {
       const reste = entree.value.slice(1).trimStart();
-      const commandes = peutFormater() ? [...toutes, { id: "formater", nom: "Formater le document" }] : toutes;
+      const commandes = [...toutes];
+      if (peutFormater()) commandes.push({ id: "formater", nom: "Formater le document" });
+      if (peutExporter()) commandes.push({ id: "exporter", nom: "Exporter en PDF" });
       const noms = commandes.map((c) => c.nom);
       const trouves = reste === "" ? noms.map((chemin) => ({ chemin })) : filtrer(noms, reste);
       if (trouves.length === 0) return zone.replaceChildren(indication({ texte: "Aucune commande trouvée." }));

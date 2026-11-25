@@ -12,7 +12,9 @@ const chargees = new Set();
 
 async function charger(fichier) {
   if (chargees.has(fichier)) return;
-  const r = await fetch(`/polices/${fichier}`);
+  const r = await fetch(`/polices/${fichier}`).catch(() => {
+    throw new Error("connexion perdue");
+  });
   if (!r.ok) throw new Error(`la police ${fichier} n'a pas pu être chargée`);
   pdfMake.sharedVirtualfs.writeFileSync(fichier, new Uint8Array(await r.arrayBuffer()));
   chargees.add(fichier);

@@ -2041,6 +2041,22 @@ test("REQ118_AC9_pas_de_formatage_pour_markdown_rust_diff_ni_sans_onglet", () =>
   expect(e.peutFormater()).toBe(false);
 });
 
+test("REQ177_AC6_pas_d_export_sans_onglet_texte_ni_pour_diff_claude_opencode_agent", () => {
+  const e = monterFormatage();
+  expect(e.peutExporter()).toBe(false);
+  e.ouvrir({ chemin: "notes.md", contenu: "# t", version: "1" });
+  expect(e.peutExporter()).toBe(true);
+  e.ouvrir({ chemin: "main.rs", contenu: "fn main() {}", version: "1" });
+  expect(e.peutExporter()).toBe(true);
+  e.ouvrirDiff({ chemin: "a.json", texte: "@@ -1 +1 @@\n-a\n+b\n" });
+  expect(e.peutExporter()).toBe(false);
+  e.ouvrirClaude({ id: "c" });
+  expect(e.peutExporter()).toBe(false);
+  e.ouvrirOpencode({ sessionId: "o", titre: "t" });
+  expect(e.peutExporter()).toBe(false);
+  e.ouvrirAgent({ equipe: "eq", message: "m" });
+  expect(e.peutExporter()).toBe(false);
+});
 
 // ---- Onglet d'image (REQ-120) ----
 
@@ -2120,6 +2136,7 @@ test("REQ120_AC5_ctrl_s_n_ecrit_rien_et_pas_de_formatage", async () => {
   await new Promise((r) => setTimeout(r, 20));
   expect(fetch).not.toHaveBeenCalled();
   expect(e.peutFormater()).toBe(false);
+  expect(e.peutExporter()).toBe(false);
   expect(document.querySelector('button[aria-label="Aperçu"], button[aria-label="Mode hybride"]')).toBeNull();
 });
 
