@@ -454,3 +454,22 @@ test("REQ155_contrastes_du_menu_pose_dans_la_zone_d_un_whiteboard_dans_les_deux_
     expect(rapport("--accent-fg", "--bg-300"), `${debut} contour`).toBeGreaterThanOrEqual(3);
   }
 });
+
+test("REQ185_AC6_contrastes_de_la_jauge_sur_le_fond_de_la_barre_d_etat_dans_les_deux_themes", () => {
+  const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
+  const lum = (hex) => {
+    const c = [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  for (const debut of [':root, [data-theme="dark"]', '[data-theme="light"]']) {
+    const i = tokens.indexOf(debut);
+    const b = tokens.slice(i, tokens.indexOf("}", i));
+    const val = (nom) => new RegExp(`${nom}:\\s*([^;]+);`).exec(b)[1].trim();
+    const [l1, l2] = [lum(val("--ink-muted")), lum(val("--bg-000"))].sort((p, q) => q - p);
+    const rapport = (l1 + 0.05) / (l2 + 0.05);
+    expect(rapport, `${debut} texte`).toBeGreaterThanOrEqual(4.5);
+    expect(rapport, `${debut} barre`).toBeGreaterThanOrEqual(3);
+  }
+  a(".ya-status-jauge-barre", "border: var(--trait) solid var(--ink-muted)");
+  a(".ya-status-jauge-barre > span", "background: var(--ink-muted)");
+});

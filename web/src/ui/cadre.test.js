@@ -1258,3 +1258,55 @@ test("REQ172_AC9_regles_de_la_zone_et_du_toast_sans_animation", () => {
   expect(regle(".ya-toast.message-fort")).toContain("background: var(--warning)");
   expect(css).not.toMatch(/\.ya-toast[^{]*\{[^}]*(animation|transition)/);
 });
+
+test("REQ185_AC5_AC7_jauge_du_televersement_dans_la_barre_d_etat", () => {
+  const c = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") }, barreEtat: { branche: "main", lien: { geste: "Ctrl+clic", suite: "pour ouvrir a" } } });
+  const f = c.querySelector("footer");
+  expect(f.querySelector(".ya-status-jauge")).toBeNull();
+  c.definirEtat({ branche: "main", lien: { geste: "Ctrl+clic", suite: "pour ouvrir a" }, televersement: 37 });
+  const j = f.querySelector(".ya-status-jauge");
+  expect(j.previousElementSibling.className).toBe("ya-status-branche");
+  expect(j.nextElementSibling.className).toBe("ya-status-lien");
+  expect(j.getAttribute("role")).toBe("progressbar");
+  expect(j.getAttribute("aria-label")).toBe("Téléversement");
+  expect(j.title).toBe("Téléversement");
+  expect(j.getAttribute("aria-valuemin")).toBe("0");
+  expect(j.getAttribute("aria-valuemax")).toBe("100");
+  expect(j.getAttribute("aria-valuenow")).toBe("37");
+  expect(j.hasAttribute("tabindex")).toBe(false);
+  expect(j.hasAttribute("aria-live")).toBe(false);
+  expect(j.hidden).toBe(false);
+  expect(j.textContent).toBe("37 %");
+  const barre = j.querySelector(".ya-status-jauge-barre");
+  expect(barre.getAttribute("aria-hidden")).toBe("true");
+  expect(barre.firstElementChild.style.width).toBe("37%");
+  c.definirEtat({ televersement: 100 });
+  expect(f.querySelector(".ya-status-jauge").textContent).toBe("100 %");
+  expect(f.querySelector(".ya-status-jauge-barre").firstElementChild.style.width).toBe("100%");
+  c.definirEtat({ televersement: 0 });
+  expect(f.querySelector(".ya-status-jauge").getAttribute("aria-valuenow")).toBe("0");
+  expect(f.querySelector(".ya-status-jauge").textContent).toBe("0 %");
+  c.definirEtat({});
+  expect(f.querySelector(".ya-status-jauge")).toBeNull();
+  for (const sel of [".ya-status > .ya-status-jauge", ".ya-status-jauge-barre", ".ya-status-jauge-barre > span", ".ya-status-jauge-texte"]) expect(regle(sel)).not.toContain("transition");
+  expect(regle(".ya-status > .ya-status-jauge")).toContain("flex: none");
+  expect(regle(".ya-status > .ya-status-jauge")).toContain("gap: 6px");
+  expect(regle(".ya-status-jauge-barre")).toContain("width: 64px");
+  expect(regle(".ya-status-jauge-barre")).toContain("height: 8px");
+  expect(regle(".ya-status-jauge-texte")).toContain("min-width: 5ch");
+  expect(regle(".ya-status-jauge-texte")).toContain("tabular-nums");
+});
+
+test("REQ185_AC5_definirEtat_ne_deplace_pas_le_focus", () => {
+  const c = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") } });
+  document.body.append(c);
+  const champ = document.createElement("input");
+  document.body.append(champ);
+  champ.focus();
+  c.definirEtat({ televersement: 10 });
+  expect(document.activeElement).toBe(champ);
+  c.definirEtat({});
+  expect(document.activeElement).toBe(champ);
+  c.remove();
+  champ.remove();
+});
