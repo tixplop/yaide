@@ -905,7 +905,7 @@ test("REQ062_parcours_P025_P026", async ({ page, browserName }) => {
     await expect(lignes.nth(0)).toHaveText("À faire");
     await page.keyboard.type("- **relire le README");
     await page.keyboard.press("Enter");
-    await expect(lignes.nth(1)).toHaveText("• **relire le README");
+    await expect(lignes.nth(1)).toHaveText("•**relire le README");
     await expect(lignes.nth(1).locator(".cm-hy-gras")).toHaveCount(0);
     await page.keyboard.press("Control+s");
     await expect(page.getByRole("alert").filter({ hasText: "notes.md sera sauvegardé au retour." })).toBeVisible();

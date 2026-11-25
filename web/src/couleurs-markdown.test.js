@@ -184,7 +184,7 @@ test("REQ115_AC13_la_puce_reglee_colore_la_puce_de_l_apercu_et_du_hybride_pas_le
   await charger();
   expect(document.adoptedStyleSheets[0].texte).toContain("--md-puce-couleur: #ff8800");
   const css = readFileSync("web/src/ui/composants.css", "utf8");
-  expect(css).toContain(".zone-code-apercu ul > li::marker { color: var(--md-puce-couleur, inherit); }");
-  expect(css).toContain(".cm-hy-puce { color: var(--md-puce-couleur, var(--ink-muted)); }");
+  expect(css).toContain(".zone-code-apercu ul > li::marker { color: var(--md-puce-couleur, var(--ink-muted)); }");
+  expect(css).toContain(".cm-hy-puce { color: var(--md-puce-couleur, var(--ink-muted));");
   expect(css).not.toMatch(/ol > li::marker/);
 });

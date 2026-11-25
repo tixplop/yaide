@@ -1593,3 +1593,47 @@ test("REQ175_AC12_une_image_chargee_ne_relance_pas_les_balises_en_echec", () => 
 });
 
 afterEach(() => vi.unstubAllGlobals());
+
+// Listes imbriquées (REQ-178) : niveau, puce et retrait par ligne.
+const puceDe = (r) => r.liste.filter((d) => d.widget === "puce").map((d) => [r.doc.slice(d.debut, d.fin), d.puce]);
+const niveaux = (r) => r.liste.filter((d) => d.ligne && d.classe === "cm-hy-liste").map((d) => d.niveau);
+
+test("REQ178_AC2_puces_par_niveau_sans_tiret_ni_espace_visibles", () => {
+  const r = deco("- a\n  - b\n    - c\n      - d");
+  expect(niveaux(r)).toEqual([1, 2, 3, 4]);
+  expect(puceDe(r).map((p) => p[1])).toEqual(["•", "◦", "▪", "•"]);
+  expect(visibles(r)).toEqual([]);
+  expect(masques(r)).toEqual([" ", "  ", " ", "    ", " ", "      ", " "]);
+  expect(lignes(r, "cm-hy-liste")).toEqual(["- a", "  - b", "    - c", "      - d"]);
+});
+
+test("REQ178_AC3_niveau_3_dans_une_liste_numerotee_et_numero_garde", () => {
+  const r = deco("- a\n  1. b\n     - c");
+  expect(niveaux(r)).toEqual([1, 2, 3]);
+  expect(puceDe(r).map((p) => p[1])).toEqual(["•", "▪"]);
+  expect(stylees(r, "cm-hy-numero")).toEqual(["1. "]);
+  expect(masques(r)).not.toContain("1.");
+});
+
+test("REQ178_AC4_meme_niveau_et_meme_puce_avec_2_et_4_espaces", () => {
+  const deux = deco("- a\n  - b\n    - c\n      1. d");
+  const quatre = deco("- a\n    - b\n        - c\n            1. d");
+  expect(niveaux(quatre)).toEqual([1, 2, 3, 4]);
+  expect(niveaux(quatre)).toEqual(niveaux(deux));
+  expect(puceDe(quatre).map((p) => p[1])).toEqual(puceDe(deux).map((p) => p[1]));
+  expect(stylees(quatre, "cm-hy-numero")).toEqual(["1. "]);
+});
+
+test("REQ178_AC9_case_de_niveau_2_sans_puce_au_retrait_du_niveau", () => {
+  const r = deco("- a\n  - [ ] x");
+  expect(niveaux(r)).toEqual([1, 2]);
+  expect(r.liste.filter((d) => d.widget === "case").map((d) => r.doc.slice(d.debut, d.fin))).toEqual(["- [ ] "]);
+  expect(puceDe(r)).toEqual([["-", "•"]]);
+});
+
+test("REQ178_AC7_ligne_du_curseur_garde_le_retrait_et_montre_ses_marques", () => {
+  const r = deco("- a\n  - b", { curseur: 6 });
+  expect(niveaux(r)).toEqual([1, 2]);
+  expect(puceDe(r)).toEqual([["-", "•"]]);
+  expect(visibles(r)).toEqual(["  ", "-", " "]);
+});

@@ -828,7 +828,7 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .zone-code-apercu .ya-tache { list-style: none; }
 .zone-code-apercu .ya-tache input:hover, .ya-case-hy:hover { border-color: var(--ink); background: var(--hover); }
 .zone-code-apercu .ya-tache input:focus-visible { outline: var(--trait-fort) solid var(--accent-fg); outline-offset: var(--trait-fort); }
-.ya-case-hy { margin: 0 6px 0 0; cursor: default; }
+.ya-case-hy { margin: 0 6px 0 var(--space-1); cursor: default; }
 .ya-tache input:checked::before, .ya-case-hy:checked::before { content: ""; position: absolute; left: 2px; top: 2px; width: 8px; height: 4px; border: solid var(--ink); border-width: 0 0 2px 2px; transform: rotate(-45deg); }
 
 /* C-006 : liste de suggestions flottante (REQ-089 à REQ-091). */
@@ -1083,7 +1083,18 @@ mark.ya-occurrence { background: linear-gradient(var(--occurrence), var(--occurr
 .zone-code-apercu strong { color: var(--md-gras-couleur, inherit); }
 .zone-code-apercu em { color: var(--md-italique-couleur, inherit); }
 .zone-code-apercu del { color: var(--md-barre-couleur, inherit); }
-.zone-code-apercu ul > li::marker { color: var(--md-puce-couleur, inherit); }
+.zone-code-apercu :is(ul, ol) { padding-left: var(--space-6); }
+.zone-code-apercu ul { list-style-type: disc; }
+.zone-code-apercu :is(ul, ol) ul { list-style-type: circle; }
+.zone-code-apercu :is(ul, ol) :is(ul, ol) ul { list-style-type: square; }
+.zone-code-apercu :is(ul, ol) :is(ul, ol) :is(ul, ol) ul { list-style-type: disc; }
+.zone-code-apercu :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) ul { list-style-type: circle; }
+.zone-code-apercu :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) ul { list-style-type: square; }
+.zone-code-apercu :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) ul { list-style-type: disc; }
+.zone-code-apercu :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) ul { list-style-type: circle; }
+.zone-code-apercu :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) :is(ul, ol) ul { list-style-type: square; }
+.zone-code-apercu ol { list-style-type: decimal; }
+.zone-code-apercu ul > li::marker { color: var(--md-puce-couleur, var(--ink-muted)); }
 .zone-code-apercu hr { border: 0; border-top: var(--trait) solid var(--md-separateur-couleur, var(--line-strong)); }
 .zone-code-apercu :is(h1, h2, h3, h4, h5, h6) { scroll-margin-top: var(--space-2); }
 .zone-code-apercu :is(h1, h2, h3, h4, h5, h6):focus { outline: none; }
@@ -1218,7 +1229,10 @@ body { margin: 0; }
 .ya-tableau-filet-h { height: var(--trait-fort); }
 .ya-tableau-cadre { position: absolute; box-sizing: border-box; box-shadow: inset 0 0 0 var(--trait-fort) var(--danger); pointer-events: none; }
 .cm-hybride .ya-diagramme { margin: var(--space-1) 0; padding-left: calc(var(--space-2) - var(--space-1) / 2); /* bord gauche du texte des lignes */ cursor: text; }
-.cm-hy-puce { color: var(--md-puce-couleur, var(--ink-muted)); }
+.cm-hy-puce { color: var(--md-puce-couleur, var(--ink-muted)); display: inline-block; width: var(--space-6); box-sizing: border-box; padding-right: var(--space-1); text-indent: 0; text-align: right; vertical-align: top; font: var(--texte-puce) var(--font-mono); }
+.cm-line.cm-hy-liste { padding-left: calc(var(--space-2) - var(--space-1) / 2 + var(--niveau) * var(--space-6)); text-indent: calc(-1 * var(--space-6)); }
+.cm-line.cm-hy-liste.cm-hy-citation { padding-left: calc(var(--space-4) + var(--niveau) * var(--space-6)); }
+.cm-hy-numero { display: inline-block; min-width: var(--space-6); text-indent: 0; text-align: left; }
 .cm-hy-trait { display: inline-block; width: 100%; height: 0; vertical-align: middle; border-top: var(--trait) solid var(--md-separateur-couleur, var(--line-strong)); }
 .cm-gutterElement.cm-hy-numero-titre1 { font: var(--texte-titre) var(--font-mono); font-size: inherit; }
 .cm-editor .cm-lineNumbers .cm-gutterElement.cm-hy-numero-tableau { padding-top: var(--space-2); }

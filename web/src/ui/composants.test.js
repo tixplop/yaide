@@ -229,7 +229,7 @@ const CORRESPONDANCES = [
   ["tableau", "couleur", "color", "var(--ink)", "var(--ink)", ".zone-code-apercu td", ".cm-hy-tableau td"],
   ["tableau", "fond", "background", "var(--apercu-fond)", "var(--apercu-fond)", ".zone-code-apercu tbody tr:nth-child(even) td", ".cm-hy-tableau tbody tr:nth-child(even) td"],
   ["tableau", "bordure", "border", "var(--line-strong)", "var(--line-strong)", ".zone-code-apercu td", ".cm-hy-tableau td"],
-  ["puce", "couleur", "color", "inherit", "var(--ink-muted)", ".zone-code-apercu ul > li::marker", ".cm-hy-puce"],
+  ["puce", "couleur", "color", "var(--ink-muted)", "var(--ink-muted)", ".zone-code-apercu ul > li::marker", ".cm-hy-puce"],
   ["separateur", "couleur", "border-top", "var(--line-strong)", "var(--line-strong)", ".zone-code-apercu hr", ".cm-hy-trait"],
 ];
 

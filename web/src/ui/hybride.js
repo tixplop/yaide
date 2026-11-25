@@ -12,19 +12,20 @@ import { chargerMermaid, adresseDiagramme, dessinConnu, dessinerTexte } from "./
 
 // Widget sans contenu pour un lecteur d'écran : la puce « • » et le trait.
 class Ornement extends WidgetType {
-  constructor(genre) {
+  constructor(genre, signe = "•") {
     super();
     this.genre = genre;
+    this.signe = signe;
   }
   eq(autre) {
-    return autre.genre === this.genre;
+    return autre.genre === this.genre && autre.signe === this.signe;
   }
   toDOM() {
     const s = document.createElement("span");
     s.setAttribute("aria-hidden", "true");
     if (this.genre === "puce") {
       s.className = "cm-hy-puce";
-      s.textContent = "•";
+      s.textContent = this.signe;
     } else s.className = "cm-hy-trait";
     return s;
   }
@@ -93,6 +94,8 @@ class ImageMd extends WidgetType {
 export const majImagesHybride = StateEffect.define();
 
 const BALISE_IMAGE = /!\[\[([^[\]\n]*)\]\]/g;
+const LISTES = new Set(["BulletList", "OrderedList"]);
+const PUCES = ["•", "◦", "▪"];
 const DANS_CODE = new Set(["InlineCode", "FencedCode", "CodeBlock"]);
 
 const TITRES = { ATXHeading1: 1, ATXHeading2: 2, ATXHeading3: 3, ATXHeading4: 4, ATXHeading5: 5, ATXHeading6: 6, SetextHeading1: 1, SetextHeading2: 2 };
@@ -102,7 +105,8 @@ const STYLES = { StrongEmphasis: ["EmphasisMark", "cm-hy-gras"], Emphasis: ["Emp
 //   { debut, fin, ligne: true, classe }     décoration de ligne (debut = début de la ligne)
 //   { debut, fin, classe }                  style posé sur le texte
 //   { debut, fin, masque: true }            marque retirée du DOM
-//   { debut, fin, widget: "puce" | "trait" } marque remplacée par un ornement
+//   { debut, fin, widget: "puce" | "trait", puce? } marque remplacée par un ornement (`puce` : le signe du niveau)
+//   { debut, fin, ligne: true, classe: "cm-hy-liste", niveau }  ligne qui commence par une marque de liste (REQ-178)
 //   { debut, fin, widget: "image", src, nom, modele }  balise `![[nom]]` remplacée par l'image chargée
 // `images` : nom → adresse ou null ; `chargees` : adresse → `img` chargée ; `charger(adresse)` lance le chargement d'une image absente.
 export function decorationsHybride(etat, plages = [{ from: 0, to: etat.doc.length }], { images, chargees, charger } = {}) {
@@ -218,14 +222,33 @@ export function decorationsHybride(etat, plages = [{ from: 0, to: etat.doc.lengt
         } else if (nom === "URL") {
           if (!["Link", "Image", "Autolink", "LinkReference"].includes(n.node.parent?.name)) style(n.from, n.to, "cm-hy-lien");
         } else if (nom === "Image") return false;
-        else if (nom === "ListMark" && n.node.parent.parent?.name === "BulletList") {
+        else if (nom === "ListMark" && LISTES.has(n.node.parent?.parent?.name)) {
+          // Niveau (REQ-178) : nombre de listes parmi les ancêtres de l'élément.
+          let niveau = 0;
+          for (let p = n.node.parent.parent; p; p = p.parent) if (LISTES.has(p.name)) niveau++;
+          const ligne = doc.lineAt(n.from);
+          if (!lignesVues.has(`${ligne.from}:liste`)) {
+            lignesVues.add(`${ligne.from}:liste`);
+            sortie.push({ debut: ligne.from, fin: ligne.from, ligne: true, classe: "cm-hy-liste", niveau });
+          }
+          // Espaces de tête, quand rien d'autre ne précède la marque sur la ligne.
+          if (/^[ \t]+$/.test(doc.sliceString(ligne.from, n.from))) marque(ligne.from, n.from);
+          const espace = doc.sliceString(n.to, n.to + 1) === " " ? n.to + 1 : n.to;
+          if (n.node.parent.parent.name === "OrderedList") {
+            // Numéro et espace qui suit dans la zone de marque (24 px) : le texte commence à sa droite.
+            if (!touche(n.from, n.to)) style(n.from, espace, "cm-hy-numero");
+            return;
+          }
           const t = n.node.nextSibling;
           const m = t?.name === "Task" ? t.getChild("TaskMarker") : null;
           if (m && m.to - m.from === 3 && doc.sliceString(m.to, m.to + 1) === " " && doc.lineAt(m.to).number === doc.lineAt(n.from).number) {
             const cochee = doc.sliceString(m.from + 1, m.from + 2) !== " ";
             const texte = doc.sliceString(m.to + 1, doc.lineAt(m.to).to).trim();
             marque(n.from, m.to + 1, "case", { cochee, nom: texte });
-          } else marque(n.from, n.to, "puce");
+          } else {
+            marque(n.from, n.to, "puce", { puce: PUCES[(niveau - 1) % 3] });
+            marque(n.to, espace);
+          }
         }
         else if (nom === "HorizontalRule") marque(n.from, n.to, "trait");
       },
@@ -260,17 +283,23 @@ export function decorationsHybride(etat, plages = [{ from: 0, to: etat.doc.lengt
 }
 
 const masque = Decoration.replace({});
-const ornements = { puce: Decoration.replace({ widget: new Ornement("puce") }), trait: Decoration.replace({ widget: new Ornement("trait") }) };
+const ornements = { trait: Decoration.replace({ widget: new Ornement("trait") }) };
+const pucesCache = new Map();
 const marquesCache = new Map();
 const ligneCache = new Map();
 function enDecoration(d) {
   if (d.ligne) {
-    if (!ligneCache.has(d.classe)) ligneCache.set(d.classe, Decoration.line({ class: d.classe }));
-    return ligneCache.get(d.classe).range(d.debut);
+    const cle = d.niveau ? `${d.classe}:${d.niveau}` : d.classe;
+    if (!ligneCache.has(cle)) ligneCache.set(cle, Decoration.line(d.niveau ? { class: d.classe, attributes: { style: `--niveau: ${d.niveau}` } } : { class: d.classe }));
+    return ligneCache.get(cle).range(d.debut);
   }
   if (d.masque) return masque.range(d.debut, d.fin);
   if (d.widget === "image") return Decoration.replace({ widget: new ImageMd(d.src, d.nom, d.modele) }).range(d.debut, d.fin);
   if (d.widget === "case") return Decoration.replace({ widget: new CaseCochee(d.cochee, d.nom) }).range(d.debut, d.fin);
+  if (d.widget === "puce") {
+    if (!pucesCache.has(d.puce)) pucesCache.set(d.puce, Decoration.replace({ widget: new Ornement("puce", d.puce) }));
+    return pucesCache.get(d.puce).range(d.debut, d.fin);
+  }
   if (d.widget) return ornements[d.widget].range(d.debut, d.fin);
   if (!marquesCache.has(d.classe)) marquesCache.set(d.classe, Decoration.mark({ class: d.classe }));
   return marquesCache.get(d.classe).range(d.debut, d.fin);

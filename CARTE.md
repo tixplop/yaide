@@ -115,7 +115,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-008, REQ-011 à REQ-014, REQ-061, REQ-083 onglets, sauvegarde, menu → web/src/vues/editeur.js, onglets-fichiers.js, ui/onglets.js, ui/zone-code.js
 - REQ-120, REQ-121 images et SVG → web/src/ui/image.js, vues/editeur.js
 - REQ-175 image `![[nom]]` (aperçu et mode hybride ; bouton « Image » de la barre) → web/src/images-md.js, ui/mise-en-forme.js, ui/barre-md.js, e2e/images.spec.js, ui/apercu.js, ui/hybride.js, ui/zone-code.js, vues/editeur.js, ui/composants.css
-- REQ-171 cases à cocher de l'aperçu et du mode hybride → ui/apercu.js, ui/hybride.js, ui/zone-code.js, ui/composants.css, e2e/mise-en-forme.spec.js (P-132)
+- REQ-171 cases à cocher de l'aperçu et du mode hybride → ui/apercu.js, ui/hybride.js, ui/zone-code.js, ui/composants.css, e2e/mise-en-forme.spec.js (P-132) ; REQ-178 listes imbriquées (retrait de 24 px et puce par niveau, aperçu et hybride : `cm-hy-liste`, `cm-hy-numero`) → ui/hybride.js, ui/composants.css, e2e/listes.spec.js (P-139)
 - REQ-012, REQ-042 à REQ-044, REQ-058, REQ-062, REQ-063, REQ-115, REQ-117 rendu markdown, aperçu HTML, hybride, couleurs → ui/apercu.js, apercu-html.js, zone-code.js, hybride.js, couleurs-markdown.js, ui/palettes.js, src/apercu.rs
 - REQ-015 à REQ-018, REQ-094 coupure, brouillons, disque → web/src/connexion.js, brouillons.js, disque.js, stockage.js
 - REQ-019 à REQ-021, REQ-035, REQ-040, REQ-041, REQ-047 shells → src/shells.rs, web/src/vues/shells.js, ui/terminal.js
