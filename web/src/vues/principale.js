@@ -347,6 +347,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     surSoumettre: soumettreAgent,
     surConfigurer: ({ surFermeture }) => baseConnaissance?.ouvrir({ configurer: true, surFermeture }),
     projet: nomDuDossier(chemin),
+    surTeleversement: (n) => {
+      barre.televersement = n;
+      majEtat();
+    },
     lireEtat: () => git?.rafraichir(),
     estDepot: () => git.estDepot(),
     surCommit: () => {

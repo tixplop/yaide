@@ -42,7 +42,7 @@ function texteErreur(r) {
  * Rappels : `surOuvrir({ chemin, contenu, version })`, `surRenomme({ de, vers })`, `surSupprime({ chemin, dossier })`, `surLecture(oui)` (début et fin d'une lecture).
  * Rend `{ corps, entete (à poser dans `panneau.entete`, à masquer avec le panneau), rafraichir(), relire() (silencieuse), definirStatuts(statuts), definirCourant(chemin | null), detruire() }`.
  */
-export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estDepot = () => false, surCommit = () => {}, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {}, agents = false, surConfigurer = () => {}, surSoumettre = async () => ({}) }) {
+export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estDepot = () => false, surCommit = () => {}, surOuvrir = () => {}, surRenomme = () => {}, surSupprime = () => {}, surLecture = () => {}, agents = false, surConfigurer = () => {}, surSoumettre = async () => ({}), surTeleversement = () => {} }) {
   const corps = document.createElement("div");
   corps.className = "fichiers";
   const entete = document.createElement("div"); // ligne « Worktree » (REQ-086) puis ligne du projet
@@ -585,7 +585,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   }
 
   /** Importe `el` (arbre lu par `lireElements`) dans `dans`. `origine` : son chemin d'origine. Rend `true` si coupure. */
-  async function importerElement(dans, el, origine, creees, refus) {
+  async function importerElement(dans, el, origine, creees, refus, tv) {
     const chemin = `${origine}${el.nom}${el.dossier ? "/" : ""}`;
     if (el.refus) {
       refus.push({ nom: chemin, raison: el.refus });
@@ -597,20 +597,47 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
         octets = await el.fichier.arrayBuffer();
       } catch {
         refus.push({ nom: chemin, raison: REFUS_LECTURE });
+        tv.envoye(el.fichier.size);
         return false;
       }
     }
-    const r = await importerChemin(dans, el.nom, el.dossier ? "dossier" : "fichier", octets);
+    tv.demarrer();
+    const r = await importerChemin(dans, el.nom, el.dossier ? "dossier" : "fichier", octets, tv.progression);
     if (detruit || r.coupure) return true;
+    tv.envoye(octets?.byteLength ?? 0);
     if (r.cause) {
       refus.push({ nom: chemin, raison: raisonServeur(r) });
       return false;
     }
     creees?.push(r.chemin);
     for (const enfant of el.enfants ?? []) {
-      if (await importerElement(r.chemin, enfant, chemin, null, refus)) return true;
+      if (await importerElement(r.chemin, enfant, chemin, null, refus, tv)) return true;
     }
     return false;
+  }
+
+  /** Total des octets des fichiers lisibles de l'arbre `elements`. */
+  const totalOctets = (elements) => elements.reduce((n, el) => n + (el.refus ? 0 : el.dossier ? totalOctets(el.enfants ?? []) : el.fichier.size), 0);
+
+  /** Suivi de la jauge (REQ-185) : pourcentage des octets envoyés, arrondi à l'inférieur, jamais en recul. */
+  function suiviTeleversement(total) {
+    let base = 0;
+    let pct = -1;
+    const montrer = (octets) => {
+      const n = total === 0 ? 0 : Math.floor((Math.min(octets, total) * 100) / total);
+      if (n > pct) {
+        pct = n;
+        surTeleversement(n);
+      }
+    };
+    return {
+      demarrer: () => montrer(base),
+      progression: (partis) => montrer(base + partis),
+      envoye: (octets) => {
+        base += octets;
+        if (pct >= 0) montrer(base);
+      },
+    };
   }
 
   /** Colle dans `cible` les éléments copiés dans l'explorateur du bureau (REQ-180). */
@@ -623,15 +650,17 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     const creees = [];
     const refus = [];
     let coupure = false;
+    const tv = suiviTeleversement(totalOctets(elements));
     try {
       for (const el of elements) {
-        if (await importerElement(cible, el, "", creees, refus)) {
+        if (await importerElement(cible, el, "", creees, refus, tv)) {
           coupure = true;
           break;
         }
       }
     } finally {
       collage = false;
+      surTeleversement(undefined);
     }
     if (detruit) return;
     await finirCollage(cible, creees, refus, coupure);

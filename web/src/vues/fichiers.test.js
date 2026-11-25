@@ -91,6 +91,43 @@ async function monter(disque, options = {}) {
     if (v?.status) return { ok: false, status: v.status, json: async () => v.corps };
     return { ok: true, status: 200, json: async () => ({ entrees: v }) };
   }));
+  // Faux XMLHttpRequest : émet des `progress` (jusqu'à `disque.parts` fois) puis passe par le faux `fetch` ci-dessus.
+  vi.stubGlobal("XMLHttpRequest", class {
+    upload = new EventTarget();
+    #ecoutes = {};
+    open(methode, url) {
+      this.methode = methode;
+      this.url = url;
+    }
+    addEventListener(type, f) {
+      (this.#ecoutes[type] ??= []).push(f);
+    }
+    #emettre(type) {
+      for (const f of this.#ecoutes[type] ?? []) f({});
+    }
+    send(corps) {
+      (async () => {
+        const total = corps?.byteLength ?? 0;
+        const parts = disque.parts ?? 1;
+        for (let i = 1; i <= parts; i++) {
+          const e = new Event("progress");
+          e.loaded = Math.floor((total * i) / parts);
+          this.upload.dispatchEvent(e);
+          await attendre();
+          disque.surPart?.(this.url, i);
+        }
+        let r;
+        try {
+          r = await fetch(this.url, { method: this.methode, body: corps ?? undefined });
+        } catch {
+          return this.#emettre("error");
+        }
+        this.status = r.status;
+        this.responseText = JSON.stringify(await r.json());
+        this.#emettre("load");
+      })();
+    }
+  });
   const rappels = { dire: vi.fn(), ...options };
   const vue = vueFichiers(rappels);
   vues.push(vue);
@@ -1844,6 +1881,112 @@ test("REQ180_AC10_hors_de_l_arbre_rien_n_est_cree_et_un_second_collage_attend_la
   liberer();
   await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/a.txt"]));
   expect(disque.importes).toEqual(["fichier:src/a.txt:1"]);
+});
+
+// ---- REQ-185 : jauge du téléversement ----
+
+const grosFichier = (nom, octets) => elFichier(nom, "x".repeat(octets));
+
+test("REQ185_AC1_AC4_jauge_de_0_a_100_sans_reculer_et_retiree_avant_la_selection", async () => {
+  const disque = { "": [d("src")], src: [], parts: 4 };
+  const surTeleversement = vi.fn();
+  const { vue } = await monter(disque, { surTeleversement });
+  ligne(vue, "src").focus();
+  disque.surPart = (url, i) => {
+    if (url.includes("nom=a.bin") && i === 2) expect(surTeleversement.mock.calls.at(-1)[0]).toBe(37); // 1,5 Mo sur 4 : 37 %
+  };
+  collerSysteme(vue, "src", [grosFichier("a.bin", 300), grosFichier("b.bin", 100)]);
+  await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/a.bin", "src/b.bin"]));
+  const valeurs = surTeleversement.mock.calls.map((c) => c[0]);
+  expect(valeurs[0]).toBe(0);
+  expect(valeurs.at(-2)).toBe(100);
+  expect(valeurs.at(-1)).toBeUndefined();
+  const nombres = valeurs.slice(0, -1);
+  expect(nombres).toEqual([...nombres].sort((x, y) => x - y)); // jamais en recul
+  expect(disque.importes).toEqual([`fichier:src/a.bin:300`, `fichier:src/b.bin:100`]); // REQ185_AC4 : octets identiques
+});
+
+test("REQ185_AC1_jauge_a_mi_chemin_du_premier_fichier_entre_30_et_45_pour_cent", async () => {
+  const disque = { "": [d("src")], src: [], parts: 2 };
+  const surTeleversement = vi.fn();
+  const { vue } = await monter(disque, { surTeleversement });
+  ligne(vue, "src").focus();
+  collerSysteme(vue, "src", [grosFichier("a.bin", 300), grosFichier("b.bin", 100)]);
+  await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/a.bin", "src/b.bin"]));
+  expect(surTeleversement.mock.calls.map((c) => c[0])).toEqual([0, 37, 75, 87, 100, undefined]);
+});
+
+test("REQ185_AC2_sans_collage_depuis_l_explorateur_ni_copie_ni_deplacement_la_jauge_n_est_jamais_posee", async () => {
+  const disque = disqueMobile({ "": [d("src"), f("b.txt"), f("a.txt")], src: [] });
+  const surTeleversement = vi.fn();
+  const { vue, appels } = await monter(disque, { surTeleversement });
+  expect(surTeleversement).not.toHaveBeenCalled(); // avant tout collage
+  ctrl(vue, "b.txt");
+  frappe(vue, "b.txt", "c");
+  ligne(vue, "src").click();
+  bouton(vue, "Coller").click();
+  await vi.waitFor(() => expect(appelsCopier(appels)).toEqual(["b.txt>src"]));
+  await attendre();
+  expect(surTeleversement).not.toHaveBeenCalled(); // copie de REQ-125
+  await glisser(vue, "a.txt", "src"); // déplacement de REQ-050
+  expect(choisies(vue)).toEqual(["src/a.txt"]);
+  expect(surTeleversement).not.toHaveBeenCalled();
+});
+
+test("REQ185_AC3_fichier_illisible_ou_refuse_compte_comme_envoye_la_jauge_finit_a_100_puis_disparait", async () => {
+  const disque = { "": [d("src")], src: [], parts: 2 };
+  disque.importer = (_, nom) => (nom === "refuse.bin" ? { status: 403, corps: { cause: "interdit", message: "Ce dossier est protégé." } } : undefined);
+  const surTeleversement = vi.fn();
+  const { vue, dire } = await monter(disque, { surTeleversement });
+  ligne(vue, "src").focus();
+  collerSysteme(vue, "src", [grosFichier("refuse.bin", 100), elDossier("p", [entreeIllisible("x.jpg"), entreeFichier("ok.bin", "y".repeat(100))])]);
+  await vi.waitFor(() => expect(dire).toHaveBeenCalled());
+  const valeurs = surTeleversement.mock.calls.map((c) => c[0]);
+  expect(valeurs.at(-1)).toBeUndefined();
+  expect(valeurs.at(-2)).toBe(100);
+  const nombres = valeurs.slice(0, -1);
+  expect(nombres).toEqual([...nombres].sort((x, y) => x - y));
+  expect(dire.mock.calls[0][0].detail).toBe("refuse.bin : ce dossier est protégé\np/x.jpg : il n'a pas pu être lu");
+});
+
+test("REQ185_AC3_coupure_pendant_le_collage_la_jauge_disparait_et_le_message_s_affiche", async () => {
+  const disque = { "": [d("src")], src: [], parts: 2 };
+  const surTeleversement = vi.fn();
+  const { vue, dire } = await monter(disque, { surTeleversement });
+  ligne(vue, "src").focus();
+  disque.attente = (u) => {
+    if (u.includes("nom=b.bin")) disque.coupure = true;
+  };
+  collerSysteme(vue, "src", [grosFichier("a.bin", 100), grosFichier("b.bin", 100)]);
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledWith({ texte: "Connexion perdue. Réessayez au retour.", variante: "alerte", fermable: true }));
+  expect(surTeleversement.mock.calls.at(-1)[0]).toBeUndefined();
+});
+
+test("REQ185_AC3_collage_sans_octet_reste_a_0_jusqu_a_la_fin", async () => {
+  const disque = { "": [d("src")], src: [] };
+  const surTeleversement = vi.fn();
+  const { vue } = await monter(disque, { surTeleversement });
+  ligne(vue, "src").focus();
+  collerSysteme(vue, "src", [elDossier("vide", [])]);
+  await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/vide"]));
+  expect(surTeleversement.mock.calls.map((c) => c[0])).toEqual([0, undefined]);
+});
+
+test("REQ185_AC5_la_jauge_ne_prend_pas_le_focus_ni_la_selection_de_l_arbre", async () => {
+  const disque = { "": [d("src"), f("a.txt")], src: [], parts: 2 };
+  const etats = {};
+  const surTeleversement = vi.fn((n) => {
+    etats[n === undefined ? "fin" : n === 0 ? "debut" : "milieu"] = { actif: document.activeElement?.dataset?.chemin, selection: choisies(vue) };
+  });
+  const { vue } = await monter(disque, { surTeleversement });
+  ligne(vue, "a.txt").click();
+  ligne(vue, "src").focus();
+  const avant = { actif: "src", selection: ["a.txt"] };
+  collerSysteme(vue, "src", [elFichier("n.txt")]);
+  await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/n.txt"]));
+  expect(etats.debut).toEqual(avant); // apparition
+  expect(etats.milieu).toEqual(avant);
+  expect(etats.fin).toEqual(avant); // disparition
 });
 
 // ---- REQ-181 : « Copier » met aussi les lignes dans le presse-papiers de Windows ----

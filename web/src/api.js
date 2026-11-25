@@ -148,16 +148,32 @@ export async function copierChemin(de, dans) {
     return { coupure: true };
   }
 }
-/** Importe un fichier (`corps` : ses octets) ou un dossier vide dans `dans`. Même retour que `copierChemin`. */
-export async function importerChemin(dans, nom, type, corps) {
-  const r = await appeler(`/api/fichiers/importer?dans=${q(dans)}&nom=${q(nom)}&type=${q(type)}`, { method: "POST", body: type === "fichier" ? corps : undefined });
-  if (!r) return { coupure: true };
-  if (!r.ok) return erreurServeur(r);
-  try {
-    return { chemin: (await r.json()).chemin };
-  } catch {
-    return { coupure: true };
-  }
+/**
+ * Importe un fichier (`corps` : ses octets) ou un dossier vide dans `dans`. Même retour que `copierChemin`.
+ * Le corps part par `XMLHttpRequest` : `surProgression(octetsPartis)` suit l'envoi (REQ-185).
+ */
+export function importerChemin(dans, nom, type, corps, surProgression) {
+  return new Promise((fin) => {
+    const xhr = new XMLHttpRequest();
+    const coupure = () => fin({ coupure: true });
+    xhr.open("POST", `/api/fichiers/importer?dans=${q(dans)}&nom=${q(nom)}&type=${q(type)}`);
+    xhr.upload.addEventListener("progress", (e) => surProgression?.(e.loaded));
+    xhr.addEventListener("error", coupure);
+    xhr.addEventListener("abort", coupure);
+    xhr.addEventListener("timeout", coupure);
+    xhr.addEventListener("load", () => {
+      let json;
+      try {
+        json = JSON.parse(xhr.responseText);
+      } catch {
+        json = null;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) return fin(typeof json?.chemin === "string" ? { chemin: json.chemin } : { coupure: true });
+      if (json?.cause) return fin(json.detail ? { cause: json.cause, message: json.message, detail: json.detail } : { cause: json.cause, message: json.message });
+      fin({ cause: "erreur", message: `erreur ${xhr.status}` });
+    });
+    xhr.send(type === "fichier" ? corps : null);
+  });
 }
 /** Met `chemins` dans le presse-papiers de Windows (WSL). Rend `{ wsl }`, `{ cause, message, detail? }` ou `{ coupure: true }`. */
 export async function copierVersWindows(chemins) {

@@ -1261,6 +1261,80 @@ test("REQ101_AC11_survol_d_un_lien_pose_l_indication_dans_la_barre_puis_la_retir
   expect(indication().hidden).toBe(true);
 });
 
+// ---- REQ-185 : jauge du téléversement dans la barre d'état ----
+
+// jsdom n'a pas `Blob.arrayBuffer` : les navigateurs l'ont
+Blob.prototype.arrayBuffer ??= function () {
+  return new Promise((ok, ko) => {
+    const lecteur = new FileReader();
+    lecteur.onload = () => ok(lecteur.result);
+    lecteur.onerror = () => ko(lecteur.error);
+    lecteur.readAsArrayBuffer(this);
+  });
+};
+
+test("REQ185_AC1_AC2_AC5_la_jauge_est_dans_la_barre_d_etat_pendant_le_collage_et_absente_avant_et_apres", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const chemin = String(url).split("?")[0];
+    const rep = (corps, status = 200) => ({ ok: status < 400, status, json: async () => corps, text: async () => "" });
+    if (chemin === "/api/fichiers") return rep({ entrees: [{ nom: "src", dossier: true, ignore: false }] });
+    if (chemin === "/api/git/etat") return rep({ cause: "pas-depot", message: "pas un dépôt" }, 409);
+    if (chemin === "/api/shells") return rep({ instance: "i1", shells: [] });
+    return rep({}, 409);
+  }));
+  let envoi;
+  vi.stubGlobal("XMLHttpRequest", class {
+    upload = new EventTarget();
+    #fin = {};
+    open() {}
+    addEventListener(type, f) {
+      this.#fin[type] = f;
+    }
+    send() {
+      envoi = {
+        progres: (loaded) => {
+          const e = new Event("progress");
+          e.loaded = loaded;
+          this.upload.dispatchEvent(e);
+        },
+        finir: () => {
+          this.status = 201;
+          this.responseText = JSON.stringify({ chemin: "src/a.bin" });
+          this.#fin.load();
+        },
+      };
+    }
+  });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(ligne(vue, "src")).toBeTruthy());
+  const jauge = () => vue.querySelector("footer .ya-status-jauge");
+  expect(jauge()).toBeNull();
+  const e = new Event("paste", { bubbles: true, cancelable: true });
+  const fichier = new File(["x".repeat(200)], "a.bin");
+  Object.defineProperty(e, "clipboardData", { value: { files: [fichier], items: [{ kind: "file", getAsFile: () => fichier, webkitGetAsEntry: () => ({ isDirectory: false, name: "a.bin", file: (ok) => ok(fichier) }) }] } });
+  ligne(vue, "src").click();
+  ligne(vue, "src").focus();
+  const etat = () => ({ actif: document.activeElement?.dataset?.chemin, selection: [...vue.querySelectorAll("[data-chemin][aria-selected=true]")].map((x) => x.dataset.chemin) });
+  const avant = etat();
+  expect(avant).toEqual({ actif: "src", selection: ["src"] });
+  let disparition;
+  new MutationObserver(() => {
+    if (!jauge()) disparition ??= etat();
+  }).observe(vue.querySelector("footer"), { childList: true, subtree: true });
+  ligne(vue, "src").dispatchEvent(e);
+  await vi.waitFor(() => expect(jauge()).not.toBeNull());
+  expect(etat()).toEqual(avant); // apparition
+  expect(jauge().getAttribute("role")).toBe("progressbar");
+  expect(jauge().getAttribute("aria-valuenow")).toBe("0");
+  envoi.progres(100);
+  await vi.waitFor(() => expect(jauge().getAttribute("aria-valuenow")).toBe("50"));
+  expect(jauge().textContent).toBe("50\u00a0%");
+  expect(etat()).toEqual(avant);
+  envoi.finir();
+  await vi.waitFor(() => expect(jauge()).toBeNull());
+  await vi.waitFor(() => expect(disparition).toEqual(avant)); // disparition
+});
+
 // ---- REQ-115 : bandeaux de fichiers illisibles ----
 
 const TEXTE_MD = ".yaide/markdown.json est illisible. Corrigez-le, puis rechargez la page.";

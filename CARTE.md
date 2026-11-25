@@ -40,7 +40,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/index.html — page unique ; web/dist/ est produit par esbuild
 - web/src/main.js — démarrage : thème, connexion, vue principale — titre
 - web/src/theme-initial.js — thème appliqué avant le premier affichage
-- web/src/api.js — appels HTTP et WebSocket vers le serveur (dont `declenchements`, REQ-173) — importerChemin (REQ-180), copierVersWindows (REQ-181), lireEnvironnements (REQ-182), racineOpencode (appels d'opencode par l'environnement de la session, REQ-184), info, sessionValide, connexion
+- web/src/api.js — appels HTTP et WebSocket vers le serveur (dont `declenchements`, REQ-173) — importerChemin (REQ-180, envoi par XMLHttpRequest et progression, REQ-185), copierVersWindows (REQ-181), lireEnvironnements (REQ-182), racineOpencode (appels d'opencode par l'environnement de la session, REQ-184), info, sessionValide, connexion
 - web/src/connexion.js — surveille la connexion au serveur — surveiller
 - web/src/stockage.js, brouillons.js, disque.js — IndexedDB, modifications gardées, décision face au disque — lire/ecrire, decider, decisionDisque
 - web/src/disposition.js — arbre des groupes de l'éditeur (diviser, tailles) — couper, retirerGroupe, valider
@@ -103,9 +103,9 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 
 ## Fonctionnalités
 - REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006 mot de passe, lancement, HTTPS, session → src/cli.rs, config.rs, tls.rs, auth.rs, serveur.rs, web/src/vues/connexion.js
-- REQ-007, REQ-008, REQ-009, REQ-010, REQ-034, REQ-049, REQ-050, REQ-125, REQ-180, REQ-181 arborescence → src/fichiers.rs, src/windows.rs, web/src/vues/fichiers.js, explorateur.js
+- REQ-007, REQ-008, REQ-009, REQ-010, REQ-034, REQ-049, REQ-050, REQ-125, REQ-180, REQ-181, REQ-185 arborescence → src/fichiers.rs, src/windows.rs, web/src/vues/fichiers.js, explorateur.js
 - REQ-173 toasts des agents déclenchés (début, fin, erreur, refus) → web/src/vues/principale.js, api.js (`declenchements`), e2e/agent.spec.js
-- REQ-172, REQ-185 toasts et jauge du téléversement (`barreEtat.televersement`, `ya-status-jauge` après la branche), partie design system (présentation `toast` de `message`, zone des toasts du cadre, option `repliToasts`, token `--largeur-toast`) ; refus d'un collage mermaid ou d'une copie Klaxoon en toast (REQ-154, REQ-155) → web/src/ui/tableau.js, toasts.js, ui/message.js, ui/cadre.js, ui/tokens.css, ui/composants.css
+- REQ-172, REQ-185 toasts et jauge du téléversement (`barreEtat.televersement`, `ya-status-jauge` après la branche), partie design system (présentation `toast` de `message`, zone des toasts du cadre, option `repliToasts`, token `--largeur-toast`) ; refus d'un collage mermaid ou d'une copie Klaxoon en toast (REQ-154, REQ-155) → web/src/vues/fichiers.js (rappel surTeleversement), web/src/vues/principale.js, web/src/ui/tableau.js, toasts.js, ui/message.js, ui/cadre.js, ui/tokens.css, ui/composants.css
 - REQ-169, REQ-170 raccourcis et barre « Mise en forme » du mode hybride markdown → web/src/ui/mise-en-forme.js, ui/barre-md.js, ui/zone-code.js, ui/composants.css, e2e/mise-en-forme.spec.js
 - REQ-161 recherche dans un whiteboard (boîtes et liens, F3, vue centrée) → web/src/ui/tableau.js, tableau-calculs.js (`centrerObjet`), tableau-dessin.js, ui/panneau-recherche.js, vues/editeur.js, ui/composants.css, e2e/whiteboard.spec.js
 - REQ-160 recherche dans un fichier CSV (grille : cellules ; texte : REQ-159) → web/src/ui/tableur.js, ui/panneau-recherche.js, ui/zone-code.js, vues/editeur.js, ui/composants.css, e2e/tableur.spec.js

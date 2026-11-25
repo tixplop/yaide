@@ -250,6 +250,56 @@ test("REQ094_AC1_AC2_AC3_AC4_parcours_65_badge_de_connexion_a_800_x_480", async 
     await expect(badge).toHaveText("Serveur : Connecté");
     await expect(badge).toHaveAttribute("data-connexion", "connecte");
 
+    // Collage d'un fichier de l'explorateur, envoi retenu : la jauge tient dans la barre sur une ligne (AC-185-6, AC-185-7).
+    let liberer;
+    const retenu = new Promise((ok) => (liberer = ok));
+    await page.route("**/api/fichiers/importer*", async (route) => {
+      await retenu;
+      await route.continue();
+    });
+    await page.evaluate(() => {
+      const dt = new DataTransfer();
+      dt.items.add(new File(["x".repeat(4000)], "colle.bin"));
+      document.querySelector('[data-chemin="src"]').dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    const jauge = etat.locator(".ya-status-jauge");
+    await expect(jauge).toBeVisible();
+    const mj = await page.evaluate(() => {
+      const e = document.querySelector(".cadre-etat");
+      const r = e.getBoundingClientRect();
+      const rects = [...e.children].filter((x) => x.offsetParent).map((x) => x.getBoundingClientRect());
+      const triees = [...rects].sort((a, b) => a.left - b.left);
+      const centres = rects.map((b) => b.top + b.height / 2);
+      const tronque = (sel) => {
+        const x = e.querySelector(sel);
+        return !x || x.scrollWidth > x.clientWidth;
+      };
+      const j = e.querySelector(".ya-status-jauge");
+      const barre = j.firstElementChild;
+      const texte = j.textContent;
+      return {
+        superpose: triees.some((b, i) => i > 0 && b.left < triees[i - 1].right - 0.5),
+        hors: rects.some((b) => b.right > innerWidth + 0.5 || b.left < 0),
+        ligne: Math.max(...centres) - Math.min(...centres) < 4 && rects.every((b) => b.top >= r.top - 1 && b.bottom <= r.bottom + 1),
+        entiers: [".ya-status-jauge", ".ya-status-position", ".ya-status-langage", ".ya-status-maj .message", ".ya-status-maj button", ".ya-connexion", ".ya-status-version"].filter(tronque),
+        apresBranche: e.querySelector(".ya-status-branche").nextElementSibling === j,
+        texte,
+        nombre: j.getAttribute("aria-valuenow"),
+        ecart: Math.abs((barre.firstElementChild.getBoundingClientRect().width / (barre.clientWidth || 1)) * 100 - Number(j.getAttribute("aria-valuenow"))) * barre.clientWidth / 100,
+        transition: getComputedStyle(barre.firstElementChild).transitionDuration,
+        titre: j.title,
+      };
+    });
+    expect(mj).toMatchObject({ superpose: false, hors: false, ligne: true, entiers: [], apresBranche: true, titre: "Téléversement", transition: "0s" });
+    expect(mj.texte).toBe(`${mj.nombre}\u00a0%`);
+    expect(mj.ecart).toBeLessThanOrEqual(1);
+    liberer();
+    await expect(jauge).toHaveCount(0);
+    await page.unroute("**/api/fichiers/importer*");
+    await expect(ligne(page, "colle.bin")).toBeVisible();
+    await ed.focus(); // le collage a mis le focus sur la copie
+    await expect(etat).toContainText("Ln 8, Col 51");
+
     // Étape 2 : coupure, en moins de 5 s (AC-094-2) ; le focus reste dans l'éditeur (AC-094-3).
     relais.couper();
     await avancer(page, () => expect(badge).toHaveText("Serveur : Déconnecté", { timeout: 300 }), { limite: 5000 });
