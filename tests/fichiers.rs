@@ -138,6 +138,17 @@ impl Serveur {
             b"",
         )
     }
+    fn importer(&self, dans: &str, nom: &str, type_: &str, corps: &[u8]) -> Rep {
+        self.appel(
+            "POST",
+            &format!(
+                "/api/fichiers/importer?dans={}&nom={}&type={type_}",
+                enc(dans),
+                enc(nom)
+            ),
+            corps,
+        )
+    }
     fn supprimer(&self, c: &str) -> Rep {
         self.appel("DELETE", &format!("/api/fichier?chemin={}", enc(c)), b"")
     }
@@ -800,4 +811,110 @@ fn req125_ac12_chemins_hors_projet_refuses() {
     );
     assert!(!s.projet.join("src/a.txt").exists());
     assert!(!s.projet.join("src/secret.txt").exists());
+}
+
+fn chemin_importe(r: &Rep) -> String {
+    assert_eq!(r.code, 201, "{}", r.corps);
+    r.corps
+        .split("\"chemin\":\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn req180_ac1_binaire_identique_a_l_octet_pres() {
+    let s = lancer("ac180-1");
+    s.ecrire_disque("src/.gardien", b"");
+    let octets: Vec<u8> = (0..5_000_000u32).map(|i| (i * 31 % 256) as u8).collect();
+    assert_eq!(
+        chemin_importe(&s.importer("src", "logo.png", "fichier", &octets)),
+        "src/logo.png"
+    );
+    assert_eq!(
+        std::fs::read(s.projet.join("src/logo.png")).unwrap(),
+        octets
+    );
+    assert_eq!(
+        chemin_importe(&s.importer("", "a.txt", "fichier", b"a")),
+        "a.txt"
+    );
+    let restes: Vec<_> = std::fs::read_dir(s.projet.join("src"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .filter(|n| n.ends_with(".tmp"))
+        .collect();
+    assert!(restes.is_empty());
+}
+
+#[test]
+fn req180_ac3_noms_libres_sans_ecraser() {
+    let s = lancer("ac180-3");
+    s.ecrire_disque("src/a.txt", b"ancien");
+    s.ecrire_disque("src/photos/x.jpg", b"x");
+    assert_eq!(
+        chemin_importe(&s.importer("src", "a.txt", "fichier", b"nouveau")),
+        "src/a copie.txt"
+    );
+    assert_eq!(
+        chemin_importe(&s.importer("src", "photos", "dossier", b"")),
+        "src/photos copie"
+    );
+    assert_eq!(
+        chemin_importe(&s.importer("src/photos copie", "a.jpg", "fichier", b"aj")),
+        "src/photos copie/a.jpg"
+    );
+    let p = &s.projet;
+    assert_eq!(std::fs::read(p.join("src/a.txt")).unwrap(), b"ancien");
+    assert_eq!(
+        std::fs::read(p.join("src/a copie.txt")).unwrap(),
+        b"nouveau"
+    );
+    assert_eq!(std::fs::read(p.join("src/photos/x.jpg")).unwrap(), b"x");
+    assert!(!p.join("src/photos/a.jpg").exists());
+    assert_eq!(
+        std::fs::read(p.join("src/photos copie/a.jpg")).unwrap(),
+        b"aj"
+    );
+}
+
+#[test]
+fn req180_ac8_refus_hors_du_projet() {
+    let s = lancer("ac180-8");
+    s.ecrire_disque("src/.gardien", b"");
+    let dehors = s.projet.parent().unwrap().join("dehors");
+    std::fs::create_dir_all(&dehors).unwrap();
+    std::os::unix::fs::symlink(&dehors, s.projet.join("lien")).unwrap();
+    for (dans, nom) in [
+        ("src", "../x"),
+        ("src", "/etc/x"),
+        ("src", "a/b"),
+        ("src", "a\\b"),
+        ("src", ""),
+        ("src", "."),
+        ("src", ".."),
+        ("../x", "y"),
+        ("/etc", "y"),
+        ("..", "y"),
+        ("lien", "y"),
+        ("src/.gardien", "y"),
+    ] {
+        for t in ["fichier", "dossier"] {
+            let r = s.importer(dans, nom, t, b"x");
+            assert!(
+                r.code == 400 || r.code == 403,
+                "{dans} {nom} {t}: {} {}",
+                r.code,
+                r.corps
+            );
+        }
+    }
+    assert!(std::fs::read_dir(&dehors).unwrap().next().is_none());
+    assert!(!s.projet.join("x").exists());
+    assert!(!s.projet.parent().unwrap().join("x").exists());
+    assert_eq!(std::fs::read_dir(s.projet.join("src")).unwrap().count(), 1);
+    assert_eq!(s.importer("src", "y", "autre", b"").code, 400);
 }

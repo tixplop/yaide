@@ -380,6 +380,56 @@ pub fn copier(racine: &Path, de: &str, dans: &str) -> Result<String, Erreur> {
     })
 }
 
+/// Importe un élément venu de l'extérieur dans le dossier `dans` (la racine si vide), sous le
+/// premier nom libre : un dossier vide, ou un fichier écrit par temporaire puis renommage.
+/// Rend le chemin créé, au format de l'arbre.
+pub fn importer(
+    racine: &Path,
+    dans: &str,
+    nom: &str,
+    dossier: bool,
+    contenu: &[u8],
+) -> Result<String, Erreur> {
+    if nom.is_empty() || nom == "." || nom == ".." || nom.contains(['/', '\\', '\0']) {
+        return Err(Erreur::Invalide("Nom invalide."));
+    }
+    let (racine, rel) = aiguiller(racine, dans, &mut None)?;
+    let cible = resoudre(&racine, &rel)?;
+    if !fs::metadata(&cible)?.is_dir() {
+        return Err(Erreur::Invalide("La destination n'est pas un dossier."));
+    }
+    let libre = nom_libre(&cible, nom, dossier);
+    let chemin = cible.join(&libre);
+    if dossier {
+        fs::create_dir(&chemin)?;
+    } else {
+        let temp = cible.join(format!(
+            ".{libre}.yaide-{}-{}.tmp",
+            std::process::id(),
+            COMPTEUR.fetch_add(1, Ordering::Relaxed)
+        ));
+        let r = (|| -> Result<(), Erreur> {
+            let mut f = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temp)?;
+            f.write_all(contenu)?;
+            f.sync_all()?;
+            fs::rename(&temp, &chemin)?;
+            Ok(())
+        })();
+        if let Err(e) = r {
+            let _ = fs::remove_file(&temp);
+            return Err(e);
+        }
+    }
+    Ok(if dans.is_empty() {
+        libre
+    } else {
+        format!("{}/{libre}", dans.trim_end_matches('/'))
+    })
+}
+
 pub fn supprimer(racine: &Path, rel: &str) -> Result<(), Erreur> {
     let (racine, rel) = aiguiller(racine, rel, &mut None)?;
     let (racine, rel) = (racine.as_path(), rel.as_str());

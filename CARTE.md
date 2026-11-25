@@ -8,8 +8,8 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/config.rs — dossier de configuration, mot de passe haché (argon2) — dossier_config, definir_mot_de_passe, verifier_mot_de_passe
 - src/tls.rs — certificat auto-signé (rcgen) — assurer_certificat
 - src/auth.rs — sessions (un cookie par port d'écoute), blocage après échecs — creer_session, session_valide, bloque
-- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir
-- src/fichiers.rs — arborescence et opérations sur les fichiers du projet — lister, lire, ecrire
+- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180)
+- src/fichiers.rs — arborescence et opérations sur les fichiers du projet — lister, lire, ecrire, importer (REQ-180)
 - src/depot.rs — dépôt git, `.gitignore`, worktrees — est_un_depot, worktrees
 - src/git.rs — état, diff, index, commit, branches, pull/push — etat, commit, synchroniser
 - src/recherche.rs — recherche dans les fichiers et ouverture rapide — chercher, lister
@@ -40,7 +40,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/index.html — page unique ; web/dist/ est produit par esbuild
 - web/src/main.js — démarrage : thème, connexion, vue principale — titre
 - web/src/theme-initial.js — thème appliqué avant le premier affichage
-- web/src/api.js — appels HTTP et WebSocket vers le serveur (dont `declenchements`, REQ-173) — info, sessionValide, connexion
+- web/src/api.js — appels HTTP et WebSocket vers le serveur (dont `declenchements`, REQ-173) — importerChemin (REQ-180), info, sessionValide, connexion
 - web/src/connexion.js — surveille la connexion au serveur — surveiller
 - web/src/stockage.js, brouillons.js, disque.js — IndexedDB, modifications gardées, décision face au disque — lire/ecrire, decider, decisionDisque
 - web/src/disposition.js — arbre des groupes de l'éditeur (diviser, tailles) — couper, retirerGroupe, valider

@@ -684,6 +684,32 @@ async fn copier_fichier(State(etat): State<Partage>, Query(q): Requete) -> Respo
     }
 }
 
+async fn importer_fichier(
+    State(etat): State<Partage>,
+    Query(q): Requete,
+    corps: axum::body::Bytes,
+) -> Response {
+    let (dans, nom) = (param(&q, "dans").to_string(), param(&q, "nom").to_string());
+    let dossier = match param(&q, "type") {
+        "dossier" => true,
+        "fichier" => false,
+        _ => return erreur_fichier(fichiers::Erreur::Invalide("Type invalide.")),
+    };
+    match sur_disque(&etat, move |p| {
+        fichiers::importer(p, &dans, &nom, dossier, &corps)
+    })
+    .await
+    {
+        Ok(chemin) => (
+            StatusCode::CREATED,
+            [(header::CONTENT_TYPE, "application/json")],
+            format!("{{\"chemin\":{}}}", json_texte(&chemin)),
+        )
+            .into_response(),
+        Err(e) => erreur_fichier(e),
+    }
+}
+
 async fn supprimer_fichier(State(etat): State<Partage>, Query(q): Requete) -> Response {
     let rel = param(&q, "chemin").to_string();
     match sur_disque(&etat, move |p| fichiers::supprimer(p, &rel)).await {
@@ -2067,6 +2093,10 @@ pub async fn servir(
         .route("/api/fichiers/creer", post(creer_fichier))
         .route("/api/fichiers/renommer", post(renommer_fichier))
         .route("/api/fichiers/copier", post(copier_fichier))
+        .route(
+            "/api/fichiers/importer",
+            post(importer_fichier).layer(DefaultBodyLimit::disable()),
+        )
         .route("/api/fichiers/versions", post(versions_fichiers))
         .route("/api/recherche", get(chercher))
         .route("/api/chemins", get(chemins))

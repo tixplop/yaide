@@ -144,6 +144,17 @@ export async function copierChemin(de, dans) {
     return { coupure: true };
   }
 }
+/** Importe un fichier (`corps` : ses octets) ou un dossier vide dans `dans`. Même retour que `copierChemin`. */
+export async function importerChemin(dans, nom, type, corps) {
+  const r = await appeler(`/api/fichiers/importer?dans=${q(dans)}&nom=${q(nom)}&type=${q(type)}`, { method: "POST", body: type === "fichier" ? corps : undefined });
+  if (!r) return { coupure: true };
+  if (!r.ok) return erreurServeur(r);
+  try {
+    return { chemin: (await r.json()).chemin };
+  } catch {
+    return { coupure: true };
+  }
+}
 export const supprimerChemin = (chemin) => action(`/api/fichier?chemin=${q(chemin)}`, { method: "DELETE" });
 
 /** Écrit le fichier. `version` : celle lue ou écrite en dernier. Rend `{ version }`, `{ cause, message }` ou `{ coupure: true }`. */
