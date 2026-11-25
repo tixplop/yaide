@@ -2596,3 +2596,55 @@ test("REQ058_AC11_REQ083_AC6_html_focus_sur_l_onglet_actif_pas_dans_le_cadre_ctr
   expect(document.querySelector("[role=dialog], dialog[open]")).not.toBeNull();
   ouv.detruire();
 });
+
+// ---- Whiteboard dans un document markdown (REQ-179) ----
+
+test("REQ179_AC1_AC3_AC10_whiteboard_lu_par_la_route_de_l_apercu_balise_en_texte_jusque_la_dessin_ensuite", async () => {
+  const creees = [];
+  vi.stubGlobal("Image", class {
+    constructor() {
+      const img = document.createElement("img");
+      creees.push(img);
+      return img;
+    }
+  });
+  const PLAN = JSON.stringify({ version: 1, boxes: [{ id: "a", x: 0, y: 0, width: 100, height: 60, shape: "rectangle", color: "default", text: "Début" }], links: [], arrows: [] });
+  const VIDE = JSON.stringify({ version: 1, boxes: [], links: [], arrows: [] });
+  let rendre;
+  const attente = new Promise((r) => (rendre = r));
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const u = String(url);
+    if (u === "/api/apercu") return { ok: true, status: 200, json: async () => ({ jeton: "jt" }) };
+    if (u === "/api/chemins") return { ok: true, status: 200, json: async () => ({ chemins: ["docs/guide.md", "docs/plan.jdiag", "docs/vide.jdiag"] }) };
+    if (u === "/apercu/jt/docs/plan.jdiag") {
+      await attente;
+      return { ok: true, status: 200, text: async () => PLAN };
+    }
+    if (u === "/apercu/jt/docs/vide.jdiag") return { ok: true, status: 200, text: async () => VIDE };
+    return { ok: false, status: 404, headers: new Headers() };
+  }));
+  const e = vueEditeur({ dire: vi.fn(), chemin: PROJET });
+  editeurs.push(e);
+  document.body.append(e.fil, e.barre, e.code);
+  e.ouvrir({ chemin: "docs/guide.md", contenu: "![[plan.jdiag]]\n\n![[vide.jdiag]]\n\n![[absent.jdiag]]\n", version: "1" });
+  const z = e.code.querySelector(".zone-code");
+  z.definirApercu(true);
+  const apercu = () => z.querySelector(".zone-code-apercu");
+  await vi.waitFor(() => expect(fetch.mock.calls.some(([u]) => String(u) === "/apercu/jt/docs/vide.jdiag")).toBe(true));
+  await toutes();
+  // Lecture de plan.jdiag en attente : la balise reste du texte, sans marque ni image.
+  expect(apercu().textContent).toContain("![[plan.jdiag]]");
+  expect(apercu().querySelector("img")).toBeNull();
+  rendre();
+  await vi.waitFor(() => expect(creees.length).toBe(1));
+  creees[0].dispatchEvent(new Event("load"));
+  const img = apercu().querySelector("img.ya-image-md");
+  expect(img.alt).toBe("plan.jdiag");
+  expect(decodeURIComponent(img.getAttribute("src"))).toContain('width="132"');
+  expect(apercu().querySelectorAll("img").length).toBe(1);
+  // Sans objet, absent : le texte exact de la balise, sans message.
+  expect(apercu().textContent).toContain("![[vide.jdiag]]");
+  expect(apercu().textContent).toContain("![[absent.jdiag]]");
+  expect(apercu().textContent).not.toContain("![[plan.jdiag]]");
+  expect(document.querySelector("[role=alert]")).toBeNull();
+});

@@ -1,6 +1,10 @@
 import { test, expect, vi, afterEach } from "vitest";
 import { apercu } from "./apercu.js";
 import { zoneCode } from "./zone-code.js";
+import { readFileSync } from "node:fs";
+import { ecrireJdiag } from "../jdiag.js";
+import { adresseDiagramme } from "./diagramme.js";
+import { dessinerWhiteboard } from "./whiteboard-image.js";
 
 const TEXTE = [
   "[Lire](../README.md) [l. 3](../src/main.rs#L3) [doc](https://exemple.org/a) [Tests](#lancer-les-tests) [absent](#absent)",
@@ -429,4 +433,84 @@ test("REQ175_AC10_meme_img_apres_apercu_masque_puis_reaffiche", () => {
   expect(z.querySelector(".zone-code-apercu img")).toBe(img);
   expect(creees.length).toBe(1);
   z.remove();
+});
+
+// Whiteboard `![[plan.jdiag]]` (REQ-179) : l'adresse est celle du dessin que Yaide fait du fichier.
+const WB = (...boites) => ecrireJdiag({ version: 1, boxes: boites.map(([id, x, y, text]) => ({ id, x, y, width: 100, height: 60, shape: "rectangle", color: "default", text })), links: [], arrows: [] });
+const FICHIERS_WB = { "plan.jdiag": WB(["a", 0, 0, "Début"], ["b", 200, 100, "Fin"]), "vide.jdiag": WB(), "casse.jdiag": "pas du json" };
+const adresseWb = (nom) => {
+  const d = Object.hasOwn(FICHIERS_WB, nom) ? dessinerWhiteboard(FICHIERS_WB[nom]) : null;
+  return d ? adresseDiagramme(d.svg) : null;
+};
+
+test("REQ179_AC1_AC12_dessin_a_la_place_de_la_balise_unique_img_sans_marque", () => {
+  const creees = imagesSimulees();
+  const el = apercu({ document: "docs/guide.md", images: adresseWb });
+  document.body.append(el);
+  el.maj("avant\n\n![[plan.jdiag]]\n\nfin");
+  expect(el.textContent).toContain("![[plan.jdiag]]"); // pas chargé : texte
+  creees[0].dispatchEvent(new Event("load"));
+  const imgs = el.querySelectorAll("img");
+  expect(imgs.length).toBe(1);
+  expect(imgs[0].className).toBe("ya-image-md");
+  expect(imgs[0].getAttribute("alt")).toBe("plan.jdiag");
+  expect(imgs[0].getAttribute("src")).toMatch(/^data:image\/svg\+xml;charset=utf-8,/);
+  expect(decodeURIComponent(imgs[0].getAttribute("src"))).toContain('width="332"');
+  expect(el.textContent).not.toMatch(/!\[\[|\]\]/);
+  expect(el.querySelector("a, button, input, [tabindex]")).toBeNull();
+  el.remove();
+});
+
+test("REQ179_AC3_vide_illisible_absent_barre_et_code_gardent_la_balise", () => {
+  const creees = imagesSimulees();
+  const el = apercu({ document: "a.md", images: adresseWb });
+  document.body.append(el);
+  el.maj("![[vide.jdiag]] ![[casse.jdiag]] ![[absent.jdiag]] ![[plan.jdiag|300]] `![[plan.jdiag]]`");
+  expect(creees.length).toBe(0);
+  expect(el.querySelector("img")).toBeNull();
+  expect(el.textContent.trim()).toBe("![[vide.jdiag]] ![[casse.jdiag]] ![[absent.jdiag]] ![[plan.jdiag|300]] ![[plan.jdiag]]");
+  el.remove();
+});
+
+test("REQ179_AC9_AC11_attributs_meme_img_en_frappant_clic_et_ctrl_clic_sans_effet", () => {
+  const creees = imagesSimulees();
+  const surLien = vi.fn();
+  const el = apercu({ document: "a.md", images: adresseWb, surLien });
+  document.body.append(el);
+  el.maj("![[plan.jdiag]]\n\nun");
+  creees[0].dispatchEvent(new Event("load"));
+  const img = el.querySelector("img");
+  expect(img.draggable).toBe(false);
+  for (const a of ["title", "tabindex"]) expect(img.hasAttribute(a)).toBe(false);
+  el.maj("![[plan.jdiag]]\n\nun deux");
+  expect(el.querySelector("img")).toBe(img);
+  expect(creees.length).toBe(1);
+  img.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  img.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
+  expect(surLien).not.toHaveBeenCalled();
+  expect(el.querySelector("img")).toBe(img);
+  el.remove();
+});
+
+test("REQ179_AC12_dessin_sans_bordure_ombre_ni_contour_dans_la_feuille", () => {
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  const regle = css.match(/\n\.ya-image-md \{([^}]*)\}/)[1];
+  expect(regle).toMatch(/border: 0/);
+  expect(regle).not.toMatch(/box-shadow|outline/);
+});
+
+test("REQ179_AC10_dessin_pret_plus_tard_la_balise_reste_en_texte_puis_il_la_remplace", () => {
+  const creees = imagesSimulees();
+  let pret = false;
+  const el = apercu({ document: "a.md", images: (nom) => (pret ? adresseWb(nom) : null) });
+  document.body.append(el);
+  el.maj("![[plan.jdiag]]");
+  expect(el.textContent.trim()).toBe("![[plan.jdiag]]");
+  expect(el.querySelector("img")).toBeNull();
+  pret = true;
+  el.majImages();
+  creees[0].dispatchEvent(new Event("load"));
+  expect(el.querySelector("img")).not.toBeNull();
+  expect(el.textContent.trim()).toBe("");
+  el.remove();
 });

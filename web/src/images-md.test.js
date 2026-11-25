@@ -34,3 +34,21 @@ test("REQ175_AC3_balises_laissees_en_texte", () => {
   expect(resoudreImage("logo.png", "a.md", null)).toBe(null);
   expect(resoudreImage("", "a.md", chemins)).toBe(null);
 });
+
+test("REQ179_AC1_jdiag_cherche_comme_une_image_casse_ignoree", () => {
+  const chemins = ["schemas/plan.jdiag", "schemas/PLAN.JDIAG", "docs/plan.jdiag"];
+  expect(resoudreImage("plan.jdiag", "docs/guide.md", chemins)).toBe("docs/plan.jdiag");
+  expect(resoudreImage("plan.jdiag", "guide.md", ["schemas/plan.jdiag"])).toBe("schemas/plan.jdiag");
+  expect(resoudreImage("schemas/plan.jdiag", "docs/guide.md", chemins)).toBe("schemas/plan.jdiag");
+  expect(resoudreImage("../schemas/plan.jdiag", "docs/guide.md", chemins)).toBe("schemas/plan.jdiag");
+  expect(resoudreImage("PLAN.JDIAG", "docs/guide.md", ["schemas/PLAN.JDIAG"])).toBe("schemas/PLAN.JDIAG");
+  expect(resoudreImage("plan.jdiag", "../wt/docs/guide.md", ["schemas/plan.jdiag"])).toBe("../wt/docs/plan.jdiag");
+});
+
+test("REQ179_AC3_jdiag_balises_laissees_en_texte", () => {
+  const chemins = ["plan.jdiag"];
+  expect(resoudreImage("plan.jdiag|300", "a.md", chemins)).toBe(null);
+  expect(resoudreImage("absent.jdiag", "a.md", chemins)).toBe(null);
+  expect(resoudreImage("plan.jdiag", "a.md", null)).toBe(null);
+  expect(resoudreImage("plan.jdiagx", "a.md", chemins)).toBe(null);
+});

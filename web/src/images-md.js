@@ -1,6 +1,6 @@
-// Image `![[nom]]` d'un document markdown (REQ-175) : quel fichier du projet la balise désigne.
+// Image `![[nom]]` ou whiteboard `![[nom.jdiag]]` d'un document markdown (REQ-175, REQ-179) : quel fichier du projet la balise désigne.
 
-const FORMATS = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
+const FORMATS = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg|jdiag)$/i;
 const SCHEMA = /^[a-z][a-z0-9+.-]*:/i;
 
 // Chemin sans `.` ni `..` ; les `..` de tête restent (document d'un autre worktree).

@@ -19,6 +19,8 @@ import { onglets } from "../ui/onglets.js";
 import { zoneCode } from "../ui/zone-code.js";
 import { vueAgent } from "./agent.js";
 import { resoudreImage } from "../images-md.js";
+import { dessinerWhiteboard } from "../ui/whiteboard-image.js";
+import { adresseDiagramme } from "../ui/diagramme.js";
 import { depuisProjet, lienDeDocument, ligneDuTitre, estMac } from "../references.js";
 import { depotOnglets } from "./depot-onglets.js";
 import { vueClaude } from "./claude.js";
@@ -482,6 +484,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     const cible = item(chemin);
     if (cible) passerA(cible.groupe);
     actif = chemin;
+    for (const c of trouver(chemin)?.dessins?.keys() ?? []) lireDessin(trouver(chemin), c); // retour sur le document : les whiteboards sont relus
     for (const o of liste) if (o.groupe === groupes.get(courant).id) o.zone.hidden = o.chemin !== chemin;
     (chemin === DIFF ? diff?.el : trouver(chemin)?.zone)?.vue?.focus();
     queueMicrotask(afficher);
@@ -511,10 +514,36 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
         listeEnCours = false;
       });
   }
+  // Whiteboard `![[plan.jdiag]]` (REQ-179) : le fichier enregistré est lu par la route de l'aperçu ; `o.dessins` garde chemin → adresse `data:` du dessin (`null` : ne se lit pas ou sans objet). La balise reste en texte jusqu'à la lecture.
+  function lireDessin(o, chemin) {
+    if (!jetonImages || o.lectures?.has(chemin)) return;
+    (o.lectures ??= new Set()).add(chemin);
+    fetch(adresseApercu(jetonImages, chemin), { credentials: "same-origin" })
+      .then(async (r) => {
+        let d = null;
+        if (r.ok) {
+          try {
+            d = dessinerWhiteboard(await r.text());
+          } catch {
+            d = null;
+          }
+        }
+        const adresse = d ? adresseDiagramme(d.svg) : null;
+        o.dessins ??= new Map();
+        if (o.dessins.has(chemin) && o.dessins.get(chemin) === adresse) return;
+        o.dessins.set(chemin, adresse);
+        o.zone?.majImages?.();
+      })
+      .catch(() => {}) // coupure : le dessin déjà connu reste, la lecture reprend au prochain retour sur l'onglet
+      .finally(() => o.lectures.delete(chemin));
+  }
   const adresseImage = (o) => (nom) => {
     chargerImages();
     const chemin = jetonImages ? resoudreImage(nom, o.chemin, fichiersProjet) : null;
-    return chemin ? adresseApercu(jetonImages, chemin) : null;
+    if (!chemin) return null;
+    if (!/\.jdiag$/i.test(chemin)) return adresseApercu(jetonImages, chemin);
+    if (!o.dessins?.has(chemin)) lireDessin(o, chemin);
+    return o.dessins?.get(chemin) ?? null;
   };
 
   function creer({ chemin, contenu, version, texte, apercu = false, hybride = false }) {
