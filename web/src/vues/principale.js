@@ -235,8 +235,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     coupureAffichee = true;
   }
   // « Connexion perdue. Réessayez au retour. » part au retour de la connexion : il porte sa cause.
-  function dire({ texte, variante, detail }) {
-    return afficher({ texte, variante, detail, cause: texte === TEXTE_COUPURE ? "reessayer" : undefined });
+  function dire({ texte, variante, detail, cause }) {
+    return afficher({ texte, variante, detail, cause: cause ?? (texte === TEXTE_COUPURE ? "reessayer" : undefined) });
   }
   const illisible = (fichier) => afficher({ texte: `${fichier} est illisible. Corrigez-le, puis rechargez la page.`, variante: "alerte", cause: `illisible:${fichier}` });
 

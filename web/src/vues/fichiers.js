@@ -1,4 +1,4 @@
-import { copierChemin, creerChemin, ecrireFichier, gitIndexer, importerChemin, lireConnaissance, lireFichier, listerDossier, renommerChemin, supprimerChemin } from "../api.js";
+import { copierChemin, copierVersWindows, creerChemin, ecrireFichier, gitIndexer, importerChemin, lireConnaissance, lireFichier, listerDossier, renommerChemin, supprimerChemin } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { dialogue } from "../ui/dialogue.js";
@@ -77,6 +77,8 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   let relireEnAttente = false;
   let messageDepot = null; // toast du dernier dépôt
   let messageCopie = null; // toast du dernier collage
+  let appelWindows = 0; // numéro du dernier « Copier » vers Windows : la réponse d'un appel remplacé est ignorée
+  let messageWindows = null; // toast d'échec de la copie vers Windows
   let copies = []; // chemins copiés (REQ-125), dans l'ordre de l'arbre, sans enfant d'un dossier aussi copié
   let collage = false; // un collage est en cours
   const mac = estMac();
@@ -406,7 +408,12 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     const chemin = e.target.closest?.("[data-chemin]")?.dataset.chemin;
     if (chemin === undefined) return;
     const cible = types.get(chemin) ? chemin : dossierDe(chemin);
-    if (e.clipboardData?.files?.length > 0) {
+    const fichiers = [...(e.clipboardData?.files ?? [])];
+    if (fichiers.length > 0 && memesNoms(fichiers.map((x) => x.name), copies.map(nomDe))) {
+      // ce sont les fichiers que « Copier » a mis dans le presse-papiers de Windows (REQ-181)
+      e.preventDefault();
+      coller(cible);
+    } else if (fichiers.length > 0) {
       e.preventDefault();
       if (collage) return;
       lireElements(e.clipboardData.items).then((elements) => collerExplorateur(cible, elements));
@@ -509,6 +516,22 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     if (selection.length === 0) return;
     copies = selection.filter((c) => !selection.some((p) => p !== c && types.get(p) && c.startsWith(`${p}/`)));
     majBoutons();
+    versWindows();
+  }
+
+  const memesNoms = (a, b) => a.length === b.length && [...a].sort().join("\n") === [...b].sort().join("\n");
+
+  /** Met la liste retenue dans le presse-papiers de Windows (WSL seulement, REQ-181), sans que « Copier » l'attende. */
+  async function versWindows() {
+    const numero = ++appelWindows;
+    const r = await copierVersWindows(copies);
+    if (detruit || numero !== appelWindows || r.coupure) return;
+    messageWindows?.remove();
+    messageWindows = null;
+    if (!r.cause) return;
+    const msg = { texte: `Copie vers l'explorateur de Windows impossible : ${sansPoint(r.message)}. Copiez de nouveau.`, variante: "erreur", fermable: true, cause: "presse-papiers-windows" };
+    if (r.detail) msg.detail = r.detail;
+    messageWindows = dire(msg) ?? null;
   }
 
   /** Fin d'un collage : messages de refus, sélection des éléments du premier niveau, focus sur le premier. */

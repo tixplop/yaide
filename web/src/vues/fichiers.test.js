@@ -78,6 +78,14 @@ async function monter(disque, options = {}) {
       if (r) return { ok: false, status: r.status, json: async () => r.corps };
       return { ok: true, status: 200, json: async () => ({}) };
     }
+    if (url.includes("/api/fichiers/presse-papiers-windows")) {
+      if (disque.coupure) throw new TypeError("réseau");
+      const chemins = JSON.parse(init.body).chemins;
+      disque.windowsAppels = [...(disque.windowsAppels ?? []), chemins];
+      const r = await disque.windows?.(chemins);
+      if (r?.status) return { ok: false, status: r.status, json: async () => r.corps };
+      return { ok: true, status: 200, json: async () => ({ wsl: r?.wsl ?? true }) };
+    }
     const v = disque[chemin];
     if (disque.coupure) throw new TypeError("réseau");
     if (v?.status) return { ok: false, status: v.status, json: async () => v.corps };
@@ -1510,7 +1518,9 @@ test("REQ125_AC10_AC11_rien_de_copie_ni_presse_papiers_ni_base_ni_ouverture", as
   const ecrire = vi.fn();
   vi.stubGlobal("navigator", { clipboard: { readText: lire, writeText: ecrire } });
   const surOuvrir = vi.fn();
-  const { vue, appels } = await monter(FILES(), { surOuvrir, agents: true, estDepot: () => true });
+  const disque = FILES();
+  disque.windows = () => ({ wsl: false }); // hors de WSL (REQ181_AC5)
+  const { vue, appels, dire } = await monter(disque, { surOuvrir, agents: true, estDepot: () => true });
   ligne(vue, "src").click();
   frappe(vue, "src", "v"); // rien de copié
   expect(appelsCopier(appels)).toEqual([]);
@@ -1524,6 +1534,7 @@ test("REQ125_AC10_AC11_rien_de_copie_ni_presse_papiers_ni_base_ni_ouverture", as
   expect(surOuvrir).not.toHaveBeenCalled();
   expect(appels.some((u) => typeof u === "string" && u.includes("/api/git/indexer"))).toBe(false);
   expect(appels.some((u) => typeof u === "object")).toBe(false); // aucun POST vers la base de connaissance
+  expect(dire).not.toHaveBeenCalled();
   document.body.replaceChildren();
   const neuve = await monter(FILES());
   expect(bouton(neuve.vue, "Coller").disabled).toBe(true);
@@ -1833,4 +1844,109 @@ test("REQ180_AC10_hors_de_l_arbre_rien_n_est_cree_et_un_second_collage_attend_la
   liberer();
   await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/a.txt"]));
   expect(disque.importes).toEqual(["fichier:src/a.txt:1"]);
+});
+
+// ---- REQ-181 : « Copier » met aussi les lignes dans le presse-papiers de Windows ----
+
+const ECHEC_WINDOWS = { status: 500, corps: { cause: "windows", message: "PowerShell a échoué", detail: "Accès refusé" } };
+
+test("REQ181_AC2_Ctrl_C_bouton_et_menu_envoient_la_meme_liste_dossier_seul", async () => {
+  const disque = { "": [d("src"), f("a.txt")], src: [f("x.txt")] };
+  const { vue } = await monter(disque);
+  ligne(vue, "src").click();
+  await attendre();
+  ligne(vue, "a.txt").click();
+  ctrl(vue, "src/x.txt");
+  frappe(vue, "a.txt", "c");
+  await vi.waitFor(() => expect(disque.windowsAppels).toEqual([["src/x.txt", "a.txt"]]));
+  ctrl(vue, "a.txt"); // retiré de la sélection
+  ctrl(vue, "src");
+  frappe(vue, "src", "c"); // src et src/x.txt sélectionnés : le dossier seul
+  bouton(vue, "Copier").click();
+  commande(menuSur(vue, "src"), "Copier").click();
+  await vi.waitFor(() => expect(disque.windowsAppels.length).toBe(4));
+  expect(disque.windowsAppels[1]).toEqual(["src"]);
+  expect(disque.windowsAppels[2]).toEqual(disque.windowsAppels[1]);
+  expect(disque.windowsAppels[3]).toEqual(disque.windowsAppels[1]);
+});
+
+test("REQ181_AC7_fichiers_du_presse_papiers_aux_memes_noms_collent_la_liste_sinon_import", async () => {
+  const disque = { "": [d("src"), f("a.txt")], src: [] };
+  const { vue, appels } = await monter(disque);
+  ligne(vue, "a.txt").click();
+  frappe(vue, "a.txt", "c");
+  const e = collerSysteme(vue, "src", [elFichier("a.txt")]);
+  expect(e.defaultPrevented).toBe(true);
+  await vi.waitFor(() => expect(appelsCopier(appels)).toEqual(["a.txt>src"]));
+  await attendre();
+  expect(disque.importes).toBeUndefined();
+  collerSysteme(vue, "src", [elFichier("z.txt")]);
+  await vi.waitFor(() => expect(disque.importes).toEqual(["fichier:src/z.txt:1"]));
+  expect(appelsCopier(appels)).toEqual(["a.txt>src"]);
+});
+
+test("REQ181_AC6_AC9_echec_liste_retenue_toasts_exacts_focus_et_selection_inchanges", async () => {
+  const disque = { "": [f("a.txt"), f("b.txt")] };
+  const { vue, dire } = await monter(disque);
+  ctrl(vue, "a.txt");
+  ligne(vue, "a.txt").focus();
+  disque.windows = () => ({ status: 500, corps: { cause: "windows", message: "Windows n'a pas répondu", raison: "Windows n'a pas répondu", detail: "" } });
+  frappe(vue, "a.txt", "c");
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledWith({ texte: "Copie vers l'explorateur de Windows impossible : Windows n'a pas répondu. Copiez de nouveau.", variante: "erreur", fermable: true, cause: "presse-papiers-windows" }));
+  expect(bouton(vue, "Coller").disabled).toBe(false);
+  disque.windows = () => ECHEC_WINDOWS;
+  frappe(vue, "a.txt", "c");
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledWith({ texte: "Copie vers l'explorateur de Windows impossible : PowerShell a échoué. Copiez de nouveau.", variante: "erreur", fermable: true, cause: "presse-papiers-windows", detail: "Accès refusé" }));
+  expect(choisies(vue)).toEqual(["a.txt"]);
+  expect(document.activeElement).toBe(ligne(vue, "a.txt"));
+  expect(dire).toHaveBeenCalledTimes(2);
+});
+
+test("REQ181_AC10_toast_retire_au_succes_un_seul_toast_appel_remplace_ignore_coupure_sans_essai", async () => {
+  const disque = { "": [f("a.txt")] };
+  const retire = vi.fn();
+  const dire = vi.fn(() => ({ remove: retire }));
+  const { vue } = await monter(disque, { dire });
+  ctrl(vue, "a.txt");
+  disque.windows = () => ECHEC_WINDOWS;
+  frappe(vue, "a.txt", "c");
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledTimes(1));
+  // second échec au même texte : l'ancien toast est retiré avant le nouveau, un seul reste
+  frappe(vue, "a.txt", "c");
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledTimes(2));
+  expect(retire).toHaveBeenCalledTimes(1);
+  disque.windows = () => ({ wsl: true });
+  frappe(vue, "a.txt", "c");
+  await vi.waitFor(() => expect(retire).toHaveBeenCalledTimes(2));
+  expect(dire).toHaveBeenCalledTimes(2);
+  // premier appel en échec (lent), second réussi : aucun toast de plus
+  let liberer;
+  const attente = new Promise((r) => (liberer = r));
+  let n = 0;
+  disque.windows = async () => (++n === 1 ? (await attente, ECHEC_WINDOWS) : { wsl: true });
+  frappe(vue, "a.txt", "c");
+  frappe(vue, "a.txt", "c");
+  await vi.waitFor(() => expect(disque.windowsAppels.length).toBe(5));
+  liberer();
+  await attendre();
+  await attendre();
+  expect(dire).toHaveBeenCalledTimes(2);
+  // coupure : liste retenue, pas de message de plus, pas d'essai au retour
+  disque.coupure = true;
+  frappe(vue, "a.txt", "c");
+  await attendre();
+  await attendre();
+  disque.coupure = false;
+  await vue.relire();
+  await attendre();
+  expect(dire).toHaveBeenCalledTimes(2);
+  expect(disque.windowsAppels.length).toBe(5);
+  expect(bouton(vue, "Coller").disabled).toBe(false);
+});
+
+test("REQ181_AC8_le_README_decrit_l_essai_manuel_sous_Windows", () => {
+  const readme = readFileSync("README.md", "utf8");
+  expect(readme).toContain("Copier vers l'explorateur de Windows");
+  expect(readme).toContain("photos/2024/b.jpg");
+  expect(readme).toContain("photos/vide");
 });
