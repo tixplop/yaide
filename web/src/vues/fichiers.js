@@ -1,4 +1,4 @@
-import { copierChemin, creerChemin, ecrireFichier, gitIndexer, lireConnaissance, lireFichier, listerDossier, renommerChemin, supprimerChemin } from "../api.js";
+import { copierChemin, creerChemin, ecrireFichier, gitIndexer, importerChemin, lireConnaissance, lireFichier, listerDossier, renommerChemin, supprimerChemin } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { dialogue } from "../ui/dialogue.js";
@@ -7,6 +7,7 @@ import { liste } from "../ui/liste.js";
 import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 import { estImage } from "../onglets-fichiers.js";
+import { REFUS_LECTURE, lireElements } from "./explorateur.js";
 import { avecExtensionJdiag, ecrireJdiag } from "../jdiag.js";
 import { estMac } from "../references.js";
 import * as worktree from "../worktree.js";
@@ -400,15 +401,30 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
       relire();
     }
   });
+  // Ctrl+V : des fichiers dans le presse-papiers du système sont importés, sinon la liste de Yaide est collée (REQ-180, REQ-125).
+  zoneArbre.addEventListener("paste", (e) => {
+    const chemin = e.target.closest?.("[data-chemin]")?.dataset.chemin;
+    if (chemin === undefined) return;
+    const cible = types.get(chemin) ? chemin : dossierDe(chemin);
+    if (e.clipboardData?.files?.length > 0) {
+      e.preventDefault();
+      if (collage) return;
+      lireElements(e.clipboardData.items).then((elements) => collerExplorateur(cible, elements));
+    } else if (copies.length > 0) {
+      e.preventDefault();
+      coller(cible);
+    }
+  });
   zoneArbre.addEventListener("keydown", (e) => {
     const chemin = e.target.closest?.("[data-chemin]")?.dataset.chemin;
     if (chemin === undefined) return;
     const touche = e.key.toLowerCase();
     if ((mac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && (touche === "c" || touche === "v")) {
-      e.preventDefault();
-      if (touche === "c") copier();
-      else if (copies.length > 0) coller(types.get(chemin) ? chemin : dossierDe(chemin));
-      return;
+      if (touche === "c") {
+        e.preventDefault();
+        copier();
+      }
+      return; // Ctrl+V : l'événement `paste` décide (REQ-180)
     }
     if (e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key === "F2") {
@@ -495,6 +511,25 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     majBoutons();
   }
 
+  /** Fin d'un collage : messages de refus, sélection des éléments du premier niveau, focus sur le premier. */
+  async function finirCollage(cible, creees, refus, coupure) {
+    if (coupure) messageCopie = dire({ texte: TEXTE_COUPURE, variante: "alerte", fermable: true }) ?? null;
+    else if (refus.length === 1) messageCopie = dire({ texte: `${refus[0].nom} n'a pas été copié : ${refus[0].raison}.`, variante: "erreur", fermable: true }) ?? null;
+    else if (refus.length > 1) messageCopie = dire({ texte: `${refus.length} éléments n'ont pas été copiés.`, detail: refus.map((x) => `${x.nom} : ${x.raison}`).join("\n"), variante: "erreur", fermable: true }) ?? null;
+    if (creees.length > 0) {
+      if (cible !== vu) ouverts.add(cible);
+      selection = creees;
+      ancre = derniere = creees[0];
+      majBoutons();
+    }
+    await rafraichir();
+    if (detruit || creees.length === 0) return;
+    afficher(true);
+    ligneDe(creees[0])?.scrollIntoView({ block: "nearest" });
+  }
+
+  const raisonServeur = (r) => sansPoint(r.message).replace(/^./, (c) => c.toLowerCase());
+
   /** Colle dans le dossier `cible` : un élément à la fois, les refus sont réunis dans un seul message. */
   async function coller(cible) {
     if (collage || copies.length === 0) return;
@@ -514,7 +549,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
           break;
         }
         if (r.cause) {
-          const raison = r.cause === "introuvable" ? "il n'existe plus" : sansPoint(r.message).replace(/^./, (c) => c.toLowerCase());
+          const raison = r.cause === "introuvable" ? "il n'existe plus" : raisonServeur(r);
           refus.push({ nom: `${nomDe(de)}${types.get(de) ? "/" : ""}`, raison });
           continue;
         }
@@ -523,19 +558,60 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     } finally {
       collage = false;
     }
-    if (coupure) messageCopie = dire({ texte: TEXTE_COUPURE, variante: "alerte", fermable: true }) ?? null;
-    else if (refus.length === 1) messageCopie = dire({ texte: `${refus[0].nom} n'a pas été copié : ${refus[0].raison}.`, variante: "erreur", fermable: true }) ?? null;
-    else if (refus.length > 1) messageCopie = dire({ texte: `${refus.length} éléments n'ont pas été copiés.`, detail: refus.map((x) => `${x.nom} : ${x.raison}`).join("\n"), variante: "erreur", fermable: true }) ?? null;
-    if (creees.length > 0) {
-      if (cible !== vu) ouverts.add(cible);
-      selection = creees;
-      ancre = derniere = creees[0];
-      majBoutons();
+    await finirCollage(cible, creees, refus, coupure);
+  }
+
+  /** Importe `el` (arbre lu par `lireElements`) dans `dans`. `origine` : son chemin d'origine. Rend `true` si coupure. */
+  async function importerElement(dans, el, origine, creees, refus) {
+    const chemin = `${origine}${el.nom}${el.dossier ? "/" : ""}`;
+    if (el.refus) {
+      refus.push({ nom: chemin, raison: el.refus });
+      return false;
     }
-    await rafraichir();
-    if (detruit || creees.length === 0) return;
-    afficher(true);
-    ligneDe(creees[0])?.scrollIntoView({ block: "nearest" });
+    let octets;
+    if (!el.dossier) {
+      try {
+        octets = await el.fichier.arrayBuffer();
+      } catch {
+        refus.push({ nom: chemin, raison: REFUS_LECTURE });
+        return false;
+      }
+    }
+    const r = await importerChemin(dans, el.nom, el.dossier ? "dossier" : "fichier", octets);
+    if (detruit || r.coupure) return true;
+    if (r.cause) {
+      refus.push({ nom: chemin, raison: raisonServeur(r) });
+      return false;
+    }
+    creees?.push(r.chemin);
+    for (const enfant of el.enfants ?? []) {
+      if (await importerElement(r.chemin, enfant, chemin, null, refus)) return true;
+    }
+    return false;
+  }
+
+  /** Colle dans `cible` les éléments copiés dans l'explorateur du bureau (REQ-180). */
+  async function collerExplorateur(cible, elements) {
+    if (collage) return;
+    collage = true;
+    generation++;
+    messageCopie?.remove();
+    messageCopie = null;
+    const creees = [];
+    const refus = [];
+    let coupure = false;
+    try {
+      for (const el of elements) {
+        if (await importerElement(cible, el, "", creees, refus)) {
+          coupure = true;
+          break;
+        }
+      }
+    } finally {
+      collage = false;
+    }
+    if (detruit) return;
+    await finirCollage(cible, creees, refus, coupure);
   }
 
   /** Le dossier visé par les boutons « Nouveau fichier » et « Coller » : celui de la dernière ligne cliquée. */

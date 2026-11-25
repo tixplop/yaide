@@ -830,3 +830,51 @@ test("REQ125_AC1_parcours_de_copie_menu_en_tete_ctrl_c_ctrl_v_refuse_et_coller_s
   expect(fs.existsSync(path.join(dossier, "doc", "src", "a copie.txt"))).toBe(true);
   expect(indexe(dossier)).toEqual([]);
 });
+
+/** Envoie un événement `paste` sur l'élément qui a le focus, avec ces fichiers (`octets` : liste d'entiers) dans le presse-papiers. */
+const collerFichiers = (page, fichiers) =>
+  page.evaluate((liste) => {
+    const dt = new DataTransfer();
+    for (const { nom, octets } of liste) dt.items.add(new File([new Uint8Array(octets)], nom));
+    const ev = new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true });
+    document.activeElement.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  }, fichiers);
+
+test("REQ180_AC1_AC4_AC10_parcours_de_collage_depuis_l_explorateur_octets_liste_de_Yaide_et_hors_de_l_arbre", async ({ page }) => {
+  const dossier = depotExemple();
+  fs.writeFileSync(path.join(dossier, "a.txt"), "a");
+  yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await expect(arbre(page)).toBeVisible();
+  const logo = [0, 255, 1, 254, 137, 80, 78, 71];
+  await ligne(page, "src").click();
+  await ligne(page, "src").focus();
+  await collerFichiers(page, [{ nom: "n.txt", octets: [104, 105] }, { nom: "logo.png", octets: logo }]); // étape 1
+  await expect(ligne(page, "n.txt")).toBeFocused();
+  await expect(arbre(page).getByRole("treeitem", { selected: true })).toHaveCount(2);
+  await expect(ligne(page, "src")).toHaveAttribute("aria-expanded", "true");
+  expect([...fs.readFileSync(path.join(dossier, "src", "logo.png"))]).toEqual(logo);
+  expect(fs.readFileSync(path.join(dossier, "src", "n.txt"), "utf8")).toBe("hi");
+  await expect(page.getByRole("alert").filter({ hasText: "copié" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /n\.txt|logo\.png/ })).toHaveCount(0);
+  // étape 3 : a.txt copié dans Yaide, mais le presse-papiers du système a des fichiers : eux seuls sont collés
+  await ligne(page, "a.txt").click({ modifiers: ["Control"] });
+  await page.keyboard.press("Control+c");
+  await ligne(page, "src").focus();
+  await collerFichiers(page, [{ nom: "autre.txt", octets: [120] }]);
+  await expect(ligne(page, "autre.txt")).toBeFocused();
+  expect(fs.existsSync(path.join(dossier, "src", "autre.txt"))).toBe(true);
+  expect(fs.existsSync(path.join(dossier, "src", "a.txt"))).toBe(false);
+  // étape 4 : le focus dans l'éditeur, rien n'est créé
+  await ligne(page, "a.txt").dblclick();
+  const editeur = page.locator(".cm-content").first();
+  await editeur.click();
+  await collerFichiers(page, [{ nom: "ailleurs.txt", octets: [1] }]);
+  // un collage dans l'arbre, ensuite, prouve que celui de l'éditeur n'a rien créé (le serveur traite les imports dans l'ordre)
+  await ligne(page, "src").focus();
+  await collerFichiers(page, [{ nom: "dernier.txt", octets: [2] }]);
+  await expect(ligne(page, "dernier.txt")).toBeFocused();
+  expect(fs.existsSync(path.join(dossier, "ailleurs.txt")) || fs.existsSync(path.join(dossier, "src", "ailleurs.txt"))).toBe(false);
+  expect(fs.readFileSync(path.join(dossier, "a.txt"), "utf8")).toBe("a");
+});

@@ -17,6 +17,16 @@ afterEach(async () => {
   document.body.replaceChildren();
 });
 
+// jsdom n'a pas `Blob.arrayBuffer` : les navigateurs l'ont
+Blob.prototype.arrayBuffer ??= function () {
+  return new Promise((ok, ko) => {
+    const lecteur = new FileReader();
+    lecteur.onload = () => ok(lecteur.result);
+    lecteur.onerror = () => ko(lecteur.error);
+    lecteur.readAsArrayBuffer(this);
+  });
+};
+
 const attendre = () => new Promise((r) => setTimeout(r, 0));
 const f = (nom) => ({ nom, dossier: false });
 const d = (nom) => ({ nom, dossier: true });
@@ -46,6 +56,20 @@ async function monter(disque, options = {}) {
       const source = disque[p.get("de").split("/").slice(0, -1).join("/")]?.find((e) => e.nom === nom);
       if (Array.isArray(cible) && source && !cible.some((e) => e.nom === nom)) cible.push(source);
       return { ok: true, status: 200, json: async () => ({ chemin: p.get("dans") ? `${p.get("dans")}/${nom}` : nom }) };
+    }
+    if (url.includes("/api/fichiers/importer")) {
+      const p = new URL(url, "http://x").searchParams;
+      if (disque.coupure) throw new TypeError("réseau");
+      const [dans, nom, type] = [p.get("dans"), p.get("nom"), p.get("type")];
+      const r = disque.importer?.(dans, nom, type);
+      if (r?.status) return { ok: false, status: r.status, json: async () => r.corps };
+      const existants = Array.isArray(disque[dans]) ? disque[dans] : [];
+      const libre = existants.some((e) => e.nom === nom) ? `${nom} copie` : nom;
+      const chemin = dans ? `${dans}/${libre}` : libre;
+      disque.importes = [...(disque.importes ?? []), `${type}:${chemin}:${init?.body ? init.body.byteLength : 0}`];
+      if (Array.isArray(disque[dans])) disque[dans].push(type === "dossier" ? d(libre) : f(libre));
+      if (type === "dossier") disque[chemin] = [];
+      return { ok: true, status: 201, json: async () => ({ chemin }) };
     }
     if (url.includes("/api/fichiers/renommer")) {
       const p = new URL(url, "http://x").searchParams;
@@ -1280,8 +1304,27 @@ test("REQ008_AC1_REQ120_AC1_une_image_s_ouvre_sans_lecture_du_fichier", async ()
 const frappe = (vue, chemin, key, opts = { ctrlKey: true }) => {
   const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts });
   ligne(vue, chemin).dispatchEvent(e);
+  // le navigateur enchaîne le Ctrl+V (Cmd+V sur macOS) par un événement `paste`, sauf si le clavier l'a retenu
+  const mac = /Mac/.test(navigator.platform);
+  if (key === "v" && !e.defaultPrevented && (mac ? opts.metaKey : opts.ctrlKey)) collerSysteme(vue, chemin, []);
   return e;
 };
+/** Un événement `paste` sur la ligne, avec ces éléments dans le presse-papiers du système. */
+const collerSysteme = (vue, chemin, elements) => {
+  const e = new Event("paste", { bubbles: true, cancelable: true });
+  const files = elements.map((x) => x.getAsFile?.()).filter(Boolean);
+  Object.defineProperty(e, "clipboardData", { value: { files, items: elements } });
+  ligne(vue, chemin).dispatchEvent(e);
+  return e;
+};
+const elFichier = (nom, octets = "x") => ({ kind: "file", getAsFile: () => new File([octets], nom), webkitGetAsEntry: () => ({ isDirectory: false, name: nom, file: (ok) => ok(new File([octets], nom)) }) });
+const elDossier = (nom, enfants) => ({ kind: "file", getAsFile: () => new File([], nom), webkitGetAsEntry: () => entreeDossier(nom, enfants) });
+const entreeDossier = (nom, enfants) => {
+  let lu = false;
+  return { isDirectory: true, name: nom, createReader: () => ({ readEntries: (ok) => { ok(lu ? [] : enfants); lu = true; } }) };
+};
+const entreeFichier = (nom, octets = "x") => ({ isDirectory: false, name: nom, file: (ok) => ok(new File([octets], nom)) });
+const entreeIllisible = (nom) => ({ isDirectory: false, name: nom, file: (_, ko) => ko(new Error("refus")) });
 const appelsCopier = (appels) => appels.filter((u) => typeof u === "string" && u.includes("/api/fichiers/copier")).map((u) => { const p = new URL(u, "http://x").searchParams; return `${p.get("de")}>${p.get("dans")}`; });
 const bulle = async (b) => {
   b.parentElement.dispatchEvent(new Event("pointerenter"));
@@ -1360,7 +1403,7 @@ test("REQ125_AC2_AC16_macos_simule_Cmd_copie_et_Ctrl_ne_fait_rien", async () => 
   expect(commande(m, "Copier").textContent).toBe("CopierCmd+C");
 });
 
-test("REQ125_AC5_plusieurs_lignes_enfant_d_un_dossier_ecarte_focus_sur_la_premiere", async () => {
+test("REQ125_AC5_AC18_plusieurs_lignes_enfant_d_un_dossier_ecarte_focus_sur_la_premiere", async () => {
   const disque = { "": [d("doc"), d("src"), f("a.txt"), f("b.txt")], doc: [], src: [f("x.txt")] };
   const { vue, appels } = await monter(disque);
   ctrl(vue, "a.txt");
@@ -1396,16 +1439,24 @@ test("REQ125_AC5_plusieurs_lignes_enfant_d_un_dossier_ecarte_focus_sur_la_premie
   await vi.waitFor(() => expect(appelsCopier(appels)).toEqual(["src>doc"]));
 });
 
-test("REQ125_AC6_AC13_AC17_refus_un_seul_message_la_selection_ne_change_pas", async () => {
+test("REQ125_AC6_AC13_AC17_AC18_refus_un_seul_message_la_selection_ne_change_pas", async () => {
   const disque = FILES();
   const { vue, dire } = await monter(disque);
   disque.copier = () => ({ status: 400, corps: { cause: "invalide", message: "Un dossier ne peut pas être copié dans lui-même." } });
   ligne(vue, "src").click();
   bouton(vue, "Copier").click();
+  bouton(vue, "Coller").focus();
   bouton(vue, "Coller").click();
   await vi.waitFor(() => expect(dire).toHaveBeenCalled());
   expect(dire).toHaveBeenCalledWith({ texte: "src/ n'a pas été copié : un dossier ne peut pas être copié dans lui-même.", variante: "erreur", fermable: true });
   expect(choisies(vue)).toEqual(["src"]);
+  expect(document.activeElement).toBe(bouton(vue, "Coller")); // REQ125_AC18 : le focus reste sur le bouton
+  ligne(vue, "src").focus();
+  frappe(vue, "src", "v");
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledTimes(2));
+  await attendre();
+  expect(choisies(vue)).toEqual(["src"]);
+  expect(document.activeElement).toBe(ligne(vue, "src")); // REQ125_AC18 : le focus est sur la ligne visée
   expect(noms(vue)).not.toContain("src/src");
 });
 
@@ -1648,4 +1699,138 @@ test("REQ127_AC5_coupure_dit_de_reessayer_rien_cree_puis_Entree_au_retour_cree",
   await attendre();
   await attendre();
   expect(ecritures.length).toBe(1);
+});
+
+// ---- REQ-180 : coller depuis l'explorateur ----
+
+test("REQ180_AC1_AC7_AC4_fichiers_du_systeme_importes_dans_src_selectionnes_et_focus_sur_le_premier", async () => {
+  const disque = { "": [d("src"), f("README.md")], src: [] };
+  const surOuvrir = vi.fn();
+  const { vue, appels, dire } = await monter(disque, { surOuvrir, estDepot: () => true });
+  ctrl(vue, "README.md");
+  frappe(vue, "README.md", "c");
+  ligne(vue, "src").focus();
+  const e = collerSysteme(vue, "src", [elFichier("a.txt", "abc"), elFichier("logo.png", "\u0001\u0002")]);
+  expect(e.defaultPrevented).toBe(true);
+  await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/a.txt", "src/logo.png"]));
+  expect(disque.importes).toEqual(["fichier:src/a.txt:3", "fichier:src/logo.png:2"]);
+  expect(appelsCopier(appels)).toEqual([]); // la liste de Yaide n'est pas collée (REQ180_AC4)
+  expect(document.activeElement).toBe(ligne(vue, "src/a.txt"));
+  expect(dire).not.toHaveBeenCalled();
+  expect(surOuvrir).not.toHaveBeenCalled(); // REQ180_AC7
+  expect(appels.some((u) => typeof u === "string" && u.includes("/api/git/indexer"))).toBe(false);
+  expect(appels.some((u) => typeof u === "object")).toBe(false);
+  expect(bouton(vue, "Coller").disabled).toBe(false); // REQ180_AC12 : la liste reste
+});
+
+test("REQ180_AC2_dossier_et_son_contenu_dans_le_dossier_neuf_focus_sur_photos", async () => {
+  const disque = { "": [d("photos"), f("README.md")], photos: [] };
+  const { vue } = await monter(disque);
+  const photos = elDossier("photos", [entreeFichier("a.jpg", "12"), entreeDossier("2024", [entreeFichier("b.jpg", "123")]), entreeDossier("vide", [])]);
+  ligne(vue, "README.md").focus();
+  collerSysteme(vue, "README.md", [photos]);
+  await vi.waitFor(() => expect(choisies(vue)).toEqual(["photos copie"]));
+  expect(disque.importes).toEqual(["dossier:photos copie:0", "fichier:photos copie/a.jpg:2", "dossier:photos copie/2024:0", "fichier:photos copie/2024/b.jpg:3", "dossier:photos copie/vide:0"]);
+  expect(document.activeElement).toBe(ligne(vue, "photos copie"));
+});
+
+test("REQ180_AC4_texte_seul_colle_la_liste_de_Yaide_et_bouton_et_menu_collent_la_liste", async () => {
+  const disque = { "": [d("src"), f("b.txt")], src: [] };
+  const { vue, appels } = await monter(disque);
+  ctrl(vue, "b.txt");
+  expect(frappe(vue, "b.txt", "c").defaultPrevented).toBe(true);
+  const clavier = frappe(vue, "src", "v"); // `paste` sans fichier
+  expect(clavier.defaultPrevented).toBe(false); // le clavier laisse passer le `paste`
+  await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/b.txt"]));
+  ligne(vue, "src").click();
+  bouton(vue, "Coller").click();
+  await vi.waitFor(() => expect(appelsCopier(appels)).toEqual(["b.txt>src", "b.txt>src"]));
+  await attendre();
+  commande(menuSur(vue, "src"), "Coller").click(); // le menu colle la liste de Yaide
+  await vi.waitFor(() => expect(appelsCopier(appels)).toEqual(["b.txt>src", "b.txt>src", "b.txt>src"]));
+  expect(disque.importes).toBeUndefined();
+});
+
+test("REQ180_AC5_AC9_AC11_refus_nomme_le_chemin_d_origine_et_le_dossier_cree_est_selectionne", async () => {
+  const disque = { "": [d("photos"), d("src")], photos: [], src: [d("photos")] };
+  const { vue, dire } = await monter(disque);
+  ligne(vue, "src").focus();
+  collerSysteme(vue, "src", [elDossier("photos", [entreeFichier("a.jpg"), entreeDossier("2024", [entreeIllisible("b.jpg")])])]);
+  await vi.waitFor(() => expect(dire).toHaveBeenCalled());
+  expect(dire).toHaveBeenCalledWith({ texte: "photos/2024/b.jpg n'a pas été copié : il n'a pas pu être lu.", variante: "erreur", fermable: true });
+  await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/photos copie"]));
+  expect(document.activeElement).toBe(ligne(vue, "src/photos copie"));
+  expect(disque.importes).toContain("dossier:src/photos copie:0");
+  dire.mockClear();
+  const sansContenu = { kind: "file", getAsFile: () => new File([], "photos"), webkitGetAsEntry: () => ({ isDirectory: true, name: "photos", createReader: () => ({ readEntries: (_, ko) => ko(new Error("refus")) }) }) };
+  collerSysteme(vue, "src", [sansContenu]);
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledWith({ texte: "photos/ n'a pas été copié : le navigateur n'a pas donné son contenu.", variante: "erreur", fermable: true }));
+  dire.mockClear();
+  collerSysteme(vue, "src", [elFichier("ok.txt"), elDossier("p", [entreeIllisible("x.jpg"), entreeIllisible("y.jpg")])]);
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledWith({ texte: "2 éléments n'ont pas été copiés.", detail: "p/x.jpg : il n'a pas pu être lu\np/y.jpg : il n'a pas pu être lu", variante: "erreur", fermable: true }));
+  expect(disque.importes).toContain("fichier:src/ok.txt:1");
+});
+
+test("REQ180_AC5_AC12_collage_entierement_refuse_ne_change_ni_la_selection_ni_le_focus", async () => {
+  const disque = { "": [d("src"), f("a.txt")], src: [] };
+  disque.importer = () => ({ status: 403, corps: { cause: "interdit", message: "Ce dossier est protégé." } });
+  const { vue, dire } = await monter(disque);
+  ligne(vue, "a.txt").click();
+  ligne(vue, "src").focus();
+  collerSysteme(vue, "src", [elFichier("n.txt")]);
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledWith({ texte: "n.txt n'a pas été copié : ce dossier est protégé.", variante: "erreur", fermable: true }));
+  await attendre();
+  expect(choisies(vue)).toEqual(["a.txt"]);
+  expect(document.activeElement).toBe(ligne(vue, "src"));
+  expect(bouton(vue, "Coller").disabled).toBe(true);
+  expect(commande(menuSur(vue, "src"), "Coller").getAttribute("aria-disabled")).toBe("true");
+});
+
+test("REQ180_AC6_coupure_pendant_le_collage_message_et_rien_d_autre_n_est_cree", async () => {
+  const disque = { "": [d("src")], src: [] };
+  const { vue, dire } = await monter(disque);
+  ligne(vue, "src").focus();
+  disque.attente = (u) => {
+    if (u.includes("nom=b.txt")) disque.coupure = true;
+  };
+  collerSysteme(vue, "src", [elFichier("a.txt"), elFichier("b.txt"), elFichier("c.txt")]);
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledWith({ texte: "Connexion perdue. Réessayez au retour.", variante: "alerte", fermable: true }));
+  expect(disque.importes).toEqual(["fichier:src/a.txt:1"]); // ce qui est copié reste, rien d'autre n'est créé
+});
+
+test("REQ180_AC9_un_collage_reussi_retire_le_message_precedent", async () => {
+  const disque = { "": [d("src")], src: [] };
+  const retirer = vi.fn();
+  const { vue, dire } = await monter(disque, { dire: vi.fn(() => ({ remove: retirer })) });
+  ligne(vue, "src").focus();
+  collerSysteme(vue, "src", [elDossier("p", [entreeIllisible("x.jpg")])]);
+  await vi.waitFor(() => expect(dire).toHaveBeenCalledTimes(1));
+  await attendre();
+  collerSysteme(vue, "src", [elFichier("ok.txt")]);
+  await vi.waitFor(() => expect(retirer).toHaveBeenCalled());
+  expect(dire).toHaveBeenCalledTimes(1);
+});
+
+test("REQ180_AC10_hors_de_l_arbre_rien_n_est_cree_et_un_second_collage_attend_la_fin_du_premier", async () => {
+  const disque = { "": [d("src")], src: [] };
+  const { vue } = await monter(disque);
+  const champ = document.createElement("input");
+  document.body.append(champ);
+  const e = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(e, "clipboardData", { value: { files: [new File(["x"], "a.txt")], items: [elFichier("a.txt")] } });
+  champ.dispatchEvent(e);
+  await attendre();
+  expect(e.defaultPrevented).toBe(false);
+  expect(disque.importes).toBeUndefined();
+  let liberer;
+  disque.attente = (u) => (u.includes("/importer") ? new Promise((r) => (liberer = r)) : undefined);
+  ligne(vue, "src").focus();
+  collerSysteme(vue, "src", [elFichier("a.txt")]);
+  await vi.waitFor(() => expect(liberer).toBeDefined());
+  collerSysteme(vue, "src", [elFichier("b.txt")]);
+  await attendre();
+  disque.attente = undefined;
+  liberer();
+  await vi.waitFor(() => expect(choisies(vue)).toEqual(["src/a.txt"]));
+  expect(disque.importes).toEqual(["fichier:src/a.txt:1"]);
 });
