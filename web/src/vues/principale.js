@@ -4,6 +4,7 @@ import { cadre } from "../ui/cadre.js";
 import { borner, limites } from "../ui/poignee.js";
 import { ecrire, lire } from "../stockage.js";
 import { afficher, changerTexte, retirer } from "../ui/toasts.js";
+import { envoyerEnAttente, gravite, relire as relireJournalPage, suivre as suivreJournal } from "../journal.js";
 import { onglets } from "../ui/onglets.js";
 import { reprendreDernierChoix } from "../opencode.js";
 import { vueConnaissance } from "./connaissance.js";
@@ -240,6 +241,12 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const majEtat = () => racine?.definirEtat(barre);
   // Version lancée et mise à jour (REQ-092, REQ-093) : si le focus était sur « Mettre à jour » et qu'il disparaît, il passe sur le message.
   barre.surMaj = () => suiviVersion?.installer();
+  // Bouton « Logs » (REQ-187) : l'icône suit la ligne la plus grave, sans annonce ; une ligne de la page change l'icône aussitôt.
+  barre.logs = gravite();
+  const arreterJournal = suivreJournal(() => {
+    barre.logs = gravite();
+    majEtat();
+  });
   const suiviVersion = suivreVersion({
     surChangement: ({ version, maj }) => {
       const surBouton = Boolean(racine && document.activeElement?.closest(".ya-status-maj button"));
@@ -564,6 +571,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
         retirer("reessayer");
         // Une lecture de l'état git perdue pendant la coupure : personne d'autre ne la relance.
         if (retour) git.rafraichir();
+        if (retour) envoyerEnAttente();
       }
     },
   });
@@ -580,17 +588,18 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     numeroJournal = r.numero;
   };
   if (avec.agents) lireJournal();
+  relireJournalPage().catch(() => {});
   function annoncer({ agent, sorte, evenement, phrase }) {
     const court = `${evenement}.`; // le serveur a déjà coupé l'évènement à 80 caractères (`evenement_court`)
-    if (sorte === "debut") afficher({ texte: `${agent} démarre : ${court}`, variante: "info" });
-    else if (sorte === "fin") afficher({ texte: `${agent} a terminé : ${court}`, variante: "succes" });
-    else if (sorte === "erreur") afficher({ texte: `${agent} s'est arrêté avant la fin : ${court}`, variante: "erreur" });
-    else if (sorte === "refus") afficher({ texte: `${agent} n'a pas pu démarrer : ${phrase}`, variante: "erreur" });
+    if (sorte === "debut") afficher({ texte: `${agent} démarre : ${court}`, variante: "info", journal: false });
+    else if (sorte === "fin") afficher({ texte: `${agent} a terminé : ${court}`, variante: "succes", journal: false });
+    else if (sorte === "erreur") afficher({ texte: `${agent} s'est arrêté avant la fin : ${court}`, variante: "erreur", journal: false });
+    else if (sorte === "refus") afficher({ texte: `${agent} n'a pas pu démarrer : ${phrase}`, variante: "erreur", journal: false });
   }
   async function relire() {
     if (etat !== "coupe") {
       try {
-        await Promise.all([git.relire(), fichiers.corps.hidden || panneauReplie ? null : fichiers.relire(), avec.agents ? lireJournal() : null]);
+        await Promise.all([git.relire(), fichiers.corps.hidden || panneauReplie ? null : fichiers.relire(), avec.agents ? lireJournal() : null, relireJournalPage(), envoyerEnAttente()]);
       } catch {
         // Une réponse illisible ne doit pas arrêter la boucle : la suivante réessaie.
       }
@@ -600,6 +609,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
 
   racine.detruire = () => {
     clearTimeout(minuteurRelecture);
+    arreterJournal();
     suiviVersion.detruire();
     desabonnerWorktree();
     arreter();

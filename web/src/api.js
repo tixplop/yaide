@@ -260,6 +260,30 @@ export async function declenchements(depuis) {
   }
 }
 
+/** Journal des logs (REQ-186) : `{ purge, lignes: [{ numero, heure, severite, message, detail? }] }` après le numéro `apres`, ou null. */
+export async function lireJournal(apres) {
+  const r = await appeler(`/api/journal?apres=${apres}`);
+  if (!r?.ok) return null;
+  try {
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
+/** Envoie des lignes de la page `[{ heure, severite, message, detail? }]` ; vrai si le serveur les a prises. */
+export async function ecrireJournal(lignes) {
+  const r = await appeler("/api/journal", { method: "POST", body: JSON.stringify({ lignes }) });
+  return Boolean(r?.ok);
+}
+
+/** Vide le journal : "ok", "coupure" ou "erreur". */
+export async function purgerJournal() {
+  const r = await appeler("/api/journal", { method: "DELETE" });
+  if (!r) return "coupure";
+  return r.ok ? "ok" : "erreur";
+}
+
 /** `{ providers: [{ id, nom, adresse, cle, cleObligatoire }], profils, erreur }`, `{ cause, message }` ou `{ coupure: true }`. */
 export async function reglagesAgent() {
   const r = await appeler("/api/agent/reglages");

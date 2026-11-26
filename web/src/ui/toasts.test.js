@@ -168,3 +168,29 @@ test("REQ172_AC4_remove_de_l_element_rendu_retire_le_toast_et_le_meme_message_re
   for (const t of ["B", "C", "D"]) afficher({ texte: t, variante: "erreur" });
   expect(textes()).toEqual(["A", "B", "C", "D"]);
 });
+
+// ---- T-446 : chaque message écrit une ligne du journal (REQ-186) ----
+
+test("REQ186_AC1_un_toast_d_erreur_et_de_reussite_ecrivent_une_ligne_et_le_meme_message_deux_fois_un_toast_deux_lignes", async () => {
+  const { lignes, reinitialiser } = await import("../journal.js");
+  reinitialiser();
+  afficher({ texte: "Lien refusé", variante: "erreur", detail: "sortie de git" });
+  afficher({ texte: "src/main.rs est indexé.", variante: "succes" });
+  afficher({ texte: "Lien refusé", variante: "erreur" });
+  expect(textes()).toEqual(["Lien refusé", "src/main.rs est indexé."]);
+  expect(lignes().map((l) => [l.severite, l.message, l.detail])).toEqual([
+    ["erreur", "Lien refusé", "sortie de git"],
+    ["information", "src/main.rs est indexé.", undefined],
+    ["erreur", "Lien refusé", undefined],
+  ]);
+  reinitialiser();
+});
+
+test("REQ186_AC2_le_toast_de_coupure_est_un_avertissement_et_son_allongement_a_Ctrl_S_n_ecrit_rien", async () => {
+  const { lignes, reinitialiser } = await import("../journal.js");
+  reinitialiser();
+  afficher({ texte: "Connexion perdue. Modifications gardées.", variante: "alerte", fort: true, cause: "connexion" });
+  changerTexte("connexion", "Connexion perdue. Modifications gardées. notes.md sera sauvegardé au retour.");
+  expect(lignes().map((l) => [l.severite, l.message])).toEqual([["avertissement", "Connexion perdue. Modifications gardées."]]);
+  reinitialiser();
+});

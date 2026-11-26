@@ -578,7 +578,7 @@ test("REQ070_AC8_tout_desactive_fichiers_seul", () =>
     expect(vue.querySelector(".cadre-rail-droit")).toBeNull();
     expect(vue.querySelector(".cadre-shells")).toBeNull();
     expect(agentCol(vue)).toBeNull();
-    expect(appels.filter((a) => !a.includes("/api/fichiers") && !a.includes("/api/session"))).toEqual(["GET /api/version", "GET /api/opencode"]); // aucune fonction ne retire « opencode » ni la version (REQ-092)
+    expect(appels.filter((a) => !a.includes("/api/fichiers") && !a.includes("/api/session"))).toEqual(["GET /api/version", "GET /api/opencode", "GET /api/journal", "GET /api/journal", "GET /api/journal"]); // aucune fonction ne retire « opencode », la version (REQ-092) ni le journal (REQ-186)
     // Le panneau affiche Fichiers.
     expect(vue.querySelector("aside h2").textContent).toBe("Fichiers");
   }));

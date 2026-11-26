@@ -2144,3 +2144,64 @@ test("REQ184_AC7_environnement_supprime_bandeau_et_aucun_onglet", async () => {
   expect(b.getAttribute("aria-busy")).not.toBe("true");
   expect(document.activeElement).toBe(b);
 });
+
+// ---- T-446 : journal dans la page (REQ-186, REQ-187) ----
+
+function simulerJournalPage() {
+  const s = { coupe: false, lignes: [], purge: 1, appels: [] };
+  vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+    const u = String(url);
+    if (u === "/api/session") {
+      if (s.coupe) throw new Error("coupé");
+      return { status: 204 };
+    }
+    if (u.startsWith("/api/journal")) {
+      if (s.coupe) throw new Error("coupé");
+      s.appels.push(`${opts.method ?? "GET"} ${u}`);
+      if (opts.method === "POST") {
+        for (const l of JSON.parse(opts.body).lignes) s.lignes.push({ numero: s.lignes.length + 1, ...l });
+        return jsonOk({});
+      }
+      return jsonOk({ purge: s.purge, lignes: s.lignes });
+    }
+    if (u.startsWith("/api/git/etat")) return jsonOk({ branche: "main", detachee: false, branches: ["main"], changements: [] });
+    return { ok: false, status: 500, text: async () => "", json: async () => ({ message: "" }) };
+  }));
+  return s;
+}
+const iconeLogs = (vue) => vue.querySelector("footer button.ya-logs svg").getAttribute("data-icone");
+
+test("REQ187_AC1_l_icone_Logs_suit_une_ligne_de_la_page_aussitot_et_une_ligne_du_serveur_a_la_relecture", () =>
+  avecHorloge(async () => {
+    const s = simulerJournalPage();
+    const { vue } = monter({ reglages: { fonctions: { agents: false } } });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(iconeLogs(vue)).toBe("info");
+    expect(vue.querySelector("footer button.ya-logs").getAttribute("aria-label")).toBe("Logs : rien à signaler");
+    afficher({ texte: "Avertissement de la page", variante: "alerte" });
+    expect(iconeLogs(vue)).toBe("triangle-alert-plein");
+    s.lignes.push({ numero: 50, heure: 1, severite: "Erreur", message: "du serveur" });
+    expect(iconeLogs(vue)).toBe("triangle-alert-plein");
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(iconeLogs(vue)).toBe("circle-alert-plein");
+    expect(s.appels.some((a) => a.startsWith("GET /api/journal?apres="))).toBe(true);
+  }));
+
+test("REQ186_AC2_la_ligne_de_coupure_part_une_fois_au_retour_avec_l_heure_de_la_coupure", () =>
+  avecHorloge(async () => {
+    vi.setSystemTime(new Date("2026-01-01T10:00:00Z"));
+    const s = simulerJournalPage();
+    const { vue } = monter();
+    await vi.advanceTimersByTimeAsync(10);
+    s.coupe = true;
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(iconeLogs(vue)).toBe("triangle-alert-plein");
+    const heure = Date.parse("2026-01-01T10:00:00Z");
+    s.coupe = false;
+    await vi.advanceTimersByTimeAsync(7000);
+    const envoyees = s.lignes.filter((l) => l.message === "Connexion perdue. Modifications gardées.");
+    expect(envoyees).toHaveLength(1);
+    expect(envoyees[0].severite).toBe("Avertissement");
+    expect(envoyees[0].heure).toBeGreaterThanOrEqual(heure);
+    expect(envoyees[0].heure).toBeLessThan(heure + 3000);
+  }));

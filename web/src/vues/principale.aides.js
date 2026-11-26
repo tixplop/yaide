@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, vi } from "vitest";
+import { reinitialiser as reinitialiserJournal } from "../journal.js";
 import { ecrire, lire } from "../stockage.js";
 import { vuePrincipale } from "./principale.js";
 
@@ -31,6 +32,7 @@ afterEach(() => {
   pauses.clear();
   for (const v of vues) v.detruire();
   vues = [];
+  reinitialiserJournal();
   vi.unstubAllGlobals();
   vi.mocked(lire).mockImplementation(async () => undefined);
   vi.mocked(ecrire).mockClear();

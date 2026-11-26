@@ -1,4 +1,7 @@
+import { journaliser } from "../journal.js";
 import { message } from "./message.js";
+
+const SEVERITE = { info: "information", succes: "information", alerte: "avertissement", erreur: "erreur" };
 
 // Zone des toasts (C-010) et son API. Une seule zone à la fois : celle que le cadre a créée en dernier.
 const MAX = 4;
@@ -40,9 +43,11 @@ function enlever(t, forcerFocus) {
   else repli();
 }
 
+// `journal: false` : la ligne est écrite par le serveur (toasts des agents déclenchés, REQ-173).
 // `permanent` : un toast info ou succes qui ne part pas au bout de 6 s ; son appelant le retire (`retirer`) ou sa croix.
-export function afficher({ texte, variante = "info", detail, fort = false, cause, permanent = false } = {}) {
+export function afficher({ texte, variante = "info", detail, fort = false, cause, permanent = false, journal = true } = {}) {
   if (!zone) throw new Error("toasts : zone absente, créez le cadre d'abord");
+  if (journal) journaliser({ severite: SEVERITE[fort ? "alerte" : variante] ?? "information", message: texte, detail });
   const existant = liste.find((t) => t.texte === texte);
   if (existant) {
     armer(existant);

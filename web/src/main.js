@@ -4,6 +4,7 @@ import { charger } from "./reglages-interface.js";
 import { charger as chargerCouleurs } from "./couleurs-markdown.js";
 import { vuePrincipale } from "./vues/principale.js";
 import { copierEnTexteSimple } from "./ui/copie.js";
+import { suivreErreursPage } from "./journal.js";
 
 export function titre() {
   return "yaide";
@@ -33,5 +34,6 @@ async function demarrer(app) {
 const app = document.getElementById("app");
 if (app) {
   copierEnTexteSimple();
+  suivreErreursPage();
   demarrer(app);
 }
