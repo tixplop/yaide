@@ -96,8 +96,10 @@ cp "$f" "$out"
     const m1 = await mise_en_page();
     expect(m1.n).toBeGreaterThanOrEqual(3);
 
-    // Tab depuis le dernier bouton du rail droit → « Mettre à jour », contour visible (AC-092-6).
+    // Tab depuis le dernier bouton du rail droit → « Logs » (AC-187-4) puis « Mettre à jour », contour visible (AC-092-6).
     await page.locator(".cadre-rail-droit button").last().focus();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: /^Logs/ })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(bouton).toBeFocused();
     expect(await bouton.evaluate((e) => getComputedStyle(e).outlineStyle !== "none" && getComputedStyle(e).outlineWidth !== "0px")).toBe(true);
