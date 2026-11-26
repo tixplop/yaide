@@ -8,7 +8,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/cli.rs — analyse des arguments, aide, saisie du mot de passe — analyser, valider_saisies
 - src/config.rs — dossier de configuration, mot de passe haché (argon2) ; `src/environnements.rs` : `environnements.json` de l'utilisateur, droits 600 (REQ-182) — dossier_config, definir_mot_de_passe, verifier_mot_de_passe
 - src/auth.rs — sessions (un cookie par port d'écoute), blocage après échecs ; `src/tls.rs` : certificat auto-signé (rcgen) — creer_session, session_valide, bloque
-- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180, route presse-papiers-windows REQ-181, routes environnements REQ-182, ouverture avec environnement REQ-183, relais opencode par environnement REQ-184, routes `/api/journal` et ligne « Erreur » pour toute réponse 5xx REQ-186, journal passé aux modules REQ-186)
+- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180, route presse-papiers-windows REQ-181, routes environnements REQ-182, ouverture avec environnement REQ-183, relais opencode par environnement REQ-184, routes `/api/journal` et ligne « Erreur » pour toute réponse 5xx REQ-186, journal passé aux modules REQ-186, écouteur du serveur MCP sur 127.0.0.1 et route `/api/serveur-mcp` REQ-189)
 - src/windows.rs — presse-papiers de Windows rempli par powershell.exe dans WSL (REQ-181) — disponible, copier
 - src/fichiers.rs — arborescence et opérations sur les fichiers du projet  — lister, lire, ecrire, importer (REQ-180)
 - src/depot.rs — dépôt git, `.gitignore`, worktrees — est_un_depot, worktrees
@@ -28,9 +28,9 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/agent/agents.rs — agents personnalisés (AGENTS.md, PERSONA.md) et leurs déclencheurs (clé `declencheurs`, validée à l'enregistrement) — lister, lire, enregistrer
 - src/agent/declencheurs.rs — surveillance des déclencheurs par le serveur (« Fichier » et « Dossier », REQ-165 ; « Commit » par les journaux de branches, REQ-166 ; « Commande shell », REQ-167 ; « Configuration de Yaide » par `get_config`, REQ-168 ; « Planification » : expression cron lue par `lire_cron`, heure donnée à `verifier`, REQ-174), soumission aux agents à l'écoute, refus gardé en conversation ; journal en mémoire des débuts, fins et refus des tours déclenchés, lu par `GET /api/agent/declenchements` (REQ-173) — verifier, passer, soumettre, Journal (lignes du journal des logs des tours déclenchés et déclencheur en échec REQ-186)
 - src/agent/conversation.rs — boucle de l'agent, conversations, sous-agents, étape de requête en cours en mémoire (REQ-085), tours déclenchés marqués à la soumission et inscrits au journal (REQ-173) — envoyer, envoyer_avec, arreter (lignes du journal des logs : tours déclenchés, erreur du provider, conversation non enregistrée REQ-186)
-- src/agent/outils.rs — outils de l'agent (fichiers, shell, connaissance, agents) — definitions, executer
+- src/agent/outils.rs — outils de l'agent (fichiers, shell, connaissance, agents) — definitions, integres (liste unique des outils d'un tour, aussi offerte par le serveur MCP REQ-189), executer
 - src/agent/outils_config.rs — outils de l'agent qui modifient la configuration de Yaide (`lire_config` : la vue de `get_config`, REQ-168) — definitions, lancer, lire_interface
-- src/agent/mcp.rs — serveurs MCP (rmcp, stdio), `mcp.json` — preparer, appeler, lister_serveurs (serveur qui ne démarre pas au journal REQ-186)
+- src/agent/mcp.rs — serveurs MCP (rmcp, stdio), `mcp.json` — preparer, appeler, lister_serveurs (serveur qui ne démarre pas au journal REQ-186) ; serveur_mcp.rs : serveur MCP de Yaide, outils intégrés en Streamable HTTP, contrôle de l'`Origin` (REQ-189) — routeur
 - src/agent/web.rs — recherche web (DuckDuckGo) et récupération de pages — chercher, recuperer, html_en_texte
 - src/agent/jdiag.rs — lecture et écriture des whiteboards par l'agent (dont `align`/`valign`, REQ-150 ; clé `model`, REQ-151) — relire, en_texte, modele_seul
 - src/agent/jdiag_controle.rs — avertissements de mise en page de `whiteboard_write` (boîtes, liens, textes, zone de texte des symboles ; REQ-148, REQ-149) — avertissements, bloc
@@ -91,7 +91,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/vues/connexion.js — écran de connexion, dialogue de fin de session après Déconnexion ou arrêt (REQ-162) — vueConnexion
 
 ## Tests
-- tests/*.rs — intégration Rust, un fichier par domaine (socle, environnements, auth, fichiers, git, shells, agent, declencheurs, connaissance, opencode, mise_a_jour, journal…) ; tests/faux-mcp.mjs, faux-opencode.mjs : faux serveurs MCP et opencode
+- tests/*.rs — intégration Rust, un fichier par domaine (socle, environnements, auth, fichiers, git, shells, agent, declencheurs, connaissance, opencode, mise_a_jour, journal, serveur_mcp…) ; tests/faux-mcp.mjs, faux-opencode.mjs : faux serveurs MCP et opencode
 - web/src/**/*.test.js — Vitest, composants et vues
 - e2e/*.spec.js — Playwright, un fichier par parcours ; e2e/aides.js, faux-provider.js, relais.js, capturer-opencode.js — aides communes
 
@@ -138,12 +138,12 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-126 soumettre des fichiers à un agent → web/src/vues/soumission-agent.js
 - REQ-118 formater le document (« Exporter en PDF » la suit, REQ-177) → web/src/formatage.js, vues/principale.js, vues/ouverture.js
 - REQ-122, REQ-123 mermaid → web/src/mermaid.js, ui/diagramme.js, ui/apercu.js
-- REQ-177 export en PDF (socle : bibliothèque, polices, fichier texte, markdown rendu ; commande « Exporter en PDF » de Ctrl+P, téléchargement, toasts) → web/src/pdf.js, export-pdf.js, export-pdf-page.js, vues/ouverture.js, vues/principale.js (`pourExport` de vues/editeur.js), src/serveur.rs (`/pdf.js`, polices `.ttf`)
 - REQ-152 diagrammes mermaid dessinés en mode hybride → ui/hybride.js, ui/diagramme.js, ui/zone-code.js
+- REQ-177 export en PDF (socle : bibliothèque, polices, fichier texte, markdown rendu ; commande « Exporter en PDF » de Ctrl+P, téléchargement, toasts) → web/src/pdf.js, export-pdf.js, export-pdf-page.js, vues/ouverture.js, vues/principale.js (`pourExport` de vues/editeur.js), src/serveur.rs (`/pdf.js`, polices `.ttf`)
 - REQ-153 tableau rendu modifiable, aides au survol → ui/hybride.js, ui/bouton.js, ui/zone-code.js, vues/editeur.js, ui/icones.js, ui/composants.css
+- REQ-155 copie au format Klaxoon (menu de la surface) → web/src/klaxoon.js, ui/tableau.js, ui/menu.js
 - REQ-156 point et barre (`dot`, `bar`) : format et outils de l'agent → web/src/jdiag.js, src/agent/jdiag.rs, jdiag_controle.rs, jdiag_trace.rs, outils.rs ; dessin, anneau du choix et connecteurs : web/src/ui/tableau-calculs.js, tableau-dessin.js, tableau.js, composants.css ; dessins du dialogue Symboles : web/src/ui/icones.js, liste.js
 - REQ-151 modèle d'un whiteboard pour les agents (`model` obligatoire dans `whiteboard_write`, `model_only` dans `whiteboard_read`) → src/agent/jdiag.rs (en_texte, modele_seul), outils.rs, web/src/jdiag.js
-- REQ-155 copie au format Klaxoon (menu de la surface) → web/src/klaxoon.js, ui/tableau.js, ui/menu.js
 - REQ-154 coller un diagramme mermaid (organigramme : lecture et placement ; autres types : traduction du dessin ; collage, refus) → web/src/mermaid-jdiag.js, web/src/mermaid-dessin.js, ui/tableau.js, ui/message.js
 - REQ-127 à REQ-150 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, jdiag_trace.rs, jdiag_controle.rs, outils.rs
 - REQ-162 arrêter Yaide : route `/api/arret` → src/serveur.rs (`arreter_yaide`) ; dialogue de fin de session (partie design system : `dialogue` position `milieu`, icône `power`, token `--largeur-actions-titre`) → web/src/ui/dialogue.js, icones.js, tokens.css, composants.css ; bouton « Arrêter Yaide » et dialogue de fin de session (option `fin` de l'écran de connexion, passée par `main.js`) → web/src/vues/principale.js, vues/connexion.js, main.js, api.js (`arret`)

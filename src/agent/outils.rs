@@ -272,6 +272,14 @@ pub fn definitions() -> Vec<DefOutil> {
     outils
 }
 
+/// Les outils intégrés d'un tour : ceux de l'agent, puis ceux de la base de connaissance
+/// s'il y a une collection. Source unique du tour d'une conversation et du serveur MCP (REQ-189).
+pub fn integres(projet: &Path) -> Vec<DefOutil> {
+    let mut outils = definitions();
+    outils.extend(definition_connaissance(projet));
+    outils
+}
+
 /// Les outils `knowledge_list` et `knowledge_search` (REQ-107), relus à chaque tour : offerts
 /// seulement si la configuration de la base se lit et qu'elle a au moins une collection.
 pub fn definition_connaissance(projet: &Path) -> Vec<DefOutil> {

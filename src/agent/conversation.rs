@@ -776,6 +776,17 @@ Always give file paths relative to the project root.",
         self.sauver(&c)
     }
 
+    /// Le contexte des outils de l'instance, pour ses conversations et son serveur MCP.
+    pub fn contexte(&self) -> Contexte {
+        Contexte {
+            projet: self.projet.clone(),
+            client: self.client.clone(),
+            limites: self.limites.clone(),
+            agents: self.agents.clone(),
+            reglages: self.reglages.clone(),
+        }
+    }
+
     /// Arrêt de Yaide : arrête les serveurs MCP et ce qu'ils ont lancé.
     pub async fn arreter_mcp(&self) {
         self.mcp.arreter().await;
@@ -784,11 +795,9 @@ Always give file paths relative to the project root.",
     async fn tour(self: Arc<Self>, conv: Arc<Mutex<Conversation>>) {
         // Une fois par message de l'utilisateur : les problèmes des serveurs MCP, puis les outils.
         let (defs, problemes) = self.mcp.preparer(&self.limites).await;
-        let mut outils_tour = outils::definitions();
+        let mut outils_tour = outils::integres(&self.projet);
+        let offerts = outils_tour.iter().any(|d| d.nom == "knowledge_search");
         outils_tour.extend(defs);
-        let connaissance = outils::definition_connaissance(&self.projet);
-        let offerts = !connaissance.is_empty();
-        outils_tour.extend(connaissance);
         // REQ-108 : les collections nommées par « # » dans les messages de l'utilisateur.
         let nommees = if offerts {
             let g = verrou(&conv);
@@ -981,13 +990,7 @@ Always give file paths relative to the project root.",
             contenu: format!("The subagent stopped: {m}"),
             echec: true,
         };
-        let ctx = Contexte {
-            projet: self.projet.clone(),
-            client: self.client.clone(),
-            limites: self.limites.clone(),
-            agents: self.agents.clone(),
-            reglages: self.reglages.clone(),
-        };
+        let ctx = self.contexte();
         let instructions = self.instructions();
         let definitions: Vec<provider::DefOutil> = definitions
             .iter()
@@ -1118,13 +1121,7 @@ Always give file paths relative to the project root.",
         definitions: &[provider::DefOutil],
         note: &str,
     ) -> bool {
-        let ctx = Contexte {
-            projet: self.projet.clone(),
-            client: self.client.clone(),
-            limites: self.limites.clone(),
-            agents: self.agents.clone(),
-            reglages: self.reglages.clone(),
-        };
+        let ctx = self.contexte();
         loop {
             let (profil_trouve, instructions, historique) = {
                 let c = verrou(conv);

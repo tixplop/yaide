@@ -31,6 +31,8 @@ struct Etat {
     projet: String,
     /// Port d'écoute réel : nomme le cookie de session.
     port: u16,
+    /// Port du serveur MCP (REQ-189), absent si aucun port n'est libre.
+    mcp: Option<u16>,
     limiteur: tokio::sync::Mutex<auth::Limiteur>,
     projet_dir: PathBuf,
     instance: String,
@@ -121,7 +123,8 @@ async fn garde(State(etat): State<Partage>, req: Request, next: Next) -> Respons
     // Un GET vers opencode qui vient d'une autre origine est refusé aussi (sans `Origin` : accepté).
     if lecture
         && (req.uri().path().starts_with("/api/opencode")
-            || req.uri().path().starts_with("/api/environnements"))
+            || req.uri().path().starts_with("/api/environnements")
+            || req.uri().path() == "/api/serveur-mcp")
         && req.headers().contains_key(header::ORIGIN)
         && !origine_ok(&req)
     {
@@ -1404,6 +1407,44 @@ pub fn ecouter(port: u16) -> Result<TcpListener, String> {
     ))
 }
 
+/// Les ports du serveur MCP de Yaide : de `port + 1000` aux 10 suivants (REQ-189).
+pub fn ports_mcp(port: u16) -> (u16, u16) {
+    (port.saturating_add(1000), port.saturating_add(1010))
+}
+
+/// Le texte donné quand aucun port du serveur MCP n'est libre.
+pub fn mcp_indisponible(port: u16) -> String {
+    let (de, a) = ports_mcp(port);
+    format!("Serveur MCP indisponible : les ports {de} à {a} sont occupés.")
+}
+
+/// Réserve le premier port libre du serveur MCP, sur `127.0.0.1` seulement.
+pub fn ecouter_mcp(port: u16) -> Option<TcpListener> {
+    let (de, a) = ports_mcp(port);
+    (de..=a).find_map(|p| {
+        let l = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], p))).ok()?;
+        l.set_nonblocking(true).ok()?;
+        Some(l)
+    })
+}
+
+/// Route du panneau : l'adresse du serveur MCP, ou les ports qui manquent.
+async fn serveur_mcp_adresse(State(etat): State<Partage>) -> Response {
+    match etat.mcp {
+        Some(m) => json_rep(
+            StatusCode::OK,
+            serde_json::json!({ "adresse": format!("http://127.0.0.1:{m}/mcp") }),
+        ),
+        None => {
+            let (de, a) = ports_mcp(etat.port);
+            json_rep(
+                StatusCode::OK,
+                serde_json::json!({ "indisponible": { "de": de, "a": a } }),
+            )
+        }
+    }
+}
+
 fn json_rep(code: StatusCode, v: serde_json::Value) -> Response {
     (
         code,
@@ -2246,6 +2287,7 @@ async fn agent_arreter(State(etat): State<Partage>, CheminUrl(id): CheminUrl<Str
 
 pub async fn servir(
     listener: TcpListener,
+    mcp: Option<TcpListener>,
     cert: &Path,
     cle: &Path,
     config: &Path,
@@ -2293,6 +2335,10 @@ pub async fn servir(
             .map_err(|e| e.to_string())?,
         reglages,
         agent,
+        mcp: mcp
+            .as_ref()
+            .and_then(|l| l.local_addr().ok())
+            .map(|a| a.port()),
         version: version::Version::new(),
         jeton_apercu: crate::apercu::nouveau_jeton(),
         ajouts: Default::default(),
@@ -2308,6 +2354,24 @@ pub async fn servir(
             env!("CARGO_PKG_VERSION")
         ),
     );
+    let serveur_mcp = match mcp {
+        Some(l) => {
+            let routeur = crate::agent::serveur_mcp::routeur(
+                etat.agent.clone(),
+                etat.mcp.unwrap_or_default(),
+            );
+            let l = tokio::net::TcpListener::from_std(l)
+                .map_err(|e| format!("serveur MCP illisible : {e}"))?;
+            Some(tokio::spawn(async move {
+                let _ = axum::serve(l, routeur).await;
+            }))
+        }
+        None => {
+            etat.journal
+                .ecrire(Severite::Erreur, &mcp_indisponible(port));
+            None
+        }
+    };
     let verification = etat.clone();
     let verification = tokio::spawn(async move {
         let client = crate::agent::provider::client();
@@ -2399,6 +2463,7 @@ pub async fn servir(
                 .post(journal_ecrire)
                 .delete(journal_purger),
         )
+        .route("/api/serveur-mcp", get(serveur_mcp_adresse))
         .route("/api/opencode", get(opencode_disponible))
         .route("/api/opencode/api/{*chemin}", any(relais_opencode))
         .route(
@@ -2483,6 +2548,9 @@ pub async fn servir(
         r = serveur => r.map_err(|e| format!("le serveur s'est arrêté : {e}")),
         _ = async { tokio::select! { _ = arret() => {}, _ = etat_arret.arret_demande.notified() => {} } } => {
             veille.abort();
+            if let Some(m) = serveur_mcp {
+                m.abort();
+            }
             verification.abort();
             surveillance.abort();
             etat_arret.opencode.arreter().await;

@@ -11,4 +11,5 @@ pub mod provider;
 mod provider_flux;
 pub mod reglages;
 pub mod secrets;
+pub mod serveur_mcp;
 pub mod web;

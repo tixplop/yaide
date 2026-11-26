@@ -90,6 +90,7 @@ fn main() {
                 .local_addr()
                 .unwrap_or_else(|e| echec(1, &e.to_string()))
                 .port();
+            let mcp = serveur::ecouter_mcp(pris);
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(2)
                 .enable_all()
@@ -112,7 +113,17 @@ fn main() {
                 sortie,
                 "Depuis une autre machine : https://<adresse de la machine>:{pris}"
             );
-            if let Err(e) = rt.block_on(serveur::servir(listener, &cert, &cle, &config, &projet)) {
+            match mcp.as_ref().and_then(|l| l.local_addr().ok()) {
+                Some(a) => {
+                    let _ = writeln!(sortie, "Serveur MCP : http://127.0.0.1:{}/mcp", a.port());
+                }
+                None => {
+                    let _ = writeln!(sortie, "{}", serveur::mcp_indisponible(pris));
+                }
+            }
+            if let Err(e) = rt.block_on(serveur::servir(
+                listener, mcp, &cert, &cle, &config, &projet,
+            )) {
                 echec(1, &e);
             }
         }
