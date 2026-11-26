@@ -89,7 +89,7 @@ fn declencheurs_de(saisie: &Value) -> Result<Vec<Declencheur>, Vec<(usize, &'sta
 }
 
 /// Relatif, non vide, sans `..` qui sorte du projet ; `.` désigne tout le projet.
-fn chemin_du_projet(c: &str) -> bool {
+pub(crate) fn chemin_du_projet(c: &str) -> bool {
     use std::path::Component;
     if c.is_empty() || c.contains('\0') {
         return false;
@@ -140,7 +140,7 @@ fn base(c: char) -> char {
 }
 
 /// Nom de dossier d'après le nom de l'agent.
-fn nom_de_dossier(nom: &str) -> String {
+pub(crate) fn nom_de_dossier(nom: &str) -> String {
     let mut sortie = String::new();
     for c in nom.to_lowercase().chars().map(base) {
         let c = if c.is_ascii_lowercase() || c.is_ascii_digit() {

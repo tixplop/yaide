@@ -40,6 +40,7 @@ struct Etat {
     reglages: Arc<Reglages>,
     agent: Arc<Gestionnaire>,
     agents: Arc<Agents>,
+    workflows: crate::workflows::Workflows,
     opencode: opencode::Opencode,
     client_opencode: reqwest::Client,
     version: version::Version,
@@ -2170,6 +2171,73 @@ async fn connaissance_chercher(State(etat): State<Partage>, corps: Bytes) -> Res
     }
 }
 
+/// Réponse d'une opération sur un workflow.
+fn workflow_rep(r: Result<serde_json::Value, crate::workflows::Erreur>) -> Response {
+    use crate::workflows::Erreur;
+    match r {
+        Ok(v) => json_rep(StatusCode::OK, v),
+        Err(Erreur::Inconnu) => StatusCode::NOT_FOUND.into_response(),
+        Err(Erreur::Publie) => texte(
+            StatusCode::CONFLICT,
+            "Ce workflow est publié. Dépubliez-le, puis réessayez.",
+        ),
+        Err(Erreur::Refus(m)) => {
+            json_rep(StatusCode::BAD_REQUEST, serde_json::json!({ "message": m }))
+        }
+        Err(Erreur::Messages(m)) => json_rep(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            serde_json::json!({ "messages": m }),
+        ),
+        Err(Erreur::Systeme(m)) => json_rep(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "erreur": m }),
+        ),
+    }
+}
+
+async fn workflows_liste(State(etat): State<Partage>) -> Response {
+    json_rep(StatusCode::OK, etat.workflows.lister())
+}
+
+async fn workflows_lire(
+    State(etat): State<Partage>,
+    axum::extract::Path(fichier): axum::extract::Path<String>,
+) -> Response {
+    workflow_rep(etat.workflows.lire(&fichier))
+}
+
+async fn workflows_creer(State(etat): State<Partage>, corps: Bytes) -> Response {
+    let Some(v) = corps_json(&corps) else {
+        return corps_invalide();
+    };
+    workflow_rep(etat.workflows.creer(v["nom"].as_str().unwrap_or("")))
+}
+
+async fn workflows_enregistrer(
+    State(etat): State<Partage>,
+    axum::extract::Path(fichier): axum::extract::Path<String>,
+    corps: Bytes,
+) -> Response {
+    let Some(v) = corps_json(&corps) else {
+        return corps_invalide();
+    };
+    workflow_rep(etat.workflows.enregistrer(&fichier, &v))
+}
+
+async fn workflows_publier(
+    State(etat): State<Partage>,
+    axum::extract::Path(fichier): axum::extract::Path<String>,
+) -> Response {
+    workflow_rep(etat.workflows.publier(&fichier))
+}
+
+async fn workflows_depublier(
+    State(etat): State<Partage>,
+    axum::extract::Path(fichier): axum::extract::Path<String>,
+) -> Response {
+    workflow_rep(etat.workflows.depublier(&fichier))
+}
+
 async fn agents_liste(State(etat): State<Partage>) -> Response {
     json_rep(
         StatusCode::OK,
@@ -2327,6 +2395,7 @@ pub async fn servir(
         instance: identifiant_instance(),
         shells: Default::default(),
         agents,
+        workflows: crate::workflows::Workflows::new(projet.join(".yaide")),
         opencode: opencode::Opencode::new(journal.clone()),
         client_opencode: reqwest::Client::builder()
             .no_proxy()
@@ -2502,6 +2571,16 @@ pub async fn servir(
         .route(
             "/api/agent/agents",
             get(agents_liste).put(agents_enregistrer),
+        )
+        .route("/api/workflows", get(workflows_liste).post(workflows_creer))
+        .route(
+            "/api/workflows/{fichier}",
+            get(workflows_lire).put(workflows_enregistrer),
+        )
+        .route("/api/workflows/{fichier}/publier", post(workflows_publier))
+        .route(
+            "/api/workflows/{fichier}/depublier",
+            post(workflows_depublier),
         )
         .route("/api/agent/mcp", get(mcp_liste))
         .route("/api/agent/mcp/serveurs", put(mcp_enregistrer))

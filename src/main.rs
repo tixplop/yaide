@@ -20,6 +20,7 @@ mod shells;
 mod tls;
 mod version;
 mod windows;
+mod workflows;
 
 use cli::Commande;
 
