@@ -1091,6 +1091,40 @@ mark.ya-occurrence { background: linear-gradient(var(--occurrence), var(--occurr
 .ya-journal-sev-erreur svg { color: var(--danger); }
 .ya-journal-message pre { margin: 2px 0 0; font: var(--texte-petit) var(--font-mono); color: var(--ink-muted); white-space: pre-wrap; }
 
+/* C-019 : surface de l'éditeur de workflow (REQ-191, REQ-192). */
+.ya-wf { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; position: relative; }
+.ya-wf-surface { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-200); touch-action: none; user-select: none; }
+.ya-wf-surface:focus { outline: none; }
+.ya-wf-surface:focus-visible { outline: 1px solid var(--accent-fg); outline-offset: -1px; }
+.ya-wf-liens { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.ya-wf-lien { fill: none; stroke: var(--ink-muted); stroke-width: 1.5px; }
+.ya-wf-pointe { fill: var(--ink-muted); }
+.ya-wf-trace { fill: none; stroke: var(--accent-fg); stroke-width: 1.5px; stroke-dasharray: 6 4; }
+.ya-wf-monde { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+.ya-wf-vide { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.ya-wf-vide[hidden] { display: none; }
+.ya-wf-vide .indication { align-items: center; }
+.ya-wf-statut { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ya-noeud { position: absolute; box-sizing: border-box; width: 240px; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 12px; background: var(--bg-300); border: calc(1px / var(--zoom, 1)) solid var(--line-strong); border-radius: var(--radius-md); color: var(--ink-muted); cursor: move; }
+.ya-noeud:hover { border-color: var(--ink-muted); }
+.ya-noeud svg { flex: none; }
+.ya-noeud-declencheur { border-radius: 28px 6px 6px 28px; padding-left: 18px; }
+.ya-noeud-texte { display: flex; flex-direction: column; min-width: 0; }
+.ya-noeud-type { font: 11.5px/16px var(--font-sans); color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ya-noeud-titre { font: 500 var(--texte-base) var(--font-sans); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ya-noeud-choisi::after { content: ""; position: absolute; inset: calc(-6px / var(--zoom, 1)); border: calc(2px / var(--zoom, 1)) solid var(--accent-fg); border-radius: calc(var(--radius-md) + 5px / var(--zoom, 1)); pointer-events: none; }
+.ya-noeud-declencheur.ya-noeud-choisi::after { border-radius: 33px 11px 11px 33px; }
+.ya-noeud-cible::before { content: ""; position: absolute; z-index: -1; inset: calc(-6px / var(--zoom, 1)); background: var(--accent-soft); border: calc(1px / var(--zoom, 1)) solid var(--accent-fg); border-radius: calc(var(--radius-md) + 5px / var(--zoom, 1)); }
+.ya-noeud-declencheur.ya-noeud-cible::before { border-radius: 33px 11px 11px 33px; }
+.ya-noeud-refuse, .ya-noeud-refuse .ya-noeud-point::before { cursor: not-allowed; }
+.ya-noeud-point { position: absolute; top: 50%; box-sizing: border-box; width: calc(10px / var(--zoom, 1)); height: calc(10px / var(--zoom, 1)); transform: translate(-50%, -50%); border: calc(1.5px / var(--zoom, 1)) solid var(--ink-muted); border-radius: 50%; background: var(--bg-200); }
+.ya-noeud-point::before { content: ""; position: absolute; inset: calc(-3px / var(--zoom, 1)); cursor: crosshair; }
+.ya-noeud-entree { left: calc(-1px / var(--zoom, 1)); }
+.ya-noeud-sortie { left: calc(100% + 1px / var(--zoom, 1)); }
+.ya-noeud-point:hover, .ya-noeud-cible .ya-noeud-entree { width: calc(12px / var(--zoom, 1)); height: calc(12px / var(--zoom, 1)); background: var(--accent-fg); border-color: var(--accent-fg); }
+.ya-wf-lecture .ya-noeud { cursor: default; }
+.ya-wf-lecture .ya-noeud-point::before { cursor: default; }
+
 .zone-code {
   display: flex;
   height: 100%;
