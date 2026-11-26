@@ -386,6 +386,7 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
   await boutonOpencode(page).click();
   await expect(onglet(page, "opencode 1")).toHaveAttribute("aria-selected", "true");
   await expect(compteur).toHaveText("0 / 200 k · 0 %");
+  await expect.poll(() => sessions().length).toBe(1);
   expect(sessions()[0].model).toBeUndefined();
 
   // AC-075-1 : « high » est gardé dans le projet.
@@ -401,7 +402,8 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
   await expect(modele.locator("option:checked")).toHaveText("Claude Sonnet 4.5 · anthropic");
   await expect(effort.locator("option:checked")).toHaveText("high");
   await expect(champ(page)).toBeFocused();
-  expect(sessions().at(-1).model).toEqual({ id: "claude-sonnet-4-5", providerID: "anthropic", variant: "high" });
+  await expect.poll(() => sessions().length).toBe(2); // la session 2 est créée côté serveur après l'onglet
+  await expect.poll(() => sessions()[1]?.model).toEqual({ id: "claude-sonnet-4-5", providerID: "anthropic", variant: "high" });
 
   // AC-076-1, -3 : « 15 k / 200 k · 8 % » en direct, le focus ne bouge pas.
   await envoyer(page, "[scenario:contexte] Dis bonjour.");
@@ -413,19 +415,19 @@ test("REQ075_REQ076_parcours_40_et_41_reprise_compteur_largeurs", async ({ page 
   // AC-076-6 : GPT-5, la fenêtre change, pas les tokens.
   await modele.selectOption({ label: "GPT-5 · openai" });
   await expect(compteur).toHaveText("15 k / 400 k · 4 %");
-  await expect.poll(() => sessions().at(-1).model?.providerID).toBe("openai"); // choix reçu par le serveur avant le suivant, sinon deux demandes peuvent se croiser
+  await expect.poll(() => sessions().at(-1)?.model?.providerID).toBe("openai"); // choix reçu par le serveur avant le suivant, sinon deux demandes peuvent se croiser
 
   // AC-076-4 (rechargement : même valeur, relue dans l'historique) retiré : web/src/opencode.test.js REQ076_AC4_relu_dans_l_historique et REQ074_AC2_valeur_de_la_session_variant_default_ou_absent.
 
   // AC-076-7 : fenêtre inconnue (openrouter) → pas de compteur, barre à 26 px.
   await modele.selectOption({ label: "Claude Sonnet 4.5 · openrouter" });
   await expect(compteur).toBeHidden();
-  await expect.poll(() => sessions().at(-1).model?.providerID).toBe("openrouter");
+  await expect.poll(() => sessions().at(-1)?.model?.providerID).toBe("openrouter");
   expect((await barre.boundingBox()).height).toBeCloseTo(26, 0);
 
   // Retour sur un modèle à fenêtre (200 k), puis un tour qui dépasse la fenêtre : « 210 k / 200 k · 105 % », même couleur qu'à 8 %.
   await modele.selectOption({ label: "Claude Sonnet 4.5 · anthropic" });
-  await expect.poll(() => sessions().at(-1).model?.providerID).toBe("anthropic");
+  await expect.poll(() => sessions().at(-1)?.model?.providerID).toBe("anthropic");
   await envoyer(page, "[scenario:depasse] Dis bonjour.");
   await expect(compteur).toHaveText("210 k / 200 k · 105 %");
   expect(await compteur.evaluate((e) => getComputedStyle(e).color)).toBe(couleur8);
