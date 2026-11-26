@@ -1052,6 +1052,28 @@ mark.ya-occurrence { background: linear-gradient(var(--occurrence), var(--occurr
 .ya-element-champ { display: flex; flex-direction: column; gap: var(--space-1); }
 .ya-elements-vide { margin: 0; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
 
+/* Console des logs (C-010, REQ-188) */
+.ya-journal { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-000); }
+.ya-journal-barre { flex: none; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); min-height: 34px; padding: var(--space-1) var(--space-2); border-bottom: var(--trait) solid var(--line); }
+.ya-journal-severite { flex: none; width: 128px; }
+.ya-journal-severite .ya-input { flex: 1 1 0; }
+.ya-journal-filtre { flex: 1 1 240px; min-width: 96px; max-width: 320px; }
+.ya-journal-purger { margin-left: auto; }
+.ya-journal-zone { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.ya-journal-zone:focus-visible { outline: var(--trait) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait)); }
+.ya-journal-zone .indication { align-items: center; margin: var(--space-6); }
+.ya-journal-table { table-layout: fixed; width: 100%; border-collapse: separate; border-spacing: 0; }
+.ya-journal-col-heure { width: 76px; }
+.ya-journal-col-sev { width: 140px; }
+.ya-journal-table th { position: sticky; top: 0; height: 22px; padding: 0 var(--space-2); text-align: left; font: 600 var(--texte-petit) var(--font-sans); color: var(--ink-muted); background: var(--bg-000); box-shadow: inset 0 -1px 0 var(--line); }
+.ya-journal-table td { padding: 3px var(--space-2); vertical-align: top; font: 12.5px/16px var(--font-sans); color: var(--ink); border-bottom: var(--trait) solid var(--line); overflow-wrap: anywhere; }
+.ya-journal-table td.ya-journal-heure { font: var(--texte-petit) var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+.ya-journal-sev svg { display: inline-block; vertical-align: -2px; margin-right: 6px; }
+.ya-journal-sev-information svg { color: var(--ink-muted); }
+.ya-journal-sev-avertissement svg { color: var(--warning); }
+.ya-journal-sev-erreur svg { color: var(--danger); }
+.ya-journal-message pre { margin: 2px 0 0; font: var(--texte-petit) var(--font-mono); color: var(--ink-muted); white-space: pre-wrap; }
+
 .zone-code {
   display: flex;
   height: 100%;
