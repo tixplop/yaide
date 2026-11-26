@@ -188,7 +188,7 @@ fn normaliser(profils: &mut [Profil], defaut: Option<&str>) {
 impl Reglages {
     /// Au premier lancement, reprend `config.json` et `secrets` de l'ancien dossier `.yaide/`
     /// du projet. Ne touche jamais aux fichiers de `ancien`.
-    pub fn reprendre_du_projet(&self, ancien: &Path) {
+    pub fn reprendre_du_projet(&self, ancien: &Path, journal: &crate::journal::Journal) {
         let _g = self.verrouiller();
         let noms = ["config.json", "secrets"];
         if noms.iter().any(|n| self.yaide.join(n).exists()) {
@@ -200,6 +200,10 @@ impl Reglages {
             };
             if let Err(e) = config::ecrire_atomique(&self.yaide.join(n), &octets) {
                 eprintln!("{e}");
+                journal.ecrire(
+                    crate::journal::Severite::Erreur,
+                    &format!("La reprise des réglages a échoué : {e}."),
+                );
             }
         }
     }

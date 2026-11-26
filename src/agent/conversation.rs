@@ -8,6 +8,7 @@ use super::outils::{self, Contexte, Limites};
 use super::provider::{self, Appel, Effort, ErreurProvider, Message, Reglage};
 use super::reglages::{self, Profil, Reglages};
 use crate::config;
+use crate::journal::{Journal, Severite};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -151,6 +152,8 @@ pub struct Gestionnaire {
     /// Journal des tours déclenchés (REQ-173) et, par conversation, le tour déclenché
     /// qui n'a pas fini : (agent, évènement).
     journal: Mutex<declencheurs::Journal>,
+    /// Journal des logs de Yaide (REQ-186).
+    logs: Arc<Journal>,
     declenches: Mutex<HashMap<String, (String, String)>>,
 }
 
@@ -367,8 +370,21 @@ impl Gestionnaire {
             registre: Mutex::new(HashMap::new()),
             declencheurs: Mutex::new(declencheurs::Etat::default()),
             journal: Mutex::new(declencheurs::Journal::default()),
+            logs: Arc::default(),
             declenches: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Journal des logs de Yaide (REQ-186).
+    pub fn logs(&self) -> &Journal {
+        &self.logs
+    }
+
+    /// Branche le journal des logs de Yaide (REQ-186), avant le partage du gestionnaire.
+    pub fn avec_journal(mut self, logs: Arc<Journal>) -> Self {
+        self.mcp = self.mcp.avec_journal(logs.clone());
+        self.logs = logs;
+        self
     }
 
     fn fichier(&self, id: &str) -> PathBuf {
@@ -383,6 +399,10 @@ impl Gestionnaire {
     fn sauver_ou_dire(&self, c: &Conversation) {
         if let Err(e) = self.sauver(c) {
             eprintln!("conversation {} : {e}", c.id);
+            self.logs.ecrire(
+                Severite::Erreur,
+                &format!("La conversation {} n'a pas été enregistrée : {e}.", c.id),
+            );
         }
     }
 
@@ -529,6 +549,25 @@ Always give file paths relative to the project root.",
     /// Ajoute une entrée au journal des tours déclenchés.
     pub fn journaliser(&self, agent: &str, sorte: &str, evenement: &str, phrase: Option<&str>) {
         verrou(&self.journal).ajouter(agent, sorte, evenement, phrase);
+        let (severite, texte) = match (sorte, phrase) {
+            ("debut", _) => (
+                Severite::Information,
+                format!("{agent} démarre : {evenement}."),
+            ),
+            ("fin", _) => (
+                Severite::Information,
+                format!("{agent} a terminé : {evenement}."),
+            ),
+            ("erreur", _) => (
+                Severite::Erreur,
+                format!("{agent} s'est arrêté avant la fin : {evenement}."),
+            ),
+            (_, p) => (
+                Severite::Erreur,
+                format!("{agent} n'a pas pu démarrer : {}", p.unwrap_or_default()),
+            ),
+        };
+        self.logs.ecrire(severite, &texte);
     }
 
     /// Le journal des tours déclenchés après l'entrée `depuis` (REQ-173).
@@ -980,6 +1019,10 @@ Always give file paths relative to the project root.",
             let rep = match res {
                 Ok(r) => r,
                 Err(ErreurProvider::Refus { code, corps }) => {
+                    self.logs.ecrire(
+                        Severite::Erreur,
+                        &format!("{nom} a refusé la requête ({code})."),
+                    );
                     return arret(format!("{nom} refused the request ({code}). {corps}"));
                 }
                 Err(ErreurProvider::Interrompue { corps }) => {
@@ -1152,6 +1195,10 @@ Always give file paths relative to the project root.",
                             String::new(),
                         ),
                     };
+                    // Le détail (corps de la réponse) reste dans la conversation, hors du journal.
+                    if let Entree::Message { texte, .. } = &entree {
+                        self.logs.ecrire(Severite::Erreur, texte);
+                    }
                     self.modifier(conv, |c| {
                         c.etape = None;
                         c.entrees.push(entree)

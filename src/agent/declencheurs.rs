@@ -4,6 +4,7 @@
 use super::agents::{Agent, Agents, Declencheur};
 use super::conversation::{ErreurEnvoi, Gestionnaire, Refus};
 use super::outils_config::{lire_config, lire_interface};
+use crate::journal::Severite;
 use crate::shells::Commande;
 use chrono::{NaiveDateTime, Timelike};
 use croner::parser::{CronParser, Seconds};
@@ -569,6 +570,16 @@ fn phrase_de_refus(r: &Refus) -> String {
     }
 }
 
+/// Ligne du journal d'un déclencheur en échec (REQ-186), en français.
+fn texte_echec(agent: &str, e: &ErreurEnvoi) -> String {
+    let cause = match e {
+        ErreurEnvoi::Systeme(m) => m.trim_end_matches('.'),
+        ErreurEnvoi::Inconnue => "conversation inconnue",
+        ErreurEnvoi::Refus(_) => "refus",
+    };
+    format!("Le déclencheur de {agent} a échoué : {cause}.")
+}
+
 /// Soumet le message à l'agent seul ; un refus est enregistré dans une conversation.
 pub fn soumettre(gestionnaire: &Arc<Gestionnaire>, agent: &Agent, texte: &str) {
     match gestionnaire.envoyer_declenche(agent, texte) {
@@ -577,10 +588,19 @@ pub fn soumettre(gestionnaire: &Arc<Gestionnaire>, agent: &Agent, texte: &str) {
             let phrase = phrase_de_refus(&r);
             if let Err(e) = gestionnaire.enregistrer_refus(agent, texte, &phrase) {
                 eprintln!("déclencheur de {} : {e}", agent.nom);
+                gestionnaire.logs().ecrire(
+                    Severite::Erreur,
+                    &format!("Le déclencheur de {} a échoué : {e}.", agent.nom),
+                );
             }
             gestionnaire.journaliser(&agent.nom, "refus", &evenement_court(texte), Some(&phrase));
         }
-        Err(e) => eprintln!("déclencheur de {} : {e:?}", agent.nom),
+        Err(e) => {
+            eprintln!("déclencheur de {} : {e:?}", agent.nom);
+            gestionnaire
+                .logs()
+                .ecrire(Severite::Erreur, &texte_echec(&agent.nom, &e));
+        }
     }
 }
 
@@ -615,6 +635,23 @@ pub fn passer(
     drop(etat);
     for (agent, texte) in messages {
         soumettre(gestionnaire, &agent, &texte);
+    }
+}
+
+#[cfg(test)]
+mod tests_echec {
+    use super::*;
+
+    #[test]
+    fn req186_ac4_texte_d_un_declencheur_en_echec_en_francais() {
+        assert_eq!(
+            texte_echec("Relecteur", &ErreurEnvoi::Systeme("disque plein.".into())),
+            "Le déclencheur de Relecteur a échoué : disque plein."
+        );
+        assert_eq!(
+            texte_echec("Relecteur", &ErreurEnvoi::Inconnue),
+            "Le déclencheur de Relecteur a échoué : conversation inconnue."
+        );
     }
 }
 

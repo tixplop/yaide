@@ -884,3 +884,61 @@ fn REQ184_AC7_fichier_illisible_404_et_rien_de_lance() {
     assert_eq!(code, 404);
     assert!(s.lancements().is_empty(), "rien n'est lancé");
 }
+
+/// Les messages du journal de Yaide (REQ-186).
+fn messages_du_journal(s: &Serveur) -> Vec<(String, String)> {
+    let (code, _, corps) = http(s, "GET", "/api/journal", "");
+    assert_eq!(code, 200);
+    let v: serde_json::Value = serde_json::from_str(&corps).unwrap();
+    v["lignes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| {
+            (
+                l["severite"].as_str().unwrap().to_string(),
+                l["message"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn REQ186_AC4_AC9_opencode_demarre_avec_et_sans_environnement_une_ligne_information_chacun() {
+    let s = lancer("journal-demarre", &[]);
+    definir_environnements(&s, &[("prod", &[("YA_ENV", "prod")])]);
+    assert_eq!(http(&s, "GET", INFO, "").0, 200);
+    assert_eq!(http(&s, "GET", INFO_PROD, "").0, 200);
+    assert_eq!(http(&s, "GET", INFO_PROD, "").0, 200);
+    let m = messages_du_journal(&s);
+    let info = |t: &str| ("Information".to_string(), t.to_string());
+    assert_eq!(
+        m.iter()
+            .filter(|l| **l == info("opencode serve démarré."))
+            .count(),
+        1,
+        "{m:?}"
+    );
+    assert_eq!(
+        m.iter()
+            .filter(|l| **l == info("opencode serve démarré (environnement prod)."))
+            .count(),
+        1,
+        "{m:?}"
+    );
+}
+
+#[test]
+fn REQ186_AC4_AC9_opencode_qui_ne_demarre_pas_une_ligne_erreur_avec_la_cause() {
+    let s = lancer("journal-echec", &[("FAUX_OPENCODE_ECHEC", "1")]);
+    assert_eq!(http(&s, "GET", INFO, "").0, 503);
+    let m = messages_du_journal(&s);
+    assert!(
+        m.contains(&(
+            "Erreur".to_string(),
+            "opencode serve n'a pas démarré : Erreur : opencode ne peut pas démarrer.".to_string()
+        )),
+        "{m:?}"
+    );
+    assert!(!m.iter().any(|l| l.1.starts_with("opencode serve démarré")));
+}

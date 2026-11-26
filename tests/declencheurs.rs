@@ -1456,3 +1456,104 @@ fn REQ173_AC5_reponse_de_l_utilisateur_et_conversation_ouverte_sans_entree() {
     std::thread::sleep(Duration::from_millis(500));
     assert_eq!(attendre_journal(&s, 2).len(), 2);
 }
+
+/// Les lignes (sévérité, message, détail) du journal des logs de Yaide (REQ-186).
+fn lignes_des_logs(s: &Serveur) -> Vec<(String, String, String)> {
+    let r = s.appel("GET", "/api/journal", &Value::Null);
+    assert_eq!(r.code, 200, "{}", r.corps);
+    r.json()["lignes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| {
+            (
+                l["severite"].as_str().unwrap().to_string(),
+                l["message"].as_str().unwrap().to_string(),
+                l["detail"].as_str().unwrap_or("").to_string(),
+            )
+        })
+        .collect()
+}
+
+/// Attend (10 s) une ligne de message `message` et rend toutes les lignes.
+fn attendre_ligne(s: &Serveur, message: &str) -> Vec<(String, String, String)> {
+    for _ in 0..200 {
+        let l = lignes_des_logs(s);
+        if l.iter().any(|x| x.1 == message) {
+            return l;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("pas de ligne « {message} » : {:?}", lignes_des_logs(s));
+}
+
+#[test]
+fn REQ186_AC3_un_tour_declenche_ecrit_une_ligne_de_debut_et_une_de_fin_une_seule_fois() {
+    let (adresse, _) = faux_provider(vec![rep_texte("ok", 500)]);
+    let s = lancer("l1");
+    configurer(&s, &adresse, true);
+    assert_eq!(
+        agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
+        200
+    );
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "1");
+    let l = attendre_ligne(&s, "Relecteur a terminé : fichier `docs/a.md` créé.");
+    std::thread::sleep(Duration::from_millis(600));
+    let l2 = lignes_des_logs(&s);
+    assert_eq!(l, l2, "aucune ligne en double");
+    let info = |t: &str| {
+        l2.iter()
+            .filter(|x| x.0 == "Information" && x.1 == t)
+            .count()
+    };
+    assert_eq!(info("Relecteur démarre : fichier `docs/a.md` créé."), 1);
+    assert_eq!(info("Relecteur a terminé : fichier `docs/a.md` créé."), 1);
+}
+
+#[test]
+fn REQ186_AC3_AC5_fin_sur_une_erreur_du_provider_ecrit_deux_lignes_erreur_sans_la_cle() {
+    let (adresse, _) = faux_provider(vec![(500, json!({"error": {"message": "boum"}}), 0)]);
+    let s = lancer("l2");
+    configurer(&s, &adresse, true);
+    assert_eq!(
+        agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
+        200
+    );
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "1");
+    let l = attendre_ligne(
+        &s,
+        "Relecteur s'est arrêté avant la fin : fichier `docs/a.md` créé.",
+    );
+    let erreurs: Vec<&str> = l
+        .iter()
+        .filter(|x| x.0 == "Erreur")
+        .map(|x| x.1.as_str())
+        .collect();
+    assert!(
+        erreurs.iter().any(|m| m.contains("500")),
+        "ligne du provider : {erreurs:?}"
+    );
+    assert!(
+        l.iter()
+            .all(|x| !x.1.contains("sk-x") && !x.2.contains("sk-x")),
+        "{l:?}"
+    );
+}
+
+#[test]
+fn REQ186_AC3_un_refus_ecrit_une_ligne_erreur_au_texte_du_toast() {
+    let (adresse, _) = faux_provider(vec![]);
+    let s = lancer("l3");
+    configurer(&s, &adresse, false);
+    assert_eq!(
+        agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
+        200
+    );
+    laisser_voir();
+    ecrire(&s, "docs/a.md", "1");
+    let t = "Relecteur n'a pas pu démarrer : Aucune clé pour OpenAI. Ajoutez-la avec Ctrl+P, puis > Providers LLM.";
+    let l = attendre_ligne(&s, t);
+    assert!(l.contains(&("Erreur".to_string(), t.to_string(), String::new())));
+}

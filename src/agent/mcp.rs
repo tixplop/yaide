@@ -4,6 +4,7 @@
 use super::outils::{Limites, Resultat};
 use super::provider::DefOutil;
 use crate::config;
+use crate::journal::{Journal, Severite};
 use rmcp::model::CallToolRequestParams;
 use rmcp::service::{RoleClient, RunningService};
 use rmcp::{ServiceError, ServiceExt};
@@ -70,6 +71,7 @@ pub struct Mcp {
     arret: AtomicBool,
     /// Prévient les lancements en cours de l'arrêt de Yaide.
     arret_tx: watch::Sender<bool>,
+    journal: Arc<Journal>,
 }
 
 #[derive(Deserialize)]
@@ -400,7 +402,14 @@ impl Mcp {
             etat: Mutex::new(Etat::default()),
             arret: AtomicBool::new(false),
             arret_tx: watch::channel(false).0,
+            journal: Arc::default(),
         }
+    }
+
+    /// Branche le journal des logs de Yaide (REQ-186).
+    pub fn avec_journal(mut self, journal: Arc<Journal>) -> Self {
+        self.journal = journal;
+        self
     }
 
     /// Début d'un tour : relit `mcp.json`, lance ou relance les serveurs au besoin, et rend
@@ -449,12 +458,25 @@ impl Mcp {
         for t in taches {
             entrees.push(match t {
                 Err(e) => e,
-                Ok(h) => h.await.unwrap_or_else(|e| {
-                    Entree::Echec(Probleme {
-                        message: format!("Un serveur MCP n'a pas démarré : {e}."),
-                        detail: None,
-                    })
-                }),
+                Ok(h) => {
+                    let e = h.await.unwrap_or_else(|e| {
+                        Entree::Echec(Probleme {
+                            message: format!("Un serveur MCP n'a pas démarré : {e}."),
+                            detail: None,
+                        })
+                    });
+                    if let Entree::Echec(p) = &e {
+                        if !self.arret.load(Ordering::SeqCst) {
+                            self.journal.ecrire_a(
+                                crate::journal::maintenant_ms(),
+                                Severite::Erreur,
+                                &p.message,
+                                p.detail.clone(),
+                            );
+                        }
+                    }
+                    e
+                }
             });
         }
         etat.entrees = entrees;
@@ -1149,6 +1171,29 @@ mod tests {
         assert_eq!(detail.lines().next(), Some("erreur 6"));
         assert_eq!(detail.lines().last(), Some("erreur 25"));
         assert_eq!(pb[0].detail, None);
+        mcp.arreter().await;
+    }
+
+    #[tokio::test]
+    async fn req186_ac4_ac9_un_serveur_qui_ne_demarre_pas_ecrit_une_ligne_erreur_qui_le_nomme() {
+        let p = projet("journal");
+        ecrire_ordre(
+            &p,
+            &[
+                ("docs", json!({"command": "mcp-docs-introuvable"})),
+                ("bon", node(&[])),
+            ],
+        );
+        let journal = Arc::new(Journal::default());
+        let mcp = Mcp::new(p.clone(), fich(&p)).avec_journal(journal.clone());
+        mcp.preparer(&courtes()).await;
+        let lignes = journal.depuis(0).1;
+        assert_eq!(lignes.len(), 1, "{lignes:?}");
+        assert_eq!(lignes[0].severite, Severite::Erreur);
+        assert_eq!(
+            lignes[0].message,
+            "Le serveur MCP docs n'a pas démarré : la commande mcp-docs-introuvable est introuvable."
+        );
         mcp.arreter().await;
     }
 

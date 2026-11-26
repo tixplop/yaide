@@ -8,29 +8,29 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/cli.rs — analyse des arguments, aide, saisie du mot de passe — analyser, valider_saisies
 - src/config.rs — dossier de configuration, mot de passe haché (argon2) ; `src/environnements.rs` : `environnements.json` de l'utilisateur, droits 600 (REQ-182) — dossier_config, definir_mot_de_passe, verifier_mot_de_passe
 - src/auth.rs — sessions (un cookie par port d'écoute), blocage après échecs ; `src/tls.rs` : certificat auto-signé (rcgen) — creer_session, session_valide, bloque
-- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180, route presse-papiers-windows REQ-181, routes environnements REQ-182, ouverture avec environnement REQ-183, relais opencode par environnement REQ-184, routes `/api/journal` et ligne « Erreur » pour toute réponse 5xx REQ-186)
+- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180, route presse-papiers-windows REQ-181, routes environnements REQ-182, ouverture avec environnement REQ-183, relais opencode par environnement REQ-184, routes `/api/journal` et ligne « Erreur » pour toute réponse 5xx REQ-186, journal passé aux modules REQ-186)
 - src/windows.rs — presse-papiers de Windows rempli par powershell.exe dans WSL (REQ-181) — disponible, copier
 - src/fichiers.rs — arborescence et opérations sur les fichiers du projet  — lister, lire, ecrire, importer (REQ-180)
 - src/depot.rs — dépôt git, `.gitignore`, worktrees — est_un_depot, worktrees
 - src/git.rs — état, diff, index, commit, branches, pull/push — etat, commit, synchroniser
 - src/recherche.rs — recherche dans les fichiers et ouverture rapide — chercher, lister
-- src/shells.rs — shells et sessions Claude en pseudo-terminal, survie aux coupures, variables d'un environnement ; session Claude lancée avec CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 (REQ-102, DEC-122) ; intégration à bash et zsh (séquence retirée de la sortie, commandes terminées remises aux déclencheurs, REQ-167) — abonner, ecrire, prendre_commandes
+- src/shells.rs — shells et sessions Claude en pseudo-terminal, survie aux coupures, variables d'un environnement ; session Claude lancée avec CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 (REQ-102, DEC-122) ; intégration à bash et zsh (séquence retirée de la sortie, commandes terminées remises aux déclencheurs, REQ-167) — abonner, ecrire, prendre_commandes (intégration impossible : avertissement au journal REQ-186)
 - src/integration-shell/ — fichiers de démarrage embarqués : `bash-rc` (`--rcfile`) et `zsh/` (`ZDOTDIR`), écrits dans le dossier de configuration au lancement d'un shell (REQ-167)
-- src/opencode.rs — processus `opencode serve` du projet, un par environnement utilisé plus celui sans environnement (REQ-184) — assurer, arreter, disponible
+- src/opencode.rs — processus `opencode serve` du projet, un par environnement utilisé plus celui sans environnement (REQ-184) — assurer, arreter, disponible (lignes du journal : démarré, arrêté, n'a pas démarré REQ-186)
 - src/apercu.rs — jetons et service de l'aperçu HTML — nouveau_jeton, jeton_ok, charger ; `src/decoupage.rs` : découpage des fichiers en passages — decouper, valider
 - src/version.rs — version, nouvelle version, `yaide update` — etat_maj, demarrer_maj, derniere
-- src/connaissance.rs — base de connaissance vectorielle (collections, pointeurs, mise à jour, dossiers suivis REQ-176) — valider, lire_config, ecrire_config
+- src/connaissance.rs — base de connaissance vectorielle (collections, pointeurs, mise à jour, dossiers suivis REQ-176) — valider, lire_config, ecrire_config (échec de mise à jour automatique au journal REQ-186)
 - src/agent/mod.rs — déclare les modules de l'agent
 - src/agent/provider.rs — providers LLM (formats OpenAI et Anthropic, requêtes en `stream`), embeddings — client, envoyer, embeddings
 - src/agent/provider_flux.rs — lecture des réponses en flux Server-Sent Events (REQ-085), suivi `Progres` — lire
 - src/agent/secrets.rs — clés d'API chiffrées (AES-256-GCM) — lire, ecrire
-- src/agent/reglages.rs — providers, profils, réglages du projet et communs — provider, vue, reprendre_du_projet
+- src/agent/reglages.rs — providers, profils, réglages du projet et communs — provider, vue, reprendre_du_projet (reprise des réglages en échec au journal REQ-186)
 - src/agent/agents.rs — agents personnalisés (AGENTS.md, PERSONA.md) et leurs déclencheurs (clé `declencheurs`, validée à l'enregistrement) — lister, lire, enregistrer
-- src/agent/declencheurs.rs — surveillance des déclencheurs par le serveur (« Fichier » et « Dossier », REQ-165 ; « Commit » par les journaux de branches, REQ-166 ; « Commande shell », REQ-167 ; « Configuration de Yaide » par `get_config`, REQ-168 ; « Planification » : expression cron lue par `lire_cron`, heure donnée à `verifier`, REQ-174), soumission aux agents à l'écoute, refus gardé en conversation ; journal en mémoire des débuts, fins et refus des tours déclenchés, lu par `GET /api/agent/declenchements` (REQ-173) — verifier, passer, soumettre, Journal
-- src/agent/conversation.rs — boucle de l'agent, conversations, sous-agents, étape de requête en cours en mémoire (REQ-085), tours déclenchés marqués à la soumission et inscrits au journal (REQ-173) — envoyer, envoyer_avec, arreter
+- src/agent/declencheurs.rs — surveillance des déclencheurs par le serveur (« Fichier » et « Dossier », REQ-165 ; « Commit » par les journaux de branches, REQ-166 ; « Commande shell », REQ-167 ; « Configuration de Yaide » par `get_config`, REQ-168 ; « Planification » : expression cron lue par `lire_cron`, heure donnée à `verifier`, REQ-174), soumission aux agents à l'écoute, refus gardé en conversation ; journal en mémoire des débuts, fins et refus des tours déclenchés, lu par `GET /api/agent/declenchements` (REQ-173) — verifier, passer, soumettre, Journal (lignes du journal des logs des tours déclenchés et déclencheur en échec REQ-186)
+- src/agent/conversation.rs — boucle de l'agent, conversations, sous-agents, étape de requête en cours en mémoire (REQ-085), tours déclenchés marqués à la soumission et inscrits au journal (REQ-173) — envoyer, envoyer_avec, arreter (lignes du journal des logs : tours déclenchés, erreur du provider, conversation non enregistrée REQ-186)
 - src/agent/outils.rs — outils de l'agent (fichiers, shell, connaissance, agents) — definitions, executer
 - src/agent/outils_config.rs — outils de l'agent qui modifient la configuration de Yaide (`lire_config` : la vue de `get_config`, REQ-168) — definitions, lancer, lire_interface
-- src/agent/mcp.rs — serveurs MCP (rmcp, stdio), `mcp.json` — preparer, appeler, lister_serveurs
+- src/agent/mcp.rs — serveurs MCP (rmcp, stdio), `mcp.json` — preparer, appeler, lister_serveurs (serveur qui ne démarre pas au journal REQ-186)
 - src/agent/web.rs — recherche web (DuckDuckGo) et récupération de pages — chercher, recuperer, html_en_texte
 - src/agent/jdiag.rs — lecture et écriture des whiteboards par l'agent (dont `align`/`valign`, REQ-150 ; clé `model`, REQ-151) — relire, en_texte, modele_seul
 - src/agent/jdiag_controle.rs — avertissements de mise en page de `whiteboard_write` (boîtes, liens, textes, zone de texte des symboles ; REQ-148, REQ-149) — avertissements, bloc
@@ -147,4 +147,4 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-154 coller un diagramme mermaid (organigramme : lecture et placement ; autres types : traduction du dessin ; collage, refus) → web/src/mermaid-jdiag.js, web/src/mermaid-dessin.js, ui/tableau.js, ui/message.js
 - REQ-127 à REQ-150 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, jdiag_trace.rs, jdiag_controle.rs, outils.rs
 - REQ-162 arrêter Yaide : route `/api/arret` → src/serveur.rs (`arreter_yaide`) ; dialogue de fin de session (partie design system : `dialogue` position `milieu`, icône `power`, token `--largeur-actions-titre`) → web/src/ui/dialogue.js, icones.js, tokens.css, composants.css ; bouton « Arrêter Yaide » et dialogue de fin de session (option `fin` de l'écran de connexion, passée par `main.js`) → web/src/vues/principale.js, vues/connexion.js, main.js, api.js (`arret`)
-- REQ-186 journal des logs (stockage, routes, 5xx, ligne de démarrage) → src/journal.rs, serveur.rs, tests/journal.rs
+- REQ-186 journal des logs (stockage, routes, 5xx, ligne de démarrage) → src/journal.rs, serveur.rs, opencode.rs, agent/mcp.rs, agent/declencheurs.rs, agent/conversation.rs, agent/reglages.rs, connaissance.rs, shells.rs, tests/journal.rs

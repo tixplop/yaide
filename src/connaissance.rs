@@ -838,6 +838,7 @@ impl Base {
         echecs: &Echecs,
         client: &reqwest::Client,
         acces: &AccesBase,
+        journal: &crate::journal::Journal,
     ) {
         if suivi.lire().is_some_and(|s| s.etat == EtatAjout::EnCours) {
             return;
@@ -904,9 +905,18 @@ impl Base {
             return;
         };
         for (chemin, entrees) in suspects {
-            let _ = self
+            if let Err(e) = self
                 .mettre_a_jour(verrou, echecs, client, acces, &chemin, &entrees, false)
-                .await;
+                .await
+            {
+                journal.ecrire(
+                    crate::journal::Severite::Erreur,
+                    &format!(
+                        "La mise à jour automatique de {chemin} a échoué : {}.",
+                        e.cause.trim_end_matches('.')
+                    ),
+                );
+            }
         }
     }
 

@@ -47,7 +47,7 @@ struct Etat {
     echecs_base: Arc<connaissance::Echecs>,
     /// Réveillé par `/api/arret` : déclenche le même arrêt que SIGTERM.
     arret_demande: tokio::sync::Notify,
-    journal: Journal,
+    journal: Arc<Journal>,
 }
 
 type Partage = Arc<Etat>;
@@ -401,9 +401,12 @@ async fn ouvrir_shell(State(etat): State<Partage>, corps: Bytes) -> Response {
     let registre = etat.shells.clone();
     let projet = etat.projet_dir.clone();
     let config = etat.config.clone();
-    let r = tokio::task::spawn_blocking(move || registre.ouvrir(&projet, &config, &variables))
-        .await
-        .unwrap_or_else(|e| Err(e.to_string()));
+    let journal = etat.journal.clone();
+    let r = tokio::task::spawn_blocking(move || {
+        registre.ouvrir(&projet, &config, &variables, &journal)
+    })
+    .await
+    .unwrap_or_else(|e| Err(e.to_string()));
     match r {
         Ok(id) => (
             StatusCode::CREATED,
@@ -2254,16 +2257,20 @@ pub async fn servir(
     let tls = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, cle)
         .await
         .map_err(|e| format!("certificat illisible : {e}"))?;
+    let journal: Arc<Journal> = Arc::default();
     let reglages = Arc::new(Reglages::new(config.to_path_buf(), config.to_path_buf()));
-    reglages.reprendre_du_projet(&projet.join(".yaide"));
+    reglages.reprendre_du_projet(&projet.join(".yaide"), &journal);
     mcp::reprendre_du_projet(&config.join("mcp.json"), &projet.join(".yaide/mcp.json"));
     let agents = Arc::new(Agents::new(projet.join(".yaide"), reglages.clone()));
-    let agent = Arc::new(Gestionnaire::new(
-        projet.to_path_buf(),
-        reglages.clone(),
-        agents.clone(),
-        Limites::default(),
-    ));
+    let agent = Arc::new(
+        Gestionnaire::new(
+            projet.to_path_buf(),
+            reglages.clone(),
+            agents.clone(),
+            Limites::default(),
+        )
+        .avec_journal(journal.clone()),
+    );
     let agent_arret = agent.clone();
     let port = listener
         .local_addr()
@@ -2278,7 +2285,7 @@ pub async fn servir(
         instance: identifiant_instance(),
         shells: Default::default(),
         agents,
-        opencode: Default::default(),
+        opencode: opencode::Opencode::new(journal.clone()),
         client_opencode: reqwest::Client::builder()
             .no_proxy()
             .connect_timeout(std::time::Duration::from_secs(5))
@@ -2292,7 +2299,7 @@ pub async fn servir(
         verrou_base: Default::default(),
         echecs_base: Default::default(),
         arret_demande: Default::default(),
-        journal: Default::default(),
+        journal,
     });
     etat.journal.ecrire(
         Severite::Information,
@@ -2315,6 +2322,7 @@ pub async fn servir(
                 &verification.echecs_base,
                 &client,
                 &acces,
+                &verification.journal,
             )
             .await;
             tokio::time::sleep(intervalle_verification()).await;

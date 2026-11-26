@@ -13,6 +13,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
 use crate::environnements;
+use crate::journal::{Journal, Severite};
 use crate::shells::{delai_sigkill, descendants, signaler_pid, vivant};
 
 pub const RAISON_PAR_DEFAUT: &str = "le serveur opencode ne répond pas";
@@ -70,6 +71,7 @@ fn base64url(octets: &[u8]) -> String {
 }
 
 struct Lance {
+    environnement: Option<String>,
     port: u16,
     mdp: String,
     enfant: Child,
@@ -80,11 +82,16 @@ type Entree = Arc<Mutex<Option<Lance>>>;
 
 /// Les serveurs opencode de l'instance (DEC-120) : celui sans environnement et un par environnement
 /// utilisé, chacun relancé s'il s'est arrêté.
-#[derive(Default)]
 pub struct Opencode {
     lances: MutexStd<HashMap<Option<String>, Entree>>,
     /// Posé dès le début de l'arrêt de Yaide : plus aucun lancement.
     arret: AtomicBool,
+    journal: Arc<Journal>,
+}
+
+/// Fin de message du journal : « (environnement dev) » s'il y en a un.
+fn avec_environnement(environnement: Option<&str>) -> String {
+    environnement.map_or(String::new(), |n| format!(" (environnement {n})"))
 }
 
 /// Les variables de l'environnement `nom` dans `fichier`, ou `None` s'il n'y est plus (ou si le
@@ -98,6 +105,14 @@ fn variables_de(fichier: &Path, nom: &str) -> Option<Vec<(String, String)>> {
 }
 
 impl Opencode {
+    pub fn new(journal: Arc<Journal>) -> Self {
+        Opencode {
+            lances: Default::default(),
+            arret: Default::default(),
+            journal,
+        }
+    }
+
     /// Port et mot de passe d'un serveur prêt, lancé au besoin. Les demandes simultanées
     /// attendent le même lancement. `environnement` : nom lu dans `fichier_env` au lancement ;
     /// absent du fichier, c'est le serveur sans environnement qui répond. Erreur : la raison.
@@ -115,7 +130,13 @@ impl Opencode {
                 Some((n, v)) => (Some(n.to_string()), v),
                 None => (None, Vec::new()),
             };
-        let entree = self.lances.lock().unwrap().entry(cle).or_default().clone();
+        let entree = self
+            .lances
+            .lock()
+            .unwrap()
+            .entry(cle.clone())
+            .or_default()
+            .clone();
         let mut lance = entree.lock().await;
         if let Some(l) = lance.as_mut() {
             if matches!(l.enfant.try_wait(), Ok(None)) {
@@ -123,7 +144,28 @@ impl Opencode {
             }
             *lance = None;
         }
-        let nouveau = demarrer(projet, &variables, &self.arret).await?;
+        let nouveau = match demarrer(projet, &variables, &self.arret, cle).await {
+            Ok(n) => n,
+            Err(cause) => {
+                if !self.arret.load(Ordering::SeqCst) {
+                    self.journal.ecrire(
+                        Severite::Erreur,
+                        &format!(
+                            "opencode serve n'a pas démarré : {}.",
+                            cause.trim_end_matches('.')
+                        ),
+                    );
+                }
+                return Err(cause);
+            }
+        };
+        self.journal.ecrire(
+            Severite::Information,
+            &format!(
+                "opencode serve démarré{}.",
+                avec_environnement(nouveau.environnement.as_deref())
+            ),
+        );
         let r = (nouveau.port, nouveau.mdp.clone());
         *lance = Some(nouveau);
         Ok(r)
@@ -135,9 +177,18 @@ impl Opencode {
         let entrees: Vec<Entree> = self.lances.lock().unwrap().values().cloned().collect();
         let mut taches = tokio::task::JoinSet::new();
         for e in entrees {
+            let journal = self.journal.clone();
             taches.spawn(async move {
                 if let Some(l) = e.lock().await.take() {
+                    let env = l.environnement.clone();
                     arreter_un(l).await;
+                    journal.ecrire(
+                        Severite::Information,
+                        &format!(
+                            "opencode serve arrêté{}.",
+                            avec_environnement(env.as_deref())
+                        ),
+                    );
                 }
             });
         }
@@ -205,6 +256,7 @@ async fn demarrer(
     projet: &Path,
     variables: &[(String, String)],
     arret: &AtomicBool,
+    environnement: Option<String>,
 ) -> Result<Lance, String> {
     let chemin = trouver().ok_or(RAISON_PAR_DEFAUT)?;
     let port = port_libre()?;
@@ -274,7 +326,12 @@ async fn demarrer(
             .send()
             .await;
         if rep.is_ok_and(|r| r.status() == 200) {
-            return Ok(Lance { port, mdp, enfant });
+            return Ok(Lance {
+                environnement,
+                port,
+                mdp,
+                enfant,
+            });
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -312,7 +369,7 @@ mod tests {
 
     #[tokio::test]
     async fn assurer_apres_arreter_refuse() {
-        let o = Opencode::default();
+        let o = Opencode::new(Default::default());
         o.arreter().await;
         let r = o.assurer(Path::new("/"), Path::new("/nulle"), None).await;
         assert_eq!(r, Err("Yaide s'arrête".to_string()));
@@ -330,6 +387,61 @@ mod tests {
         // nextest lance chaque test dans son propre processus.
         std::env::set_var("PATH", format!("{}:/usr/bin:/bin", dossier.display()));
         assert!(!disponible().await);
+        let _ = std::fs::remove_dir_all(&dossier);
+    }
+
+    #[tokio::test]
+    async fn req186_ac4_ac9_demarre_puis_arrete_avec_et_sans_environnement() {
+        use std::os::unix::fs::PermissionsExt;
+        let dossier =
+            std::env::temp_dir().join(format!("yaide-opencode-journal-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dossier);
+        std::fs::create_dir_all(&dossier).unwrap();
+        let faux = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/faux-opencode.mjs");
+        let script = dossier.join("opencode");
+        let node = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|d| d.join("node"))
+            .find(|c| c.is_file())
+            .unwrap();
+        std::fs::write(
+            &script,
+            format!("#!{}\nimport('{}');\n", node.display(), faux.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let fichier_env = dossier.join("environnements.json");
+        std::fs::write(
+            &fichier_env,
+            r#"{"environnements":[{"nom":"dev","variables":{"A":"b"}}]}"#,
+        )
+        .unwrap();
+        // nextest lance chaque test dans son propre processus.
+        std::env::set_var("PATH", format!("{}:/usr/bin:/bin", dossier.display()));
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let journal = Arc::new(Journal::default());
+        let o = Opencode::new(journal.clone());
+        o.assurer(&dossier, &fichier_env, None).await.unwrap();
+        o.assurer(&dossier, &fichier_env, Some("dev"))
+            .await
+            .unwrap();
+        o.arreter().await;
+        let mut messages: Vec<(Severite, String)> = journal
+            .depuis(0)
+            .1
+            .into_iter()
+            .map(|l| (l.severite, l.message))
+            .collect();
+        messages.sort_by(|a, b| a.1.cmp(&b.1));
+        let info = |t: &str| (Severite::Information, t.to_string());
+        assert_eq!(
+            messages,
+            vec![
+                info("opencode serve arrêté (environnement dev)."),
+                info("opencode serve arrêté."),
+                info("opencode serve démarré (environnement dev)."),
+                info("opencode serve démarré."),
+            ]
+        );
         let _ = std::fs::remove_dir_all(&dossier);
     }
 }

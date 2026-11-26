@@ -413,6 +413,7 @@ impl Registre {
         projet: &Path,
         config: &Path,
         variables: &[(String, String)],
+        journal: &crate::journal::Journal,
     ) -> Result<u32, String> {
         let programme = std::env::var("SHELL")
             .ok()
@@ -421,7 +422,9 @@ impl Registre {
         let reglage = match integration(&programme, &config.join("integration-shell")) {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("intégration au shell impossible : {e}");
+                let texte = format!("Intégration au shell impossible : {e}");
+                eprintln!("{texte}");
+                journal.ecrire(crate::journal::Severite::Avertissement, &texte);
                 None
             }
         };

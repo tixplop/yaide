@@ -84,6 +84,11 @@ fn dossier(nom: &str) -> PathBuf {
 
 /// Une instance dont le dossier de configuration est `cfg` ; `projet` est son projet.
 fn lancer_dans(cfg: &Path, projet: PathBuf) -> Serveur {
+    lancer_avec(cfg, projet, &[], Stdio::inherit())
+}
+
+/// Comme `lancer_dans`, avec des variables d'environnement et la sortie d'erreur donnée.
+fn lancer_avec(cfg: &Path, projet: PathBuf, env: &[(&str, &str)], stderr: Stdio) -> Serveur {
     std::fs::create_dir_all(&projet).unwrap();
     if !cfg.join("yaide").exists() {
         definir_mot_de_passe(cfg, &projet);
@@ -94,7 +99,9 @@ fn lancer_dans(cfg: &Path, projet: PathBuf) -> Serveur {
         .args(["--port", &port.to_string()])
         .env("XDG_CONFIG_HOME", cfg)
         .env("HOME", projet.parent().unwrap())
+        .envs(env.iter().copied())
         .stdout(Stdio::null())
+        .stderr(stderr)
         .spawn()
         .unwrap();
     let mut s = Serveur {
@@ -238,4 +245,34 @@ fn req186_routes_ecrire_avec_heure_lire_apres_et_purger() {
     let (_, v) = s.api("GET", "/api/journal", "");
     assert_eq!(v["lignes"].as_array().unwrap().len(), 0);
     assert_ne!(v["purge"], avant);
+}
+
+#[test]
+fn req186_ac7_integration_au_shell_impossible_avertissement_et_meme_texte_sur_la_sortie_d_erreur() {
+    if !Path::new("/bin/bash").exists() {
+        eprintln!("bash absent de la machine : test sauté");
+        return;
+    }
+    let d = dossier("ac7-shell");
+    let cfg = d.join("cfg");
+    let sortie = d.join("stderr.log");
+    let s = lancer_avec(
+        &cfg,
+        d.join("projet"),
+        &[("SHELL", "/bin/bash")],
+        Stdio::from(std::fs::File::create(&sortie).unwrap()),
+    );
+    // Un fichier à la place du dossier d'intégration : sa création échoue.
+    std::fs::write(s.cfg.join("yaide/integration-shell"), "").unwrap();
+    let (c, _) = s.api("POST", "/api/shells", "{}");
+    assert_eq!(c, 201);
+    let l = s.lignes();
+    let ligne = l
+        .iter()
+        .find(|l| l["severite"] == "Avertissement")
+        .unwrap_or_else(|| panic!("{l:?}"));
+    let m = ligne["message"].as_str().unwrap();
+    assert!(m.starts_with("Intégration au shell impossible : "), "{m}");
+    let erreur = std::fs::read_to_string(&sortie).unwrap();
+    assert!(erreur.lines().any(|x| x == m), "{erreur} / {m}");
 }
