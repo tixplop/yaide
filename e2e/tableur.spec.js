@@ -278,12 +278,15 @@ test("REQ157_AC1_AC3_AC11_AC9_AC16_REQ158_AC1_REQ157_AC7_AC13_AC15_REQ158_AC5_AC
     for (let r = 59; r >= 1; r--) {
       await page.keyboard.press("ArrowUp");
       // Le défilement vers la cellule active se fait après la touche : on attend qu'elle soit entière sous la première rangée.
-      await expect.poll(async () => {
-        const { zone: zb, entete: tb } = await haut();
-        const cb = await grande.getByRole("gridcell", { name: `r${r}c1`, exact: true }).boundingBox();
-        const bas = zb.y + (await z.evaluate((e) => e.clientHeight));
-        return cb.y >= tb.y + tb.height - 1 && cb.y + cb.height <= bas + 1;
-      }).toBe(true);
+      // Une seule mesure dans la page par essai : mêmes valeurs que `haut()` et la cellule, sans une dizaine d'allers-retours.
+      await expect.poll(() => z.evaluate((e, nom) => {
+        const zb = e.getBoundingClientRect();
+        const trouver = (role, texte) => [...e.querySelectorAll(`[role=${role}]`)].find((x) => x.textContent.trim() === texte);
+        const tb = trouver("columnheader", "col1").getBoundingClientRect();
+        const cb = trouver("gridcell", nom).getBoundingClientRect();
+        const bas = zb.y + e.clientHeight;
+        return tb.y >= zb.y && tb.y <= zb.y + 13 && cb.y >= tb.y + tb.height - 1 && cb.y + cb.height <= bas + 1;
+      }, `r${r}c1`)).toBe(true);
     }
 
     // REQ-160 AC-160-7, AC-160-13, AC-160-11 : `zzz` aux rangées 3 et 55 de large.csv, tableur clair dans un Yaide sombre.

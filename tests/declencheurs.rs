@@ -325,6 +325,46 @@ fn laisser_voir() {
     std::thread::sleep(Duration::from_millis(600));
 }
 
+/// Une conversation de la sonde (agent sur `sonde.txt`).
+fn est_sonde(c: &Value) -> bool {
+    c["titre"].as_str().unwrap_or("").contains("sonde.txt")
+}
+
+/// Les conversations qui ne viennent pas de la sonde.
+fn hors_sonde(s: &Serveur) -> Vec<Value> {
+    conversations(s)
+        .into_iter()
+        .filter(|c| !est_sonde(c))
+        .collect()
+}
+
+/// Attend `n` conversations hors sonde (10 s au plus) puis les rend.
+fn attendre_hors_sonde(s: &Serveur, n: usize) -> Vec<Value> {
+    for _ in 0..200 {
+        let l = hors_sonde(s);
+        if l.len() >= n {
+            return l;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("moins de {n} conversations : {:?}", hors_sonde(s));
+}
+
+/// Témoin à la place d'une pause : écrit `sonde.txt` (l'agent « Sonde » l'écoute) et attend sa
+/// `n`-ième conversation. La sonde est vue après les changements faits avant elle, dans la même
+/// vérification ou la suivante : ce qui devait se déclencher l'est déjà. Rend le reste.
+fn passer_sonde(s: &Serveur, n: usize) -> Vec<Value> {
+    ecrire(s, "sonde.txt", &format!("passage {n}"));
+    for _ in 0..400 {
+        let l = conversations(s);
+        if l.iter().filter(|c| est_sonde(c)).count() >= n {
+            return l.into_iter().filter(|c| !est_sonde(c)).collect();
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("la sonde n'est pas passée {n} fois");
+}
+
 fn json_fiche(s: &Serveur, dossier: &str) -> Value {
     let o = std::fs::read(s.yaide().join(format!("agents/{dossier}/agent.json"))).unwrap();
     serde_json::from_slice(&o).unwrap()
@@ -703,6 +743,7 @@ fn REQ164_AC8_ce_qui_change_pendant_l_arret_ne_se_soumet_pas() {
     let (adresse, _) = faux_provider(vec![]);
     let s = lancer("d8");
     configurer(&s, &adresse, true);
+    assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
     assert_eq!(
         agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
         200
@@ -712,10 +753,9 @@ fn REQ164_AC8_ce_qui_change_pendant_l_arret_ne_se_soumet_pas() {
     drop(s);
     ecrire_hors(&racine, "docs/a.md", "arrêt");
     let s = demarrer(&racine, "projet");
-    std::thread::sleep(Duration::from_millis(1500));
-    assert!(conversations(&s).is_empty());
+    assert!(passer_sonde(&s, 1).is_empty());
     ecrire(&s, "docs/a.md", "après");
-    attendre_conversations(&s, 1);
+    attendre_hors_sonde(&s, 1);
 }
 
 fn ecrire_hors(racine: &Path, chemin: &str, texte: &str) {
@@ -729,11 +769,11 @@ fn REQ164_AC9_declencheur_ajoute_puis_retire() {
     let (adresse, _) = faux_provider(vec![]);
     let s = lancer("d9");
     configurer(&s, &adresse, true);
+    assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
     assert_eq!(agent(&s, "Relecteur", json!([])).code, 200);
     laisser_voir();
     ecrire(&s, "docs/a.md", "0");
-    std::thread::sleep(Duration::from_millis(800));
-    assert!(conversations(&s).is_empty());
+    assert!(passer_sonde(&s, 1).is_empty());
     let fiche = |d: Value| {
         s.appel(
             "PUT",
@@ -745,7 +785,7 @@ fn REQ164_AC9_declencheur_ajoute_puis_retire() {
     assert_eq!(fiche(json!([fichier("docs/a.md")])).code, 200);
     laisser_voir();
     ecrire(&s, "docs/a.md", "1");
-    let id = attendre_conversations(&s, 1)[0]["id"]
+    let id = attendre_hors_sonde(&s, 1)[0]["id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -753,8 +793,7 @@ fn REQ164_AC9_declencheur_ajoute_puis_retire() {
     assert_eq!(fiche(json!([])).code, 200);
     laisser_voir();
     ecrire(&s, "docs/a.md", "2");
-    std::thread::sleep(Duration::from_millis(1500));
-    assert_eq!(conversations(&s).len(), 1);
+    assert_eq!(passer_sonde(&s, 2).len(), 1);
 }
 
 // ---- REQ-166 « Commit », REQ-167 (agent), REQ-164 AC3 ----
@@ -836,6 +875,7 @@ fn REQ166_AC1_le_commit_a_son_evenement_complet() {
 fn REQ166_AC2_vue_git_puis_worktree_puis_amend() {
     let racine = depot("c2");
     let s = demarrer(&racine, "projet");
+    assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
     assert_eq!(
         agent(&s, "Relecteur", json!([{ "type": "commit" }])).code,
         200
@@ -890,8 +930,7 @@ fn REQ166_AC2_vue_git_puis_worktree_puis_amend() {
     );
     let l = attendre_conversations(&s, 3);
     assert!(texte_conv(&s, &l[0]).contains("Message : corrige"));
-    std::thread::sleep(Duration::from_millis(1500));
-    assert_eq!(conversations(&s).len(), 3);
+    assert_eq!(passer_sonde(&s, 1).len(), 3);
 }
 
 #[test]
@@ -913,6 +952,7 @@ fn REQ166_AC3_pull_en_avance_rapide_et_rebase_ne_sont_pas_des_commits() {
         git(&autre, &racine, &["commit", "-q", "-m", &format!("n{n}")]);
     }
     let s = demarrer(&racine, "projet");
+    assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
     assert_eq!(
         agent(&s, "Relecteur", json!([{ "type": "commit" }])).code,
         200
@@ -924,8 +964,8 @@ fn REQ166_AC3_pull_en_avance_rapide_et_rebase_ne_sont_pas_des_commits() {
         &["pull", "-q", "--ff-only", "../autre", "main"],
     );
     git(&p, &racine, &["rebase", "-q", "main", "x"]);
-    std::thread::sleep(Duration::from_millis(1500));
-    assert!(conversations(&s).is_empty(), "{:?}", conversations(&s));
+    let l = passer_sonde(&s, 1);
+    assert!(l.is_empty(), "{l:?}");
 }
 
 #[test]
@@ -980,8 +1020,7 @@ fn REQ164_AC3_un_fichier_modifie_puis_commite_entre_deux_verifications_un_seul_m
         commit.starts_with("Évènement : commit `") && commit.contains("Message : ajoute docs/a"),
         "{t}"
     );
-    std::thread::sleep(Duration::from_millis(2500));
-    assert_eq!(conversations(&s).len(), 2);
+    assert_eq!(passer_sonde(&s, 2).len(), 1);
 }
 
 #[test]
@@ -1078,8 +1117,7 @@ fn REQ165_AC2_un_dossier_un_seul_evenement_une_ligne_par_fichier_par_ordre_de_ch
         texte_avec(&s, "dossier"),
         "Évènement : changements dans le dossier `docs/` :\n- `docs/a.md` modifié\n- `docs/sous/c.md` créé"
     );
-    std::thread::sleep(Duration::from_millis(2500));
-    assert_eq!(conversations(&s).len(), 2);
+    assert_eq!(passer_sonde(&s, 2).len(), 1);
 }
 
 #[test]
@@ -1097,8 +1135,6 @@ fn REQ165_AC3_dossier_racine_sans_ignores_ni_yaide_ni_git() {
         &racine,
         &["commit", "-q", "--allow-empty", "-m", "vide"],
     );
-    std::thread::sleep(Duration::from_millis(1500));
-    assert!(conversations(&s).is_empty(), "{:?}", conversations(&s));
     // Témoin : un fichier visible, lui, est vu, et lui seul.
     ecrire(&s, "z.md", "z");
     let l = attendre_conversations(&s, 1);
@@ -1106,7 +1142,6 @@ fn REQ165_AC3_dossier_racine_sans_ignores_ni_yaide_ni_git() {
         texte_conv(&s, &l[0]),
         "Évènement : changements dans le dossier `./` :\n- `z.md` créé"
     );
-    std::thread::sleep(Duration::from_millis(1000));
     assert_eq!(conversations(&s).len(), 1);
 }
 
@@ -1192,14 +1227,13 @@ fn REQ168_AC2_les_parties_changees_sont_nommees() {
         t.starts_with("Évènement : configuration de Yaide changée : providers, serveurs MCP.\n"),
         "{t}"
     );
-    std::thread::sleep(Duration::from_millis(2500));
-    assert_eq!(conversations(&s).len(), 2);
+    assert_eq!(passer_sonde(&s, 2).len(), 1);
     std::fs::write(
         s.yaide().join("interface.json"),
         r#"{"fonctions":{"git":false}}"#,
     )
     .unwrap();
-    attendre_conversations(&s, 3);
+    attendre_hors_sonde(&s, 2);
     let t = texte_avec(&s, "changée : interface.");
     assert!(t.starts_with("Évènement : configuration de Yaide changée : interface.\n"));
 }
@@ -1232,12 +1266,16 @@ fn REQ168_AC3_cle_agent_ou_fichier_reecrit_a_l_identique_ne_declenchent_rien() {
     let config = s.racine.join("cfg/yaide/config.json");
     let octets = std::fs::read(&config).expect("config.json écrit par le provider");
     std::fs::write(&config, octets).unwrap();
-    std::thread::sleep(Duration::from_millis(1500));
-    assert!(conversations(&s).is_empty(), "{:?}", conversations(&s));
-    // Témoin : un vrai changement, lui, est vu.
+    // Témoin : un vrai changement, lui, est vu, et seul : rien d'avant ne s'est déclenché.
     let p = json!({ "nom": "p", "provider": "openai", "modele": "m" });
     assert_eq!(s.appel("PUT", "/api/agent/profils", &p).code, 200);
-    attendre_conversations(&s, 1);
+    let l = attendre_conversations(&s, 1);
+    assert_eq!(l.len(), 1, "{l:?}");
+    let t = texte_conv(&s, &l[0]);
+    assert!(
+        t.starts_with("Évènement : configuration de Yaide changée : profils.\n"),
+        "{t}"
+    );
 }
 
 #[test]

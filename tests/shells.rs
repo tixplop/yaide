@@ -502,11 +502,22 @@ fn un_client_en_retard_est_coupe_sans_close_et_le_shell_reste() {
     drop(autre);
     let mut close = false;
     let fin = Instant::now() + Duration::from_secs(30);
+    // Le shell reste vivant : le serveur n'enverra plus de Close après FIN_8.
+    let mut recu = Vec::new();
     while Instant::now() < fin {
         match lent.read() {
             Ok(Message::Close(_)) => {
                 close = true;
                 break;
+            }
+            Ok(Message::Binary(o)) => {
+                recu.extend_from_slice(&o);
+                if recu.windows(7).any(|w| w == b"FIN_8\r\n") {
+                    break;
+                }
+                // On ne garde que la fin : de quoi reconnaître un FIN_8 coupé en deux.
+                let trop = recu.len().saturating_sub(16);
+                recu.drain(..trop);
             }
             Ok(_) => {}
             Err(tungstenite::Error::Io(e))

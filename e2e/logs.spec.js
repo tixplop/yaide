@@ -78,6 +78,15 @@ test("REQ186_AC1_REQ188_AC6_REQ187_AC5_REQ188_AC10_parcours_P147_P148_console_de
   await expect(console_(page).getByText("Aucun log.")).toBeVisible();
 
   // P-148 : 800 × 480, fichier ouvert, 1 000 lignes dont un message de 300 caractères et une erreur.
+  // Les lignes sont écrites avant un rechargement : la page les lit au chargement, sans attendre la relecture de 3 s.
+  const long = "x".repeat(300);
+  await page.evaluate(async (long) => {
+    const lignes = Array.from({ length: 999 }, (_, i) => ({ severite: "Information", message: `Ligne ${i + 1}` }));
+    lignes.push({ severite: "Erreur", message: long });
+    await fetch("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lignes }) });
+  }, long);
+  await page.reload();
+  await page.getByRole("button", { name: "Nouveau shell" }).waitFor();
   await page.setViewportSize({ width: 800, height: 480 });
   await page.getByRole("treeitem", { name: nomLigne("src") }).click();
   await page.getByRole("treeitem", { name: nomLigne("args.rs") }).click();
@@ -88,14 +97,8 @@ test("REQ186_AC1_REQ188_AC6_REQ187_AC5_REQ188_AC10_parcours_P147_P148_console_de
   const etat = page.locator(".cadre-etat");
   await expect(etat.getByRole("status")).toHaveText("v99.0.0 disponible");
   await expect(etat).toContainText("Ln 8, Col 51");
-  const long = "x".repeat(300);
-  await page.evaluate(async (long) => {
-    const lignes = Array.from({ length: 999 }, (_, i) => ({ severite: "Information", message: `Ligne ${i + 1}` }));
-    lignes.push({ severite: "Erreur", message: long });
-    await fetch("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lignes }) });
-  }, long);
-  // Mise en place de P-148, pas une preuve du délai : la relecture se fait toutes les 3 s, plus lentement sous charge.
-  await expect(bouton(page)).toHaveAttribute("aria-label", "Logs : erreurs", { timeout: 15000 });
+  await expect(bouton(page)).toHaveAttribute("aria-label", "Logs : erreurs");
+  await bouton(page).click();
   await expect(console_(page).getByRole("row").filter({ hasText: long })).toBeVisible();
   // Coupure : « Déconnecté », et « Mettre à jour » reste là.
   relais.couper();
