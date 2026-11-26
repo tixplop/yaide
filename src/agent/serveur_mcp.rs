@@ -47,7 +47,7 @@ impl ServerHandler for Outils {
     async fn call_tool(
         &self,
         requete: CallToolRequestParams,
-        _contexte: RequestContext<RoleServer>,
+        contexte: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
         let nom = requete.name.to_string();
         if !outils::integres(&self.agent.contexte().projet)
@@ -56,13 +56,16 @@ impl ServerHandler for Outils {
         {
             return Ok(refus(&format!("Outil inconnu : {nom}.")));
         }
-        if nom == "subagent" {
-            return Ok(refus(
-                "Le sous-agent n'est pas encore disponible par le serveur MCP.",
-            ));
-        }
         let arguments = serde_json::Value::Object(requete.arguments.unwrap_or_default());
-        let r = outils::executer(&nom, &arguments, &self.agent.contexte()).await;
+        let r = if nom == "subagent" {
+            // L'annulation du client arrête la boucle : le futur est abandonné.
+            tokio::select! {
+                r = self.agent.sous_agent_mcp(&arguments) => r,
+                () = contexte.ct.cancelled() => return Ok(refus("Appel annulé.")),
+            }
+        } else {
+            outils::executer(&nom, &arguments, &self.agent.contexte()).await
+        };
         let contenu = vec![ContentBlock::text(r.contenu)];
         Ok(if r.echec {
             CallToolResult::error(contenu)

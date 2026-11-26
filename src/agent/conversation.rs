@@ -893,11 +893,11 @@ Always give file paths relative to the project root.",
         instructions: &str,
         historique: &[Message],
         definitions: &[provider::DefOutil],
-        conv: &Mutex<Conversation>,
+        conv: Option<&Mutex<Conversation>>,
         (auteur, sous_agent): (Option<String>, Option<(&str, usize)>),
     ) -> Option<(&'static str, Result<provider::Reponse, ErreurProvider>)> {
         let prov = reglages::provider(&p.provider)?;
-        {
+        if let Some(conv) = conv {
             let mut c = verrou(conv);
             if c.en_cours {
                 let rang = match sous_agent {
@@ -944,6 +944,7 @@ Always give file paths relative to the project root.",
             historique,
             definitions,
             &mut |progres| {
+                let Some(conv) = conv else { return };
                 if let Some(e) = verrou(conv).etape.as_mut() {
                     match progres {
                         provider::Progres::Raisonne(t) if e.phase != "repond" => {
@@ -977,7 +978,7 @@ Always give file paths relative to the project root.",
         p: &Profil,
         arguments: &Value,
         definitions: &[provider::DefOutil],
-        conv: &Mutex<Conversation>,
+        conv: Option<&Mutex<Conversation>>,
         id_appel: &str,
     ) -> outils::Resultat {
         let Some(consigne) = arguments["prompt"].as_str() else {
@@ -1000,7 +1001,7 @@ Always give file paths relative to the project root.",
         let mut journal = vec![Entree::Utilisateur {
             texte: consigne.to_string(),
         }];
-        let auteur = verrou(conv).actif.clone();
+        let auteur = conv.and_then(|c| verrou(c).actif.clone());
         let arret_tour = || arret("the turn was stopped.".into());
         if !self.copier_etapes(conv, id_appel, &journal) {
             return arret_tour();
@@ -1095,13 +1096,33 @@ Always give file paths relative to the project root.",
         }
     }
 
+    /// `subagent` appelé par le serveur MCP (REQ-189) : sans conversation, profil par défaut,
+    /// outils du tour sans `subagent`, étapes gardées nulle part. Le refus de REQ-055 sans profil.
+    pub async fn sous_agent_mcp(&self, arguments: &Value) -> outils::Resultat {
+        let Some(p) = self.profil_agent(None) else {
+            let refus = Refus {
+                motif: "sans-profil",
+                provider: None,
+            };
+            return outils::Resultat {
+                contenu: declencheurs::phrase_de_refus(&refus),
+                echec: true,
+            };
+        };
+        let (defs, _) = self.mcp.preparer(&self.limites).await;
+        let mut definitions = outils::integres(&self.projet);
+        definitions.extend(defs);
+        self.sous_agent(&p, arguments, &definitions, None, "").await
+    }
+
     /// Recopie le journal du sous-agent dans les étapes de son appel. Faux si le tour est arrêté.
     fn copier_etapes(
         &self,
-        conv: &Mutex<Conversation>,
+        conv: Option<&Mutex<Conversation>>,
         id_appel: &str,
         journal: &[Entree],
     ) -> bool {
+        let Some(conv) = conv else { return true };
         self.modifier(conv, |c| {
             c.etape = None;
             let entree = c.entrees.iter_mut().rev().find(
@@ -1166,7 +1187,7 @@ Always give file paths relative to the project root.",
                     &instructions,
                     &historique,
                     definitions,
-                    conv,
+                    Some(conv),
                     (agent.clone(), None),
                 )
                 .await
@@ -1266,7 +1287,7 @@ Always give file paths relative to the project root.",
                     return false;
                 }
                 let r = if appel.nom == "subagent" {
-                    self.sous_agent(&p, &appel.arguments, definitions, conv, &appel.id)
+                    self.sous_agent(&p, &appel.arguments, definitions, Some(conv), &appel.id)
                         .await
                 } else {
                     self.executer_appel(&ctx, &appel).await

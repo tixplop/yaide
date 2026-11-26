@@ -558,7 +558,7 @@ fn verifier_un(
     }
 }
 
-fn phrase_de_refus(r: &Refus) -> String {
+pub(crate) fn phrase_de_refus(r: &Refus) -> String {
     match r.motif {
         "sans-profil" => "Aucun profil. Créez-en un avec Ctrl+P, puis > Profils de modèle.".into(),
         "sans-cle" => format!(

@@ -670,3 +670,135 @@ fn REQ189_AC9_route_de_l_adresse_derriere_la_session_et_l_origine() {
     let (_, v) = s.appel("GET", "/api/serveur-mcp", &Value::Null);
     assert_eq!(v, json!({"indisponible": {"de": p + 1000, "a": p + 1010}}));
 }
+
+type Scenario = std::sync::Arc<std::sync::Mutex<(Vec<Value>, Vec<Value>)>>;
+
+/// Faux provider scénarisé : rend les réponses dans l'ordre (la dernière se répète), après
+/// `delai` ms, et garde les requêtes reçues. Rend (adresse, (réponses, requêtes)).
+fn provider_scenarise(reponses: Vec<Value>, delai: u64) -> (String, Scenario) {
+    use axum::body::Bytes;
+    use axum::extract::State;
+    async fn rep(State((e, delai)): State<(Scenario, u64)>, corps: Bytes) -> String {
+        let v: Value = serde_json::from_slice(&corps).unwrap_or(Value::Null);
+        let r = {
+            let mut g = e.lock().unwrap();
+            g.1.push(v);
+            let n = g.1.len();
+            g.0[(n - 1).min(g.0.len() - 1)].clone()
+        };
+        tokio::time::sleep(Duration::from_millis(delai)).await;
+        r.to_string()
+    }
+    let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    ecoute.set_nonblocking(true).unwrap();
+    let adresse = format!("http://{}", ecoute.local_addr().unwrap());
+    let etat: Scenario = std::sync::Arc::new(std::sync::Mutex::new((reponses, vec![])));
+    let e = etat.clone();
+    std::thread::spawn(move || {
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async move {
+                let app = axum::Router::new().fallback(rep).with_state((e, delai));
+                let ecoute = tokio::net::TcpListener::from_std(ecoute).unwrap();
+                axum::serve(ecoute, app).await.unwrap();
+            });
+    });
+    (adresse, etat)
+}
+
+fn lire_readme() -> Value {
+    json!({"choices": [{"message": {"content": null, "tool_calls": [{"id": "c1", "type": "function",
+        "function": {"name": "read", "arguments": "{\"path\":\"README.md\"}"}}]}}],
+        "usage": {"prompt_tokens": 7, "completion_tokens": 1}})
+}
+
+fn dit(t: &str) -> Value {
+    json!({"choices": [{"message": {"content": t}}],
+           "usage": {"prompt_tokens": 7, "completion_tokens": 1}})
+}
+
+#[test]
+fn REQ189_AC7_subagent_sans_conversation_sans_profil_et_annulation() {
+    // Sans profil : le refus de REQ-055, en isError.
+    let s = nouvelle("ac7a");
+    let (mut c, _, _) = Client::ouvrir(s.mcp(), &[]);
+    let (erreur, texte) = c.appeler("subagent", json!({"prompt": "x"}));
+    assert!(erreur);
+    assert_eq!(
+        texte,
+        "Aucun profil. Créez-en un avec Ctrl+P, puis > Profils de modèle."
+    );
+    drop(s);
+
+    // Avec profil : read puis « trouvé », sans conversation.
+    let s = nouvelle("ac7b");
+    std::fs::write(s.projet.join("README.md"), "contenu du readme").unwrap();
+    let (adresse, etat) = provider_scenarise(vec![lire_readme(), dit("trouvé")], 0);
+    configurer(&s, &adresse, "sk-x");
+    let (mut c, _, _) = Client::ouvrir(s.mcp(), &[]);
+    let avant = fichiers(&s.projet.join(".yaide"));
+    let attendus: Vec<String> = c
+        .outils()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .filter(|n| n != "subagent")
+        .collect();
+    let (erreur, texte) = c.appeler("subagent", json!({"prompt": "cherche"}));
+    assert!(!erreur, "{texte}");
+    assert_eq!(texte, "trouvé");
+    {
+        let g = etat.lock().unwrap();
+        assert_eq!(g.1.len(), 2);
+        for r in &g.1 {
+            assert_eq!(r["model"], "m");
+            let noms: Vec<String> = r["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|t| t["function"]["name"].as_str().unwrap().to_string())
+                .collect();
+            assert_eq!(noms, attendus);
+        }
+        assert!(g.1[1].to_string().contains("contenu du readme"));
+    }
+    assert_eq!(fichiers(&s.projet.join(".yaide")), avant);
+    assert!(!s.projet.join(".yaide/conversations").exists());
+    drop(s);
+
+    // Annulation pendant que le faux provider attend : plus aucune requête ensuite.
+    let s = nouvelle("ac7c");
+    std::fs::write(s.projet.join("README.md"), "x").unwrap();
+    let (adresse, etat) = provider_scenarise(vec![lire_readme()], 300);
+    configurer(&s, &adresse, "sk-x");
+    let (mut c, _, _) = Client::ouvrir(s.mcp(), &[]);
+    let mut c2 = Client {
+        port: c.port,
+        session: c.session.clone(),
+    };
+    let fil = std::thread::spawn(move || {
+        c.requete(
+            &[],
+            "tools/call",
+            json!({"name": "subagent", "arguments": {"prompt": "cherche"}}),
+        )
+    });
+    for _ in 0..200 {
+        if !etat.lock().unwrap().1.is_empty() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert_eq!(etat.lock().unwrap().1.len(), 1);
+    c2.envoyer(
+        &[],
+        &json!({"jsonrpc": "2.0", "method": "notifications/cancelled",
+                "params": {"requestId": 2, "reason": "test"}}),
+    );
+    std::thread::sleep(Duration::from_millis(1000));
+    assert_eq!(
+        etat.lock().unwrap().1.len(),
+        1,
+        "requête après l'annulation"
+    );
+    let _ = fil.join();
+}
