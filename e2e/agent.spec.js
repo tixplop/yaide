@@ -175,7 +175,7 @@ test("REQ056_parcours_19_regler_l_agent_et_corriger_un_fichier", async ({ page }
   expect(premiere.chemin).toBe("/v1/messages");
   expect(premiere.entetes["x-api-key"]).toBe("sk-test");
   expect(JSON.stringify(premiere.corps)).toContain("regle-maison-42");
-  expect(premiere.corps.tools.map((t) => t.name).sort()).toEqual(["bash", "edit", "get_config", "glob", "list_agents", "read", "save_agent", "save_interface", "save_mcp_server", "save_profile", "save_provider", "subagent", "webfetch", "websearch", "whiteboard_read", "whiteboard_write", "write"]);
+  expect(premiere.corps.tools.map((t) => t.name).sort()).toEqual(["bash", "edit", "get_config", "glob", "list_agents", "read", "run_workflow", "save_agent", "save_interface", "save_mcp_server", "save_profile", "save_provider", "subagent", "webfetch", "websearch", "whiteboard_read", "whiteboard_write", "write"]);
   expect(JSON.stringify(faux.recues[1].corps.messages)).toContain("Exit code: 101");
   expect(faux.recues).toHaveLength(4);
 });
