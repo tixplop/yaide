@@ -434,7 +434,7 @@ test("REQ028_AC17_REQ059_AC1_AC10_rail_droit_avec_le_bouton_Agent", async () => 
   const { vue } = monter();
   const rd = vue.querySelector(".cadre-rail-droit");
   const b = boutonAgentDe(vue);
-  expect([...rd.querySelectorAll("button")]).toEqual([b, boutonAgentsDe(vue), boutonBaseDe(vue), boutonMcpDe(vue)]);
+  expect([...rd.querySelectorAll("button")]).toEqual([b, boutonAgentsDe(vue), boutonWorkflowsDe(vue), boutonBaseDe(vue), boutonMcpDe(vue)]);
   expect(b.getAttribute("aria-keyshortcuts")).toBe("A");
   expect(b.querySelector("svg[data-icone=bot]")).not.toBeNull();
   expect(b.textContent).toBe("");
@@ -627,7 +627,7 @@ test("REQ028_AC8_ordre_de_Tab_de_la_page_avec_l_agent_a_droite", async () => {
   const terminaux = vue.querySelector(".cadre-shells");
   // Replié : aucun arrêt dans la colonne, le bouton « Agents » est le dernier.
   expect(tabbables().some((e) => agentCol(vue).contains(e) || e === poignee)).toBe(false);
-  expect(tabbables().slice(-5)).toEqual([bouton, boutonAgentsDe(vue), boutonBaseDe(vue), boutonMcpDe(vue), vue.querySelector("footer .ya-logs")]);
+  expect(tabbables().slice(-6)).toEqual([bouton, boutonAgentsDe(vue), boutonWorkflowsDe(vue), boutonBaseDe(vue), boutonMcpDe(vue), vue.querySelector("footer .ya-logs")]);
   boutonAgentsDe(vue).click();
   await vi.waitFor(() => expect(corpsAgents(vue).querySelector("input, button")).not.toBeNull());
   const liste = tabbables();
@@ -784,6 +784,7 @@ test("REQ086_AC8_git_desactive_aucune_requete_git_ni_ligne_worktree", async () =
 // ---- REQ-088 : « Sessions opencode » ----
 
 const boutonMcpDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label='Serveurs MCP']");
+const boutonWorkflowsDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label='Workflows']");
 const boutonBaseDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label='Base de connaissance']");
 const boutonSessionsDe = (vue) => vue.querySelector(".cadre-rail-droit [aria-label='Sessions opencode']");
 
@@ -792,7 +793,7 @@ test("REQ088_AC1_AC12_bouton_sous_opencode_seulement_si_detecte", async () => {
   const a = monter().vue;
   await vi.waitFor(() => expect(boutonSessionsDe(a)).not.toBeNull());
   const noms = nomsRailDroit(a);
-  expect(noms.slice(-4)).toEqual(["opencode", "Sessions opencode", "Base de connaissance", "Serveurs MCP"]);
+  expect(noms.slice(-5)).toEqual(["opencode", "Sessions opencode", "Workflows", "Base de connaissance", "Serveurs MCP"]);
   const b = boutonSessionsDe(a);
   expect(b.getAttribute("aria-haspopup")).toBe("dialog");
   expect(b.querySelector("svg")).not.toBeNull();
@@ -1158,7 +1159,7 @@ test("REQ096_AC1_bouton_au_pied_du_rail_droit_seulement_avec_agents", async () =
   simulerOpencode();
   const a = monter().vue;
   await vi.waitFor(() => expect(boutonSessionsDe(a)).not.toBeNull());
-  expect(nomsRailDroit(a).slice(-4)).toEqual(["opencode", "Sessions opencode", "Base de connaissance", "Serveurs MCP"]);
+  expect(nomsRailDroit(a).slice(-5)).toEqual(["opencode", "Sessions opencode", "Workflows", "Base de connaissance", "Serveurs MCP"]);
   expect(boutonMcpDe(a).closest(".cadre-rail-pied")).not.toBeNull();
   simulerOpencode({ opencode: false, claude: false });
   const b = monter({ reglages: { fonctions: { agents: false } } }).vue;
@@ -2251,4 +2252,33 @@ test("REQ187_AC2_AC4_le_bouton_Logs_est_le_premier_de_la_barre_d_etat_ouvre_la_c
   b.click();
   expect(vue.querySelector(".shells [role=tab][aria-selected=true]").textContent).toBe("Logs");
   expect(iconeLogs(vue)).toBe(avant);
+});
+
+// ---- REQ-190 : « Workflows » au pied du rail droit ----
+
+test("REQ190_AC1_AC7_bouton_Workflows_au_dessus_de_la_base_seulement_avec_agents_et_dialogue_modal", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) => (String(url) === "/api/workflows" ? jsonOk({ workflows: [], erreurs: [] }) : fauxServeur(url))));
+  const a = monter().vue;
+  const b = boutonWorkflowsDe(a);
+  expect(b.closest(".cadre-rail-pied")).not.toBeNull();
+  expect(b.parentElement.nextElementSibling).toBe(boutonBaseDe(a).parentElement);
+  expect(b.getAttribute("aria-haspopup")).toBe("dialog");
+  expect(b.hasAttribute("aria-expanded") || b.hasAttribute("aria-pressed")).toBe(false);
+  expect(b.querySelector("svg[data-icone=waypoints]")).not.toBeNull();
+  b.parentElement.dispatchEvent(new Event("pointerenter"));
+  await vi.waitFor(() => expect(document.querySelector("[role=tooltip]").textContent).toBe("Workflows"));
+  b.parentElement.dispatchEvent(new Event("pointerleave"));
+  b.focus();
+  b.click();
+  await vi.waitFor(() => expect(document.querySelector("dialog")).not.toBeNull());
+  const d = document.querySelector("dialog");
+  expect(document.getElementById(d.getAttribute("aria-labelledby")).textContent).toBe("Workflows");
+  expect(b.hasAttribute("data-ouvert")).toBe(true);
+  expect(b.hasAttribute("aria-expanded")).toBe(false);
+  d.dispatchEvent(new Event("cancel", { cancelable: true }));
+  await vi.waitFor(() => expect(document.querySelector("dialog")).toBeNull());
+  expect(document.activeElement).toBe(b);
+  expect(b.hasAttribute("data-ouvert")).toBe(false);
+  const c = monter({ reglages: { fonctions: { agents: false } } }).vue;
+  expect(boutonWorkflowsDe(c)).toBeNull();
 });

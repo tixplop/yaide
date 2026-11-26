@@ -225,6 +225,38 @@ export async function ecrireWorkflow(fichier, { noeuds, liens }) {
   return { cause: "erreur", message: corps.message ?? corps.erreur ?? `erreur ${r.status}` };
 }
 
+/** Les workflows du projet (REQ-190) : `{ workflows: [{ nom, fichier, publie }], erreurs: [texte] }`, `{ cause, message }` ou `{ coupure: true }`. */
+export async function listerWorkflows() {
+  const r = await appeler("/api/workflows");
+  if (!r) return { coupure: true };
+  try {
+    const corps = await r.json();
+    if (r.ok && Array.isArray(corps.workflows)) return { workflows: corps.workflows, erreurs: Array.isArray(corps.erreurs) ? corps.erreurs : [] };
+  } catch {
+    // Réponse illisible : le statut seul le dit.
+  }
+  return { cause: "erreur", message: `erreur ${r.status}` };
+}
+
+/** Réponse d'une écriture de workflow : le workflow, `{ refus }` (400), `{ problemes }` (422, vérification), `{ cause, message }` ou `{ coupure: true }`. */
+async function ecritureWorkflow(chemin, options) {
+  const r = await appeler(chemin, options);
+  if (!r) return { coupure: true };
+  let corps = {};
+  try {
+    corps = await r.json();
+  } catch {
+    // Corps absent ou illisible.
+  }
+  if (r.ok) return corps;
+  if (r.status === 400 && typeof corps.message === "string") return { refus: corps.message };
+  if (r.status === 422 && Array.isArray(corps.messages)) return { problemes: corps.messages };
+  return { cause: "erreur", message: corps.message ?? corps.erreur ?? `erreur ${r.status}` };
+}
+export const creerWorkflow = (nom) => ecritureWorkflow("/api/workflows", json("POST", { nom }));
+export const publierWorkflow = (fichier) => ecritureWorkflow(`/api/workflows/${q(fichier)}/publier`, { method: "POST" });
+export const depublierWorkflow = (fichier) => ecritureWorkflow(`/api/workflows/${q(fichier)}/depublier`, { method: "POST" });
+
 /** Version de chaque chemin (`null` si le fichier n'existe plus), ou null si le serveur ne répond pas. */
 export async function versionsFichiers(chemins) {
   const r = await appeler("/api/fichiers/versions", { method: "POST", body: chemins.join("\n"), signal: AbortSignal.timeout(2000) });

@@ -11,6 +11,7 @@ import { vueConnaissance } from "./connaissance.js";
 import { vueEnvironnements } from "./environnements.js";
 import { vueServeurMcpYaide } from "./serveur-mcp-yaide.js";
 import { vueServeursMcp } from "./serveurs-mcp.js";
+import { vueWorkflows } from "./workflows.js";
 import { vueSessionsOpencode } from "./sessions-opencode.js";
 import { surveiller } from "../connexion.js";
 import { changerTheme, themeCourant } from "../ui/theme.js";
@@ -138,6 +139,17 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const boutonMcp = avec.agents ? bouton({ icone: "server", nomAccessible: "Serveurs MCP", positionInfoBulle: "gauche", ouvreDialogue: true }) : null;
   const serveursMcp = avec.agents ? vueServeursMcp({ surEtat: (ouvert) => boutonMcp.definirOuvert(ouvert) }) : null;
   boutonMcp?.addEventListener("click", () => serveursMcp.ouvrir());
+  // « Workflows » : ni aria-expanded ni aria-pressed ; `data-ouvert` porte le fond tant que le dialogue est ouvert (V-016).
+  const boutonWorkflows = avec.agents ? bouton({ icone: "waypoints", nomAccessible: "Workflows", positionInfoBulle: "gauche", ouvreDialogue: true }) : null;
+  const dialogueWorkflows = avec.agents
+    ? vueWorkflows({
+        surEtat: (ouvert) => boutonWorkflows.toggleAttribute("data-ouvert", ouvert),
+        ouvrirWorkflow: (fichier) => editeur.ouvrirWorkflow(fichier),
+        workflowModifie: (fichier) => editeur.workflowModifie(fichier),
+        etatWorkflow: (fichier, publie) => editeur.etatWorkflow(fichier, publie),
+      })
+    : null;
+  boutonWorkflows?.addEventListener("click", () => dialogueWorkflows.ouvrir());
   const boutonBase = avec.agents ? bouton({ icone: "book-open", nomAccessible: "Base de connaissance", positionInfoBulle: "gauche", ouvreDialogue: true }) : null;
   const baseConnaissance = avec.agents ? vueConnaissance({ surEtat: (ouvert) => boutonBase.definirOuvert(ouvert), ouvrirFichier: (ref, avant) => editeur.ouvrirCitee(ref, avant) }) : null;
   boutonBase?.addEventListener("click", () => baseConnaissance.ouvrir());
@@ -419,7 +431,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
     rail: { onglets: rail, commandes: avec.shells ? shells.commandes : [] },
     panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche?.corps, git.corps].filter(Boolean) },
     agent: { titre: "Agents", repli: repliAgent.enveloppe, corps: avec.agents ? [agents.corps] : [] },
-    railDroit: { commandes: avec.agents ? [boutonAgent.enveloppe, boutonAgents.enveloppe] : [], pied: boutonMcp ? [boutonBase.enveloppe, boutonMcp.enveloppe] : [] },
+    railDroit: { commandes: avec.agents ? [boutonAgent.enveloppe, boutonAgents.enveloppe] : [], pied: boutonMcp ? [boutonWorkflows.enveloppe, boutonBase.enveloppe, boutonMcp.enveloppe] : [] },
     fonctions: avec,
     principal: { groupes: editeur.groupes(), shells },
     barreEtat: barre,
