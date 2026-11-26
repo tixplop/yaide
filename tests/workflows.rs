@@ -672,3 +672,472 @@ fn REQ190_routes_exigent_session_et_origine() {
     assert_eq!(r.code, 403);
     assert!(!s.yaide().exists());
 }
+
+// ---- Exécution (REQ-193, REQ-194, REQ-195) ----
+
+fn attendre(mut ok: impl FnMut() -> bool) -> bool {
+    for _ in 0..150 {
+        if ok() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
+/// Le temps de laisser passer quelques vérifications (100 ms chacune) sans rien voir arriver.
+fn laisser_passer() {
+    std::thread::sleep(Duration::from_millis(1500));
+}
+
+/// Le temps du premier regard sur l'état du moment, après le lancement ou la publication.
+fn premier_regard() {
+    std::thread::sleep(Duration::from_millis(600));
+}
+
+fn journal(s: &Serveur) -> Vec<Value> {
+    s.appel("GET", "/api/journal", &Value::Null).json()["lignes"]
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+fn lignes_du_journal(s: &Serveur, message: &str) -> usize {
+    journal(s)
+        .iter()
+        .filter(|l| l["message"] == message)
+        .count()
+}
+
+fn ecrire_projet(s: &Serveur, rel: &str, contenu: &str) {
+    let chemin = s.projet.join(rel);
+    std::fs::create_dir_all(chemin.parent().unwrap()).unwrap();
+    std::fs::write(chemin, contenu).unwrap();
+}
+
+fn lire_projet(s: &Serveur, rel: &str) -> String {
+    std::fs::read_to_string(s.projet.join(rel)).unwrap_or_default()
+}
+
+fn nb_lignes(s: &Serveur, rel: &str) -> usize {
+    lire_projet(s, rel).lines().count()
+}
+
+fn shell(id: &str, titre: &str, y: f64, commande: &str) -> Value {
+    json!({ "id": id, "type": "shell", "titre": titre, "x": 0.0, "y": y,
+            "reglages": { "commande": commande } })
+}
+
+fn dossier(dossier: &str, evenements: Value) -> Value {
+    noeud(
+        "t",
+        "dossier",
+        "Fichiers d'un dossier 1",
+        json!({ "dossier": dossier, "evenements": evenements }),
+    )
+}
+
+fn publier(s: &Serveur, fichier: &str) {
+    let r = s.appel(
+        "POST",
+        &format!("/api/workflows/{fichier}/publier"),
+        &Value::Null,
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+}
+
+fn depublier(s: &Serveur, fichier: &str) {
+    let r = s.appel(
+        "POST",
+        &format!("/api/workflows/{fichier}/depublier"),
+        &Value::Null,
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+}
+
+const MARQUE: &str = "echo x >> marque.txt";
+const ENTREE: &str = "printf '%s' \"$YAIDE_ENTREE\" > entree.txt; echo x >> marque.txt";
+
+#[test]
+fn REQ192_AC1_REQ193_AC1_publie_lance_a_l_evenement_ecoute_depublie_ne_lance_rien() {
+    let racine = preparer("exec1");
+    let s = demarrer(&racine, "p");
+    std::fs::create_dir_all(s.projet.join("notes")).unwrap();
+    let f = creer(
+        &s,
+        "Revue des notes",
+        json!([
+            dossier("notes", json!(["cree"])),
+            shell("a", "Commande shell 1", 0.0, ENTREE)
+        ]),
+        json!([{ "de": "t", "vers": "a" }]),
+    );
+    publier(&s, &f);
+    let fichier: Value = serde_json::from_slice(&lire_fichier(&s, &f)).unwrap();
+    assert_eq!(fichier["publie"], true);
+    premier_regard();
+    ecrire_projet(&s, "notes/a.md", "1");
+    assert!(attendre(|| nb_lignes(&s, "marque.txt") == 1));
+    assert_eq!(
+        lire_projet(&s, "entree.txt"),
+        "Évènement : changements dans le dossier `notes/` :\n- `notes/a.md` créé"
+    );
+    // « Modifié » n'est pas coché : rien.
+    ecrire_projet(&s, "notes/a.md", "2");
+    laisser_passer();
+    assert_eq!(nb_lignes(&s, "marque.txt"), 1);
+    // Dépublié : un fichier créé ne lance rien.
+    depublier(&s, &f);
+    ecrire_projet(&s, "notes/b.md", "1");
+    laisser_passer();
+    assert_eq!(nb_lignes(&s, "marque.txt"), 1);
+    // Les trois cases : modifié, puis supprimé.
+    let r = s.appel(
+        "PUT",
+        &format!("/api/workflows/{f}"),
+        &json!({
+            "noeuds": [dossier("notes", json!(["cree", "modifie", "supprime"])),
+                       shell("a", "Commande shell 1", 0.0, ENTREE)],
+            "liens": [{ "de": "t", "vers": "a" }]
+        }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    publier(&s, &f);
+    premier_regard();
+    ecrire_projet(&s, "notes/a.md", "3");
+    assert!(attendre(|| nb_lignes(&s, "marque.txt") == 2));
+    assert_eq!(
+        lire_projet(&s, "entree.txt"),
+        "Évènement : changements dans le dossier `notes/` :\n- `notes/a.md` modifié"
+    );
+    premier_regard();
+    std::fs::remove_file(s.projet.join("notes/a.md")).unwrap();
+    assert!(attendre(|| nb_lignes(&s, "marque.txt") == 3));
+    assert_eq!(
+        lire_projet(&s, "entree.txt"),
+        "Évènement : changements dans le dossier `notes/` :\n- `notes/a.md` supprimé"
+    );
+}
+
+#[test]
+fn REQ192_AC5_REQ194_AC4_depublier_pendant_l_execution_elle_va_a_son_terme_et_le_journal_la_suit() {
+    let racine = preparer("exec2");
+    let s = demarrer(&racine, "p");
+    let commande = "sleep 1; echo fin >> marque.txt";
+    let f = creer(
+        &s,
+        "Revue des notes",
+        json!([
+            dossier("notes", json!(["cree"])),
+            shell("a", "Commande shell 1", 0.0, commande)
+        ]),
+        json!([{ "de": "t", "vers": "a" }]),
+    );
+    publier(&s, &f);
+    premier_regard();
+    ecrire_projet(&s, "notes/a.md", "1");
+    assert!(attendre(|| lignes_du_journal(
+        &s,
+        "Workflow « Revue des notes » lancé."
+    ) == 1));
+    depublier(&s, &f);
+    // L'onglet redevient modifiable : l'enregistrement est accepté pendant l'exécution.
+    let r = s.appel(
+        "PUT",
+        &format!("/api/workflows/{f}"),
+        &json!({ "noeuds": [], "liens": [] }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert!(attendre(|| lignes_du_journal(
+        &s,
+        "Workflow « Revue des notes » terminé."
+    ) == 1));
+    assert_eq!(lire_projet(&s, "marque.txt"), "fin\n");
+    let l = journal(&s);
+    let pos = |m: &str| l.iter().position(|x| x["message"] == m).unwrap();
+    let debut = pos("Workflow « Revue des notes » lancé.");
+    let fin = pos("Workflow « Revue des notes » terminé.");
+    assert!(debut < fin);
+    assert_eq!(l[debut]["severite"], "Information");
+    assert_eq!(l[fin]["severite"], "Information");
+}
+
+#[test]
+fn REQ192_AC6_publie_ecoute_apres_redemarrage_brouillon_reste_brouillon() {
+    let racine = preparer("exec3");
+    let s = demarrer(&racine, "p");
+    let noeuds = |dossier_surveille: &str, commande: &str| {
+        json!([
+            dossier(dossier_surveille, json!(["cree"])),
+            shell("a", "Commande shell 1", 0.0, commande)
+        ])
+    };
+    let liens = json!([{ "de": "t", "vers": "a" }]);
+    let publie = creer(
+        &s,
+        "Publié",
+        noeuds("notes", "echo x >> publie.txt"),
+        liens.clone(),
+    );
+    let brouillon = creer(
+        &s,
+        "Brouillon",
+        noeuds("notes", "echo x >> brouillon.txt"),
+        liens,
+    );
+    publier(&s, &publie);
+    drop(s);
+    let s = demarrer(&racine, "p");
+    let l = s.appel("GET", "/api/workflows", &Value::Null).json();
+    let etat = |f: &str| {
+        l["workflows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|w| w["fichier"] == f)
+            .unwrap()["publie"]
+            .clone()
+    };
+    assert_eq!(etat(&publie), true);
+    assert_eq!(etat(&brouillon), false);
+    premier_regard();
+    ecrire_projet(&s, "notes/a.md", "1");
+    assert!(attendre(|| nb_lignes(&s, "publie.txt") == 1));
+    laisser_passer();
+    assert_eq!(nb_lignes(&s, "brouillon.txt"), 0);
+}
+
+#[test]
+fn REQ193_AC4_evenement_pendant_l_execution_ignore_et_rien_apres_un_arret() {
+    let racine = preparer("exec4");
+    let s = demarrer(&racine, "p");
+    let commande = "sleep 2; echo x >> marque.txt";
+    let f = creer(
+        &s,
+        "Revue des notes",
+        json!([
+            dossier("notes", json!(["cree"])),
+            shell("a", "Commande shell 1", 0.0, commande)
+        ]),
+        json!([{ "de": "t", "vers": "a" }]),
+    );
+    publier(&s, &f);
+    premier_regard();
+    ecrire_projet(&s, "notes/a.md", "1");
+    assert!(attendre(|| lignes_du_journal(
+        &s,
+        "Workflow « Revue des notes » lancé."
+    ) == 1));
+    ecrire_projet(&s, "notes/b.md", "1");
+    assert!(attendre(|| lignes_du_journal(
+        &s,
+        "Workflow « Revue des notes » terminé."
+    ) == 1));
+    laisser_passer();
+    assert_eq!(
+        lignes_du_journal(&s, "Workflow « Revue des notes » lancé."),
+        1
+    );
+    ecrire_projet(&s, "notes/c.md", "1");
+    assert!(attendre(|| lignes_du_journal(
+        &s,
+        "Workflow « Revue des notes » lancé."
+    ) == 2));
+    // Arrêt : un fichier créé pendant l'arrêt ne lance rien au redémarrage.
+    assert!(attendre(|| lignes_du_journal(
+        &s,
+        "Workflow « Revue des notes » terminé."
+    ) == 2));
+    drop(s);
+    ecrire_projet_hors(&racine, "p/notes/d.md");
+    let s = demarrer(&racine, "p");
+    laisser_passer();
+    assert_eq!(nb_nouveau_lancement(&s), 0);
+}
+
+fn ecrire_projet_hors(racine: &Path, rel: &str) {
+    std::fs::write(racine.join(rel), "1").unwrap();
+}
+
+fn nb_nouveau_lancement(s: &Serveur) -> usize {
+    journal(s)
+        .iter()
+        .filter(|l| l["message"] == "Workflow « Revue des notes » lancé.")
+        .count()
+}
+
+#[test]
+fn REQ194_AC2_suivants_par_position_en_profondeur() {
+    let racine = preparer("exec5");
+    let s = demarrer(&racine, "p");
+    let noeuds = |dossier_surveille: &str, fichier: &str, y_b: f64| {
+        let cmd = |t: &str| format!("echo {t} >> {fichier}");
+        json!([
+            dossier(dossier_surveille, json!(["cree"])),
+            shell("a", "A", 10.0, &cmd("A")),
+            shell("b", "B", y_b, &cmd("B")),
+            shell("c", "C", 30.0, &cmd("C")),
+            shell("d", "D", 40.0, &cmd("D")),
+        ])
+    };
+    let liens = json!([
+        { "de": "t", "vers": "a" }, { "de": "a", "vers": "c" },
+        { "de": "a", "vers": "b" }, { "de": "b", "vers": "d" }
+    ]);
+    let f1 = creer(
+        &s,
+        "Premier",
+        noeuds("n1", "ordre1.txt", 20.0),
+        liens.clone(),
+    );
+    let f2 = creer(&s, "Second", noeuds("n2", "ordre2.txt", 50.0), liens);
+    publier(&s, &f1);
+    publier(&s, &f2);
+    premier_regard();
+    ecrire_projet(&s, "n1/x.md", "1");
+    ecrire_projet(&s, "n2/x.md", "1");
+    assert!(attendre(
+        || nb_lignes(&s, "ordre1.txt") == 4 && nb_lignes(&s, "ordre2.txt") == 4
+    ));
+    assert_eq!(lire_projet(&s, "ordre1.txt"), "A\nB\nD\nC\n");
+    assert_eq!(lire_projet(&s, "ordre2.txt"), "A\nC\nB\nD\n");
+}
+
+#[test]
+fn REQ194_AC3_echec_arrete_l_execution_et_le_journal_dit_pourquoi() {
+    let racine = preparer("exec6");
+    let s = demarrer(&racine, "p");
+    let f = creer(
+        &s,
+        "Revue des notes",
+        json!([
+            dossier("notes", json!(["cree"])),
+            shell("a", "Commande shell 1", 10.0, "echo oups >&2; exit 3"),
+            shell("b", "Commande shell 2", 20.0, MARQUE)
+        ]),
+        json!([{ "de": "t", "vers": "a" }, { "de": "a", "vers": "b" }]),
+    );
+    publier(&s, &f);
+    premier_regard();
+    ecrire_projet(&s, "notes/a.md", "1");
+    let message =
+        "Workflow « Revue des notes » : échec de « Commande shell 1 » : code de sortie 3.";
+    assert!(attendre(|| lignes_du_journal(&s, message) == 1));
+    let l = journal(&s);
+    let ligne = l.iter().find(|x| x["message"] == message).unwrap();
+    assert_eq!(ligne["severite"], "Erreur");
+    assert_eq!(ligne["detail"], "oups");
+    laisser_passer();
+    assert_eq!(nb_lignes(&s, "marque.txt"), 0);
+    assert_eq!(
+        lignes_du_journal(&s, "Workflow « Revue des notes » terminé."),
+        0
+    );
+}
+
+#[test]
+fn REQ194_AC5_commande_trop_longue_arretee_a_la_limite() {
+    let racine = preparer("exec7");
+    let s = demarrer_avec_env(&racine, "p", &[("YAIDE_LIMITE_COMMANDE_MS", "1000")]);
+    let f = creer(
+        &s,
+        "Revue des notes",
+        json!([
+            dossier("notes", json!(["cree"])),
+            shell(
+                "a",
+                "Commande shell 1",
+                0.0,
+                "sleep 5 & echo $! > pid.txt; wait"
+            )
+        ]),
+        json!([{ "de": "t", "vers": "a" }]),
+    );
+    publier(&s, &f);
+    premier_regard();
+    ecrire_projet(&s, "notes/a.md", "1");
+    let debut = std::time::Instant::now();
+    let message =
+        "Workflow « Revue des notes » : échec de « Commande shell 1 » : limite de temps atteinte.";
+    assert!(attendre(|| lignes_du_journal(&s, message) == 1));
+    assert!(debut.elapsed() < Duration::from_secs(4));
+    // La commande est arrêtée : son processus n'existe plus.
+    let pid = lire_projet(&s, "pid.txt").trim().to_string();
+    assert!(!pid.is_empty());
+    assert!(attendre_court(
+        || !Path::new(&format!("/proc/{pid}")).exists()
+    ));
+}
+
+fn attendre_court(mut ok: impl FnMut() -> bool) -> bool {
+    for _ in 0..10 {
+        if ok() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
+#[test]
+fn REQ194_AC6_deux_workflows_sur_le_meme_dossier_tournent_en_meme_temps() {
+    let racine = preparer("exec8");
+    let s = demarrer(&racine, "p");
+    for nom in ["Premier", "Second"] {
+        let f = creer(
+            &s,
+            nom,
+            json!([
+                dossier("notes", json!(["cree"])),
+                shell("a", "Commande shell 1", 0.0, "sleep 2")
+            ]),
+            json!([{ "de": "t", "vers": "a" }]),
+        );
+        publier(&s, &f);
+    }
+    premier_regard();
+    ecrire_projet(&s, "notes/a.md", "1");
+    assert!(attendre(|| {
+        lignes_du_journal(&s, "Workflow « Premier » lancé.") == 1
+            && lignes_du_journal(&s, "Workflow « Second » lancé.") == 1
+    }));
+    // Les deux sont lancés avant que l'un ait fini.
+    assert_eq!(lignes_du_journal(&s, "Workflow « Premier » terminé."), 0);
+    assert_eq!(lignes_du_journal(&s, "Workflow « Second » terminé."), 0);
+}
+
+#[test]
+fn REQ195_AC3_commande_shell_dans_la_racine_sans_ouvrir_de_shell() {
+    let racine = preparer("exec9");
+    let s = demarrer(&racine, "p");
+    let avant = s.appel("GET", "/api/shells", &Value::Null).corps;
+    let f = creer(
+        &s,
+        "Revue des notes",
+        json!([
+            dossier("notes", json!(["cree"])),
+            shell(
+                "a",
+                "Commande shell 1",
+                0.0,
+                "{ pwd; echo \"$YAIDE_ENTREE\"; } > sortie.txt"
+            )
+        ]),
+        json!([{ "de": "t", "vers": "a" }]),
+    );
+    publier(&s, &f);
+    premier_regard();
+    ecrire_projet(&s, "notes/a.md", "1");
+    assert!(attendre(|| lignes_du_journal(
+        &s,
+        "Workflow « Revue des notes » terminé."
+    ) == 1));
+    assert_eq!(
+        lire_projet(&s, "sortie.txt"),
+        format!(
+            "{}\nÉvènement : changements dans le dossier `notes/` :\n- `notes/a.md` créé\n",
+            s.projet.display()
+        )
+    );
+    assert_eq!(s.appel("GET", "/api/shells", &Value::Null).corps, avant);
+}

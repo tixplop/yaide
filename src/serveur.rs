@@ -41,6 +41,7 @@ struct Etat {
     agent: Arc<Gestionnaire>,
     agents: Arc<Agents>,
     workflows: crate::workflows::Workflows,
+    executions: Arc<std::sync::Mutex<crate::workflows::execution::Etat>>,
     opencode: opencode::Opencode,
     client_opencode: reqwest::Client,
     version: version::Version,
@@ -2396,6 +2397,7 @@ pub async fn servir(
         shells: Default::default(),
         agents,
         workflows: crate::workflows::Workflows::new(projet.join(".yaide")),
+        executions: Default::default(),
         opencode: opencode::Opencode::new(journal.clone()),
         client_opencode: reqwest::Client::builder()
             .no_proxy()
@@ -2469,6 +2471,12 @@ pub async fn servir(
                 &surveillance.agents,
                 &surveillance.agent,
                 &surveillance.shells,
+            );
+            crate::workflows::execution::passer(
+                &surveillance.executions,
+                &surveillance.projet_dir,
+                surveillance.workflows.publies(),
+                &surveillance.journal,
             );
             tokio::time::sleep(intervalle_verification()).await;
         }

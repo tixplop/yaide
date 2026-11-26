@@ -1,5 +1,6 @@
 //! Workflows du projet (REQ-190 à REQ-195, DEC-127) : un fichier `.yaide/workflows/<fichier>.json`
 //! par workflow ; liste, lecture, création, enregistrement, publication et dépublication.
+pub mod execution;
 pub mod verification;
 
 use crate::agent::agents::nom_de_dossier;
@@ -123,6 +124,13 @@ impl Workflows {
             })
             .collect();
         json!({ "workflows": workflows, "erreurs": erreurs })
+    }
+
+    /// (fichier, workflow) des workflows publiés, pour la surveillance de leurs déclencheurs.
+    pub fn publies(&self) -> Vec<(String, Workflow)> {
+        let _g = self.verrouiller();
+        let (lus, _) = self.parcourir();
+        lus.into_iter().filter(|(_, w)| w.publie).collect()
     }
 
     fn vue(fichier: &str, w: &Workflow) -> Value {

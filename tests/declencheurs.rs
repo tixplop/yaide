@@ -547,10 +547,12 @@ fn REQ164_AC1_AC2_AC5_REQ165_AC1_une_conversation_par_agent_a_l_ecoute() {
     std::fs::write(s.yaide().join("agents/relecteur/AGENTS.md"), "Tu relis.").unwrap();
     laisser_voir();
     assert!(conversations(&s).is_empty());
+    // Calage : la sonde se déclenche, donc la surveillance a déjà pris l'état de départ.
+    declencher_sonde(&s);
     // créé
     ecrire(&s, "docs/a.md", "un");
     let l = attendre_hors_sonde(&s, 2);
-    let l2 = passer_sonde(&s, 1);
+    let l2 = passer_sonde(&s, 2);
     assert_eq!(l2.len(), 2, "{l:?}");
     for c in &l2 {
         assert_eq!(c["titre"], "Évènement : fichier `docs/a.md` créé.");
@@ -599,7 +601,7 @@ fn REQ164_AC1_AC2_AC5_REQ165_AC1_une_conversation_par_agent_a_l_ecoute() {
     assert_eq!(e[e.len() - 2]["texte"], "merci");
     assert_eq!(e[e.len() - 1]["texte"], "ok");
     // modifié, réécrit à l'identique, supprimé
-    let passages = std::cell::Cell::new(1);
+    let passages = std::cell::Cell::new(2);
     let fin = |n: usize| {
         attendre_hors_sonde(&s, n);
         passages.set(passages.get() + 1);

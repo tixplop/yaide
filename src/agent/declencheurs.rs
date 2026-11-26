@@ -72,7 +72,7 @@ pub fn evenement_court(message: &str) -> String {
 
 /// Ce qu'on sait d'un fichier : taille, date, puis empreinte du contenu (comme REQ-110).
 #[derive(Clone, Debug, PartialEq)]
-struct Empreinte {
+pub(crate) struct Empreinte {
     taille: u64,
     date: Option<SystemTime>,
     hash: u64,
@@ -143,16 +143,16 @@ pub fn lire_cron(expression: &str) -> Option<Cron> {
 
 /// L'évènement d'une planification atteinte à cette minute, une seule fois par minute.
 /// La minute est notée même quand l'agent est muet : une minute passée n'est jamais rattrapée.
-fn relever_planification(
-    etat: &mut Etat,
-    agent: &Agent,
+pub(crate) fn relever_planification(
+    minutes: &mut HashMap<(String, String), NaiveDateTime>,
+    dossier: &str,
     expression: &str,
     maintenant: NaiveDateTime,
     muet: bool,
 ) -> Option<String> {
     let minute = maintenant.with_second(0)?.with_nanosecond(0)?;
-    let cle = (agent.dossier.clone(), expression.to_string());
-    if etat.minutes.insert(cle, minute) == Some(minute) {
+    let cle = (dossier.to_string(), expression.to_string());
+    if minutes.insert(cle, minute) == Some(minute) {
         return None;
     }
     if muet || !lire_cron(expression)?.is_time_matching(&minute).ok()? {
@@ -166,7 +166,7 @@ fn relever_planification(
 
 /// Les fichiers d'un dossier du projet, sans les fichiers ignorés par git, `.git/` ni `.yaide/`.
 /// Un fichier dont la taille et la date n'ont pas bougé garde son empreinte.
-fn parcourir(
+pub(crate) fn parcourir(
     projet: &Path,
     chemin: &str,
     avant: Option<&HashMap<String, Empreinte>>,
@@ -207,7 +207,7 @@ fn parcourir(
 }
 
 /// Ce qui est arrivé aux fichiers entre deux relevés, par ordre de chemin.
-fn differences(
+pub(crate) fn differences(
     avant: &HashMap<String, Empreinte>,
     apres: &HashMap<String, Empreinte>,
 ) -> Vec<String> {
@@ -492,7 +492,13 @@ pub fn verifier(
                 }
                 "planification" => {
                     let expression = d.cron.as_deref().unwrap_or("");
-                    evenements.extend(relever_planification(etat, a, expression, maintenant, muet));
+                    evenements.extend(relever_planification(
+                        &mut etat.minutes,
+                        &a.dossier,
+                        expression,
+                        maintenant,
+                        muet,
+                    ));
                 }
                 _ => {}
             }
