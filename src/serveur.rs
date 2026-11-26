@@ -2418,6 +2418,7 @@ pub async fn servir(
         arret_demande: Default::default(),
         journal,
     });
+    etat.agent.brancher_workflows(etat.executions.clone());
     etat.journal.ecrire(
         Severite::Information,
         &format!(

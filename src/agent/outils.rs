@@ -267,6 +267,12 @@ pub fn definitions() -> Vec<DefOutil> {
             json!({"prompt": texte("The task for the subagent, with all the context it needs")}),
             &["prompt"],
         ),
+        def(
+            "run_workflow",
+            "Start a published workflow of the project whose trigger is \"Appel par un agent\". It returns at once, without waiting for the end of the workflow and without its outputs. Fails if the workflow is already running.",
+            json!({"name": texte("Workflow name, whatever the case"), "input": texte("Text given to the workflow as its input; empty by default")}),
+            &["name"],
+        ),
     ];
     outils.extend(outils_config::definitions());
     outils
@@ -356,6 +362,7 @@ pub fn argument_principal(nom: &str, arguments: &Value) -> String {
         "websearch" => "query",
         "webfetch" => "url",
         "subagent" => "prompt",
+        "run_workflow" => "name",
         "knowledge_search" => "query",
         "knowledge_list" => return String::new(),
         "save_agent" => {
@@ -1003,6 +1010,7 @@ mod tests {
                 "list_agents",
                 "save_agent",
                 "subagent",
+                "run_workflow",
                 "get_config",
                 "save_provider",
                 "save_profile",
@@ -1035,6 +1043,7 @@ mod tests {
         );
         assert_eq!(a("save_agent", json!({"folder": "relecteur"})), "relecteur");
         assert_eq!(a("list_agents", json!({})), "");
+        assert_eq!(a("run_workflow", json!({"name": "Revue"})), "Revue");
     }
 
     const DEUX: &str = "{\n  \"version\": 1,\n  \"boxes\": [\n    {\"id\": \"b1\", \"x\": 40, \"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Début\"},\n    {\"id\": \"b2\", \"x\": 300, \"y\": 80, \"width\": 160, \"height\": 80, \"text\": \"Fin\"}\n  ],\n  \"links\": [\n    {\"id\": \"l1\", \"from\": \"b1\", \"to\": \"b2\"}\n  ]\n}\n";

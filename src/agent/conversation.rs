@@ -9,6 +9,7 @@ use super::provider::{self, Appel, Effort, ErreurProvider, Message, Reglage};
 use super::reglages::{self, Profil, Reglages};
 use crate::config;
 use crate::journal::{Journal, Severite};
+use crate::workflows::execution;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -155,6 +156,9 @@ pub struct Gestionnaire {
     /// Journal des logs de Yaide (REQ-186).
     logs: Arc<Journal>,
     declenches: Mutex<HashMap<String, (String, String)>>,
+    /// L'état des exécutions de workflows et le gestionnaire lui-même, pour `run_workflow`
+    /// (REQ-196) ; branchés par le serveur.
+    workflows: std::sync::OnceLock<(Arc<Mutex<execution::Etat>>, std::sync::Weak<Gestionnaire>)>,
 }
 
 fn maintenant() -> u64 {
@@ -372,11 +376,32 @@ impl Gestionnaire {
             journal: Mutex::new(declencheurs::Journal::default()),
             logs: Arc::default(),
             declenches: Mutex::new(HashMap::new()),
+            workflows: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// Branche l'outil `run_workflow` (REQ-196) sur l'état des exécutions du serveur.
+    pub fn brancher_workflows(self: &Arc<Self>, etat: Arc<Mutex<execution::Etat>>) {
+        let _ = self.workflows.set((etat, Arc::downgrade(self)));
+    }
+
+    /// Outil `run_workflow` (REQ-196).
+    pub fn lancer_workflow(&self, arguments: &Value) -> outils::Resultat {
+        match self
+            .workflows
+            .get()
+            .and_then(|(e, g)| Some((e, g.upgrade()?)))
+        {
+            Some((etat, moi)) => execution::lancer_par_agent(etat, &moi, arguments),
+            None => outils::Resultat {
+                contenu: "Les workflows sont désactivés.".into(),
+                echec: true,
+            },
         }
     }
 
     /// Journal des logs de Yaide (REQ-186).
-    pub fn logs(&self) -> &Journal {
+    pub fn logs(&self) -> &Arc<Journal> {
         &self.logs
     }
 
@@ -1012,6 +1037,8 @@ Always give file paths relative to the project root.",
             self.mcp
                 .appeler(&appel.nom, &appel.arguments, &self.limites)
                 .await
+        } else if appel.nom == "run_workflow" {
+            self.lancer_workflow(&appel.arguments)
         } else {
             outils::executer(&appel.nom, &appel.arguments, ctx).await
         }

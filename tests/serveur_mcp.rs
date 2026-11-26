@@ -802,3 +802,236 @@ fn REQ189_AC7_subagent_sans_conversation_sans_profil_et_annulation() {
     );
     let _ = fil.join();
 }
+
+/// Crée, enregistre et publie un workflow dont le déclencheur est `genre` et dont l'action est
+/// `action` (un nœud « Fichier » ou « Commande shell »).
+fn publier_workflow(s: &Inst, nom: &str, genre: &str, action: Value, publier: bool) {
+    let (code, v) = s.appel("POST", "/api/workflows", &json!({ "nom": nom }));
+    assert_eq!(code, 200, "{v}");
+    let f = v["fichier"].as_str().unwrap().to_string();
+    let reglages = match genre {
+        "planification" => json!({"cron": "0 9 * * *"}),
+        _ => json!({}),
+    };
+    let mut a = action;
+    a["id"] = json!("a");
+    a["x"] = json!(0.0);
+    a["y"] = json!(10.0);
+    let (code, v) = s.appel(
+        "PUT",
+        &format!("/api/workflows/{f}"),
+        &json!({"noeuds": [
+            {"id": "t", "type": genre, "titre": "Déclencheur 1", "x": 0.0, "y": 0.0, "reglages": reglages},
+            a], "liens": [{"de": "t", "vers": "a"}]}),
+    );
+    assert_eq!(code, 200, "{v}");
+    if publier {
+        let (code, v) = s.appel("POST", &format!("/api/workflows/{f}/publier"), &Value::Null);
+        assert_eq!(code, 200, "{v}");
+    }
+}
+
+fn ecrire_entree(chemin: &str) -> Value {
+    json!({"type": "fichier", "titre": "Fichier 1",
+           "reglages": {"operation": "ecrire", "chemin": chemin, "contenu": "{{entree}}"}})
+}
+
+fn attendre_fichier(s: &Inst, rel: &str, attendu: &str) -> bool {
+    for _ in 0..200 {
+        if std::fs::read_to_string(s.projet.join(rel)).is_ok_and(|t| t == attendu) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    false
+}
+
+fn noms_des_outils(requete: &Value) -> Vec<String> {
+    requete["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["function"]["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+fn appel_run_workflow(arguments: Value) -> Value {
+    json!({"choices": [{"message": {"content": null, "tool_calls": [{"id": "c1", "type": "function",
+        "function": {"name": "run_workflow", "arguments": arguments.to_string()}}]}}],
+        "usage": {"prompt_tokens": 7, "completion_tokens": 1}})
+}
+
+fn attendre_fin_du_tour(s: &Inst, id: &str) -> Value {
+    for _ in 0..200 {
+        let (_, c) = s.appel(
+            "GET",
+            &format!("/api/agent/conversations/{id}"),
+            &Value::Null,
+        );
+        if c["enCours"] == false {
+            return c;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("le tour ne finit pas");
+}
+
+#[test]
+fn REQ196_AC1_AC3_conversation_et_mcp_lancent_un_workflow_publie_sans_attendre() {
+    let s = nouvelle("run1");
+    let (adresse, etat) = provider_scenarise(
+        vec![
+            appel_run_workflow(json!({"name": "revue", "input": "abc"})),
+            dit("fait"),
+        ],
+        0,
+    );
+    let profil = configurer(&s, &adresse, "sk-x");
+    publier_workflow(&s, "Revue", "appel", ecrire_entree("r.txt"), true);
+    let (code, v) = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({"profil": profil, "texte": "lance"}),
+    );
+    assert_eq!(code, 200);
+    let c = attendre_fin_du_tour(&s, v["conversation"].as_str().unwrap());
+    let o = c["entrees"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["nom"] == "run_workflow")
+        .unwrap_or_else(|| panic!("{c}"));
+    assert_eq!(o["etat"], "reussi");
+    assert_eq!(o["resultat"], "Workflow « Revue » lancé.");
+    assert!(attendre_fichier(&s, "r.txt", "abc"));
+    // Le tour a fini avec la requête de l'outil dans la liste de la conversation.
+    let requete = etat.lock().unwrap().1[0].clone();
+    assert!(noms_des_outils(&requete).contains(&"run_workflow".to_string()));
+
+    // Le serveur MCP : même description et même schéma, même résultat.
+    let (mut m, _, _) = Client::ouvrir(s.mcp(), &[]);
+    let outils = m.outils();
+    let mcp = outils.iter().find(|t| t["name"] == "run_workflow").unwrap();
+    let agent = requete["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["function"]["name"] == "run_workflow")
+        .unwrap();
+    assert_eq!(mcp["description"], agent["function"]["description"]);
+    assert_eq!(mcp["inputSchema"], agent["function"]["parameters"]);
+    assert_eq!(mcp["inputSchema"]["required"], json!(["name"]));
+    // L'exécution précédente doit être finie : un appel peut encore la trouver en cours.
+    let mut resultat = (true, String::new());
+    for _ in 0..100 {
+        resultat = m.appeler("run_workflow", json!({"name": "REVUE", "input": "par mcp"}));
+        if !resultat.0 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(resultat, (false, "Workflow « Revue » lancé.".to_string()));
+    assert!(attendre_fichier(&s, "r.txt", "par mcp"));
+    let (erreur, texte) = m.appeler("run_workflow", json!({"name": "x"}));
+    assert!(erreur);
+    assert_eq!(
+        texte,
+        "Aucun workflow publié « x » ne se lance par un agent. Workflows disponibles : Revue."
+    );
+}
+
+#[test]
+fn REQ196_AC2_refus_nom_inconnu_brouillon_autre_declencheur_en_cours_et_fonction_inactive() {
+    let s = nouvelle("run2");
+    let (mut m, _, _) = Client::ouvrir(s.mcp(), &[]);
+    let (erreur, texte) = m.appeler("run_workflow", json!({"name": "x"}));
+    assert!(erreur);
+    assert_eq!(
+        texte,
+        "Aucun workflow publié « x » ne se lance par un agent. Workflows disponibles : aucun."
+    );
+    let lent = json!({"type": "shell", "titre": "Commande shell 1",
+                      "reglages": {"commande": "sleep 3"}});
+    publier_workflow(&s, "Revue", "appel", lent, true);
+    publier_workflow(&s, "Brouillon", "appel", ecrire_entree("b.txt"), false);
+    publier_workflow(
+        &s,
+        "Planifié",
+        "planification",
+        ecrire_entree("p.txt"),
+        true,
+    );
+    for nom in ["brouillon", "Planifié", "inconnu"] {
+        let (erreur, texte) = m.appeler("run_workflow", json!({"name": nom}));
+        assert!(erreur);
+        assert_eq!(
+            texte,
+            format!("Aucun workflow publié « {nom} » ne se lance par un agent. Workflows disponibles : Revue.")
+        );
+    }
+    let (erreur, texte) = m.appeler("run_workflow", json!({"name": "revue"}));
+    assert!(!erreur, "{texte}");
+    let (erreur, texte) = m.appeler("run_workflow", json!({"name": "Revue"}));
+    assert!(erreur);
+    assert_eq!(
+        texte,
+        "Le workflow « Revue » est déjà en cours. Réessayez à sa fin."
+    );
+    let (erreur, texte) = m.appeler("run_workflow", json!({}));
+    assert!(erreur, "{texte}");
+    std::fs::write(
+        s.projet.join(".yaide/interface.json"),
+        json!({"fonctions": {"agents": false}}).to_string(),
+    )
+    .unwrap();
+    let (erreur, texte) = m.appeler("run_workflow", json!({"name": "Revue"}));
+    assert!(erreur);
+    assert_eq!(texte, "Les workflows sont désactivés.");
+}
+
+#[test]
+fn REQ196_AC4_agent_personnalise_et_sous_agent_recoivent_run_workflow() {
+    let s = nouvelle("run4");
+    let (adresse, etat) = provider_scenarise(
+        vec![appel_run_workflow(json!({"name": "revue"})), dit("fait")],
+        0,
+    );
+    let profil = configurer(&s, &adresse, "sk-x");
+    publier_workflow(&s, "Revue", "appel", ecrire_entree("r.txt"), true);
+    let (code, v) = s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({"nom": "Relecteur", "couleur": "vert"}),
+    );
+    assert_eq!(code, 200, "{v}");
+    let (code, v) = s.appel(
+        "POST",
+        "/api/agent/messages",
+        &json!({"profil": profil, "agents": ["relecteur"], "texte": "go"}),
+    );
+    assert_eq!(code, 200, "{v}");
+    attendre_fin_du_tour(&s, v["conversation"].as_str().unwrap());
+    assert!(noms_des_outils(&etat.lock().unwrap().1[0]).contains(&"run_workflow".to_string()));
+    assert!(attendre_fichier(&s, "r.txt", ""));
+    drop(s);
+
+    // Le sous-agent : ses requêtes portent `run_workflow` et son appel lance le workflow.
+    let s = nouvelle("run4b");
+    let (adresse, etat) = provider_scenarise(
+        vec![
+            appel_run_workflow(json!({"name": "revue", "input": "sa"})),
+            dit("lancé"),
+        ],
+        0,
+    );
+    configurer(&s, &adresse, "sk-x");
+    publier_workflow(&s, "Revue", "appel", ecrire_entree("r.txt"), true);
+    let (mut m, _, _) = Client::ouvrir(s.mcp(), &[]);
+    let (erreur, texte) = m.appeler("subagent", json!({"prompt": "lance la revue"}));
+    assert!(!erreur, "{texte}");
+    let g = etat.lock().unwrap();
+    assert!(noms_des_outils(&g.1[0]).contains(&"run_workflow".to_string()));
+    assert!(g.1[1].to_string().contains("Workflow « Revue » lancé."));
+    drop(g);
+    assert!(attendre_fichier(&s, "r.txt", "sa"));
+}

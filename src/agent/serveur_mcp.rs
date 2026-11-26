@@ -63,6 +63,8 @@ impl ServerHandler for Outils {
                 r = self.agent.sous_agent_mcp(&arguments) => r,
                 () = contexte.ct.cancelled() => return Ok(refus("Appel annulé.")),
             }
+        } else if nom == "run_workflow" {
+            self.agent.lancer_workflow(&arguments)
         } else {
             outils::executer(&nom, &arguments, &self.agent.contexte()).await
         };

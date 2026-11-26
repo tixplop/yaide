@@ -1,13 +1,15 @@
 //! Exécution des workflows publiés (REQ-193, REQ-194, REQ-195, DEC-127) : surveillance des
 //! déclencheurs par la boucle de 3 s, enchaînement des actions, journal des logs (REQ-186).
-use super::{Noeud, Workflow};
+use super::{Noeud, Workflow, Workflows};
 use crate::agent::agents::{chemin_du_projet, Agents};
 use crate::agent::conversation::Gestionnaire;
 use crate::agent::declencheurs::{differences, parcourir, relever_planification, Empreinte};
+use crate::agent::outils::Resultat;
 use crate::agent::outils_config::lire_interface;
 use crate::fichiers;
 use crate::journal::{Journal, Severite};
 use chrono::NaiveDateTime;
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::process::Stdio;
@@ -41,7 +43,7 @@ fn reglage<'a>(n: &'a Noeud, champ: &str) -> &'a str {
 fn declencheur(w: &Workflow) -> Option<&Noeud> {
     w.noeuds
         .iter()
-        .find(|n| n.genre == "dossier" || n.genre == "planification")
+        .find(|n| super::DECLENCHEURS.contains(&n.genre.as_str()))
 }
 
 /// Les évènements du dossier surveillé, limités à ceux qui sont cochés.
@@ -101,7 +103,9 @@ pub fn verifier(
     let mut vivantes = HashSet::new();
     let mut expressions = HashSet::new();
     for (fichier, w) in publies {
-        let Some(d) = declencheur(w) else { continue };
+        let Some(d) = declencheur(w).filter(|d| d.genre != "appel") else {
+            continue;
+        };
         let muet = !actif || etat.en_cours.contains(fichier);
         let evenement = if d.genre == "dossier" {
             evenement_dossier(etat, projet, fichier, d, &mut vivantes)
@@ -409,6 +413,46 @@ async fn executer(contexte: &Contexte<'_>, w: &Workflow, entree: String, journal
     );
 }
 
+/// La fonction `agents` est active (elle l'est tant que `interface.json` ne la coupe pas).
+fn fonction_active(projet: &Path) -> bool {
+    lire_interface(projet)
+        .map(|i| i.fonctions.iter().all(|(c, v)| *c != "agents" || *v))
+        .unwrap_or(true)
+}
+
+/// Lance une tâche pour une exécution déjà réservée dans `en_cours`.
+fn demarrer(
+    etat: &Arc<Mutex<Etat>>,
+    projet: &Path,
+    (fichier, w, entree): (String, Workflow, String),
+    journal: &Arc<Journal>,
+    agents: &Arc<Agents>,
+    gestionnaire: &Arc<Gestionnaire>,
+) {
+    let (etat, projet, journal) = (etat.clone(), projet.to_path_buf(), journal.clone());
+    let (agents, gestionnaire) = (agents.clone(), gestionnaire.clone());
+    tokio::spawn(async move {
+        let contexte = Contexte {
+            projet: &projet,
+            agents: &agents,
+            gestionnaire: &gestionnaire,
+            limite: limite_commande(),
+        };
+        executer(&contexte, &w, entree, &journal).await;
+        // La surveillance repart de l'état du moment (REQ-164).
+        let mut e = etat.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(d) = declencheur(&w).filter(|d| d.genre == "dossier") {
+            let chemin = reglage(d, "dossier");
+            if chemin_du_projet(chemin) {
+                let cle = (fichier.clone(), chemin.to_string());
+                let a = parcourir(&projet, chemin, e.dossiers.get(&cle));
+                e.dossiers.insert(cle, a);
+            }
+        }
+        e.en_cours.remove(&fichier);
+    });
+}
+
 /// Une vérification complète : lance une tâche par exécution déclenchée.
 pub fn passer(
     etat: &Arc<Mutex<Etat>>,
@@ -418,39 +462,83 @@ pub fn passer(
     agents: &Arc<Agents>,
     gestionnaire: &Arc<Gestionnaire>,
 ) {
-    let actif = lire_interface(projet)
-        .map(|i| i.fonctions.iter().all(|(c, v)| *c != "agents" || *v))
-        .unwrap_or(true);
     let lancer = verifier(
         &mut etat.lock().unwrap_or_else(|e| e.into_inner()),
         projet,
         &publies,
-        actif,
+        fonction_active(projet),
         chrono::Local::now().naive_local(),
     );
-    for (fichier, w, entree) in lancer {
-        let (etat, projet, journal) = (etat.clone(), projet.to_path_buf(), journal.clone());
-        let (agents, gestionnaire) = (agents.clone(), gestionnaire.clone());
-        tokio::spawn(async move {
-            let contexte = Contexte {
-                projet: &projet,
-                agents: &agents,
-                gestionnaire: &gestionnaire,
-                limite: limite_commande(),
-            };
-            executer(&contexte, &w, entree, &journal).await;
-            // La surveillance repart de l'état du moment (REQ-164).
-            let mut e = etat.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(d) = declencheur(&w).filter(|d| d.genre == "dossier") {
-                let chemin = reglage(d, "dossier");
-                if chemin_du_projet(chemin) {
-                    let cle = (fichier.clone(), chemin.to_string());
-                    let a = parcourir(&projet, chemin, e.dossiers.get(&cle));
-                    e.dossiers.insert(cle, a);
-                }
-            }
-            e.en_cours.remove(&fichier);
-        });
+    for execution in lancer {
+        demarrer(etat, projet, execution, journal, agents, gestionnaire);
+    }
+}
+
+/// L'outil `run_workflow` (REQ-196) : lance sans attendre le workflow publié dont le déclencheur
+/// est « Appel par un agent » et que `name` désigne, sans tenir compte de la casse.
+pub fn lancer_par_agent(
+    etat: &Arc<Mutex<Etat>>,
+    gestionnaire: &Arc<Gestionnaire>,
+    arguments: &Value,
+) -> Resultat {
+    let echec = |m: String| Resultat {
+        contenu: m,
+        echec: true,
+    };
+    let Some(nom) = arguments["name"].as_str() else {
+        return echec("Missing or invalid argument: name.".into());
+    };
+    let entree = match &arguments["input"] {
+        Value::Null => "",
+        Value::String(t) => t.as_str(),
+        _ => return echec("Missing or invalid argument: input.".into()),
+    };
+    let contexte = gestionnaire.contexte();
+    let projet = contexte.projet.as_path();
+    if !fonction_active(projet) {
+        return echec("Les workflows sont désactivés.".into());
+    }
+    let convenables: Vec<(String, Workflow)> = Workflows::new(projet.join(".yaide"))
+        .publies()
+        .into_iter()
+        .filter(|(_, w)| declencheur(w).is_some_and(|d| d.genre == "appel"))
+        .collect();
+    let Some((fichier, w)) = convenables
+        .iter()
+        .find(|(_, w)| w.nom.to_lowercase() == nom.to_lowercase())
+    else {
+        let noms: Vec<&str> = convenables.iter().map(|(_, w)| w.nom.as_str()).collect();
+        let dispo = if noms.is_empty() {
+            "aucun".to_string()
+        } else {
+            noms.join(", ")
+        };
+        return echec(format!(
+            "Aucun workflow publié « {nom} » ne se lance par un agent. Workflows disponibles : {dispo}."
+        ));
+    };
+    if !etat
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .en_cours
+        .insert(fichier.clone())
+    {
+        return echec(format!(
+            "Le workflow « {} » est déjà en cours. Réessayez à sa fin.",
+            w.nom
+        ));
+    }
+    demarrer(
+        etat,
+        projet,
+        (fichier.clone(), w.clone(), entree.to_string()),
+        gestionnaire.logs(),
+        &contexte.agents,
+        gestionnaire,
+    );
+    Resultat {
+        contenu: format!("Workflow « {} » lancé.", w.nom),
+        echec: false,
     }
 }
 
