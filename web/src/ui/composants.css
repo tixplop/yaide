@@ -1092,7 +1092,10 @@ mark.ya-occurrence { background: linear-gradient(var(--occurrence), var(--occurr
 .ya-journal-message pre { margin: 2px 0 0; font: var(--texte-petit) var(--font-mono); color: var(--ink-muted); white-space: pre-wrap; }
 
 /* C-019 : surface de l'éditeur de workflow (REQ-191, REQ-192). */
-.ya-wf { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; position: relative; }
+.ya-wf { display: flex; flex-direction: column; flex: 1; height: 100%; min-width: 0; min-height: 0; position: relative; }
+.ya-wf[hidden] { display: none; }
+.ya-wf-illisible { display: flex; align-items: center; justify-content: center; height: 100%; background: var(--bg-200); }
+.ya-wf-illisible[hidden] { display: none; }
 .ya-wf-surface { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-200); touch-action: none; user-select: none; }
 .ya-wf-surface:focus { outline: none; }
 .ya-wf-surface:focus-visible { outline: 1px solid var(--accent-fg); outline-offset: -1px; }

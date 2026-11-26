@@ -197,6 +197,34 @@ export async function ecrireFichier(chemin, contenu, version) {
   return erreurServeur(r);
 }
 
+/** Un workflow par ses routes (REQ-191) : `{ workflow: { nom, publie, noeuds, liens } }`, `{ illisible: true }` (absent ou abîmé) ou `{ coupure: true }`. */
+export async function lireWorkflow(fichier) {
+  const r = await appeler(`/api/workflows/${q(fichier)}`);
+  if (!r) return { coupure: true };
+  if (!r.ok) return { illisible: true };
+  try {
+    const { nom, publie, noeuds, liens } = await r.json();
+    return { workflow: { nom, publie: Boolean(publie), noeuds, liens } };
+  } catch {
+    return { coupure: true };
+  }
+}
+
+/** Enregistre les nœuds et les liens d'un workflow : `{}`, `{ cause: "publie" }` (409), `{ cause, message }` ou `{ coupure: true }`. */
+export async function ecrireWorkflow(fichier, { noeuds, liens }) {
+  const r = await appeler(`/api/workflows/${q(fichier)}`, json("PUT", { noeuds, liens }));
+  if (!r) return { coupure: true };
+  if (r.ok) return {};
+  if (r.status === 409) return { cause: "publie" };
+  let corps = {};
+  try {
+    corps = await r.json();
+  } catch {
+    // Corps illisible : le statut seul le dit.
+  }
+  return { cause: "erreur", message: corps.message ?? corps.erreur ?? `erreur ${r.status}` };
+}
+
 /** Version de chaque chemin (`null` si le fichier n'existe plus), ou null si le serveur ne répond pas. */
 export async function versionsFichiers(chemins) {
   const r = await appeler("/api/fichiers/versions", { method: "POST", body: chemins.join("\n"), signal: AbortSignal.timeout(2000) });

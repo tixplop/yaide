@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ajouter, apresDe, delier, deplacer, lier, montrer, noeudsPermisApres, phraseDuChoix, retirer, zoomer } from "./workflow.js";
+import { ajouter, cadrer, apresDe, delier, deplacer, lier, montrer, noeudsPermisApres, phraseDuChoix, retirer, zoomer } from "./workflow.js";
 
 const vide = { nom: "Revue", publie: false, noeuds: [], liens: [] };
 
@@ -72,4 +72,15 @@ test("REQ191_AC9_phrase_deplacement_zoom_et_vue", () => {
   expect(z.x).toBeCloseTo(-10);
   expect(z.y).toBeCloseTo(-10);
   expect(montrer({ x: 0, y: 0, zoom: 1 }, { x: 600, y: 10 }, 500, 400)).toEqual({ x: -(600 + 240 - 500 + 24), y: 14, zoom: 1 });
+});
+
+test("REQ191_AC7_tout_afficher_cadre_tous_les_noeuds_sans_depasser_100_pour_cent", () => {
+  const n = (id, x, y) => ({ id, type: "shell", titre: id, x, y, reglages: {} });
+  expect(cadrer({ noeuds: [], liens: [] }, 800, 400)).toEqual({ x: 0, y: 0, zoom: 1 });
+  // Un seul nœud (240 × 56) : zoom 1, centré.
+  expect(cadrer({ noeuds: [n("a", 100, 100)], liens: [] }, 800, 400)).toEqual({ x: 280 - 100, y: 172 - 100, zoom: 1 });
+  // Deux nœuds éloignés : 1240 de large → (800 - 48) / 1240.
+  const v = cadrer({ noeuds: [n("a", 0, 0), n("b", 1000, 0)], liens: [] }, 800, 400);
+  expect(v.zoom).toBeCloseTo(752 / 1240, 5);
+  expect(v.x).toBeCloseTo((800 - 1240 * v.zoom) / 2, 5);
 });

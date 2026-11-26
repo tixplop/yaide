@@ -12,6 +12,9 @@ export const estImage = (chemin) => /\.(png|jpe?g|gif|webp|avif|bmp|ico)$/i.test
 /** Vrai si `chemin` est un whiteboard (REQ-128), par son extension `.jdiag`, sans tenir compte de la casse. */
 export const estWhiteboard = (chemin) => /\.jdiag$/i.test(chemin);
 
+/** Chemin du fichier d'un workflow (REQ-191), qui sert d'identifiant à son onglet ; il ne se lit ni ne s'écrit par la route des fichiers. */
+export const cheminWorkflow = (fichier) => `.yaide/workflows/${fichier}.json`;
+
 /** Vrai si `chemin` est `base` ou se trouve dessous. */
 export const estSous = (chemin, base) => chemin === base || chemin.startsWith(`${base}/`);
 

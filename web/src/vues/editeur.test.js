@@ -2691,3 +2691,170 @@ test("REQ184_AC3_AC4_onglet_avec_environnement_garde_son_nom_et_le_donne_a_ses_s
   await e2.restaurer();
   expect(Object.fromEntries(faux.oc.map((v) => [v.sessionId, v.environnement]))).toEqual({ s1: "prod", sa1: "prod", s2: undefined, sa2: undefined });
 });
+
+// ---- Onglet d'un workflow (REQ-191, REQ-192) ----
+
+const WF = (extra = {}) => ({ nom: "Revue des notes", publie: false, noeuds: [], liens: [], fichier: "revue", ...extra });
+// Faux serveur des workflows : `etat.wf` est lu par GET, `etat.puts` garde les corps reçus, `etat.reponsePut` le statut du PUT.
+function serveurWf(wf = WF()) {
+  const etat = { wf, puts: [], gets: 0, reponsePut: 200 };
+  vi.stubGlobal("fetch", vi.fn(async (url, options = {}) => {
+    const u = String(url);
+    if (u === "/api/workflows/revue" && !options.method) {
+      etat.gets++;
+      return { ok: true, status: 200, json: async () => etat.wf };
+    }
+    if (u === "/api/workflows/revue" && options.method === "PUT") {
+      if (etat.reponsePut === "coupure") throw new Error("hors ligne");
+      if (etat.reponsePut === 400) return { ok: false, status: 400, json: async () => ({ message: "Workflow invalide." }), headers: new Headers() };
+      etat.puts.push(JSON.parse(options.body));
+      return { ok: etat.reponsePut === 200, status: etat.reponsePut, json: async () => etat.wf, headers: new Headers() };
+    }
+    return { ok: false, status: 404, headers: new Headers(), json: async () => ({}) };
+  }));
+  return etat;
+}
+async function monterWf(wf) {
+  const serveur = serveurWf(wf);
+  const { e } = monter();
+  document.body.append(e.question);
+  await e.restaurer();
+  await e.ouvrirWorkflow("revue");
+  return { e, serveur };
+}
+const typeWf = (nom) => document.querySelector(`.ya-wf-type[aria-label="${nom}"]`);
+const surfaceWf = () => document.querySelector(".ya-wf-surface");
+
+test("REQ191_AC2_deux_types_ajoutes_relies_puis_ctrl_s_enregistre_par_la_route_des_workflows_et_l_onglet_rouvert_les_montre", async () => {
+  const { serveur } = await monterWf();
+  typeWf("Fichiers d'un dossier").click();
+  expect(document.querySelector(".ya-noeud-choisi .ya-noeud-titre").textContent).toBe("Fichiers d'un dossier 1");
+  typeWf("Commande shell").click();
+  expect(document.querySelectorAll(".ya-noeud").length).toBe(2);
+  expect(document.querySelectorAll("path.ya-wf-lien").length).toBe(1);
+  expect(document.querySelector('[data-champ="apres"]').value).toBe("n1");
+  expect(onglet("Revue des notes").dataset.modifie).toBe("true");
+  ctrlS();
+  await vi.waitFor(() => expect(serveur.puts.length).toBe(1));
+  const [envoi] = serveur.puts;
+  expect(envoi.noeuds.map((n) => [n.type, n.titre])).toEqual([["dossier", "Fichiers d'un dossier 1"], ["shell", "Commande shell 1"]]);
+  expect(envoi.noeuds[0].reglages.evenements).toBeDefined();
+  expect(envoi.liens).toEqual([{ de: "n1", vers: "n2" }]);
+  await vi.waitFor(() => expect(onglet("Revue des notes").dataset.modifie).toBeUndefined());
+  // Aucun appel à la route des fichiers.
+  expect(fetch.mock.calls.some(([u]) => String(u).startsWith("/api/fichier"))).toBe(false);
+  // Yaide relancé : l'onglet gardé est relu par la route des workflows et montre les nœuds aux mêmes places.
+  const g = await derniereGarde();
+  expect(g.liste[0]).toMatchObject({ chemin: ".yaide/workflows/revue.json", workflow: "revue" });
+  serveur.wf = WF({ noeuds: envoi.noeuds, liens: envoi.liens });
+  gardes(g.liste, g.actif);
+  document.body.replaceChildren();
+  const { e: e2 } = monter();
+  await e2.restaurer();
+  expect(document.querySelectorAll(".ya-noeud").length).toBe(2);
+  expect([...document.querySelectorAll(".ya-noeud")].map((n) => [n.style.left, n.style.top])).toEqual(envoi.noeuds.map((n) => [`${n.x}px`, `${n.y}px`]));
+});
+
+test("REQ191_AC5_modification_non_enregistree_point_sur_l_onglet_question_a_la_fermeture_abandonner_n_ecrit_rien", async () => {
+  const { e, serveur } = await monterWf();
+  expect(onglet("Revue des notes").dataset.modifie).toBeUndefined();
+  typeWf("Planification").click();
+  expect(onglet("Revue des notes").dataset.modifie).toBe("true");
+  e.barre.querySelector('[aria-label^="Fermer"]').click();
+  expect(document.querySelector("dialog").textContent).toContain("Sauvegarder Revue des notes ?");
+  clicBouton("Abandonner");
+  expect(onglets().length).toBe(0);
+  expect(serveur.puts).toEqual([]);
+});
+
+test("REQ191_AC7_onglet_icone_nom_info_bulle_sans_fil_barre_de_zoom_et_panneau_nommé", async () => {
+  const { e } = await monterWf();
+  const t = onglets()[0];
+  expect(t.querySelector(".onglet-nom").textContent).toBe("Revue des notes");
+  expect(t.querySelector("svg[data-icone=waypoints]")).not.toBeNull();
+  expect(t.closest(".onglet-cellule").title || t.title).toBe("Workflow .yaide/workflows/revue.json");
+  expect(e.fil.hidden).toBe(true);
+  const boutons = [...e.barre.querySelectorAll("button[aria-label]")].map((b) => b.getAttribute("aria-label")).filter((n) => /Zoom|Tout/.test(n));
+  expect(boutons).toEqual(["Zoom arrière", "Zoom avant", "Tout afficher"]);
+  const zoom = e.barre.querySelector(".ya-tableau-zoom");
+  expect(zoom.getAttribute("role")).toBe("status");
+  expect(zoom.textContent).toBe("100 %");
+  e.barre.querySelector('button[aria-label="Zoom avant"]').click();
+  expect(zoom.textContent).toBe("110 %");
+  e.barre.querySelector('button[aria-label="Tout afficher"]').click();
+  const aside = document.querySelector("aside");
+  expect(document.getElementById(aside.getAttribute("aria-labelledby")).textContent).toBe("Nœuds");
+  expect(surfaceWf().getAttribute("aria-label")).toBe("Surface du workflow Revue des notes");
+  expect(document.querySelector(".ya-wf-vide").textContent).toBe("Ajoutez un déclencheur depuis le panneau Nœuds.");
+  // Le premier type prend le focus d'un workflow vide.
+  expect(document.activeElement).toBe(typeWf("Fichiers d'un dossier"));
+});
+
+test("REQ192_AC3_workflow_publie_message_types_desactives_rien_ne_change_et_le_serveur_refuse_409", async () => {
+  const noeud = { id: "n1", type: "dossier", titre: "Fichiers d'un dossier 1", x: 0, y: 0, reglages: { dossier: ".", evenements: ["cree"] } };
+  const { serveur } = await monterWf(WF({ publie: true, noeuds: [noeud] }));
+  expect(document.querySelector(".ya-wf-lecture-message").textContent).toContain("Workflow publié : dépubliez-le pour le modifier.");
+  expect(typeWf("Commande shell").getAttribute("aria-disabled")).toBe("true");
+  typeWf("Commande shell").click();
+  expect(document.querySelectorAll(".ya-noeud").length).toBe(1);
+  document.querySelector(".ya-noeud").dispatchEvent(Object.assign(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }), { pointerId: 1 }));
+  surfaceWf().dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
+  expect(document.querySelectorAll(".ya-noeud").length).toBe(1);
+  expect(document.querySelector('[data-champ="titre"]').readOnly).toBe(true);
+  ctrlS();
+  await toutes();
+  expect(serveur.puts).toEqual([]);
+});
+
+test("REQ192_AC3_enregistrement_refuse_409_ou_coupure_dit_pourquoi_et_garde_le_point", async () => {
+  const { serveur } = await monterWf();
+  typeWf("Planification").click();
+  serveur.reponsePut = 409;
+  ctrlS();
+  await vi.waitFor(() => expect(document.querySelector("[role=alert]")?.textContent).toBe("Enregistrement impossible : ce workflow est publié. Dépubliez-le, puis réessayez."));
+  expect(onglet("Revue des notes").dataset.modifie).toBe("true");
+  serveur.reponsePut = 400;
+  ctrlS();
+  await vi.waitFor(() => expect(document.querySelector("[role=alert]")?.textContent).toBe("Enregistrement impossible : Workflow invalide."));
+  expect(onglet("Revue des notes").dataset.modifie).toBe("true");
+  serveur.reponsePut = "coupure";
+  ctrlS();
+  await vi.waitFor(() => expect(document.querySelector("[role=alert]")?.textContent).toBe("Enregistrement impossible : connexion perdue. Réessayez au retour."));
+  expect(onglet("Revue des notes").dataset.modifie).toBe("true");
+});
+
+test("REQ192_AC5_depublie_pendant_que_l_onglet_est_ouvert_il_redevient_modifiable_sans_rechargement_choix_gardé", async () => {
+  const noeud = { id: "n1", type: "dossier", titre: "Fichiers d'un dossier 1", x: 0, y: 0, reglages: { dossier: ".", evenements: ["cree"] } };
+  const { e, serveur } = await monterWf(WF({ publie: true, noeuds: [noeud] }));
+  document.querySelector(".ya-noeud").dispatchEvent(Object.assign(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }), { pointerId: 1 }));
+  expect(document.querySelector('[data-champ="titre"]').readOnly).toBe(true);
+  expect(e.workflowModifie("revue")).toBe(false);
+  e.etatWorkflow("revue", false);
+  expect(document.querySelector(".ya-wf-lecture-message").hidden).toBe(true);
+  expect(document.querySelector('[data-champ="titre"]').readOnly).toBe(false);
+  expect(document.querySelector(".ya-noeud-choisi")).not.toBeNull();
+  expect(typeWf("Commande shell").getAttribute("aria-disabled")).toBeNull(); // « Ajouter une action après » est de nouveau permis
+  expect(serveur.gets).toBe(1);
+  // Publié de nouveau : retour en lecture seule, toujours sans relecture.
+  e.etatWorkflow("revue", true);
+  expect(document.querySelector(".ya-wf-lecture-message").hidden).toBe(false);
+  expect(document.querySelector('[data-champ="titre"]').readOnly).toBe(true);
+  expect(typeWf("Commande shell").getAttribute("aria-disabled")).toBe("true");
+  expect(serveur.gets).toBe(1);
+});
+
+test("REQ191_AC7_workflow_illisible_dit_pourquoi_sans_barre_d_outils_ni_ctrl_s", async () => {
+  const puts = [];
+  vi.stubGlobal("fetch", vi.fn(async (url, options = {}) => {
+    if (options.method === "PUT") puts.push(url);
+    return { ok: false, status: 404, headers: new Headers(), json: async () => ({}) };
+  }));
+  const { e } = monter();
+  await e.ouvrirWorkflow("casse");
+  expect(document.querySelector(".ya-wf-illisible").textContent).toBe(".yaide/workflows/casse.json n'est pas lisible. Corrigez-le, puis rouvrez Workflows.");
+  expect(document.querySelector(".ya-wf-surface, aside")).toBeNull();
+  expect(e.barre.querySelector('button[aria-label="Zoom avant"]')).toBeNull();
+  ctrlS();
+  await toutes();
+  expect(puts).toEqual([]);
+});

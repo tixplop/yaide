@@ -1,9 +1,9 @@
-import { adresseApercu, ecrireFichier, fermerShell, jetonApercu, lireFichier, listerChemins, oublierJetonApercu, listeShells, versionsFichiers } from "../api.js";
+import { adresseApercu, ecrireFichier, ecrireWorkflow, fermerShell, jetonApercu, lireFichier, lireWorkflow, listerAgents, listerChemins, oublierJetonApercu, listeShells, versionsFichiers } from "../api.js";
 import { decider, texteAttente } from "../brouillons.js";
 import { decisionDisque } from "../disque.js";
 import { formatable, formater as formaterTexte } from "../formatage.js";
 import { couper, feuilles, poserPart, retirerGroupe } from "../disposition.js";
-import { apresFermeture, estImage, estSous, estWhiteboard, garder, libelles, nomDe, plusPetitNumeroLibre, retrouver, suivreRenommage } from "../onglets-fichiers.js";
+import { apresFermeture, cheminWorkflow, estImage, estSous, estWhiteboard, garder, libelles, nomDe, plusPetitNumeroLibre, retrouver, suivreRenommage } from "../onglets-fichiers.js";
 import { bouton } from "../ui/bouton.js";
 import { dialogue } from "../ui/dialogue.js";
 import { indication } from "../ui/indication.js";
@@ -17,6 +17,8 @@ import { menu } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
 import { zoneCode } from "../ui/zone-code.js";
+import { workflow } from "../ui/workflow.js";
+import { ZOOM_MAX, ZOOM_MIN, cadrer, zoomer } from "../workflow.js";
 import { vueAgent } from "./agent.js";
 import { resoudreImage } from "../images-md.js";
 import { dessinerWhiteboard } from "../ui/whiteboard-image.js";
@@ -36,7 +38,20 @@ const AGENT = "\0agent:"; // préfixe de la clé d'un onglet Agent (son numéro 
 const DIFF = "\0diff"; // identifiant de l'onglet de diff, qui n'est pas un fichier ouvert
 const TEXTE_SUPPRIME = "Fichier supprimé du disque. Ctrl+S le recrée.";
 const TEXTE_IMAGE_SUPPRIMEE = "Fichier supprimé du disque.";
-const estFichier = (o) => !o.claude && !o.opencode && !o.conversationAgent;
+const estFichier = (o) => !o.claude && !o.opencode && !o.conversationAgent && !o.workflow; // un onglet de workflow (REQ-191) ne se lit ni ne s'écrit par la route des fichiers
+const TEXTE_WF_COUPURE = "Enregistrement impossible : connexion perdue. Réessayez au retour.";
+const TEXTE_WF_PUBLIE = "Enregistrement impossible : ce workflow est publié. Dépubliez-le, puis réessayez.";
+/** Texte d'un workflow : son nom, ses nœuds et ses liens ; l'état publié n'en fait pas partie. */
+const texteWorkflow = (d) => JSON.stringify({ nom: d.nom, noeuds: d.noeuds, liens: d.liens });
+/** Le workflow d'un texte, ou null s'il ne se lit pas. */
+const lireTexteWorkflow = (texte) => {
+  try {
+    const d = JSON.parse(texte);
+    return typeof d?.nom === "string" && Array.isArray(d.noeuds) && Array.isArray(d.liens) ? d : null;
+  } catch {
+    return null;
+  }
+};
 const estTexte = (o) => estFichier(o) && !o.image; // un onglet d'image n'a ni texte, ni disque lu, ni éditeur
 const avecHybride = (chemin) => /\.(md|markdown|csv|html?)$/i.test(chemin);
 const estHtml = (chemin) => /\.html?$/i.test(chemin);
@@ -56,9 +71,10 @@ const avecApercu = (chemin) => /\.(md|markdown|html|htm|svg|mmd)$/i.test(chemin)
  * Un onglet Claude (REQ-068) est dans la même liste que les fichiers : `{ claude: true, id, numero, instance }`, sa clé `chemin` ne désigne aucun fichier.
  * Un onglet opencode (REQ-072) l'est aussi : `{ opencode: true, id, numero }` (session) ou `{ opencode: true, id, agent, titre }` (sous-agent).
  * Un onglet Agent (REQ-078) l'est aussi : `{ conversationAgent: true, numero, conversation }` (`conversation` : `null` tant que rien n'est écrit).
+ * Un onglet de workflow (REQ-191) l'est aussi : `{ workflow: true, fichier, nom, publie }`, sa clé `chemin` (`.yaide/workflows/<fichier>.json`) ne désigne aucun fichier lu par la route des fichiers.
  * Le champ `agent` d'un onglet désigne un sous-agent opencode : l'onglet Agent a son propre drapeau.
  * Chaque onglet a un `groupe` ; `barre`, `fil`, `code` et `question` sont ceux du premier groupe, `groupes()` rend l'arbre de tous.
- * Rend `{ definirStatuts(statuts), barre, fil, code, groupes(), questions(), deplacer(id, groupe, zone), lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirAgent({ equipe, message }), relireReglagesAgents(), ouvrirOpencode({ sessionId, titre, environnement }), renomme(…), supprime(…), restaurer(), detruire() }`.
+ * Rend `{ definirStatuts(statuts), barre, fil, code, groupes(), questions(), deplacer(id, groupe, zone), lecture(oui), definirEtat(etat), ouvrir(…), ouvrirClaude({ id }), ouvrirAgent({ equipe, message }), relireReglagesAgents(), ouvrirOpencode({ sessionId, titre, environnement }), ouvrirWorkflow(fichier), workflowModifie(fichier), etatWorkflow(fichier, publie), renomme(…), supprime(…), restaurer(), detruire() }`.
  */
 export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () => {}, surAttente = () => {}, surActif = () => {}, surCourant = () => {}, surSauvegarde = () => {}, surCtrlS = () => {}, surGroupes = () => {}, surLien = () => {}, claude = true, agents = true }) {
   const liste = []; // { chemin, groupe, zone, disque (texte de base), version (de base), apercu, hybride, modifie, question, supprime, avis }
@@ -254,7 +270,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   function nomsOnglets() {
     const fichiers = liste.filter(estFichier);
     const noms = libelles(fichiers.map((x) => x.chemin));
-    const autre = (x) => (x.claude ? { libelle: `Claude ${x.numero}` } : x.conversationAgent ? { libelle: `Agent ${x.numero}` } : { libelle: x.agent ?? `opencode ${x.numero}` });
+    const autre = (x) => (x.workflow ? { libelle: x.nom } : x.claude ? { libelle: `Claude ${x.numero}` } : x.conversationAgent ? { libelle: `Agent ${x.numero}` } : { libelle: x.agent ?? `opencode ${x.numero}` });
     return new Map(liste.map((x) => [x, estFichier(x) ? noms[fichiers.indexOf(x)] : autre(x)]));
   }
 
@@ -278,6 +294,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       return o.agent === undefined ? { groupe: o.groupe, opencode: true, id: o.id, numero: o.numero, ...(o.titre === undefined ? {} : { titre: o.titre }), ...env } : { groupe: o.groupe, opencode: true, id: o.id, agent: o.agent, titre: o.titre, ...env };
     }
     if (o.image) return { groupe: o.groupe, chemin: o.chemin };
+    if (o.workflow) return { groupe: o.groupe, chemin: o.chemin, workflow: o.fichier, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined };
     return { groupe: o.groupe, chemin: o.chemin, apercu: o.apercu, hybride: o.hybride, texte: o.modifie ? o.zone.contenu() : undefined, base: o.modifie ? o.disque : undefined, version: o.modifie ? o.version : undefined, attente: attente.has(o) };
   }
 
@@ -414,8 +431,9 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       actionsDroite.push(th.enveloppe);
     }
     if (o !== diff && o.whiteboard && !o.zone.illisible()) actionsDroite = barreWhiteboard(o);
+    if (o !== diff && o.workflow && !o.zone.illisible()) actionsDroite = barreWorkflow(o);
     const ongl = onglets({
-      onglets: ongletsDe(g).map((x) => x === diff ? { id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true } : x.claude ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "asterisk", titre: `Claude Code dans ${cheminProjet}`, fermable: true } : x.conversationAgent ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "bot", titre: `Agent dans ${cheminProjet}`, fermable: true } : x.opencode ? ongletOpencode(x, noms.get(x).libelle) : ({
+      onglets: ongletsDe(g).map((x) => x === diff ? { id: DIFF, libelle: `${nomDe(diff.chemin)} (diff)`, titre: diff.chemin, fermable: true } : x.workflow ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "waypoints", titre: `Workflow ${x.chemin}`, modifie: x.modifie, fermable: true } : x.claude ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "asterisk", titre: `Claude Code dans ${cheminProjet}`, fermable: true } : x.conversationAgent ? { id: x.chemin, libelle: noms.get(x).libelle, icone: "bot", titre: `Agent dans ${cheminProjet}`, fermable: true } : x.opencode ? ongletOpencode(x, noms.get(x).libelle) : ({
         id: x.chemin,
         libelle: noms.get(x).libelle,
         detail: noms.get(x).detail,
@@ -438,7 +456,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     g.barre.replaceChildren(ongl);
     ongl.choisir(idActif);
     if (avaitLeFocus) ongl.querySelector("[role=tab][aria-selected=true]")?.focus();
-    const enfants = [o.alerteCsv, o.avis].filter(Boolean);
+    const enfants = [o.alerteCsv, o.avis, o.erreurWf].filter(Boolean);
     const presents = [...g.questionOnglet.childNodes];
     if (enfants.length !== presents.length || enfants.some((e, i) => e !== presents[i])) g.questionOnglet.replaceChildren(...enfants);
     return o;
@@ -699,8 +717,8 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     if (!o.barreWb) return;
     o.barreWb.statut.textContent = TEXTE_ZOOM(o.zoom);
     const borne = (b, oui) => (oui ? b.setAttribute("aria-disabled", "true") : b.removeAttribute("aria-disabled"));
-    borne(o.barreWb.avant, o.zoom >= 4 - 1e-9);
-    borne(o.barreWb.arriere, o.zoom <= 0.25 + 1e-9);
+    borne(o.barreWb.avant, o.zoom >= (o.workflow ? ZOOM_MAX : 4) - 1e-9);
+    borne(o.barreWb.arriere, o.zoom <= (o.workflow ? ZOOM_MIN : 0.25) + 1e-9);
   }
 
   /** La barre d'outils de l'onglet de whiteboard `o` (C-005 `actionsDroite`) : une par groupe, refaite avec la barre des onglets. */
@@ -726,6 +744,163 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     o.barreWb = { statut, avant, arriere, theme };
     majBarreWhiteboard(o);
     return [ajout.enveloppe, arriere.enveloppe, statut, avant.enveloppe, tout.enveloppe, theme.enveloppe];
+  }
+
+  // ---- Onglet d'un workflow (REQ-191, REQ-192) ----
+
+  /** La barre de l'onglet d'un workflow (C-005 `actionsDroite`) : le zoom et « Tout afficher », ceux du whiteboard. */
+  function barreWorkflow(o) {
+    const commande = (icone, nomAccessible, action) => {
+      const b = bouton({ icone, variante: "discret", nomAccessible });
+      b.addEventListener("click", () => {
+        if (b.getAttribute("aria-disabled") !== "true") action();
+      });
+      return b;
+    };
+    const arriere = commande("zoom-out", "Zoom arrière", () => o.zone.zoomer(-1));
+    const avant = commande("zoom-in", "Zoom avant", () => o.zone.zoomer(1));
+    const tout = commande("scan", "Tout afficher", () => o.zone.toutAfficher());
+    const statut = document.createElement("span");
+    statut.className = "ya-tableau-zoom";
+    statut.setAttribute("role", "status");
+    o.barreWb = { statut, avant, arriere };
+    majBarreWhiteboard(o);
+    return [arriere.enveloppe, statut, avant.enveloppe, tout.enveloppe];
+  }
+
+  /**
+   * La zone d'un onglet de workflow : C-019 à la place de la zone de code, avec le même texte courant (`contenu()`).
+   * `doc` : le workflow à montrer, ou `null` s'il ne se lit pas (C-004, ni barre d'outils ni Ctrl+S).
+   */
+  function zoneWorkflow(o, doc, surTexte) {
+    o.zoom = 1;
+    let vue = { x: 0, y: 0, zoom: 1 };
+    let courantTexte = doc ? texteWorkflow(doc) : "";
+    const commun = (z) => {
+      z.definirCoupe = () => {};
+      z.rechargerApercu = () => {};
+      z.contenu = () => courantTexte;
+      z.pourEcriture = () => courantTexte;
+      z.acquitter = () => {};
+      z.illisible = () => doc === null;
+      z.detruire = () => {};
+      return z;
+    };
+    if (doc === null) {
+      const z = commun(document.createElement("div"));
+      z.className = "ya-wf-illisible";
+      z.append(indication({ texte: `${o.chemin} n'est pas lisible. Corrigez-le, puis rouvrez Workflows.` }));
+      z.vue = { focus: () => {} };
+      return z;
+    }
+    let ferme = false;
+    const w = workflow({
+      nom: doc.nom,
+      document: { ...doc, publie: o.publie },
+      lectureSeule: o.publie,
+      surChangement(d) {
+        doc = d;
+        courantTexte = texteWorkflow(d);
+        surTexte(courantTexte);
+      },
+      surVue(v) {
+        vue = v;
+        o.zoom = v.zoom;
+        majBarreWhiteboard(o);
+      },
+    });
+    const poserVue = (v) => {
+      vue = v;
+      o.zoom = v.zoom;
+      w.maj({ vue: v });
+      majBarreWhiteboard(o);
+    };
+    commun(w);
+    w.detruire = () => {
+      ferme = true;
+    };
+    w.zoomer = (sens) => poserVue(zoomer(vue, sens, w.surface.clientWidth / 2, w.surface.clientHeight / 2));
+    w.toutAfficher = () => poserVue(cadrer(doc, w.surface.clientWidth, w.surface.clientHeight));
+    // Publié ou dépublié pendant que l'onglet est ouvert : lecture seule ou retour, sans rechargement.
+    w.definirPublie = (publie) => w.maj({ lectureSeule: publie });
+    w.vue = { focus: () => (doc.noeuds.length ? w.surface : (w.querySelector(".ya-wf-type") ?? w.surface)).focus() };
+    listerAgents().then((r) => {
+      if (!ferme && r.agents) w.maj({ agents: r.agents });
+    });
+    return w;
+  }
+
+  /** `doc` : le workflow du serveur (`null` : illisible) ; `brouillon` : le texte gardé d'une modification non enregistrée. */
+  function creerWorkflow({ fichier, doc, brouillon }) {
+    const chemin = cheminWorkflow(fichier);
+    const affiche = (brouillon !== undefined && lireTexteWorkflow(brouillon)) || doc;
+    const o = { chemin, groupe: courant, workflow: true, fichier, nom: doc?.nom ?? fichier, publie: Boolean(doc?.publie), disque: doc ? texteWorkflow(doc) : "", modifie: false };
+    o.zone = zoneWorkflow(o, affiche, (t) => {
+      const m = t !== o.disque;
+      if (m !== o.modifie) {
+        o.modifie = m;
+        afficher();
+      }
+      garderListe();
+    });
+    o.modifie = o.zone.contenu() !== o.disque;
+    liste.push(o);
+    return o;
+  }
+
+  /** Ouvre l'onglet du workflow `fichier` (sans `.json`) ou le rend actif. */
+  async function ouvrirWorkflow(fichier) {
+    const chemin = cheminWorkflow(fichier);
+    const geste = ++dernierGeste;
+    if (!trouver(chemin)) {
+      lectures++;
+      afficher();
+      const r = await lireWorkflow(fichier);
+      lectures = Math.max(0, lectures - 1);
+      if (detruit) return;
+      if (r.coupure) {
+        afficher();
+        dire({ texte: TEXTE_COUPURE, variante: "alerte", fermable: true });
+        return;
+      }
+      if (!trouver(chemin)) creerWorkflow({ fichier, doc: r.workflow ?? null });
+    }
+    suiteOuverture({ chemin, geste });
+  }
+
+  /** Vrai si l'onglet du workflow `fichier` a des modifications non enregistrées. */
+  const workflowModifie = (fichier) => Boolean(trouver(cheminWorkflow(fichier))?.modifie);
+
+  /** Le workflow `fichier` est publié ou dépublié : son onglet, s'il est ouvert, change d'état sur place. */
+  function etatWorkflow(fichier, publie) {
+    const o = trouver(cheminWorkflow(fichier));
+    if (!o || o.publie === publie) return;
+    o.publie = publie;
+    o.erreurWf = null;
+    o.zone.definirPublie?.(publie);
+    afficher();
+  }
+
+  /** Écrit l'onglet d'un workflow par la route des workflows. Rend `null` si c'est fait, sinon le texte de l'échec. */
+  async function sauvegarderWorkflow(o) {
+    while (o.ecriture) await o.ecriture;
+    if (o.zone.illisible() || (o.publie && !o.modifie)) return null;
+    const texte = o.zone.contenu();
+    o.ecriture = ecrireWorkflow(o.fichier, JSON.parse(texte));
+    const r = await o.ecriture;
+    o.ecriture = null;
+    if (detruit) return "";
+    if (r.coupure) return TEXTE_WF_COUPURE;
+    if (r.cause === "publie") return TEXTE_WF_PUBLIE;
+    if (r.cause) return `Enregistrement impossible : ${r.message.replace(/\.$/, "")}.`;
+    o.disque = texte;
+    o.modifie = o.zone.contenu() !== texte;
+    o.erreurWf = null;
+    afficher();
+    clearTimeout(minuteur);
+    minuteur = null;
+    if (pret) ecrireGarde();
+    return null;
   }
 
   /** Un onglet d'image (REQ-120) : la zone C-017 prend la place de la zone de code ; l'image vient de la route d'aperçu. */
@@ -795,7 +970,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   function renomme({ de, vers }) {
     for (const o of liste) {
       const nouveau = suivreRenommage(o.chemin, de, vers);
-      if (nouveau === o.chemin) continue;
+      if (nouveau === o.chemin || o.workflow) continue;
       if (actif === o.chemin) actif = nouveau;
       for (const g of groupes.values()) if (g.actif === o.chemin) g.actif = nouveau;
       o.chemin = nouveau;
@@ -815,7 +990,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   }
 
   function supprime({ chemin }) {
-    for (const o of liste.filter((x) => estSous(x.chemin, chemin))) retirer(o.chemin);
+    for (const o of liste.filter((x) => !x.workflow && estSous(x.chemin, chemin))) retirer(o.chemin);
   }
 
   /** `arreter` : la session Claude de l'onglet s'arrête sur le serveur (sauf si elle a fini ou n'existe plus). */
@@ -1137,6 +1312,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
    * (rien n'est écrit), sinon le texte de l'échec.
    */
   async function sauvegarder(o) {
+    if (o.workflow) return sauvegarderWorkflow(o);
     // Une écriture en cours finit d'abord : la suivante part avec la version qu'elle rend.
     while (o.ecriture) await o.ecriture;
     if (o.question) return SANS_SUITE;
@@ -1330,10 +1506,15 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     const echec = await sauvegarder(o);
     if (!echec) {
       // REQ-124 : seulement si le texte écrit diffère de celui d'avant.
-      if (!detruit && o.disque !== avant) surCtrlS(o.chemin);
+      if (!detruit && !o.workflow && o.disque !== avant) surCtrlS(o.chemin);
       return;
     }
     if (echec === SANS_SUITE) return garderListe(); // refus du serveur : la question remplace le Ctrl+S
+    if (o.workflow) {
+      // Pas d'attente du retour : le message en haut de l'onglet le dit (V-017) ; le point reste.
+      o.erreurWf = message({ texte: echec, variante: "erreur" });
+      return afficher();
+    }
     if (echec === TEXTE_COUPURE) {
       mettreEnAttente(o);
       // La coupure n'est pas encore détectée (ou le retour a été trop bref) : sans changement d'état, personne ne relancerait.
@@ -1424,7 +1605,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
         resolve("annulé");
       };
       const dlg = dialogue({
-        titre: `Sauvegarder ${nomDe(chemin)} ?`,
+        titre: `Sauvegarder ${o.workflow ? o.nom : nomDe(chemin)} ?`,
         contenu: [zone],
         actions: [annuler, abandonner, ok],
         focusInitial: ok,
@@ -1540,6 +1721,10 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     e.preventDefault();
     if (document.querySelector("[role=dialog], dialog[open]")) return;
     const o = trouver(actif);
+    if (o?.workflow) {
+      if (!o.zone.illisible()) sauvegarderEtDire(o);
+      return;
+    }
     if (!o || !estTexte(o)) return;
     if (o.question) return montrerQuestion(o);
     if (coupe) mettreEnAttente(o);
@@ -1556,6 +1741,15 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     for (;;) {
       const lecture = await lireFichier(g.chemin);
       if (detruit || decider(g, lecture) !== "reessayer") return lecture;
+      await attendre(1500);
+    }
+  }
+
+  /** Lit le workflow d'un onglet gardé par la route des workflows ; tant que le serveur ne répond pas, on réessaie. */
+  async function lireGardeWorkflow(g) {
+    for (;;) {
+      const lecture = await lireWorkflow(g.workflow);
+      if (detruit || !lecture.coupure) return lecture;
       await attendre(1500);
     }
   }
@@ -1578,7 +1772,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   async function restaurer() {
     const gardes = await retrouver();
     const instance = claude && gardes.liste.some((g) => g.claude) ? (await listeShells())?.instance : undefined;
-    const lus = await Promise.all(gardes.liste.map((g) => (g.claude || g.opencode || g.conversationAgent || estImage(g.chemin) ? null : lireGarde(g))));
+    const lus = await Promise.all(gardes.liste.map((g) => (g.claude || g.opencode || g.conversationAgent ? null : g.workflow ? lireGardeWorkflow(g) : estImage(g.chemin) ? null : lireGarde(g))));
     const jeton = gardes.liste.some((g) => g.chemin && estImage(g.chemin)) ? await jetonApercu() : null;
     if (detruit) return;
     lectures--;
@@ -1613,6 +1807,11 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
         return;
       }
       if (trouver(g.chemin)) return;
+      if (g.workflow) {
+        // Absent ou abîmé depuis : l'onglet n'est pas rouvert.
+        if (lus[i].workflow) creerWorkflow({ fichier: g.workflow, doc: lus[i].workflow, brouillon: g.texte });
+        return;
+      }
       if (estImage(g.chemin)) {
         creerImage(g.chemin, jeton);
         return;
@@ -1695,6 +1894,9 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     ouvrirAgent,
     relireReglagesAgents,
     ouvrirOpencode,
+    ouvrirWorkflow,
+    workflowModifie,
+    etatWorkflow,
     ouvrirDiff,
     fermerDiff,
     /** Vrai si l'onglet actif est un fichier JSON ou XML (REQ-118). */

@@ -161,3 +161,14 @@ function shift(pos, taille, dec, z, dim) {
   if (b > dim - 24) return Math.max(24 - a, dim - 24 - b);
   return 0;
 }
+
+/** Vue qui cadre tous les nœuds dans une surface de `largeur` × `hauteur`, sans dépasser 100 % ; sans nœud, la vue de départ. */
+export function cadrer(doc, largeur, hauteur) {
+  if (!doc.noeuds.length || !largeur || !hauteur) return { x: 0, y: 0, zoom: 1 };
+  const x0 = Math.min(...doc.noeuds.map((n) => n.x));
+  const y0 = Math.min(...doc.noeuds.map((n) => n.y));
+  const w = Math.max(...doc.noeuds.map((n) => n.x + LARGEUR_NOEUD)) - x0;
+  const h = Math.max(...doc.noeuds.map((n) => n.y + HAUTEUR_NOEUD)) - y0;
+  const zoom = Math.min(1, Math.max(ZOOM_MIN, Math.min((largeur - 48) / w, (hauteur - 48) / h)));
+  return { x: (largeur - w * zoom) / 2 - x0 * zoom, y: (hauteur - h * zoom) / 2 - y0 * zoom, zoom };
+}
