@@ -1,7 +1,9 @@
 import { fermerShell, listeShells, lireEnvironnements, ouvrirShell } from "../api.js";
+import { lignes as lignesDuJournal, purger as purgerJournal, suivre as suivreJournal } from "../journal.js";
 import { ecrire, lire } from "../stockage.js";
 import { bouton } from "../ui/bouton.js";
 import { dialogue } from "../ui/dialogue.js";
+import { journal } from "../ui/journal.js";
 import { menu, menuDuRail } from "../ui/menu.js";
 import { message } from "../ui/message.js";
 import { onglets } from "../ui/onglets.js";
@@ -54,13 +56,15 @@ function texteArret(n) {
 
 /**
  * Zone des shells de V-002. `dire({ texte, variante, detail })` affiche un toast.
- * `surZone(oui, replie)` : la zone a au moins un shell visible, ou n'en a aucun ; `replie` : elle est repliée.
+ * `surZone(oui, replie)` : la zone a au moins un shell visible ou l'onglet « Logs » (REQ-188), ou n'a ni l'un ni l'autre ; `replie` : elle est repliée.
+ * `sansShells` : `fonctions.shells` faux, la zone ne montre que l'onglet « Logs » ; aucun shell n'est lu ni ouvert.
+ * `surFermetureLogs()` : l'onglet « Logs » se ferme sans laisser de shell visible, le focus va sur le bouton « Logs » de la barre d'état.
  * `replieImpose` : `true` ou `false` remplace le repli gardé à la restauration.
  * `repli` : le bouton « Replier les shells », que la vue principale place dans la barre de titre.
  * `commandes` : les quatre boutons de C-010, que la vue principale place dans le rail.
  * Méthodes : `definirEtat("connecte" | "coupe")`, `detruire()`.
  */
-export function vueShells({ dire, surZone = () => {}, replieImpose }) {
+export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells = false, surFermetureLogs = () => {} }) {
   const racine = document.createElement("div");
   racine.className = "shells";
   const entete = document.createElement("div");
@@ -76,6 +80,11 @@ export function vueShells({ dire, surZone = () => {}, replieImpose }) {
   let onglet = null;
   let menuReduits = null;
   let replie = false;
+  // Console des logs (REQ-188) : un onglet, toujours le dernier, jamais gardé. Le composant et ses filtres vivent autant que la page.
+  let logsOuvert = false;
+  let vueJournal = null;
+  let arreterJournal = null;
+  const EST_LOGS = "logs";
 
   const boutonNouveau = bouton({
     icone: "terminal",
@@ -112,7 +121,7 @@ export function vueShells({ dire, surZone = () => {}, replieImpose }) {
     return (v[i + 1] ?? v[i - 1])?.id ?? null;
   }
 
-  const sauver = () => ecrire("serveur", { instance, nombre: shells.size, reduits: reduits().map((s) => s.id), replie });
+  const sauver = () => !sansShells && ecrire("serveur", { instance, nombre: shells.size, reduits: reduits().map((s) => s.id), replie });
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
   function majConnecte(s) {
@@ -121,47 +130,97 @@ export function vueShells({ dire, surZone = () => {}, replieImpose }) {
 
   const envoyerTaille = (s) => s.ws?.readyState === 1 && s.ws.send(`taille ${s.terminal.term.cols} ${s.terminal.term.rows}`);
 
+  // Les commandes du rail visent un shell : ni zone repliée, ni « Logs » actif.
+  const majReduireFermer = () => {
+    boutonReduire.disabled = boutonFermer.disabled = visibles().length === 0 || replie || actif === EST_LOGS;
+  };
+
   function activer(id, focaliser = false) {
     actif = id;
+    majReduireFermer();
     onglet?.choisir(String(id));
     for (const s of shells.values()) s.terminal.hidden = s.id !== id;
     const s = shells.get(id);
+    if (vueJournal) vueJournal.hidden = id !== EST_LOGS;
     s?.terminal.ajuster();
-    if (focaliser) s?.terminal.focus();
+    if (focaliser) focaliserActif();
+  }
+
+  function focaliserActif() {
+    if (actif === EST_LOGS) vueJournal.focusFiltre();
+    else shells.get(actif)?.terminal.focus();
+  }
+
+  function creerJournal() {
+    vueJournal = journal({ lignes: lignesDuJournal(), purger: () => purgerJournal() });
+    vueJournal.hidden = true;
+    arreterJournal = suivreJournal((e) => (e.type === "ajout" ? vueJournal.ajouter(e.ligne) : vueJournal.remplacer(e.lignes)));
+  }
+
+  /** Bouton « Logs » : la zone apparaît ou se déplie, l'onglet s'ouvre s'il ne l'était pas et devient actif, le focus va dans « Filtrer ». */
+  racine.ouvrirLogs = () => {
+    if (detruit) return;
+    if (!vueJournal) creerJournal();
+    else if (!logsOuvert) vueJournal.remplacer(lignesDuJournal());
+    logsOuvert = true;
+    replie = false;
+    actif = EST_LOGS;
+    afficher();
+    vueJournal.descendre();
+    vueJournal.focusFiltre();
+    sauver();
+  };
+
+  function fermerLogs() {
+    if (!logsOuvert) return;
+    const etaitActif = actif === EST_LOGS;
+    const avaitLeFocus = vueJournal.contains(document.activeElement);
+    logsOuvert = false;
+    if (etaitActif) actif = visibles().at(-1)?.id ?? null;
+    afficher();
+    sauver();
+    if (visibles().length === 0) surFermetureLogs();
+    else if (etaitActif || avaitLeFocus) focaliserActif();
   }
 
   function afficher() {
     const vis = visibles();
     const nombreReduits = reduits().length;
-    if (vis.length === 0) replie = false;
-    boutonRepli.disabled = vis.length === 0;
+    const avecZone = vis.length > 0 || logsOuvert;
+    if (!avecZone) replie = false;
+    const valide = actif === EST_LOGS ? logsOuvert : vis.some((s) => s.id === actif);
+    if (avecZone && !valide) actif = vis[0]?.id ?? EST_LOGS;
+    boutonRepli.disabled = !avecZone;
     const nomRepli = replie ? "Déplier les shells" : "Replier les shells";
     if (boutonRepli.getAttribute("aria-label") !== nomRepli) {
       boutonRepli.definirCommande({ nomAccessible: nomRepli, icone: replie ? "panel-bottom-open" : "panel-bottom-close" });
     }
-    boutonReduire.disabled = boutonFermer.disabled = vis.length === 0 || replie;
+    majReduireFermer();
     boutonReduits.disabled = nombreReduits === 0;
     if (nombreReduits > 0 || boutonReduits.querySelector(".ya-badge")) boutonReduits.definirCompteur(nombreReduits);
     if (shells.size > 0 || boutonNouveau.querySelector(".ya-badge")) boutonNouveau.definirCompteur(shells.size);
     // La zone revient avant toute mesure de terminal.
-    surZone(vis.length > 0, replie);
-    const terminaux = [...shells.values()].map((s) => s.terminal);
-    for (const enfant of [...corps.children]) if (!terminaux.includes(enfant)) enfant.remove();
-    for (const t of terminaux) if (t.parentNode !== corps) corps.append(t);
-    if (vis.length === 0) {
+    surZone(avecZone, replie);
+    const gardes = [...[...shells.values()].map((s) => s.terminal), ...(vueJournal ? [vueJournal] : [])];
+    for (const enfant of [...corps.children]) if (!gardes.includes(enfant)) enfant.remove();
+    for (const t of gardes) if (t.parentNode !== corps) corps.append(t);
+    if (!avecZone) {
       actif = null;
       onglet = null;
       entete.replaceChildren();
+      if (vueJournal) vueJournal.hidden = true;
       for (const s of shells.values()) s.terminal.hidden = true;
       return;
     }
-    if (!vis.some((s) => s.id === actif)) actif = vis[0].id;
     onglet = onglets({
       presentation: "shells",
-      onglets: vis.map((s) => ({ id: String(s.id), libelle: `shell ${s.id}`, icone: "terminal", fermable: true })),
+      onglets: [
+        ...vis.map((s) => ({ id: String(s.id), libelle: `shell ${s.id}`, icone: "terminal", fermable: true })),
+        ...(logsOuvert ? [{ id: EST_LOGS, libelle: "Logs", icone: "list", fermable: true }] : []),
+      ],
       actif: String(actif),
-      surChoix: (id) => activer(Number(id), true),
-      surFermer: (id, origine) => demanderFermeture(Number(id), origine),
+      surChoix: (id) => activer(id === EST_LOGS ? id : Number(id), true),
+      surFermer: (id, origine) => (id === EST_LOGS ? fermerLogs() : demanderFermeture(Number(id), origine)),
     });
     onglet.setAttribute("aria-label", "Shells");
     entete.replaceChildren(onglet);
@@ -176,7 +235,7 @@ export function vueShells({ dire, surZone = () => {}, replieImpose }) {
   };
   function replacerFocus(note) {
     const grise = note.e instanceof HTMLButtonElement && note.e.disabled;
-    const sansZone = visibles().length === 0 && note.dedans;
+    const sansZone = visibles().length === 0 && !logsOuvert && note.dedans;
     if (!grise && !sansZone && !(note.menu && boutonReduits.disabled)) return;
     focusSansZone();
   }
@@ -251,14 +310,14 @@ export function vueShells({ dire, surZone = () => {}, replieImpose }) {
     if (!s) return;
     const note = noterFocus();
     const avaitLeFocus = s.terminal.contains(document.activeElement);
-    if (!s.reduit && actif === id) actif = voisin(id);
+    if (!s.reduit && actif === id) actif = voisin(id) ?? (logsOuvert ? EST_LOGS : null);
     const surOnglet = entete.contains(note.e);
     shells.delete(id);
     s.terminal.detruire();
     afficher();
     menuReduits?.retirer(`shell ${id}`);
     sauver();
-    if (avaitLeFocus && actif !== null) shells.get(actif).terminal.focus();
+    if (avaitLeFocus && actif !== null) focaliserActif();
     else if (surOnglet && actif !== null) onglet.querySelector("[role=tab][aria-selected=true]")?.focus();
     else replacerFocus(note);
   }
@@ -268,7 +327,7 @@ export function vueShells({ dire, surZone = () => {}, replieImpose }) {
     if (origine === "rail") {
       if (!coupure) boutonFermer.focus();
     } else if (origine === "croix") {
-      if (actif !== null) shells.get(actif).terminal.focus();
+      if (actif !== null) focaliserActif();
       else focusSansZone();
     } else onglet?.querySelector("[role=tab][aria-selected=true]")?.focus();
   }
@@ -309,7 +368,7 @@ export function vueShells({ dire, surZone = () => {}, replieImpose }) {
         s.ws.close();
         retirer(id);
       }
-      if (actif !== null) shells.get(actif).terminal.focus();
+      if (actif !== null) focaliserActif();
       else focusSansZone();
     });
     dlg.ouvrir();
@@ -417,12 +476,13 @@ export function vueShells({ dire, surZone = () => {}, replieImpose }) {
   racine.detruire = () => {
     detruit = true;
     menuReduits?.fermer();
+    arreterJournal?.();
     for (const s of shells.values()) {
       if (s.ws) s.ws.onclose = null;
       s.ws?.close();
       s.terminal.detruire();
     }
   };
-  demarrer();
+  if (!sansShells) demarrer();
   return racine;
 }

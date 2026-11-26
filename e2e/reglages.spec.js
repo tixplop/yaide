@@ -516,6 +516,9 @@ test("REQ172_AC6_AC7_AC8_AC9_parcours_134_toasts_a_800_par_480_puis_1280_par_800
     const maj = page.locator(".cadre-etat").getByRole("button", { name: "Mettre à jour" });
     await expect(maj).toBeVisible();
     await page.locator(".cadre-rail-droit button").last().focus();
+    // Le bouton « Logs » vient après le rail droit et avant « Mettre à jour » (AC-187-4).
+    await page.keyboard.press("Tab");
+    await expect(page.locator("footer button.ya-logs")).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(maj).toBeFocused();
     for (const nom of noms) {

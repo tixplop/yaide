@@ -115,8 +115,14 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
     shells: avec.shells ? creer("shells", "horizontal", "Hauteur des shells") : null,
   };
   if (!avec.agents) delete poignees.agent;
-  if (!avec.shells) delete poignees.shells;
-  const zoneShells = avec.shells ? zone("div", "cadre-shells", principal.shells) : null;
+  // `fonctions.shells` faux : la zone et sa poignée n'existent que tant que la console des logs est ouverte (REQ-188, `definirZoneLogs`).
+  let zoneShells = null;
+  const creerZone = () => {
+    poignees.shells = creer("shells", "horizontal", "Hauteur des shells");
+    zoneShells = zone("div", "cadre-shells", principal.shells);
+  };
+  if (avec.shells) creerZone();
+  else delete poignees.shells;
 
   poignees.panneau.classList.add("poignee-panneau");
   poignees.agent?.classList.add("poignee-agent");
@@ -350,7 +356,7 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   // La zone des shells et sa poignée sortent de la page sans shell visible ou une fois repliées ; les terminaux
   // restent montés et la taille choisie ne change pas. Le panneau replié laisse la place à `main` (classe sur la racine).
   const appliquer = () => {
-    if (avec.shells) {
+    if (zoneShells) {
       const cache = !shellsVisibles || shellsReplies;
       zoneShells.hidden = cache;
       poignees.shells.hidden = cache;
@@ -366,6 +372,21 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
     }
     racine.classList.toggle("cadre-agent-replie", agentReplie || !avec.agents);
   };
+  racine.definirZoneLogs = (oui) => {
+    if (avec.shells || !principal.shells) return;
+    if (oui && !zoneShells) {
+      creerZone();
+      main.append(poignees.shells, zoneShells);
+    } else if (!oui && zoneShells) {
+      poignees.shells.remove();
+      zoneShells.remove();
+      delete poignees.shells;
+      zoneShells = null;
+    }
+    appliquer();
+  };
+  // Pose le focus sur le bouton « Logs » (contour visible même après un clic).
+  racine.poserFocusLogs = () => boutonLogs.poserFocus();
   racine.definirShellsVisibles = (oui) => {
     if (!avec.shells) return;
     shellsVisibles = Boolean(oui);
@@ -375,7 +396,7 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   racine.definirReplis = ({ panneau: p, agent: a, shells: s } = {}) => {
     if (p !== undefined) panneauReplie = Boolean(p);
     if (a !== undefined && avec.agents) agentReplie = Boolean(a);
-    if (s !== undefined && avec.shells) shellsReplies = Boolean(s);
+    if (s !== undefined) shellsReplies = Boolean(s);
     appliquer();
   };
   // À appeler une fois le cadre dans la page : sans taille choisie, pose la taille mesurée sur les poignées.

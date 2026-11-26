@@ -279,18 +279,22 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
 
   let fichiers = null; // créé après l'éditeur, dont les premiers rappels arrivent avant
   let git = null; // créé après l'arbre, dont la première lecture le demande
-  // La zone des shells sort de la page sans shell visible ; la poignée reprend sa taille à son retour.
-  const shells = avec.shells
-    ? vueShells({
-        dire,
-        replieImpose: imposes.shells,
-        surZone: (oui, replie) => {
-          racine?.definirShellsVisibles(oui);
-          racine?.definirReplis({ shells: replie });
-          recalculer();
-        },
-      })
-    : { commandes: [], repli: { enveloppe: null }, definirEtat() {}, detruire() {} };
+  // La zone des shells sort de la page sans shell visible ni onglet « Logs » ; la poignée reprend sa taille à son retour.
+  // Sans la fonction `shells`, la zone n'existe que tant que « Logs » est ouvert (REQ-188).
+  const shells = vueShells({
+    dire,
+    replieImpose: imposes.shells,
+    sansShells: !avec.shells,
+    surFermetureLogs: () => racine.poserFocusLogs(),
+    surZone: (oui, replie) => {
+      if (avec.shells) racine?.definirShellsVisibles(oui);
+      else racine?.definirZoneLogs(oui);
+      racine?.definirReplis({ shells: replie });
+      recalculer();
+    },
+  });
+  // Clic sur le bouton « Logs » de la barre d'état (REQ-187, REQ-188).
+  barre.surLogs = () => shells.ouvrirLogs();
   const editeur = vueEditeur({
     chemin,
     dire,
@@ -404,8 +408,8 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const choisies = {};
   let detruite = false;
   racine = cadre({
-    barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [boutonPanneau.enveloppe, shells.repli.enveloppe, theme.enveloppe, sortir.enveloppe, boutonArret.enveloppe].filter(Boolean) },
-    rail: { onglets: rail, commandes: shells.commandes },
+    barreTitre: { projet: nomDuDossier(chemin), chemin, surOuvrir: () => ouverture.ouvrir(), actions: [boutonPanneau.enveloppe, avec.shells ? shells.repli.enveloppe : null, theme.enveloppe, sortir.enveloppe, boutonArret.enveloppe].filter(Boolean) },
+    rail: { onglets: rail, commandes: avec.shells ? shells.commandes : [] },
     panneau: { titre: "Fichiers", repli: repliEntete.enveloppe, entete: fichiers.entete, corps: [fichiers.corps, recherche?.corps, git.corps].filter(Boolean) },
     agent: { titre: "Agents", repli: repliAgent.enveloppe, corps: avec.agents ? [agents.corps] : [] },
     railDroit: { commandes: avec.agents ? [boutonAgent.enveloppe, boutonAgents.enveloppe] : [], pied: boutonMcp ? [boutonBase.enveloppe, boutonMcp.enveloppe] : [] },

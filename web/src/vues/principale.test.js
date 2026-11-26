@@ -2205,3 +2205,25 @@ test("REQ186_AC2_la_ligne_de_coupure_part_une_fois_au_retour_avec_l_heure_de_la_
     expect(envoyees[0].heure).toBeGreaterThanOrEqual(heure);
     expect(envoyees[0].heure).toBeLessThan(heure + 3000);
   }));
+
+// ---- T-447 : bouton « Logs » et console dans la zone des shells (REQ-187, REQ-188) ----
+
+test("REQ187_AC2_AC4_le_bouton_Logs_est_le_premier_de_la_barre_d_etat_ouvre_la_console_et_vient_apres_le_rail_droit_en_Tab", async () => {
+  simulerJournalPage();
+  const { vue } = monter();
+  await attendre();
+  const b = vue.querySelector("footer button.ya-logs");
+  const barre = vue.querySelector("footer");
+  expect(barre.firstElementChild).toBe(b.parentElement === barre ? b : b.parentElement);
+  expect(b.tabIndex).toBe(0);
+  const droit = [...vue.querySelectorAll(".cadre-rail-droit button")].filter((x) => x.tabIndex >= 0);
+  expect(droit.length).toBeGreaterThan(0);
+  const apres = (x, y) => Boolean(x.compareDocumentPosition(y) & Node.DOCUMENT_POSITION_FOLLOWING);
+  for (const r of droit) expect(apres(r, b)).toBe(true);
+  expect(apres(b, vue.querySelector(".ya-status-maj"))).toBe(true);
+  expect(b.hasAttribute("aria-live") || b.closest("[aria-live], [role=status]") !== null).toBe(false);
+  const avant = iconeLogs(vue);
+  b.click();
+  expect(vue.querySelector(".shells [role=tab][aria-selected=true]").textContent).toBe("Logs");
+  expect(iconeLogs(vue)).toBe(avant);
+});

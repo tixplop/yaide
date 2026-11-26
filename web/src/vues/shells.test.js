@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
+import { journaliser, lignes as lignesDuJournal } from "../journal.js";
 import { lire } from "../stockage.js";
-import { monter, attendre, FauxWebSocket, bout, onglets, boutonClaudeDe, ongletsClaude, clavier } from "./principale.aides.js";
+import { monter, attendre, actifDe, FauxWebSocket, bout, onglets, boutonClaudeDe, ongletsClaude, clavier } from "./principale.aides.js";
 
 vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: vi.fn(async () => undefined) }));
 
@@ -192,4 +193,130 @@ test("REQ183_AC9_AC11_coupure_a_l_ouverture_du_menu_et_au_choix", async () => {
   await vi.waitFor(() => expect(vue.textContent).toContain("Connexion perdue. Réessayez au retour."));
   expect(ongletsClaude(vue).length).toBe(0);
   expect(document.activeElement).toBe(cl);
+});
+
+// ---- T-447 : onglet « Logs » dans la zone des shells (REQ-187, REQ-188) ----
+
+const boutonLogs = (vue) => vue.querySelector("footer button.ya-logs");
+const zoneVisible = (vue) => vue.querySelector(".cadre-shells") !== null && !vue.querySelector(".cadre-shells").hidden;
+const filtrer = () => document.activeElement?.getAttribute("placeholder") === "Filtrer";
+const fermer = (vue) => vue.querySelector("[aria-label='Fermer Logs']");
+const ouvrirShell = async (vue) => {
+  bout(vue, "Nouveau shell").click();
+  await vi.waitFor(() => expect(onglets(vue).some((n) => n.startsWith("shell"))).toBe(true));
+};
+
+test("REQ188_AC1_REQ187_AC2_clic_sur_Logs_ouvre_la_zone_deplie_et_ne_double_jamais_l_onglet", async () => {
+  simuler();
+  const { vue } = monter();
+  await attendre();
+  await attendre();
+  expect(zoneVisible(vue)).toBe(false);
+  boutonLogs(vue).click();
+  expect(zoneVisible(vue)).toBe(true);
+  expect(onglets(vue)).toEqual(["Logs"]);
+  expect(actifDe(vue)).toBe("Logs");
+  expect(filtrer()).toBe(true);
+  // Un shell s'insère avant « Logs » et devient actif.
+  await ouvrirShell(vue);
+  expect(onglets(vue)).toEqual(["shell 1", "Logs"]);
+  expect(actifDe(vue)).toBe("shell 1");
+  // « Logs » redevient actif, jamais deux onglets.
+  boutonLogs(vue).click();
+  boutonLogs(vue).click();
+  expect(onglets(vue)).toEqual(["shell 1", "Logs"]);
+  expect(actifDe(vue)).toBe("Logs");
+  expect(filtrer()).toBe(true);
+  // Zone repliée : elle se déplie.
+  vue.querySelector("header [aria-label='Replier les shells']").click();
+  expect(zoneVisible(vue)).toBe(false);
+  boutonLogs(vue).click();
+  expect(zoneVisible(vue)).toBe(true);
+  expect(actifDe(vue)).toBe("Logs");
+});
+
+test("REQ188_AC3_Logs_actif_grise_Reduire_et_Fermer_et_un_clic_sur_le_shell_les_rend", async () => {
+  simuler();
+  const { vue } = monter();
+  await attendre();
+  await ouvrirShell(vue);
+  expect(bout(vue, "Réduire le shell").disabled).toBe(false);
+  boutonLogs(vue).click();
+  expect(bout(vue, "Réduire le shell").disabled).toBe(true);
+  expect(bout(vue, "Fermer le shell").disabled).toBe(true);
+  expect(bout(vue, "Nouveau shell").disabled).toBe(false);
+  vue.querySelector(".shells [role=tab]").click();
+  expect(actifDe(vue)).toBe("shell 1");
+  expect(bout(vue, "Réduire le shell").disabled).toBe(false);
+  expect(bout(vue, "Fermer le shell").disabled).toBe(false);
+});
+
+test("REQ188_AC2_AC12_fermer_Logs_seul_fait_disparaitre_la_zone_et_le_focus_va_sur_le_bouton_Logs", async () => {
+  simuler();
+  const { vue } = monter();
+  await attendre();
+  // Une ligne au journal avant : la fermeture n'y touche pas.
+  journaliser({ severite: "erreur", message: "ligne gardée" });
+  const lignesAvant = lignesDuJournal().length;
+  boutonLogs(vue).click();
+  expect(vue.querySelectorAll(".ya-journal tbody tr").length).toBe(lignesAvant);
+  fermer(vue).click();
+  expect(document.querySelector("dialog[open], [role=dialog]")).toBeNull();
+  expect(zoneVisible(vue)).toBe(false);
+  expect(document.activeElement).toBe(boutonLogs(vue));
+  expect(boutonLogs(vue).classList.contains("ya-focus-garde")).toBe(true);
+  expect(lignesDuJournal().length).toBe(lignesAvant);
+  // Rouvert : un seul onglet, la ligne est là, et Suppr le ferme de même sans rien changer.
+  boutonLogs(vue).click();
+  expect(onglets(vue)).toEqual(["Logs"]);
+  expect(vue.querySelector(".ya-journal tbody").textContent).toContain("ligne gardée");
+  clavier(vue.querySelector(".shells [role=tab][aria-selected=true]"), "Delete");
+  expect(zoneVisible(vue)).toBe(false);
+  expect(document.activeElement).toBe(boutonLogs(vue));
+  expect(lignesDuJournal().length).toBe(lignesAvant);
+  boutonLogs(vue).click();
+  expect(vue.querySelector(".ya-journal tbody").textContent).toContain("ligne gardée");
+});
+
+test("REQ188_AC2_fermer_Logs_avec_un_shell_visible_rend_la_main_au_shell_et_a_son_terminal", async () => {
+  simuler();
+  const { vue } = monter();
+  await attendre();
+  await ouvrirShell(vue);
+  boutonLogs(vue).click();
+  fermer(vue).click();
+  expect(document.querySelector("dialog[open], [role=dialog]")).toBeNull();
+  expect(onglets(vue)).toEqual(["shell 1"]);
+  expect(actifDe(vue)).toBe("shell 1");
+  expect(zoneVisible(vue)).toBe(true);
+  await vi.waitFor(() => expect(document.activeElement).toBe(vue.querySelector(".shells .terminal:not([hidden]) textarea")));
+});
+
+test("REQ188_AC8_sans_la_fonction_shells_le_bouton_ouvre_la_zone_avec_le_seul_onglet_Logs_puis_elle_part", async () => {
+  simuler();
+  const { vue } = monter({ reglages: { fonctions: { shells: false } } });
+  await attendre();
+  expect(vue.querySelector(".cadre-shells")).toBeNull();
+  boutonLogs(vue).click();
+  expect(zoneVisible(vue)).toBe(true);
+  expect(onglets(vue)).toEqual(["Logs"]);
+  expect(vue.querySelector("header [aria-label='Replier les shells']")).toBeNull();
+  expect(vue.querySelector(".cadre-rail-commandes")).toBeNull();
+  fermer(vue).click();
+  expect(vue.querySelector(".cadre-shells")).toBeNull();
+  expect(document.activeElement).toBe(boutonLogs(vue));
+});
+
+test("REQ188_AC8_apres_un_rechargement_l_onglet_Logs_est_ferme", async () => {
+  simuler();
+  const un = monter();
+  await attendre();
+  boutonLogs(un.vue).click();
+  expect(onglets(un.vue)).toEqual(["Logs"]);
+  un.vue.detruire();
+  un.vue.remove();
+  const deux = monter();
+  await attendre();
+  expect(onglets(deux.vue)).toEqual([]);
+  expect(zoneVisible(deux.vue)).toBe(false);
 });

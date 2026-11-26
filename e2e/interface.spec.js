@@ -444,7 +444,8 @@ test("REQ036_AC3_REQ028_AC9_REQ037_AC4_AC10_AC11_AC12_REQ032_AC6_REQ038_AC2_AC4_
       await expect(fil).toHaveText("srcmain.rs");
       for (const z of [etat, fil]) {
         expect(await z.evaluate((e) => getComputedStyle(e).cursor)).toBe("default");
-        await expect(z.locator("button, a, [tabindex]")).toHaveCount(0);
+        // Seul le bouton « Logs » de la barre d'état est un arrêt de Tab (AC-187-4).
+        await expect(z.locator("button:not(.ya-logs), a, [tabindex]")).toHaveCount(0);
       }
       // Chemin trop long : les premiers segments sont coupés, le nom reste entier.
       await fil.evaluate((e) => {
@@ -609,7 +610,7 @@ test("REQ031_AC1_AC2_AC6_AC8_REQ032_AC13_REQ040_AC13_AC15_AC28_8_AC28_9_AC31_1_c
       expect(noms.has(attendu), attendu).toBe(true);
     }
     // AC-031-6 : 24 × 24 px, sauf une action de ligne (20 × 20) et la fermeture d'un onglet (18 × 18).
-    const minimum = (nom) => (nom.startsWith("Indexer ") ? 20 : nom.startsWith("Fermer ") && nom !== "Fermer le shell" ? 18 : 24);
+    const minimum = (nom) => (nom.startsWith("Indexer ") || nom.startsWith("Logs") ? 20 : nom.startsWith("Fermer ") && nom !== "Fermer le shell" ? 18 : 24);
     for (const c of toutes) {
       // « Ouverture rapide » garde le nom du projet : texte voulu par le design (C-010), hors d'AC-031-1.
       if (c.nom !== "Ouverture rapide") expect(c.texte, c.nom).toBe("");
