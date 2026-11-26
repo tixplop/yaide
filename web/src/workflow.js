@@ -10,10 +10,16 @@ export const TYPES = {
   dossier: { nom: "Fichiers d'un dossier", genre: "declencheur", icone: "folder-search", phrase: "Un fichier y est créé, modifié ou supprimé." },
   planification: { nom: "Planification", genre: "declencheur", icone: "clock", phrase: "À heures fixes, selon une expression cron." },
   appel: { nom: "Appel par un agent", genre: "declencheur", icone: "webhook", phrase: "Un agent le lance avec l'outil run_workflow." },
-  agent: { nom: "Agent", genre: "action", icone: "bot-message-square", phrase: "Un agent répond à une demande." },
-  shell: { nom: "Commande shell", genre: "action", icone: "square-terminal", phrase: "Lance une commande dans la racine du projet." },
-  claude: { nom: "Session Claude", genre: "action", icone: "square-asterisk", phrase: "Lance une session Claude sans terminal." },
+  agent: { nom: "Agent", genre: "action", icone: "bot-message-square", phrase: "Envoie un message à un agent du projet." },
+  shell: { nom: "Commande shell", genre: "action", icone: "square-terminal", phrase: "Lance une commande dans le projet." },
+  claude: { nom: "Session Claude", genre: "action", icone: "square-asterisk", phrase: "Confie une demande à Claude Code." },
   fichier: { nom: "Fichier", genre: "action", icone: "file-cog", phrase: "Lit, écrit, copie, déplace ou supprime un fichier." },
+};
+
+/** Réglages d'un nœud neuf : le dossier surveillé vide et ses trois évènements cochés, « Lire » pour un fichier. */
+const REGLAGES_NEUFS = {
+  dossier: () => ({ dossier: "", evenements: ["cree", "modifie", "supprime"] }),
+  fichier: () => ({ operation: "lire" }),
 };
 
 export const estDeclencheur = (n) => TYPES[n.type]?.genre === "declencheur";
@@ -120,7 +126,7 @@ export function ajouter(doc, type, { apres = null, position = null, vue } = {}) 
   const de = action && apres && trouver(doc, apres) ? apres : null;
   const { x, y } = position ?? placeAjout(doc, de, vue);
   const id = idLibre(doc);
-  const noeud = { id, type, titre: titreLibre(doc, type), x, y, reglages: {} };
+  const noeud = { id, type, titre: titreLibre(doc, type), x, y, reglages: REGLAGES_NEUFS[type]?.() ?? {} };
   let suite = { ...doc, noeuds: [...doc.noeuds, noeud] };
   if (de) suite = lier(suite, de, id);
   return { doc: suite, id };

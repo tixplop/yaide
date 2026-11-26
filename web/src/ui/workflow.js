@@ -1,15 +1,17 @@
 import { icone } from "./icones.js";
 import { indication } from "./indication.js";
-import { HAUTEUR_NOEUD, LARGEUR_NOEUD, TYPES, deplacer, estDeclencheur, lienPermis, lier, montrer, phraseDuChoix, retirer, zoomer } from "../workflow.js";
+import { message } from "./message.js";
+import { TYPE_GLISSE, panneauNoeuds } from "./workflow-panneau.js";
+import { HAUTEUR_NOEUD, LARGEUR_NOEUD, TYPES, ajouter, deplacer, estDeclencheur, lienPermis, lier, montrer, phraseDuChoix, retirer, zoomer } from "../workflow.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const PAS_FLECHE = 20;
 
 /** C-019 : surface de l'éditeur de workflow. `maj(props)` remplace document, vue, choix ou lectureSeule. */
-export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, choix = null, lectureSeule = false, surChangement, surVue, surChoix, surEntree }) {
+export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, choix = null, lectureSeule = false, agents = [], surChangement, surVue, surChoix, surEntree }) {
   if (!nom) throw new Error("workflow : nom requis");
   if (typeof surChangement !== "function") throw new Error("workflow : surChangement requis");
-  const etat = { doc, vue, choix, lectureSeule };
+  const etat = { doc, vue, choix, lectureSeule, agents };
   let glisse = null; // { id, dx, dy, x, y, bouge }
   let trace = null; // { de, x, y, cible }
   let fond = null; // { x, y, vue }
@@ -35,7 +37,25 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
   const statut = document.createElement("div");
   statut.className = "ya-wf-statut";
   statut.setAttribute("role", "status");
-  racine.append(surface, statut);
+  const rangee = document.createElement("div");
+  rangee.className = "ya-wf-rangee";
+  const panneau = panneauNoeuds({
+    document: doc,
+    choix,
+    lectureSeule,
+    agents,
+    surChangement: (d) => changerDoc(d),
+    surAjout: (type) => ajouterType(type),
+    surRetirer: () => retirerChoix(),
+    surEchap: () => {
+      choisir(null);
+      surface.focus();
+    },
+  });
+  rangee.append(surface, panneau);
+  const lecture = message({ texte: "Workflow publié : dépubliez-le pour le modifier." });
+  lecture.classList.add("ya-wf-lecture-message");
+  racine.append(lecture, rangee, statut);
 
   const pos = (n) => (glisse && glisse.id === n.id ? { x: glisse.x, y: glisse.y } : { x: n.x, y: n.y });
   const noeud = (id) => etat.doc.noeuds.find((n) => n.id === id);
@@ -64,6 +84,23 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
     if (montrerLe && id) revele();
     rendre();
     surChoix?.(id);
+  }
+  // Ajout depuis le panneau ou par dépôt (`position` : coin haut gauche) : le nœud est choisi et son premier champ prend le focus.
+  function ajouterType(type, position = null) {
+    if (etat.lectureSeule) return;
+    const r = ajouter(etat.doc, type, { apres: etat.choix, vue: etat.vue, position });
+    changerDoc(r.doc);
+    choisir(r.id, { montrerLe: true });
+    panneau.focusPremierChamp();
+  }
+  function retirerChoix() {
+    if (etat.lectureSeule || !etat.choix) return;
+    const id = etat.choix;
+    etat.choix = null;
+    changerDoc(retirer(etat.doc, id));
+    surChoix?.(null);
+    rendre();
+    surface.focus();
   }
   function revele() {
     const n = noeud(etat.choix);
@@ -126,6 +163,8 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
     monde.replaceChildren();
     vide.hidden = etat.doc.noeuds.length > 0;
     racine.classList.toggle("ya-wf-lecture", etat.lectureSeule);
+    lecture.hidden = !etat.lectureSeule;
+    panneau.maj({ document: etat.doc, choix: etat.choix && noeud(etat.choix) ? etat.choix : null, lectureSeule: etat.lectureSeule, agents: etat.agents });
     for (const n of etat.doc.noeuds) {
       const t = TYPES[n.type];
       const el = document.createElement("div");
@@ -243,6 +282,18 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
     fond = null;
     rendre();
   });
+  surface.addEventListener("dragover", (ev) => {
+    if (etat.lectureSeule || !ev.dataTransfer?.types?.includes(TYPE_GLISSE)) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "copy";
+  });
+  surface.addEventListener("drop", (ev) => {
+    const type = ev.dataTransfer?.getData(TYPE_GLISSE);
+    if (!type || etat.lectureSeule) return;
+    ev.preventDefault();
+    const w = monde2(ev);
+    ajouterType(type, { x: w.x - LARGEUR_NOEUD / 2, y: w.y - HAUTEUR_NOEUD / 2 });
+  });
   surface.addEventListener("wheel", (ev) => {
     if (!ev.ctrlKey) return;
     ev.preventDefault();
@@ -267,6 +318,7 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
       if (etat.choix) {
         ev.preventDefault();
         surEntree?.(etat.choix);
+        panneau.focusTitre();
       }
     } else if (ev.key === "Escape") {
       if (etat.choix) {
@@ -277,11 +329,7 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
     } else if (ev.key === "Delete") {
       if (!ro && etat.choix) {
         ev.preventDefault();
-        const id = etat.choix;
-        etat.choix = null;
-        changerDoc(retirer(etat.doc, id));
-        surChoix?.(null);
-        rendre();
+        retirerChoix();
       }
     } else if (ev.key.startsWith("Arrow")) {
       if (!ro && etat.choix) {
@@ -300,6 +348,7 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
     if ("vue" in p) etat.vue = p.vue;
     if ("choix" in p) etat.choix = p.choix;
     if ("lectureSeule" in p) etat.lectureSeule = p.lectureSeule;
+    if ("agents" in p) etat.agents = p.agents;
     if (etat.choix && !noeud(etat.choix)) etat.choix = null;
     rendre();
     if (etat.choix && etat.choix !== ancien) revele();

@@ -1124,6 +1124,26 @@ mark.ya-occurrence { background: linear-gradient(var(--occurrence), var(--occurr
 .ya-noeud-point:hover, .ya-noeud-cible .ya-noeud-entree { width: calc(12px / var(--zoom, 1)); height: calc(12px / var(--zoom, 1)); background: var(--accent-fg); border-color: var(--accent-fg); }
 .ya-wf-lecture .ya-noeud { cursor: default; }
 .ya-wf-lecture .ya-noeud-point::before { cursor: default; }
+.ya-wf-rangee { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.ya-wf-lecture-message { flex: none; margin: var(--space-2) var(--space-3) 0; }
+.ya-wf-lecture-message[hidden] { display: none; }
+.ya-wf-panneau { flex: none; box-sizing: border-box; width: min(var(--largeur-noeuds), 50%); display: flex; flex-direction: column; min-height: 0; background: var(--bg-100); border-left: var(--trait) solid var(--line); }
+.ya-wf-panneau-corps { flex: 1 1 0; min-height: 0; overflow: auto; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
+.ya-wf-aide { margin: 0; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+.ya-wf-groupe { display: flex; flex-direction: column; gap: var(--space-1); }
+.ya-wf-type { box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 16px 1fr; column-gap: 10px; align-items: center; margin: 0; padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); font: 13px/20px var(--font-sans); text-align: left; cursor: pointer; }
+.ya-wf-type svg { color: var(--ink-muted); }
+.ya-wf-type:hover { background: var(--hover); }
+.ya-wf-type:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: -2px; }
+.ya-wf-type-phrase { grid-column: 2; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+.ya-wf-type-court { height: 28px; }
+.ya-wf-type[aria-disabled="true"], .ya-wf-retirer[aria-disabled="true"] { opacity: .45; cursor: default; }
+.ya-wf-type[aria-disabled="true"]:hover { background: transparent; }
+.ya-wf-noeud-tete { display: flex; align-items: center; justify-content: space-between; height: 24px; }
+.ya-wf-noeud-type { display: inline-flex; align-items: center; gap: var(--space-2); font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+.ya-wf-evenements { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.ya-wf-evenements legend { padding: 0; margin-bottom: var(--space-1); }
+.ya-wf-panneau .ya-input[readonly] { background: var(--bg-100); }
 
 .zone-code {
   display: flex;
