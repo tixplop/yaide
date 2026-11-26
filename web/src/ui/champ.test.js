@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { champ } from "./champ.js";
 
@@ -397,4 +397,64 @@ test("REQ117_AC15_codeCouleur_erreur_et_desactive", () => {
   const d = codeCouleur({ desactive: true });
   expect(d.pastille.disabled).toBe(true);
   expect(d.saisie.disabled).toBe(true);
+});
+
+const OPENCODE = '{\n  "mcp": {\n    "servers": {\n      "yaide": {\n        "type": "remote",\n        "url": "http://127.0.0.1:9443/mcp",\n        "oauth": false\n      }\n    }\n  }\n}';
+
+test("REQ189_AC11_champ_copie_groupe_nomme_pre_sans_tabindex_bouton_nomme_et_decrit", () => {
+  const surCopie = vi.fn();
+  const c = champ({ libelle: "Configuration pour opencode", type: "copie", valeur: OPENCODE, aide: "À ajouter au fichier opencode.json du projet.", nomCopier: "Copier la configuration pour opencode", surCopie });
+  document.body.append(c);
+  expect(c.getAttribute("role")).toBe("group");
+  expect(document.getElementById(c.getAttribute("aria-labelledby")).textContent).toBe("Configuration pour opencode");
+  const pre = c.querySelector("pre");
+  expect(pre.textContent).toBe(OPENCODE);
+  expect(pre.textContent.split("\n")).toHaveLength(11);
+  expect(pre.hasAttribute("tabindex")).toBe(false);
+  expect(pre.hasAttribute("readonly")).toBe(false);
+  expect(c.querySelector("input, textarea")).toBeNull();
+  const b = c.querySelector("button");
+  expect(b.getAttribute("aria-label")).toBe("Copier la configuration pour opencode");
+  expect(b.textContent).toBe("Copier");
+  expect(document.getElementById(b.getAttribute("aria-describedby")).textContent).toBe("À ajouter au fichier opencode.json du projet.");
+  b.click();
+  expect(surCopie).toHaveBeenCalledWith(OPENCODE);
+  expect(b.textContent).toBe("Copier");
+  c.remove();
+});
+
+test("REQ189_AC11_champ_copie_exige_nomCopier_commencant_par_Copier_et_surCopie", () => {
+  const base = { libelle: "L", type: "copie", valeur: "x", aide: "a", nomCopier: "Copier x", surCopie() {} };
+  expect(() => champ({ ...base, nomCopier: undefined })).toThrow(/nomCopier/);
+  expect(() => champ({ ...base, nomCopier: "Prendre x" })).toThrow(/nomCopier/);
+  expect(() => champ({ ...base, surCopie: undefined })).toThrow(/surCopie/);
+});
+
+test("REQ189_AC11_style_copie_par_tokens_et_contrastes_dans_les_deux_themes", () => {
+  const pre = regle(".ya-copie-texte");
+  expect(pre).toContain("font: 12px/18px var(--font-mono)");
+  expect(pre).toContain("background: var(--bg-100)");
+  expect(pre).toContain("border: 1px solid var(--line)");
+  expect(pre).toContain("border-radius: var(--radius-sm)");
+  expect(pre).toContain("margin: 0");
+  expect(pre).toContain("padding: 6px var(--space-2)");
+  expect(pre).toContain("white-space: pre");
+  expect(pre).toContain("overflow-x: auto");
+  expect(regle(".ya-copie-tete")).toContain("min-height: var(--size-control)");
+  expect(regle(".ya-copie-libelle")).toContain("font: 600 13px/20px var(--font-sans)");
+  expect(regle(".ya-copie-libelle")).toContain("color: var(--ink)");
+  expect(regle(".ya-copie")).toContain("gap: var(--space-1)");
+  const tk = readFileSync("web/src/ui/tokens.css", "utf8");
+  const jetons = (bloc) => Object.fromEntries([...bloc.matchAll(/--([\w-]+):\s*(#[0-9a-fA-F]{6})/g)].map((m) => [m[1], m[2]]));
+  const sombre = jetons(tk.slice(tk.indexOf(":root"), tk.indexOf('[data-theme="light"]')));
+  const clair = { ...sombre, ...jetons(tk.slice(tk.indexOf('[data-theme="light"]'))) };
+  const lum = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const ratio = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+  for (const t of [sombre, clair]) {
+    expect(ratio(t.ink, t["bg-100"])).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(t.ink, t["bg-300"])).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(t["ink-muted"], t["bg-300"])).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(t["line-strong"], t["bg-300"])).toBeGreaterThanOrEqual(3);
+    expect(ratio(t["accent-fg"], t["bg-300"])).toBeGreaterThanOrEqual(3);
+  }
 });

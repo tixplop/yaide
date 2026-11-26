@@ -1,13 +1,14 @@
 import { icone } from "./icones.js";
 import { COULEURS } from "./avatar.js";
+import { bouton } from "./bouton.js";
 
-const TYPES = ["texte", "motDePasse", "secret", "multiligne", "liste", "case", "couleur", "codeCouleur"];
+const TYPES = ["texte", "motDePasse", "secret", "multiligne", "liste", "case", "couleur", "codeCouleur", "copie"];
 const PRESENTATIONS = ["normale", "ligne", "barre"];
 const NOMS_COULEURS = { violet: "Violet", vert: "Vert", orange: "Orange", rose: "Rose", sarcelle: "Sarcelle", gris: "Gris" };
 const CLAVIERS = { numerique: "numeric", decimal: "decimal" };
 let compteur = 0;
 
-export function champ({ libelle, type = "texte", valeur = "", options = [], indication, aide, erreur, libelleMasque = false, desactive = false, clavier, presentation = "normale", avant, action, ligne = false, raison, sansRetour = false }) {
+export function champ({ libelle, type = "texte", valeur = "", options = [], indication, aide, erreur, libelleMasque = false, desactive = false, clavier, presentation = "normale", avant, action, ligne = false, raison, sansRetour = false, nomCopier, surCopie }) {
   if (!libelle) throw new Error("champ : libelle requis");
   if (!TYPES.includes(type)) throw new Error(`champ : type inconnu « ${type} »`);
   if (clavier !== undefined && !(clavier in CLAVIERS)) throw new Error(`champ : clavier inconnu « ${clavier} »`);
@@ -17,6 +18,7 @@ export function champ({ libelle, type = "texte", valeur = "", options = [], indi
   if (sansRetour && type !== "multiligne") throw new Error("champ : sansRetour demande le type « multiligne »");
   if (action && !(type === "liste" && presentation === "barre") && !(type === "case" && presentation === "ligne")) throw new Error("champ : action n'existe que pour une liste en presentation « barre » ou une case en « ligne »");
   const n = ++compteur;
+  if (type === "copie") return champCopie({ libelle, valeur, aide, nomCopier, surCopie, n });
   if (type === "codeCouleur") return champCodeCouleur({ libelle, valeur, erreur, desactive, n });
   if (type === "couleur") return champCouleur(libelle, valeur || "violet", n, desactive);
   if (type === "case" && presentation === "ligne") return caseEnLigne({ libelle, valeur, avant, action, desactive, n });
@@ -205,6 +207,38 @@ function champCodeCouleur({ libelle, valeur, erreur, desactive, n }) {
     saisie.setAttribute("aria-describedby", e.id);
     // Le message va sous la ligne de la grille : l'appelant le place (`racine.messageErreur`).
     racine.messageErreur = e;
+  }
+  return racine;
+}
+
+// C-002, `copie` : un texte prêt à copier en lecture seule (`<pre>`, sans tabindex) et son bouton « Copier ».
+function champCopie({ libelle, valeur, aide, nomCopier, surCopie, n }) {
+  if (!nomCopier?.startsWith("Copier")) throw new Error("champ : copie demande nomCopier, qui commence par « Copier »");
+  if (typeof surCopie !== "function") throw new Error("champ : copie demande surCopie");
+  const racine = document.createElement("div");
+  racine.className = "champ ya-copie";
+  racine.setAttribute("role", "group");
+  racine.setAttribute("aria-labelledby", `champ-${n}-libelle`);
+  const tete = document.createElement("div");
+  tete.className = "ya-copie-tete";
+  const nom = document.createElement("span");
+  nom.className = "ya-copie-libelle";
+  nom.id = `champ-${n}-libelle`;
+  nom.textContent = libelle;
+  const copier = bouton({ libelle: "Copier", variante: "secondaire", nomAccessible: nomCopier });
+  copier.addEventListener("click", () => surCopie(valeur));
+  tete.append(nom, copier);
+  const pre = document.createElement("pre");
+  pre.className = "ya-copie-texte";
+  pre.textContent = valeur;
+  racine.append(tete, pre);
+  if (aide) {
+    const a = document.createElement("div");
+    a.className = "champ-aide";
+    a.id = `champ-${n}-aide`;
+    a.textContent = aide;
+    copier.setAttribute("aria-describedby", a.id);
+    racine.append(a);
   }
   return racine;
 }

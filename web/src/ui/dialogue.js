@@ -143,6 +143,20 @@ export function groupe({ legende, champs, aide, enLigne = false }) {
   return f;
 }
 
+// C-007 `reglages`, « Textes à copier » : une ligne « Adresse », libellé puis valeur en police mono.
+export function ligneAdresse({ libelle, valeur }) {
+  const l = document.createElement("div");
+  l.className = "ya-adresse";
+  const nom = document.createElement("span");
+  nom.className = "ya-adresse-libelle";
+  nom.textContent = libelle;
+  const v = document.createElement("span");
+  v.className = "ya-adresse-valeur";
+  v.textContent = valeur;
+  l.append(nom, v);
+  return l;
+}
+
 // Règle C-007 : un message apparu dans le contenu qui défile est amené dans la vue, sans déplacer le focus.
 export function amenerDansLaVue(element) {
   element.scrollIntoView?.({ block: "nearest" });

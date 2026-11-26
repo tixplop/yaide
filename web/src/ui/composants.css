@@ -62,6 +62,13 @@ svg .icone-marque { fill: none; stroke: var(--bg-000); stroke-width: 2.2; }
 .ya-barre:has(select:disabled) .champ-libelle { opacity: .45; }
 .ya-barre.ya-ligne { box-sizing: border-box; height: 28px; padding-inline: var(--space-3); gap: var(--space-1); }
 .ya-barre.ya-ligne:has(select:disabled) .ya-input { opacity: .45; }
+.ya-copie { display: flex; flex-direction: column; gap: var(--space-1); }
+.ya-copie-tete { display: flex; align-items: center; justify-content: space-between; min-height: var(--size-control); }
+.ya-copie-libelle { font: 600 13px/20px var(--font-sans); color: var(--ink); }
+.ya-copie-texte { margin: 0; padding: 6px var(--space-2); font: 12px/18px var(--font-mono); color: var(--ink); background: var(--bg-100); border: 1px solid var(--line); border-radius: var(--radius-sm); white-space: pre; overflow-x: auto; }
+.ya-adresse { display: flex; align-items: baseline; gap: var(--space-2); }
+.ya-adresse-libelle { font: 600 13px/20px var(--font-sans); color: var(--ink); }
+.ya-adresse-valeur { font: 12px/18px var(--font-mono); color: var(--ink); overflow-wrap: anywhere; }
 .champ-aide { font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
 /* Motif « Formulaire en dialogue », « Plusieurs champs » : champs l'un sous l'autre, deux champs courts liés côte à côte. */
 .ya-formulaire { display: flex; flex-direction: column; gap: var(--space-3); }

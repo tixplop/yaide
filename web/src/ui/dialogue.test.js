@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, expect, test, vi } from "vitest";
 import { bouton } from "./bouton.js";
-import { amenerDansLaVue, dialogue, dialogueChoix, groupe } from "./dialogue.js";
+import { amenerDansLaVue, dialogue, dialogueChoix, groupe, ligneAdresse } from "./dialogue.js";
+import { champ } from "./champ.js";
 
 const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
 const regle = (sel) => {
@@ -528,4 +529,50 @@ test("REQ162_AC9_milieu_centre_sur_les_deux_axes_et_style_du_design_system", () 
 test("REQ162_AC9_milieu_refuse_focus_fermeture_hors_milieu", () => {
   const f = bouton({ libelle: "ok" });
   expect(() => dialogue({ titre: "t", focusInitial: f, focusFermeture: f, surAnnuler() {} })).toThrow(/focusFermeture/);
+});
+
+function panneauMcp() {
+  const surCopie = vi.fn();
+  const aide = Object.assign(document.createElement("p"), { textContent: "Claude Code, opencode et les autres harnais agissent sur ce projet par ce serveur, avec les outils des agents. Sans mot de passe : tout programme de cet ordinateur peut s'en servir." });
+  const cmd = "claude mcp add --transport http yaide http://127.0.0.1:9443/mcp";
+  const c1 = champ({ libelle: "Commande pour Claude Code", type: "copie", valeur: cmd, aide: "À lancer dans un terminal, dans le dossier du projet.", nomCopier: "Copier la commande pour Claude Code", surCopie: () => surCopie(1) });
+  const c2 = champ({ libelle: "Configuration pour opencode", type: "copie", valeur: "{}", aide: "À ajouter au fichier opencode.json du projet.", nomCopier: "Copier la configuration pour opencode", surCopie: () => surCopie(2) });
+  const fermer = bouton({ libelle: "Fermer" });
+  const d = dialogue({ titre: "Serveur MCP de Yaide", position: "reglages", aide, contenu: [ligneAdresse({ libelle: "Adresse", valeur: "http://127.0.0.1:9443/mcp" }), c1, c2], actions: [fermer], focusInitial: c1.querySelector("button"), surAnnuler: vi.fn() });
+  return { d, c1, c2, fermer, aide, surCopie };
+}
+
+test("REQ189_AC11_composition_textes_a_copier_ordre_aide_adresse_groupes_et_une_seule_action", () => {
+  const { d, aide, fermer } = panneauMcp();
+  d.ouvrir();
+  const el = d.element;
+  expect(el.getAttribute("aria-describedby")).toBe(aide.id);
+  expect(el.firstElementChild.nextElementSibling).toBe(aide);
+  const corps = el.querySelector(".dialogue-contenu");
+  const [adresse, g1, g2] = corps.children;
+  expect(adresse.className).toBe("ya-adresse");
+  expect(adresse.children[0].textContent).toBe("Adresse");
+  expect(adresse.children[1].textContent).toBe("http://127.0.0.1:9443/mcp");
+  expect(g1.getAttribute("role")).toBe("group");
+  expect(g2.getAttribute("role")).toBe("group");
+  expect([...el.querySelectorAll('[role="group"]')].map((g) => document.getElementById(g.getAttribute("aria-labelledby")).textContent)).toEqual(["Commande pour Claude Code", "Configuration pour opencode"]);
+  expect(g1.querySelector("pre").textContent).toBe("claude mcp add --transport http yaide http://127.0.0.1:9443/mcp");
+  expect([...el.querySelectorAll(".dialogue-actions button")]).toEqual([fermer]);
+  expect(el.textContent).not.toMatch(/Authorization|Bearer|jeton/);
+  expect(regle(".ya-adresse")).toContain("gap: var(--space-2)");
+  expect(regle(".ya-adresse-valeur")).toContain("font: 12px/18px var(--font-mono)");
+  expect(regle(".ya-reglages .dialogue-contenu")).toContain("gap: 12px");
+  d.fermer();
+});
+
+test("REQ189_AC12_focus_initial_sur_copier_puis_ordre_de_tab_copier_copier_fermer_sans_pre", () => {
+  const { d, c1, c2, fermer } = panneauMcp();
+  d.ouvrir();
+  expect(document.activeElement).toBe(c1.querySelector("button"));
+  expect(document.activeElement.getAttribute("aria-label")).toBe("Copier la commande pour Claude Code");
+  // Ordre de Tab : les seuls éléments focalisables du dialogue (le <pre> n'a pas de tabindex) ; <dialog> modal enferme le focus.
+  const tabulables = [...d.element.querySelectorAll("button, [href], input, select, textarea, [tabindex]")].filter((e) => !e.disabled && e.getAttribute("tabindex") !== "-1");
+  expect(tabulables).toEqual([c1.querySelector("button"), c2.querySelector("button"), fermer]);
+  expect(d.element.dataset.modal).toBe("oui");
+  d.fermer();
 });
