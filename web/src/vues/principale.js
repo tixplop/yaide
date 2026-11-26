@@ -9,6 +9,7 @@ import { onglets } from "../ui/onglets.js";
 import { reprendreDernierChoix } from "../opencode.js";
 import { vueConnaissance } from "./connaissance.js";
 import { vueEnvironnements } from "./environnements.js";
+import { vueServeurMcpYaide } from "./serveur-mcp-yaide.js";
 import { vueServeursMcp } from "./serveurs-mcp.js";
 import { vueSessionsOpencode } from "./sessions-opencode.js";
 import { surveiller } from "../connexion.js";
@@ -326,9 +327,11 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   let panneauConfig = null;
   let focusApresEnvironnements = null;
   const environnements = vueEnvironnements({ surFermeture: () => focusApresEnvironnements?.() });
+  let focusApresServeurMcp = null;
+  const serveurMcpYaide = vueServeurMcpYaide({ surFermeture: () => focusApresServeurMcp?.() });
   const ouverture = vueOuverture({
     dire,
-    commandes: avec.agents ? undefined : [{ id: "configuration", nom: "Configuration" }, { id: "environnements", nom: "Environnements" }],
+    commandes: avec.agents ? undefined : [{ id: "configuration", nom: "Configuration" }, { id: "environnements", nom: "Environnements" }, { id: "serveur-mcp", nom: "Serveur MCP de Yaide" }],
     surOuvrir: editeur.ouvrir,
     surLecture: editeur.lecture,
     peutFormater: editeur.peutFormater,
@@ -346,6 +349,10 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
       if (id === "environnements") {
         focusApresEnvironnements = () => avant?.focus?.({ preventScroll: true });
         return environnements.ouvrir();
+      }
+      if (id === "serveur-mcp") {
+        focusApresServeurMcp = () => avant?.focus?.({ preventScroll: true });
+        return serveurMcpYaide.ouvrir();
       }
       const ouvrirPanneau = { providers: ouvrirProviders, profils: ouvrirProfils }[id];
       if (!ouvrirPanneau) return;

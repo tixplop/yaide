@@ -340,7 +340,7 @@ test("REQ070_AC5_AC19_REQ071_AC1_AC8_REQ116_AC4_ouvert_avec_agents_et_shells_des
   const avant = vue.querySelector("header [aria-label=Déconnexion]");
   avant.focus();
   const entree = paletteCommandes(">");
-  expect(nomsCommandes()).toEqual(["Configuration", "Environnements"]);
+  expect(nomsCommandes()).toEqual(["Configuration", "Environnements", "Serveur MCP de Yaide"]);
   entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
   await new Promise((r) => setTimeout(r, 0));
   await new Promise((r) => setTimeout(r, 0));
@@ -380,6 +380,31 @@ test("REQ054_AC2_AC4_AC6_REQ182_AC10_env_ouvre_le_panneau_et_echap_rend_le_focus
   expect(document.activeElement).toBe(avant);
 });
 
+test("REQ189_AC10_mcp_ouvre_le_panneau_et_echap_rend_le_focus_d_avant_ctrl_p", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    const u = String(url);
+    if (u === "/api/chemins") return jsonOk({ chemins: [] });
+    if (u === "/api/git/etat") return jsonOk({ branche: "main", detachee: false, branches: ["main"], changements: [] });
+    if (u.startsWith("/api/fichiers?")) return jsonOk({ entrees: [] });
+    if (u === "/api/session") return { status: 204 };
+    if (u === "/api/serveur-mcp") return jsonOk({ adresse: "http://127.0.0.1:9443/mcp" });
+    return { ok: false, status: 404, json: async () => ({ cause: "introuvable", message: "absent" }) };
+  }));
+  const { vue } = monter();
+  const avant = vue.querySelector("header [aria-label=Déconnexion]");
+  avant.focus();
+  const entree = paletteCommandes(">mcp");
+  entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  const dlg = document.querySelector("dialog");
+  expect(dlg.querySelector("h2").textContent).toBe("Serveur MCP de Yaide");
+  expect(document.activeElement.getAttribute("aria-label")).toBe("Copier la commande pour Claude Code");
+  dlg.dispatchEvent(new Event("cancel", { cancelable: true }));
+  expect(document.querySelector("dialog")).toBeNull();
+  expect(document.activeElement).toBe(avant);
+});
+
 test("REQ054_AC1_AC7_trois_commandes_avec_les_agents_et_focus_rendu", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url) => {
     const u = String(url);
@@ -394,7 +419,7 @@ test("REQ054_AC1_AC7_trois_commandes_avec_les_agents_et_focus_rendu", async () =
   const avant = vue.querySelector("header [aria-label=Déconnexion]");
   avant.focus();
   const entree = paletteCommandes(">");
-  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements"]);
+  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Serveur MCP de Yaide"]);
   entree.value = ">conf";
   entree.dispatchEvent(new Event("input", { bubbles: true }));
   entree.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
@@ -1457,7 +1482,7 @@ test("REQ118_AC11_commande_en_dernier_et_entree_formate_avec_le_focus_dans_l_edi
   await vi.waitFor(() => expect(vue.querySelector(".zone-code:not([hidden])")).not.toBeNull());
   expect(document.querySelector("dialog")).toBeNull();
   const e2 = paletteCommandes(">");
-  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Formater le document", "Exporter en PDF"]);
+  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Serveur MCP de Yaide", "Formater le document", "Exporter en PDF"]);
   e2.value = ">form";
   e2.dispatchEvent(new Event("input", { bubbles: true }));
   expect(nomsCommandes()).toEqual(["Formater le document"]);
@@ -1932,7 +1957,7 @@ test("REQ177_AC7_AC9_REQ118_AC9_notes_md_propose_exporter_en_dernier_et_entree_r
   const { vue, zone } = await ouvrirNotes();
   zone.vue.dispatch({ selection: { anchor: 3 } });
   paletteCommandes(">");
-  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Exporter en PDF"]);
+  expect(nomsCommandes()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Serveur MCP de Yaide", "Exporter en PDF"]);
   const e = paletteCommandes(">pdf");
   const lignes = [...document.querySelectorAll("dialog [role=option]")];
   expect(lignes).toHaveLength(1);

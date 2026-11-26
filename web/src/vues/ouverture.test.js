@@ -195,7 +195,7 @@ test("REQ054_AC1_chevron_liste_les_commandes_sans_fichier", async () => {
   const { entree, v } = await ouvrir();
   taper(entree, ">");
   const lignes = [...document.querySelectorAll("dialog [role=option]")];
-  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements"]);
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Serveur MCP de Yaide"]);
   expect(document.querySelector("dialog").textContent).not.toContain("main.rs");
   v.detruire();
 });
@@ -245,8 +245,8 @@ test("REQ054_AC1_AC2_AC7_trois_commandes_et_configuration", async () => {
   const { entree, declencheur, v } = await ouvrir({ surCommande });
   taper(entree, ">");
   const toutes = [...document.querySelectorAll("dialog [role=option]")];
-  expect(toutes).toHaveLength(4);
-  expect(toutes.map((l) => l.getAttribute("aria-selected"))).toEqual(["true", "false", "false", "false"]);
+  expect(toutes).toHaveLength(5);
+  expect(toutes.map((l) => l.getAttribute("aria-selected"))).toEqual(["true", "false", "false", "false", "false"]);
   touche(entree, "ArrowDown");
   touche(entree, "ArrowDown");
   expect(entree.getAttribute("aria-activedescendant")).toBe(toutes[2].id);
@@ -300,13 +300,13 @@ test("REQ118_AC9_AC10_AC11_formater_en_dernier_seulement_si_l_onglet_peut_se_for
   let peut = false;
   const { entree, declencheur, v } = await ouvrir({ surCommande, peutFormater: () => peut });
   taper(entree, ">");
-  expect([...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements"]);
+  expect([...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Serveur MCP de Yaide"]);
   taper(entree, ">form");
   expect(document.querySelector("dialog").textContent).toContain("Aucune commande trouvée.");
   peut = true;
   taper(entree, ">");
   const lignes = [...document.querySelectorAll("dialog [role=option]")];
-  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Formater le document"]);
+  expect(lignes.map((l) => l.querySelector(".liste-libelle").textContent)).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Serveur MCP de Yaide", "Formater le document"]);
   taper(entree, ">form");
   const une = [...document.querySelectorAll("dialog [role=option]")];
   expect(une).toHaveLength(1);
@@ -337,10 +337,10 @@ test("REQ177_AC6_AC7_AC9_REQ118_AC9_AC10_AC11_exporter_en_dernier_apres_formater
   expect(document.querySelector("dialog").textContent).toContain("Aucune commande trouvée.");
   exporte = true;
   taper(entree, ">");
-  expect(noms()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Exporter en PDF"]);
+  expect(noms()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Serveur MCP de Yaide", "Exporter en PDF"]);
   formate = true;
   taper(entree, ">");
-  expect(noms()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Formater le document", "Exporter en PDF"]);
+  expect(noms()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Serveur MCP de Yaide", "Formater le document", "Exporter en PDF"]);
   taper(entree, ">pdf");
   const une = [...document.querySelectorAll("dialog [role=option]")];
   expect(une).toHaveLength(1);
@@ -373,4 +373,23 @@ test("REQ120_AC2_ctrl_p_ouvre_une_image_sans_la_lire", async () => {
   expect(fetch.mock.calls.some(([u]) => String(u).startsWith("/api/fichier"))).toBe(false);
   expect(document.querySelector("dialog")).toBeNull();
   v.detruire();
+});
+
+test("REQ189_AC15_serveur_mcp_suit_environnements_et_precede_formater_et_exporter_meme_sans_agents", async () => {
+  simuler(json({ chemins: [] }));
+  const surCommande = vi.fn();
+  const a = await ouvrir({ surCommande, peutFormater: () => true, peutExporter: () => true });
+  taper(a.entree, ">");
+  const noms = () => [...document.querySelectorAll("dialog [role=option] .liste-libelle")].map((l) => l.textContent);
+  expect(noms()).toEqual(["Providers LLM", "Profils de modèle", "Configuration", "Environnements", "Serveur MCP de Yaide", "Formater le document", "Exporter en PDF"]);
+  taper(a.entree, ">mcp");
+  expect(noms()).toEqual(["Serveur MCP de Yaide"]);
+  touche(a.entree, "Enter");
+  expect(surCommande).toHaveBeenCalledWith("serveur-mcp", a.declencheur);
+  a.v.detruire();
+  const sans = [{ id: "configuration", nom: "Configuration" }, { id: "environnements", nom: "Environnements" }, { id: "serveur-mcp", nom: "Serveur MCP de Yaide" }];
+  const b = await ouvrir({ commandes: sans });
+  taper(b.entree, ">");
+  expect(noms()).toEqual(["Configuration", "Environnements", "Serveur MCP de Yaide"]);
+  b.v.detruire();
 });

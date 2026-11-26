@@ -68,6 +68,7 @@ export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple()
     else copierMotDePasse(motDePasse, exe, env, path.join(racine, "cfg", "yaide"));
   }
   let proc, sorti, origine;
+  let sortieStandard = "";
   for (let essai = 0; ; essai++) {
     if (!imposé) port = await portLibre();
     proc = spawn(exe, [dossier, "--port", String(port)], { stdio: ["ignore", "pipe", "ignore"], env, cwd });
@@ -80,6 +81,7 @@ export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple()
       const fin = (r) => (clearTimeout(delai), ok(r));
       proc.stdout.on("data", (d) => {
         texte += d;
+        sortieStandard = texte;
         if (texte.includes("Yaide écoute sur le port")) fin("pret");
       });
       proc.once("exit", () => fin("sorti"));
@@ -98,6 +100,8 @@ export async function lancerYaide({ motDePasse = "mdp", dossier = depotExemple()
     port,
     dossier,
     pid: proc.pid,
+    /** Sortie standard de Yaide depuis son démarrage. */
+    sortie: () => sortieStandard,
     /** SIGTERM, puis attend la fin du processus. */
     arreter: async () => {
       proc.kill();

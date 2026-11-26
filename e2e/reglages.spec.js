@@ -197,7 +197,7 @@ test("REQ070_AC4_AC9_AC18_parcours_32_alleger_avec_faute_de_frappe", async ({ pa
   await page.keyboard.press("Control+p");
   await page.keyboard.type(">");
   // L'onglet actif est interface.json (JSON) : « Formater le document » s'ajoute (REQ-118) puis « Exporter en PDF » (REQ-177), aucune commande des fonctions éteintes.
-  await expect(page.getByRole("option")).toHaveCount(4);
+  await expect(page.getByRole("option")).toHaveCount(5);
   await expect(page.getByRole("option", { name: "Environnements" })).toBeVisible();
   await expect(page.getByRole("option", { name: "Exporter en PDF" })).toBeVisible();
   await expect(page.getByRole("option", { name: "Configuration" })).toBeVisible();
@@ -353,7 +353,7 @@ test("REQ071_parcours_34_regler_sans_json", async ({ page }) => {
   // 1-2. Ctrl+P, `>` : « Configuration » en premier ; Entrée ouvre le dialogue.
   await page.keyboard.press("Control+p");
   await page.keyboard.type(">");
-  await expect(page.getByRole("option")).toHaveCount(3);
+  await expect(page.getByRole("option")).toHaveCount(4);
   await expect(page.getByRole("option", { name: "Environnements" })).toBeVisible();
   await page.keyboard.press("Enter");
   const dlg = dialoguePrefs(page);

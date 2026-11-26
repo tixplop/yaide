@@ -646,3 +646,18 @@ export async function chercherConnaissance(question, collection) {
   }
   return erreurServeur(r);
 }
+
+/**
+ * `GET /api/serveur-mcp` (REQ-189). Rend `{ adresse }`, `{ indisponible: { de, a } }` (ports tous occupés),
+ * `{ message }` (lecture refusée) ou `{ coupure: true }`.
+ */
+export async function lireServeurMcp() {
+  const r = await appeler("/api/serveur-mcp");
+  if (!r) return { coupure: true };
+  if (!r.ok) return erreurServeur(r);
+  try {
+    return await r.json();
+  } catch {
+    return { message: "réponse illisible" };
+  }
+}

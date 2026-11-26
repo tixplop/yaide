@@ -13,6 +13,7 @@ const COMMANDES = [
   { id: "profils", nom: "Profils de modèle" },
   { id: "configuration", nom: "Configuration" },
   { id: "environnements", nom: "Environnements" },
+  { id: "serveur-mcp", nom: "Serveur MCP de Yaide" },
 ];
 const nomDe = (chemin) => chemin.split("/").pop();
 
