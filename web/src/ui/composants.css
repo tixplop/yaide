@@ -15,6 +15,12 @@
 .ya-icon-btn-onglet { width: 18px; height: 18px; }
 .ya-icon-btn-ligne svg { width: 14px; height: 14px; }
 .ya-icon-btn-onglet svg { width: 13px; height: 13px; }
+.ya-logs[data-etat="rien"] { color: var(--ink-muted); }
+.ya-logs[data-etat="rien"]:hover { color: var(--ink); }
+.ya-logs[data-etat="avertissements"], .ya-logs[data-etat="avertissements"]:hover { color: var(--warning); }
+.ya-logs[data-etat="erreurs"], .ya-logs[data-etat="erreurs"]:hover { color: var(--danger); }
+svg .icone-plein { fill: currentColor; stroke: currentColor; }
+svg .icone-marque { fill: none; stroke: var(--bg-000); stroke-width: 2.2; }
 .ya-icon-btn:hover { background: var(--bg-400); color: var(--ink); }
 /* C-001 `disque` : zone de 20 px centrée sur sa place (left et top posés par l'appelant), disque de 16 px, icône de 12 px. */
 .ya-icon-btn-disque { position: absolute; width: 20px; height: 20px; transform: translate(-50%, -50%); }
@@ -508,7 +514,9 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-status > span { height: 20px; display: flex; align-items: center; gap: 5px; padding: 0 6px; }
 .ya-status > span[hidden] { display: none; }
 .ya-status svg { width: 13px; height: 13px; }
+.ya-status .ya-logs svg { width: 14px; height: 14px; }
 .ya-status > .ya-status-espace { flex: 1; padding: 0; }
+.ya-status > .bouton-enveloppe { flex: none; padding: 0; height: auto; margin-inline-start: 3px; }
 .ya-status-branche { min-width: 0; max-width: 40%; flex: 0 1000 auto; overflow: hidden; text-overflow: ellipsis; }
 .ya-status > .ya-status-lien { display: block; height: 20px; line-height: 20px; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ya-status > .ya-status-lien[hidden] { display: none; }
@@ -1025,6 +1033,9 @@ mark.ya-occurrence { background: linear-gradient(var(--occurrence), var(--occurr
 .cm-content .cm-line span.ya-occurrence.ya-occurrence, .cm-content .cm-line .ya-occurrence.ya-occurrence * { color: var(--ink); }
 .ya-occurrence-courante { box-shadow: inset 0 0 0 1px var(--accent-fg); }
 @media (forced-colors: active) {
+  .ya-logs[data-etat], .ya-logs[data-etat]:hover { color: CanvasText; }
+  svg .icone-plein { fill: CanvasText; stroke: CanvasText; }
+  svg .icone-marque { stroke: Canvas; }
   .ya-status-jauge-barre { border-color: CanvasText; }
   .ya-status-jauge-barre > span { background: CanvasText; }
   .ya-occurrence, mark.ya-occurrence { background: Mark; color: MarkText; }

@@ -471,7 +471,8 @@ test("REQ028_AC8_ordre_de_tab_avec_agents", async () => {
   expect(i).toBeGreaterThan(-1);
   expect(liste[i + 1]).toBe(vue.querySelector("[aria-label=\"Replier l'agent\"]"));
   const apres = liste.slice(i + 1);
-  expect(apres.slice(-4)).toEqual([boutonAgentDe(vue), boutonAgentsDe(vue), vue.querySelector(".cadre-rail-droit [aria-label='Base de connaissance']"), vue.querySelector(".cadre-rail-droit [aria-label='Serveurs MCP']")]);
+  // REQ-187 : le bouton « Logs » vient après le rail droit (AC-187-4).
+  expect(apres.slice(-5)).toEqual([boutonAgentDe(vue), boutonAgentsDe(vue), vue.querySelector(".cadre-rail-droit [aria-label='Base de connaissance']"), vue.querySelector(".cadre-rail-droit [aria-label='Serveurs MCP']"), vue.querySelector("footer .ya-logs")]);
   // Entre la poignée et les deux boutons : la vue affichée seule.
   expect(apres.some((e) => e.closest(".agent-corps"))).toBe(false);
   expect(apres.some((e) => e.closest(".agents-corps"))).toBe(true);
@@ -593,7 +594,8 @@ test("REQ070_AC11_ordre_de_tab_sans_les_fonctions_absentes", async () => {
   expect(noms).not.toContain("Git");
   expect(noms).not.toContain("Agent");
   expect(noms.some((n) => n.includes("shell"))).toBe(false);
-  expect(noms.at(-1)).toBe("Claude");
+  expect(noms.at(-2)).toBe("Claude");
+  expect(noms.at(-1)).toBe("Logs : rien à signaler");
 });
 
 test("REQ070_AC16_vue_gardee_absente_retombe_sur_fichiers", async () => {

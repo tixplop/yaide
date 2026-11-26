@@ -684,3 +684,78 @@ test("REQ184_AC8_menuContextuel_bouton_en_cours_n_ouvre_rien_mais_bloque_le_menu
   expect(menuContextuel).toHaveBeenCalledTimes(1);
   expect(() => bouton({ libelle: "x", menuContextuel: () => {} })).toThrow(/menuContextuel/);
 });
+
+const NOMS_LOGS = { rien: "Logs : rien à signaler", avertissements: "Logs : avertissements", erreurs: "Logs : erreurs" };
+const FORMES_LOGS = { rien: "info", avertissements: "triangle-alert-plein", erreurs: "circle-alert-plein" };
+
+test("REQ187_AC3_nom_info_bulle_et_forme_des_trois_etats_du_bouton_logs", () => {
+  const formes = new Set();
+  for (const [etat, nom] of Object.entries(NOMS_LOGS)) {
+    const b = bouton({ etat });
+    expect(b.getAttribute("aria-label"), etat).toBe(nom);
+    expect(b.classList.contains("ya-logs"), etat).toBe(true);
+    expect(b.classList.contains("ya-icon-btn-ligne"), etat).toBe(true);
+    expect(b.textContent, etat).toBe("");
+    expect(b.hasAttribute("title"), etat).toBe(false);
+    expect(b.querySelector("svg").dataset.icone, etat).toBe(FORMES_LOGS[etat]);
+    formes.add(b.querySelector("svg").innerHTML);
+  }
+  expect(formes.size).toBe(3);
+  expect(() => bouton({})).toThrow(/libelle/);
+  expect(bouton({ etat: "rien" }).getAttribute("aria-label")).toBe(NOMS_LOGS.rien);
+  expect(() => bouton({ etat: "grave" })).toThrow(/état/);
+});
+
+test("REQ187_AC3_info_bulle_au_dessus_au_texte_du_nom", () => {
+  document.body.replaceChildren();
+  vi.useFakeTimers();
+  const b = bouton({ etat: "erreurs" });
+  document.body.append(b.enveloppe);
+  // Ancre à 100 px du haut, bulle de 20 px de haut : au-dessus, elle commence à 80 px.
+  const rect = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function () {
+    const r = this === b.enveloppe ? { left: 50, top: 100, width: 20, height: 20 } : { left: 0, top: 0, width: 100, height: 20 };
+    return { ...r, right: r.left + r.width, bottom: r.top + r.height };
+  });
+  b.enveloppe.dispatchEvent(new Event("pointerenter"));
+  vi.advanceTimersByTime(500);
+  const bulle = document.querySelector(".info-bulle");
+  expect(bulle.textContent).toBe("Logs : erreurs");
+  expect(bulle.style.top).toBe("80px");
+  rect.mockRestore();
+  vi.useRealTimers();
+  document.body.replaceChildren();
+});
+
+test("REQ187_AC4_changer_d_etat_change_icone_nom_et_bulle_sans_annonce_ni_deplacement_du_focus", () => {
+  document.body.replaceChildren();
+  const b = bouton({ etat: "rien" });
+  document.body.append(b.enveloppe);
+  b.focus();
+  for (const etat of ["avertissements", "erreurs", "rien"]) {
+    b.definirEtat(etat);
+    expect(b.getAttribute("aria-label")).toBe(NOMS_LOGS[etat]);
+    expect(b.querySelectorAll("svg").length).toBe(1);
+    expect(b.querySelector("svg").dataset.icone).toBe(FORMES_LOGS[etat]);
+    expect(document.activeElement).toBe(b);
+  }
+  b.definirEtat("avertissements");
+  for (const el of [b, b.enveloppe]) {
+    expect(el.hasAttribute("aria-live")).toBe(false);
+    expect(el.hasAttribute("role")).toBe(false);
+  }
+  expect(b.querySelector("[aria-live], [role]")).toBeNull();
+  expect(() => b.definirEtat("grave")).toThrow(/état/);
+  document.body.replaceChildren();
+});
+
+test("REQ187_AC6_bouton_logs_sans_aria_pressed_ni_expanded_et_regles_de_forme", () => {
+  const b = bouton({ etat: "avertissements" });
+  for (const a of ["aria-pressed", "aria-expanded", "aria-haspopup", "aria-live"]) expect(b.hasAttribute(a), a).toBe(false);
+  expect(b.querySelector("svg").getAttribute("aria-hidden")).toBe("true");
+  expect(b.querySelector("svg").getAttribute("width")).toBe("14");
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  expect(css).toMatch(/\.ya-icon-btn-ligne\s*\{[^}]*width: 20px/);
+  expect(css).toMatch(/\.ya-logs\[data-etat="rien"\]\s*\{[^}]*color: var\(--ink-muted\)/);
+  expect(css).toMatch(/\.ya-logs\[data-etat="avertissements"\][^{]*\{[^}]*color: var\(--warning\)/);
+  expect(css).toMatch(/\.ya-logs\[data-etat="erreurs"\][^{]*\{[^}]*color: var\(--danger\)/);
+});

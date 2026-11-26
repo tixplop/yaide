@@ -208,7 +208,7 @@ test("REQ022_AC4_et_REQ037_AC4_hors_depot_rien_dans_la_barre_d_etat", async () =
 test("REQ037_AC10_la_barre_d_etat_et_le_fil_n_ont_ni_bouton_ni_lien_ni_arret_de_tabulation", () => {
   const { vue } = monter();
   for (const z of [vue.querySelector("footer"), vue.querySelector(".cadre-fil")]) {
-    expect(z.querySelector("button, a, [tabindex], input")).toBeNull();
+    expect(z.querySelector("button:not(.ya-logs), a, [tabindex], input")).toBeNull();
   }
 });
 
@@ -602,7 +602,7 @@ test("REQ028_AC8_ordre_de_Tab_de_la_page_avec_l_agent_a_droite", async () => {
   const terminaux = vue.querySelector(".cadre-shells");
   // Replié : aucun arrêt dans la colonne, le bouton « Agents » est le dernier.
   expect(tabbables().some((e) => agentCol(vue).contains(e) || e === poignee)).toBe(false);
-  expect(tabbables().slice(-4)).toEqual([bouton, boutonAgentsDe(vue), boutonBaseDe(vue), boutonMcpDe(vue)]);
+  expect(tabbables().slice(-5)).toEqual([bouton, boutonAgentsDe(vue), boutonBaseDe(vue), boutonMcpDe(vue), vue.querySelector("footer .ya-logs")]);
   boutonAgentsDe(vue).click();
   await vi.waitFor(() => expect(corpsAgents(vue).querySelector("input, button")).not.toBeNull());
   const liste = tabbables();

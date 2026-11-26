@@ -473,3 +473,25 @@ test("REQ185_AC6_contrastes_de_la_jauge_sur_le_fond_de_la_barre_d_etat_dans_les_
   a(".ya-status-jauge-barre", "border: var(--trait) solid var(--ink-muted)");
   a(".ya-status-jauge-barre > span", "background: var(--ink-muted)");
 });
+
+test("REQ187_AC3_contraste_3_a_1_des_icones_du_bouton_logs_sur_la_barre_d_etat_dans_les_deux_themes", () => {
+  const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
+  const lum = (hex) => {
+    const c = [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  for (const debut of [':root, [data-theme="dark"]', '[data-theme="light"]']) {
+    const i = tokens.indexOf(debut);
+    const b = tokens.slice(i, tokens.indexOf("}", i));
+    const val = (nom) => {
+      const v = new RegExp(`${nom}:\\s*([^;]+);`).exec(b)[1].trim();
+      const alias = /^var\((--[a-z-]+)\)$/.exec(v);
+      return alias ? val(alias[1]) : v;
+    };
+    for (const encre of ["--ink-muted", "--warning", "--danger"]) {
+      const [l1, l2] = [lum(val(encre)), lum(val("--bg-000"))].sort((p, q) => q - p);
+      expect((l1 + 0.05) / (l2 + 0.05), `${debut} ${encre}`).toBeGreaterThanOrEqual(3);
+    }
+    // La marque « ! » des formes pleines est en --bg-000 sur la forme pleine : même rapport.
+  }
+});

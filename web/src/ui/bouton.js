@@ -5,6 +5,13 @@ import { infoBulle as creerInfoBulle } from "./info-bulle.js";
 const VARIANTES = ["principal", "secondaire", "discret", "danger"];
 const TAILLES = ["normale", "ligne", "onglet", "barre", "disque"];
 
+// Bouton « Logs » de la barre d'état (REQ-187) : une icône, un nom et une info-bulle par état.
+const ETATS_LOGS = {
+  rien: { icone: "info", nom: "Logs : rien à signaler" },
+  avertissements: { icone: "triangle-alert-plein", nom: "Logs : avertissements" },
+  erreurs: { icone: "circle-alert-plein", nom: "Logs : erreurs" },
+};
+
 const COULEUR_PASTILLE = /^#[0-9a-fA-F]{3,8}$/;
 const classes = new Map();
 let feuilleP = null;
@@ -49,7 +56,17 @@ export function bouton({
   pastilles,
   inactif = false,
   menuContextuel,
+  etat,
 }) {
+  if (etat !== undefined) {
+    if (!Object.hasOwn(ETATS_LOGS, etat)) throw new Error(`bouton : état inconnu « ${etat} »`);
+    if (libelle || icone) throw new Error("bouton : etat ne se combine ni avec libelle ni avec icone");
+    icone = ETATS_LOGS[etat].icone;
+    nomAccessible = ETATS_LOGS[etat].nom;
+    infoBulle = undefined;
+    taille = "ligne";
+    positionInfoBulle = "dessus";
+  }
   if (menuContextuel !== undefined && (typeof menuContextuel !== "function" || !icone || libelle)) throw new Error("bouton : menuContextuel demande une fonction et une commande à icône");
   if (!libelle && !icone) throw new Error("bouton : libelle requis");
   if (!VARIANTES.includes(variante)) throw new Error(`bouton : variante inconnue « ${variante} »`);
@@ -138,7 +155,12 @@ export function bouton({
   }
   if (icone) {
     b.classList.add("bouton-icone");
-    b.append(dessiner(icone));
+    b.append(dessiner(icone, etat === undefined ? 16 : 14));
+  }
+  // Logs : la couleur et la forme suivent l'état ; le nom, la forme et l'info-bulle changent d'un coup, sans annonce ni focus déplacé.
+  if (etat !== undefined) {
+    b.classList.add("ya-logs");
+    b.dataset.etat = etat;
   }
   // Commande inactive d'une barre d'outils : `aria-disabled` sans `disabled`, le bouton garde focus et info-bulle ;
   // le clic et Entrée n'ont aucun effet (la capture passe avant les écouteurs de l'appelant).
@@ -196,6 +218,15 @@ export function bouton({
     b.setAttribute("aria-label", nom);
     b.querySelector("svg").replaceWith(dessiner(dessin));
     bulle.definirTexte(raccourci ? `${nom} (${raccourci})` : nom);
+  };
+  b.definirEtat = (nouveau) => {
+    if (etat === undefined) throw new Error("bouton : definirEtat demande un bouton logs");
+    if (!Object.hasOwn(ETATS_LOGS, nouveau)) throw new Error(`bouton : état inconnu « ${nouveau} »`);
+    const { icone: dessin, nom } = ETATS_LOGS[nouveau];
+    b.dataset.etat = nouveau;
+    b.setAttribute("aria-label", nom);
+    b.querySelector("svg").replaceWith(dessiner(dessin, 14));
+    bulle.definirTexte(nom);
   };
   return b;
 }

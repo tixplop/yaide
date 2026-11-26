@@ -163,12 +163,12 @@ test("REQ037_AC4_AC10_barre_d_etat_texte_sans_action_et_parties_absentes_masquee
   const c = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") }, barreEtat: { branche: "main" } });
   const f = c.querySelector("footer");
   expect(f.textContent).toBe("mainServeur : Connecté");
-  expect(f.querySelector("svg").getAttribute("data-icone")).toBe("branch");
+  expect(f.querySelector(".ya-status-branche svg").getAttribute("data-icone")).toBe("branch");
   expect([...f.querySelectorAll("span[hidden]")].map((e) => e.className)).toEqual(["ya-status-lien", "ya-status-position", "ya-status-langage", "ya-status-version"]);
   c.definirEtat({ position: "Ln 1, Col 1", langage: "Texte" });
   expect(f.textContent).toBe("Ln 1, Col 1TexteServeur : Connecté");
   expect(f.querySelector(".ya-status-branche").hidden).toBe(true);
-  expect(f.querySelector("button, a, [tabindex]")).toBeNull();
+  expect(f.querySelector("button:not(.ya-logs), a, [tabindex]")).toBeNull();
   expect(regle(".ya-status")).toContain("border-top: var(--trait) solid var(--line)");
   expect(regle(".ya-status")).toContain("cursor: default");
 });
@@ -1037,7 +1037,7 @@ test("REQ092_AC1_version_tout_a_droite_precedee_de_Yaide_pour_les_lecteurs_d_ecr
   expect(v.hidden).toBe(false);
   const sans = cadre({ barreTitre: { projet: "p" }, rail: { onglets: p("r") }, barreEtat: { branche: "main" } });
   expect(etat(sans).querySelector(".ya-status-version").hidden).toBe(true);
-  expect(f.querySelector("button, a, [tabindex]")).toBeNull();
+  expect(f.querySelector("button:not(.ya-logs), a, [tabindex]")).toBeNull();
   const r = regle(".ya-status-version");
   expect(r).toContain("flex: none");
 });
@@ -1051,24 +1051,24 @@ test("REQ092_AC6_zones_status_et_alert_des_le_chargement_notification_sans_focus
   expect(al.textContent).toBe("");
   expect(st.closest("[hidden]")).toBeNull();
   expect(al.closest("[hidden]")).toBeNull();
-  expect(f.querySelector("button")).toBeNull();
+  expect(f.querySelector(".ya-status-maj button")).toBeNull();
   document.body.append(c);
   const avant = document.activeElement;
   c.definirEtat({ branche: "main", version: "v0.9.1", maj: { etat: "disponible", derniere: "v0.9.2" } });
   expect(st.textContent).toBe("v0.9.2 disponible");
   expect(f.querySelector("svg[data-icone='circle-arrow-up']")).not.toBeNull();
-  const bouton1 = f.querySelector("button");
+  const bouton1 = f.querySelector(".ya-status-maj button");
   expect(bouton1.textContent).toBe("Mettre à jour");
   expect(bouton1.className).toContain("ya-btn-barre");
   expect(bouton1.closest('[role="status"], [role="alert"]')).toBeNull();
   expect(document.activeElement).toBe(avant);
   c.definirEtat({ branche: "main", version: "v0.9.1", maj: { etat: "encours", derniere: "v0.9.2" } });
-  expect(f.querySelector("button")).toBe(bouton1);
+  expect(f.querySelector(".ya-status-maj button")).toBe(bouton1);
   expect(bouton1.textContent).toBe("Mise à jour…");
   expect(bouton1.getAttribute("aria-busy")).toBe("true");
   expect(st.textContent).toBe("v0.9.2 disponible");
   c.definirEtat({ branche: "main", version: "v0.9.1", maj: { etat: "echec", derniere: "v0.9.2", raison: "« sha256sum » est introuvable" } });
-  expect(f.querySelector("button")).toBe(bouton1);
+  expect(f.querySelector(".ya-status-maj button")).toBe(bouton1);
   expect(bouton1.textContent).toBe("Mettre à jour");
   expect(bouton1.hasAttribute("aria-busy")).toBe(false);
   expect(st.textContent).toBe("");
@@ -1077,19 +1077,19 @@ test("REQ092_AC6_zones_status_et_alert_des_le_chargement_notification_sans_focus
   expect(f.querySelectorAll('[role="status"]')).toHaveLength(1);
   expect(al.querySelector(".message-erreur").getAttribute("title")).toBe(al.textContent);
   c.definirEtat({ branche: "main", version: "v0.9.1", maj: { etat: "installee", derniere: "v0.9.2" } });
-  expect(f.querySelector("button")).toBeNull();
+  expect(f.querySelector(".ya-status-maj button")).toBeNull();
   expect(al.textContent).toBe("");
   expect(st.textContent).toBe("v0.9.2 installée. Redémarrez Yaide pour l'utiliser.");
   c.definirEtat({ branche: "main", version: "v0.9.1", maj: { etat: "aucune" } });
   expect(st.textContent).toBe("");
-  expect(f.querySelector("button")).toBeNull();
+  expect(f.querySelector(".ya-status-maj button")).toBeNull();
   c.remove();
 });
 
 test("REQ092_AC6_surMaj_appele_au_clic_et_branche_coupee_a_40_pour_cent_seul_le_message_d_echec_retrecit", () => {
   const surMaj = vi.fn();
   const c = montrerMaj({ etat: "disponible", derniere: "v0.9.2" }, { surMaj });
-  etat(c).querySelector("button").click();
+  etat(c).querySelector(".ya-status-maj button").click();
   expect(surMaj).toHaveBeenCalledTimes(1);
   expect(regle(".ya-status-branche")).toContain("max-width: 40%");
   expect(regle(".ya-status-branche")).toContain("text-overflow: ellipsis");
@@ -1309,4 +1309,46 @@ test("REQ185_AC5_definirEtat_ne_deplace_pas_le_focus", () => {
   expect(document.activeElement).toBe(champ);
   c.remove();
   champ.remove();
+});
+
+test("REQ187_AC2_AC3_bouton_logs_premier_element_de_la_barre_d_etat_et_suit_l_etat", () => {
+  document.body.replaceChildren();
+  const surLogs = vi.fn();
+  const c = cadre({ barreEtat: { branche: "main", logs: "avertissements", surLogs } });
+  document.body.append(c);
+  const etat = c.querySelector("footer.ya-status");
+  const premier = etat.firstElementChild;
+  const b = premier.querySelector("button.ya-logs");
+  expect(b).not.toBeNull();
+  expect(etat.querySelector("button")).toBe(b);
+  expect(premier.nextElementSibling.classList.contains("ya-status-branche")).toBe(true);
+  expect(b.getAttribute("aria-label")).toBe("Logs : avertissements");
+  c.definirEtat({ branche: "main", logs: "erreurs", surLogs });
+  expect(etat.querySelector("button.ya-logs")).toBe(b);
+  expect(b.getAttribute("aria-label")).toBe("Logs : erreurs");
+  c.definirEtat({ branche: "main", surLogs });
+  expect(b.getAttribute("aria-label")).toBe("Logs : rien à signaler");
+  b.click();
+  expect(surLogs).toHaveBeenCalledTimes(1);
+  expect(b.hasAttribute("aria-expanded")).toBe(false);
+  // Jamais de zone vivante autour du bouton.
+  expect(premier.closest("[aria-live], [role=status], [role=alert]")).toBeNull();
+  document.body.replaceChildren();
+});
+
+test("REQ187_AC2_bouton_logs_present_sans_les_fonctions_et_changer_d_etat_garde_le_focus", () => {
+  document.body.replaceChildren();
+  const c = cadre({ fonctions: { shells: false, agents: false, git: false, recherche: false }, barreEtat: {} });
+  document.body.append(c);
+  const b = c.querySelector("footer.ya-status button.ya-logs");
+  expect(b).not.toBeNull();
+  b.focus();
+  c.definirEtat({ logs: "erreurs" });
+  expect(document.activeElement).toBe(b);
+  document.body.replaceChildren();
+});
+
+test("REQ187_AC6_regles_du_bouton_logs_dans_la_barre_d_etat", () => {
+  expect(regle(".ya-status > .bouton-enveloppe")).toContain("flex: none");
+  expect(regle(".ya-status > .bouton-enveloppe")).toContain("padding: 0");
 });

@@ -34,7 +34,7 @@ export function symbole(taille) {
 /**
  * C-010. `barreTitre` : { projet, chemin, surOuvrir, actions } ; `rail` : { onglets, commandes } ;
  * `panneau` : { titre, repli (bouton de repli, après le titre), entete (élément fixe sous le titre), corps } ;
- * `barreEtat` : { branche, lien ({ geste, suite } ou rien), position, langage, version, connexion (`connecte` par défaut, ou `deconnecte`), televersement (entier 0 à 100, ou rien : jauge après la branche, REQ-185), maj: { etat, derniere, raison }, surMaj } (textes, ou rien ; `etat` : aucune, disponible, encours, echec, installee ; `surMaj` : clic sur « Mettre à jour ») ; `agent` : { titre, repli, corps } (colonne à droite) ; `railDroit` : { commandes, pied } (listes de boutons, dans l'ordre ; `pied`, vide par défaut, au bas du rail après les commandes) ;
+ * `barreEtat` : { branche, lien ({ geste, suite } ou rien), position, langage, version, connexion (`connecte` par défaut, ou `deconnecte`), televersement (entier 0 à 100, ou rien : jauge après la branche, REQ-185), logs (`rien` par défaut, `avertissements` ou `erreurs` : bouton « Logs », premier élément, REQ-187 ; `surLogs` : son clic), maj: { etat, derniere, raison }, surMaj } (textes, ou rien ; `etat` : aucune, disponible, encours, echec, installee ; `surMaj` : clic sur « Mettre à jour ») ; `agent` : { titre, repli, corps } (colonne à droite) ; `railDroit` : { commandes, pied } (listes de boutons, dans l'ordre ; `pied`, vide par défaut, au bas du rail après les commandes) ;
  * `tailles` : { panneau, agent, shells } en pixels ; `replis` : { panneau, agent, shells } (faux par défaut, vrai pour l'agent) ;
  * `fonctions` : { recherche, git, shells, agents, claude } (vrais par défaut) : `shells` et `agents` faux ne créent ni zone, ni poignée, ni commandes ; `racine.ajouterCommandeDroite(el)` crée le rail droit au besoin.
  * `repliToasts` : rappel qui donne le focus quand le dernier toast fermé ne laisse aucun voisin (zone des toasts, REQ-172).
@@ -231,6 +231,9 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   racine.definirGroupes(depart, principal.groupeCourant ?? feuillesDe(depart)[0].id);
   main.append(groupes, ...(avec.shells ? [poignees.shells, zoneShells] : []));
 
+  const boutonLogs = bouton({ etat: "rien" });
+  let surLogs = () => {};
+  boutonLogs.addEventListener("click", () => surLogs());
   const branche = zone("span", "ya-status-branche");
   const lien = zone("span", "ya-status-lien");
   const espace = zone("span", "ya-status-espace");
@@ -262,11 +265,13 @@ export function cadre({ barreTitre = {}, rail = {}, panneau = {}, agent = {}, ra
   jauge.title = "Téléversement";
   jauge.setAttribute("aria-valuemin", "0");
   jauge.setAttribute("aria-valuemax", "100");
-  const etat = zone("footer", "cadre-etat ya-status", [branche, lien, espace, position, langage, maj, connexion, version]);
+  const etat = zone("footer", "cadre-etat ya-status", [boutonLogs.enveloppe, branche, lien, espace, position, langage, maj, connexion, version]);
   let boutonMaj = null;
   let surMaj = () => {};
   // Texte sans action, sauf « Mettre à jour » : ni bouton, ni arrêt de tabulation ailleurs. Une partie sans texte est masquée.
-  racine.definirEtat = ({ branche: b, lien: li, position: p, langage: l, version: v, maj: m, surMaj: clic, connexion: c, televersement: t } = {}) => {
+  racine.definirEtat = ({ branche: b, lien: li, position: p, langage: l, version: v, maj: m, surMaj: clic, connexion: c, televersement: t, logs, surLogs: clicLogs } = {}) => {
+    boutonLogs.definirEtat(logs === "avertissements" || logs === "erreurs" ? logs : "rien");
+    if (clicLogs) surLogs = clicLogs;
     const etatConnexion = c === "deconnecte" ? "deconnecte" : "connecte";
     connexion.dataset.connexion = etatConnexion;
     mot.data = etatConnexion === "connecte" ? "Connecté" : "Déconnecté";
