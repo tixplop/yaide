@@ -939,12 +939,13 @@ fn parcours_commande(shell: &str) {
     lire_jusque(&mut w, "cargo\r\n", 20);
     taper(&mut w, "Cargo test; echo B$((1+1))\n");
     lire_jusque(&mut w, "B2", 20);
-    std::thread::sleep(Duration::from_millis(1500));
-    assert!(conversations(&s).is_empty(), "{:?}", conversations(&s));
     // AC-167-1 : `cargo test --lib`, sorti en code 101.
     taper(&mut w, "cargo test --lib\n");
     lire_jusque(&mut w, "RAN2", 20);
+    // Les évènements d'un shell arrivent dans l'ordre : si `echo cargo` ou `Cargo test` en avait
+    // donné un, il serait là avant celui-ci, et le compte ci-dessous ne serait pas 1.
     let l = attendre_conversations(&s, 1);
+    assert_eq!(l.len(), 1, "{l:?}");
     assert_eq!(
         premier_message(&s, &l[0]),
         format!(
@@ -956,13 +957,14 @@ fn parcours_commande(shell: &str) {
         // évènement, et surtout pas celui de la commande précédente.
         taper(&mut w, " cargo test --lib\n");
         lire_jusque(&mut w, "RAN2", 20);
-        std::thread::sleep(Duration::from_millis(1500));
-        assert_eq!(conversations(&s).len(), 1, "{:?}", conversations(&s));
     }
     // AC-167-2 : `cd src && cargo test` donne un évènement.
     std::fs::create_dir_all(s.projet.join("src")).unwrap();
     taper(&mut w, "cd src && cargo test\n");
+    // La commande précédente (` cargo test --lib`) n'a rien donné : son évènement serait avant
+    // celui-ci, et le compte ne serait pas 2.
     let l = attendre_conversations(&s, 2);
+    assert_eq!(l.len(), 2, "{l:?}");
     assert_eq!(
         premier_message(&s, &l[0]),
         format!(

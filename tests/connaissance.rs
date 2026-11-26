@@ -1852,11 +1852,6 @@ fn dossiers_de(s: &Serveur, collection: &str) -> Value {
     j["dossiers"].clone()
 }
 
-/// Laisse passer plusieurs passes de vérification (intervalle de 200 ms).
-fn laisser_passer() {
-    std::thread::sleep(Duration::from_millis(1500));
-}
-
 #[test]
 fn REQ176_AC1_AC2_AC9_fichiers_nouveaux_entrent_dans_les_collections_qui_suivent_le_dossier() {
     let (adresse, recues) = faux_provider(vec![]);
@@ -1892,7 +1887,6 @@ fn REQ176_AC1_AC2_AC9_fichiers_nouveaux_entrent_dans_les_collections_qui_suivent
         json!({ "collections": ["notes"], "echec": null })
     );
     assert!(f["autre/x.md"].is_null());
-    laisser_passer();
     // Deux fichiers nouveaux, plus la question de la recherche.
     assert_eq!(nombre_requetes(&recues), avant + 3);
     // AC-176-9 : une collection écrite avant cette version n'a pas de dossier suivi.
@@ -1903,14 +1897,14 @@ fn REQ176_AC1_AC2_AC9_fichiers_nouveaux_entrent_dans_les_collections_qui_suivent
     j.as_object_mut().unwrap().remove("dossiers");
     std::fs::write(&p, j.to_string()).unwrap();
     ecrire(&s, "docs/n.md", "v5 cinq\n");
-    laisser_passer();
-    assert_eq!(s.fichiers("notes").len(), 4);
-    assert_eq!(nombre_requetes(&recues), avant + 3);
-    // Les fichiers connus se mettent à jour quand même (REQ-110).
+    // Les fichiers connus se mettent à jour quand même (REQ-110) : c'est aussi le témoin que la
+    // vérification qui a vu `n.md` est passée, sans le faire entrer.
     ecrire(&s, "docs/a.md", "v7 sept\n");
     attendre("mise à jour de a.md", || {
         vecteurs_de(&s, "notes")[..2] == [7.0, 1.0]
     });
+    assert_eq!(s.fichiers("notes").len(), 4);
+    assert_eq!(nombre_requetes(&recues), avant + 4);
     assert_eq!(s.ajouter("notes", &["docs"]).code, 202);
     attendre_numero(&s, 4);
     assert_eq!(dossiers_de(&s, "notes"), json!(["docs"]));
@@ -1944,8 +1938,11 @@ fn REQ176_AC4_AC5_renommage_et_dossier_supprime_puis_recree() {
     std::fs::create_dir_all(s.projet.join("autre")).unwrap();
     std::fs::rename(s.projet.join("docs/sous/e.md"), s.projet.join("autre/e.md")).unwrap();
     attendre("sortie du dossier", || s.fichiers("notes") == ["docs/a.md"]);
-    laisser_passer();
-    assert_eq!(s.fichiers("notes"), ["docs/a.md"]);
+    // Témoin : un fichier nouveau du dossier entre, et `autre/e.md` n'est toujours pas là.
+    ecrire(&s, "docs/t.md", "v5 cinq\n");
+    attendre("témoin", || {
+        s.fichiers("notes") == ["docs/a.md", "docs/t.md"]
+    });
     assert!(s.etat()["fichiers"]["autre/e.md"].is_null());
     // AC-176-5 : dossier supprimé, puis fichier recréé.
     std::fs::remove_dir_all(s.projet.join("docs")).unwrap();
@@ -1976,14 +1973,19 @@ fn REQ176_AC3_ignores_binaire_et_gros_fichier_n_entrent_pas_puis_binaire_devenu_
         vec![b'a'; 5 * 1024 * 1024 + 10],
     )
     .unwrap();
-    laisser_passer();
-    assert_eq!(s.fichiers("notes"), ["docs/a.md"]);
-    assert_eq!(nombre_requetes(&recues), avant);
+    // Témoin : un fichier texte écrit après eux entre, eux non, et une seule requête est partie.
+    ecrire(&s, "docs/c.md", "v4 quatre\n");
+    attendre("témoin", || {
+        s.fichiers("notes") == ["docs/a.md", "docs/c.md"]
+    });
+    assert_eq!(textes_depuis(&recues, avant), ["v4 quatre"]);
     std::fs::write(s.projet.join("docs/b.bin"), "v7 devenu texte\n").unwrap();
     attendre("binaire devenu texte", || {
-        s.fichiers("notes") == ["docs/a.md", "docs/b.bin"]
+        s.fichiers("notes") == ["docs/a.md", "docs/b.bin", "docs/c.md"]
     });
-    assert_eq!(textes_depuis(&recues, avant), ["v7 devenu texte"]);
+    let mut textes = textes_depuis(&recues, avant);
+    textes.sort();
+    assert_eq!(textes, ["v4 quatre", "v7 devenu texte"]);
 }
 
 #[test]
@@ -1998,22 +2000,25 @@ fn REQ176_AC6_AC8_refus_du_provider_reessaye_au_changement_et_fichier_cree_penda
     s.attendre_fin();
     ecrire(&s, "docs/c.md", "v3 trois\n");
     attendre("requête refusée", || nombre_requetes(&recues) == 2);
-    laisser_passer();
-    assert_eq!(nombre_requetes(&recues), 2);
-    assert_eq!(s.fichiers("notes"), ["docs/a.md"]);
+    // Témoin : un autre fichier nouveau entre (3e requête) ; `c.md`, refusé, n'est pas réessayé.
+    ecrire(&s, "docs/d.md", "v6 six\n");
+    attendre("d.md entré", || {
+        s.fichiers("notes") == ["docs/a.md", "docs/d.md"]
+    });
+    assert_eq!(nombre_requetes(&recues), 3);
     assert!(s.etat()["fichiers"]["docs/c.md"].is_null());
     ecrire(&s, "docs/c.md", "v4 quatre\n");
     attendre("c.md entré", || {
-        s.fichiers("notes") == ["docs/a.md", "docs/c.md"]
+        s.fichiers("notes") == ["docs/a.md", "docs/c.md", "docs/d.md"]
     });
-    assert_eq!(nombre_requetes(&recues), 3);
+    assert_eq!(nombre_requetes(&recues), 4);
     // AC-176-6 : fichier créé pendant l'arrêt de Yaide.
     let projet = s.projet.clone();
     drop(s);
     std::fs::write(projet.join("docs/f.md"), "v5 cinq\n").unwrap();
     let s = demarrer_avec(&racine, "projet", Some("200"));
     attendre("fichier créé pendant l'arrêt", || {
-        s.fichiers("notes") == ["docs/a.md", "docs/c.md", "docs/f.md"]
+        s.fichiers("notes") == ["docs/a.md", "docs/c.md", "docs/d.md", "docs/f.md"]
     });
 }
 

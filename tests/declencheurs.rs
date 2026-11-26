@@ -150,7 +150,7 @@ fn demarrer_avec_env(racine: &Path, projet: &str, env: &[(&str, &str)]) -> Serve
     // Un autre test peut prendre le port entre `port_libre` et le lancement : on réessaie.
     for _ in 0..5 {
         let port = port_libre();
-        let child = Command::new(EXE)
+        let mut child = Command::new(EXE)
             .arg(&projet)
             .args(["--port", &port.to_string()])
             .env("XDG_CONFIG_HOME", racine.join("cfg"))
@@ -158,9 +158,26 @@ fn demarrer_avec_env(racine: &Path, projet: &str, env: &[(&str, &str)]) -> Serve
             .env("GIT_CEILING_DIRECTORIES", racine)
             .env("YAIDE_INTERVALLE_BASE_MS", "100")
             .envs(env.iter().copied())
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .spawn()
             .unwrap();
+        // Prêt = la ligne « Yaide écoute sur le port » de notre propre processus ; la sortie
+        // continue d'être lue ensuite pour que le tube ne se remplisse pas.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let sortie = std::io::BufReader::new(child.stdout.take().unwrap());
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            let mut envoye = false;
+            for ligne in sortie.lines().map_while(Result::ok) {
+                if !envoye {
+                    if let Some(reste) = ligne.strip_prefix("Yaide écoute sur le port ") {
+                        let pris: u16 = reste.split(',').next().unwrap().parse().unwrap_or(0);
+                        let _ = tx.send(pris);
+                        envoye = true;
+                    }
+                }
+            }
+        });
         let mut s = Serveur {
             child,
             port,
@@ -168,27 +185,19 @@ fn demarrer_avec_env(racine: &Path, projet: &str, env: &[(&str, &str)]) -> Serve
             projet: projet.clone(),
             racine: racine.to_path_buf(),
         };
-        let origine = format!("https://127.0.0.1:{port}");
-        for _ in 0..1000 {
-            if s.child.try_wait().unwrap().is_some() {
-                break;
-            }
-            if requete(port, "GET", "/api/info", "", &origine, b"").code == 200 {
-                std::thread::sleep(Duration::from_millis(200));
-                if s.child.try_wait().unwrap().is_some() {
-                    break;
-                }
-                let r = requete(port, "POST", "/api/connexion", "", &origine, b"mdp");
-                let ligne = r
-                    .entetes
-                    .lines()
-                    .find(|l| l.to_lowercase().starts_with("set-cookie:"))
-                    .expect("pas de Set-Cookie");
-                s.cookie = ligne[11..].trim().split(';').next().unwrap().to_string();
-                return s;
-            }
-            std::thread::sleep(Duration::from_millis(10));
+        // Un processus sorti avant la ligne, ou un autre port pris : on en reprend un autre.
+        if rx.recv_timeout(Duration::from_secs(20)) != Ok(port) {
+            continue;
         }
+        let origine = format!("https://127.0.0.1:{port}");
+        let r = requete(port, "POST", "/api/connexion", "", &origine, b"mdp");
+        let ligne = r
+            .entetes
+            .lines()
+            .find(|l| l.to_lowercase().starts_with("set-cookie:"))
+            .expect("pas de Set-Cookie");
+        s.cookie = ligne[11..].trim().split(';').next().unwrap().to_string();
+        return s;
     }
     panic!("le serveur ne répond pas");
 }
@@ -320,7 +329,7 @@ fn attendre_fin(s: &Serveur, id: &str) {
     panic!("le tour ne finit pas");
 }
 
-/// Le temps de deux vérifications (100 ms chacune) avant une modification.
+/// Le temps de six vérifications (100 ms chacune) avant une modification.
 fn laisser_voir() {
     std::thread::sleep(Duration::from_millis(600));
 }
@@ -534,14 +543,14 @@ fn REQ164_AC1_AC2_AC5_REQ165_AC1_une_conversation_par_agent_a_l_ecoute() {
         assert_eq!(agent(&s, nom, json!([fichier(chemin)])).code, 200);
     }
     assert_eq!(agent(&s, "Sans", json!([])).code, 200);
+    assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
     std::fs::write(s.yaide().join("agents/relecteur/AGENTS.md"), "Tu relis.").unwrap();
     laisser_voir();
     assert!(conversations(&s).is_empty());
     // créé
     ecrire(&s, "docs/a.md", "un");
-    let l = attendre_conversations(&s, 2);
-    std::thread::sleep(Duration::from_millis(500));
-    let l2 = conversations(&s);
+    let l = attendre_hors_sonde(&s, 2);
+    let l2 = passer_sonde(&s, 1);
     assert_eq!(l2.len(), 2, "{l:?}");
     for c in &l2 {
         assert_eq!(c["titre"], "Évènement : fichier `docs/a.md` créé.");
@@ -590,18 +599,23 @@ fn REQ164_AC1_AC2_AC5_REQ165_AC1_une_conversation_par_agent_a_l_ecoute() {
     assert_eq!(e[e.len() - 2]["texte"], "merci");
     assert_eq!(e[e.len() - 1]["texte"], "ok");
     // modifié, réécrit à l'identique, supprimé
+    let passages = std::cell::Cell::new(1);
     let fin = |n: usize| {
-        let l = attendre_conversations(&s, n);
-        std::thread::sleep(Duration::from_millis(400));
-        l
+        attendre_hors_sonde(&s, n);
+        passages.set(passages.get() + 1);
+        passer_sonde(&s, passages.get())
     };
     ecrire(&s, "docs/a.md", "deux");
     let l = fin(4);
     assert_eq!(l.len(), 4);
     assert_eq!(l[0]["titre"], "Évènement : fichier `docs/a.md` modifié.");
     ecrire(&s, "docs/a.md", "deux");
-    std::thread::sleep(Duration::from_millis(1500));
-    assert_eq!(conversations(&s).len(), 4, "même contenu : rien");
+    passages.set(passages.get() + 1);
+    assert_eq!(
+        passer_sonde(&s, passages.get()).len(),
+        4,
+        "même contenu : rien"
+    );
     std::fs::remove_file(s.projet.join("docs/a.md")).unwrap();
     let l = fin(6);
     assert_eq!(l.len(), 6);
@@ -613,9 +627,14 @@ fn REQ164_AC1_AC2_AC5_REQ165_AC1_une_conversation_par_agent_a_l_ecoute() {
 
 #[test]
 fn REQ164_AC4_aucune_conversation_pendant_un_tour_de_l_agent() {
+    // Les réponses sont prises dans l'ordre des appels : tour de Relecteur (retardé), sonde,
+    // tour de l'utilisateur (retardé), sonde, Relecteur, sonde, tour de l'utilisateur (retardé).
     let (adresse, _) = faux_provider(vec![
         rep_texte("ok", 1500),
+        rep_texte("ok", 0),
         rep_texte("ok", 1500),
+        rep_texte("ok", 0),
+        rep_texte("ok", 0),
         rep_texte("ok", 0),
         rep_texte("ok", 1500),
     ]);
@@ -625,6 +644,15 @@ fn REQ164_AC4_aucune_conversation_pendant_un_tour_de_l_agent() {
         agent(&s, "Relecteur", json!([fichier("docs/a.md")])).code,
         200
     );
+    assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
+    // Le témoin passe, et son tour finit avant l'action suivante : il ne se mêle pas à la suite.
+    let temoin = |n: usize| {
+        let l = passer_sonde(&s, n);
+        for c in conversations(&s).iter().filter(|c| est_sonde(c)) {
+            attendre_fin(&s, c["id"].as_str().unwrap());
+        }
+        l
+    };
     laisser_voir();
     ecrire(&s, "docs/a.md", "1");
     let id = attendre_conversations(&s, 1)[0]["id"]
@@ -636,8 +664,7 @@ fn REQ164_AC4_aucune_conversation_pendant_un_tour_de_l_agent() {
     ecrire(&s, "docs/a.md", "2");
     ecrire(&s, "docs/b.md", "x");
     attendre_fin(&s, &id);
-    std::thread::sleep(Duration::from_millis(1500));
-    assert_eq!(conversations(&s).len(), 1);
+    assert_eq!(temoin(1).len(), 1);
     // Un tour ouvert par l'utilisateur avec Relecteur compte aussi.
     let r = s.appel(
         "POST",
@@ -648,13 +675,12 @@ fn REQ164_AC4_aucune_conversation_pendant_un_tour_de_l_agent() {
     let id2 = r.json()["conversation"].as_str().unwrap().to_string();
     ecrire(&s, "docs/a.md", "3");
     attendre_fin(&s, &id2);
-    std::thread::sleep(Duration::from_millis(1500));
-    assert_eq!(conversations(&s).len(), 2);
+    assert_eq!(temoin(2).len(), 2);
     // Après la fin du tour : une nouvelle conversation.
     ecrire(&s, "docs/a.md", "4");
-    let l = attendre_conversations(&s, 3);
+    let l = attendre_hors_sonde(&s, 3);
     attendre_fin(&s, l[0]["id"].as_str().unwrap());
-    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(temoin(3).len(), 3);
     // Une écriture juste après la fin d'un tour compte aussi.
     let r = s.appel(
         "POST",
@@ -665,7 +691,7 @@ fn REQ164_AC4_aucune_conversation_pendant_un_tour_de_l_agent() {
     ecrire(&s, "docs/a.md", "5");
     attendre_fin(&s, &id3);
     ecrire(&s, "docs/a.md", "6");
-    attendre_conversations(&s, 5);
+    attendre_hors_sonde(&s, 5);
 }
 
 #[test]
@@ -971,6 +997,7 @@ fn REQ166_AC3_pull_en_avance_rapide_et_rebase_ne_sont_pas_des_commits() {
 #[test]
 fn REQ166_AC4_sans_depot_aucune_erreur_et_les_autres_declencheurs_marchent() {
     let s = lancer("c4");
+    assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
     assert_eq!(
         agent(
             &s,
@@ -982,13 +1009,12 @@ fn REQ166_AC4_sans_depot_aucune_erreur_et_les_autres_declencheurs_marchent() {
     );
     laisser_voir();
     ecrire(&s, "docs/a.md", "1");
-    let l = attendre_conversations(&s, 1);
+    let l = attendre_hors_sonde(&s, 1);
     assert_eq!(
         texte_conv(&s, &l[0]),
         "Évènement : fichier `docs/a.md` créé."
     );
-    std::thread::sleep(Duration::from_millis(500));
-    assert_eq!(conversations(&s).len(), 1);
+    assert_eq!(passer_sonde(&s, 1).len(), 1);
 }
 
 #[test]
@@ -1005,10 +1031,8 @@ fn REQ164_AC3_un_fichier_modifie_puis_commite_entre_deux_verifications_un_seul_m
         .code,
         200
     );
-    std::thread::sleep(Duration::from_millis(2200));
     // La sonde se déclenche juste après une vérification : on a alors presque 1 s devant nous.
-    ecrire(&s, "sonde.txt", "1");
-    attendre_conversations(&s, 1);
+    declencher_sonde(&s);
     ecrire(&s, "docs/a.md", "1");
     git(&s.projet, &racine, &["add", "docs/a.md"]);
     git(&s.projet, &racine, &["commit", "-q", "-m", "ajoute docs/a"]);
@@ -1053,6 +1077,7 @@ fn REQ167_AC4_la_commande_bash_d_un_agent_ne_declenche_rien() {
     ]);
     let s = demarrer_avec_env(&racine, "projet", &[("PATH", &chemin)]);
     configurer(&s, &adresse, true);
+    assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
     assert_eq!(agent(&s, "Relecteur", json!([])).code, 200);
     assert_eq!(
         agent(
@@ -1076,8 +1101,7 @@ fn REQ167_AC4_la_commande_bash_d_un_agent_ne_declenche_rien() {
         "la commande n'a pas tourné : {:?}",
         recues.lock().unwrap().len()
     );
-    std::thread::sleep(Duration::from_millis(1500));
-    assert_eq!(conversations(&s).len(), 1);
+    assert_eq!(passer_sonde(&s, 1).len(), 1);
 }
 
 /// Le texte du premier message de la conversation dont ce message contient `morceau`.
@@ -1091,9 +1115,21 @@ fn texte_avec(s: &Serveur, morceau: &str) -> String {
 
 /// Une sonde sur `sonde.txt` : sa conversation arrive juste après une vérification, ce qui
 /// laisse presque 1 s (intervalle de 1 s) pour faire deux changements « entre deux vérifications ».
+///
+/// La sonde est réécrite (autre contenu) jusqu'à ce que sa conversation paraisse : cela prouve que
+/// la première vérification, celle qui note l'état de départ, est passée.
 fn declencher_sonde(s: &Serveur) {
-    ecrire(s, "sonde.txt", "1");
-    attendre_conversations(s, 1);
+    for i in 0..20 {
+        ecrire(s, "sonde.txt", &format!("calage {i}"));
+        // Une réécriture seulement après 1,1 s sans conversation (plus d'un intervalle).
+        for _ in 0..22 {
+            std::thread::sleep(Duration::from_millis(50));
+            if conversations(s).iter().any(est_sonde) {
+                return;
+            }
+        }
+    }
+    panic!("la sonde ne se déclenche pas");
 }
 
 #[test]
@@ -1108,7 +1144,6 @@ fn REQ165_AC2_un_dossier_un_seul_evenement_une_ligne_par_fichier_par_ordre_de_ch
     assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
     let d = json!([{ "type": "dossier", "chemin": "docs" }]);
     assert_eq!(agent(&s, "Relecteur", d).code, 200);
-    std::thread::sleep(Duration::from_millis(2200));
     declencher_sonde(&s);
     ecrire(&s, "docs/a.md", "2");
     ecrire(&s, "docs/sous/c.md", "c");
@@ -1210,7 +1245,6 @@ fn REQ168_AC2_les_parties_changees_sont_nommees() {
     );
     assert_eq!(agent(&s, "Sonde", json!([fichier("sonde.txt")])).code, 200);
     assert_eq!(agent(&s, "Relecteur", configuration()).code, 200);
-    std::thread::sleep(Duration::from_millis(2200));
     declencher_sonde(&s);
     let r = s.appel(
         "PUT",
