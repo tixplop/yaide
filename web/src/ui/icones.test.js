@@ -11,7 +11,7 @@ const attendues = [
 ];
 // Les symboles de contenu (REQ-149) sont hors de la règle « deux commandes, deux icônes ».
 const COMMANDES = NOMS.filter((n) => !n.startsWith("symbole-"));
-const retirees = ["git-branch", "circle-plus", "square-terminal", "trash-2", "arrow-down-to-line", "arrow-up-from-line", "git-commit-horizontal"];
+const retirees = ["git-branch", "circle-plus", "trash-2", "arrow-down-to-line", "arrow-up-from-line", "git-commit-horizontal"];
 
 test("REQ031_AC1_toutes_les_icones_du_design_system_existent", () => {
   for (const n of attendues) expect(NOMS, n).toContain(n);
@@ -460,5 +460,20 @@ test("REQ170_AC12_icones_de_la_barre_mise_en_forme_au_trait_du_sprite", () => {
   expect(icone("square-code").innerHTML).toContain("m10 9-3 3 3 3");
   expect(icone("separator-horizontal").innerHTML).toContain("m8 8 4-4 4 4");
   expect(icone("liste-puces").querySelectorAll("circle").length).toBe(3);
+  const w = icone("waypoints").innerHTML;
+  for (const c of ['cx="12" cy="4" r="2"', 'cx="4" cy="12" r="2"', 'cx="20" cy="12" r="2"', 'cx="12" cy="20" r="2"', "M6 12h12", "m10.586 5.414-5.172 5.172", "m18.586 13.414-5.172 5.172"]) expect(w, c).toContain(c);
   expect(new Set(noms.map((n) => icone(n).innerHTML)).size).toBe(noms.length);
+});
+
+test("REQ190_AC7_icones_des_workflows_existent_et_sont_distinctes", () => {
+  const noms = ["waypoints", "folder-search", "clock", "webhook", "bot-message-square", "square-terminal", "square-asterisk", "file-cog"];
+  for (const n of noms) {
+    expect(NOMS, n).toContain(n);
+    expect(icone(n).querySelector("path, circle, rect"), n).not.toBeNull();
+  }
+  const w = icone("waypoints").innerHTML;
+  for (const c of ['cx="12" cy="4" r="2"', 'cx="4" cy="12" r="2"', 'cx="20" cy="12" r="2"', 'cx="12" cy="20" r="2"', "M6 12h12", "m10.586 5.414-5.172 5.172", "m18.586 13.414-5.172 5.172"]) expect(w, c).toContain(c);
+  expect(new Set(noms.map((n) => icone(n).innerHTML)).size).toBe(8);
+  const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
+  expect(tokens).toMatch(/--largeur-noeuds:\s*280px/);
 });

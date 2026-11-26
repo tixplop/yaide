@@ -45,6 +45,8 @@ function listeObjets({ lignes, nom }) {
   const ul = document.createElement("ul");
   ul.className = "liste ya-objets";
   ul.setAttribute("aria-label", nom);
+  const texte = lignes.some((l) => l.etat !== undefined);
+  if (texte) ul.classList.add("ya-objets-texte");
   // Sans aucune action, la liste est en lecture seule : elle est elle-même l'arrêt de Tab, pour défiler au clavier.
   if (lignes.every((l) => !l.actions?.length)) {
     ul.classList.add("ya-objets-lecture");
@@ -54,12 +56,19 @@ function listeObjets({ lignes, nom }) {
     if (!l.libelle) throw new Error("liste : libelle requis");
     const li = document.createElement("li");
     li.className = "ya-objet";
+    li.dataset.id = l.id;
     const t = document.createElement("span");
     t.className = "ya-objet-nom";
     t.textContent = l.libelle;
     t.title = l.libelle;
     if (ul.tabIndex === 0 && l.policeCode) t.classList.add("liste-code");
     li.append(t);
+    if (l.etat !== undefined) {
+      const e = document.createElement("span");
+      e.className = "ya-objet-etat";
+      e.textContent = l.etat;
+      li.append(e);
+    }
     if (l.dossier) {
       const d = document.createElement("span");
       d.className = l.policeCode ? "ya-objet-texte liste-code" : "ya-objet-texte";
@@ -70,6 +79,11 @@ function listeObjets({ lignes, nom }) {
     const boutons = document.createElement("span");
     boutons.className = "ya-objet-actions";
     for (const a of l.actions ?? []) {
+      if (a.libelle) {
+        const b = actionTexte(a, l);
+        boutons.append(b);
+        continue;
+      }
       const b = bouton({ icone: a.icone, nomAccessible: a.nomAccessible, infoBulle: a.infoBulle, positionInfoBulle: "gauche" });
       b.addEventListener("click", () => a.surClic?.(l.id));
       boutons.append(b.enveloppe);
@@ -79,7 +93,65 @@ function listeObjets({ lignes, nom }) {
   }
   // Un bouton qui prend le focus est amené dans la vue de la liste, qui défile seule.
   ul.addEventListener("focusin", (ev) => ev.target.scrollIntoView?.({ block: "nearest" }));
+  if (texte) {
+    // `majLigne(id, { etat, actions })` : le bouton de même `id` d'action est gardé (libellé et nom changés, focus gardé) ;
+    // un bouton qui part passe le focus au suivant de la ligne. `enCours(id, idAction)` : libellé en cours, les autres boutons désactivés.
+    const ligne = (id) => [...ul.children].find((li) => li.dataset.id === id);
+    ul.majLigne = (id, { etat, actions }) => {
+      const li = ligne(id);
+      if (!li) throw new Error(`liste : ligne inconnue « ${id} »`);
+      if (etat !== undefined) li.querySelector(".ya-objet-etat").textContent = etat;
+      const conteneur = li.querySelector(".ya-objet-actions");
+      const anciens = [...conteneur.children];
+      const garde = new Set();
+      const nouveaux = actions.map((a) => {
+        const b = anciens.find((x) => a.id !== undefined && x.dataset.action === a.id);
+        if (!b) return actionTexte(a, { id, libelle: li.querySelector(".ya-objet-nom").textContent });
+        garde.add(b);
+        const nom = li.querySelector(".ya-objet-nom").textContent;
+        b.textContent = a.libelle;
+        b.setAttribute("aria-label", a.nomAccessible ?? `${a.libelle} ${nom}`);
+        b.surClic = a.surClic;
+        b.libelleEnCours = a.libelleEnCours;
+        b.libelle = a.libelle;
+        return b;
+      });
+      const actif = document.activeElement;
+      const parti = anciens.find((x) => !garde.has(x) && x === actif);
+      conteneur.replaceChildren(...nouveaux);
+      if (garde.has(actif)) actif.focus();
+      else if (parti && nouveaux.length) nouveaux[Math.min(anciens.indexOf(parti), nouveaux.length - 1)].focus();
+    };
+    ul.enCours = (id, idAction) => {
+      for (const b of ul.querySelectorAll(".ya-objet-actions button")) {
+        const celui = idAction !== undefined && b.dataset.action === idAction && b.closest("li").dataset.id === id;
+        b.disabled = idAction !== undefined && !celui;
+        if (celui) {
+          b.setAttribute("aria-busy", "true");
+          b.setAttribute("aria-disabled", "true");
+        } else {
+          b.removeAttribute("aria-busy");
+          b.removeAttribute("aria-disabled");
+        }
+        b.classList.toggle("bouton-en-cours", celui);
+        b.textContent = celui && b.libelleEnCours ? b.libelleEnCours : b.libelle;
+      }
+    };
+  }
   return ul;
+}
+
+// Bouton à libellé d'une ligne `objets` : son nom accessible est le libellé suivi du nom de l'objet.
+function actionTexte(a, l) {
+  const b = bouton({ libelle: a.libelle, nomAccessible: a.nomAccessible ?? `${a.libelle} ${l.libelle}` });
+  if (a.id !== undefined) b.dataset.action = a.id;
+  b.libelle = a.libelle;
+  b.libelleEnCours = a.libelleEnCours;
+  b.surClic = a.surClic;
+  b.addEventListener("click", () => {
+    if (b.getAttribute("aria-disabled") !== "true") b.surClic?.(l.id);
+  });
+  return b;
 }
 
 // Variante `elements` (C-006, REQ-163) : éléments réglés dans un formulaire, ajoutés et retirés un à un.

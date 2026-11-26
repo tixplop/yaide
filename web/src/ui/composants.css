@@ -125,6 +125,8 @@ svg .icone-marque { fill: none; stroke: var(--bg-000); stroke-width: 2.2; }
 .ya-toast .message-texte { grid-column: 1; grid-row: 1; min-width: 0; margin: 2px 0; overflow-wrap: anywhere; }
 .ya-toast > pre { grid-column: 1; grid-row: 2; margin-top: 2px; max-height: 96px; font-size: 12px; line-height: 16px; }
 .ya-toast > :last-child:not(.message-texte):not(pre) { grid-column: 2; grid-row: 1; align-self: start; }
+/* Retrait des puces : 18 px, valeur du design (C-003 `points`). */
+.ya-message-points { flex-basis: 100%; margin: 2px 0 0; padding-left: 18px; font: 13px/20px var(--font-sans); color: var(--ink); }
 .message-actions { display: flex; gap: var(--space-2); }
 .message-detail { flex-basis: 100%; margin: 0; max-height: var(--hauteur-detail); overflow: auto; font: var(--texte-petit) var(--font-mono); white-space: pre-wrap; }
 /* C-003 avec `champs` (REQ-072) : sans fond propre, filet --info, champs en grille de deux colonnes (une sous 30rem = 480 px). */
@@ -584,6 +586,13 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-objet-nom { flex: 0 0 auto; min-width: 96px; max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ya-objet-texte { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-muted); }
 .ya-objet-actions { flex: none; margin-left: auto; display: flex; gap: 2px; }
+
+/* C-006 `objets` avec `etat` et `actions` en texte (workflows) : ligne de 32 px, état de 72 px, actions de 168 px au moins. */
+.ya-objets-texte .ya-objet { height: 32px; gap: var(--space-2); }
+.ya-objets-texte .ya-objet-nom { flex: 1 1 0; min-width: 0; max-width: none; }
+.ya-objet-etat { flex: none; width: 72px; font: var(--texte-petit) var(--font-sans); color: var(--ink-muted); }
+.ya-objets-texte .ya-objet-actions { flex: none; margin-left: 0; min-width: 168px; justify-content: flex-end; gap: var(--space-1); }
+.ya-objets-texte .ya-btn { height: 26px; }
 
 /* C-006 `objets` sans actions : lecture seule, la liste est l'arrêt de Tab. */
 .ya-objets-lecture .ya-objet { height: var(--size-row); font-size: 12px; font-family: var(--font-sans); }

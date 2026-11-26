@@ -7,7 +7,7 @@ let compteur = 0;
 
 const ICONES_BARRE = { info: "circle-arrow-up", erreur: "circle-x", succes: "circle-check" };
 
-export function message({ texte, variante = "info", detail, champs, actions = [], fermable = false, fort = false, presentation = "normale", cause }) {
+export function message({ texte, variante = "info", detail, points, champs, actions = [], fermable = false, fort = false, presentation = "normale", cause }) {
   if (!texte) throw new Error("message : texte requis");
   if (!VARIANTES.includes(variante)) throw new Error(`message : variante inconnue « ${variante} »`);
   if (!["normale", "barre", "toast"].includes(presentation)) throw new Error(`message : presentation inconnue « ${presentation} »`);
@@ -15,6 +15,7 @@ export function message({ texte, variante = "info", detail, champs, actions = []
     throw new Error("message : la présentation barre n'accepte que info, succes et erreur, sans detail, champs, fermable ni fort");
   }
   if (presentation === "toast" && (champs?.length || actions.length)) throw new Error("message : la présentation toast n'accepte ni champs ni actions");
+  if (points?.length && (presentation !== "normale" || detail || fort)) throw new Error("message : points demande la présentation normale, sans detail ni fort");
   if (cause !== undefined && presentation !== "toast") throw new Error("message : cause réservée à la présentation toast");
   if (champs?.length && (variante !== "info" || fort)) throw new Error("message : champs réservés à la variante info");
   const m = document.createElement(champs?.length ? "form" : "div");
@@ -56,6 +57,16 @@ export function message({ texte, variante = "info", detail, champs, actions = []
     d.className = "message-detail";
     d.textContent = detail;
     m.append(d);
+  }
+  if (points?.length) {
+    const u = document.createElement("ul");
+    u.className = "ya-message-points";
+    for (const p of points) {
+      const li = document.createElement("li");
+      li.textContent = p;
+      u.append(li);
+    }
+    m.append(u);
   }
   if (champs?.length) {
     const c = document.createElement("div");

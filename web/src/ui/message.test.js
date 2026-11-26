@@ -171,3 +171,18 @@ test("REQ172_AC5_AC6_message_toast_role_fermer_decrit_par_le_texte_et_fort_sans_
   expect(() => message({ texte: "a", presentation: "toast", actions: [bouton({ libelle: "Oui" })] })).toThrow(/toast/);
   expect(() => message({ texte: "a", cause: "x" })).toThrow(/cause/);
 });
+
+test("REQ192_AC2_message_points_liste_ul_dans_la_meme_zone_alert", () => {
+  const m = message({ texte: "Revue des notes n'est pas publié :", variante: "erreur", points: ["Ajoutez un déclencheur.", "« Commande shell 1 » : donnez la commande."] });
+  expect(m.getAttribute("role")).toBe("alert");
+  const ul = m.querySelector("ul");
+  expect(ul.parentElement).toBe(m);
+  expect([...ul.children].map((l) => l.textContent)).toEqual(["Ajoutez un déclencheur.", "« Commande shell 1 » : donnez la commande."]);
+  expect(m.querySelector(".message-texte").nextElementSibling).toBe(ul);
+  expect(message({ texte: "a :", points: ["x"] }).getAttribute("role")).toBe("status");
+  expect(message({ texte: "a", variante: "erreur", points: [] }).querySelector("ul")).toBeNull();
+  expect(() => message({ texte: "a", points: ["x"], presentation: "toast" })).toThrow(/points/);
+  expect(() => message({ texte: "a", points: ["x"], detail: "d" })).toThrow(/points/);
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  expect(css).toMatch(/\.ya-message-points \{[^}]*padding-left: 18px/);
+});

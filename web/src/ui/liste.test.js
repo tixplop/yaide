@@ -1770,3 +1770,62 @@ test("REQ163_AC7_contrastes_des_elements_dans_les_deux_themes", () => {
     sur("--ink", "--bg-400", 4.5, "icône survolée");
   }
 });
+
+test("REQ192_AC2_objets_etat_et_actions_en_texte_noms_accessibles_focus_gardé_et_en_cours", () => {
+  const surClic = vi.fn();
+  const l = liste({
+    variante: "objets",
+    nom: "Workflows",
+    lignes: [
+      { id: "a", libelle: "Revue des notes", etat: "Brouillon", actions: [
+        { id: "modifier", libelle: "Modifier", surClic },
+        { id: "bascule", libelle: "Publier", libelleEnCours: "Publication…", surClic },
+      ] },
+      { id: "b", libelle: "Changelog", etat: "Publié", actions: [{ id: "bascule", libelle: "Dépublier", libelleEnCours: "Dépublication…" }] },
+    ],
+  });
+  document.body.append(l);
+  const [la, lb] = [...l.children];
+  expect(la.querySelector(".ya-objet-etat").textContent).toBe("Brouillon");
+  const [mod, pub] = [...la.querySelectorAll("button")];
+  expect([mod, pub].map((b) => b.textContent)).toEqual(["Modifier", "Publier"]);
+  expect([mod, pub].map((b) => b.getAttribute("aria-label"))).toEqual(["Modifier Revue des notes", "Publier Revue des notes"]);
+  expect(lb.querySelector("button").getAttribute("aria-label")).toBe("Dépublier Changelog");
+  pub.click();
+  expect(surClic).toHaveBeenCalledWith("a");
+  // En cours : libellé en cours, aria-busy, focus gardé ; les autres boutons de la liste sont désactivés.
+  pub.focus();
+  l.enCours("a", "bascule");
+  expect(pub.textContent).toBe("Publication…");
+  expect(pub.getAttribute("aria-busy")).toBe("true");
+  expect(pub.classList.contains("bouton-en-cours")).toBe(true);
+  expect(mod.classList.contains("bouton-en-cours")).toBe(false);
+  expect(pub.disabled).toBe(false);
+  expect(mod.disabled).toBe(true);
+  expect(lb.querySelector("button").disabled).toBe(true);
+  expect(document.activeElement).toBe(pub);
+  l.enCours();
+  expect(pub.textContent).toBe("Publier");
+  expect(pub.classList.contains("bouton-en-cours")).toBe(false);
+  expect(mod.disabled).toBe(false);
+  // Publication réussie : le même bouton devient « Dépublier », « Modifier » part, le focus reste.
+  l.majLigne("a", { etat: "Publié", actions: [{ id: "bascule", libelle: "Dépublier", libelleEnCours: "Dépublication…" }] });
+  expect(la.querySelector(".ya-objet-etat").textContent).toBe("Publié");
+  expect([...la.querySelectorAll("button")]).toEqual([pub]);
+  expect(pub.textContent).toBe("Dépublier");
+  expect(pub.getAttribute("aria-label")).toBe("Dépublier Revue des notes");
+  expect(document.activeElement).toBe(pub);
+  // Dépublication : « Modifier » revient ; si le bouton qui part avait le focus, il passe au suivant.
+  l.majLigne("a", { etat: "Brouillon", actions: [{ id: "modifier", libelle: "Modifier" }, { id: "bascule", libelle: "Publier" }] });
+  expect([...la.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Modifier", "Publier"]);
+  const m2 = la.querySelector("button");
+  m2.focus();
+  l.majLigne("a", { actions: [{ id: "bascule", libelle: "Dépublier" }] });
+  expect(document.activeElement).toBe(pub);
+  expect(() => l.majLigne("x", { actions: [] })).toThrow(/inconnue/);
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  expect(css).toMatch(/\.ya-objets-texte \.ya-objet \{[^}]*height: 32px/);
+  expect(css).toMatch(/\.ya-objet-etat \{[^}]*width: 72px/);
+  expect(css).toMatch(/\.ya-objets-texte \.ya-objet-actions \{[^}]*min-width: 168px/);
+  expect(css).toMatch(/\.ya-objets-texte \.ya-btn \{[^}]*height: 26px/);
+});

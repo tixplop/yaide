@@ -759,3 +759,27 @@ test("REQ187_AC6_bouton_logs_sans_aria_pressed_ni_expanded_et_regles_de_forme", 
   expect(css).toMatch(/\.ya-logs\[data-etat="avertissements"\][^{]*\{[^}]*color: var\(--warning\)/);
   expect(css).toMatch(/\.ya-logs\[data-etat="erreurs"\][^{]*\{[^}]*color: var\(--danger\)/);
 });
+
+test("REQ190_AC7_commande_workflows_du_rail_nom_bulle_haspopup_dialog_sans_expanded_ni_pressed", () => {
+  vi.useFakeTimers();
+  try {
+    const b = bouton({ icone: "waypoints", nomAccessible: "Workflows", positionInfoBulle: "gauche", ouvreDialogue: true });
+    expect(b.getAttribute("aria-label")).toBe("Workflows");
+    expect(b.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(b.hasAttribute("aria-expanded")).toBe(false);
+    expect(b.hasAttribute("aria-pressed")).toBe(false);
+    expect(b.hasAttribute("aria-keyshortcuts")).toBe(false);
+    expect(b.querySelector("svg").dataset.icone).toBe("waypoints");
+    document.body.append(b.enveloppe);
+    b.enveloppe.getBoundingClientRect = () => ({ left: window.innerWidth - 48, right: window.innerWidth, top: 300, bottom: 348, width: 48, height: 48 });
+    b.enveloppe.dispatchEvent(new Event("pointerenter"));
+    vi.advanceTimersByTime(400);
+    const t = document.querySelector("[role=tooltip]");
+    expect(t.textContent).toBe("Workflows");
+    // Position `gauche` : la bulle est posée à gauche de l'ancre (a.left - largeur).
+    expect(parseFloat(t.style.left)).toBe(window.innerWidth - 48);
+    b.enveloppe.dispatchEvent(new Event("pointerleave"));
+  } finally {
+    vi.useRealTimers();
+  }
+});
