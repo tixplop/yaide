@@ -1,9 +1,11 @@
 //! Exécution des workflows publiés (REQ-193, REQ-194, REQ-195, DEC-127) : surveillance des
 //! déclencheurs par la boucle de 3 s, enchaînement des actions, journal des logs (REQ-186).
 use super::{Noeud, Workflow};
-use crate::agent::agents::chemin_du_projet;
+use crate::agent::agents::{chemin_du_projet, Agents};
+use crate::agent::conversation::Gestionnaire;
 use crate::agent::declencheurs::{differences, parcourir, relever_planification, Empreinte};
 use crate::agent::outils_config::lire_interface;
+use crate::fichiers;
 use crate::journal::{Journal, Severite};
 use chrono::NaiveDateTime;
 use std::collections::{HashMap, HashSet};
@@ -203,18 +205,41 @@ async fn commande_shell(
     entree: &str,
     limite: Duration,
 ) -> Result<String, Echec> {
-    let mut enfant = tokio::process::Command::new("/bin/sh")
-        .arg("-c")
+    let mut c = tokio::process::Command::new("/bin/sh");
+    c.arg("-c")
         .arg(commande)
         .current_dir(projet)
-        .env("YAIDE_ENTREE", entree)
+        .env("YAIDE_ENTREE", entree);
+    lancer(c, limite, "la commande /bin/sh est introuvable").await
+}
+
+/// Lance `claude -p <demande>` dans la racine du projet, sans terminal (DEC-127).
+async fn session_claude(projet: &Path, demande: &str, limite: Duration) -> Result<String, Echec> {
+    let mut c = tokio::process::Command::new("claude");
+    c.arg("-p").arg(demande).current_dir(projet);
+    lancer(c, limite, "la commande claude est introuvable").await
+}
+
+/// Lance la commande sans terminal, attend sa fin dans la limite de temps ; sortie standard.
+async fn lancer(
+    mut commande: tokio::process::Command,
+    limite: Duration,
+    introuvable: &str,
+) -> Result<String, Echec> {
+    let mut enfant = commande
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0)
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| echec(&format!("impossible de lancer la commande ({e})")))?;
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                echec(introuvable)
+            } else {
+                echec(&format!("impossible de lancer la commande ({e})"))
+            }
+        })?;
     let pgid = enfant.id().unwrap_or(0) as i32;
     let (o, mut lo) = lire_en_continu(enfant.stdout.take());
     let (e, mut le) = lire_en_continu(enfant.stderr.take());
@@ -258,22 +283,100 @@ async fn commande_shell(
     }
 }
 
-async fn action(projet: &Path, n: &Noeud, entree: &str, limite: Duration) -> Result<String, Echec> {
+/// Le texte d'un réglage, `{{entree}}` remplacé par l'entrée.
+fn avec_entree(n: &Noeud, champ: &str, entree: &str) -> String {
+    reglage(n, champ).replace("{{entree}}", entree)
+}
+
+/// Un chemin du projet, revérifié après le remplacement de `{{entree}}`.
+fn chemin_verifie(n: &Noeud, champ: &str, entree: &str) -> Result<String, Echec> {
+    let c = avec_entree(n, champ, entree);
+    if chemin_du_projet(&c) {
+        Ok(c)
+    } else {
+        Err(echec("chemin hors du projet"))
+    }
+}
+
+fn echec_fichier(e: fichiers::Erreur, chemin: &str) -> Echec {
+    use fichiers::Erreur::*;
+    echec(&match e {
+        Interdit => "chemin hors du projet".to_string(),
+        Introuvable => format!("le fichier {chemin} n'existe pas"),
+        Existe => format!("{chemin} existe déjà"),
+        Binaire | NonUtf8 => format!("le fichier {chemin} n'est pas du texte"),
+        TropGros => format!("le fichier {chemin} est trop gros"),
+        Conflit(_) => format!("le fichier {chemin} a changé"),
+        Droits => format!("droits insuffisants sur {chemin}"),
+        Invalide(m) => m.trim_end_matches('.').to_string(),
+        Autre(m) => m,
+    })
+}
+
+/// « Fichier » : l'opération par les fonctions de `fichiers.rs`. Sortie : le contenu pour
+/// « Lire », l'entrée reçue pour les autres.
+fn action_fichier(projet: &Path, n: &Noeud, entree: &str) -> Result<String, Echec> {
+    let chemin = chemin_verifie(n, "chemin", entree)?;
+    let e = |e| echec_fichier(e, &chemin);
+    match reglage(n, "operation") {
+        "lire" => fichiers::lire(projet, &chemin).map(|(t, _)| t).map_err(e),
+        "ecrire" => {
+            let contenu = avec_entree(n, "contenu", entree);
+            fichiers::ecrire(projet, &chemin, None, contenu.as_bytes())
+                .map(|_| entree.to_string())
+                .map_err(e)
+        }
+        op @ ("copier" | "deplacer") => {
+            let destination = chemin_verifie(n, "destination", entree)?;
+            fichiers::remplacer(projet, &chemin, &destination, op == "deplacer")
+                .map(|_| entree.to_string())
+                .map_err(e)
+        }
+        "supprimer" => fichiers::supprimer(projet, &chemin)
+            .map(|_| entree.to_string())
+            .map_err(e),
+        _ => Err(echec("opération inconnue")),
+    }
+}
+
+/// « Agent » : un tour déclenché, attendu jusqu'à sa fin ; sortie : la dernière réponse.
+async fn action_agent(contexte: &Contexte<'_>, n: &Noeud, entree: &str) -> Result<String, Echec> {
+    let dossier = reglage(n, "agent");
+    let Some(agent) = contexte.agents.lire(dossier) else {
+        let nom = Some(reglage(n, "nom"))
+            .filter(|v| !v.is_empty())
+            .unwrap_or(dossier);
+        return Err(echec(&format!("l'agent « {nom} » n'existe plus")));
+    };
+    let message = avec_entree(n, "message", entree);
+    contexte
+        .gestionnaire
+        .tour_pour_workflow(&agent, &message)
+        .await
+        .map_err(|m| echec(m.trim_end_matches('.')))
+}
+
+/// Ce que les actions utilisent du serveur.
+struct Contexte<'a> {
+    projet: &'a Path,
+    agents: &'a Agents,
+    gestionnaire: &'a Arc<Gestionnaire>,
+    limite: Duration,
+}
+
+async fn action(contexte: &Contexte<'_>, n: &Noeud, entree: &str) -> Result<String, Echec> {
+    let (projet, limite) = (contexte.projet, contexte.limite);
     match n.genre.as_str() {
         "shell" => commande_shell(projet, reglage(n, "commande"), entree, limite).await,
-        // Agent, Session Claude et Fichier : T-457.
+        "claude" => session_claude(projet, &avec_entree(n, "demande", entree), limite).await,
+        "fichier" => action_fichier(projet, n, entree),
+        "agent" => action_agent(contexte, n, entree).await,
         _ => Err(echec("action non disponible")),
     }
 }
 
 /// Une exécution, du déclencheur à la dernière action ; le journal en est la seule trace.
-async fn executer(
-    projet: &Path,
-    w: &Workflow,
-    entree: String,
-    limite: Duration,
-    journal: &Journal,
-) {
+async fn executer(contexte: &Contexte<'_>, w: &Workflow, entree: String, journal: &Journal) {
     journal.ecrire(
         Severite::Information,
         &format!("Workflow « {} » lancé.", w.nom),
@@ -282,7 +385,7 @@ async fn executer(
     let mut sorties = HashMap::from([(d.id.clone(), entree)]);
     for (n, parent) in ordre(w, &d.id) {
         let recu = sorties.get(&parent).cloned().unwrap_or_default();
-        match action(projet, &n, &recu, limite).await {
+        match action(contexte, &n, &recu).await {
             Ok(s) => {
                 sorties.insert(n.id.clone(), s);
             }
@@ -312,6 +415,8 @@ pub fn passer(
     projet: &Path,
     publies: Vec<(String, Workflow)>,
     journal: &Arc<Journal>,
+    agents: &Arc<Agents>,
+    gestionnaire: &Arc<Gestionnaire>,
 ) {
     let actif = lire_interface(projet)
         .map(|i| i.fonctions.iter().all(|(c, v)| *c != "agents" || *v))
@@ -325,8 +430,15 @@ pub fn passer(
     );
     for (fichier, w, entree) in lancer {
         let (etat, projet, journal) = (etat.clone(), projet.to_path_buf(), journal.clone());
+        let (agents, gestionnaire) = (agents.clone(), gestionnaire.clone());
         tokio::spawn(async move {
-            executer(&projet, &w, entree, limite_commande(), &journal).await;
+            let contexte = Contexte {
+                projet: &projet,
+                agents: &agents,
+                gestionnaire: &gestionnaire,
+                limite: limite_commande(),
+            };
+            executer(&contexte, &w, entree, &journal).await;
             // La surveillance repart de l'état du moment (REQ-164).
             let mut e = etat.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(d) = declencheur(&w).filter(|d| d.genre == "dossier") {

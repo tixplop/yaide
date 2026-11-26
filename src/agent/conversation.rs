@@ -733,6 +733,51 @@ Always give file paths relative to the project root.",
         Ok(id)
     }
 
+    /// Tour déclenché d'un workflow (REQ-195) : nouvelle conversation avec l'agent seul, puis
+    /// attente de la fin du tour. Rend le texte de la dernière réponse de l'agent ; un refus
+    /// est enregistré dans une conversation (AC-164-6) et rendu comme erreur.
+    pub async fn tour_pour_workflow(
+        self: &Arc<Self>,
+        agent: &Agent,
+        texte: &str,
+    ) -> Result<String, String> {
+        let id = match self.envoyer_declenche(agent, texte) {
+            Ok(id) => id,
+            Err(ErreurEnvoi::Refus(r)) => {
+                let phrase = declencheurs::phrase_de_refus(&r);
+                let enregistre = self.enregistrer_refus(agent, texte, &phrase);
+                self.journaliser(
+                    &agent.nom,
+                    "refus",
+                    &declencheurs::evenement_court(texte),
+                    Some(&phrase),
+                );
+                enregistre?;
+                return Err(phrase);
+            }
+            Err(ErreurEnvoi::Systeme(m)) => return Err(m),
+            Err(ErreurEnvoi::Inconnue) => return Err("conversation inconnue".into()),
+        };
+        while verrou(&self.registre).contains_key(&id) {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let c = self.charger(&id).ok_or("conversation illisible")?;
+        match c.entrees.last() {
+            Some(Entree::Message {
+                variante, texte, ..
+            }) if variante == "erreur" => Err(texte.clone()),
+            _ => Ok(c
+                .entrees
+                .iter()
+                .rev()
+                .find_map(|e| match e {
+                    Entree::Agent { texte, .. } => Some(texte.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default()),
+        }
+    }
+
     /// Vrai si une conversation où figure l'agent `dossier` a un tour en cours (REQ-164).
     pub fn agent_occupe(&self, dossier: &str) -> bool {
         verrou(&self.registre).values().any(|t| {

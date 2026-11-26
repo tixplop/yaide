@@ -2477,6 +2477,8 @@ pub async fn servir(
                 &surveillance.projet_dir,
                 surveillance.workflows.publies(),
                 &surveillance.journal,
+                &surveillance.agents,
+                &surveillance.agent,
             );
             tokio::time::sleep(intervalle_verification()).await;
         }

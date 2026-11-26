@@ -380,6 +380,45 @@ pub fn copier(racine: &Path, de: &str, dans: &str) -> Result<String, Erreur> {
     })
 }
 
+/// Copie (`deplacer` faux) ou déplace `de` vers le chemin `vers`, qui est remplacé s'il existe ;
+/// les dossiers manquants sont créés (workflows, REQ-195).
+pub fn remplacer(racine: &Path, de: &str, vers: &str, deplacer: bool) -> Result<(), Erreur> {
+    let source = resoudre_lien(racine, de)?;
+    resoudre(racine, de)?;
+    let cible = resoudre(racine, vers)?;
+    let reel = racine.canonicalize()?;
+    if source == reel || cible == reel {
+        return Err(Erreur::Invalide("Chemin invalide."));
+    }
+    if !existe(&source) {
+        return Err(Erreur::Introuvable);
+    }
+    if source == cible {
+        return Ok(());
+    }
+    if cible.starts_with(&source) || source.starts_with(&cible) {
+        return Err(Erreur::Invalide(
+            "Un dossier ne peut pas être copié ou déplacé dans lui-même.",
+        ));
+    }
+    if existe(&cible) {
+        if fs::symlink_metadata(&cible)?.is_dir() {
+            fs::remove_dir_all(&cible)?;
+        } else {
+            fs::remove_file(&cible)?;
+        }
+    }
+    if let Some(parent) = cible.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    if deplacer {
+        fs::rename(&source, &cible)?;
+    } else {
+        copier_recursif(&source, &cible, true)?;
+    }
+    Ok(())
+}
+
 /// Importe un élément venu de l'extérieur dans le dossier `dans` (la racine si vide), sous le
 /// premier nom libre : un dossier vide, ou un fichier écrit par temporaire puis renommage.
 /// Rend le chemin créé, au format de l'arbre.

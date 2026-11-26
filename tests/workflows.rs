@@ -1141,3 +1141,407 @@ fn REQ195_AC3_commande_shell_dans_la_racine_sans_ouvrir_de_shell() {
     );
     assert_eq!(s.appel("GET", "/api/shells", &Value::Null).corps, avant);
 }
+
+fn fichier_op(id: &str, titre: &str, y: f64, reglages: Value) -> Value {
+    json!({ "id": id, "type": "fichier", "titre": titre, "x": 0.0, "y": y, "reglages": reglages })
+}
+
+fn attendre_termine(s: &Serveur, nom: &str, n: usize) {
+    assert!(
+        attendre(|| lignes_du_journal(s, &format!("Workflow « {nom} » terminé.")) == n),
+        "journal : {:?}",
+        journal(s)
+    );
+}
+
+fn publier_sur_notes(s: &Serveur, nom: &str, noeuds: Vec<Value>, liens: Value) {
+    let mut tous = vec![dossier("notes", json!(["cree"]))];
+    tous.extend(noeuds);
+    let f = creer(s, nom, json!(tous), liens);
+    publier(s, &f);
+    premier_regard();
+}
+
+#[test]
+fn REQ194_AC1_l_entree_est_dans_l_environnement_et_remplace_dans_les_champs() {
+    let racine = preparer("act1");
+    let s = demarrer(&racine, "p");
+    publier_sur_notes(
+        &s,
+        "Revue des notes",
+        vec![
+            shell(
+                "a",
+                "Commande shell 1",
+                10.0,
+                "printf '%s\\n' \"$YAIDE_ENTREE\" | wc -l",
+            ),
+            fichier_op(
+                "b",
+                "Fichier 1",
+                20.0,
+                json!({ "operation": "ecrire", "chemin": "res.txt", "contenu": "lignes : {{entree}}" }),
+            ),
+        ],
+        json!([{ "de": "t", "vers": "a" }, { "de": "a", "vers": "b" }]),
+    );
+    ecrire_projet(&s, "notes/a.md", "1");
+    attendre_termine(&s, "Revue des notes", 1);
+    assert_eq!(lire_projet(&s, "res.txt"), "lignes : 2\n");
+}
+
+#[test]
+fn REQ193_AC5_une_action_fichier_dans_le_dossier_surveille_ne_relance_rien() {
+    let racine = preparer("act2");
+    let s = demarrer(&racine, "p");
+    publier_sur_notes(
+        &s,
+        "Revue des notes",
+        vec![fichier_op(
+            "a",
+            "Fichier 1",
+            10.0,
+            json!({ "operation": "ecrire", "chemin": "notes/sortie.md", "contenu": "x" }),
+        )],
+        json!([{ "de": "t", "vers": "a" }]),
+    );
+    ecrire_projet(&s, "notes/a.md", "1");
+    attendre_termine(&s, "Revue des notes", 1);
+    laisser_passer();
+    laisser_passer();
+    assert_eq!(lire_projet(&s, "notes/sortie.md"), "x");
+    assert_eq!(nb_nouveau_lancement(&s), 1);
+}
+
+#[test]
+fn REQ195_AC5_operations_sur_les_fichiers_et_chemins_refuses() {
+    let racine = preparer("act3");
+    let s = demarrer(&racine, "p");
+    let chaine: Vec<Value> = vec![
+        fichier_op(
+            "a",
+            "Fichier 1",
+            1.0,
+            json!({ "operation": "ecrire", "chemin": "out/a.txt", "contenu": "{{entree}}" }),
+        ),
+        fichier_op(
+            "b",
+            "Fichier 2",
+            2.0,
+            json!({ "operation": "lire", "chemin": "out/a.txt" }),
+        ),
+        shell(
+            "c",
+            "Commande shell 1",
+            3.0,
+            "printf '%s' \"$YAIDE_ENTREE\" > lu.txt",
+        ),
+        fichier_op(
+            "d",
+            "Fichier 3",
+            4.0,
+            json!({ "operation": "copier", "chemin": "out/a.txt", "destination": "b.txt" }),
+        ),
+        shell("g", "Commande shell 2", 4.5, "cat b.txt > copie.txt"),
+        fichier_op(
+            "e",
+            "Fichier 4",
+            5.0,
+            json!({ "operation": "deplacer", "chemin": "out/a.txt", "destination": "c/c.txt" }),
+        ),
+        fichier_op(
+            "f",
+            "Fichier 5",
+            6.0,
+            json!({ "operation": "supprimer", "chemin": "b.txt" }),
+        ),
+    ];
+    let liens = json!([
+        { "de": "t", "vers": "a" }, { "de": "a", "vers": "b" }, { "de": "b", "vers": "c" },
+        { "de": "c", "vers": "d" }, { "de": "d", "vers": "g" }, { "de": "g", "vers": "e" }, { "de": "e", "vers": "f" }
+    ]);
+    publier_sur_notes(&s, "Chaine", chaine, liens);
+    ecrire_projet(&s, "notes/a.md", "1");
+    attendre_termine(&s, "Chaine", 1);
+    let entree = "Évènement : changements dans le dossier `notes/` :\n- `notes/a.md` créé";
+    // « Lire » donne le contenu écrit, que la commande suivante reçoit.
+    assert_eq!(lire_projet(&s, "lu.txt"), entree);
+    assert_eq!(lire_projet(&s, "c/c.txt"), entree);
+    assert_eq!(lire_projet(&s, "copie.txt"), entree);
+    assert!(!s.projet.join("out/a.txt").exists());
+    assert!(!s.projet.join("b.txt").exists());
+    assert!(s.projet.join("out").is_dir());
+
+    // Fichier absent.
+    let f = creer(
+        &s,
+        "Absent",
+        json!([
+            dossier("autre", json!(["cree"])),
+            fichier_op(
+                "a",
+                "Fichier 1",
+                1.0,
+                json!({ "operation": "lire", "chemin": "out/z.txt" })
+            )
+        ]),
+        json!([{ "de": "t", "vers": "a" }]),
+    );
+    publier(&s, &f);
+    // Chemin devenu `../x` après le remplacement de {{entree}}.
+    let f = creer(
+        &s,
+        "Dehors",
+        json!([
+            dossier("hors", json!(["cree"])),
+            shell("s", "Commande shell 1", 1.0, "printf '../x'"),
+            fichier_op(
+                "a",
+                "Fichier 1",
+                2.0,
+                json!({ "operation": "ecrire", "chemin": "{{entree}}", "contenu": "secret" })
+            )
+        ]),
+        json!([{ "de": "t", "vers": "s" }, { "de": "s", "vers": "a" }]),
+    );
+    publier(&s, &f);
+    premier_regard();
+    ecrire_projet(&s, "autre/a.md", "1");
+    ecrire_projet(&s, "hors/a.md", "1");
+    let m1 = "Workflow « Absent » : échec de « Fichier 1 » : le fichier out/z.txt n'existe pas.";
+    let m2 = "Workflow « Dehors » : échec de « Fichier 1 » : chemin hors du projet.";
+    assert!(
+        attendre(|| lignes_du_journal(&s, m1) == 1 && lignes_du_journal(&s, m2) == 1),
+        "journal : {:?}",
+        journal(&s)
+    );
+    assert!(!racine.join("p/../x").exists());
+    assert!(!racine.join("x").exists());
+}
+
+/// Dossier de `PATH` avec un faux `claude` qui écrit ses arguments et son dossier de travail.
+fn faux_claude(racine: &Path) -> (String, PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = racine.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let temoin = racine.join("temoin.txt");
+    let script = format!(
+        "#!/bin/sh\n{{ for a; do echo \"arg=$a\"; done; echo \"pwd=$(pwd)\"; }} > '{}'\necho fait\n",
+        temoin.display()
+    );
+    let f = bin.join("claude");
+    std::fs::write(&f, script).unwrap();
+    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
+    (format!("{}:/usr/bin:/bin", bin.display()), temoin)
+}
+
+#[test]
+fn REQ195_AC4_session_claude_avec_le_path_puis_sans_claude() {
+    let racine = preparer("act4");
+    let (path, temoin) = faux_claude(&racine);
+    let s = demarrer_avec_env(&racine, "p", &[("PATH", &path)]);
+    publier_sur_notes(
+        &s,
+        "Revue des notes",
+        vec![
+            shell("s", "Commande shell 0", 0.5, "printf x.md"),
+            json!({ "id": "a", "type": "claude", "titre": "Session Claude 1", "x": 0.0, "y": 1.0,
+                    "reglages": { "demande": "Résume {{entree}}" } }),
+            shell(
+                "b",
+                "Commande shell 1",
+                2.0,
+                "printf '%s' \"$YAIDE_ENTREE\" > sortie.txt",
+            ),
+        ],
+        json!([{ "de": "t", "vers": "s" }, { "de": "s", "vers": "a" }, { "de": "a", "vers": "b" }]),
+    );
+    ecrire_projet(&s, "notes/a.md", "1");
+    attendre_termine(&s, "Revue des notes", 1);
+    let t = std::fs::read_to_string(&temoin).unwrap();
+    assert_eq!(
+        t,
+        format!("arg=-p\narg=Résume x.md\npwd={}\n", s.projet.display())
+    );
+    assert_eq!(lire_projet(&s, "sortie.txt"), "fait\n");
+    drop(s);
+
+    let racine = preparer("act4b");
+    let s = demarrer_avec_env(&racine, "p", &[("PATH", "/usr/bin:/bin")]);
+    publier_sur_notes(
+        &s,
+        "Revue des notes",
+        vec![
+            json!({ "id": "a", "type": "claude", "titre": "Session Claude 1", "x": 0.0, "y": 1.0,
+                     "reglages": { "demande": "Bonjour" } }),
+        ],
+        json!([{ "de": "t", "vers": "a" }]),
+    );
+    ecrire_projet(&s, "notes/a.md", "1");
+    let m = "Workflow « Revue des notes » : échec de « Session Claude 1 » : la commande claude est introuvable.";
+    assert!(
+        attendre(|| lignes_du_journal(&s, m) == 1),
+        "{:?}",
+        journal(&s)
+    );
+}
+
+type Recues = std::sync::Arc<std::sync::Mutex<Vec<Value>>>;
+
+/// Faux provider compatible OpenAI : répond toujours `texte` ; chaque requête est notée.
+fn faux_provider(texte: &'static str) -> (String, Recues) {
+    use axum::body::Bytes;
+    use axum::extract::State;
+    async fn rep(State(r): State<(Recues, &'static str)>, corps: Bytes) -> String {
+        r.0.lock()
+            .unwrap()
+            .push(serde_json::from_slice::<Value>(&corps).unwrap_or(Value::Null));
+        json!({"choices": [{"message": {"content": r.1}}],
+               "usage": {"prompt_tokens": 7, "completion_tokens": 1}})
+        .to_string()
+    }
+    let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    ecoute.set_nonblocking(true).unwrap();
+    let adresse = format!("http://{}", ecoute.local_addr().unwrap());
+    let recues: Recues = Default::default();
+    let etat = (recues.clone(), texte);
+    std::thread::spawn(move || {
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async move {
+                let app = axum::Router::new().fallback(rep).with_state(etat);
+                let ecoute = tokio::net::TcpListener::from_std(ecoute).unwrap();
+                axum::serve(ecoute, app).await.unwrap();
+            });
+    });
+    (adresse, recues)
+}
+
+fn configurer(s: &Serveur, adresse: &str, cle: bool) {
+    let mut corps = json!({ "adresse": adresse });
+    if cle {
+        corps["cle"] = json!("sk-x");
+    }
+    let r = s.appel("PUT", "/api/agent/providers/openai", &corps);
+    assert_eq!(r.code, 200, "{}", r.corps);
+    let p = json!({ "nom": "p", "provider": "openai", "modele": "m" });
+    let r = s.appel("PUT", "/api/agent/profils", &p);
+    assert_eq!(r.code, 200, "{}", r.corps);
+}
+
+fn creer_relecteur(s: &Serveur) {
+    let r = s.appel(
+        "PUT",
+        "/api/agent/agents",
+        &json!({ "nom": "Relecteur", "couleur": "vert" }),
+    );
+    assert_eq!(r.code, 200, "{}", r.corps);
+    std::fs::write(s.yaide().join("agents/relecteur/AGENTS.md"), "Tu relis.").unwrap();
+}
+
+fn conversations(s: &Serveur) -> Vec<Value> {
+    s.appel("GET", "/api/agent/conversations", &Value::Null)
+        .json()
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+fn agent_noeud() -> Value {
+    json!({ "id": "a", "type": "agent", "titre": "Agent 1", "x": 0.0, "y": 1.0,
+            "reglages": { "agent": "relecteur", "nom": "Relecteur", "message": "Relis : {{entree}}" } })
+}
+
+#[test]
+fn REQ195_AC1_agent_seul_puis_sortie_passee_a_l_action_suivante() {
+    let (adresse, recues) = faux_provider("Rien à redire.");
+    let racine = preparer("act5");
+    let s = demarrer(&racine, "p");
+    configurer(&s, &adresse, true);
+    creer_relecteur(&s);
+    publier_sur_notes(
+        &s,
+        "Revue des notes",
+        vec![
+            agent_noeud(),
+            fichier_op(
+                "b",
+                "Fichier 1",
+                2.0,
+                json!({ "operation": "ecrire", "chemin": "avis.txt", "contenu": "{{entree}}" }),
+            ),
+        ],
+        json!([{ "de": "t", "vers": "a" }, { "de": "a", "vers": "b" }]),
+    );
+    ecrire_projet(&s, "notes/a.md", "1");
+    attendre_termine(&s, "Revue des notes", 1);
+    assert_eq!(lire_projet(&s, "avis.txt"), "Rien à redire.");
+    let l = conversations(&s);
+    assert_eq!(l.len(), 1);
+    let v = s
+        .appel(
+            "GET",
+            &format!("/api/agent/conversations/{}", l[0]["id"].as_str().unwrap()),
+            &Value::Null,
+        )
+        .json();
+    assert_eq!(v["agents"].as_array().unwrap().len(), 1);
+    assert_eq!(v["agents"][0]["dossier"], "relecteur");
+    assert!(v["entrees"][0]["texte"].as_str().unwrap().starts_with(
+        "Relis : Évènement : changements dans le dossier `notes/` :\n- `notes/a.md` créé"
+    ));
+    let reqs = recues.lock().unwrap().clone();
+    let r = &reqs[0];
+    assert_eq!(r["model"], "m");
+    let corps = r["messages"].to_string();
+    assert!(corps.contains("Tu relis."));
+    assert!(corps.contains("Relis : Évènement : changements dans le dossier"));
+}
+
+#[test]
+fn REQ195_AC2_refus_enregistre_et_agent_disparu() {
+    let (adresse, recues) = faux_provider("ok");
+    let racine = preparer("act6");
+    let s = demarrer(&racine, "p");
+    configurer(&s, &adresse, false);
+    creer_relecteur(&s);
+    publier_sur_notes(
+        &s,
+        "Revue des notes",
+        vec![agent_noeud()],
+        json!([{ "de": "t", "vers": "a" }]),
+    );
+    ecrire_projet(&s, "notes/a.md", "1");
+    let refus = "Aucune clé pour OpenAI. Ajoutez-la avec Ctrl+P, puis > Providers LLM";
+    let m = format!("Workflow « Revue des notes » : échec de « Agent 1 » : {refus}.");
+    assert!(
+        attendre(|| lignes_du_journal(&s, &m) == 1),
+        "{:?}",
+        journal(&s)
+    );
+    let l = conversations(&s);
+    assert_eq!(l.len(), 1);
+    let v = s
+        .appel(
+            "GET",
+            &format!("/api/agent/conversations/{}", l[0]["id"].as_str().unwrap()),
+            &Value::Null,
+        )
+        .json();
+    assert!(v["entrees"][0]["texte"]
+        .as_str()
+        .unwrap()
+        .starts_with("Relis : "));
+    assert_eq!(v["entrees"][1]["variante"], "erreur");
+    assert_eq!(v["entrees"][1]["texte"], format!("{refus}."));
+    assert!(recues.lock().unwrap().is_empty());
+
+    std::fs::remove_dir_all(s.yaide().join("agents/relecteur")).unwrap();
+    ecrire_projet(&s, "notes/b.md", "1");
+    let m = "Workflow « Revue des notes » : échec de « Agent 1 » : l'agent « Relecteur » n'existe plus.";
+    assert!(
+        attendre(|| lignes_du_journal(&s, m) == 1),
+        "{:?}",
+        journal(&s)
+    );
+}
