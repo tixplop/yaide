@@ -3,11 +3,12 @@
 Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au plus). Les `*.test.js` sont à côté de leur module.
 
 ## Serveur (Rust, `src/`)
+- src/journal.rs — journal des logs en mémoire : lignes numérotées, 1 000 au plus, numéro de purge (REQ-186, DEC-123) — Journal, Severite
 - src/main.rs — point d'entrée : lit la ligne de commande, lance le serveur ou une sous-commande — main
 - src/cli.rs — analyse des arguments, aide, saisie du mot de passe — analyser, valider_saisies
 - src/config.rs — dossier de configuration, mot de passe haché (argon2) ; `src/environnements.rs` : `environnements.json` de l'utilisateur, droits 600 (REQ-182) — dossier_config, definir_mot_de_passe, verifier_mot_de_passe
 - src/auth.rs — sessions (un cookie par port d'écoute), blocage après échecs ; `src/tls.rs` : certificat auto-signé (rcgen) — creer_session, session_valide, bloque
-- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180, route presse-papiers-windows REQ-181, routes environnements REQ-182, ouverture avec environnement REQ-183, relais opencode par environnement REQ-184)
+- src/serveur.rs — routeur axum : toutes les routes `/api/*`, WebSocket, fichiers statiques embarqués — ecouter, servir (import REQ-180, route presse-papiers-windows REQ-181, routes environnements REQ-182, ouverture avec environnement REQ-183, relais opencode par environnement REQ-184, routes `/api/journal` et ligne « Erreur » pour toute réponse 5xx REQ-186)
 - src/windows.rs — presse-papiers de Windows rempli par powershell.exe dans WSL (REQ-181) — disponible, copier
 - src/fichiers.rs — arborescence et opérations sur les fichiers du projet  — lister, lire, ecrire, importer (REQ-180)
 - src/depot.rs — dépôt git, `.gitignore`, worktrees — est_un_depot, worktrees
@@ -16,10 +17,9 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - src/shells.rs — shells et sessions Claude en pseudo-terminal, survie aux coupures, variables d'un environnement ; session Claude lancée avec CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 (REQ-102, DEC-122) ; intégration à bash et zsh (séquence retirée de la sortie, commandes terminées remises aux déclencheurs, REQ-167) — abonner, ecrire, prendre_commandes
 - src/integration-shell/ — fichiers de démarrage embarqués : `bash-rc` (`--rcfile`) et `zsh/` (`ZDOTDIR`), écrits dans le dossier de configuration au lancement d'un shell (REQ-167)
 - src/opencode.rs — processus `opencode serve` du projet, un par environnement utilisé plus celui sans environnement (REQ-184) — assurer, arreter, disponible
-- src/apercu.rs — jetons et service de l'aperçu HTML — nouveau_jeton, jeton_ok, charger
+- src/apercu.rs — jetons et service de l'aperçu HTML — nouveau_jeton, jeton_ok, charger ; `src/decoupage.rs` : découpage des fichiers en passages — decouper, valider
 - src/version.rs — version, nouvelle version, `yaide update` — etat_maj, demarrer_maj, derniere
 - src/connaissance.rs — base de connaissance vectorielle (collections, pointeurs, mise à jour, dossiers suivis REQ-176) — valider, lire_config, ecrire_config
-- src/decoupage.rs — découpage des fichiers en passages — decouper, valider
 - src/agent/mod.rs — déclare les modules de l'agent
 - src/agent/provider.rs — providers LLM (formats OpenAI et Anthropic, requêtes en `stream`), embeddings — client, envoyer, embeddings
 - src/agent/provider_flux.rs — lecture des réponses en flux Server-Sent Events (REQ-085), suivi `Progres` — lire
@@ -91,8 +91,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/vues/connexion.js — écran de connexion, dialogue de fin de session après Déconnexion ou arrêt (REQ-162) — vueConnexion
 
 ## Tests
-- tests/*.rs — intégration Rust, un fichier par domaine (socle, environnements, auth, fichiers, git, shells, agent, declencheurs, connaissance, opencode, mise_a_jour…)
-- tests/faux-mcp.mjs, faux-opencode.mjs — faux serveurs MCP et opencode
+- tests/*.rs — intégration Rust, un fichier par domaine (socle, environnements, auth, fichiers, git, shells, agent, declencheurs, connaissance, opencode, mise_a_jour, journal…) ; tests/faux-mcp.mjs, faux-opencode.mjs : faux serveurs MCP et opencode
 - web/src/**/*.test.js — Vitest, composants et vues
 - e2e/*.spec.js — Playwright, un fichier par parcours ; e2e/aides.js, faux-provider.js, relais.js, capturer-opencode.js — aides communes
 
@@ -148,3 +147,4 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-154 coller un diagramme mermaid (organigramme : lecture et placement ; autres types : traduction du dessin ; collage, refus) → web/src/mermaid-jdiag.js, web/src/mermaid-dessin.js, ui/tableau.js, ui/message.js
 - REQ-127 à REQ-150 whiteboards → web/src/jdiag.js, ui/tableau*.js, vues/editeur.js (zoneWhiteboard), vues/fichiers.js, src/agent/jdiag.rs, jdiag_trace.rs, jdiag_controle.rs, outils.rs
 - REQ-162 arrêter Yaide : route `/api/arret` → src/serveur.rs (`arreter_yaide`) ; dialogue de fin de session (partie design system : `dialogue` position `milieu`, icône `power`, token `--largeur-actions-titre`) → web/src/ui/dialogue.js, icones.js, tokens.css, composants.css ; bouton « Arrêter Yaide » et dialogue de fin de session (option `fin` de l'écran de connexion, passée par `main.js`) → web/src/vues/principale.js, vues/connexion.js, main.js, api.js (`arret`)
+- REQ-186 journal des logs (stockage, routes, 5xx, ligne de démarrage) → src/journal.rs, serveur.rs, tests/journal.rs

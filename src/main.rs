@@ -12,6 +12,7 @@ mod depot;
 mod environnements;
 mod fichiers;
 mod git;
+mod journal;
 mod opencode;
 mod recherche;
 mod serveur;

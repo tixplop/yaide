@@ -5,6 +5,7 @@ use crate::agent::outils::Limites;
 use crate::agent::reglages::{Erreur, Reglages};
 use crate::decoupage::Decoupage;
 use crate::environnements;
+use crate::journal::{self, Journal, Severite};
 use crate::{
     auth, commande_mise_a_jour, config, connaissance, depot, fichiers, git, opencode, recherche,
     shells, version, windows,
@@ -46,6 +47,7 @@ struct Etat {
     echecs_base: Arc<connaissance::Echecs>,
     /// Réveillé par `/api/arret` : déclenche le même arrêt que SIGTERM.
     arret_demande: tokio::sync::Notify,
+    journal: Journal,
 }
 
 type Partage = Arc<Etat>;
@@ -126,7 +128,12 @@ async fn garde(State(etat): State<Partage>, req: Request, next: Next) -> Respons
         return StatusCode::FORBIDDEN.into_response();
     }
     let apercu = req.uri().path().starts_with("/apercu/");
+    let methode = req.method().clone();
+    let chemin = req.uri().path().to_string();
     let mut rep = next.run(req).await;
+    if rep.status().is_server_error() && chemin.starts_with("/api/") {
+        rep = journaliser_5xx(&etat, &methode, &chemin, rep).await;
+    }
     let h = rep.headers_mut();
     if apercu {
         // Page d'origine opaque (DEC-069) : ses propres en-têtes, pas la règle de Yaide.
@@ -140,6 +147,69 @@ async fn garde(State(etat): State<Partage>, req: Request, next: Next) -> Respons
         h.insert(header::CONTENT_SECURITY_POLICY, CSP.parse().unwrap());
     }
     rep
+}
+
+/// Écrit une ligne « Erreur » pour une réponse 5xx d'une route `/api/` (AC-186-5) ; rend la réponse intacte.
+async fn journaliser_5xx(etat: &Etat, methode: &Method, chemin: &str, rep: Response) -> Response {
+    let (parties, corps) = rep.into_parts();
+    let octets = axum::body::to_bytes(corps, 1 << 20)
+        .await
+        .unwrap_or_default();
+    let brut = String::from_utf8_lossy(&octets);
+    let message = serde_json::from_str::<serde_json::Value>(&brut)
+        .ok()
+        .and_then(|v| v["message"].as_str().map(str::to_string))
+        .unwrap_or_else(|| brut.to_string());
+    let message = message.trim().trim_end_matches('.');
+    etat.journal.ecrire(
+        Severite::Erreur,
+        &format!(
+            "{methode} {chemin} a répondu {} : {message}.",
+            parties.status.as_u16()
+        ),
+    );
+    Response::from_parts(parties, axum::body::Body::from(octets))
+}
+
+async fn journal_lire(State(etat): State<Partage>, Query(q): Requete) -> Response {
+    let apres = q.get("apres").and_then(|a| a.parse().ok()).unwrap_or(0);
+    let (purge, lignes) = etat.journal.depuis(apres);
+    json_rep(
+        StatusCode::OK,
+        serde_json::json!({ "purge": purge, "lignes": lignes }),
+    )
+}
+
+/// Lignes de la page (toasts, erreurs JavaScript), avec leur heure d'origine.
+async fn journal_ecrire(State(etat): State<Partage>, corps: Bytes) -> Response {
+    #[derive(serde::Deserialize)]
+    struct Entree {
+        heure: Option<u64>,
+        severite: Severite,
+        message: String,
+        detail: Option<String>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Corps {
+        lignes: Vec<Entree>,
+    }
+    let Ok(c) = serde_json::from_slice::<Corps>(&corps) else {
+        return corps_invalide();
+    };
+    for e in c.lignes {
+        etat.journal.ecrire_a(
+            e.heure.unwrap_or_else(journal::maintenant_ms),
+            e.severite,
+            &e.message,
+            e.detail,
+        );
+    }
+    json_rep(StatusCode::OK, serde_json::json!({}))
+}
+
+async fn journal_purger(State(etat): State<Partage>) -> Response {
+    etat.journal.purger();
+    json_rep(StatusCode::OK, serde_json::json!({}))
 }
 
 async fn jeton_apercu(State(etat): State<Partage>) -> Response {
@@ -2222,7 +2292,15 @@ pub async fn servir(
         verrou_base: Default::default(),
         echecs_base: Default::default(),
         arret_demande: Default::default(),
+        journal: Default::default(),
     });
+    etat.journal.ecrire(
+        Severite::Information,
+        &format!(
+            "Yaide v{} démarré sur https://localhost:{port}.",
+            env!("CARGO_PKG_VERSION")
+        ),
+    );
     let verification = etat.clone();
     let verification = tokio::spawn(async move {
         let client = crate::agent::provider::client();
@@ -2306,6 +2384,12 @@ pub async fn servir(
         .route(
             "/api/environnements/{nom}",
             delete(environnements_supprimer),
+        )
+        .route(
+            "/api/journal",
+            get(journal_lire)
+                .post(journal_ecrire)
+                .delete(journal_purger),
         )
         .route("/api/opencode", get(opencode_disponible))
         .route("/api/opencode/api/{*chemin}", any(relais_opencode))
