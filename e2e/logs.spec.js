@@ -65,6 +65,18 @@ test("REQ186_AC1_REQ188_AC6_REQ187_AC5_REQ188_AC10_parcours_P147_P148_console_de
   await bouton(page).click();
   await expect(rangeeRefus(page)).toBeVisible();
 
+  // AC-188-1 : fermée ou quittée pour un shell, la console ne couvre plus le terminal.
+  await page.getByRole("button", { name: "Fermer Logs" }).click();
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(page.locator(".terminal.xterm:visible")).toBeVisible();
+  await expect(console_(page)).toBeHidden();
+  await bouton(page).click();
+  await expect(console_(page)).toBeVisible();
+  await page.getByRole("tab", { name: /^shell/ }).click();
+  await expect(console_(page)).toBeHidden();
+  await expect(page.locator(".terminal.xterm:visible")).toBeVisible();
+  await bouton(page).click();
+
   // Étape 5 : la purge vide la console ici, l'icône revient au « i », l'autre page suit en moins de 5 s, et le rechargement n'y change rien.
   await page.getByRole("button", { name: "Purger les logs" }).click();
   await expect(console_(page).getByText("Aucun log.")).toBeVisible();

@@ -77,6 +77,10 @@ test("REQ068_AC21_claude_hidden_masque_le_terminal", () => {
   a(".claude[hidden]", "display: none");
 });
 
+test("REQ188_AC3_journal_hidden_masque_la_console", () => {
+  a(".ya-journal[hidden]", "display: none");
+});
+
 test("REQ038_AC5_le_champ_suit_le_theme_de_la_page", () => {
   // Aucune règle du champ ne fige color-scheme : la liste native et les barres de défilement suivent <html>.
   expect(css.replace(/\/\*[^]*?\*\//g, "")).not.toMatch(/color-scheme/);

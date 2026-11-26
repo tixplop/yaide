@@ -1061,6 +1061,7 @@ mark.ya-occurrence { background: linear-gradient(var(--occurrence), var(--occurr
 
 /* Console des logs (C-010, REQ-188) */
 .ya-journal { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-000); }
+.ya-journal[hidden] { display: none; }
 .ya-journal-barre { flex: none; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); min-height: 34px; padding: var(--space-1) var(--space-2); border-bottom: var(--trait) solid var(--line); }
 .ya-journal-severite { flex: none; width: 128px; }
 .ya-journal-severite .ya-input { flex: 1 1 0; }
