@@ -257,6 +257,33 @@ export const creerWorkflow = (nom) => ecritureWorkflow("/api/workflows", json("P
 export const publierWorkflow = (fichier) => ecritureWorkflow(`/api/workflows/${q(fichier)}/publier`, { method: "POST" });
 export const depublierWorkflow = (fichier) => ecritureWorkflow(`/api/workflows/${q(fichier)}/depublier`, { method: "POST" });
 
+/** Le nœud en cours d'un workflow (REQ-197, DEC-128) : `{ publie, enCours }` (`enCours` : l'identifiant du nœud, ou rien), `{ cause, message }` ou `{ coupure: true }`. */
+export async function executionWorkflow(fichier) {
+  const r = await appeler(`/api/workflows/${q(fichier)}/execution`);
+  if (!r) return { coupure: true };
+  try {
+    const corps = await r.json();
+    if (r.ok) return { publie: Boolean(corps.publie), enCours: typeof corps.enCours === "string" ? corps.enCours : null };
+  } catch {
+    // Réponse illisible : le statut seul le dit.
+  }
+  return { cause: "erreur", message: `erreur ${r.status}` };
+}
+
+/** Arrête l'exécution en cours (REQ-198) : `{}`, `{ cause: "aucune", message }` (409 : rien ne tourne), `{ cause: "erreur", message }` ou `{ coupure: true }`. */
+export async function arreterWorkflow(fichier) {
+  const r = await appeler(`/api/workflows/${q(fichier)}/arreter`, { method: "POST" });
+  if (!r) return { coupure: true };
+  if (r.ok) return {};
+  let texte = "";
+  try {
+    texte = await r.text();
+  } catch {
+    // Corps illisible : le statut seul le dit.
+  }
+  return { cause: r.status === 409 ? "aucune" : "erreur", message: texte || `erreur ${r.status}` };
+}
+
 /** Version de chaque chemin (`null` si le fichier n'existe plus), ou null si le serveur ne répond pas. */
 export async function versionsFichiers(chemins) {
   const r = await appeler("/api/fichiers/versions", { method: "POST", body: chemins.join("\n"), signal: AbortSignal.timeout(2000) });

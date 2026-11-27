@@ -1,4 +1,4 @@
-import { adresseApercu, ecrireFichier, ecrireWorkflow, fermerShell, jetonApercu, lireFichier, lireWorkflow, listerAgents, listerChemins, oublierJetonApercu, listeShells, versionsFichiers } from "../api.js";
+import { adresseApercu, arreterWorkflow, depublierWorkflow, ecrireFichier, ecrireWorkflow, executionWorkflow, fermerShell, jetonApercu, lireFichier, lireWorkflow, listerAgents, listerChemins, oublierJetonApercu, listeShells, publierWorkflow, versionsFichiers } from "../api.js";
 import { decider, texteAttente } from "../brouillons.js";
 import { decisionDisque } from "../disque.js";
 import { formatable, formater as formaterTexte } from "../formatage.js";
@@ -765,7 +765,83 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     statut.setAttribute("role", "status");
     o.barreWb = { statut, avant, arriere };
     majBarreWhiteboard(o);
-    return [arriere.enveloppe, statut, avant.enveloppe, tout.enveloppe];
+    if (!o.btns) {
+      const texte = (libelle, action) => {
+        const b = bouton({ libelle });
+        b.addEventListener("click", () => actionWorkflow(o, action()));
+        return b;
+      };
+      o.btns = { arreter: texte("Arrêter", () => "arreter"), bascule: texte("Publier", () => (o.publie ? "depublier" : "publier")) };
+      majBoutonsWf(o);
+    }
+    return [...(o.publie && o.enCours ? [o.btns.arreter] : []), o.btns.bascule, arriere.enveloppe, statut, avant.enveloppe, tout.enveloppe];
+  }
+
+  /** « Arrêter », « Publier » et « Dépublier » (REQ-199) : libellés, état occupé, présence d'« Arrêter » ; le focus d'« Arrêter » qui part va sur « Dépublier ». */
+  function majBoutonsWf(o) {
+    const b = o.btns;
+    if (!b) return;
+    const aFocus = document.activeElement === b.arreter;
+    b.bascule.textContent = o.occupe === "publier" ? "Publication…" : o.occupe === "depublier" ? "Dépublication…" : o.publie ? "Dépublier" : "Publier";
+    b.arreter.textContent = o.occupe === "arreter" ? "Arrêt…" : "Arrêter";
+    const occupe = { bascule: o.occupe === "publier" || o.occupe === "depublier", arreter: o.occupe === "arreter" };
+    for (const [nom, x] of Object.entries(b)) {
+      for (const attribut of ["aria-busy", "aria-disabled"]) {
+        if (occupe[nom]) x.setAttribute(attribut, "true");
+        else x.removeAttribute(attribut);
+      }
+      x.disabled = Boolean(o.occupe) && !occupe[nom];
+    }
+    if (o.publie && o.enCours) {
+      if (!b.arreter.isConnected) b.bascule.before(b.arreter);
+    } else {
+      if (aFocus) b.bascule.focus();
+      b.arreter.remove();
+    }
+  }
+
+  /** « Publier », « Dépublier » ou « Arrêter » depuis l'onglet : mêmes routes, refus et messages que le dialogue « Workflows » (V-016), montrés en haut de l'onglet. */
+  async function actionWorkflow(o, action) {
+    if (o.occupe || detruit) return;
+    const nom = o.nom;
+    const sansPoint = (t) => String(t ?? "erreur").replace(/\.$/, "");
+    const erreur = (texte, points) => message({ texte, points, variante: "erreur", fermable: true });
+    o.zone.poserResultat(null);
+    if (action === "publier" && o.modifie) {
+      o.zone.poserResultat(erreur(`${nom} n'est pas publié :`, ["Enregistrez d'abord le workflow."]));
+      return;
+    }
+    o.occupe = action;
+    majBoutonsWf(o);
+    const r = await (action === "publier" ? publierWorkflow : action === "depublier" ? depublierWorkflow : arreterWorkflow)(o.fichier);
+    if (detruit || !liste.includes(o)) return;
+    o.occupe = null;
+    let resultat;
+    let focus = action === "arreter" ? o.btns.arreter : o.btns.bascule;
+    if (r.coupure) resultat = erreur("Connexion perdue. Réessayez au retour.");
+    else if (r.problemes) resultat = erreur(`${nom} n'est pas publié :`, r.problemes);
+    else if (r.cause === "aucune") {
+      resultat = erreur(sansPoint(r.message) + ".");
+      o.enCours = null;
+      o.zone.definirEnCours(null);
+      focus = o.btns.bascule;
+    } else if (r.refus || r.cause) {
+      const mot = { publier: "Publication", depublier: "Dépublication", arreter: "Arrêt" }[action];
+      resultat = erreur(`${mot} impossible : ${sansPoint(r.refus ?? r.message)}.`);
+    } else {
+      focus = o.btns.bascule;
+      if (action === "arreter") {
+        o.enCours = null;
+        o.zone.definirEnCours(null);
+        resultat = message({ texte: `${nom} est arrêté. Son déclencheur écoute toujours.`, variante: "succes", fermable: true });
+      } else {
+        etatWorkflow(o.fichier, action === "publier");
+        resultat = message({ texte: action === "publier" ? `${nom} est publié. Son déclencheur écoute.` : `${nom} est un brouillon. Rien ne le lance plus.`, variante: "succes", fermable: true });
+      }
+    }
+    majBoutonsWf(o);
+    o.zone.poserResultat(resultat);
+    focus.poserFocus();
   }
 
   /**
@@ -794,6 +870,23 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       return z;
     }
     let ferme = false;
+    // Suivi (REQ-197, DEC-128) : tant que l'onglet est ouvert sur un workflow publié, l'état est lu chaque seconde.
+    let sondage = null;
+    let enLecture = false;
+    const lire = async () => {
+      if (enLecture) return;
+      enLecture = true;
+      const r = await executionWorkflow(o.fichier);
+      enLecture = false;
+      if (ferme || !sondage || r.coupure || r.cause || r.enCours === (o.enCours ?? null)) return;
+      o.enCours = r.enCours;
+      w.maj({ enCours: r.enCours });
+      majBoutonsWf(o);
+    };
+    const suivre = (oui) => {
+      clearInterval(sondage);
+      sondage = oui ? setInterval(lire, 1000) : null;
+    };
     const w = workflow({
       nom: doc.nom,
       document: { ...doc, publie: o.publie },
@@ -818,11 +911,18 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     commun(w);
     w.detruire = () => {
       ferme = true;
+      suivre(false);
     };
     w.zoomer = (sens) => poserVue(zoomer(vue, sens, w.surface.clientWidth / 2, w.surface.clientHeight / 2));
     w.toutAfficher = () => poserVue(cadrer(doc, w.surface.clientWidth, w.surface.clientHeight));
     // Publié ou dépublié pendant que l'onglet est ouvert : lecture seule ou retour, sans rechargement.
-    w.definirPublie = (publie) => w.maj({ lectureSeule: publie });
+    w.definirPublie = (publie) => {
+      w.maj({ lectureSeule: publie, enCours: null });
+      suivre(publie);
+    };
+    w.definirEnCours = (id) => w.maj({ enCours: id });
+    w.poserResultat = (m) => w.maj({ resultat: m });
+    suivre(Boolean(o.publie));
     w.vue = { focus: () => (doc.noeuds.length ? w.surface : (w.querySelector(".ya-wf-type") ?? w.surface)).focus() };
     listerAgents().then((r) => {
       if (!ferme && r.agents) w.maj({ agents: r.agents });
@@ -876,13 +976,16 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     const o = trouver(cheminWorkflow(fichier));
     if (!o || o.publie === publie) return;
     o.publie = publie;
+    o.enCours = null;
     o.erreurWf = null;
     o.zone.definirPublie?.(publie);
+    majBoutonsWf(o);
     afficher();
   }
 
   /** Écrit l'onglet d'un workflow par la route des workflows. Rend `null` si c'est fait, sinon le texte de l'échec. */
   async function sauvegarderWorkflow(o) {
+    o.zone.poserResultat?.(null);
     while (o.ecriture) await o.ecriture;
     if (o.zone.illisible() || (o.publie && !o.modifie)) return null;
     const texte = o.zone.contenu();

@@ -123,3 +123,68 @@ test("REQ190_AC7_REQ191_AC6_REQ192_AC1_parcours_152_151_rail_a_huit_boutons_puis
     )
     .toBe(true);
 });
+
+test("REQ197_AC2_REQ199_AC1_REQ199_AC4_REQ199_AC6_parcours_153_publier_depuis_l_onglet_suivre_une_commande_puis_arreter_a_800_x_480", async ({ page }) => {
+  const dossier = depotExemple();
+  fs.mkdirSync(path.join(dossier, "notes"));
+  fs.mkdirSync(path.join(dossier, ".yaide", "workflows"), { recursive: true });
+  const fichier = path.join(dossier, ".yaide", "workflows", "revue-des-notes.json");
+  const noeuds = [
+    { id: "n1", type: "dossier", titre: "Fichiers d'un dossier 1", x: 40, y: 40, reglages: { dossier: "notes", evenements: ["cree", "modifie", "supprime"] } },
+    { id: "n2", type: "shell", titre: "Commande shell 1", x: 340, y: 40, reglages: { commande: "sleep 25" } },
+  ];
+  fs.writeFileSync(fichier, JSON.stringify({ nom: "Revue des notes", publie: false, noeuds, liens: [{ de: "n1", vers: "n2" }] }));
+  yaide = await lancerYaide({ dossier, claude: fauxClaude(), opencode: fauxOpencode() });
+  await page.setViewportSize({ width: 800, height: 480 });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await page.getByRole("button", { name: "Workflows", exact: true }).click();
+  await page.getByRole("button", { name: "Modifier Revue des notes" }).click();
+  await expect(page.getByRole("tab", { name: "Revue des notes" })).toHaveAttribute("aria-selected", "true");
+
+  // « Publier » depuis l'onglet : suivi sur place, « Dépublier » prend la place et le focus.
+  const publier = page.locator(".onglets-droite").getByRole("button", { name: "Publier", exact: true });
+  await publier.click();
+  const depublier = page.locator(".onglets-droite").getByRole("button", { name: "Dépublier", exact: true });
+  await expect(depublier).toBeFocused();
+  await expect(page.getByText("Revue des notes est publié. Son déclencheur écoute.")).toBeVisible();
+  await expect(page.getByText("Workflow publié : dépubliez-le pour le modifier.")).toBeVisible();
+  await expect(page.locator(".ya-wf-etat")).toHaveText("En attente d'un évènement.");
+  expect(JSON.parse(fs.readFileSync(fichier, "utf8")).publie).toBe(true);
+
+  // Le dialogue rouvert lit « Publié ».
+  await page.getByRole("button", { name: "Workflows", exact: true }).click();
+  const liste = page.getByRole("dialog", { name: "Workflows" });
+  await expect(liste.getByText("Publié", { exact: true })).toBeVisible();
+  await liste.getByRole("button", { name: "Fermer" }).click();
+  await expect(liste).toBeHidden();
+
+  // Un fichier créé lance la commande : la ligne d'état la nomme, « Arrêter » paraît à gauche de « Dépublier ».
+  let n = 0;
+  await expect
+    .poll(
+      async () => {
+        const texte = await page.locator(".ya-wf-etat").textContent();
+        if (texte !== "En cours : Commande shell 1.") fs.writeFileSync(path.join(dossier, "notes", `n${n++}.md`), "x\n");
+        return texte;
+      },
+      { timeout: 30000, intervals: [3500] },
+    )
+    .toBe("En cours : Commande shell 1.");
+  const arreter = page.locator(".onglets-droite").getByRole("button", { name: "Arrêter", exact: true });
+  await expect(page.locator(".ya-noeud-etiquette")).toHaveText("En cours");
+  // À 800 × 480, « Arrêter », « Dépublier » et les quatre commandes du zoom sont entiers et visibles.
+  for (const b of [arreter, depublier, page.getByRole("button", { name: "Zoom arrière" }), page.getByRole("button", { name: "Zoom avant" }), page.getByRole("button", { name: "Tout afficher" })]) {
+    await expect(b).toBeInViewport({ ratio: 1 });
+  }
+  await expect(page.locator(".onglets-droite").getByRole("status")).toBeInViewport({ ratio: 1 });
+  const ordre = await page.locator(".onglets-droite > *").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().x));
+  expect([...ordre].sort((a, b) => a - b)).toEqual(ordre);
+
+  // « Arrêter » : la commande s'arrête, le bouton part, la ligne d'état revient à l'attente.
+  await arreter.click();
+  await expect(page.getByText("Revue des notes est arrêté. Son déclencheur écoute toujours.")).toBeVisible();
+  await expect(arreter).toHaveCount(0);
+  await expect(depublier).toBeFocused();
+  await expect(page.locator(".ya-wf-etat")).toHaveText("En attente d'un évènement.");
+  await expect(page.locator(".ya-noeud-etiquette")).toHaveCount(0);
+});

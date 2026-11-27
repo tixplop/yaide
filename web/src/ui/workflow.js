@@ -8,10 +8,11 @@ const NS = "http://www.w3.org/2000/svg";
 const PAS_FLECHE = 20;
 
 /** C-019 : surface de l'éditeur de workflow. `maj(props)` remplace document, vue, choix ou lectureSeule. */
-export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, choix = null, lectureSeule = false, enCours = null, agents = [], surChangement, surVue, surChoix, surEntree }) {
+export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, choix = null, lectureSeule = false, enCours = null, resultat = null, agents = [], surChangement, surVue, surChoix, surEntree }) {
   if (!nom) throw new Error("workflow : nom requis");
   if (typeof surChangement !== "function") throw new Error("workflow : surChangement requis");
   const etat = { doc, vue, choix, lectureSeule, enCours, agents };
+  let messageResultat = null;
   let glisse = null; // { id, dx, dy, x, y, bouge }
   let trace = null; // { de, x, y, cible }
   let fond = null; // { x, y, vue }
@@ -364,6 +365,19 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
     }
   });
 
+  // Le message de résultat (C-003 `fermable`), sous le bandeau ; un seul à la fois ; sa croix rend le focus à la surface.
+  function poserResultat(m) {
+    messageResultat?.remove();
+    messageResultat = m;
+    if (!m) return;
+    m.classList.add("ya-wf-resultat");
+    lecture.after(m);
+    m.querySelector("button")?.addEventListener("click", () => {
+      if (messageResultat === m) messageResultat = null;
+      surface.focus();
+    });
+  }
+
   racine.maj = (p) => {
     const ancien = etat.choix;
     if ("document" in p) etat.doc = p.document;
@@ -372,11 +386,13 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
     if ("lectureSeule" in p) etat.lectureSeule = p.lectureSeule;
     if ("enCours" in p) etat.enCours = p.enCours;
     if ("agents" in p) etat.agents = p.agents;
+    if ("resultat" in p) poserResultat(p.resultat);
     if (etat.choix && !noeud(etat.choix)) etat.choix = null;
     rendre();
     if (etat.choix && etat.choix !== ancien) revele();
   };
   racine.surface = surface;
+  if (resultat) poserResultat(resultat);
   rendre();
   return racine;
 }

@@ -654,7 +654,7 @@ test("REQ199_AC6_boutons_a_texte_a_droite_des_onglets_avant_le_zoom_26_px_4_px_e
   expect(arreter.textContent).toBe("Arrêter");
   expect(arreter.hasAttribute("title")).toBe(false);
   const sans = css.replace(/\s+/g, " ");
-  expect(sans).toMatch(/\.onglets-droite:has\(\.ya-btn\) \{ gap: 2px; \}/);
+  expect(sans).toMatch(/\.onglets-droite:has\(\.ya-btn\) \{ gap: 2px; flex: none; position: sticky; right: 0; background: var\(--bg-100\); \}/);
   expect(sans).toMatch(/\.onglets-droite > \.ya-btn \{ height: 26px; margin-right: 2px; \}/);
   expect(sans).toMatch(/\.onglets-droite > \.ya-btn:not\(:has\(\+ \.ya-btn\)\) \{ margin-right: 6px; \}/);
 });

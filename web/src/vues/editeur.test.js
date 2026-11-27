@@ -1,7 +1,7 @@
 import { undo } from "@codemirror/commands";
 import { language } from "@codemirror/language";
 import { readFileSync } from "node:fs";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { vueEditeur } from "./editeur.js";
 import { lire } from "../stockage.js";
@@ -2697,7 +2697,7 @@ test("REQ184_AC3_AC4_onglet_avec_environnement_garde_son_nom_et_le_donne_a_ses_s
 const WF = (extra = {}) => ({ nom: "Revue des notes", publie: false, noeuds: [], liens: [], fichier: "revue", ...extra });
 // Faux serveur des workflows : `etat.wf` est lu par GET, `etat.puts` garde les corps reçus, `etat.reponsePut` le statut du PUT.
 function serveurWf(wf = WF()) {
-  const etat = { wf, puts: [], gets: 0, reponsePut: 200 };
+  const etat = { wf, puts: [], gets: 0, reponsePut: 200, lectures: 0, enCours: null, posts: [], reponses: {} };
   vi.stubGlobal("fetch", vi.fn(async (url, options = {}) => {
     const u = String(url);
     if (u === "/api/workflows/revue" && !options.method) {
@@ -2709,6 +2709,19 @@ function serveurWf(wf = WF()) {
       if (etat.reponsePut === 400) return { ok: false, status: 400, json: async () => ({ message: "Workflow invalide." }), headers: new Headers() };
       etat.puts.push(JSON.parse(options.body));
       return { ok: etat.reponsePut === 200, status: etat.reponsePut, json: async () => etat.wf, headers: new Headers() };
+    }
+    if (u === "/api/workflows/revue/execution") {
+      etat.lectures++;
+      if (etat.coupureExecution) throw new Error("hors ligne");
+      return { ok: true, status: 200, json: async () => ({ publie: etat.wf.publie, enCours: etat.enCours ?? null }) };
+    }
+    const action = /^\/api\/workflows\/revue\/(publier|depublier|arreter)$/.exec(u)?.[1];
+    if (action && options.method === "POST") {
+      etat.posts.push(action);
+      const r = etat.reponses[action] ?? { status: 200, corps: {} };
+      if (r === "coupure") throw new Error("hors ligne");
+      if (r.status === 200 && action !== "arreter") etat.wf.publie = action === "publier";
+      return { ok: r.status === 200, status: r.status, json: async () => r.corps, text: async () => r.texte ?? "", headers: new Headers() };
     }
     return { ok: false, status: 404, headers: new Headers(), json: async () => ({}) };
   }));
@@ -2857,4 +2870,240 @@ test("REQ191_AC7_workflow_illisible_dit_pourquoi_sans_barre_d_outils_ni_ctrl_s",
   ctrlS();
   await toutes();
   expect(puts).toEqual([]);
+});
+
+// ---- Onglet d'un workflow : suivi, Publier, Dépublier, Arrêter (REQ-192, REQ-197, REQ-199) ----
+
+const NOEUD_SHELL = { id: "n2", type: "shell", titre: "Commande shell 1", x: 300, y: 0, reglages: { commande: "sleep 3" } };
+const NOEUD_DOSSIER = { id: "n1", type: "dossier", titre: "Fichiers d'un dossier 1", x: 0, y: 0, reglages: { dossier: "notes", evenements: ["cree"] } };
+const WF_VALIDE = (extra = {}) => WF({ noeuds: [NOEUD_DOSSIER, NOEUD_SHELL], liens: [{ de: "n1", vers: "n2" }], ...extra });
+const boutonWf = (nom) => [...document.querySelectorAll(".onglets-droite > button")].find((b) => b.textContent === nom) ?? null;
+const ligneEtat = () => document.querySelector(".ya-wf-etat");
+const unSeconde = async () => {
+  await vi.advanceTimersByTimeAsync(1000);
+};
+
+describe("onglet d'un workflow publié ou brouillon", () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] }));
+  afterEach(() => vi.useRealTimers());
+
+  test("REQ197_AC2_REQ197_AC6_onglet_publie_lit_l_execution_chaque_seconde_ligne_d_etat_et_noeud_marque_puis_retour_a_l_attente", async () => {
+    const { serveur } = await monterWf(WF_VALIDE({ publie: true }));
+    expect(ligneEtat().textContent).toBe("En attente d'un évènement.");
+    expect(ligneEtat().getAttribute("role")).toBe("status");
+    expect(document.querySelector(".ya-wf-lecture-message .message-texte").getAttribute("role")).toBe("status");
+    expect(document.querySelector(".ya-noeud-etiquette")).toBeNull();
+    expect(boutonWf("Arrêter")).toBeNull();
+    expect(serveur.lectures).toBe(0);
+    await unSeconde();
+    expect(serveur.lectures).toBe(1);
+    serveur.enCours = "n2";
+    await unSeconde();
+    expect(serveur.lectures).toBe(2);
+    expect(ligneEtat().textContent).toBe("En cours : Commande shell 1.");
+    expect(ligneEtat().title).toBe("En cours : Commande shell 1.");
+    expect(document.querySelectorAll(".ya-noeud-etiquette").length).toBe(1);
+    expect(document.querySelector(".ya-noeud-etiquette").textContent).toBe("En cours");
+    expect(document.querySelector(".ya-noeud-etiquette").getAttribute("aria-hidden")).toBe("true");
+    expect(boutonWf("Arrêter")).not.toBeNull();
+    // Le texte du bandeau ne change pas tant que le nœud en cours ne change pas.
+    const mut = [];
+    const obs = new MutationObserver((l) => mut.push(...l));
+    obs.observe(ligneEtat(), { childList: true, characterData: true, subtree: true });
+    await unSeconde();
+    await Promise.resolve();
+    expect(mut).toEqual([]);
+    obs.disconnect();
+    serveur.enCours = null;
+    await unSeconde();
+    expect(ligneEtat().textContent).toBe("En attente d'un évènement.");
+    expect(document.querySelector(".ya-noeud-etiquette")).toBeNull();
+    expect(boutonWf("Arrêter")).toBeNull();
+  });
+
+  test("REQ197_AC2_un_brouillon_ne_lit_jamais_l_execution_et_la_fermeture_arrete_les_lectures", async () => {
+    const { e, serveur } = await monterWf(WF_VALIDE());
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(serveur.lectures).toBe(0);
+    expect(document.querySelector(".ya-wf-lecture-message").hidden).toBe(true);
+    e.etatWorkflow("revue", true);
+    await unSeconde();
+    expect(serveur.lectures).toBe(1);
+    e.detruire();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(serveur.lectures).toBe(1);
+  });
+
+  test("REQ197_AC3_publier_depuis_le_dialogue_passe_l_onglet_en_suivi_sans_rechargement_choix_gardé_puis_depublier_arrete_les_lectures", async () => {
+    const { e, serveur } = await monterWf(WF_VALIDE());
+    document.querySelector(".ya-noeud").dispatchEvent(Object.assign(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }), { pointerId: 1 }));
+    expect(document.querySelector(".ya-noeud-choisi")).not.toBeNull();
+    document.querySelector('button[aria-label="Zoom avant"]').click();
+    const avant = { zoom: document.querySelector(".ya-tableau-zoom").textContent, noeud: document.querySelector(".ya-noeud").getAttribute("style") };
+    expect(avant.zoom).not.toBe("100 %");
+    e.etatWorkflow("revue", true);
+    expect(document.querySelector(".ya-wf-lecture-message").hidden).toBe(false);
+    expect(ligneEtat().textContent).toBe("En attente d'un évènement.");
+    expect(document.querySelector(".ya-noeud-choisi")).not.toBeNull();
+    expect({ zoom: document.querySelector(".ya-tableau-zoom").textContent, noeud: document.querySelector(".ya-noeud").getAttribute("style") }).toEqual(avant);
+    expect(serveur.gets).toBe(1);
+    await unSeconde();
+    expect(serveur.lectures).toBe(1);
+    serveur.enCours = "n2";
+    await unSeconde();
+    expect(ligneEtat().textContent).toBe("En cours : Commande shell 1.");
+    e.etatWorkflow("revue", false);
+    expect(document.querySelector(".ya-wf-lecture-message").hidden).toBe(true);
+    expect(document.querySelector(".ya-noeud-etiquette")).toBeNull();
+    expect(boutonWf("Arrêter")).toBeNull();
+    expect(boutonWf("Publier")).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(serveur.lectures).toBe(2);
+  });
+
+  test("REQ199_AC1_REQ199_AC5_publier_depuis_l_onglet_passe_en_suivi_message_status_et_focus_sur_depublier", async () => {
+    const { serveur } = await monterWf(WF_VALIDE());
+    const publier = boutonWf("Publier");
+    expect(publier).not.toBeNull();
+    publier.focus();
+    publier.click();
+    expect(publier.textContent).toBe("Publication…");
+    expect(publier.getAttribute("aria-busy")).toBe("true");
+    await vi.advanceTimersByTimeAsync(0);
+    await toutes();
+    expect(serveur.posts).toEqual(["publier"]);
+    const msg = document.querySelector(".ya-wf-lecture-message + .message");
+    expect(msg.textContent).toContain("Revue des notes est publié. Son déclencheur écoute.");
+    expect(msg.getAttribute("role")).toBe("status");
+    expect(document.querySelector(".ya-wf-lecture-message").hidden).toBe(false);
+    expect(ligneEtat().textContent).toBe("En attente d'un évènement.");
+    expect(boutonWf("Publier")).toBeNull();
+    expect(boutonWf("Dépublier")).toBe(publier);
+    expect(document.activeElement).toBe(publier);
+    expect(serveur.gets).toBe(1);
+  });
+
+  test("REQ199_AC2_publier_refuse_enregistrez_d_abord_ou_ajoutez_un_declencheur_rien_n_est_publié", async () => {
+    const { serveur } = await monterWf();
+    typeWf("Planification").click(); // modifié, non enregistré
+    expect(onglet("Revue des notes").dataset.modifie).toBe("true");
+    boutonWf("Publier").focus();
+    boutonWf("Publier").click();
+    await toutes();
+    const msg = document.querySelector("[role=alert]");
+    expect(msg.textContent).toContain("Revue des notes n'est pas publié :");
+    expect([...msg.querySelectorAll("li")].map((l) => l.textContent)).toEqual(["Enregistrez d'abord le workflow."]);
+    expect(serveur.posts).toEqual([]);
+    expect(document.querySelector(".ya-wf-lecture-message").hidden).toBe(true);
+    expect(document.activeElement).toBe(boutonWf("Publier"));
+    // Enregistré, mais sans déclencheur valide : le refus du serveur, ses points.
+    serveur.reponses.publier = { status: 422, corps: { messages: ["Ajoutez un déclencheur."] } };
+    ctrlS();
+    await vi.waitFor(() => expect(onglet("Revue des notes").dataset.modifie).toBeUndefined());
+    expect(document.querySelector("[role=alert]")).toBeNull(); // Ctrl+S ôte le message
+    boutonWf("Publier").click();
+    await toutes();
+    expect(serveur.posts).toEqual(["publier"]);
+    const m2 = document.querySelector("[role=alert]");
+    expect(m2.textContent).toContain("Revue des notes n'est pas publié :");
+    expect([...m2.querySelectorAll("li")].map((l) => l.textContent)).toEqual(["Ajoutez un déclencheur."]);
+    expect(serveur.wf.publie).toBe(false);
+    expect(document.querySelector(".ya-wf-lecture-message").hidden).toBe(true);
+    expect(boutonWf("Publier")).not.toBeNull();
+    expect(typeWf("Commande shell").getAttribute("aria-disabled")).toBeNull();
+  });
+
+  test("REQ199_AC3_depublier_depuis_l_onglet_en_suivi_le_rend_modifiable_sans_rechargement_et_le_bouton_redevient_publier", async () => {
+    const { serveur } = await monterWf(WF_VALIDE({ publie: true }));
+    boutonWf("Dépublier").focus();
+    boutonWf("Dépublier").click();
+    expect(boutonWf("Dépublication…")).not.toBeNull();
+    await toutes();
+    expect(serveur.posts).toEqual(["depublier"]);
+    expect(document.querySelector(".ya-wf-lecture-message + .message").textContent).toContain("Revue des notes est un brouillon. Rien ne le lance plus.");
+    expect(document.querySelector(".ya-wf-lecture-message").hidden).toBe(true);
+    expect(boutonWf("Publier")).not.toBeNull();
+    expect(document.activeElement).toBe(boutonWf("Publier"));
+    expect(typeWf("Commande shell").getAttribute("aria-disabled")).toBeNull();
+    expect(serveur.gets).toBe(1);
+  });
+
+  test("REQ199_AC4_REQ197_AC2_arreter_paraît_pendant_une_execution_arrete_et_part_le_focus_sur_depublier", async () => {
+    const { serveur } = await monterWf(WF_VALIDE({ publie: true }));
+    expect(boutonWf("Arrêter")).toBeNull();
+    serveur.enCours = "n2";
+    await unSeconde();
+    const arreter = boutonWf("Arrêter");
+    expect([...document.querySelectorAll(".onglets-droite > button")].slice(0, 2).map((b) => b.textContent)).toEqual(["Arrêter", "Dépublier"]);
+    arreter.focus();
+    arreter.click();
+    expect(arreter.textContent).toBe("Arrêt…");
+    expect(boutonWf("Dépublier").disabled).toBe(true);
+    serveur.enCours = null;
+    await toutes();
+    expect(serveur.posts).toEqual(["arreter"]);
+    expect(document.querySelector(".ya-wf-lecture-message + .message").textContent).toContain("Revue des notes est arrêté. Son déclencheur écoute toujours.");
+    expect(boutonWf("Arrêter")).toBeNull();
+    expect(boutonWf("Dépublier").disabled).toBe(false);
+    expect(document.activeElement).toBe(boutonWf("Dépublier"));
+    expect(ligneEtat().textContent).toBe("En attente d'un évènement.");
+    expect(document.querySelector(".ya-noeud-etiquette")).toBeNull();
+  });
+
+  test("REQ199_AC5_REQ199_AC6_arret_sans_execution_alerte_croix_fermer_rend_le_focus_a_la_surface_un_seul_message_et_coupure", async () => {
+    const { serveur } = await monterWf(WF_VALIDE({ publie: true }));
+    serveur.enCours = "n2";
+    await unSeconde();
+    serveur.reponses.arreter = { status: 409, texte: "Revue des notes n'a pas d'exécution en cours." };
+    boutonWf("Arrêter").focus();
+    boutonWf("Arrêter").click();
+    await toutes();
+    const alerte = document.querySelector(".ya-wf-lecture-message + .message");
+    expect(alerte.getAttribute("role")).toBe("alert");
+    expect(alerte.textContent).toContain("Revue des notes n'a pas d'exécution en cours.");
+    expect(boutonWf("Arrêter")).toBeNull();
+    expect(document.activeElement).toBe(boutonWf("Dépublier"));
+    // Un seul message à la fois : le suivant remplace celui-ci.
+    serveur.reponses.depublier = "coupure";
+    boutonWf("Dépublier").click();
+    await toutes();
+    expect(document.querySelectorAll(".ya-wf-lecture-message ~ .message").length).toBe(1);
+    expect(document.querySelector(".ya-wf-lecture-message + .message").textContent).toContain("Connexion perdue. Réessayez au retour.");
+    expect(boutonWf("Dépublier")).not.toBeNull(); // rien ne change
+    expect(document.querySelector(".ya-wf-lecture-message").hidden).toBe(false);
+    // « Fermer » met le focus sur la surface.
+    const fermer = document.querySelector(".ya-wf-lecture-message + .message button");
+    expect(fermer.getAttribute("aria-label")).toBe("Fermer");
+    fermer.click();
+    expect(document.querySelector(".ya-wf-lecture-message + .message")).toBeNull();
+    expect(document.activeElement).toBe(surfaceWf());
+  });
+
+  test("REQ199_AC6_exécution_finie_pendant_que_arreter_a_le_focus_il_part_et_le_focus_va_sur_depublier", async () => {
+    const { serveur } = await monterWf(WF_VALIDE({ publie: true }));
+    serveur.enCours = "n2";
+    await unSeconde();
+    boutonWf("Arrêter").focus();
+    expect(document.activeElement).toBe(boutonWf("Arrêter"));
+    serveur.enCours = null;
+    await unSeconde();
+    expect(boutonWf("Arrêter")).toBeNull();
+    expect(document.activeElement).toBe(boutonWf("Dépublier"));
+  });
+
+  test("REQ199_AC6_les_boutons_sont_a_droite_des_onglets_avant_le_zoom", async () => {
+    const { serveur } = await monterWf(WF_VALIDE({ publie: true }));
+    serveur.enCours = "n2";
+    await unSeconde();
+    const noms = [...document.querySelectorAll(".onglets-droite > *")].map((x) => x.textContent || x.querySelector("button")?.getAttribute("aria-label"));
+    expect(noms.slice(0, 2)).toEqual(["Arrêter", "Dépublier"]);
+    expect(noms.indexOf("Zoom arrière")).toBe(2);
+    expect(document.querySelector(".onglets-droite").textContent).toContain("Dépublier");
+    // Refus d'arrêter par une erreur du serveur : message d'échec, le bouton garde son rôle.
+    serveur.reponses.arreter = { status: 500, texte: "boum" };
+    boutonWf("Arrêter").click();
+    await toutes();
+    expect(document.querySelector(".ya-wf-lecture-message + .message").textContent).toContain("Arrêt impossible : boum.");
+    expect(boutonWf("Arrêter")).not.toBeNull();
+  });
 });
