@@ -39,7 +39,7 @@ function decouper(texte, [debut, fin]) {
 }
 
 // Variante `objets` (C-006, V-012) : `<ul>` nommé, une `<li>` par ligne, deux boutons à icône par ligne,
-// chacun un arrêt de Tab. `lignes` : { id, libelle, dossier, policeCode, actions: [{ icone, nomAccessible, infoBulle, surClic }] }.
+// chacun un arrêt de Tab. `lignes` : { id, libelle, dossier, fin, policeCode, actions: [{ icone, nomAccessible, infoBulle, surClic }] }.
 function listeObjets({ lignes, nom }) {
   if (!nom) throw new Error("liste : nom requis avec objets");
   const ul = document.createElement("ul");
@@ -75,6 +75,12 @@ function listeObjets({ lignes, nom }) {
       d.textContent = l.dossier;
       d.title = l.dossier;
       li.append(d);
+    }
+    if (l.fin) {
+      const f = document.createElement("span");
+      f.className = "ya-objet-fin";
+      f.textContent = l.fin;
+      li.append(f);
     }
     const boutons = document.createElement("span");
     boutons.className = "ya-objet-actions";

@@ -597,7 +597,7 @@ export const enregistrerServeurMcp = (saisie) => appelMcp("/api/agent/mcp/serveu
 export const supprimerServeurMcp = (nom) => appelMcp(`/api/agent/mcp/serveurs/${q(nom)}`, { method: "DELETE" });
 
 /**
- * Routes des environnements (`environnements.json` du dossier de configuration). Rend `{ fichier, environnements: [{ nom, variables: { NOM: valeur } }] }`,
+ * Routes des environnements (`environnements.json` du dossier de configuration). Rend `{ fichier, environnements: [{ nom, variables: { NOM: valeur }, defaut? }] }` (`defaut: true` sur l'environnement par défaut, REQ-202),
  * `{ fichier, champ, message }` (saisie refusée, 400), `{ fichier, cause, message, detail? }` ou `{ coupure: true }`.
  */
 async function appelEnvironnements(chemin, options) {

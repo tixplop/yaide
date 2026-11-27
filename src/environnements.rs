@@ -52,6 +52,13 @@ pub struct Environnement {
     pub nom: String,
     #[serde(default)]
     pub variables: Variables,
+    /// Environnement par défaut (REQ-202) : au plus un ; absent du fichier quand faux.
+    #[serde(default, skip_serializing_if = "est_faux")]
+    pub defaut: bool,
+}
+
+fn est_faux(b: &bool) -> bool {
+    !*b
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -154,6 +161,11 @@ pub fn enregistrer(
         .map(|(_, e)| e)
         .collect();
     valider(&autres, &env)?;
+    if env.defaut {
+        for e in &mut f.environnements {
+            e.defaut = false;
+        }
+    }
     match place {
         Some(i) => f.environnements[i] = env,
         None => f.environnements.push(env),
@@ -189,6 +201,7 @@ mod tests {
                     .map(|(a, b)| (a.to_string(), b.to_string()))
                     .collect(),
             ),
+            defaut: false,
         }
     }
 

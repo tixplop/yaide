@@ -377,3 +377,76 @@ fn req182_ac9_401_sans_session_403_mauvaise_origine() {
     }
     assert!(!s.fichier().exists());
 }
+
+fn fichier_json(s: &Serveur) -> serde_json::Value {
+    serde_json::from_str(&std::fs::read_to_string(s.fichier()).unwrap()).unwrap()
+}
+
+#[test]
+fn req202_ac1_une_seule_marque_defaut_variables_des_autres_intactes() {
+    let s = lancer("req202-ac1");
+    let put = |corps: &str| {
+        let (c, v) = s.api("PUT", "/api/environnements", corps);
+        assert_eq!(c, 200, "{v}");
+        v
+    };
+    put(r#"{"nom":"prod","variables":{"Z":"9","A":"1"}}"#);
+    put(r#"{"nom":"dev","variables":{"B":"2"}}"#);
+    // Sans marque : le champ est absent du fichier.
+    assert!(!std::fs::read_to_string(s.fichier())
+        .unwrap()
+        .contains("defaut"));
+    let v = put(r#"{"ancien":"prod","nom":"prod","variables":{"Z":"9","A":"1"},"defaut":true}"#);
+    let f = fichier_json(&s);
+    assert_eq!(f["environnements"][0]["defaut"], true);
+    assert!(f["environnements"][1].get("defaut").is_none());
+    assert_eq!(v["environnements"][1]["defaut"], true, "{v}");
+    let prod_avant = f["environnements"][0].clone();
+    // `dev` devient par défaut : `prod` perd la marque, ses variables restent.
+    put(r#"{"ancien":"dev","nom":"dev","variables":{"B":"2"},"defaut":true}"#);
+    let f = fichier_json(&s);
+    assert_eq!(f["environnements"][1]["defaut"], true);
+    assert!(f["environnements"][0].get("defaut").is_none());
+    assert_eq!(f["environnements"][0]["variables"], prod_avant["variables"]);
+    let texte = std::fs::read_to_string(s.fichier()).unwrap();
+    assert!(texte.find("\"Z\"").unwrap() < texte.find("\"A\"").unwrap());
+    // Décoché : plus aucun par défaut.
+    put(r#"{"ancien":"dev","nom":"dev","variables":{"B":"2"}}"#);
+    assert!(!std::fs::read_to_string(s.fichier())
+        .unwrap()
+        .contains("defaut"));
+}
+
+#[test]
+fn req202_ac2_suppression_du_defaut_et_fichier_ancien_sans_marque() {
+    let s = lancer("req202-ac2");
+    std::fs::create_dir_all(s.fichier().parent().unwrap()).unwrap();
+    std::fs::write(
+        s.fichier(),
+        r#"{"environnements":[{"nom":"prod","variables":{"A":"1"}},{"nom":"dev"}]}"#,
+    )
+    .unwrap();
+    let (c, v) = s.api("GET", "/api/environnements", "");
+    assert_eq!(c, 200, "{v}");
+    assert_eq!(noms(&v), ["dev", "prod"]);
+    assert!(v["environnements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|e| e.get("defaut").is_none()));
+    s.api(
+        "PUT",
+        "/api/environnements",
+        r#"{"ancien":"prod","nom":"prod","variables":{"A":"1"},"defaut":true}"#,
+    );
+    let avant = fichier_json(&s);
+    assert_eq!(avant["environnements"][0]["defaut"], true);
+    let (c, v) = s.api("DELETE", "/api/environnements/prod", "");
+    assert_eq!(c, 200, "{v}");
+    let apres = fichier_json(&s);
+    assert_eq!(apres["environnements"].as_array().unwrap().len(), 1);
+    assert_eq!(apres["environnements"][0], avant["environnements"][1]);
+    assert!(!std::fs::read_to_string(s.fichier())
+        .unwrap()
+        .contains("defaut"));
+}
