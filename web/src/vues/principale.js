@@ -29,7 +29,7 @@ import { statutsDe } from "../statuts.js";
 import { suivreVersion } from "../version.js";
 import { abonner as abonnerWorktree, dansWorktree } from "../worktree.js";
 import { mettreAJourApresSauvegarde } from "./ajout-connaissance.js";
-import { commandesEnvironnements, vueShells } from "./shells.js";
+import { commandesEnvironnements, environnementParDefaut, vueShells } from "./shells.js";
 import { menuDuRail } from "../ui/menu.js";
 
 const PANNEAUX = [
@@ -89,7 +89,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
         ancrage: "rail-droit",
       }),
   });
-  boutonClaude.addEventListener("click", () => lancerClaude());
+  boutonClaude.addEventListener("click", async () => lancerClaude(await environnementParDefaut()));
   async function lancerClaude(environnement) {
     const r = await ouvrirClaude(environnement);
     if (detruite) return;
@@ -110,12 +110,14 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
         ancrage: "rail-droit",
       }),
   });
-  boutonOpencode.addEventListener("click", () => lancerOpencode());
+  boutonOpencode.addEventListener("click", () => lancerOpencode(undefined, true));
   /** `environnement` : la session est créée sur le serveur de cet environnement (REQ-184), sinon sur celui sans environnement. */
-  async function lancerOpencode(environnement) {
+  async function lancerOpencode(environnement, parDefaut = false) {
     if (boutonOpencode.getAttribute("aria-busy") === "true") return;
     boutonOpencode.definirOccupe(true);
     boutonOpencode.setAttribute("aria-disabled", "true");
+    // Clic simple : l'environnement par défaut (REQ-202), lu maintenant, comme le choix du même nom dans le menu.
+    if (parDefaut) environnement = await environnementParDefaut();
     const r = await creerSession(chemin, environnement);
     const id = r.donnees?.data?.id;
     // Le dernier choix est repris avant l'onglet, le bouton restant occupé (REQ-075).
@@ -133,7 +135,7 @@ export function vuePrincipale({ chemin, surDeconnexion, surExpiree = surDeconnex
   const sessions = vueSessionsOpencode({
     chemin,
     surEtat: (ouvert) => boutonSessions.definirOuvert(ouvert),
-    surChoix: ({ id, titre }) => editeur.ouvrirOpencode({ sessionId: id, titre }),
+    surChoix: async ({ id, titre }) => editeur.ouvrirOpencode({ sessionId: id, titre, environnement: await environnementParDefaut() }),
   });
   boutonSessions.addEventListener("click", () => sessions.ouvrir());
   const boutonMcp = avec.agents ? bouton({ icone: "server", nomAccessible: "Serveurs MCP", positionInfoBulle: "gauche", ouvreDialogue: true }) : null;

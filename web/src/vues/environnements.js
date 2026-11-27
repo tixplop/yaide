@@ -83,7 +83,7 @@ export function vueEnvironnements({ surFermeture = () => {} } = {}) {
     const f = bouton({ libelle: "Fermer" });
     const ajouter = bouton({ libelle: "Ajouter un environnement", variante: "principal" });
     f.addEventListener("click", fermer);
-    ajouter.addEventListener("click", () => afficherFiche({ valeurs: { nom: "", variables: "" } }));
+    ajouter.addEventListener("click", () => afficherFiche({ valeurs: { nom: "", variables: "", defaut: false } }));
     const contenu =
       environnements.length === 0
         ? indication({ texte: "Aucun environnement." })
@@ -96,6 +96,7 @@ export function vueEnvironnements({ surFermeture = () => {} } = {}) {
                 id: e.nom,
                 libelle: e.nom,
                 dossier: noms.length ? noms.join(", ") : "Aucune variable",
+                ...(e.defaut ? { fin: "par défaut" } : {}),
                 policeCode: noms.length > 0,
                 actions: [
                   { icone: "sliders-horizontal", nomAccessible: `Modifier ${e.nom}`, infoBulle: "Modifier", surClic: ouvrirFiche },
@@ -121,7 +122,7 @@ export function vueEnvironnements({ surFermeture = () => {} } = {}) {
     if (!e) return;
     afficherFiche({
       ancien: e.nom,
-      valeurs: { nom: e.nom, variables: Object.entries(e.variables ?? {}).map(([n, v]) => `${n}=${v}`).join("\n") },
+      valeurs: { nom: e.nom, variables: Object.entries(e.variables ?? {}).map(([n, v]) => `${n}=${v}`).join("\n"), defaut: e.defaut === true },
     });
   }
 
@@ -136,14 +137,21 @@ export function vueEnvironnements({ surFermeture = () => {} } = {}) {
       aide: "Une par ligne : NOM=valeur. Elles sont écrites en clair dans ce fichier.",
       erreur: erreurs.variables,
     });
-    const saisies = { nom: cNom.querySelector("input"), variables: cVariables.querySelector("textarea") };
-    const contenu = fiche({ titre: ancien ?? "Nouvel environnement", champs: [cNom, cVariables] });
+    const cDefaut = champ({
+      libelle: "Environnement par défaut",
+      type: "case",
+      valeur: valeurs.defaut,
+      aide: "Sert quand vous lancez un shell, Claude ou opencode sans choisir d'environnement.",
+    });
+    cDefaut.classList.add("ya-fiche-large");
+    const saisies = { nom: cNom.querySelector("input"), variables: cVariables.querySelector("textarea"), defaut: cDefaut.querySelector("input") };
+    const contenu = fiche({ titre: ancien ?? "Nouvel environnement", champs: [cNom, cVariables, cDefaut] });
     const annuler = bouton({ libelle: "Annuler" });
     const enregistrer = bouton({ libelle: "Enregistrer", variante: "principal" });
 
     async function valider() {
       if (enregistrement || !dlg) return;
-      const saisie = { nom: saisies.nom.value, variables: saisies.variables.value };
+      const saisie = { nom: saisies.nom.value, variables: saisies.variables.value, defaut: saisies.defaut.checked };
       const nom = saisie.nom.trim();
       const lues = lireVariables(saisie.variables);
       const refus = {};
@@ -158,7 +166,7 @@ export function vueEnvironnements({ surFermeture = () => {} } = {}) {
       enregistrer.replaceWith(enCours);
       annuler.disabled = true;
       dlg.definirResultat();
-      const r = await enregistrerEnvironnement({ ...(ancien !== undefined ? { ancien } : {}), nom, variables: lues.variables });
+      const r = await enregistrerEnvironnement({ ...(ancien !== undefined ? { ancien } : {}), nom, variables: lues.variables, ...(saisie.defaut ? { defaut: true } : {}) });
       enregistrement = false;
       if (!dlg || mienne !== generation) return;
       retenirFichier(r);
@@ -180,7 +188,7 @@ export function vueEnvironnements({ surFermeture = () => {} } = {}) {
     enregistrer.addEventListener("click", valider);
     // Entrée dans « Nom » enregistre ; dans « Variables », elle ajoute une ligne.
     contenu.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" && ev.target.matches("input")) {
+      if (ev.key === "Enter" && ev.target.matches("input[type=text]")) {
         ev.preventDefault();
         valider();
       }
@@ -196,6 +204,7 @@ export function vueEnvironnements({ surFermeture = () => {} } = {}) {
     dlg.definirResultat();
     const phrase = document.createElement("p");
     phrase.textContent = "Ses variables seront perdues. Ce qui est déjà lancé avec lui les garde.";
+    if (environnements.find((e) => e.nom === nom)?.defaut) phrase.textContent += " Il n'y aura plus d'environnement par défaut.";
     const annuler = bouton({ libelle: "Annuler" });
     const ok = bouton({ libelle: "Supprimer", variante: "danger" });
     const mienne = generation;

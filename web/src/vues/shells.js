@@ -17,6 +17,15 @@ const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
 const codage = new TextEncoder();
 
 /**
+ * REQ-202. Nom de l'environnement par défaut, lu au moment du lancement ; `undefined` s'il n'y en a aucun ou si la lecture échoue
+ * (fichier illisible, coupure) : le lancement se fait alors sans environnement.
+ */
+export async function environnementParDefaut() {
+  const r = await lireEnvironnements();
+  return Array.isArray(r.environnements) ? r.environnements.find((e) => e.defaut === true)?.nom : undefined;
+}
+
+/**
  * Commandes du menu « avec un environnement » (REQ-183), relues à chaque ouverture : un groupe avec les noms par ordre alphabétique,
  * ou la seule commande désactivée qui dit pourquoi il n'y en a pas. `choisir(nom)` lance l'ouverture.
  */
@@ -111,7 +120,7 @@ export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells =
   const boutonRepli = bouton({ icone: "panel-bottom-close", nomAccessible: "Replier les shells", desactive: true });
   racine.repli = boutonRepli;
   boutonRepli.addEventListener("click", () => basculerRepli());
-  boutonNouveau.addEventListener("click", () => nouveau());
+  boutonNouveau.addEventListener("click", async () => nouveau(await environnementParDefaut()));
   boutonReduire.addEventListener("click", () => reduire());
   boutonReduits.addEventListener("click", () => ouvrirMenu());
   boutonFermer.addEventListener("click", () => demanderFermeture(actif, "rail"));

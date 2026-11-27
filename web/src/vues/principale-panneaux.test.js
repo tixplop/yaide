@@ -650,6 +650,8 @@ test("REQ072_AC30_second_clic_pendant_le_lancement_ignore", async () => {
   expect(boutonOcDe(vue).getAttribute("aria-disabled")).toBe("true");
   boutonOcDe(vue).click();
   expect(document.activeElement).toBe(boutonOcDe(vue));
+  // La création part après la lecture de l'environnement par défaut (REQ-202).
+  await vi.waitFor(() => expect(liberer).toBeDefined());
   liberer();
   await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(1));
   expect(appels.filter((a) => a.startsWith("POST /api/opencode/api/session")).length).toBe(1);

@@ -77,3 +77,58 @@ test("REQ183_AC1_AC10_parcours_shell_avec_un_environnement_et_menus_entiers_dans
     await expect(claude).toBeFocused();
   }
 });
+
+test("REQ202_AC3_AC8_parcours_environnement_par_defaut_cochee_dans_la_fiche_clic_simple_shell_et_claude_le_menu_l_emporte", async ({ page }) => {
+  yaide = await lancerYaide({ shell: "/bin/sh", claude: fauxClaude() });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  for (const v of ["prod", "dev"]) {
+    const r = await page.evaluate(
+      (n) => fetch("/api/environnements", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nom: n, variables: { YA_ENV: n } }) }).then((x) => x.status),
+      v,
+    );
+    expect(r).toBe(200);
+  }
+  // 1 à 3. Fiche de « prod » : la case « Environnement par défaut », cochée, puis « par défaut » sur sa ligne seule.
+  await page.keyboard.press("Control+p");
+  await page.keyboard.type(">env");
+  await page.keyboard.press("Enter");
+  const panneau = page.getByRole("dialog", { name: "Environnements" });
+  await panneau.getByRole("button", { name: "Modifier prod" }).click();
+  const defaut = panneau.getByRole("checkbox", { name: "Environnement par défaut" });
+  await expect(defaut).not.toBeChecked();
+  await defaut.check();
+  await panneau.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(panneau.getByText("Environnement prod enregistré. Il servira au prochain lancement.")).toBeVisible();
+  await expect(panneau.getByText("par défaut", { exact: true })).toHaveCount(1);
+  await expect(panneau.getByRole("listitem").filter({ hasText: "prod" }).getByText("par défaut")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(panneau).toBeHidden();
+
+  // 4. Clic simple : shell et Claude avec `YA_ENV=prod`, noms d'onglet et focus d'un clic simple.
+  const nouveau = page.getByRole("button", { name: "Nouveau shell", exact: true });
+  await nouveau.click();
+  await expect(page.getByRole("tab", { name: "shell 1", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".shells .terminal:visible .xterm-helper-textarea")).toBeFocused();
+  await expect(page.locator(".shells .terminal:visible .terminal-attente")).toBeHidden();
+  await page.keyboard.type("echo ENV=$YA_ENV=");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".shells .terminal:visible .xterm-rows")).toContainText("ENV=prod=");
+  await page.getByRole("button", { name: "Claude", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Claude 1", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".claude .xterm-helper-textarea")).toBeFocused();
+  await expect(page.locator(".claude .terminal-attente")).toBeHidden();
+  await page.keyboard.type("echo CL=$YA_ENV=");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".claude .xterm-rows")).toContainText("CL=prod=");
+
+  // 6. « dev » choisi dans le menu l'emporte.
+  await nouveau.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "dev", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "shell 3", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".shells .terminal:visible .xterm-helper-textarea")).toBeFocused();
+  await expect(page.locator(".shells .terminal:visible .terminal-attente")).toBeHidden();
+  await page.keyboard.type("echo ENV=$YA_ENV=");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".shells .terminal:visible .xterm-rows")).toContainText("ENV=dev=");
+});

@@ -2067,7 +2067,7 @@ test("REQ177_AC15_coupure_bibliotheque_pas_chargee_puis_reessai_et_autre_echec",
 // ---- REQ-184 : session opencode avec un environnement ----
 
 /** `simulerOpencode` plus la liste des environnements et la création de session sur le serveur de `prod` (`creationProd` : { status, corps } ou une promesse d'elle). */
-function simulerOpencodeEnv({ creationProd = { status: 200, corps: { data: { id: "ses_prod" } } } } = {}) {
+function simulerOpencodeEnv({ creationProd = { status: 200, corps: { data: { id: "ses_prod" } } }, defaut = false } = {}) {
   const appels = simulerOpencode();
   vi.stubGlobal("EventSource", class { constructor(url) { appels.push(`FLUX ${url}`); } close() {} });
   const base = globalThis.fetch;
@@ -2075,7 +2075,7 @@ function simulerOpencodeEnv({ creationProd = { status: 200, corps: { data: { id:
     const chemin = String(url).split("?")[0];
     if (chemin === "/api/environnements") {
       appels.push("GET /api/environnements");
-      return jsonOk({ fichier: "environnements.json", environnements: [{ nom: "prod", variables: { YA_ENV: "prod" } }, { nom: "Dev", variables: {} }] });
+      return jsonOk({ fichier: "environnements.json", environnements: [{ nom: "prod", variables: { YA_ENV: "prod" }, ...(defaut ? { defaut: true } : {}) }, { nom: "Dev", variables: {} }] });
     }
     if (chemin === "/api/opencode/env/prod/api/session" && opts.method === "POST") {
       appels.push(`POST ${chemin} ${opts.body}`);
@@ -2281,4 +2281,50 @@ test("REQ190_AC1_AC7_bouton_Workflows_au_dessus_de_la_base_seulement_avec_agents
   expect(b.hasAttribute("data-ouvert")).toBe(false);
   const c = monter({ reglages: { fonctions: { agents: false } } }).vue;
   expect(boutonWorkflowsDe(c)).toBeNull();
+});
+
+// ---- REQ-202 : environnement par défaut pour opencode ----
+
+test("REQ202_AC4_AC8_clic_simple_sur_opencode_passe_par_le_serveur_de_l_environnement_par_defaut_aria_busy_et_nom_opencode_1", async () => {
+  let fin;
+  const appels = simulerOpencodeEnv({ defaut: true, creationProd: new Promise((r) => (fin = r)) });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonOcDe(vue)).not.toBeNull());
+  const b = boutonOcDe(vue);
+  b.focus();
+  b.click();
+  await vi.waitFor(() => expect(b.getAttribute("aria-busy")).toBe("true"));
+  expect(document.activeElement).toBe(b);
+  fin({ status: 200, corps: { data: { id: "ses_prod" } } });
+  await vi.waitFor(() => expect(ongletsOc(vue).length).toBe(1));
+  expect(b.getAttribute("aria-busy")).not.toBe("true");
+  expect(appels.filter((a) => a.startsWith("POST /api/opencode/env/prod/api/session "))).toHaveLength(1);
+  expect(appels.filter((a) => a.startsWith("POST /api/opencode/api/session"))).toHaveLength(0);
+  expect(ongletsOc(vue)[0].getAttribute("aria-label")).toBe("opencode 1");
+  expect(ongletsOc(vue)[0].getAttribute("aria-selected")).toBe("true");
+  await vi.waitFor(() => expect(nomDuChamp(document.activeElement)).toBe("Message à opencode"));
+  await vi.waitFor(() => expect(appels).toContain("FLUX /api/opencode/env/prod/api/event"));
+  // Le choix de « Dev » dans le menu l'emporte sur l'environnement par défaut ; l'ordre et les noms du menu ne changent pas.
+  clicDroitOc(b);
+  await vi.waitFor(() => expect(menuOc()).not.toBeNull());
+  expect(choixMenu().map((c) => c.textContent)).toEqual(["Dev", "prod"]);
+  choixMenu()[0].click();
+  await vi.waitFor(() => expect(appels.filter((x) => x.startsWith("POST /api/opencode/env/Dev/api/session"))).toHaveLength(1));
+  expect(appels.filter((x) => x.startsWith("POST /api/opencode/env/prod/api/session "))).toHaveLength(1);
+});
+
+test("REQ202_AC4_session_rouverte_par_Sessions_opencode_passe_par_le_serveur_de_l_environnement_par_defaut", async () => {
+  const appels = simulerOpencodeEnv({ defaut: true });
+  const base = globalThis.fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url, opts) => {
+    if (String(url).startsWith("/api/opencode/api/session?")) return { ok: true, status: 200, text: async () => JSON.stringify({ data: [{ id: "ses_a", title: "Corriger", time: { updated: 5, busy: 5 } }] }) };
+    return base(url, opts);
+  }));
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonSessionsDe(vue)).not.toBeNull());
+  boutonSessionsDe(vue).click();
+  await vi.waitFor(() => expect(document.querySelector("dialog [role=option]")).not.toBeNull());
+  document.querySelector("dialog [role=listbox]").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(ongletsOc(vue)).toHaveLength(1));
+  await vi.waitFor(() => expect(appels).toContain("FLUX /api/opencode/env/prod/api/event"));
 });

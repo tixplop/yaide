@@ -12,7 +12,7 @@ vi.mock("../stockage.js", () => ({ lire: vi.fn(async () => undefined), ecrire: v
 function simuler({ envs = [], lecture, claude = true, ouverture = { status: 201 } } = {}) {
   FauxWebSocket.tous = [];
   vi.stubGlobal("WebSocket", FauxWebSocket);
-  const etat = { envs, lecture, ouverture };
+  const etat = { envs, lecture, ouverture, defaut: undefined };
   const appels = [];
   const rep = (corps, status = 200, texte = "") => ({ ok: status < 400, status, json: async () => corps, text: async () => texte });
   vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
@@ -21,7 +21,7 @@ function simuler({ envs = [], lecture, claude = true, ouverture = { status: 201 
     if (chemin === "/api/environnements") {
       if (etat.lecture === "coupure") return null;
       if (etat.lecture === "illisible") return rep({ fichier: "environnements.json", cause: "illisible", message: "illisible" }, 500);
-      return rep({ fichier: "environnements.json", environnements: etat.envs.map((nom) => ({ nom, variables: {} })) });
+      return rep({ fichier: "environnements.json", environnements: etat.envs.map((nom) => ({ nom, variables: {}, ...(nom === etat.defaut ? { defaut: true } : {}) })) });
     }
     if (opts.method === "POST" && (chemin === "/api/shells" || chemin === "/api/claude")) {
       if (etat.ouverture.status === null) return null;
@@ -319,4 +319,73 @@ test("REQ188_AC8_apres_un_rechargement_l_onglet_Logs_est_ferme", async () => {
   await attendre();
   expect(onglets(deux.vue)).toEqual([]);
   expect(zoneVisible(deux.vue)).toBe(false);
+});
+
+// ---- REQ-202 : environnement par défaut ----
+
+test("REQ202_AC3_AC5_AC6_AC8_clic_simple_lit_l_environnement_par_defaut_au_lancement_le_menu_l_emporte", async () => {
+  const { appels, etat } = simuler({ envs: ["dev", "prod"] });
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
+  const b = bout(vue, "Nouveau shell");
+  // Défini après le montage (autre instance) : lu au clic.
+  etat.defaut = "prod";
+  b.click();
+  await vi.waitFor(() => expect(onglets(vue)).toEqual(["shell 1"]));
+  expect(appels).toContain('POST /api/shells {"environnement":"prod"}');
+  expect(vue.querySelector(".shells [role=tab][aria-selected=true]")).not.toBeNull();
+  expect(b.querySelector(".ya-badge").textContent).toBe("1");
+  await vi.waitFor(() => expect(document.activeElement).toBe(vue.querySelector(".shells .terminal:not([hidden]) textarea")));
+  // Claude : même chemin.
+  boutonClaudeDe(vue).click();
+  await vi.waitFor(() => expect(ongletsClaude(vue).length).toBe(1));
+  expect(appels).toContain('POST /api/claude {"environnement":"prod"}');
+  expect(ongletsClaude(vue)[0].getAttribute("aria-label")).toBe("Claude 1");
+  // « dev » choisi dans le menu l'emporte.
+  await ouvrirCar(b);
+  commandes()[0].click();
+  await vi.waitFor(() => expect(appels).toContain('POST /api/shells {"environnement":"dev"}'));
+  // Case décochée : le clic simple suivant lance sans environnement ; le shell déjà ouvert n'est pas touché.
+  etat.defaut = undefined;
+  b.click();
+  await vi.waitFor(() => expect(appels.filter((a) => a === "POST /api/shells")).toHaveLength(1));
+});
+
+test("REQ202_AC5_fichier_illisible_ou_coupure_le_clic_simple_lance_sans_environnement_et_sans_message", async () => {
+  const { appels, etat } = simuler({ envs: ["prod"] });
+  etat.defaut = "prod";
+  etat.lecture = "illisible";
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
+  bout(vue, "Nouveau shell").click();
+  await vi.waitFor(() => expect(onglets(vue)).toEqual(["shell 1"]));
+  expect(appels).toContain("POST /api/shells");
+  expect(vue.textContent).not.toContain("illisible");
+  expect(vue.textContent).not.toContain("Impossible");
+  expect([...document.querySelectorAll("[role=alert]")].map((a) => a.textContent.trim()).filter(Boolean)).toEqual([]);
+  etat.lecture = "coupure";
+  boutonClaudeDe(vue).click();
+  await vi.waitFor(() => expect(ongletsClaude(vue).length).toBe(1));
+  expect(appels).toContain("POST /api/claude");
+});
+
+test("REQ202_AC10_avec_un_environnement_par_defaut_noms_info_bulles_et_menus_du_rail_sont_inchangés_et_sans_marque", async () => {
+  const { etat } = simuler({ envs: ["dev", "prod"] });
+  etat.defaut = "prod";
+  const { vue } = monter();
+  await vi.waitFor(() => expect(boutonClaudeDe(vue)).not.toBeNull());
+  const sh = bout(vue, "Nouveau shell");
+  const cl = boutonClaudeDe(vue);
+  expect(sh.getAttribute("aria-label")).toBe("Nouveau shell");
+  expect(cl.getAttribute("aria-label")).toBe("Claude");
+  sh.parentElement.dispatchEvent(new Event("pointerenter"));
+  await vi.waitFor(() => expect(document.querySelector("[role=tooltip]")?.textContent).toBe("Nouveau shell"));
+  cl.parentElement.dispatchEvent(new Event("pointerenter"));
+  await vi.waitFor(() => expect(document.querySelector("[role=tooltip]")?.textContent).toBe("Nouvelle session Claude"));
+  for (const b of [sh, cl]) {
+    await ouvrirCar(b);
+    expect(noms()).toEqual(["dev", "prod"]);
+    expect(commandes().some((c) => c.querySelector("svg") || c.hasAttribute("aria-checked") || c.textContent.includes("défaut"))).toBe(false);
+    echap();
+  }
 });

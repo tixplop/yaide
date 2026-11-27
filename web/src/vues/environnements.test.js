@@ -311,3 +311,64 @@ test("REQ182_AC12_echec_d_ecriture_et_d_une_suppression", async () => {
   expect(dlg().querySelector("[role=alert]").textContent).toBe("Connexion perdue. Réessayez au retour.");
   expect(document.activeElement).toBe(parNom("Supprimer prod"));
 });
+
+// ---- REQ-202 : case « Environnement par défaut » ----
+
+const PROD_DEFAUT = { ...PROD, defaut: true };
+
+test("REQ202_AC7_AC9_fiche_neuve_case_decochee_native_decrite_par_son_aide_et_ordre_de_tab", async () => {
+  const m = monter(liste(PROD));
+  await m.v.ouvrir();
+  parNom("Ajouter un environnement").click();
+  const c = champDe("Environnement par défaut");
+  expect(c.type).toBe("checkbox");
+  expect(c.checked).toBe(false);
+  expect(c.disabled).toBe(false);
+  expect(texteDe(c.getAttribute("aria-describedby"))).toBe("Sert quand vous lancez un shell, Claude ou opencode sans choisir d'environnement.");
+  const ordre = [...dlg().querySelectorAll("input, textarea, button")].filter((e) => !e.disabled).map((e) => e.getAttribute("aria-label") ?? e.labels?.[0]?.textContent ?? e.textContent);
+  expect(ordre.slice(0, 4)).toEqual(["Nom", "Variables", "Environnement par défaut", "Annuler"]);
+  // Entrée sur la case ne fait rien ; Espace (clic natif) la coche.
+  touche(c, "Enter");
+  expect(m.appels).toHaveLength(1);
+  c.click();
+  expect(c.checked).toBe(true);
+  c.click();
+  expect(c.checked).toBe(false);
+});
+
+test("REQ202_AC1_AC9_modifier_l_environnement_par_defaut_case_cochee_active_et_enregistrement_envoie_defaut", async () => {
+  const m = monter(liste(PROD_DEFAUT, DEV), [liste(PROD, { ...DEV, defaut: true })]);
+  await m.v.ouvrir();
+  parNom("Modifier prod").click();
+  expect(champDe("Environnement par défaut").checked).toBe(true);
+  expect(champDe("Environnement par défaut").disabled).toBe(false);
+  parNom("Annuler").click();
+  parNom("Modifier dev").click();
+  const c = champDe("Environnement par défaut");
+  expect(c.checked).toBe(false);
+  c.click();
+  parNom("Enregistrer").click();
+  await vi.waitFor(() => expect(m.appels).toHaveLength(2));
+  expect(m.appels[1].corps).toEqual({ ancien: "dev", nom: "dev", variables: { A: "1" }, defaut: true });
+  await vi.waitFor(() => expect(document.querySelector("[role=status]")).not.toBeNull());
+  expect([...document.querySelectorAll(".ya-objet-fin")].map((f) => f.closest("li").dataset.id)).toEqual(["dev"]);
+});
+
+test("REQ202_AC7_AC9_la_ligne_de_l_environnement_par_defaut_seule_finit_par_par_defaut", async () => {
+  const m = monter(liste(PROD_DEFAUT, DEV));
+  await m.v.ouvrir();
+  const fins = [...document.querySelectorAll(".ya-objet-fin")];
+  expect(fins.map((f) => f.textContent)).toEqual(["par défaut"]);
+  expect(fins[0].closest("li").dataset.id).toBe("prod");
+});
+
+test("REQ202_AC10_suppression_de_l_environnement_par_defaut_ajoute_la_phrase_sinon_texte_inchange", async () => {
+  const m = monter(liste(PROD_DEFAUT, DEV));
+  await m.v.ouvrir();
+  parNom("Supprimer prod").click();
+  expect(dlg().textContent).toContain("Ses variables seront perdues. Ce qui est déjà lancé avec lui les garde. Il n'y aura plus d'environnement par défaut.");
+  parNom("Annuler").click();
+  parNom("Supprimer dev").click();
+  const t = dlg().querySelector("p").textContent;
+  expect(t).toBe("Ses variables seront perdues. Ce qui est déjà lancé avec lui les garde.");
+});
