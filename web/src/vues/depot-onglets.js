@@ -1,5 +1,5 @@
 // Glissé d'un onglet de l'éditeur (REQ-079) : couches de dépôt, guides, aperçu, dépôt. Voir C-010, « Glissé d'un onglet ».
-import { cibles as ciblesDe, zoneVisee } from "../disposition.js";
+import { cibles as ciblesDe, placeVisee, zoneVisee } from "../disposition.js";
 import { icone } from "../ui/icones.js";
 import { iconeDe } from "../ui/liste.js";
 import { fermerInfoBulleDans } from "../ui/info-bulle.js";
@@ -7,12 +7,12 @@ import { fermerInfoBulleDans } from "../ui/info-bulle.js";
 export const TYPE_ONGLET = "application/x-yaide-onglet";
 
 /**
- * `groupes()` : `[{ id, barre, nombre }]`, les groupes dans l'ordre de la page (`nombre` : ses onglets).
- * `deplacer(id, groupe, zone)` : le dépôt. `apresFin()` : le glissé est fini (une relecture reportée peut se faire).
+ * `groupes()` : `[{ id, barre, ids }]`, les groupes dans l'ordre de la page (`ids` : ses onglets, dans l'ordre de la barre).
+ * `deplacer(id, groupe, zone, place)` : le dépôt (`zone` vaut `barre` sur une barre d'onglets, `place` est alors la place visée). `apresFin()` : le glissé est fini (une relecture reportée peut se faire).
  * Rend `{ debuter(id, ev, groupeSource), enCours(), detruire() }`.
  */
 export function depotOnglets({ groupes, deplacer, apresFin }) {
-  let glisse = null; // { id, source, image, trame, couches: Map(couche -> { groupe, cibles }), zone, groupeVise, apercu }
+  let glisse = null; // { id, source, image, trame, couches: Map(couche -> { groupe, cibles, corps, barre, rang }), zone, groupeVise, place, apercu, marque, survol }
   let avantPression = null; // l'élément qui avait le focus avant la pression sur un onglet
 
   const memoriserFocus = (ev) => {
@@ -55,7 +55,7 @@ export function depotOnglets({ groupes, deplacer, apresFin }) {
       if (avant === document.body || !avant.isConnected) document.activeElement?.blur?.();
       else if (avant !== document.activeElement) avant.focus();
     }
-    glisse = { id, source, image, trame: requestAnimationFrame(creerCouches), couches: new Map(), zone: null, groupeVise: null, apercu: null };
+    glisse = { id, source, image, trame: requestAnimationFrame(creerCouches), couches: new Map(), zone: null, groupeVise: null, place: null, apercu: null, marque: null, survol: null };
     document.addEventListener("dragenter", survol, true);
     document.addEventListener("dragover", survol, true);
     document.addEventListener("drop", deposer, true);
@@ -73,7 +73,7 @@ export function depotOnglets({ groupes, deplacer, apresFin }) {
       const hote = g.barre.closest(".cadre-groupe");
       if (!hote) continue;
       const rect = hote.getBoundingClientRect();
-      const liste = ciblesDe({ largeur: rect.width, hauteur: rect.height, min, source: g.id === glisse.source, seulOnglet: g.nombre === 1 });
+      const liste = ciblesDe({ largeur: rect.width, hauteur: rect.height, min, source: g.id === glisse.source, seulOnglet: g.ids.length === 1 });
       const couche = document.createElement("div");
       couche.className = "ya-depot";
       couche.setAttribute("aria-hidden", "true");
@@ -93,7 +93,7 @@ export function depotOnglets({ groupes, deplacer, apresFin }) {
       }
       couche.append(corps);
       hote.append(couche);
-      glisse.couches.set(couche, { groupe: g.id, cibles: liste, corps });
+      glisse.couches.set(couche, { groupe: g.id, cibles: liste, corps, barre: g.barre, rang: g.id === glisse.source ? g.ids.indexOf(glisse.id) : null });
     }
   }
 
@@ -103,10 +103,17 @@ export function depotOnglets({ groupes, deplacer, apresFin }) {
     const info = couche && glisse.couches.get(couche);
     if (!info) return null;
     const r = info.corps.getBoundingClientRect();
+    if (ev.clientY < r.top) {
+      const cellules = [...info.barre.querySelectorAll(".onglet-cellule")].map((c) => {
+        const b = c.getBoundingClientRect();
+        return { gauche: b.left, droite: b.right };
+      });
+      const place = placeVisee({ x: ev.clientX, cellules, rang: info.rang });
+      return place === null ? null : { groupe: info.groupe, zone: "barre", place, couche, barre: info.barre };
+    }
     const zone = zoneVisee({
       px: (ev.clientX - r.left) / r.width,
       py: (ev.clientY - r.top) / r.height,
-      surBarre: ev.clientY < r.top,
       cibles: info.cibles,
     });
     return zone === null ? null : { groupe: info.groupe, zone, couche };
@@ -115,8 +122,13 @@ export function depotOnglets({ groupes, deplacer, apresFin }) {
   function retirerApercu() {
     glisse.apercu?.remove();
     glisse.apercu = null;
+    glisse.marque?.definirInsertion(null);
+    glisse.marque = null;
+    delete glisse.survol?.dataset.survol;
+    glisse.survol = null;
     glisse.zone = null;
     glisse.groupeVise = null;
+    glisse.place = null;
   }
 
   function survol(ev) {
@@ -125,8 +137,19 @@ export function depotOnglets({ groupes, deplacer, apresFin }) {
     if (!v) return retirerApercu();
     ev.preventDefault();
     if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
-    if (glisse.zone === v.zone && glisse.groupeVise === v.groupe) return;
+    if (glisse.zone === v.zone && glisse.groupeVise === v.groupe && glisse.place === (v.place ?? null)) return;
     retirerApercu();
+    if (v.zone === "barre") {
+      // Barre survolée : ni guide ni aperçu dans ce groupe, la marque d'insertion montre la place.
+      v.couche.dataset.survol = "barre";
+      glisse.survol = v.couche;
+      glisse.marque = v.barre.firstElementChild;
+      glisse.marque.definirInsertion(v.place);
+      glisse.zone = "barre";
+      glisse.groupeVise = v.groupe;
+      glisse.place = v.place;
+      return;
+    }
     const apercu = document.createElement("div");
     apercu.dataset.depot = v.zone;
     v.couche.prepend(apercu);
@@ -142,7 +165,7 @@ export function depotOnglets({ groupes, deplacer, apresFin }) {
     ev.preventDefault();
     const id = glisse.id;
     finir();
-    deplacer(id, v.groupe, v.zone);
+    deplacer(id, v.groupe, v.zone, v.place);
   }
 
   function finir() {
@@ -155,6 +178,7 @@ export function depotOnglets({ groupes, deplacer, apresFin }) {
     document.removeEventListener("dragend", finir, true);
     if (g.trame !== null) cancelAnimationFrame(g.trame);
     document.documentElement.classList.remove("onglet-glisse");
+    g.marque?.definirInsertion(null);
     for (const couche of g.couches.keys()) couche.remove();
     g.image.remove();
     apresFin?.();

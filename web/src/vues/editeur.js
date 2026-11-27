@@ -144,8 +144,8 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   // Pendant un glissé, aucun rendu de barre : retirer l'onglet source du DOM annulerait le glissé. `afficher()` est refait à la fin.
   let aRefaire = false;
   const depot = depotOnglets({
-    groupes: () => [...groupes.values()].map((g) => ({ id: g.id, barre: g.barre, nombre: ongletsDe(g).length })),
-    deplacer: (id, cible, zone) => deplacer(id, cible, zone),
+    groupes: () => [...groupes.values()].map((g) => ({ id: g.id, barre: g.barre, ids: ongletsDe(g).map(idDe) })),
+    deplacer: (id, cible, zone, place) => deplacer(id, cible, zone, place),
     apresFin: () => {
       if (!aRefaire) return;
       aRefaire = false;
@@ -1352,22 +1352,33 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
 
   // ---- Déplacer un onglet (REQ-079) ----
 
-  const ZONES = ["gauche", "droite", "haut", "bas", "centre"];
+  const ZONES = ["gauche", "droite", "haut", "bas", "centre", "barre"];
 
   /**
    * Déplace l'onglet `id` vers le groupe `cible` : `centre`, à droite de ses onglets ; un côté coupe le groupe en deux et
-   * l'onglet occupe la nouvelle moitié. La vue est déplacée, jamais recréée ; le groupe d'arrivée devient courant et reçoit le focus.
+   * l'onglet occupe la nouvelle moitié ; `barre` le met à la place `place` de la barre du groupe (de 0 au nombre d'onglets, REQ-200). La vue est déplacée, jamais recréée ; le groupe d'arrivée devient courant et reçoit le focus.
    */
-  function deplacer(id, cible, zone) {
+  function deplacer(id, cible, zone, place) {
     if (!ZONES.includes(zone)) throw new Error(`zone invalide : ${zone}`);
     const o = item(id);
     if (!o || !groupes.has(cible)) return;
+    if (zone === "barre" && !(Number.isInteger(place) && place >= 0 && place <= ongletsDe(groupes.get(cible)).length)) throw new Error(`place invalide : ${place}`);
     const depart = groupes.get(o.groupe);
     // Dans son propre groupe, ni le centre, ni un côté s'il n'a que cet onglet (AC-079-6).
-    if (depart.id === cible && (zone === "centre" || ongletsDe(depart).length === 1)) return;
+    if (depart.id === cible && zone !== "barre" && (zone === "centre" || ongletsDe(depart).length === 1)) return;
+    // Sur la barre de son groupe, la place avant ou après lui ne change rien (AC-200-3).
+    const rang = depart.id === cible ? ongletsDe(depart).indexOf(o) : -1;
+    if (zone === "barre" && (place === rang || place === rang + 1) && rang >= 0) return;
+    // L'ordre d'arrivée, calculé avant que l'onglet change de groupe.
+    let ordre = null;
+    if (zone === "barre") {
+      const autres = ongletsDe(groupes.get(cible)).filter((x) => x !== o);
+      const p = rang >= 0 && place > rang ? place - 1 : place;
+      ordre = [...autres.slice(0, p), o, ...autres.slice(p)];
+    }
     const defilements = relever();
     let arrivee = cible;
-    if (zone !== "centre") {
+    if (zone !== "centre" && zone !== "barre") {
       arrivee = `g${++numeroGroupe}`;
       arbre = couper(arbre, cible, zone, arrivee);
       creerGroupe(arrivee);
@@ -1384,6 +1395,13 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
     }
     o.groupe = arrivee;
     if (o === diff) diff.rang = liste.filter((x) => x.groupe === arrivee).length;
+    if (ordre) {
+      // Les onglets du groupe se partagent les mêmes places dans `liste`, dans le nouvel ordre ; le diff garde son rang.
+      const propres = ordre.filter((x) => x !== diff);
+      const places = liste.flatMap((x, i) => (x.groupe === arrivee ? [i] : []));
+      places.forEach((i, k) => (liste[i] = propres[k]));
+      if (diff?.groupe === arrivee) diff.rang = ordre.indexOf(diff);
+    }
     passerA(arrivee);
     actif = id;
     groupes.get(arrivee).actif = id;

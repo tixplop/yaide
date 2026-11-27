@@ -26,6 +26,8 @@ beforeEach(() => {
   document.documentElement.style.setProperty("--hauteur-editeur-min", "120px");
   Element.prototype.getBoundingClientRect = function () {
     if (this.classList?.contains("ya-depot-corps")) return rect(0, 30, 800, 570);
+    // Les onglets d'une barre : 100 px chacun, de gauche à droite.
+    if (this.classList?.contains("onglet-cellule")) return rect([...this.parentElement.children].filter((c) => c.classList.contains("onglet-cellule")).indexOf(this) * 100, 0, 100, 26);
     if (this.classList?.contains("cadre-groupe")) return rect(0, 0, taille.largeur, taille.hauteur);
     return rectOriginal.call(this);
   };
@@ -81,7 +83,8 @@ async function glisser(nom) {
 const AU_MILIEU = { x: 400, y: 300 };
 const A_DROITE = { x: 790, y: 300 };
 const A_GAUCHE = { x: 10, y: 300 };
-const SUR_LA_BARRE = { x: 400, y: 10 };
+const SUR_LA_BARRE = { x: 400, y: 10 }; // après le dernier onglet
+const SUR_LE_PREMIER = { x: 10, y: 10 }; // moitié gauche du premier onglet
 
 test("REQ079_AC6_aucune_cible", async () => {
   monter(["a.txt"]);
@@ -103,10 +106,10 @@ test("REQ079_AC14_echap_et_hors_cible", async () => {
   for (const t of ["dragover", "drop", "dragenter"]) contenu.addEventListener(t, recu);
   for (const t of ["dragover", "drop", "dragenter"]) expect(evt(t, contenu).defaultPrevented).toBe(false);
   expect(recu).not.toHaveBeenCalled();
-  // Cible refusée : la barre du propre groupe (pas de centre).
+  // Cible refusée : la place qui touche l'onglet glissé, sur la barre de son groupe.
   const propre = couches()[0];
-  expect(evt("dragover", propre, SUR_LA_BARRE).defaultPrevented).toBe(false);
-  expect(evt("drop", propre, SUR_LA_BARRE).defaultPrevented).toBe(false);
+  expect(evt("dragover", propre, SUR_LE_PREMIER).defaultPrevented).toBe(false);
+  expect(evt("drop", propre, SUR_LE_PREMIER).defaultPrevented).toBe(false);
   expect(barres().map(noms)).toEqual(avant);
   // Échap : le navigateur envoie dragend.
   evt("dragend", onglet("a.txt"));
@@ -156,14 +159,15 @@ test("REQ079_AC23_un_seul_apercu_qui_suit", async () => {
   expect(apercus()).toEqual(["gauche"]);
   evt("dragover", autre, AU_MILIEU);
   expect(apercus()).toEqual(["centre"]);
+  // Sur la barre : plus d'aperçu, la marque d'insertion (REQ-200).
   evt("dragover", autre, SUR_LA_BARRE);
-  expect(apercus()).toEqual(["centre"]);
+  expect(apercus()).toEqual(["barre"]);
   // Le propre groupe, côté droit : l'aperçu passe dans sa couche, il n'y en a toujours qu'un.
   evt("dragover", couches()[0], A_DROITE);
   expect(apercus()).toEqual(["droite"]);
   expect(couches()[0].querySelector("[data-depot]")).not.toBeNull();
   // Cible refusée : plus d'aperçu.
-  evt("dragover", couches()[0], SUR_LA_BARRE);
+  evt("dragover", couches()[0], SUR_LE_PREMIER);
   expect(apercus()).toEqual([]);
 });
 
@@ -177,7 +181,7 @@ test("REQ079_AC24_fin_du_glisse_et_refus", async () => {
   expect(image.querySelector(".liste-libelle").textContent).toBe("a.txt");
   expect(image.querySelector("svg")).not.toBeNull();
   // Refus puis fin sans dépôt.
-  expect(evt("drop", couches()[0], SUR_LA_BARRE).defaultPrevented).toBe(false);
+  expect(evt("drop", couches()[0], SUR_LE_PREMIER).defaultPrevented).toBe(false);
   evt("dragend", onglet("a.txt"));
   expect(couches()).toEqual([]);
   expect(barres().map(noms)).toEqual([["a.txt", "b.txt"], ["c.txt"]]);
@@ -309,4 +313,133 @@ test("REQ080_AC21_poignees_inertes_pendant_le_glisse", async () => {
   // La règle CSS.
   const css = readFileSync("web/src/ui/composants.css", "utf8");
   expect(css).toMatch(/\.onglet-glisse \.poignee-groupe\s*\{\s*pointer-events:\s*none;?\s*\}/);
+});
+
+// ---- REQ-200 : déposer sur une barre d'onglets ----
+
+const marques = () => [...document.querySelectorAll("[data-depot]")];
+/** Place de la marque dans la barre `i` : le nombre d'onglets avant elle, ou null. */
+const placeMarque = (i) => {
+  const cellules = [...barres()[i].querySelectorAll(".onglet-cellule")];
+  const m = cellules.findIndex((c) => c.querySelector(".ya-insertion"));
+  if (m < 0) return null;
+  return cellules[m].querySelector(".ya-insertion").dataset.bord === "apres" ? m + 1 : m;
+};
+const surBarre = (x) => ({ x, y: 10 });
+
+test("REQ200_AC1_AC4_AC7_glisser_c_avant_a_marque_puis_depot", async () => {
+  monter(["a.rs", "b.rs", "c.rs"]);
+  await glisser("c.rs");
+  const [couche] = couches();
+  // Moitié gauche de a.rs : marque avant a.rs, aucun guide, aucun aperçu.
+  const v = evt("dragover", couche, surBarre(20));
+  expect(v.defaultPrevented).toBe(true);
+  expect(v.dataTransfer.dropEffect).toBe("move");
+  expect(marques().map((m) => m.dataset.depot)).toEqual(["barre"]);
+  expect(marques()[0].getAttribute("aria-hidden")).toBe("true");
+  expect(placeMarque(0)).toBe(0);
+  expect(couche.dataset.survol).toBe("barre");
+  // Elle suit le pointeur : moitié droite de a.rs, partie vide.
+  evt("dragover", couche, surBarre(60));
+  expect(placeMarque(0)).toBe(1);
+  expect(marques().length).toBe(1);
+  evt("dragover", couche, surBarre(20));
+  const d = evt("drop", couche, surBarre(20));
+  expect(d.defaultPrevented).toBe(true);
+  // Dépôt : marque et couche disparues, ordre c, a, b, c actif, un seul groupe.
+  expect(marques()).toEqual([]);
+  expect(couches()).toEqual([]);
+  expect(barres().map(noms)).toEqual([["c.rs", "a.rs", "b.rs"]]);
+  expect(onglet("c.rs").getAttribute("aria-selected")).toBe("true");
+  expect(document.querySelectorAll(".cadre-groupe").length).toBe(1);
+});
+
+test("REQ200_AC2_AC10_places_refusees_et_marque_avant_a", async () => {
+  monter(["a.rs", "b.rs", "c.rs"]);
+  const dt = await glisser("b.rs");
+  // L'image du glissé montre « b.rs ».
+  expect(dt.setDragImage.mock.calls[0][0].querySelector(".liste-libelle").textContent).toBe("b.rs");
+  const [couche] = couches();
+  // Sur b.rs, moitié droite de a.rs, moitié gauche de c.rs : refus, aucune marque.
+  for (const x of [150, 80, 220]) {
+    const v = evt("dragover", couche, surBarre(x));
+    expect(v.defaultPrevented).toBe(false);
+    expect(marques()).toEqual([]);
+  }
+  // Moitié gauche de a.rs : avant a.rs ; partie vide : après c.rs.
+  expect(evt("dragover", couche, surBarre(30)).defaultPrevented).toBe(true);
+  expect(placeMarque(0)).toBe(0);
+  evt("dragover", couche, surBarre(280));
+  expect(placeMarque(0)).toBe(3);
+  evt("dragover", couche, surBarre(900));
+  expect(placeMarque(0)).toBe(3);
+  // Refus : la marque part.
+  evt("dragover", couche, surBarre(150));
+  expect(marques()).toEqual([]);
+  expect(couche.dataset.survol).toBeUndefined();
+});
+
+test("REQ200_AC4_AC9_barre_du_groupe_2_sans_guide_le_groupe_1_garde_les_siens", async () => {
+  const { e } = monter(["a.txt", "b.txt", "c.txt", "d.txt"]);
+  e.deplacer("c.txt", "g1", "droite");
+  e.deplacer("d.txt", "g2", "centre"); // g1 : a b ; g2 : c d
+  await glisser("a.txt");
+  const [g1, g2] = couches();
+  evt("dragover", g2, surBarre(60)); // entre c.txt et b.txt
+  expect(g2.dataset.survol).toBe("barre");
+  expect(placeMarque(1)).toBe(1);
+  // Le groupe 2 : guides masqués par CSS (data-survol) ; le groupe 1 garde les siens, sans survol.
+  expect(g1.dataset.survol).toBeUndefined();
+  expect(guides(g1).length).toBeGreaterThan(0);
+  expect(marques().map((m) => m.dataset.depot)).toEqual(["barre"]);
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  expect(css).toMatch(/\.ya-depot\[data-survol="barre"\] \[data-zone-depot\]\s*\{\s*display:\s*none/);
+  // Dépôt : a.txt s'insère entre eux et devient actif.
+  evt("drop", g2, surBarre(60));
+  expect(barres().map(noms)).toEqual([["b.txt"], ["c.txt", "a.txt", "d.txt"]]);
+  expect(onglet("a.txt").getAttribute("aria-selected")).toBe("true");
+});
+
+test("REQ200_AC4_AC9_retour_dans_le_corps_marque_part_apercu_revient", async () => {
+  deux();
+  await glisser("a.txt");
+  const [, g2] = couches();
+  evt("dragover", g2, SUR_LA_BARRE);
+  expect(apercus()).toEqual(["barre"]);
+  evt("dragover", g2, AU_MILIEU);
+  expect(apercus()).toEqual(["centre"]);
+  expect(g2.dataset.survol).toBeUndefined();
+  expect(placeMarque(1)).toBeNull();
+  expect(guides(g2).length).toBe(5);
+});
+
+test("REQ200_AC7_AC8_marque_part_a_la_fin_du_glisse_et_le_focus_suit_le_depot", async () => {
+  monter(["a.rs", "b.rs", "c.rs"]);
+  await glisser("c.rs");
+  evt("dragover", couches()[0], surBarre(20));
+  expect(marques().length).toBe(1);
+  // Échap : dragend, l'ordre ne change pas.
+  evt("dragend", onglet("c.rs"));
+  expect(marques()).toEqual([]);
+  expect(barres().map(noms)).toEqual([["a.rs", "b.rs", "c.rs"]]);
+  // Dépôt : le focus est dans le contenu de l'onglet déplacé.
+  await glisser("c.rs");
+  evt("dragover", couches()[0], surBarre(20));
+  evt("drop", couches()[0], surBarre(20));
+  const zone = [...document.querySelectorAll(".zone-code")].find((z) => z.vue.contentDOM.getAttribute("aria-label") === "Éditeur c.rs");
+  expect(document.activeElement).toBe(zone.vue.contentDOM);
+});
+
+test("REQ200_AC3_un_seul_onglet_aucune_cible", async () => {
+  monter(["a.rs"]);
+  await glisser("a.rs");
+  for (const x of [10, 90, 500]) expect(evt("dragover", couches()[0], surBarre(x)).defaultPrevented).toBe(false);
+  expect(marques()).toEqual([]);
+});
+
+test("REQ200_AC11_marque_en_forme_de_I_en_accent_et_forced_colors", () => {
+  const css = readFileSync("web/src/ui/composants.css", "utf8");
+  const regles = css.split("\n").filter((l) => l.includes(".ya-insertion")).join("\n");
+  expect(regles).toMatch(/--accent-fg/);
+  expect(regles).toMatch(/Highlight/);
 });

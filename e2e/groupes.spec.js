@@ -639,3 +639,142 @@ test("REQ080_AC1_glisse_au_dessus_d_un_apercu_html", async ({ page }) => {
   await page.mouse.move(a1.right - 100, 400);
   expect(await boites(page)).toEqual([a1, a2]);
 });
+
+test("REQ200_P155_AC1_AC4_AC6_AC7_AC8_AC9_changer_l_ordre_en_glissant_sur_une_barre", async ({ page }) => {
+  const dossier = depotExemple();
+  for (const nom of ["a.rs", "b.rs", "c.rs", "notes.md"]) fs.writeFileSync(path.join(dossier, nom), `// ${nom}\n`);
+  yaide = await lancerYaide({ dossier });
+  await page.setViewportSize({ width: 1700, height: 1000 });
+  await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
+  await ouvrirFichiers(page, "a.rs", "b.rs", "c.rs");
+  const a = onglet(page, /^a\.rs/);
+  const b = onglet(page, /^b\.rs/);
+  const c = onglet(page, /^c\.rs/);
+  const texte = (nom) => page.getByRole("textbox", { name: `Éditeur ${nom}` });
+  const ordre = (groupe) => groupe.getByRole("tab").evaluateAll((l) => l.map((t) => t.querySelector(".onglet-nom").textContent));
+  const marques = page.locator("[data-depot]");
+  const guidesVisibles = (groupe) => groupe.locator("[data-zone-depot]:visible");
+  const barre = groupes(page).first().getByRole("tablist");
+  const gauche = async (t) => (await t.boundingBox()).x + 8;
+  const milieu = async (t) => {
+    const r = await t.boundingBox();
+    return r.y + r.height / 2;
+  };
+
+  // Situation : b.rs est actif, le focus dans son texte.
+  await b.click();
+  await texte("b.rs").click();
+  await expect(texte("b.rs")).toBeFocused();
+
+  // Étape 1 : c.rs sur la moitié gauche de a.rs → marque avant a.rs, aucun guide, rien ne bouge, b.rs reste actif.
+  const barreAvant = await barre.boundingBox();
+  await saisir(page, c);
+  await page.mouse.move(await gauche(a), await milieu(a), { steps: 8 });
+  await expect(marques).toHaveCount(1);
+  await expect(marques).toHaveAttribute("data-depot", "barre");
+  await expect(marques).toHaveAttribute("aria-hidden", "true");
+  await expect(guidesVisibles(groupes(page).first())).toHaveCount(0);
+  await expect(b).toHaveAttribute("aria-selected", "true");
+  await expect(c).toHaveAttribute("aria-selected", "false");
+  await expect(texte("b.rs")).toBeFocused();
+  const m = await marques.boundingBox();
+  const bordA = await a.locator("xpath=ancestor::*[contains(@class,'onglet-cellule')]").boundingBox();
+  const zone = await barre.boundingBox();
+  expect(Math.abs(m.x + m.width / 2 - bordA.x)).toBeLessThanOrEqual(4);
+  expect(m.y).toBeGreaterThanOrEqual(zone.y);
+  expect(m.y + m.height).toBeLessThanOrEqual(zone.y + zone.height);
+  expect(await barre.boundingBox()).toEqual(barreAvant);
+  // Sur c.rs lui-même ou la moitié droite de b.rs : plus de marque (refus).
+  const bb = await b.boundingBox();
+  await page.mouse.move(bb.x + bb.width - 6, await milieu(a), { steps: 4 });
+  await expect(marques).toHaveCount(0);
+  // La marque suit le pointeur : retour sur a.rs, puis Échap → rien ne change, le focus est où il était.
+  await page.mouse.move(await gauche(a), await milieu(a), { steps: 4 });
+  await expect(marques).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(marques).toHaveCount(0);
+  await page.mouse.up();
+  expect(await ordre(groupes(page).first())).toEqual(["a.rs", "b.rs", "c.rs"]);
+  await expect(b).toHaveAttribute("aria-selected", "true");
+  await expect(texte("b.rs")).toBeFocused();
+
+  // Étape 2 : le dépôt → c.rs, a.rs, b.rs ; c.rs est actif, le focus dans son texte ; un seul groupe.
+  await saisir(page, c);
+  await page.mouse.move(await gauche(a), await milieu(a), { steps: 8 });
+  await expect(marques).toHaveCount(1);
+  await page.mouse.up();
+  await expect(marques).toHaveCount(0);
+  expect(await ordre(groupes(page).first())).toEqual(["c.rs", "a.rs", "b.rs"]);
+  await expect(groupes(page)).toHaveCount(1);
+  await expect(c).toHaveAttribute("aria-selected", "true");
+  await expect(texte("c.rs")).toBeFocused();
+  // Droite, depuis c.rs, va sur a.rs.
+  await c.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(a).toHaveAttribute("aria-selected", "true");
+
+  // Étape 3 : b.rs sur le quart droit du code → deux groupes ; README.md et notes.md s'ouvrent à droite ; b.rs se ferme.
+  await deposer(page, b, groupes(page).first(), "droite");
+  await expect(groupes(page)).toHaveCount(2);
+  await ouvrirFichiers(page, "README.md", "notes.md");
+  await page.getByRole("button", { name: "Fermer b.rs" }).click();
+  const g1 = groupeDe(page, /^c\.rs/);
+  const g2 = groupeDe(page, /^README\.md/);
+  expect(await ordre(g1)).toEqual(["c.rs", "a.rs"]);
+  expect(await ordre(g2)).toEqual(["README.md", "notes.md"]);
+
+  // Étape 4 : clic sur c.rs, puis a.rs sur la moitié droite de README.md → marque entre README.md et notes.md.
+  await c.click();
+  const readme = await onglet(page, /^README\.md/).boundingBox();
+  await saisir(page, a);
+  await page.mouse.move(readme.x + readme.width - 8, readme.y + readme.height / 2, { steps: 8 });
+  await expect(marques).toHaveCount(1);
+  await expect(marques).toHaveAttribute("data-depot", "barre");
+  await expect(guidesVisibles(g2)).toHaveCount(0);
+  await expect(guidesVisibles(g1).first()).toBeVisible();
+  // Le pointeur descend dans le corps : la marque part, les guides et l'aperçu reviennent.
+  const k = await corps(g2);
+  await page.mouse.move(k.x + k.largeur / 2, k.y + k.hauteur / 2, { steps: 6 });
+  await expect(marques).toHaveCount(1);
+  await expect(marques).toHaveAttribute("data-depot", "centre");
+  await expect(guidesVisibles(g2).first()).toBeVisible();
+  // De nouveau sur la barre.
+  await page.mouse.move(readme.x + readme.width - 8, readme.y + readme.height / 2, { steps: 6 });
+  await expect(marques).toHaveAttribute("data-depot", "barre");
+
+  // Étape 5 : le dépôt → a.rs entre README.md et notes.md, actif, le focus dans son texte ; c.rs reste seul et actif à gauche.
+  await page.mouse.up();
+  await expect(marques).toHaveCount(0);
+  await expect(page.locator("[data-zone-depot]")).toHaveCount(0);
+  expect(await ordre(groupeDe(page, /^README\.md/))).toEqual(["README.md", "a.rs", "notes.md"]);
+  await expect(a).toHaveAttribute("aria-selected", "true");
+  await expect(texte("a.rs")).toBeFocused();
+  expect(await ordre(groupeDe(page, /^c\.rs/))).toEqual(["c.rs"]);
+  await expect(c).toHaveAttribute("aria-selected", "true");
+
+  // Étape 6 : après un rechargement, mêmes groupes, même ordre dans chaque barre.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise((ok) => {
+            const d = indexedDB.open("yaide", 1);
+            d.onsuccess = () => {
+              const r = d.result.transaction("cles").objectStore("cles").get("onglets");
+              r.onsuccess = () => {
+                d.result.close();
+                const par = new Map();
+                for (const o of r.result?.liste ?? []) par.set(o.groupe, [...(par.get(o.groupe) ?? []), o.chemin]);
+                ok([...par.values()].map((l) => l.join(">")).sort());
+              };
+            };
+          }),
+      ),
+    )
+    .toEqual(["README.md>a.rs>notes.md", "c.rs"]);
+  await page.reload();
+  await expect(groupes(page)).toHaveCount(2);
+  await expect(onglet(page, /^a\.rs/)).toBeVisible();
+  expect(await ordre(groupeDe(page, /^README\.md/))).toEqual(["README.md", "a.rs", "notes.md"]);
+  expect(await ordre(groupeDe(page, /^c\.rs/))).toEqual(["c.rs"]);
+});

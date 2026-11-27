@@ -9,6 +9,7 @@ import {
   minimum,
   partDe,
   partDepuis,
+  placeVisee,
   poserPart,
   retirerGroupe,
   valider,
@@ -81,7 +82,7 @@ describe("disposition", () => {
 
   it("REQ079_AC21_zone_visee", () => {
     const tout = ["gauche", "droite", "haut", "bas", "centre"];
-    const z = (px, py, cs = tout, surBarre = false) => zoneVisee({ px, py, surBarre, cibles: cs });
+    const z = (px, py, cs = tout) => zoneVisee({ px, py, cibles: cs });
     expect(z(0.1, 0.5)).toBe("gauche");
     expect(z(0.9, 0.5)).toBe("droite");
     expect(z(0.5, 0.1)).toBe("haut");
@@ -105,18 +106,45 @@ describe("disposition", () => {
     // propre groupe sans centre : refus
     expect(z(0.5, 0.5, ["gauche", "droite"])).toBe(null);
     expect(z(0.1, 0.5, [])).toBe(null);
-    // barre
-    expect(z(0.1, 0.5, tout, true)).toBe("centre");
-    expect(z(0.1, 0.5, ["gauche", "droite"], true)).toBe(null);
   });
 
   it("REQ079_AC28_quart_224_225_et_egalite", () => {
     const tout = ["gauche", "droite", "haut", "bas", "centre"];
-    expect(zoneVisee({ px: 224 / 900, py: 0.5, surBarre: false, cibles: tout })).toBe("gauche");
-    expect(zoneVisee({ px: 225 / 900, py: 0.5, surBarre: false, cibles: tout })).toBe("centre");
-    expect(zoneVisee({ px: 676 / 900, py: 0.5, surBarre: false, cibles: tout })).toBe("droite");
-    expect(zoneVisee({ px: 675 / 900, py: 0.5, surBarre: false, cibles: tout })).toBe("centre");
-    expect(zoneVisee({ px: 0.2, py: 0.2, surBarre: false, cibles: tout })).toBe("gauche");
+    expect(zoneVisee({ px: 224 / 900, py: 0.5, cibles: tout })).toBe("gauche");
+    expect(zoneVisee({ px: 225 / 900, py: 0.5, cibles: tout })).toBe("centre");
+    expect(zoneVisee({ px: 676 / 900, py: 0.5, cibles: tout })).toBe("droite");
+    expect(zoneVisee({ px: 675 / 900, py: 0.5, cibles: tout })).toBe("centre");
+    expect(zoneVisee({ px: 0.2, py: 0.2, cibles: tout })).toBe("gauche");
+  });
+
+  it("REQ200_AC2_AC3_place_visee_sur_la_barre", () => {
+    // trois onglets de 100 px : 0-100, 100-200, 200-300 ; actionsDroite au-delà de 300
+    const cellules = [0, 100, 200].map((g) => ({ gauche: g, droite: g + 100 }));
+    const p = (x, rang = null, cs = cellules) => placeVisee({ x, cellules: cs, rang });
+    // moitié gauche : avant l'onglet ; moitié droite : après lui
+    expect(p(10)).toBe(0);
+    expect(p(49)).toBe(0);
+    expect(p(50)).toBe(1);
+    expect(p(149)).toBe(1);
+    expect(p(150)).toBe(2);
+    expect(p(299)).toBe(3);
+    // partie vide ou actionsDroite : après le dernier
+    expect(p(450)).toBe(3);
+    expect(p(-20)).toBe(0);
+    // les deux places qui touchent l'onglet glissé (rang 1) : refus
+    expect(p(10, 1)).toBe(0);
+    expect(p(60, 1)).toBe(null);
+    expect(p(140, 1)).toBe(null);
+    expect(p(260, 1)).toBe(3);
+    expect(p(450, 1)).toBe(3);
+    // un seul onglet dans son groupe : aucune cible
+    const un = [{ gauche: 0, droite: 100 }];
+    expect(p(10, 0, un)).toBe(null);
+    expect(p(90, 0, un)).toBe(null);
+    expect(p(500, 0, un)).toBe(null);
+    // le seul onglet d'un autre groupe : avant ou après lui
+    expect(p(10, null, un)).toBe(0);
+    expect(p(90, null, un)).toBe(1);
   });
 
   it("REQ079_valider_rejette_un_arbre_abime", () => {

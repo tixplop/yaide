@@ -646,3 +646,139 @@ test("REQ080_AC7_fermer_un_onglet_garde_les_autres_decoupes", async () => {
   expect(arbre.part).toBe(0.3);
   expect(arbre.b.id).toBe("g2");
 });
+
+// ---- REQ-200 : changer l'ordre en déposant sur une barre ----
+
+const touchePressee = (t, key) => t.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+
+test("REQ200_AC1_AC6_deplacer_avant_le_premier_ordre_suivi_par_les_touches_et_la_garde", async () => {
+  fichiersDu();
+  lire.mockResolvedValueOnce({ liste: ["a.rs", "b.rs", "c.rs"].map((chemin) => ({ groupe: "g1", chemin })), actif: "c.rs", disposition: { arbre: feuille("g1", "c.rs"), courant: "g1" } });
+  const e = remonter();
+  await e.restaurer();
+  e.deplacer("c.rs", "g1", "barre", 0);
+  expect(barres().map(noms)).toEqual([["c.rs", "a.rs", "b.rs"]]);
+  expect(actifs()).toEqual(["c.rs"]);
+  expect(groupesDom().length).toBe(1);
+  // Droite et Gauche suivent le nouvel ordre.
+  touchePressee(onglet("c.rs"), "ArrowRight");
+  expect(actifs()).toEqual(["a.rs"]);
+  touchePressee(onglet("a.rs"), "ArrowLeft");
+  expect(actifs()).toEqual(["c.rs"]);
+  // Fermer l'onglet du milieu choisit son voisin de droite dans le nouvel ordre (AC-014-7).
+  touchePressee(onglet("a.rs"), "Delete");
+  expect(barres().map(noms)).toEqual([["c.rs", "b.rs"]]);
+  // Après un rechargement, le même ordre.
+  e.detruire();
+  expect(derniereEcriture().liste.map((g) => g.chemin)).toEqual(["c.rs", "b.rs"]);
+});
+
+test("REQ200_AC2_AC3_places_apres_le_dernier_et_places_sans_effet", () => {
+  const { e } = monter(["a.rs", "b.rs", "c.rs"]);
+  e.deplacer("a.rs", "g1", "barre", 3);
+  expect(barres().map(noms)).toEqual([["b.rs", "c.rs", "a.rs"]]);
+  // Juste avant ou juste après lui-même : rien ne change.
+  e.deplacer("c.rs", "g1", "barre", 1);
+  e.deplacer("c.rs", "g1", "barre", 2);
+  expect(barres().map(noms)).toEqual([["b.rs", "c.rs", "a.rs"]]);
+  // Entre deux autres : avant le dernier.
+  e.deplacer("b.rs", "g1", "barre", 2);
+  expect(barres().map(noms)).toEqual([["c.rs", "b.rs", "a.rs"]]);
+  expect(() => e.deplacer("b.rs", "g1", "barre", 9)).toThrow("place invalide");
+  expect(() => e.deplacer("b.rs", "g1", "barre")).toThrow("place invalide");
+});
+
+test("REQ200_AC4_AC079_4_insertion_dans_un_autre_groupe_et_depart_suit_AC5", () => {
+  const { e } = monter(["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]);
+  e.deplacer("d.txt", "g1", "droite"); // g1 : a b c e ; g2 : d
+  e.deplacer("e.txt", "g2", "centre"); // g2 : d e
+  expect(barres().map(noms)).toEqual([["a.txt", "b.txt", "c.txt"], ["d.txt", "e.txt"]]);
+  // b.txt, actif de g1, part entre d et e : g1 choisit son voisin de droite (AC-014-7).
+  onglet("b.txt").click();
+  expect(actifs()[0]).toBe("b.txt");
+  e.deplacer("b.txt", "g2", "barre", 1);
+  expect(barres().map(noms)).toEqual([["a.txt", "c.txt"], ["d.txt", "b.txt", "e.txt"]]);
+  expect(actifs()).toEqual(["c.txt", "b.txt"]);
+  expect(barres().map((x) => x.dataset.courant)).toEqual(["false", undefined]);
+  // c.txt, le dernier de droite, part : g1 choisit son voisin de gauche.
+  onglet("c.txt").click();
+  e.deplacer("c.txt", "g2", "barre", 0);
+  expect(barres().map(noms)).toEqual([["a.txt"], ["c.txt", "d.txt", "b.txt", "e.txt"]]);
+  expect(actifs()).toEqual(["a.txt", "c.txt"]);
+  // Le dernier onglet d'un groupe part sur la barre d'un autre : le groupe disparaît (AC-079-5).
+  e.deplacer("a.txt", "g2", "barre", 4);
+  expect(barres().map(noms)).toEqual([["c.txt", "d.txt", "b.txt", "e.txt", "a.txt"]]);
+  expect(groupesDom().length).toBe(1);
+});
+
+test("REQ200_AC5_texte_point_et_historique_conserves_au_changement_d_ordre", async () => {
+  fichiersDu();
+  const { e } = monter(["a.txt", "b.txt"]);
+  const zone = zoneDe(e, "b.txt");
+  zone.vue.dispatch({ changes: { from: 0, insert: "X" } });
+  e.deplacer("b.txt", "g1", "barre", 0);
+  expect(barres().map(noms)).toEqual([["b.txt", "a.txt"]]);
+  // Le même élément DOM, le même texte, le point de modification, l'historique.
+  expect(zoneDe(e, "b.txt")).toBe(zone);
+  expect(zone.vue.state.doc.toString()).toBe("Xcontenu b.txt");
+  expect(onglet("b.txt").dataset.modifie).toBe("true");
+  const { undo } = await import("@codemirror/commands");
+  undo(zone.vue);
+  expect(zone.vue.state.doc.toString()).toBe("contenu b.txt");
+});
+
+test("REQ200_AC5_session_claude_gardee_au_changement_d_ordre", () => {
+  const { e } = monter(["a.txt"]);
+  e.ouvrirClaude({ id: "s1" });
+  const vue = faux.vues[0];
+  const corps = vue.corps;
+  e.deplacer("\0claude:s1", "g1", "barre", 0);
+  expect(noms(barres()[0])).toEqual(["Claude 1", "a.txt"]);
+  expect(corps.isConnected).toBe(true);
+  expect(faux.journal).toEqual([]);
+});
+
+test("REQ200_diff_garde_sa_place_dans_la_barre", () => {
+  const { e } = monter(["a.txt", "b.txt"]);
+  e.ouvrirDiff({ chemin: "a.txt", texte: "diff" });
+  expect(barres().map(noms)).toEqual([["a.txt (diff)", "a.txt", "b.txt"]]);
+  e.deplacer("b.txt", "g1", "barre", 1);
+  expect(barres().map(noms)).toEqual([["a.txt (diff)", "b.txt", "a.txt"]]);
+  e.deplacer("\0diff", "g1", "barre", 3);
+  expect(barres().map(noms)).toEqual([["b.txt", "a.txt", "a.txt (diff)"]]);
+});
+
+test("REQ200_AC5_question_en_attente_conservee_au_changement_d_ordre", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    if (init?.method === "POST") return { ok: true, status: 200, json: async () => ({ "a.txt": "9" }) };
+    return { ok: true, status: 200, headers: new Headers({ "x-version": "9" }), text: async () => "autre" };
+  }));
+  const { e } = monter(["a.txt", "b.txt"]);
+  await e.restaurer();
+  zoneDe(e, "a.txt").vue.dispatch({ changes: { from: 0, insert: "X" } });
+  await e.relireDisque();
+  expect(onglet("a.txt").getAttribute("aria-label")).toContain("question en attente");
+  e.deplacer("a.txt", "g1", "barre", 2);
+  expect(barres().map(noms)).toEqual([["b.txt", "a.txt"]]);
+  expect(onglet("a.txt").getAttribute("aria-label")).toContain("question en attente");
+  expect(document.querySelector(".cadre-question").textContent).toContain("a.txt a changé sur le disque");
+});
+
+test("REQ200_AC6_apres_un_rechargement_chaque_barre_a_le_meme_ordre", async () => {
+  fichiersDu();
+  lire.mockResolvedValueOnce({ liste: gardesTrois, actif: "c.txt", disposition: { arbre: { sens: "ligne", a: feuille("g1", "a.txt"), b: feuille("g2", "c.txt") }, courant: "g2" } });
+  const e = remonter();
+  await e.restaurer();
+  // g1 : a, b ; g2 : c, d (g3 absent de l'arbre : ses onglets sont retirés).
+  e.deplacer("b.txt", "g1", "barre", 0);
+  e.deplacer("c.txt", "g2", "barre", 2);
+  const avant = barres().map(noms);
+  expect(avant).toEqual([["b.txt", "a.txt"], ["d.txt", "c.txt"]]);
+  e.detruire();
+  const garde = derniereEcriture();
+  document.body.replaceChildren();
+  lire.mockResolvedValueOnce(garde);
+  const e2 = remonter();
+  await e2.restaurer();
+  expect(barres().map(noms)).toEqual(avant);
+});

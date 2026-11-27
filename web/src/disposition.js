@@ -52,9 +52,8 @@ export function cibles({ largeur, hauteur, min, source, seulOnglet }) {
 }
 
 // px, py : position dans le corps du groupe, en proportion. Renvoie une zone ou null (refus).
-export function zoneVisee({ px, py, surBarre, cibles: liste }) {
+export function zoneVisee({ px, py, cibles: liste }) {
   const centre = liste.includes("centre") ? "centre" : null;
-  if (surBarre) return centre;
   const distances = { gauche: px, droite: 1 - px, haut: py, bas: 1 - py };
   // 1e-9 : une égalité reste une égalité malgré l'arrondi des flottants.
   let meilleure = null;
@@ -63,6 +62,16 @@ export function zoneVisee({ px, py, surBarre, cibles: liste }) {
     if (meilleure === null || distances[c] < distances[meilleure] - 1e-9) meilleure = c;
   }
   return meilleure ?? centre;
+}
+
+// Place visée sur une barre d'onglets (REQ-200) : de 0, avant le premier, au nombre d'onglets, après le dernier.
+// x : abscisse du pointeur ; cellules : `{ gauche, droite }` de chaque onglet, dans l'ordre ;
+// rang : la place de l'onglet glissé dans cette barre, ou null s'il vient d'un autre groupe.
+// Renvoie null (refus) pour les deux places qui touchent l'onglet glissé : elles ne changent rien.
+export function placeVisee({ x, cellules, rang }) {
+  let place = cellules.findIndex((c) => x < (c.gauche + c.droite) / 2);
+  if (place < 0) place = cellules.length;
+  return rang !== null && (place === rang || place === rang + 1) ? null : place;
 }
 
 export function valider(valeur) {
