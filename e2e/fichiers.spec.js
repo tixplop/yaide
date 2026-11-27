@@ -935,6 +935,7 @@ test("REQ203_AC2_AC7_AC9_AC10_AC12_P159_suivre_le_fichier_actif_deux_groupes_rec
     await expect(ligne(page, "z.txt")).toHaveCount(0);
     await page.keyboard.press("Control+p");
     await page.getByRole("textbox", { name: "Chemin du fichier" }).fill("Zeta/z.txt");
+    await expect(page.getByRole("option", { name: "Zeta/z.txt" })).toBeVisible(); // la liste des chemins arrive après la frappe
     await page.keyboard.press("Enter");
     await expect(ligne(page, "z.txt")).toHaveAttribute("aria-selected", "true");
     await expect.poll(selection).toEqual(["Zeta/z.txt"]);
