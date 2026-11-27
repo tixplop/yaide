@@ -35,7 +35,7 @@ exec '${process.execPath}' '${FAUX}' "$@"
 test("REQ190_AC7_REQ191_AC6_REQ192_AC1_parcours_152_151_rail_a_huit_boutons_puis_workflow_publie_au_clavier", async ({ page }) => {
   const dossier = depotExemple();
   fs.mkdirSync(path.join(dossier, "notes"));
-  yaide = await lancerYaide({ dossier, claude: fauxClaude(), opencode: fauxOpencode() });
+  yaide = await lancerYaide({ dossier, claude: fauxClaude(), opencode: fauxOpencode(), intervalle: 100 });
 
   // Parcours 152 : à 800 × 480, les huit boutons du rail droit entiers, « Workflows » juste au-dessus de la base.
   await page.setViewportSize({ width: 800, height: 480 });
@@ -111,7 +111,7 @@ test("REQ190_AC7_REQ191_AC6_REQ192_AC1_parcours_152_151_rail_a_huit_boutons_puis
   await expect(dialogue).toBeHidden();
   await expect(bouton).toBeFocused();
 
-  // Un fichier créé dans `notes/` lance la commande : `fait.txt` apparaît (la boucle des déclencheurs passe toutes les 3 s).
+  // Un fichier créé dans `notes/` lance la commande : `fait.txt` apparaît (la boucle des déclencheurs passe toutes les 100 ms ici).
   let n = 0;
   await expect
     .poll(
@@ -119,7 +119,7 @@ test("REQ190_AC7_REQ191_AC6_REQ192_AC1_parcours_152_151_rail_a_huit_boutons_puis
         fs.writeFileSync(path.join(dossier, "notes", `n${n++}.md`), "x\n");
         return fs.existsSync(path.join(dossier, "fait.txt"));
       },
-      { timeout: 30000, intervals: [1000] },
+      { timeout: 30000, intervals: [200] },
     )
     .toBe(true);
 });
@@ -134,7 +134,7 @@ test("REQ197_AC2_REQ199_AC1_REQ199_AC4_REQ199_AC6_parcours_153_publier_depuis_l_
     { id: "n2", type: "shell", titre: "Commande shell 1", x: 340, y: 40, reglages: { commande: "sleep 25" } },
   ];
   fs.writeFileSync(fichier, JSON.stringify({ nom: "Revue des notes", publie: false, noeuds, liens: [{ de: "n1", vers: "n2" }] }));
-  yaide = await lancerYaide({ dossier, claude: fauxClaude(), opencode: fauxOpencode() });
+  yaide = await lancerYaide({ dossier, claude: fauxClaude(), opencode: fauxOpencode(), intervalle: 100 });
   await page.setViewportSize({ width: 800, height: 480 });
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await page.getByRole("button", { name: "Workflows", exact: true }).click();
@@ -167,7 +167,7 @@ test("REQ197_AC2_REQ199_AC1_REQ199_AC4_REQ199_AC6_parcours_153_publier_depuis_l_
         if (texte !== "En cours : Commande shell 1.") fs.writeFileSync(path.join(dossier, "notes", `n${n++}.md`), "x\n");
         return texte;
       },
-      { timeout: 30000, intervals: [3500] },
+      { timeout: 30000, intervals: [200] },
     )
     .toBe("En cours : Commande shell 1.");
   const arreter = page.locator(".onglets-droite").getByRole("button", { name: "Arrêter", exact: true });

@@ -825,7 +825,7 @@ fn REQ192_AC1_REQ193_AC1_publie_lance_a_l_evenement_ecoute_depublie_ne_lance_rie
 fn REQ192_AC5_REQ194_AC4_depublier_pendant_l_execution_elle_va_a_son_terme_et_le_journal_la_suit() {
     let racine = preparer("exec2");
     let s = demarrer(&racine, "p");
-    let commande = "sleep 1; echo fin >> marque.txt";
+    let commande = "while [ ! -f go ]; do sleep 0.05; done; echo fin >> marque.txt";
     let f = creer(
         &s,
         "Revue des notes",
@@ -850,6 +850,7 @@ fn REQ192_AC5_REQ194_AC4_depublier_pendant_l_execution_elle_va_a_son_terme_et_le
         &json!({ "noeuds": [], "liens": [] }),
     );
     assert_eq!(r.code, 200, "{}", r.corps);
+    ecrire_projet(&s, "go", "1");
     assert!(attendre(|| lignes_du_journal(
         &s,
         "Workflow « Revue des notes » terminé."
@@ -905,7 +906,8 @@ fn REQ192_AC6_publie_ecoute_apres_redemarrage_brouillon_reste_brouillon() {
     premier_regard();
     ecrire_projet(&s, "notes/a.md", "1");
     assert!(attendre(|| nb_lignes(&s, "publie.txt") == 1));
-    laisser_passer();
+    attendre_termine(&s, "Publié", 1);
+    assert_eq!(lignes_du_journal(&s, "Workflow « Brouillon » lancé."), 0);
     assert_eq!(nb_lignes(&s, "brouillon.txt"), 0);
 }
 
@@ -913,7 +915,7 @@ fn REQ192_AC6_publie_ecoute_apres_redemarrage_brouillon_reste_brouillon() {
 fn REQ193_AC4_evenement_pendant_l_execution_ignore_et_rien_apres_un_arret() {
     let racine = preparer("exec4");
     let s = demarrer(&racine, "p");
-    let commande = "sleep 2; echo x >> marque.txt";
+    let commande = "while [ ! -f go ]; do sleep 0.05; done; echo x >> marque.txt";
     let f = creer(
         &s,
         "Revue des notes",
@@ -931,6 +933,9 @@ fn REQ193_AC4_evenement_pendant_l_execution_ignore_et_rien_apres_un_arret() {
         "Workflow « Revue des notes » lancé."
     ) == 1));
     ecrire_projet(&s, "notes/b.md", "1");
+    // Le temps que plusieurs vérifications voient b.md pendant l'exécution, puis elle finit.
+    premier_regard();
+    ecrire_projet(&s, "go", "1");
     assert!(attendre(|| lignes_du_journal(
         &s,
         "Workflow « Revue des notes » terminé."
@@ -1091,7 +1096,12 @@ fn REQ194_AC6_deux_workflows_sur_le_meme_dossier_tournent_en_meme_temps() {
             nom,
             json!([
                 dossier("notes", json!(["cree"])),
-                shell("a", "Commande shell 1", 0.0, "sleep 2")
+                shell(
+                    "a",
+                    "Commande shell 1",
+                    0.0,
+                    "while [ ! -f go ]; do sleep 0.05; done"
+                )
             ]),
             json!([{ "de": "t", "vers": "a" }]),
         );
@@ -1106,6 +1116,7 @@ fn REQ194_AC6_deux_workflows_sur_le_meme_dossier_tournent_en_meme_temps() {
     // Les deux sont lancés avant que l'un ait fini.
     assert_eq!(lignes_du_journal(&s, "Workflow « Premier » terminé."), 0);
     assert_eq!(lignes_du_journal(&s, "Workflow « Second » terminé."), 0);
+    ecrire_projet(&s, "go", "1");
 }
 
 #[test]
@@ -1255,7 +1266,6 @@ fn REQ193_AC5_une_action_fichier_dans_le_dossier_surveille_ne_relance_rien() {
     );
     ecrire_projet(&s, "notes/a.md", "1");
     attendre_termine(&s, "Revue des notes", 1);
-    laisser_passer();
     laisser_passer();
     assert_eq!(lire_projet(&s, "notes/sortie.md"), "x");
     assert_eq!(nb_nouveau_lancement(&s), 1);
@@ -1633,7 +1643,12 @@ fn REQ197_AC1_noeud_en_cours_dans_la_liste_et_la_route_puis_aucun() {
         "Revue des notes",
         json!([
             dossier("notes", json!(["cree"])),
-            shell("a", "Commande shell 1", 0.0, "sleep 3")
+            shell(
+                "a",
+                "Commande shell 1",
+                0.0,
+                "while [ ! -f go ]; do sleep 0.05; done"
+            )
         ]),
         json!([{ "de": "t", "vers": "a" }]),
     );
@@ -1645,6 +1660,7 @@ fn REQ197_AC1_noeud_en_cours_dans_la_liste_et_la_route_puis_aucun() {
     let r = en_cours_route(&s, &f);
     assert_eq!(r["enCours"], "a");
     assert_eq!(r["publie"], true);
+    ecrire_projet(&s, "go", "1");
     attendre_termine(&s, "Revue des notes", 1);
     assert_eq!(en_cours_liste(&s, &f), Value::Null);
     assert_eq!(en_cours_route(&s, &f)["enCours"], Value::Null);
