@@ -499,3 +499,7 @@ test("REQ187_AC3_contraste_3_a_1_des_icones_du_bouton_logs_sur_la_barre_d_etat_d
     // La marque « ! » des formes pleines est en --bg-000 sur la forme pleine : même rapport.
   }
 });
+
+test("REQ027_AC9_lignes_de_l_ouverture_rapide_ne_retrecissent_pas", () => {
+  a(".ouverture-liste .liste-ligne", "flex: none");
+});

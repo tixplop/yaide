@@ -118,7 +118,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-015 à REQ-018, REQ-094 coupure, brouillons, disque → web/src/connexion.js, brouillons.js, disque.js, stockage.js
 - REQ-019 à REQ-021, REQ-035, REQ-040, REQ-041, REQ-047, REQ-201 shells → src/shells.rs, web/src/vues/shells.js, ui/terminal.js
 - REQ-022 à REQ-025, REQ-039, REQ-045, REQ-086, REQ-099 git et worktrees → src/git.rs, depot.rs, web/src/vues/git.js, worktree.js, statuts.js
-- REQ-026, REQ-027 recherche et ouverture rapide → src/recherche.rs, web/src/vues/recherche.js, ouverture.js
+- REQ-026, REQ-027 recherche et ouverture rapide → src/recherche.rs, web/src/vues/recherche.js, ouverture.js ; la liste de l’ouverture rapide défile (composants.css, `.ouverture-liste`)
 - REQ-028 à REQ-033, REQ-036 à REQ-038, REQ-046, REQ-048, REQ-059 disposition, design system, thèmes → web/src/ui/, vues/principale.js
 - REQ-079, REQ-080, REQ-200 groupes de l'éditeur → web/src/disposition.js, vues/depot-onglets.js, vues/editeur.js
 - REQ-029, REQ-030, REQ-060, REQ-082, REQ-092, REQ-093 binaire, aide, mise à jour → build.rs, esbuild.mjs, src/cli.rs, version.rs, web/src/version.js
