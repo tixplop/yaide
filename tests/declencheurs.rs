@@ -225,30 +225,49 @@ fn rep_texte(t: &str, delai: u64) -> (u16, Value, u64) {
     )
 }
 
+/// Délai d'une réponse tenue par la porte : elle attend que le test ouvre la porte (10 s au plus).
+const RETENUE: u64 = u64::MAX;
+
+type Porte = std::sync::Arc<std::sync::atomic::AtomicBool>;
+
 /// Faux provider : rend les réponses du scénario dans l'ordre (chacune après son délai en ms),
 /// puis « ok » sans délai. Chaque requête reçue est notée.
 fn faux_provider(scenario: Vec<(u16, Value, u64)>) -> (String, Recues) {
+    faux_provider_porte(scenario, Porte::default())
+}
+
+/// Comme `faux_provider` ; une réponse de délai `RETENUE` attend que `porte` soit vraie (pas de 20 ms, 10 s au plus).
+fn faux_provider_porte(scenario: Vec<(u16, Value, u64)>, porte: Porte) -> (String, Recues) {
     use axum::body::Bytes;
     use axum::extract::State;
     use axum::http::StatusCode;
     use std::collections::VecDeque;
     use std::sync::{Arc, Mutex};
     #[derive(Clone)]
-    struct Etat(Arc<Mutex<VecDeque<(u16, Value, u64)>>>, Recues);
+    struct Etat(Arc<Mutex<VecDeque<(u16, Value, u64)>>>, Recues, Porte);
     async fn rep(State(e): State<Etat>, corps: Bytes) -> (StatusCode, String) {
         e.1.lock()
             .unwrap()
             .push(serde_json::from_slice::<Value>(&corps).unwrap_or(Value::Null));
         let suivante = e.0.lock().unwrap().pop_front();
         let (code, v, delai) = suivante.unwrap_or_else(|| rep_texte("ok", 0));
-        tokio::time::sleep(Duration::from_millis(delai)).await;
+        if delai == RETENUE {
+            for _ in 0..500 {
+                if e.2.load(std::sync::atomic::Ordering::SeqCst) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        } else {
+            tokio::time::sleep(Duration::from_millis(delai)).await;
+        }
         (StatusCode::from_u16(code).unwrap(), v.to_string())
     }
     let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     ecoute.set_nonblocking(true).unwrap();
     let adresse = format!("http://{}", ecoute.local_addr().unwrap());
     let recues: Recues = Default::default();
-    let etat = Etat(Arc::new(Mutex::new(scenario.into())), recues.clone());
+    let etat = Etat(Arc::new(Mutex::new(scenario.into())), recues.clone(), porte);
     std::thread::spawn(move || {
         tokio::runtime::Runtime::new()
             .unwrap()
@@ -636,15 +655,21 @@ fn REQ164_AC1_AC2_AC5_REQ165_AC1_une_conversation_par_agent_a_l_ecoute() {
 fn REQ164_AC4_aucune_conversation_pendant_un_tour_de_l_agent() {
     // Les réponses sont prises dans l'ordre des appels : tour de Relecteur (retardé), sonde,
     // tour de l'utilisateur (retardé), sonde, Relecteur, sonde, tour de l'utilisateur (retardé).
-    let (adresse, _) = faux_provider(vec![
-        rep_texte("ok", 1500),
-        rep_texte("ok", 0),
-        rep_texte("ok", 1500),
-        rep_texte("ok", 0),
-        rep_texte("ok", 0),
-        rep_texte("ok", 0),
-        rep_texte("ok", 1500),
-    ]);
+    // Les tours retardés attendent la porte : le test l'ouvre quand il a fini d'écrire.
+    let porte = Porte::default();
+    let ouvrir = |v: bool| porte.store(v, std::sync::atomic::Ordering::SeqCst);
+    let (adresse, _) = faux_provider_porte(
+        vec![
+            rep_texte("ok", RETENUE),
+            rep_texte("ok", 0),
+            rep_texte("ok", RETENUE),
+            rep_texte("ok", 0),
+            rep_texte("ok", 0),
+            rep_texte("ok", 0),
+            rep_texte("ok", RETENUE),
+        ],
+        porte.clone(),
+    );
     let s = lancer("d5");
     configurer(&s, &adresse, true);
     assert_eq!(
@@ -670,9 +695,11 @@ fn REQ164_AC4_aucune_conversation_pendant_un_tour_de_l_agent() {
     assert_eq!(lire_conv(&s, &id)["enCours"], true);
     ecrire(&s, "docs/a.md", "2");
     ecrire(&s, "docs/b.md", "x");
+    ouvrir(true);
     attendre_fin(&s, &id);
     assert_eq!(temoin(1).len(), 1);
     // Un tour ouvert par l'utilisateur avec Relecteur compte aussi.
+    ouvrir(false);
     let r = s.appel(
         "POST",
         "/api/agent/messages",
@@ -681,6 +708,7 @@ fn REQ164_AC4_aucune_conversation_pendant_un_tour_de_l_agent() {
     assert_eq!(r.code, 200, "{}", r.corps);
     let id2 = r.json()["conversation"].as_str().unwrap().to_string();
     ecrire(&s, "docs/a.md", "3");
+    ouvrir(true);
     attendre_fin(&s, &id2);
     assert_eq!(temoin(2).len(), 2);
     // Après la fin du tour : une nouvelle conversation.
@@ -689,6 +717,7 @@ fn REQ164_AC4_aucune_conversation_pendant_un_tour_de_l_agent() {
     attendre_fin(&s, l[0]["id"].as_str().unwrap());
     assert_eq!(temoin(3).len(), 3);
     // Une écriture juste après la fin d'un tour compte aussi.
+    ouvrir(false);
     let r = s.appel(
         "POST",
         "/api/agent/messages",
@@ -696,6 +725,7 @@ fn REQ164_AC4_aucune_conversation_pendant_un_tour_de_l_agent() {
     );
     let id3 = r.json()["conversation"].as_str().unwrap().to_string();
     ecrire(&s, "docs/a.md", "5");
+    ouvrir(true);
     attendre_fin(&s, &id3);
     ecrire(&s, "docs/a.md", "6");
     attendre_hors_sonde(&s, 5);
@@ -1374,7 +1404,8 @@ fn sortes(l: &[Value], agent: &str) -> Vec<String> {
 
 #[test]
 fn REQ173_AC1_debut_puis_fin_avec_le_texte_de_l_evenement() {
-    let (adresse, _) = faux_provider(vec![rep_texte("ok", 800)]);
+    let porte = Porte::default();
+    let (adresse, _) = faux_provider_porte(vec![rep_texte("ok", RETENUE)], porte.clone());
     let s = lancer("j1");
     configurer(&s, &adresse, true);
     assert_eq!(
@@ -1384,6 +1415,9 @@ fn REQ173_AC1_debut_puis_fin_avec_le_texte_de_l_evenement() {
     laisser_voir();
     let avant = journal(&s, None)["numero"].as_u64().unwrap();
     ecrire(&s, "docs/a.md", "1");
+    // Le début est écrit pendant le tour ; la porte s'ouvre ensuite.
+    attendre_journal(&s, 1);
+    porte.store(true, std::sync::atomic::Ordering::SeqCst);
     let l = attendre_journal(&s, 2);
     assert_eq!(l[0]["agent"], "Relecteur");
     assert_eq!(l[0]["sorte"], "debut");
@@ -1568,7 +1602,8 @@ fn attendre_ligne(s: &Serveur, message: &str) -> Vec<(String, String, String)> {
 
 #[test]
 fn REQ186_AC3_un_tour_declenche_ecrit_une_ligne_de_debut_et_une_de_fin_une_seule_fois() {
-    let (adresse, _) = faux_provider(vec![rep_texte("ok", 500)]);
+    let porte = Porte::default();
+    let (adresse, _) = faux_provider_porte(vec![rep_texte("ok", RETENUE)], porte.clone());
     let s = lancer("l1");
     configurer(&s, &adresse, true);
     assert_eq!(
@@ -1577,6 +1612,8 @@ fn REQ186_AC3_un_tour_declenche_ecrit_une_ligne_de_debut_et_une_de_fin_une_seule
     );
     laisser_voir();
     ecrire(&s, "docs/a.md", "1");
+    attendre_ligne(&s, "Relecteur démarre : fichier `docs/a.md` créé.");
+    porte.store(true, std::sync::atomic::Ordering::SeqCst);
     let l = attendre_ligne(&s, "Relecteur a terminé : fichier `docs/a.md` créé.");
     std::thread::sleep(Duration::from_millis(600));
     let l2 = lignes_des_logs(&s);

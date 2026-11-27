@@ -46,9 +46,15 @@ test("REQ157_AC1_AC3_AC11_AC9_AC16_REQ158_AC1_REQ157_AC7_AC13_AC15_REQ158_AC5_AC
     await expect(grille.getByRole("columnheader", { name: "nom" })).toBeFocused();
     await expect(theme).toHaveAttribute("aria-pressed", "false");
     // AC-158-6 : « Thème clair du tableur » à 8 px après « Mode hybride ».
-    const bh = await hybride.boundingBox();
-    const bt = await theme.boundingBox();
-    pres(bt.x - (bh.x + bh.width), 8);
+    await expect(hybride).toBeVisible();
+    await expect(theme).toBeVisible();
+    await expect
+      .poll(async () => {
+        const bh = await hybride.boundingBox();
+        const bt = await theme.boundingBox();
+        return bh && bt ? Math.abs(bt.x - (bh.x + bh.width) - 8) : null;
+      })
+      .toBeLessThanOrEqual(1);
 
     // AC-157-11 : Bas, Droite, Droite, Entrée, `15`, Entrée.
     await page.keyboard.press("ArrowDown");
@@ -96,6 +102,8 @@ test("REQ157_AC1_AC3_AC11_AC9_AC16_REQ158_AC1_REQ157_AC7_AC13_AC15_REQ158_AC5_AC
     await theme.hover();
     await expect(infoBulle).toHaveText("Thème clair du tableur");
     expect(await infoBulle.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(42, 42, 43)");
+    await expect(grille.getByRole("gridcell", { name: "Bob, fils" })).toBeVisible();
+    await expect(grille.getByRole("columnheader", { name: "ville" })).toBeVisible();
     const c0 = await grille.getByRole("columnheader", { name: "nom" }).boundingBox();
     const c1 = await grille.getByRole("columnheader", { name: "ville" }).boundingBox();
     const r1 = await grille.getByRole("gridcell", { name: "Alice" }).boundingBox();
@@ -220,6 +228,8 @@ test("REQ157_AC1_AC3_AC11_AC9_AC16_REQ158_AC1_REQ157_AC7_AC13_AC15_REQ158_AC5_AC
     await page.setViewportSize({ width: 1280 - Math.round((await largeurZone()) - 600), height: 700 });
     await expect.poll(async () => Math.abs((await largeurZone()) - 600)).toBeLessThanOrEqual(1);
     await expect(grande.getByRole("columnheader", { name: "col1", exact: true })).toBeFocused();
+    await expect(hybride).toBeVisible();
+    await expect(theme).toBeVisible();
     const bh2 = await hybride.boundingBox();
     const bt2 = await theme.boundingBox();
     const lg = await zone.locator("visible=true").first().evaluate((e) => ({ l: e.clientWidth, s: e.scrollWidth }));

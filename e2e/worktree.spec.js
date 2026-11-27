@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { depotExemple, lancerYaide, ouvrirYaide, nomLigne } from "./aides.js";
+import { depotExemple, lancerYaide, ouvrirYaide, nomLigne, avancer } from "./aides.js";
 
 let yaide;
 test.afterEach(async () => {
@@ -31,6 +31,7 @@ test("REQ086_parcours_57_58_worktree_AC1_AC2_AC4_AC5_AC7", async ({ page }) => {
   g(dossier, "config", "user.email", "t@example.org");
   const essai = path.join(path.dirname(dossier), "essai");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await page.clock.install();
   await ouvrirYaide(page, yaide.origine);
   const liste = () => page.getByRole("combobox", { name: "Worktree" });
   const barre = page.locator("footer");
@@ -43,8 +44,11 @@ test("REQ086_parcours_57_58_worktree_AC1_AC2_AC4_AC5_AC7", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "main.rs", exact: true })).toBeVisible();
   await expect(liste()).toHaveCount(0);
   await taper(page, "git worktree add ../essai -b essai");
-  await expect(liste()).toBeVisible({ timeout: 5000 });
-  await expect(liste().locator("option")).toHaveText(["projet (main)", "essai (essai)"]);
+  await expect(page.locator(".terminal.xterm:visible")).toContainText("Preparing worktree");
+  await avancer(page, async () => {
+    await expect(liste()).toBeVisible({ timeout: 300 });
+    await expect(liste().locator("option")).toHaveText(["projet (main)", "essai (essai)"], { timeout: 300 });
+  });
   await expect(liste()).toHaveValue("");
   await page.getByRole("tab", { name: "Git" }).click();
   await expect(liste()).toHaveValue("");
@@ -85,7 +89,7 @@ test("REQ086_parcours_57_58_worktree_AC1_AC2_AC4_AC5_AC7", async ({ page }) => {
   // Le worktree disparaît.
   await page.getByRole("button", { name: "Fermer main.rs" }).last().click();
   await taper(page, "git worktree remove --force ../essai");
-  await expect(page.getByText("Le worktree essai a disparu : retour au projet.")).toBeVisible({ timeout: 5000 });
+  await avancer(page, () => expect(page.getByText("Le worktree essai a disparu : retour au projet.")).toBeVisible({ timeout: 300 }));
   await expect(liste()).toHaveCount(0);
   await expect(enTete).toHaveText("projet");
   await expect(barre).toContainText("main");
@@ -106,10 +110,11 @@ test("REQ099_AC1_AC3_AC5_AC6_AC12_AC13_AC14_AC15_parcours_69_70_menage", async (
   g(dossier, "worktree", "add", "../essai", "-b", "essai");
   const essai = path.join(parent, "essai");
   yaide = await lancerYaide({ shell: "/bin/sh", dossier });
+  await page.clock.install();
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
   await page.getByRole("tab", { name: "Git" }).click();
   const liste = page.getByRole("combobox", { name: "Worktree" });
-  await expect(liste.locator("option")).toHaveText(["projet (main)", "essai (essai)"], { timeout: 5000 });
+  await avancer(page, () => expect(liste.locator("option")).toHaveText(["projet (main)", "essai (essai)"], { timeout: 300 }));
   const corbeilleBranche = page.getByRole("button", { name: "Supprimer une branche" });
   const corbeilleWorktree = page.getByRole("button", { name: "Supprimer le worktree" });
   await expect(corbeilleWorktree).toBeDisabled();

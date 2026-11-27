@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { depotExemple, fauxGithub, lancerYaide, nomLigne, ouvrirYaide } from "./aides.js";
+import { depotExemple, fauxGithub, avancer, lancerYaide, nomLigne, ouvrirYaide } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 test.skip(({ browserName }) => browserName !== "chromium", "Chromium seul (DEC-037)");
@@ -36,9 +36,12 @@ test("REQ186_AC1_REQ188_AC6_REQ187_AC5_REQ188_AC10_parcours_P147_P148_console_de
   yaide = await lancerYaide({ dossier, releases: github.url, shell: false });
   relais = await lancerRelais(yaide.port);
   await page.setViewportSize({ width: 1280, height: 800 });
+  // Horloge de la page : les relectures de 3 s et la sonde de connexion s'attendent par `avancer`, pas en temps réel.
+  await page.clock.install();
   await ouvrirYaide(page, relais.origine, "mdp", { shell: false });
   // La seconde page est ouverte avant le refus : elle le reçoit sans rechargement.
   const autre = await page.context().newPage();
+  await autre.clock.install();
   await autre.goto(relais.origine + "/");
   await autre.getByRole("button", { name: "Nouveau shell" }).waitFor();
   await autre.evaluate(() => (window.__sans_rechargement = true));
@@ -55,9 +58,9 @@ test("REQ186_AC1_REQ188_AC6_REQ187_AC5_REQ188_AC10_parcours_P147_P148_console_de
   await expect(rangeeRefus(page)).toContainText("Erreur");
 
   // La page déjà ouverte voit l'icône et la ligne en moins de 5 s, sans rechargement ; le rechargement de la première les retrouve.
-  await expect(bouton(autre)).toHaveAttribute("aria-label", "Logs : erreurs", { timeout: 5000 });
+  await avancer(autre, () => expect(bouton(autre)).toHaveAttribute("aria-label", "Logs : erreurs", { timeout: 300 }), { limite: 5000 });
   await bouton(autre).click();
-  await expect(rangeeRefus(autre)).toBeVisible({ timeout: 5000 });
+  await avancer(autre, () => expect(rangeeRefus(autre)).toBeVisible({ timeout: 300 }), { limite: 5000 });
   expect(await autre.evaluate(() => window.__sans_rechargement)).toBe(true);
   await page.reload();
   await page.getByRole("button", { name: "Nouveau shell" }).waitFor();
@@ -81,7 +84,7 @@ test("REQ186_AC1_REQ188_AC6_REQ187_AC5_REQ188_AC10_parcours_P147_P148_console_de
   await page.getByRole("button", { name: "Purger les logs" }).click();
   await expect(console_(page).getByText("Aucun log.")).toBeVisible();
   await expect(bouton(page)).toHaveAttribute("aria-label", "Logs : rien à signaler");
-  await expect(console_(autre).getByText("Aucun log.")).toBeVisible({ timeout: 5000 });
+  await avancer(autre, () => expect(console_(autre).getByText("Aucun log.")).toBeVisible({ timeout: 300 }), { limite: 5000 });
   await expect(bouton(autre)).toHaveAttribute("aria-label", "Logs : rien à signaler");
   await autre.close();
   await page.reload();
@@ -114,7 +117,7 @@ test("REQ186_AC1_REQ188_AC6_REQ187_AC5_REQ188_AC10_parcours_P147_P148_console_de
   await expect(console_(page).getByRole("row").filter({ hasText: long })).toBeVisible();
   // Coupure : « Déconnecté », et « Mettre à jour » reste là.
   relais.couper();
-  await expect(etat.locator(".ya-connexion")).toHaveText("Serveur : Déconnecté", { timeout: 20000 });
+  await avancer(page, () => expect(etat.locator(".ya-connexion")).toHaveText("Serveur : Déconnecté", { timeout: 300 }), { limite: 5000 });
   await expect(etat.getByRole("button", { name: "Mettre à jour" })).toBeVisible();
 
   // AC-187-5 : la barre d'état tient sur une ligne, rien ne se superpose, rien n'est tronqué.
