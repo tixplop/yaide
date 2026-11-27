@@ -522,6 +522,26 @@ test("REQ045_AC4_un_dossier_qui_devient_un_depot_remplace_le_message", async () 
   expect(vue.corps.querySelector("select").value).toBe("main");
 });
 
+test("REQ045_AC12_AC4_etat_200_pas_depot_puis_depot_affiche_la_branche", async () => {
+  let reponse = { status: 200, corps: { cause: "pas-depot", message: "Ce dossier n'est pas un dépôt git." } };
+  const { vue } = await monter({ "/api/git/etat": () => reponse });
+  expect(vue.corps.querySelector(".git-liste").textContent).toBe("Ce dossier n'est pas un dépôt git.");
+  reponse = ETAT;
+  await vue.relire();
+  expect(vue.corps.textContent).not.toContain("pas un dépôt");
+  expect(vue.corps.querySelector("select").value).toBe("main");
+});
+
+test("REQ045_AC12_AC10_etat_200_git_a_la_relecture_garde_le_dernier_affichage", async () => {
+  let reponse = ETAT;
+  const { vue, dire } = await monter({ "/api/git/etat": () => reponse });
+  const avant = vue.corps.innerHTML;
+  reponse = { status: 200, corps: { cause: "git", message: "boum" } };
+  await vue.relire();
+  expect(vue.corps.innerHTML).toBe(avant);
+  expect(dire).not.toHaveBeenCalled();
+});
+
 test("REQ045_AC2_AC3_la_relecture_apporte_statuts_et_branche_aux_rappels", async () => {
   let reponse = ETAT;
   const surEtat = vi.fn();

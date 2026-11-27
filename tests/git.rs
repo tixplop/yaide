@@ -213,7 +213,15 @@ fn req022_ac3_tete_detachee_signalee_et_hors_de_la_liste() {
 fn req022_ac4_hors_depot() {
     let s = lancer("ac4");
     s.ecrire("a.txt", b"x");
-    for r in [s.etat(), s.diff("a.txt"), s.commit("m")] {
+    let r = s.etat();
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert!(r.corps.contains("\"cause\":\"pas-depot\""), "{}", r.corps);
+    assert!(
+        r.corps.contains("Ce dossier n'est pas un dépôt git."),
+        "{}",
+        r.corps
+    );
+    for r in [s.diff("a.txt"), s.commit("m")] {
         assert_eq!(r.code, 409, "{}", r.corps);
         assert!(
             r.corps.contains("Ce dossier n'est pas un dépôt git."),
@@ -221,6 +229,28 @@ fn req022_ac4_hors_depot() {
             r.corps
         );
     }
+}
+
+#[test]
+fn req045_ac12_etat_refuse_repond_200() {
+    let s = lancer("ac12");
+    s.depot();
+    s.ecrire(".git/HEAD", b"corrompu\n");
+    let r = s.etat();
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert!(r.corps.contains("\"cause\":\"pas-depot\""), "{}", r.corps);
+    assert!(r.corps.contains("\"message\""), "{}", r.corps);
+}
+
+#[test]
+fn req045_ac12_status_refuse_repond_200_cause_git() {
+    let s = lancer("ac12b");
+    s.depot();
+    s.ecrire(".git/index", b"n'importe quoi, pas un index git");
+    let r = s.etat();
+    assert_eq!(r.code, 200, "{}", r.corps);
+    assert!(r.corps.contains("\"cause\":\"git\""), "{}", r.corps);
+    assert!(!r.corps.contains("\"message\":\"\""), "{}", r.corps);
 }
 
 #[test]

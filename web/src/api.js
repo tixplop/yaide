@@ -299,6 +299,7 @@ export async function versionsFichiers(chemins) {
 export async function gitEtat() {
   const r = await appeler(git("/api/git/etat"));
   if (!r) return { coupure: true };
+  // 200 aussi hors dépôt ou si git refuse : `{ cause, message }` (REQ-045, AC-045-12).
   if (r.ok) return r.json();
   return erreurServeur(r);
 }

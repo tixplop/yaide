@@ -964,6 +964,11 @@ fn json(code: StatusCode, corps: String) -> Response {
 }
 
 fn erreur_git(e: git::Erreur) -> Response {
+    let (code, corps) = erreur_git_corps(e);
+    json(code, corps)
+}
+
+fn erreur_git_corps(e: git::Erreur) -> (StatusCode, String) {
     use git::Erreur::*;
     let (code, cause, message) = match e {
         PasDepot => (
@@ -984,7 +989,7 @@ fn erreur_git(e: git::Erreur) -> Response {
         Invalide(m) => (StatusCode::BAD_REQUEST, "invalide", m),
         Git(m) => (StatusCode::CONFLICT, "git", m),
     };
-    json(
+    (
         code,
         format!(
             "{{\"cause\":\"{cause}\",\"message\":{}}}",
@@ -1090,6 +1095,11 @@ async fn git_etat(State(etat): State<Partage>, Query(q): Requete) -> Response {
                     worktrees.join(",")
                 ),
             )
+        }
+        // Hors dépôt ou refusé par git : un état, pas une erreur de requête (REQ-045).
+        Err(e @ (git::Erreur::PasDepot | git::Erreur::Git(_))) => {
+            let (_, corps) = erreur_git_corps(e);
+            json(StatusCode::OK, corps)
         }
         Err(e) => erreur_git(e),
     }
