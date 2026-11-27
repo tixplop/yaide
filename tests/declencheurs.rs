@@ -363,6 +363,11 @@ fn attendre_hors_sonde(s: &Serveur, n: usize) -> Vec<Value> {
 /// `n`-ième conversation. La sonde est vue après les changements faits avant elle, dans la même
 /// vérification ou la suivante : ce qui devait se déclencher l'est déjà. Rend le reste.
 fn passer_sonde(s: &Serveur, n: usize) -> Vec<Value> {
+    // Un évènement arrivé pendant un tour de la sonde est ignoré (AC-164-4) : l'écriture attend
+    // la fin des tours précédents de la sonde, sinon elle serait perdue sous charge.
+    for c in conversations(s).iter().filter(|c| est_sonde(c)) {
+        attendre_fin(s, c["id"].as_str().unwrap());
+    }
     ecrire(s, "sonde.txt", &format!("passage {n}"));
     for _ in 0..400 {
         let l = conversations(s);

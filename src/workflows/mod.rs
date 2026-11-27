@@ -12,7 +12,7 @@ use std::sync::Mutex;
 
 /// Types de déclencheur ; les autres types connus sont des actions.
 pub const DECLENCHEURS: [&str; 3] = ["dossier", "planification", "appel"];
-const ACTIONS: [&str; 4] = ["agent", "shell", "claude", "fichier"];
+const ACTIONS: [&str; 5] = ["agent", "shell", "claude", "fichier", "trace"];
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Noeud {

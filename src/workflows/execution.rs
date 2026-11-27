@@ -96,12 +96,7 @@ fn evenement_dossier(
         .as_array()
         .into_iter()
         .flatten()
-        .filter_map(|e| match e.as_str()? {
-            "cree" => Some(" créé"),
-            "modifie" => Some(" modifié"),
-            "supprime" => Some(" supprimé"),
-            _ => None,
-        })
+        .filter_map(|e| e.as_str())
         .collect();
     let cle = (fichier.to_string(), chemin.to_string());
     vivantes.insert(cle.clone());
@@ -109,17 +104,39 @@ fn evenement_dossier(
     let lignes: Vec<String> = match etat.dossiers.get(&cle) {
         // Premier regard : l'état du moment, sans évènement.
         None => Vec::new(),
-        Some(avant) => differences(avant, &apres)
-            .into_iter()
-            .filter(|l| ecoutes.iter().any(|e| l.ends_with(e)))
-            .collect(),
+        Some(avant) => differences(avant, &apres),
     };
     etat.dossiers.insert(cle, apres);
-    (!lignes.is_empty()).then(|| {
+    // Les lignes de `differences` : « - `chemin` sorte », déjà par ordre de chemin.
+    let fichiers_de = |sorte: &str| -> Vec<String> {
+        lignes
+            .iter()
+            .filter_map(|l| l.strip_suffix(sorte)?.strip_suffix(' '))
+            .map(|l| l.to_string())
+            .collect()
+    };
+    let mut texte = String::new();
+    let mut trouve = false;
+    for (cle, nom, sorte) in [
+        ("cree", "Créés", "créé"),
+        ("modifie", "Modifiés", "modifié"),
+        ("supprime", "Supprimés", "supprimé"),
+    ] {
+        if !ecoutes.contains(&cle) {
+            continue;
+        }
+        let fichiers = fichiers_de(sorte);
+        if fichiers.is_empty() {
+            texte.push_str(&format!("\n{nom} : aucun"));
+        } else {
+            trouve = true;
+            texte.push_str(&format!("\n{nom} :\n{}", fichiers.join("\n")));
+        }
+    }
+    trouve.then(|| {
         format!(
-            "Évènement : changements dans le dossier `{}/` :\n{}",
-            chemin.trim_end_matches('/'),
-            lignes.join("\n")
+            "Évènement : changements dans le dossier `{}/` :{texte}",
+            chemin.trim_end_matches('/')
         )
     })
 }
@@ -428,6 +445,7 @@ async fn action(contexte: &Contexte<'_>, n: &Noeud, entree: &str) -> Result<Stri
         "claude" => session_claude(projet, &avec_entree(n, "demande", entree), limite, arret).await,
         "fichier" => action_fichier(projet, n, entree),
         "agent" => action_agent(contexte, n, entree).await,
+        "trace" => Ok(entree.to_string()),
         _ => Err(echec("action non disponible")),
     }
 }
@@ -450,6 +468,16 @@ async fn executer(contexte: &Contexte<'_>, w: &Workflow, entree: String, journal
             .get_mut(contexte.fichier)
         {
             e.noeud = Some(n.id.clone());
+        }
+        if n.genre == "trace" {
+            let message = avec_entree(&n, "message", &recu);
+            let premiere = message.lines().next().unwrap_or_default();
+            journal.ecrire_a(
+                crate::journal::maintenant_ms(),
+                Severite::Information,
+                &format!("Workflow « {} » : {premiere}", w.nom),
+                message.contains('\n').then(|| message.clone()),
+            );
         }
         let resultat = action(contexte, &n, &recu).await;
         if *contexte.arret.borrow() {
@@ -722,7 +750,7 @@ mod tests {
         let r = verifier(&mut etat, &projet, &p, true, t);
         assert_eq!(
             r[0].2,
-            "Évènement : changements dans le dossier `notes/` :\n- `notes/a.md` créé"
+            "Évènement : changements dans le dossier `notes/` :\nCréés :\n- `notes/a.md`"
         );
         // En cours : b.md est vu puis ignoré.
         std::fs::write(projet.join("notes/b.md"), "1").unwrap();
@@ -736,6 +764,47 @@ mod tests {
         std::fs::write(projet.join("notes/c.md"), "1").unwrap();
         assert!(verifier(&mut etat, &projet, &p, false, t).is_empty());
         assert!(verifier(&mut etat, &projet, &p, true, t).is_empty());
+    }
+
+    #[test]
+    fn REQ193_AC1_dossier_entree_rangee_par_sorte() {
+        let projet = std::env::temp_dir().join(format!("workflow-sortes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&projet);
+        std::fs::create_dir_all(projet.join("notes")).unwrap();
+        std::fs::write(projet.join("notes/a.md"), "1").unwrap();
+        std::fs::write(projet.join("notes/d.md"), "1").unwrap();
+        let w = Workflow {
+            nom: "D".into(),
+            publie: true,
+            noeuds: vec![noeud(
+                "t",
+                "dossier",
+                0.0,
+                json!({"dossier": "notes", "evenements": ["cree", "modifie", "supprime"]}),
+            )],
+            liens: vec![],
+        };
+        let p = [("d".to_string(), w)];
+        let mut etat = Etat::default();
+        let t = le(23, 9, 0, 0);
+        assert!(verifier(&mut etat, &projet, &p, true, t).is_empty());
+        std::fs::write(projet.join("notes/a.md"), "22").unwrap();
+        std::fs::write(projet.join("notes/c.md"), "1").unwrap();
+        std::fs::write(projet.join("notes/b.md"), "1").unwrap();
+        std::fs::remove_file(projet.join("notes/d.md")).unwrap();
+        let r = verifier(&mut etat, &projet, &p, true, t);
+        assert_eq!(r.len(), 1);
+        etat.en_cours.clear();
+        assert_eq!(
+            r[0].2,
+            "Évènement : changements dans le dossier `notes/` :\nCréés :\n- `notes/b.md`\n- `notes/c.md`\nModifiés :\n- `notes/a.md`\nSupprimés :\n- `notes/d.md`"
+        );
+        std::fs::write(projet.join("notes/e.md"), "1").unwrap();
+        let r = verifier(&mut etat, &projet, &p, true, t);
+        assert_eq!(
+            r[0].2,
+            "Évènement : changements dans le dossier `notes/` :\nCréés :\n- `notes/e.md`\nModifiés : aucun\nSupprimés : aucun"
+        );
     }
 
     #[test]

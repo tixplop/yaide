@@ -610,6 +610,7 @@ fn REQ195_AC6_champs_obligatoires_des_actions() {
                 json!({ "agent": "relecteur", "message": "" })
             ),
             noeud("a3", "claude", "Session Claude 1", json!({ "demande": "" })),
+            noeud("a8", "trace", "Trace 1", json!({ "message": "" })),
             noeud(
                 "a4",
                 "fichier",
@@ -639,7 +640,7 @@ fn REQ195_AC6_champs_obligatoires_des_actions() {
         json!([
             { "de": "d", "vers": "a1" }, { "de": "d", "vers": "a2" }, { "de": "d", "vers": "a3" },
             { "de": "d", "vers": "a4" }, { "de": "d", "vers": "a5" }, { "de": "d", "vers": "a6" },
-            { "de": "d", "vers": "a7" }
+            { "de": "d", "vers": "a7" }, { "de": "d", "vers": "a8" }
         ]),
     );
     assert_eq!(
@@ -648,6 +649,7 @@ fn REQ195_AC6_champs_obligatoires_des_actions() {
             "« Agent 1 » : choisissez un agent.",
             "« Agent 2 » : donnez le message.",
             "« Session Claude 1 » : donnez la demande.",
+            "« Trace 1 » : donnez le message.",
             "« Fichier 1 » : donnez un chemin dans le projet.",
             "« Fichier 3 » : donnez le contenu.",
             "« Fichier 4 » : donnez une destination dans le projet.",
@@ -780,7 +782,7 @@ fn REQ192_AC1_REQ193_AC1_publie_lance_a_l_evenement_ecoute_depublie_ne_lance_rie
     assert!(attendre(|| nb_lignes(&s, "marque.txt") == 1));
     assert_eq!(
         lire_projet(&s, "entree.txt"),
-        "Évènement : changements dans le dossier `notes/` :\n- `notes/a.md` créé"
+        "Évènement : changements dans le dossier `notes/` :\nCréés :\n- `notes/a.md`"
     );
     // « Modifié » n'est pas coché : rien.
     ecrire_projet(&s, "notes/a.md", "2");
@@ -808,14 +810,14 @@ fn REQ192_AC1_REQ193_AC1_publie_lance_a_l_evenement_ecoute_depublie_ne_lance_rie
     assert!(attendre(|| nb_lignes(&s, "marque.txt") == 2));
     assert_eq!(
         lire_projet(&s, "entree.txt"),
-        "Évènement : changements dans le dossier `notes/` :\n- `notes/a.md` modifié"
+        "Évènement : changements dans le dossier `notes/` :\nCréés : aucun\nModifiés :\n- `notes/a.md`\nSupprimés : aucun"
     );
     premier_regard();
     std::fs::remove_file(s.projet.join("notes/a.md")).unwrap();
     assert!(attendre(|| nb_lignes(&s, "marque.txt") == 3));
     assert_eq!(
         lire_projet(&s, "entree.txt"),
-        "Évènement : changements dans le dossier `notes/` :\n- `notes/a.md` supprimé"
+        "Évènement : changements dans le dossier `notes/` :\nCréés : aucun\nModifiés : aucun\nSupprimés :\n- `notes/a.md`"
     );
 }
 
@@ -1135,7 +1137,7 @@ fn REQ195_AC3_commande_shell_dans_la_racine_sans_ouvrir_de_shell() {
     assert_eq!(
         lire_projet(&s, "sortie.txt"),
         format!(
-            "{}\nÉvènement : changements dans le dossier `notes/` :\n- `notes/a.md` créé\n",
+            "{}\nÉvènement : changements dans le dossier `notes/` :\nCréés :\n- `notes/a.md`\n",
             s.projet.display()
         )
     );
@@ -1166,28 +1168,74 @@ fn publier_sur_notes(s: &Serveur, nom: &str, noeuds: Vec<Value>, liens: Value) {
 fn REQ194_AC1_l_entree_est_dans_l_environnement_et_remplace_dans_les_champs() {
     let racine = preparer("act1");
     let s = demarrer(&racine, "p");
+    let mut noeuds = vec![dossier("notes", json!(["cree", "modifie", "supprime"]))];
+    noeuds.extend([
+        shell(
+            "a",
+            "Commande shell 1",
+            10.0,
+            "printf '%s\\n' \"$YAIDE_ENTREE\" | wc -l",
+        ),
+        fichier_op(
+            "b",
+            "Fichier 1",
+            20.0,
+            json!({ "operation": "ecrire", "chemin": "res.txt", "contenu": "lignes : {{entree}}" }),
+        ),
+    ]);
+    let f = creer(
+        &s,
+        "Revue des notes",
+        json!(noeuds),
+        json!([{ "de": "t", "vers": "a" }, { "de": "a", "vers": "b" }]),
+    );
+    publier(&s, &f);
+    premier_regard();
+    ecrire_projet(&s, "notes/a.md", "1");
+    attendre_termine(&s, "Revue des notes", 1);
+    assert_eq!(lire_projet(&s, "res.txt"), "lignes : 5\n");
+}
+
+#[test]
+fn REQ195_AC9_trace_une_ligne_sans_detail_puis_plusieurs_lignes_avec_detail() {
+    let racine = preparer("trace");
+    let s = demarrer(&racine, "p");
+    let trace = |id: &str, y: f64, m: &str| {
+        json!({ "id": id, "type": "trace", "titre": "Trace 1", "x": 0.0, "y": y,
+                "reglages": { "message": m } })
+    };
     publier_sur_notes(
         &s,
         "Revue des notes",
         vec![
-            shell(
-                "a",
-                "Commande shell 1",
-                10.0,
-                "printf '%s\\n' \"$YAIDE_ENTREE\" | wc -l",
-            ),
+            shell("a", "Commande shell 1", 10.0, "printf -- '- `notes/a.md`'"),
+            trace("b", 20.0, "Reçu : {{entree}}"),
             fichier_op(
-                "b",
+                "c",
                 "Fichier 1",
-                20.0,
-                json!({ "operation": "ecrire", "chemin": "res.txt", "contenu": "lignes : {{entree}}" }),
+                30.0,
+                json!({ "operation": "ecrire", "chemin": "t.txt", "contenu": "{{entree}}" }),
             ),
+            shell("d", "Commande shell 2", 40.0, "printf '1\\n2'"),
+            trace("e", 50.0, "a{{entree}}"),
         ],
-        json!([{ "de": "t", "vers": "a" }, { "de": "a", "vers": "b" }]),
+        json!([{ "de": "t", "vers": "a" }, { "de": "a", "vers": "b" }, { "de": "b", "vers": "c" },
+               { "de": "c", "vers": "d" }, { "de": "d", "vers": "e" }]),
     );
     ecrire_projet(&s, "notes/a.md", "1");
     attendre_termine(&s, "Revue des notes", 1);
-    assert_eq!(lire_projet(&s, "res.txt"), "lignes : 2\n");
+    assert_eq!(lire_projet(&s, "t.txt"), "- `notes/a.md`");
+    let l = journal(&s);
+    let pos = |m: &str| l.iter().position(|x| x["message"] == m).unwrap();
+    let une = pos("Workflow « Revue des notes » : Reçu : - `notes/a.md`");
+    let deux = pos("Workflow « Revue des notes » : a1");
+    assert!(pos("Workflow « Revue des notes » lancé.") < une);
+    assert!(une < deux);
+    assert!(deux < pos("Workflow « Revue des notes » terminé."));
+    assert_eq!(l[une]["severite"], "Information");
+    assert!(l[une]["detail"].is_null(), "{}", l[une]);
+    assert_eq!(l[deux]["severite"], "Information");
+    assert_eq!(l[deux]["detail"], "a1\n2");
 }
 
 #[test]
@@ -1263,7 +1311,7 @@ fn REQ195_AC5_operations_sur_les_fichiers_et_chemins_refuses() {
     publier_sur_notes(&s, "Chaine", chaine, liens);
     ecrire_projet(&s, "notes/a.md", "1");
     attendre_termine(&s, "Chaine", 1);
-    let entree = "Évènement : changements dans le dossier `notes/` :\n- `notes/a.md` créé";
+    let entree = "Évènement : changements dans le dossier `notes/` :\nCréés :\n- `notes/a.md`";
     // « Lire » donne le contenu écrit, que la commande suivante reçoit.
     assert_eq!(lire_projet(&s, "lu.txt"), entree);
     assert_eq!(lire_projet(&s, "c/c.txt"), entree);
@@ -1488,7 +1536,7 @@ fn REQ195_AC1_agent_seul_puis_sortie_passee_a_l_action_suivante() {
     assert_eq!(v["agents"].as_array().unwrap().len(), 1);
     assert_eq!(v["agents"][0]["dossier"], "relecteur");
     assert!(v["entrees"][0]["texte"].as_str().unwrap().starts_with(
-        "Relis : Évènement : changements dans le dossier `notes/` :\n- `notes/a.md` créé"
+        "Relis : Évènement : changements dans le dossier `notes/` :\nCréés :\n- `notes/a.md`"
     ));
     let reqs = recues.lock().unwrap().clone();
     let r = &reqs[0];

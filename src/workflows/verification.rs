@@ -96,6 +96,7 @@ fn probleme(n: &Noeud) -> Option<String> {
             .or_else(|| manque("message", "donnez le message.")),
         "shell" => manque("commande", "donnez la commande."),
         "claude" => manque("demande", "donnez la demande."),
+        "trace" => manque("message", "donnez le message."),
         "fichier" => {
             let operation = texte(n, "operation");
             if !["lire", "ecrire", "copier", "deplacer", "supprimer"].contains(&operation) {
