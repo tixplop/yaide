@@ -477,3 +477,10 @@ test("REQ190_AC7_icones_des_workflows_existent_et_sont_distinctes", () => {
   const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
   expect(tokens).toMatch(/--largeur-noeuds:\s*280px/);
 });
+
+test("REQ203_icone_locate_fixed", () => {
+  expect(NOMS).toContain("locate-fixed");
+  const s = icone("locate-fixed");
+  expect(s.getAttribute("aria-hidden")).toBe("true");
+  for (const p of ["M2 12h3", "M19 12h3", "M12 2v3", "M12 19v3", 'r="7"', 'r="3"']) expect(s.innerHTML).toContain(p);
+});

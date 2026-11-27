@@ -523,12 +523,14 @@ test("REQ034_AC12_REQ050_AC12_REQ009_AC9_AC10_groupe_avec_shell_menu_depot_et_en
     const entete = page.locator(".fichiers-entete");
     expect((await entete.boundingBox()).height).toBe(26);
     const boites = await entete.locator("button").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
-    expect(boites).toHaveLength(6);
+    expect(boites).toHaveLength(7);
     expect(new Set(boites.map((b) => Math.round(b.top))).size).toBe(1);
     // Tab : les boutons actifs de l'en-tête (Renommer et Supprimer sont désactivés), puis l'arbre.
     await page.getByRole("button", { name: "Nouveau fichier" }).focus();
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: "Nouveau dossier" })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "Suivre le fichier actif" })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(arbre(page).locator("[tabindex='0']")).toBeFocused();
     // AC-009-10 : Maj+Tab depuis « Nouveau fichier » arrive sur le bouton de repli de l'en-tête du panneau.
@@ -877,4 +879,86 @@ test("REQ180_AC1_AC4_AC10_parcours_de_collage_depuis_l_explorateur_octets_liste_
   await expect(ligne(page, "dernier.txt")).toBeFocused();
   expect(fs.existsSync(path.join(dossier, "ailleurs.txt")) || fs.existsSync(path.join(dossier, "src", "ailleurs.txt"))).toBe(false);
   expect(fs.readFileSync(path.join(dossier, "a.txt"), "utf8")).toBe("a");
+});
+
+test("REQ203_AC2_AC7_AC9_AC10_AC12_P159_suivre_le_fichier_actif_deux_groupes_rechargement_reconnexion_et_240_px", async ({ page }) => {
+  await ouvrir(page);
+  const suivre = page.locator(".fichiers-entete").getByRole("button", { name: "Suivre le fichier actif", exact: true });
+  const selection = () => arbre(page).locator("[aria-selected='true']").evaluateAll((l) => l.map((e) => e.dataset.chemin));
+  await test.step("REQ203_AC9_AC10_bouton_dernier_de_l_entete_nom_etat_et_taille", async () => {
+    const noms = await page.locator(".fichiers-entete button").evaluateAll((l) => l.map((e) => e.getAttribute("aria-label")));
+    expect(noms.at(-2)).toBe("Coller");
+    expect(noms.at(-1)).toBe("Suivre le fichier actif");
+    await expect(suivre).toHaveAttribute("aria-pressed", "false");
+    const b = await suivre.boundingBox();
+    expect([b.width, b.height]).toEqual([24, 24]);
+    await suivre.hover();
+    await expect(page.getByRole("tooltip")).toHaveText("Suivre le fichier actif");
+    await suivre.click();
+    await expect(suivre).toHaveAttribute("aria-pressed", "true");
+    await expect(suivre).toHaveAccessibleName("Suivre le fichier actif");
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+    await arbre(page).locator("[tabindex='0']").focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(suivre).toBeFocused();
+  });
+  await test.step("REQ203_AC2_un_clic_dans_l_autre_groupe_selectionne_son_fichier", async () => {
+    await ligne(page, "a.txt").click();
+    await ligne(page, "b.txt").click();
+    await expect(page.getByRole("tab", { name: "b.txt" })).toBeVisible();
+    await saisir(page, page.getByRole("tab", { name: "b.txt" }));
+    const groupe = page.locator(".cadre-groupe").first();
+    const g = await groupe.boundingBox();
+    await page.mouse.move(g.x + g.width - 12, g.y + g.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator(".cadre-groupe")).toHaveCount(2);
+    const groupes = page.locator(".cadre-groupe");
+    const g1 = groupes.filter({ has: page.getByRole("tab", { name: "a.txt" }) });
+    const g2 = groupes.filter({ has: page.getByRole("tab", { name: "b.txt" }) });
+    await g2.locator(".cm-content").click();
+    await expect.poll(selection).toEqual(["b.txt"]);
+    await g1.locator(".cm-content").click();
+    await expect.poll(selection).toEqual(["a.txt"]);
+    await g2.locator(".cm-content").click();
+    await expect.poll(selection).toEqual(["b.txt"]);
+  });
+  await test.step("REQ203_AC7_rechargement_et_reconnexion_gardent_le_bouton_et_le_suivi_marche", async () => {
+    await page.reload();
+    await expect(arbre(page)).toBeVisible();
+    await expect(suivre).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Déconnexion" }).click();
+    await page.getByRole("dialog", { name: "Vous êtes déconnecté." }).getByRole("button", { name: "Fermer" }).click();
+    await page.getByLabel("Mot de passe").fill("mdp");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(arbre(page)).toBeVisible();
+    await expect(suivre).toHaveAttribute("aria-pressed", "true");
+    await expect(ligne(page, "z.txt")).toHaveCount(0);
+    await page.keyboard.press("Control+p");
+    await page.getByRole("textbox", { name: "Chemin du fichier" }).fill("Zeta/z.txt");
+    await page.keyboard.press("Enter");
+    await expect(ligne(page, "z.txt")).toHaveAttribute("aria-selected", "true");
+    await expect.poll(selection).toEqual(["Zeta/z.txt"]);
+    await suivre.click();
+    await expect(suivre).toHaveAttribute("aria-pressed", "false");
+    await page.reload();
+    await expect(arbre(page)).toBeVisible();
+    await expect(suivre).toHaveAttribute("aria-pressed", "false");
+  });
+  await test.step("REQ203_AC12_a_240_px_les_sept_boutons_gardent_24_px_sur_une_ligne", async () => {
+    const poignee = page.getByRole("separator", { name: "Largeur du panneau" });
+    await poignee.focus();
+    for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
+    await expect(poignee).toHaveAttribute("aria-valuenow", "240");
+    const boites = await page.locator(".fichiers-entete button").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
+    expect(boites).toHaveLength(7);
+    for (const b of boites) expect([b.width, b.height]).toEqual([24, 24]);
+    expect(new Set(boites.map((b) => Math.round(b.top))).size).toBe(1);
+    const nom = await page.locator(".fichiers-projet").evaluate((e) => {
+      e.textContent = "tres-long-dossier-".repeat(5);
+      return { coupe: e.scrollWidth > e.clientWidth, points: getComputedStyle(e).textOverflow };
+    });
+    expect(nom).toEqual({ coupe: true, points: "ellipsis" });
+    const apres = await page.locator(".fichiers-entete button").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
+    expect(new Set(apres.map((b) => Math.round(b.top))).size).toBe(1);
+  });
 });

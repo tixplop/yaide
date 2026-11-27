@@ -69,13 +69,13 @@ test("REQ037_AC7_le_nombre_est_lu_panneau_Git_masque_et_chaque_relecture_de_l_ar
   expect(appels.filter((u) => u.startsWith("/api/fichiers?chemin=")).length).toBe(2);
 });
 
-test("REQ009_AC9_AC10_les_six_boutons_sont_dans_l_en_tete_du_projet_et_non_sous_l_arbre", async () => {
+test("REQ009_AC9_AC10_les_sept_boutons_sont_dans_l_en_tete_du_projet_et_non_sous_l_arbre", async () => {
   simulerServeur(ETAT_GIT([]));
   const { vue } = monter();
   await attendre();
   const entete = vue.querySelector(".fichiers-entete");
   expect(entete.firstElementChild.textContent).toBe("projet");
-  expect([...entete.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Copier", "Coller"]);
+  expect([...entete.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Nouveau fichier", "Nouveau dossier", "Renommer", "Supprimer", "Copier", "Coller", "Suivre le fichier actif"]);
   expect(vue.querySelector(".fichiers-pied")).toBeNull();
   expect(vue.querySelector(".cadre-panneau-pied [aria-label='Nouveau fichier']")).toBeNull();
 });

@@ -668,7 +668,7 @@ test("REQ031_AC1_AC2_AC6_AC8_REQ032_AC13_REQ040_AC13_AC15_AC28_8_AC28_9_AC31_1_c
       await expect(poignee).toHaveAttribute("aria-valuenow", "240");
       const boites = await page.locator(".fichiers-entete .bouton").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().toJSON()));
       const pied = await page.locator(".fichiers-entete").evaluate((e) => e.getBoundingClientRect().toJSON());
-      expect(boites).toHaveLength(6);
+      expect(boites).toHaveLength(7);
       expect(new Set(boites.map((b) => Math.round(b.top))).size).toBe(1);
       expect(boites.at(-1).right).toBeLessThanOrEqual(pied.right);
       expect(boites[0].left).toBeGreaterThanOrEqual(pied.left);

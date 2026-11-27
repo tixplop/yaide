@@ -14,6 +14,7 @@ afterEach(async () => {
   w.choisir("");
   w.occuper();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   document.body.replaceChildren();
 });
 
@@ -2092,4 +2093,126 @@ test("REQ181_AC8_le_README_decrit_l_essai_manuel_sous_Windows", () => {
   expect(readme).toContain("Copier vers l'explorateur de Windows");
   expect(readme).toContain("photos/2024/b.jpg");
   expect(readme).toContain("photos/vide");
+});
+
+// ---- REQ-203 : « Suivre le fichier actif » ----
+
+const DISQUE_SUIVI = () => ({ "": [d("src"), f("README.md"), f("lib.rs")], src: [f("main.rs")] });
+const suivi = async (enfonce, disque = DISQUE_SUIVI(), options = {}) => {
+  localStorage.clear();
+  if (enfonce) localStorage.setItem("yaide-suivre-fichier", "1");
+  const defile = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+  const m = await monter(disque, options);
+  return { ...m, defile, b: bouton(m.vue, "Suivre le fichier actif") };
+};
+
+test("REQ203_AC1_AC9_AC10_bouton_enfonce_suit_le_fichier_actif_sans_prendre_le_focus_et_dernier_bouton_de_l_entete", async () => {
+  const { vue, defile, b } = await suivi(true);
+  expect(b.getAttribute("aria-pressed")).toBe("true");
+  expect(b.getAttribute("aria-label")).toBe("Suivre le fichier actif");
+  expect([...vue.entete.querySelectorAll("button")].pop()).toBe(b);
+  expect(b.querySelector("svg")).not.toBeNull();
+  const editeur = document.createElement("textarea");
+  document.body.append(editeur);
+  editeur.focus();
+  vue.definirCourant("src/main.rs");
+  await attendre();
+  expect(noms(vue)).toEqual(["src", "src/main.rs", "README.md", "lib.rs"]);
+  expect(ligne(vue, "src").getAttribute("aria-expanded")).toBe("true");
+  expect(choisies(vue)).toEqual(["src/main.rs"]);
+  expect(defile).toHaveBeenCalledWith({ block: "nearest" });
+  expect(document.activeElement).toBe(editeur);
+});
+
+test("REQ203_AC3_seule_la_ligne_du_fichier_ouvert_reste_selectionnee", async () => {
+  const { vue } = await suivi(true);
+  ctrl(vue, "README.md");
+  ctrl(vue, "src");
+  expect(choisies(vue).length).toBe(2);
+  vue.definirCourant("lib.rs");
+  await attendre();
+  expect(choisies(vue)).toEqual(["lib.rs"]);
+});
+
+test("REQ203_AC4_bouton_relache_ne_change_ni_selection_ni_dossiers", async () => {
+  const { vue, b } = await suivi(false);
+  expect(b.getAttribute("aria-pressed")).toBe("false");
+  ctrl(vue, "README.md");
+  vue.definirCourant("src/main.rs");
+  await attendre();
+  expect(choisies(vue)).toEqual(["README.md"]);
+  expect(ligne(vue, "src").getAttribute("aria-expanded")).toBe("false");
+  expect(ligne(vue, "src/main.rs")).toBeUndefined();
+});
+
+test("REQ203_AC5_enfoncer_le_bouton_applique_le_fichier_courant_et_garde_le_focus_sur_le_bouton", async () => {
+  const { vue, b, dire } = await suivi(false);
+  vue.definirCourant("src/main.rs");
+  await attendre();
+  expect(choisies(vue)).toEqual([]);
+  b.focus();
+  b.click();
+  await attendre();
+  expect(b.getAttribute("aria-pressed")).toBe("true");
+  expect(localStorage.getItem("yaide-suivre-fichier")).toBe("1");
+  expect(choisies(vue)).toEqual(["src/main.rs"]);
+  expect(ligne(vue, "src").getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement).toBe(b);
+  expect(dire).not.toHaveBeenCalled();
+});
+
+test("REQ203_AC6_onglet_sans_fichier_ou_hors_de_l_arbre_ne_change_pas_la_selection", async () => {
+  const { vue } = await suivi(true, { ...DISQUE_SUIVI(), "../essai": [f("e.rs")] });
+  vue.definirCourant("lib.rs");
+  await attendre();
+  vue.definirCourant(null); // diff, Agent…
+  await attendre();
+  expect(choisies(vue)).toEqual(["lib.rs"]);
+  const w = await import("../worktree.js");
+  w.mettreAJour([{ chemin: "", nom: "yaide", branche: "main", detachee: false }, { chemin: "../essai", nom: "essai", branche: "essai", detachee: false }]);
+  w.choisir("../essai");
+  await attendre();
+  await attendre();
+  expect(noms(vue)).toEqual(["../essai/e.rs"]);
+  ctrl(vue, "../essai/e.rs");
+  expect(choisies(vue)).toEqual(["../essai/e.rs"]);
+  vue.definirCourant("src/main.rs"); // hors du dossier que montre l'arbre
+  await attendre();
+  expect(choisies(vue)).toEqual(["../essai/e.rs"]);
+});
+
+test("REQ203_AC6_fichier_d_un_autre_worktree_quand_l_arbre_montre_le_projet_ne_change_rien", async () => {
+  const { vue } = await suivi(true, { ...DISQUE_SUIVI(), "..": [d("essai")], "../essai": [f("e.rs")] });
+  vue.definirCourant("../essai/e.rs");
+  await attendre();
+  expect(noms(vue)).toEqual(["src", "README.md", "lib.rs"]);
+  expect(choisies(vue)).toEqual([]);
+  expect(bouton(vue, "Renommer").disabled).toBe(true);
+  expect(bouton(vue, "Supprimer").disabled).toBe(true);
+});
+
+test("REQ203_AC8_panneau_replie_la_selection_se_fait_quand_meme", async () => {
+  const { vue } = await suivi(true);
+  vue.corps.hidden = true;
+  vue.entete.hidden = true;
+  vue.definirCourant("src/main.rs");
+  await attendre();
+  vue.corps.hidden = false;
+  expect(choisies(vue)).toEqual(["src/main.rs"]);
+  expect(ligne(vue, "src").getAttribute("aria-expanded")).toBe("true");
+});
+
+test("REQ203_AC11_Espace_puis_Entree_changent_l_etat_sans_toucher_l_arbre_ni_message", async () => {
+  const { vue, b, dire } = await suivi(false);
+  ctrl(vue, "README.md");
+  b.focus();
+  b.click(); // Espace sur un bouton : clic natif
+  expect(b.getAttribute("aria-pressed")).toBe("true");
+  expect(document.activeElement).toBe(b);
+  b.click(); // Entrée
+  expect(b.getAttribute("aria-pressed")).toBe("false");
+  expect(localStorage.getItem("yaide-suivre-fichier")).toBe("0");
+  expect(choisies(vue)).toEqual(["README.md"]);
+  expect(ligne(vue, "src").getAttribute("aria-expanded")).toBe("false");
+  expect(dire).not.toHaveBeenCalled();
 });

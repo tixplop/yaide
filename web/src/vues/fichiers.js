@@ -19,6 +19,7 @@ const FACTICE = "\0";
 const nomDe = (chemin) => chemin.split("/").pop();
 const dossierDe = (chemin) => chemin.split("/").slice(0, -1).join("/");
 const TEXTE_COUPURE = "Connexion perdue. Réessayez au retour.";
+const CLE_SUIVI = "yaide-suivre-fichier";
 const sansPoint = (texte) => texte.replace(/\.$/, "");
 const nettoyer = (chemin) => chemin.trim().replace(/\/+$/, "");
 
@@ -89,11 +90,13 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
   const bSupprimer = bouton({ icone: "trash", variante: "discret", nomAccessible: "Supprimer", raccourci: "Suppr", touche: "Delete" });
   const bCopier = bouton({ icone: "copy", variante: "discret", nomAccessible: "Copier", raccourci: mac ? "Cmd+C" : "Ctrl+C", touche: mac ? "Meta+C" : "Control+C" });
   const bColler = bouton({ icone: "clipboard-paste", variante: "discret", nomAccessible: "Coller", raccourci: mac ? "Cmd+V" : "Ctrl+V", touche: mac ? "Meta+V" : "Control+V" });
+  let suivre = localStorage.getItem(CLE_SUIVI) === "1"; // REQ-203 : l'état du bouton, gardé dans le navigateur
+  const bSuivre = bouton({ icone: "locate-fixed", variante: "discret", nomAccessible: "Suivre le fichier actif", presse: suivre });
   const nomProjet = document.createElement("span");
   nomProjet.className = "fichiers-projet";
   nomProjet.textContent = projet;
   nomProjet.title = projet;
-  ligneProjet.append(nomProjet, bFichier.enveloppe, bDossier.enveloppe, bRenommer.enveloppe, bSupprimer.enveloppe, bCopier.enveloppe, bColler.enveloppe);
+  ligneProjet.append(nomProjet, bFichier.enveloppe, bDossier.enveloppe, bRenommer.enveloppe, bSupprimer.enveloppe, bCopier.enveloppe, bColler.enveloppe, bSuivre.enveloppe);
 
   /** La ligne sélectionnée s'il n'y en a qu'une, sinon `null`. */
   const seule = () => (selection.length === 1 ? selection[0] : null);
@@ -102,6 +105,27 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
     ancre = derniere = chemin;
     majBoutons();
   };
+
+  /** REQ-203 : bouton enfoncé, le fichier actif devient la seule ligne sélectionnée, ses dossiers parents sont dépliés, la ligne est amenée dans la vue. Le focus ne bouge pas. */
+  async function suivreCourant() {
+    const chemin = courant;
+    if (!suivre || chemin === null || (vu === "" ? chemin.startsWith("../") : !chemin.startsWith(`${vu}/`))) return;
+    const parts = chemin.split("/");
+    const parents = [];
+    for (let i = (vu === "" ? 0 : vu.split("/").length) + 1; i < parts.length; i++) parents.push(parts.slice(0, i).join("/"));
+    for (const p of parents) ouverts.add(p);
+    await Promise.all(parents.filter((p) => !dossiers.get(p)?.entrees).map(charger));
+    if (detruit || !suivre || courant !== chemin) return;
+    choisir(chemin);
+    afficher();
+    ligneDe(chemin)?.scrollIntoView({ block: "nearest" });
+  }
+  bSuivre.addEventListener("click", () => {
+    suivre = !suivre;
+    bSuivre.setAttribute("aria-pressed", String(suivre));
+    localStorage.setItem(CLE_SUIVI, suivre ? "1" : "0");
+    suivreCourant();
+  });
 
   function majBoutons() {
     bRenommer.disabled = bSupprimer.disabled = seule() === null;
@@ -1059,6 +1083,7 @@ export function vueFichiers({ dire, projet = "", lireEtat = async () => {}, estD
       if (chemin === courant) return;
       courant = chemin;
       afficher();
+      suivreCourant();
     },
     detruire() {
       detruit = true;

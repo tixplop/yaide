@@ -255,7 +255,7 @@ test("REQ048_AC5_AC8_AC9_en_tete_a_240_et_280_px", async ({ page }) => {
       const a = await boite(page, "aside.cadre-panneau");
       expect(Math.round(a.x + a.w - (b.x + b.width)), `${vue} ${largeur}`).toBe(4);
       if (vue === "Fichiers") {
-        const s = await aside.getByRole("button", { name: "Coller", exact: true }).boundingBox();
+        const s = await aside.getByRole("button", { name: "Suivre le fichier actif", exact: true }).boundingBox();
         expect(Math.round(s.x + s.width)).toBe(Math.round(b.x + b.width));
       }
       if (largeur === "240" && vue === "Recherche") {
