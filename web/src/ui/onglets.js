@@ -5,11 +5,12 @@ import { infoBulle } from "./info-bulle.js";
 
 const ORIENTATIONS = ["horizontale", "verticale"];
 const PRESENTATIONS = { fichiers: "ya-tabs", shells: "ya-term-tabs", rail: "ya-activity", sections: "ya-sections" };
+export const TYPE_SHELL = "application/x-yaide-shell";
 let compteurSections = 0;
 // Mot dit par le nom accessible pour chaque statut git d'un onglet.
 const STATUTS = { M: "modifié", A: "ajouté", U: "nouveau" };
 
-export function onglets({ presentation, orientation = "horizontale", onglets: liste, actif, actionsDroite = [], surChoix, surFermer, surMenu, nomBarre, courant = true, surGlisser, panneaux }) {
+export function onglets({ presentation, orientation = "horizontale", onglets: liste, actif, actionsDroite = [], surChoix, surFermer, surMenu, nomBarre, courant = true, surGlisser, insertion, panneaux }) {
   if (!ORIENTATIONS.includes(orientation)) throw new Error(`onglets : orientation inconnue « ${orientation} »`);
   // `orientation` est l'ancienne option : verticale = rail.
   presentation ??= orientation === "verticale" ? "rail" : "fichiers";
@@ -26,6 +27,7 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
   if (sections) for (const o of liste) if (!(panneaux?.[o.id] instanceof Element)) throw new Error(`onglets : panneau requis pour « ${o.id} »`);
   const prefixe = `sections-${++compteurSections}`;
   const fichiers = presentation === "fichiers";
+  const shells = presentation === "shells";
   const vertical = orientation === "verticale";
   const racine = document.createElement("div");
   racine.className = `onglets onglets-${orientation} ${PRESENTATIONS[presentation]}`;
@@ -104,6 +106,24 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
         if (e.target.closest?.(".onglet-fermer")) e.preventDefault();
       });
     }
+    if (shells && typeof surGlisser === "function") {
+      // Toute la cellule se glisse : le navigateur y envoie `dragstart`, la cible est la cellule, pas la croix.
+      // L'origine de la pression dit donc si le glissé part de la croix.
+      let depuisCroix = false;
+      cellule.draggable = true;
+      cellule.addEventListener("pointerdown", (e) => (depuisCroix = Boolean(e.target.closest?.(".onglet-fermer"))));
+      cellule.addEventListener("dragstart", (e) => {
+        if (depuisCroix || e.target.closest?.(".onglet-fermer")) {
+          e.preventDefault();
+          return;
+        }
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData(TYPE_SHELL, o.id);
+        }
+        surGlisser(o.id, e);
+      });
+    }
     if (avecMenu) {
       t.setAttribute("aria-haspopup", "menu");
       // La cellule couvre l'onglet, sa croix et son point.
@@ -179,6 +199,41 @@ export function onglets({ presentation, orientation = "horizontale", onglets: li
     if (oui) delete racine.dataset.courant;
     else racine.dataset.courant = "false";
   };
+  // Place visée d'un glissé (REQ-200, REQ-201) : la marque est posée dans la cellule voisine, que le CSS place sur son bord.
+  // En `shells`, la marque est enfant du conteneur de la barre (hors de la tablist) : la barre doit y être insérée, et le conteneur est positionné.
+  let marque = null;
+  let placeVisee = null;
+  const poserMarque = () => {
+    const cellules = racine.querySelectorAll(".onglet-cellule");
+    const apres = placeVisee === liste.length;
+    const c = cellules[apres ? placeVisee - 1 : placeVisee];
+    if (!shells) {
+      c.append(marque);
+      return;
+    }
+    // Au milieu de l'écart de 4 px entre deux cellules, à 2 px du bord de la première ou de la dernière ; la marque a 6 px de large.
+    const centre = apres ? c.offsetLeft + c.offsetWidth + 2 : c.offsetLeft - 2;
+    marque.style.left = `${racine.offsetLeft - racine.scrollLeft + centre - 3}px`;
+    marque.style.top = `${racine.offsetTop + c.offsetTop}px`;
+    racine.parentElement.append(marque);
+  };
+  if (shells) racine.addEventListener("scroll", () => marque && racine.parentElement && poserMarque());
+  racine.definirInsertion = (place) => {
+    marque?.remove();
+    marque = null;
+    placeVisee = null;
+    if (place === null || place === undefined) return;
+    if (!Number.isInteger(place) || place < 0 || place > liste.length) throw new Error(`onglets : insertion entre 0 et ${liste.length} requise`);
+    if (!liste.length || (shells && !racine.parentElement)) return;
+    placeVisee = place;
+    marque = document.createElement("span");
+    marque.className = shells ? "ya-insertion ya-insertion-shells" : "ya-insertion";
+    marque.dataset.depot = "barre";
+    marque.dataset.bord = place === liste.length ? "apres" : place === 0 ? "debut" : "avant";
+    marque.setAttribute("aria-hidden", "true");
+    poserMarque();
+  };
+  if (fichiers || shells) racine.definirInsertion(insertion);
   if (avecMenu) racine.addEventListener("pointerdown", () => (cleRecente = false));
   const premier = liste[0]?.id;
   choisir(elements.has(actif) ? actif : premier);

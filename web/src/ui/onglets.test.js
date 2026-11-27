@@ -514,12 +514,12 @@ test("REQ079_AC15_croix_ne_glisse_pas", () => {
   r.remove();
 });
 
-test("REQ079_AC17_onglet_de_shell_non_glissable", () => {
+test("REQ079_AC17_onglet_du_rail_non_glissable_et_shell_glissable_depuis_REQ201", () => {
   const liste = [{ id: "a", libelle: "a" }];
   const surGlisser = vi.fn();
   expect(barreFichiers({ surGlisser }).querySelector('[role="tab"]').draggable).toBe(true);
   expect(barreFichiers().querySelector('[role="tab"]').draggable).toBe(false);
-  for (const presentation of ["shells", "rail"]) {
+  for (const presentation of ["rail"]) {
     const r = onglets({ presentation, onglets: liste, actif: "a", surGlisser });
     expect(r.querySelector('[draggable="true"]')).toBeNull();
     tab(r, 0).dispatchEvent(new Event("dragstart", { bubbles: true }));
@@ -657,4 +657,193 @@ test("REQ199_AC6_boutons_a_texte_a_droite_des_onglets_avant_le_zoom_26_px_4_px_e
   expect(sans).toMatch(/\.onglets-droite:has\(\.ya-btn\) \{ gap: 2px; flex: none; position: sticky; right: 0; background: var\(--bg-100\); \}/);
   expect(sans).toMatch(/\.onglets-droite > \.ya-btn \{ height: 26px; margin-right: 2px; \}/);
   expect(sans).toMatch(/\.onglets-droite > \.ya-btn:not\(:has\(\+ \.ya-btn\)\) \{ margin-right: 6px; \}/);
+});
+
+// REQ-200, REQ-201 : place visée d'un glissé (`insertion`) et glissé d'un onglet de shell.
+// Les barres des shells sont posées dans un conteneur : la marque en est l'enfant, hors de la tablist.
+const trois = (presentation, extra = {}) => {
+  const r = onglets({
+    presentation,
+    actif: "a",
+    onglets: [
+      { id: "a", libelle: "a", fermable: true },
+      { id: "b", libelle: "b", fermable: true },
+      { id: "c", libelle: "c", fermable: true },
+    ],
+    ...extra,
+  });
+  const conteneur = document.createElement("div");
+  conteneur.append(r);
+  r.conteneur = conteneur;
+  return r;
+};
+const marques = (r) => [...r.conteneur.querySelectorAll(".ya-insertion")];
+// Index de la cellule qui porte la marque (fichiers), et bord de la cellule où elle se tient.
+const place = (r) => {
+  const m = marques(r);
+  expect(m.length).toBe(1);
+  return [[...r.querySelectorAll(".onglet-cellule")].indexOf(m[0].closest(".onglet-cellule")), m[0].dataset.bord];
+};
+
+test("REQ200_AC7_marque_avant_le_premier_entre_deux_et_apres_le_dernier_sans_rien_pousser", () => {
+  expect(marques(trois("fichiers"))).toHaveLength(0);
+  [[0, "debut"], [1, "avant"], [2, "avant"], [2, "apres"]].forEach(([c, bord], i) => {
+    const r = trois("fichiers", { insertion: i });
+    expect(place(r)).toEqual([c, bord]);
+    expect(r.contains(marques(r)[0])).toBe(true);
+  });
+  for (const presentation of ["fichiers", "shells"]) {
+    [0, 1, 2, 3].forEach((i) => {
+      const r = trois(presentation);
+      r.definirInsertion(i);
+      const [m] = marques(r);
+      expect(m.getAttribute("data-depot")).toBe("barre");
+      expect(m.getAttribute("aria-hidden")).toBe("true");
+      expect(m.getAttribute("role")).toBeNull();
+      expect(m.tabIndex).toBe(-1);
+      expect(m.dataset.bord).toBe(["debut", "avant", "avant", "apres"][i]);
+      // Rien n'est poussé : ni onglet ajouté, ni rôle changé.
+      expect(r.querySelectorAll('[role="tab"]')).toHaveLength(3);
+      expect(r.querySelectorAll(".onglet-cellule")).toHaveLength(3);
+    });
+  }
+});
+
+test("REQ201_AC10_marque_des_shells_enfant_du_conteneur_hors_de_la_tablist_au_milieu_de_l_ecart", () => {
+  const r = trois("shells");
+  const geo = { offsetLeft: 8, offsetTop: 4, offsetWidth: 0 };
+  Object.defineProperty(r, "offsetLeft", { value: 0 });
+  Object.defineProperty(r, "offsetTop", { value: 0 });
+  r.querySelectorAll(".onglet-cellule").forEach((c, i) => {
+    Object.defineProperty(c, "offsetLeft", { value: geo.offsetLeft + i * 54 });
+    Object.defineProperty(c, "offsetTop", { value: geo.offsetTop });
+    Object.defineProperty(c, "offsetWidth", { value: 50 });
+  });
+  const centre = (i) => {
+    r.definirInsertion(i);
+    const [m] = marques(r);
+    expect(m.parentElement).toBe(r.conteneur);
+    expect(m.closest('[role="tablist"]')).toBeNull();
+    expect(m.classList.contains("ya-insertion")).toBe(true);
+    expect(m.style.top).toBe("4px");
+    return parseFloat(m.style.left) + 3;
+  };
+  // Cellules : 8-58, 62-112, 116-166 ; écart de 4 px entre deux.
+  expect(centre(0)).toBe(6);
+  expect(centre(1)).toBe(60);
+  expect(centre(2)).toBe(114);
+  expect(centre(3)).toBe(168);
+  r.definirInsertion(null);
+  expect(marques(r)).toHaveLength(0);
+});
+
+test("REQ201_AC10_marque_des_shells_sans_conteneur_n_est_pas_posee_et_sans_cellule_non_plus", () => {
+  const r = trois("shells");
+  r.remove();
+  r.definirInsertion(1);
+  expect(document.querySelector(".ya-insertion")).toBeNull();
+  expect(marques(trois("shells", { onglets: [] , insertion: 0 }))).toHaveLength(0);
+});
+
+test("REQ200_AC7_definirInsertion_deplace_et_retire_la_marque_et_refuse_une_place_invalide", () => {
+  for (const presentation of ["fichiers", "shells"]) {
+    const r = trois(presentation);
+    r.definirInsertion(1);
+    expect(marques(r)).toHaveLength(1);
+    r.definirInsertion(3);
+    expect(marques(r)).toHaveLength(1);
+    expect(marques(r)[0].dataset.bord).toBe("apres");
+    r.definirInsertion(null);
+    expect(marques(r)).toHaveLength(0);
+    r.definirInsertion(undefined);
+    expect(marques(r)).toHaveLength(0);
+    for (const mauvais of [-1, 4, 1.5, "1"]) expect(() => r.definirInsertion(mauvais), String(mauvais)).toThrow(/insertion/);
+    expect(() => trois(presentation, { insertion: 9 })).toThrow(/insertion/);
+  }
+});
+
+test("REQ200_AC7_la_marque_ne_change_ni_le_nom_ni_l_etat_des_onglets", () => {
+  const avant = trois("shells");
+  const apres = trois("shells", { insertion: 1 });
+  const noms = (r) => [...r.querySelectorAll('[role="tab"]')].map((t) => [t.getAttribute("aria-label"), t.getAttribute("aria-selected"), t.textContent]);
+  expect(noms(apres)).toEqual(noms(avant));
+});
+
+test("REQ200_AC11_REQ201_AC10_css_de_la_marque_en_I_hauteurs_et_forced_colors", () => {
+  const m = regle(".ya-insertion");
+  expect(m).toContain("position: absolute");
+  expect(m).toContain("pointer-events: none");
+  expect(m).toContain("z-index: 1");
+  expect(m).toContain("--marque: var(--accent-fg)");
+  // Trait de 2 px fermé par deux barrettes de 6 × 2 px : trois couches.
+  expect(m).toMatch(/linear-gradient\(var\(--marque\), var\(--marque\)\)/);
+  expect(m).toContain("var(--trait-fort) 100%, 100% var(--trait-fort), 100% var(--trait-fort)");
+  expect(m).not.toMatch(/\d+px/);
+  expect(m).not.toMatch(/transition/);
+  expect(regle(".ya-tabs .ya-insertion")).toMatch(/top: var\(--space-1\).*height: 26px/);
+  expect(regle(".ya-insertion-shells")).toContain("height: 22px");
+  expect(regle(".ya-term-tabs .onglet-cellule").replace(/\s+/g, " ")).toContain("height: 22px");
+  expect(regle('.ya-tabs .ya-insertion[data-bord="debut"]')).toContain("background-position: left");
+  // Après le dernier onglet, la marque reste dans la barre : elle ne dépasse pas à droite.
+  const apres = regle('.ya-tabs .ya-insertion[data-bord="apres"]');
+  expect(apres).toContain("right: 0");
+  expect(apres).toContain("background-position: right");
+  expect(apres).not.toMatch(/margin-right/);
+  expect(regle(":has(> .ya-term-tabs)")).toContain("position: relative");
+  const brut = readFileSync("web/src/ui/composants.css", "utf8");
+  const forcee = brut.slice(brut.indexOf("@media (forced-colors: active) {\n  .ya-noeud-etiquette"));
+  expect(forcee.slice(0, forcee.indexOf("\n}"))).toMatch(/\.ya-insertion\s*{\s*--marque: Highlight/);
+});
+
+// Dans un vrai navigateur, `dragstart` part de la cellule draggable (cible = la cellule), même si la pression était sur l'onglet.
+const dragstart = (cible, dt) => {
+  const ev = new Event("dragstart", { bubbles: true, cancelable: true });
+  if (dt) ev.dataTransfer = dt;
+  cible.dispatchEvent(ev);
+  return ev;
+};
+const faux = () => {
+  const donnees = new Map();
+  return { effectAllowed: "uninitialized", setData: (t, v) => donnees.set(t, v), get types() { return [...donnees.keys()]; } };
+};
+
+test("REQ201_AC7_cellule_glissable_en_shells_jamais_la_croix_dragstart_de_la_croix_annule", () => {
+  const surGlisser = vi.fn();
+  const r = trois("shells", { surGlisser });
+  document.body.append(r);
+  const cellules = [...r.querySelectorAll(".onglet-cellule")];
+  expect(cellules.map((c) => c.draggable)).toEqual([true, true, true]);
+  expect(r.querySelector(".onglet-fermer").draggable).toBe(false);
+  expect(r.querySelector('[role="tab"]').draggable).toBe(false);
+  // La pression part de la croix, le navigateur envoie `dragstart` à la cellule : annulé.
+  cellules[1].querySelector(".onglet-fermer").dispatchEvent(new Event("pointerdown", { bubbles: true }));
+  const ev = dragstart(cellules[1], faux());
+  expect(ev.defaultPrevented).toBe(true);
+  expect(surGlisser).not.toHaveBeenCalled();
+  // Pression sur l'onglet, `dragstart` de la cellule : l'onglet part.
+  tab(r, 2).dispatchEvent(new Event("pointerdown", { bubbles: true }));
+  const dt = faux();
+  const ev2 = dragstart(cellules[2], dt);
+  expect(surGlisser).toHaveBeenCalledTimes(1);
+  expect(surGlisser).toHaveBeenCalledWith("c", ev2);
+  expect(ev2.defaultPrevented).toBe(false);
+  expect(dt.effectAllowed).toBe("move");
+  // Rôle, nom et sélection ne changent pas.
+  expect([...r.querySelectorAll('[role="tab"]')].map((t) => [t.getAttribute("aria-label"), t.getAttribute("aria-selected")])).toEqual([["a", "true"], ["b", "false"], ["c", "false"]]);
+  expect(r.getAttribute("role")).toBe("tablist");
+  r.remove();
+});
+
+test("REQ201_AC7_sans_surGlisser_aucune_cellule_glissable_en_shells", () => {
+  expect(trois("shells").querySelector("[draggable]")).toBeNull();
+});
+
+test("REQ201_AC8_dragstart_d_un_shell_ne_porte_que_le_type_shell_jamais_text_plain", () => {
+  const surGlisser = vi.fn();
+  const r = trois("shells", { surGlisser });
+  const dt = faux();
+  dragstart(r.querySelectorAll(".onglet-cellule")[2], dt);
+  expect(surGlisser).toHaveBeenCalledWith("c", expect.anything());
+  expect(dt.effectAllowed).toBe("move");
+  expect(dt.types).toEqual(["application/x-yaide-shell"]);
 });

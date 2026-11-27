@@ -976,3 +976,15 @@ test("REQ197_AC6_contrastes_du_bandeau_de_suivi_msg_info_sur_bg_200_dans_les_deu
     }
   });
 });
+
+// REQ-200 AC-200-11, REQ-201 AC-201-10 : contrastes de la marque d'insertion (design-system.md, « Marque d'insertion »), seuil 3.
+test("REQ200_AC11_REQ201_AC10_contrastes_de_la_marque_d_insertion_dans_les_deux_themes", () => {
+  const attendu = { "--bg-100": [6.9, 5.9], "--bg-200": [6.6, 6.3], "--bg-000": [7.1, 5.5], "--bg-300": [5.7, 6.3] };
+  THEMES.forEach((theme, k) => {
+    for (const [fond, valeurs] of Object.entries(attendu)) {
+      const r = ratio(theme, "--accent-fg", fond);
+      expect(r, `--accent-fg sur ${fond} (${theme})`).toBe(valeurs[k]);
+      expect(r).toBeGreaterThanOrEqual(3);
+    }
+  });
+});

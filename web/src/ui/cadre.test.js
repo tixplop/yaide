@@ -1352,3 +1352,10 @@ test("REQ187_AC6_regles_du_bouton_logs_dans_la_barre_d_etat", () => {
   expect(regle(".ya-status > .bouton-enveloppe")).toContain("flex: none");
   expect(regle(".ya-status > .bouton-enveloppe")).toContain("padding: 0");
 });
+
+test("REQ200_AC7_barre_survolee_masque_les_guides_et_la_marque_n_est_pas_un_apercu", () => {
+  expect(regle('.ya-depot[data-survol="barre"] [data-zone-depot]')).toContain("display: none");
+  // La marque `data-depot="barre"` posée dans la couche ne prend pas l'aspect de l'aperçu de la cible.
+  expect(css).toMatch(/\.ya-depot \[data-depot\]:not\(\.ya-insertion\)\s*{/);
+  expect(regle(".ya-insertion")).toContain("pointer-events: none");
+});

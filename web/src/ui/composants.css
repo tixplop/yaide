@@ -227,6 +227,14 @@ svg .icone-marque { fill: none; stroke: var(--bg-000); stroke-width: 2.2; }
 .ya-term-tabs .onglet-cellule:has(> .onglet[aria-selected="true"]) { background: var(--bg-300); }
 .ya-term-tabs .onglet[aria-selected="true"] { color: var(--ink); }
 
+/* C-005 `insertion` (REQ-200, REQ-201) : trait de 2 px fermé par deux barrettes de 6 × 2 px (un « I »), posé sur le bord d'une cellule ; il ne pousse rien. */
+.ya-insertion { --marque: var(--accent-fg); position: absolute; z-index: 1; top: 0; left: 0; width: calc(3 * var(--trait-fort)); margin-left: calc(-1.5 * var(--trait-fort)); pointer-events: none; background-image: linear-gradient(var(--marque), var(--marque)), linear-gradient(var(--marque), var(--marque)), linear-gradient(var(--marque), var(--marque)); background-size: var(--trait-fort) 100%, 100% var(--trait-fort), 100% var(--trait-fort); background-position: center, top, bottom; background-repeat: no-repeat; }
+.ya-tabs .ya-insertion { top: var(--space-1); height: 26px; }
+.ya-tabs .ya-insertion[data-bord="debut"] { margin-left: 0; background-position: left, left top, left bottom; }
+.ya-tabs .ya-insertion[data-bord="apres"] { left: auto; right: 0; margin-left: 0; background-position: right, right top, right bottom; }
+/* Barre des shells : la marque est dans le conteneur de la barre, `left` et `top` posés d'après les cellules ; hauteur d'une cellule. */
+.ya-insertion-shells { height: 22px; margin-left: 0; }
+:has(> .ya-term-tabs) { position: relative; }
 .ya-activity { flex-direction: column; width: var(--size-activity); background: var(--bg-000); }
 .ya-activity .onglet { position: relative; flex: 1 1 auto; justify-content: center; height: var(--size-activity); padding: 0; color: var(--ink-faint); }
 .ya-activity .onglet:hover { color: var(--ink); }
@@ -485,7 +493,8 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 [data-zone-depot="droite"] { right: var(--space-1); width: calc(25% - 2 * var(--space-1)); top: calc(var(--h) + var(--space-1)); bottom: calc(var(--b) + var(--space-1)); }
 [data-zone-depot="haut"] { top: var(--space-1); height: calc(25% - 2 * var(--space-1)); left: calc(var(--g) + var(--space-1)); right: calc(var(--d) + var(--space-1)); }
 [data-zone-depot="bas"] { bottom: var(--space-1); height: calc(25% - 2 * var(--space-1)); left: calc(var(--g) + var(--space-1)); right: calc(var(--d) + var(--space-1)); }
-.ya-depot [data-depot] { position: absolute; pointer-events: none; background: var(--accent-soft); outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait-fort)); box-shadow: inset 0 0 0 calc(var(--trait-fort) + var(--trait)) var(--bg-000); }
+.ya-depot [data-depot]:not(.ya-insertion) { position: absolute; pointer-events: none; background: var(--accent-soft); outline: var(--trait-fort) solid var(--accent-fg); outline-offset: calc(-1 * var(--trait-fort)); box-shadow: inset 0 0 0 calc(var(--trait-fort) + var(--trait)) var(--bg-000); }
+.ya-depot[data-survol="barre"] [data-zone-depot] { display: none; }
 .ya-depot [data-depot="gauche"] { inset: 0 50% 0 0; }
 .ya-depot [data-depot="droite"] { inset: 0 0 0 50%; }
 .ya-depot [data-depot="haut"] { inset: 0 0 50% 0; }
@@ -1063,6 +1072,7 @@ mark.ya-occurrence { background: linear-gradient(var(--occurrence), var(--occurr
   .ya-occurrence * { color: MarkText; }
   .cm-content .cm-line span.ya-occurrence.ya-occurrence, .cm-content .cm-line .ya-occurrence.ya-occurrence * { color: MarkText; }
   .ya-occurrence-courante { box-shadow: inset 0 0 0 1px Highlight; }
+  .ya-insertion { --marque: Highlight; forced-color-adjust: none; }
 }
 
 /* Variante `elements` de la liste (déclencheurs d'un agent, REQ-163). */
