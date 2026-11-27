@@ -180,6 +180,17 @@ test("REQ197_AC2_REQ199_AC1_REQ199_AC4_REQ199_AC6_parcours_153_publier_depuis_l_
   const ordre = await page.locator(".onglets-droite > *").evaluateAll((l) => l.map((e) => e.getBoundingClientRect().x));
   expect([...ordre].sort((a, b) => a - b)).toEqual(ordre);
 
+  // Le dialogue pendant l'exécution : une ligne à trois boutons, entière à 800 × 480, sans défilement horizontal ; « Suivre » rend l'onglet actif.
+  await page.getByRole("button", { name: "Workflows", exact: true }).click();
+  const dlgCours = page.getByRole("dialog", { name: "Workflows" });
+  await expect(dlgCours.getByText("Publié, en cours", { exact: true })).toBeVisible();
+  const ligneCours = dlgCours.locator("li.ya-objet");
+  for (const nom of ["Suivre Revue des notes", "Arrêter Revue des notes", "Dépublier Revue des notes"]) await expect(ligneCours.getByRole("button", { name: nom })).toBeInViewport({ ratio: 1 });
+  expect(await ligneCours.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+  await ligneCours.getByRole("button", { name: "Suivre Revue des notes" }).click();
+  await expect(dlgCours).toBeHidden();
+  await expect(page.getByLabel("Surface du workflow Revue des notes")).toBeFocused();
+
   // « Arrêter » : la commande s'arrête, le bouton part, la ligne d'état revient à l'attente.
   await arreter.click();
   await expect(page.getByText("Revue des notes est arrêté. Son déclencheur écoute toujours.")).toBeVisible();

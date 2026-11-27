@@ -1,4 +1,4 @@
-import { creerWorkflow, depublierWorkflow, listerWorkflows, publierWorkflow } from "../api.js";
+import { arreterWorkflow, creerWorkflow, depublierWorkflow, listerWorkflows, publierWorkflow } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { dialogue, fiche } from "../ui/dialogue.js";
@@ -37,14 +37,18 @@ export function vueWorkflows({ surEtat = () => {}, ouvrirWorkflow, workflowModif
   const poserActions = (...b) => dlg.element.querySelector(".dialogue-actions").replaceChildren(...b);
   const messageCoupure = () => message({ texte: TEXTE_COUPURE, variante: "erreur" });
 
+  // Trois places : « Modifier » ou « Suivre », « Arrêter » pendant une exécution, « Publier » ou « Dépublier ».
   function lignesActions(w) {
-    return w.publie
-      ? [{ id: "bascule", libelle: "Dépublier", libelleEnCours: "Dépublication…", surClic: () => basculer(w.fichier) }]
-      : [
-          { id: "modifier", libelle: "Modifier", surClic: () => modifier(w.fichier) },
-          { id: "bascule", libelle: "Publier", libelleEnCours: "Publication…", surClic: () => basculer(w.fichier) },
-        ];
+    return [
+      w.publie ? { id: "premier", libelle: "Suivre", surClic: () => modifier(w.fichier) } : { id: "premier", libelle: "Modifier", surClic: () => modifier(w.fichier) },
+      ...(w.enCours ? [{ id: "arreter", libelle: "Arrêter", libelleEnCours: "Arrêt…", surClic: () => arreter(w.fichier) }] : []),
+      w.publie
+        ? { id: "bascule", libelle: "Dépublier", libelleEnCours: "Dépublication…", surClic: () => basculer(w.fichier) }
+        : { id: "bascule", libelle: "Publier", libelleEnCours: "Publication…", surClic: () => basculer(w.fichier) },
+    ];
   }
+  const etatDe = (w) => `${w.publie ? "Publié" : "Brouillon"}${w.enCours ? ", en cours" : ""}`;
+  const boutonDe = (fichier, action) => [...ul.children].find((li) => li.dataset.id === fichier).querySelector(`[data-action=${action}]`);
 
   // Le focus va au premier bouton de la première ligne, sinon (ou avec `focusNouveau`) à « Nouveau workflow ».
   function afficherListe({ focusNouveau = false } = {}) {
@@ -58,7 +62,7 @@ export function vueWorkflows({ surEtat = () => {}, ouvrirWorkflow, workflowModif
       ul = liste({
         variante: "objets",
         nom: "Workflows",
-        lignes: workflows.map((w) => ({ id: w.fichier, libelle: w.nom, etat: w.publie ? "Publié" : "Brouillon", actions: lignesActions(w) })),
+        lignes: workflows.map((w) => ({ id: w.fichier, libelle: w.nom, etat: etatDe(w), actions: lignesActions(w) })),
       });
       contenu.push(ul);
     }
@@ -90,17 +94,47 @@ export function vueWorkflows({ surEtat = () => {}, ouvrirWorkflow, workflowModif
     if (!dlg || mienne !== generation) return;
     ul.enCours(fichier);
     for (const b of bas) b.disabled = false;
-    const b = [...ul.children].find((li) => li.dataset.id === fichier).querySelector("[data-action=bascule]");
+    const b = boutonDe(fichier, "bascule");
     if (r.coupure) dlg.definirResultat(messageCoupure());
     else if (r.problemes) dlg.definirResultat(message({ texte: `${w.nom} n'est pas publié :`, points: r.problemes, variante: "erreur" }));
     else if (r.refus || r.cause) dlg.definirResultat(message({ texte: `${publier ? "Publication" : "Dépublication"} impossible : ${sansPoint(r.refus ?? r.message)}.`, variante: "erreur" }));
     else {
       w.publie = publier;
-      ul.majLigne(fichier, { etat: publier ? "Publié" : "Brouillon", actions: lignesActions(w) });
+      ul.majLigne(fichier, { etat: etatDe(w), actions: lignesActions(w) });
       etatWorkflow(fichier, publier);
       dlg.definirResultat(message({ texte: publier ? `${w.nom} est publié. Son déclencheur écoute.` : `${w.nom} est un brouillon. Rien ne le lance plus.`, variante: "succes" }));
     }
     b.focus();
+  }
+
+  // « Arrêter » : la ligne est relue dans tous les cas, « Arrêter » part et le focus va au premier bouton de la ligne.
+  async function arreter(fichier) {
+    const w = workflows.find((x) => x.fichier === fichier);
+    if (!w || !dlg) return;
+    const mienne = generation;
+    dlg.definirResultat();
+    ul.enCours(fichier, "arreter");
+    for (const b of bas) b.disabled = true;
+    const r = await arreterWorkflow(fichier);
+    if (!dlg || mienne !== generation) return;
+    ul.enCours(fichier);
+    for (const b of bas) b.disabled = false;
+    if (r.coupure) {
+      dlg.definirResultat(messageCoupure());
+      return boutonDe(fichier, "arreter").focus();
+    }
+    if (!r.cause || r.cause === "aucune") {
+      w.enCours = null;
+      ul.majLigne(fichier, { etat: etatDe(w), actions: lignesActions(w) });
+      dlg.definirResultat(
+        r.cause
+          ? message({ texte: `${w.nom} n'a pas d'exécution en cours.`, variante: "erreur" })
+          : message({ texte: w.publie ? `${w.nom} est arrêté. Son déclencheur écoute toujours.` : `${w.nom} est arrêté.`, variante: "succes" }),
+      );
+      return boutonDe(fichier, "premier").focus();
+    }
+    dlg.definirResultat(message({ texte: `Arrêt impossible : ${sansPoint(r.message)}.`, variante: "erreur" }));
+    boutonDe(fichier, "arreter").focus();
   }
 
   function afficherFiche({ valeur = "", erreur } = {}) {
