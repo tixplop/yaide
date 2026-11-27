@@ -271,7 +271,7 @@ fn REQ190_AC3_creation_brouillon_sans_noeud() {
     let l = s.appel("GET", "/api/workflows", &Value::Null).json();
     assert_eq!(
         l["workflows"],
-        json!([{ "nom": "Revue des notes", "fichier": "revue-des-notes", "publie": false }])
+        json!([{ "nom": "Revue des notes", "fichier": "revue-des-notes", "publie": false, "enCours": null }])
     );
     // Un nom qui donne le même fichier reçoit un suffixe.
     let r = s.appel(
@@ -502,8 +502,8 @@ fn REQ192_AC6_etat_publie_garde_apres_redemarrage() {
     assert_eq!(
         l["workflows"],
         json!([
-            { "nom": "Brouillon", "fichier": "brouillon", "publie": false },
-            { "nom": "Publié", "fichier": "publie", "publie": true },
+            { "nom": "Brouillon", "fichier": "brouillon", "publie": false, "enCours": null },
+            { "nom": "Publié", "fichier": "publie", "publie": true, "enCours": null },
         ])
     );
 }
@@ -1543,5 +1543,215 @@ fn REQ195_AC2_refus_enregistre_et_agent_disparu() {
         attendre(|| lignes_du_journal(&s, m) == 1),
         "{:?}",
         journal(&s)
+    );
+}
+
+// ---- Nœud en cours et arrêt (REQ-197, REQ-198) ----
+
+fn en_cours_liste(s: &Serveur, f: &str) -> Value {
+    let l = s.appel("GET", "/api/workflows", &Value::Null).json();
+    l["workflows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["fichier"] == f)
+        .unwrap()["enCours"]
+        .clone()
+}
+
+fn en_cours_route(s: &Serveur, f: &str) -> Value {
+    s.appel(
+        "GET",
+        &format!("/api/workflows/{f}/execution"),
+        &Value::Null,
+    )
+    .json()
+}
+
+fn arreter(s: &Serveur, f: &str) -> Rep {
+    s.appel("POST", &format!("/api/workflows/{f}/arreter"), &Value::Null)
+}
+
+#[test]
+fn REQ197_AC1_noeud_en_cours_dans_la_liste_et_la_route_puis_aucun() {
+    let racine = preparer("suivi1");
+    let s = demarrer(&racine, "p");
+    let brouillon = creer(&s, "Brouillon", json!([]), json!([]));
+    assert_eq!(en_cours_liste(&s, &brouillon), Value::Null);
+    assert_eq!(en_cours_route(&s, &brouillon)["enCours"], Value::Null);
+    assert_eq!(en_cours_route(&s, &brouillon)["publie"], false);
+    let f = creer(
+        &s,
+        "Revue des notes",
+        json!([
+            dossier("notes", json!(["cree"])),
+            shell("a", "Commande shell 1", 0.0, "sleep 3")
+        ]),
+        json!([{ "de": "t", "vers": "a" }]),
+    );
+    publier(&s, &f);
+    premier_regard();
+    assert_eq!(en_cours_liste(&s, &f), Value::Null);
+    ecrire_projet(&s, "notes/a.md", "1");
+    assert!(attendre(|| en_cours_liste(&s, &f) == json!("a")));
+    let r = en_cours_route(&s, &f);
+    assert_eq!(r["enCours"], "a");
+    assert_eq!(r["publie"], true);
+    attendre_termine(&s, "Revue des notes", 1);
+    assert_eq!(en_cours_liste(&s, &f), Value::Null);
+    assert_eq!(en_cours_route(&s, &f)["enCours"], Value::Null);
+    assert_eq!(
+        s.appel("GET", "/api/workflows/inconnu/execution", &Value::Null)
+            .code,
+        404
+    );
+}
+
+#[test]
+fn REQ198_AC1_AC2_AC4_arret_tue_la_commande_les_suivantes_ne_tournent_pas_et_le_workflow_reste_publie(
+) {
+    let racine = preparer("arret1");
+    let s = demarrer(&racine, "p");
+    let f = creer(
+        &s,
+        "Revue des notes",
+        json!([
+            dossier("notes", json!(["cree"])),
+            shell(
+                "a",
+                "Commande shell 1",
+                0.0,
+                "sleep 30 & echo $! > pid.txt; wait; echo fin > fin.txt"
+            ),
+            fichier_op(
+                "b",
+                "Fichier 1",
+                1.0,
+                json!({ "operation": "ecrire", "chemin": "apres.txt", "contenu": "x" })
+            )
+        ]),
+        json!([{ "de": "t", "vers": "a" }, { "de": "a", "vers": "b" }]),
+    );
+    // Sans exécution : refus, rien au journal.
+    publier(&s, &f);
+    premier_regard();
+    let avant = journal(&s).len();
+    let r = arreter(&s, &f);
+    assert_eq!(r.code, 409);
+    assert_eq!(r.corps, "Revue des notes n'a pas d'exécution en cours.");
+    assert_eq!(journal(&s).len(), avant);
+
+    ecrire_projet(&s, "notes/a.md", "1");
+    assert!(attendre(|| en_cours_liste(&s, &f) == json!("a")));
+    assert!(attendre(|| !lire_projet(&s, "pid.txt").is_empty()));
+    let pid = lire_projet(&s, "pid.txt").trim().to_string();
+    // Un fichier créé pendant l'exécution, avant l'arrêt, ne lance rien ensuite.
+    ecrire_projet(&s, "notes/b.md", "1");
+    laisser_passer();
+    let debut = std::time::Instant::now();
+    assert_eq!(arreter(&s, &f).code, 200);
+    assert!(attendre_court(|| en_cours_liste(&s, &f) == Value::Null));
+    assert!(attendre_court(
+        || !Path::new(&format!("/proc/{pid}")).exists()
+    ));
+    assert!(debut.elapsed() < Duration::from_secs(2));
+    let m = "Workflow « Revue des notes » arrêté pendant « Commande shell 1 ».";
+    assert_eq!(lignes_du_journal(&s, m), 1);
+    let l = journal(&s);
+    assert_eq!(
+        l.iter().find(|x| x["message"] == m).unwrap()["severite"],
+        "Avertissement"
+    );
+    std::thread::sleep(Duration::from_secs(2));
+    assert!(lire_projet(&s, "fin.txt").is_empty());
+    assert!(lire_projet(&s, "apres.txt").is_empty());
+    assert_eq!(
+        lignes_du_journal(&s, "Workflow « Revue des notes » terminé."),
+        0
+    );
+    assert!(!journal(&s)
+        .iter()
+        .any(|x| x["message"].as_str().unwrap().contains("échec")));
+    // Toujours publié : rien n'a été lancé par b.md, un nouveau fichier lance une exécution.
+    assert_eq!(en_cours_route(&s, &f)["publie"], true);
+    assert_eq!(
+        lignes_du_journal(&s, "Workflow « Revue des notes » lancé."),
+        1
+    );
+    ecrire_projet(&s, "notes/c.md", "1");
+    assert!(attendre(|| lignes_du_journal(
+        &s,
+        "Workflow « Revue des notes » lancé."
+    ) == 2));
+    arreter(&s, &f);
+}
+
+#[test]
+fn REQ198_AC3_arret_d_une_action_agent_arrete_le_tour_et_garde_le_message() {
+    use axum::extract::State;
+    async fn lent(State(()): State<()>) -> String {
+        tokio::time::sleep(Duration::from_secs(20)).await;
+        String::new()
+    }
+    let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    ecoute.set_nonblocking(true).unwrap();
+    let adresse = format!("http://{}", ecoute.local_addr().unwrap());
+    std::thread::spawn(move || {
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async move {
+                let app = axum::Router::new().fallback(lent).with_state(());
+                let ecoute = tokio::net::TcpListener::from_std(ecoute).unwrap();
+                axum::serve(ecoute, app).await.unwrap();
+            });
+    });
+    let racine = preparer("arret3");
+    let s = demarrer(&racine, "p");
+    configurer(&s, &adresse, true);
+    creer_relecteur(&s);
+    let suivant = fichier_op(
+        "b",
+        "Fichier 1",
+        2.0,
+        json!({ "operation": "ecrire", "chemin": "avis.txt", "contenu": "x" }),
+    );
+    publier_sur_notes(
+        &s,
+        "Revue des notes",
+        vec![agent_noeud(), suivant],
+        json!([{ "de": "t", "vers": "a" }, { "de": "a", "vers": "b" }]),
+    );
+    let l = s.appel("GET", "/api/workflows", &Value::Null).json();
+    let f = l["workflows"][0]["fichier"].as_str().unwrap().to_string();
+    ecrire_projet(&s, "notes/a.md", "1");
+    assert!(attendre(|| en_cours_liste(&s, &f) == json!("a")));
+    assert!(attendre(|| conversations(&s).len() == 1));
+    let id = conversations(&s)[0]["id"].as_str().unwrap().to_string();
+    let lire = |s: &Serveur| {
+        s.appel(
+            "GET",
+            &format!("/api/agent/conversations/{id}"),
+            &Value::Null,
+        )
+        .json()
+    };
+    assert_eq!(lire(&s)["enCours"], true);
+    assert_eq!(arreter(&s, &f).code, 200);
+    assert!(attendre(|| en_cours_liste(&s, &f) == Value::Null));
+    let m = "Workflow « Revue des notes » arrêté pendant « Agent 1 ».";
+    assert!(attendre(|| lignes_du_journal(&s, m) == 1));
+    let l = conversations(&s);
+    assert_eq!(l.len(), 1);
+    let v = lire(&s);
+    assert_eq!(v["enCours"], false);
+    assert!(v["entrees"][0]["texte"]
+        .as_str()
+        .unwrap()
+        .starts_with("Relis : "));
+    std::thread::sleep(Duration::from_secs(1));
+    assert!(lire_projet(&s, "avis.txt").is_empty());
+    assert_eq!(
+        lignes_du_journal(&s, "Workflow « Revue des notes » terminé."),
+        0
     );
 }

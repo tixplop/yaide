@@ -2197,7 +2197,58 @@ fn workflow_rep(r: Result<serde_json::Value, crate::workflows::Erreur>) -> Respo
 }
 
 async fn workflows_liste(State(etat): State<Partage>) -> Response {
-    json_rep(StatusCode::OK, etat.workflows.lister())
+    let mut v = etat.workflows.lister();
+    {
+        let e = etat.executions.lock().unwrap_or_else(|e| e.into_inner());
+        for w in v["workflows"].as_array_mut().into_iter().flatten() {
+            let noeud = w["fichier"].as_str().and_then(|f| e.noeud_en_cours(f));
+            w["enCours"] = serde_json::json!(noeud);
+        }
+    }
+    json_rep(StatusCode::OK, v)
+}
+
+/// Le workflow publié ou non, et le nœud qui tourne (REQ-197).
+async fn workflows_execution(
+    State(etat): State<Partage>,
+    axum::extract::Path(fichier): axum::extract::Path<String>,
+) -> Response {
+    let r = etat.workflows.lire(&fichier).map(|w| {
+        let noeud = etat
+            .executions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .noeud_en_cours(&fichier);
+        serde_json::json!({ "publie": w["publie"], "enCours": noeud })
+    });
+    workflow_rep(r)
+}
+
+/// Arrête l'exécution en cours du workflow (REQ-198).
+async fn workflows_arreter(
+    State(etat): State<Partage>,
+    axum::extract::Path(fichier): axum::extract::Path<String>,
+) -> Response {
+    let w = match etat.workflows.lire(&fichier) {
+        Ok(w) => w,
+        Err(e) => return workflow_rep(Err(e)),
+    };
+    let arrete = etat
+        .executions
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .arreter(&fichier);
+    if arrete {
+        json_rep(StatusCode::OK, serde_json::json!({}))
+    } else {
+        texte(
+            StatusCode::CONFLICT,
+            format!(
+                "{} n'a pas d'exécution en cours.",
+                w["nom"].as_str().unwrap_or("")
+            ),
+        )
+    }
 }
 
 async fn workflows_lire(
@@ -2588,6 +2639,11 @@ pub async fn servir(
             "/api/workflows/{fichier}",
             get(workflows_lire).put(workflows_enregistrer),
         )
+        .route(
+            "/api/workflows/{fichier}/execution",
+            get(workflows_execution),
+        )
+        .route("/api/workflows/{fichier}/arreter", post(workflows_arreter))
         .route("/api/workflows/{fichier}/publier", post(workflows_publier))
         .route(
             "/api/workflows/{fichier}/depublier",

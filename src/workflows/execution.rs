@@ -15,6 +15,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::sync::watch::Receiver;
 
 /// Limite d'une « Commande shell » : 10 min, ou `YAIDE_LIMITE_COMMANDE_MS` (variable de test).
 fn limite_commande() -> Duration {
@@ -32,8 +33,41 @@ pub struct Etat {
     dossiers: HashMap<(String, String), HashMap<String, Empreinte>>,
     /// (fichier du workflow, expression) → dernière minute vérifiée.
     minutes: HashMap<(String, String), NaiveDateTime>,
-    /// Fichiers des workflows en cours d'exécution.
-    en_cours: HashSet<String>,
+    /// Workflows en cours d'exécution, par fichier : nœud qui tourne et signal d'arrêt (DEC-128).
+    en_cours: HashMap<String, Execution>,
+}
+
+/// Une exécution en cours : l'action qui tourne et le signal d'arrêt (REQ-197, REQ-198).
+struct Execution {
+    noeud: Option<String>,
+    arret: tokio::sync::watch::Sender<bool>,
+}
+
+impl Etat {
+    /// Réserve l'exécution du workflow ; faux s'il en a déjà une.
+    fn reserver(&mut self, fichier: &str) -> bool {
+        if self.en_cours.contains_key(fichier) {
+            return false;
+        }
+        let (arret, _) = tokio::sync::watch::channel(false);
+        self.en_cours
+            .insert(fichier.to_string(), Execution { noeud: None, arret });
+        true
+    }
+
+    /// L'identifiant du nœud qui tourne, si le workflow est en cours d'exécution et qu'une
+    /// action a commencé.
+    pub fn noeud_en_cours(&self, fichier: &str) -> Option<String> {
+        self.en_cours.get(fichier).and_then(|e| e.noeud.clone())
+    }
+
+    /// Demande l'arrêt de l'exécution ; faux si le workflow n'en a pas.
+    pub fn arreter(&self, fichier: &str) -> bool {
+        self.en_cours
+            .get(fichier)
+            .map(|e| e.arret.send_replace(true))
+            .is_some()
+    }
 }
 
 fn reglage<'a>(n: &'a Noeud, champ: &str) -> &'a str {
@@ -106,7 +140,7 @@ pub fn verifier(
         let Some(d) = declencheur(w).filter(|d| d.genre != "appel") else {
             continue;
         };
-        let muet = !actif || etat.en_cours.contains(fichier);
+        let muet = !actif || etat.en_cours.contains_key(fichier);
         let evenement = if d.genre == "dossier" {
             evenement_dossier(etat, projet, fichier, d, &mut vivantes)
         } else {
@@ -115,7 +149,7 @@ pub fn verifier(
             relever_planification(&mut etat.minutes, fichier, expression, maintenant, muet)
         };
         if let (false, Some(e)) = (muet, evenement) {
-            etat.en_cours.insert(fichier.clone());
+            etat.reserver(fichier);
             sortie.push((fichier.clone(), w.clone(), e));
         }
     }
@@ -208,26 +242,33 @@ async fn commande_shell(
     commande: &str,
     entree: &str,
     limite: Duration,
+    arret: Receiver<bool>,
 ) -> Result<String, Echec> {
     let mut c = tokio::process::Command::new("/bin/sh");
     c.arg("-c")
         .arg(commande)
         .current_dir(projet)
         .env("YAIDE_ENTREE", entree);
-    lancer(c, limite, "la commande /bin/sh est introuvable").await
+    lancer(c, limite, arret, "la commande /bin/sh est introuvable").await
 }
 
 /// Lance `claude -p <demande>` dans la racine du projet, sans terminal (DEC-127).
-async fn session_claude(projet: &Path, demande: &str, limite: Duration) -> Result<String, Echec> {
+async fn session_claude(
+    projet: &Path,
+    demande: &str,
+    limite: Duration,
+    arret: Receiver<bool>,
+) -> Result<String, Echec> {
     let mut c = tokio::process::Command::new("claude");
     c.arg("-p").arg(demande).current_dir(projet);
-    lancer(c, limite, "la commande claude est introuvable").await
+    lancer(c, limite, arret, "la commande claude est introuvable").await
 }
 
 /// Lance la commande sans terminal, attend sa fin dans la limite de temps ; sortie standard.
 async fn lancer(
     mut commande: tokio::process::Command,
     limite: Duration,
+    mut arret: Receiver<bool>,
     introuvable: &str,
 ) -> Result<String, Echec> {
     let mut enfant = commande
@@ -247,7 +288,10 @@ async fn lancer(
     let pgid = enfant.id().unwrap_or(0) as i32;
     let (o, mut lo) = lire_en_continu(enfant.stdout.take());
     let (e, mut le) = lire_en_continu(enfant.stderr.take());
-    let fin = tokio::time::timeout(limite, enfant.wait()).await;
+    let fin = tokio::select! {
+        r = tokio::time::timeout(limite, enfant.wait()) => Some(r),
+        _ = arret.wait_for(|a| *a) => None,
+    };
     // Le groupe est tué dans tous les cas : un processus laissé en arrière-plan ne survit pas.
     if pgid > 0 {
         // SAFETY: un appel système sans pointeur ; `-pgid` vise le groupe de la commande.
@@ -255,6 +299,12 @@ async fn lancer(
             libc::kill(-pgid, libc::SIGKILL);
         }
     }
+    let Some(fin) = fin else {
+        let _ = enfant.wait().await;
+        lo.abort();
+        le.abort();
+        return Err(echec("arrêt demandé"));
+    };
     let Ok(statut) = fin else {
         lo.abort();
         le.abort();
@@ -355,7 +405,7 @@ async fn action_agent(contexte: &Contexte<'_>, n: &Noeud, entree: &str) -> Resul
     let message = avec_entree(n, "message", entree);
     contexte
         .gestionnaire
-        .tour_pour_workflow(&agent, &message)
+        .tour_pour_workflow(&agent, &message, contexte.arret.clone())
         .await
         .map_err(|m| echec(m.trim_end_matches('.')))
 }
@@ -366,13 +416,16 @@ struct Contexte<'a> {
     agents: &'a Agents,
     gestionnaire: &'a Arc<Gestionnaire>,
     limite: Duration,
+    etat: &'a Arc<Mutex<Etat>>,
+    fichier: &'a str,
+    arret: Receiver<bool>,
 }
 
 async fn action(contexte: &Contexte<'_>, n: &Noeud, entree: &str) -> Result<String, Echec> {
-    let (projet, limite) = (contexte.projet, contexte.limite);
+    let (projet, limite, arret) = (contexte.projet, contexte.limite, contexte.arret.clone());
     match n.genre.as_str() {
-        "shell" => commande_shell(projet, reglage(n, "commande"), entree, limite).await,
-        "claude" => session_claude(projet, &avec_entree(n, "demande", entree), limite).await,
+        "shell" => commande_shell(projet, reglage(n, "commande"), entree, limite, arret).await,
+        "claude" => session_claude(projet, &avec_entree(n, "demande", entree), limite, arret).await,
         "fichier" => action_fichier(projet, n, entree),
         "agent" => action_agent(contexte, n, entree).await,
         _ => Err(echec("action non disponible")),
@@ -389,7 +442,24 @@ async fn executer(contexte: &Contexte<'_>, w: &Workflow, entree: String, journal
     let mut sorties = HashMap::from([(d.id.clone(), entree)]);
     for (n, parent) in ordre(w, &d.id) {
         let recu = sorties.get(&parent).cloned().unwrap_or_default();
-        match action(contexte, &n, &recu).await {
+        if let Some(e) = contexte
+            .etat
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .en_cours
+            .get_mut(contexte.fichier)
+        {
+            e.noeud = Some(n.id.clone());
+        }
+        let resultat = action(contexte, &n, &recu).await;
+        if *contexte.arret.borrow() {
+            journal.ecrire(
+                Severite::Avertissement,
+                &format!("Workflow « {} » arrêté pendant « {} ».", w.nom, n.titre),
+            );
+            return;
+        }
+        match resultat {
             Ok(s) => {
                 sorties.insert(n.id.clone(), s);
             }
@@ -437,6 +507,15 @@ fn demarrer(
             agents: &agents,
             gestionnaire: &gestionnaire,
             limite: limite_commande(),
+            etat: &etat,
+            fichier: &fichier,
+            arret: etat
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .en_cours
+                .get(&fichier)
+                .map(|e| e.arret.subscribe())
+                .expect("exécution réservée avant son démarrage"),
         };
         executer(&contexte, &w, entree, &journal).await;
         // La surveillance repart de l'état du moment (REQ-164).
@@ -520,8 +599,7 @@ pub fn lancer_par_agent(
     if !etat
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .en_cours
-        .insert(fichier.clone())
+        .reserver(fichier)
     {
         return echec(format!(
             "Le workflow « {} » est déjà en cours. Réessayez à sa fin.",
@@ -692,15 +770,27 @@ mod tests {
         let d = std::env::temp_dir().join(format!("workflow-fond-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         let debut = std::time::Instant::now();
-        let s = commande_shell(&d, "sleep 30 & echo ok", "", Duration::from_secs(20))
-            .await
-            .unwrap();
+        let s = commande_shell(
+            &d,
+            "sleep 30 & echo ok",
+            "",
+            Duration::from_secs(20),
+            tokio::sync::watch::channel(false).1,
+        )
+        .await
+        .unwrap();
         assert_eq!(s, "ok\n");
         assert!(debut.elapsed() < Duration::from_secs(5));
         // La sortie gardée est plafonnée.
-        let s = commande_shell(&d, "seq 1 100000", "", Duration::from_secs(20))
-            .await
-            .unwrap();
+        let s = commande_shell(
+            &d,
+            "seq 1 100000",
+            "",
+            Duration::from_secs(20),
+            tokio::sync::watch::channel(false).1,
+        )
+        .await
+        .unwrap();
         assert!(s.len() <= SORTIE_MAX && s.ends_with("100000\n"));
     }
 
@@ -716,6 +806,7 @@ mod tests {
             "pwd; echo \"$YAIDE_ENTREE\"",
             "abc",
             Duration::from_secs(10),
+            tokio::sync::watch::channel(false).1,
         )
         .await
         .unwrap();

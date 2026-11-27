@@ -765,6 +765,7 @@ Always give file paths relative to the project root.",
         self: &Arc<Self>,
         agent: &Agent,
         texte: &str,
+        mut arret: tokio::sync::watch::Receiver<bool>,
     ) -> Result<String, String> {
         let id = match self.envoyer_declenche(agent, texte) {
             Ok(id) => id,
@@ -784,7 +785,14 @@ Always give file paths relative to the project root.",
             Err(ErreurEnvoi::Inconnue) => return Err("conversation inconnue".into()),
         };
         while verrou(&self.registre).contains_key(&id) {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            tokio::select! {
+                _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {}
+                // Arrêt du workflow (REQ-198) : le tour s'arrête comme par son bouton « Arrêter ».
+                _ = arret.wait_for(|a| *a) => {
+                    self.arreter(&id);
+                    return Err("arrêt demandé".into());
+                }
+            }
         }
         let c = self.charger(&id).ok_or("conversation illisible")?;
         match c.entrees.last() {
