@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test, vi } from "vitest";
 import { workflow } from "./workflow.js";
 
@@ -170,4 +171,108 @@ test("REQ191_AC1_AC7_sans_nœud_la_surface_dit_dajouter_un_declencheur", () => {
   const w = workflow({ nom: "X", document: { nom: "X", publie: false, noeuds: [], liens: [] }, surChangement: vi.fn() });
   expect(w.querySelector(".ya-wf-vide").hidden).toBe(false);
   expect(w.querySelector(".ya-wf-vide").textContent).toBe("Ajoutez un déclencheur depuis le panneau Nœuds.");
+});
+
+const regle = (sel) => {
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  const m = css.match(new RegExp(`(?:^|\\})\\s*${sel.replace(/[.[\]()]/g, "\\$&")} \\{([^}]*)\\}`));
+  return m ? m[1] : "";
+};
+
+test("REQ197_AC5_noeud_en_cours_zone_status_ajoute_en_cours_sans_relire_quand_lexecution_avance", () => {
+  const { w, s, el } = monter({ lectureSeule: true, enCours: "n2" });
+  const statut = w.querySelector(".ya-wf-statut");
+  touche(s, "Tab"); // n1
+  expect(statut.textContent).toBe("Fichiers d'un dossier 1, déclencheur.");
+  touche(s, "Tab"); // n2, en cours
+  expect(statut.textContent).toBe("Commande shell 1, action, après Fichiers d'un dossier 1. En cours.");
+  // l'exécution avance : la zone du nœud choisi n'est pas réécrite
+  const mut = [];
+  new MutationObserver((l) => mut.push(...l)).observe(statut, { childList: true, characterData: true, subtree: true });
+  w.maj({ enCours: "n3" });
+  expect(el("n2").classList.contains("ya-noeud-en-cours")).toBe(false);
+  expect(el("n3").classList.contains("ya-noeud-en-cours")).toBe(true);
+  expect(statut.textContent).toBe("Commande shell 1, action, après Fichiers d'un dossier 1.");
+  w.maj({ enCours: "n3" });
+  return Promise.resolve().then(() => {
+    // une seule réécriture : la perte de « En cours. » du nœud choisi ; la seconde mise à jour ne change rien
+    expect(mut).toHaveLength(1);
+    // un nœud non choisi qui prend la place : la zone n'est pas relue
+    mut.length = 0;
+    w.maj({ enCours: "n2" });
+    w.maj({ enCours: "n3" });
+    expect(mut).toHaveLength(0);
+    // choisir le nœud en cours : « En cours. » ; plus rien en cours : plus de marque
+    touche(s, "Tab");
+    expect(statut.textContent).toBe("Agent 1, action, après aucun nœud. En cours.");
+    w.maj({ enCours: null });
+    expect(statut.textContent).toBe("Agent 1, action, après aucun nœud.");
+    expect(w.querySelector(".ya-noeud-en-cours")).toBeNull();
+    expect(w.querySelector(".ya-noeud-etiquette")).toBeNull();
+  });
+});
+
+test("REQ197_AC6_bandeau_de_suivi_deux_zones_status_etiquette_en_cours_et_contour_de_2_px", () => {
+  const { w, el } = monter({ lectureSeule: true });
+  const bandeau = w.querySelector(".ya-wf-lecture-message");
+  const zones = [...bandeau.querySelectorAll('[role="status"]')];
+  expect(zones).toHaveLength(2);
+  expect(zones[0].textContent).toBe("Workflow publié : dépubliez-le pour le modifier.");
+  expect(zones[0].contains(zones[1]) || zones[1].contains(zones[0])).toBe(false);
+  expect(zones[1].textContent).toBe("En attente d'un évènement.");
+  expect(zones[1].title).toBe("En attente d'un évènement.");
+  expect(zones[1].classList.contains("ya-wf-etat-attente")).toBe(true);
+  // un nœud en cours : la ligne d'état le nomme ; sa zone n'est pas réécrite tant que le nœud ne change pas
+  const mut = [];
+  new MutationObserver((l) => mut.push(...l)).observe(zones[1], { childList: true, characterData: true, subtree: true });
+  w.maj({ enCours: "n2" });
+  expect(zones[1].textContent).toBe("En cours : Commande shell 1.");
+  expect(zones[1].title).toBe("En cours : Commande shell 1.");
+  expect(zones[1].classList.contains("ya-wf-etat-attente")).toBe(false);
+  const etiquette = el("n2").querySelector(".ya-noeud-etiquette");
+  expect(etiquette.textContent).toBe("En cours");
+  expect(etiquette.getAttribute("aria-hidden")).toBe("true");
+  expect(el("n1").querySelector(".ya-noeud-etiquette")).toBeNull();
+  w.maj({ enCours: "n2", vue: { x: 0, y: 0, zoom: 1 } });
+  w.maj({ enCours: "n2" });
+  return Promise.resolve().then(() => {
+    expect(mut).toHaveLength(1);
+    // en cours et choisi : l'étiquette et l'anneau
+    el("n2").dispatchEvent(Object.assign(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }), { pointerId: 1 }));
+    expect(el("n2").classList.contains("ya-noeud-en-cours")).toBe(true);
+    expect(el("n2").classList.contains("ya-noeud-choisi")).toBe(true);
+    expect(el("n2").querySelector(".ya-noeud-etiquette")).not.toBeNull();
+    // le nœud en cours ne déplace pas la vue
+    const surVue = vi.fn();
+    const m = monter({ lectureSeule: true, surVue, vue: { x: -1000, y: -1000, zoom: 1 } });
+    m.w.maj({ enCours: "n3" });
+    expect(surVue).not.toHaveBeenCalled();
+    // fin de l'exécution : l'étiquette part, la ligne revient à l'attente
+    w.maj({ enCours: null });
+    expect(w.querySelector(".ya-noeud-etiquette")).toBeNull();
+    expect(zones[1].textContent).toBe("En attente d'un évènement.");
+    // dépublié : plus de bandeau
+    w.maj({ lectureSeule: false });
+    expect(bandeau.hidden).toBe(true);
+    // CSS : contour de 2 px, étiquette en --ink sur --bg-200, bord transparent pour forced-colors
+    expect(regle(".ya-noeud-en-cours")).toMatch(/border: calc\(2px \/ var\(--zoom, 1\)\) solid var\(--ink\)/);
+    const e = regle(".ya-noeud-etiquette");
+    expect(e).toContain("background: var(--ink)");
+    expect(e).toContain("color: var(--bg-200)");
+    expect(e).toContain("border: calc(1px / var(--zoom, 1)) solid transparent");
+    expect(e).toContain("font-weight: 600");
+    const css = readFileSync("web/src/ui/composants.css", "utf8");
+    const debut = css.indexOf("@media (forced-colors: active) {");
+    let fin = debut;
+    for (let n = 0, i = css.indexOf("{", debut); i < css.length; i++) {
+      if (css[i] === "{") n++;
+      if (css[i] === "}" && --n === 0) {
+        fin = i;
+        break;
+      }
+    }
+    expect(css.slice(debut, fin)).toMatch(/\.ya-noeud-etiquette \{[^}]*border-color: CanvasText/);
+    expect(regle(".ya-wf-etat")).toContain("text-overflow: ellipsis");
+    expect(regle(".ya-wf-lecture-message")).toContain("flex-wrap: wrap");
+  });
 });

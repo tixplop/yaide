@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ajouter, cadrer, apresDe, delier, deplacer, lier, montrer, noeudsPermisApres, phraseDuChoix, retirer, zoomer } from "./workflow.js";
+import { TYPES, ajouter, cadrer, apresDe, delier, deplacer, lier, montrer, noeudsPermisApres, phraseDuChoix, retirer, zoomer } from "./workflow.js";
 
 const vide = { nom: "Revue", publie: false, noeuds: [], liens: [] };
 
@@ -83,4 +83,12 @@ test("REQ191_AC7_tout_afficher_cadre_tous_les_noeuds_sans_depasser_100_pour_cent
   const v = cadrer({ noeuds: [n("a", 0, 0), n("b", 1000, 0)], liens: [] }, 800, 400);
   expect(v.zoom).toBeCloseTo(752 / 1240, 5);
   expect(v.x).toBeCloseTo((800 - 1240 * v.zoom) / 2, 5);
+});
+
+test("REQ195_AC11_type_trace_action_icone_scroll_text_reglages_vides_et_titre_numerote", () => {
+  const a = ajouter(ajouter(vide, "dossier").doc, "trace", { apres: "n1" });
+  expect(a.doc.noeuds[1]).toMatchObject({ type: "trace", titre: "Trace 1", reglages: {} });
+  expect(a.doc.liens).toEqual([{ de: "n1", vers: "n2" }]);
+  expect(TYPES.trace).toMatchObject({ nom: "Trace", genre: "action", icone: "scroll-text", phrase: "Écrit un message dans le journal des logs de Yaide." });
+  expect(Object.keys(TYPES).at(-1)).toBe("trace");
 });

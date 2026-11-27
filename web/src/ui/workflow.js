@@ -8,10 +8,10 @@ const NS = "http://www.w3.org/2000/svg";
 const PAS_FLECHE = 20;
 
 /** C-019 : surface de l'éditeur de workflow. `maj(props)` remplace document, vue, choix ou lectureSeule. */
-export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, choix = null, lectureSeule = false, agents = [], surChangement, surVue, surChoix, surEntree }) {
+export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, choix = null, lectureSeule = false, enCours = null, agents = [], surChangement, surVue, surChoix, surEntree }) {
   if (!nom) throw new Error("workflow : nom requis");
   if (typeof surChangement !== "function") throw new Error("workflow : surChangement requis");
-  const etat = { doc, vue, choix, lectureSeule, agents };
+  const etat = { doc, vue, choix, lectureSeule, enCours, agents };
   let glisse = null; // { id, dx, dy, x, y, bouge }
   let trace = null; // { de, x, y, cible }
   let fond = null; // { x, y, vue }
@@ -53,8 +53,15 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
     },
   });
   rangee.append(surface, panneau);
+  // Bandeau de suivi : le message et la ligne d'état sont deux zones `role="status"` séparées.
   const lecture = message({ texte: "Workflow publié : dépubliez-le pour le modifier." });
   lecture.classList.add("ya-wf-lecture-message");
+  lecture.removeAttribute("role");
+  lecture.querySelector(".message-texte").setAttribute("role", "status");
+  const ligneEtat = document.createElement("span");
+  ligneEtat.className = "ya-wf-etat";
+  ligneEtat.setAttribute("role", "status");
+  lecture.append(ligneEtat);
   racine.append(lecture, rangee, statut);
 
   const pos = (n) => (glisse && glisse.id === n.id ? { x: glisse.x, y: glisse.y } : { x: n.x, y: n.y });
@@ -164,6 +171,11 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
     vide.hidden = etat.doc.noeuds.length > 0;
     racine.classList.toggle("ya-wf-lecture", etat.lectureSeule);
     lecture.hidden = !etat.lectureSeule;
+    const courant = etat.enCours ? noeud(etat.enCours) : null;
+    const etatTexte = courant ? `En cours : ${courant.titre}.` : "En attente d'un évènement.";
+    if (ligneEtat.textContent !== etatTexte) ligneEtat.textContent = etatTexte;
+    ligneEtat.title = etatTexte;
+    ligneEtat.classList.toggle("ya-wf-etat-attente", !courant);
     panneau.maj({ document: etat.doc, choix: etat.choix && noeud(etat.choix) ? etat.choix : null, lectureSeule: etat.lectureSeule, agents: etat.agents });
     for (const n of etat.doc.noeuds) {
       const t = TYPES[n.type];
@@ -175,6 +187,14 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
       if (n.id === etat.choix) {
         el.classList.add("ya-noeud-choisi");
         el.setAttribute("aria-current", "true");
+      }
+      if (courant && courant.id === n.id) {
+        el.classList.add("ya-noeud-en-cours");
+        const marque = document.createElement("span");
+        marque.className = "ya-noeud-etiquette";
+        marque.setAttribute("aria-hidden", "true");
+        marque.textContent = "En cours";
+        el.append(marque);
       }
       if (trace && trace.cible === n.id) el.classList.add("ya-noeud-cible");
       else if (trace && trace.survol === n.id) el.classList.add("ya-noeud-refuse");
@@ -199,7 +219,9 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
       el.append(s);
       monde.append(el);
     }
-    statut.textContent = etat.choix && noeud(etat.choix) ? phraseDuChoix(etat.doc, etat.choix) : "";
+    // La zone ne relit rien quand l'exécution avance : elle n'est réécrite que si sa phrase change.
+    const phrase = etat.choix && noeud(etat.choix) ? phraseDuChoix(etat.doc, etat.choix) + (etat.choix === courant?.id ? " En cours." : "") : "";
+    if (statut.textContent !== phrase) statut.textContent = phrase;
     placer();
   }
 
@@ -348,6 +370,7 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
     if ("vue" in p) etat.vue = p.vue;
     if ("choix" in p) etat.choix = p.choix;
     if ("lectureSeule" in p) etat.lectureSeule = p.lectureSeule;
+    if ("enCours" in p) etat.enCours = p.enCours;
     if ("agents" in p) etat.agents = p.agents;
     if (etat.choix && !noeud(etat.choix)) etat.choix = null;
     rendre();

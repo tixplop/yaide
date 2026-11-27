@@ -38,7 +38,7 @@ test("REQ191_AC1_AC7_le_panneau_liste_les_types_en_deux_groupes_decrits", () => 
   const groupes = [...p.querySelectorAll('[role="group"]')];
   expect(groupes.map((g) => document.getElementById(g.getAttribute("aria-labelledby")).textContent)).toEqual(["Déclencheurs", "Actions"]);
   expect([...groupes[0].querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Fichiers d'un dossier", "Planification", "Appel par un agent"]);
-  expect([...groupes[1].querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Commande shell", "Session Claude", "Fichier"]);
+  expect([...groupes[1].querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Commande shell", "Session Claude", "Fichier", "Trace"]);
   for (const b of p.querySelectorAll("button")) {
     expect(b.draggable).toBe(true);
     expect(b.querySelector("svg")).not.toBeNull();
@@ -111,7 +111,7 @@ test("REQ191_AC4_apres_aucun_retire_le_lien_retirer_le_noeud_et_echap_rendent_le
 
 test("REQ191_AC8_nœud_choisi_reglages_ajout_apres_et_focus_dans_le_premier_champ", () => {
   const m = monter();
-  const attendu = { "Fichiers d'un dossier": "dossier", Planification: "cron", "Appel par un agent": "titre", Agent: "agent", "Commande shell": "commande", "Session Claude": "demande", Fichier: "operation" };
+  const attendu = { "Fichiers d'un dossier": "dossier", Planification: "cron", "Appel par un agent": "titre", Agent: "agent", "Commande shell": "commande", "Session Claude": "demande", Fichier: "operation", Trace: "message" };
   for (const [nom, cle] of Object.entries(attendu)) {
     m.w.maj({ document: vide(), choix: null });
     m.type(nom).click();
@@ -122,7 +122,7 @@ test("REQ191_AC8_nœud_choisi_reglages_ajout_apres_et_focus_dans_le_premier_cham
   m.type("Planification").click();
   expect(m.libelles()).toEqual(["Titre", "Expression cron"]);
   expect(m.champ("apres")).toBeNull();
-  expect(m.p.querySelectorAll('[role="group"] button')).toHaveLength(4);
+  expect(m.p.querySelectorAll('[role="group"] button')).toHaveLength(5);
   m.champ("titre").focus();
   m.saisir("titre", "Chaque matin");
   expect(m.docs.at(-1).noeuds[0].titre).toBe("Chaque matin");
@@ -133,7 +133,7 @@ test("REQ191_AC8_nœud_choisi_reglages_ajout_apres_et_focus_dans_le_premier_cham
   expect(m.libelles()).toEqual(["Titre", "Demande", "Après"]);
   const g = m.p.querySelector('[role="group"]');
   expect(document.getElementById(g.getAttribute("aria-labelledby")).textContent).toBe("Ajouter une action après");
-  expect([...g.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Commande shell", "Session Claude", "Fichier"]);
+  expect([...g.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Agent", "Commande shell", "Session Claude", "Fichier", "Trace"]);
   expect(g.querySelector("button").hasAttribute("aria-describedby")).toBe(false);
   expect(m.docs.at(-1).liens).toEqual([{ de: "n1", vers: "n2" }]);
   expect([...m.champ("apres").options].map((o) => o.textContent)).toEqual(["Aucun", "Chaque matin"]);
@@ -242,7 +242,7 @@ test("REQ192_AC3_AC8_lecture_seule_types_et_champs_non_modifiables", () => {
   const bandeau = m.w.querySelector(".ya-wf-lecture-message");
   expect(bandeau.hidden).toBe(false);
   expect(bandeau.textContent).toContain("Workflow publié : dépubliez-le pour le modifier.");
-  expect(bandeau.getAttribute("role")).toBe("status");
+  expect(bandeau.querySelector('[role="status"]').textContent).toBe("Workflow publié : dépubliez-le pour le modifier.");
   for (const b of m.p.querySelectorAll(".ya-wf-type")) {
     expect(b.getAttribute("aria-disabled")).toBe("true");
     b.click();
@@ -268,4 +268,36 @@ test("REQ192_AC3_AC8_lecture_seule_types_et_champs_non_modifiables", () => {
   expect(bandeau.hidden).toBe(true);
   expect(m.champ("dossier").readOnly).toBe(false);
   expect(m.w.querySelector(".ya-noeud-choisi")).not.toBeNull();
+});
+
+test("REQ195_AC10_trace_apres_fichier_phrase_message_multiligne_aide_reliee_puis_apres", () => {
+  const m = monter();
+  const actions = m.p.querySelectorAll('[role="group"]')[1];
+  const noms = [...actions.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
+  expect(noms.indexOf("Trace")).toBe(noms.indexOf("Fichier") + 1);
+  expect(noms.at(-1)).toBe("Trace");
+  expect(document.getElementById(m.type("Trace").getAttribute("aria-describedby")).textContent).toBe("Écrit un message dans le journal des logs de Yaide.");
+  m.type("Trace").click();
+  expect(m.libelles()).toEqual(["Titre", "Message", "Après"]);
+  expect(m.champ("message").tagName).toBe("TEXTAREA");
+  const aide = document.getElementById(m.champ("message").getAttribute("aria-describedby"));
+  expect(aide.className).toBe("champ-aide");
+  expect(aide.textContent).toBe("{{entree}} y est remplacé par l'entrée. Le message s'écrit dans le journal des logs de Yaide. La sortie est l'entrée reçue.");
+  m.saisir("message", "Reçu : {{entree}}");
+  expect(m.docs.at(-1).noeuds[0]).toMatchObject({ type: "trace", titre: "Trace 1", reglages: { message: "Reçu : {{entree}}" } });
+});
+
+test("REQ195_AC11_trace_a_son_icone_partout_est_reliee_apres_le_choix_et_prend_le_focus_dans_message", () => {
+  const m = monter();
+  const icone = (el) => el.querySelector("svg").getAttribute("data-icone");
+  expect(icone(m.type("Trace"))).toBe("scroll-text");
+  m.type("Fichiers d'un dossier").click();
+  const court = [...m.p.querySelectorAll(".ya-wf-type-court")].find((b) => b.getAttribute("aria-label") === "Trace");
+  expect(icone(court)).toBe("scroll-text");
+  court.click();
+  expect(icone(m.p.querySelector(".ya-wf-noeud-type"))).toBe("scroll-text");
+  expect(m.p.querySelector(".ya-wf-noeud-type").textContent).toBe("Trace");
+  expect(icone(m.w.querySelector(".ya-noeud-choisi"))).toBe("scroll-text");
+  expect(m.docs.at(-1).liens).toEqual([{ de: "n1", vers: "n2" }]);
+  expect(document.activeElement).toBe(m.champ("message"));
 });

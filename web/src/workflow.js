@@ -14,6 +14,7 @@ export const TYPES = {
   shell: { nom: "Commande shell", genre: "action", icone: "square-terminal", phrase: "Lance une commande dans le projet." },
   claude: { nom: "Session Claude", genre: "action", icone: "square-asterisk", phrase: "Confie une demande à Claude Code." },
   fichier: { nom: "Fichier", genre: "action", icone: "file-cog", phrase: "Lit, écrit, copie, déplace ou supprime un fichier." },
+  trace: { nom: "Trace", genre: "action", icone: "scroll-text", phrase: "Écrit un message dans le journal des logs de Yaide." },
 };
 
 /** Réglages d'un nœud neuf : le dossier surveillé vide et ses trois évènements cochés, « Lire » pour un fichier. */

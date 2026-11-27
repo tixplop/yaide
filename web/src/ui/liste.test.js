@@ -1825,7 +1825,47 @@ test("REQ192_AC2_objets_etat_et_actions_en_texte_noms_accessibles_focus_gardé_e
   expect(() => l.majLigne("x", { actions: [] })).toThrow(/inconnue/);
   const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
   expect(css).toMatch(/\.ya-objets-texte \.ya-objet \{[^}]*height: 32px/);
-  expect(css).toMatch(/\.ya-objet-etat \{[^}]*width: 72px/);
-  expect(css).toMatch(/\.ya-objets-texte \.ya-objet-actions \{[^}]*min-width: 168px/);
+  expect(css).toMatch(/\.ya-objet-etat \{[^}]*width: 112px/);
+  expect(css).toMatch(/\.ya-objets-texte \.ya-objet-actions \{[^}]*min-width: 240px/);
   expect(css).toMatch(/\.ya-objets-texte \.ya-btn \{[^}]*height: 26px/);
+});
+
+test("REQ197_AC5_trois_places_suivre_nommé_arrêter_part_focus_au_premier_et_bouton_qui_change_garde_son_élément", () => {
+  const trois = (premier, libelleBascule) => [
+    { id: "premier", libelle: premier },
+    { id: "arreter", libelle: "Arrêter", libelleEnCours: "Arrêt…" },
+    { id: "bascule", libelle: libelleBascule },
+  ];
+  const l = liste({
+    variante: "objets",
+    nom: "Workflows",
+    lignes: [{ id: "a", libelle: "Revue des notes", etat: "Publié, en cours", actions: trois("Suivre", "Dépublier") }],
+  });
+  document.body.append(l);
+  const li = l.children[0];
+  const [suivre, arreter, bascule] = [...li.querySelectorAll("button")];
+  expect(suivre.getAttribute("aria-label")).toBe("Suivre Revue des notes");
+  expect(arreter.getAttribute("aria-label")).toBe("Arrêter Revue des notes");
+  expect(bascule.getAttribute("aria-label")).toBe("Dépublier Revue des notes");
+  // « Modifier » devient « Suivre » sur le même élément, qui garde le focus
+  l.majLigne("a", { etat: "Brouillon", actions: [{ id: "premier", libelle: "Modifier" }, { id: "bascule", libelle: "Publier" }] });
+  expect([...li.querySelectorAll("button")]).toEqual([suivre, bascule]);
+  expect(suivre.getAttribute("aria-label")).toBe("Modifier Revue des notes");
+  suivre.focus();
+  l.majLigne("a", { etat: "Publié", actions: [{ id: "premier", libelle: "Suivre" }, { id: "bascule", libelle: "Dépublier" }] });
+  expect(document.activeElement).toBe(suivre);
+  expect(suivre.getAttribute("aria-label")).toBe("Suivre Revue des notes");
+  // « Arrêter » paraît entre les deux, sans déplacer les autres éléments
+  l.majLigne("a", { etat: "Publié, en cours", actions: trois("Suivre", "Dépublier") });
+  const a2 = li.querySelectorAll("button")[1];
+  expect(li.querySelectorAll("button")[0]).toBe(suivre);
+  expect(li.querySelectorAll("button")[2]).toBe(bascule);
+  // « Arrêter » part en ayant le focus : il passe au premier bouton de la ligne
+  a2.focus();
+  l.majLigne("a", { etat: "Publié", actions: [{ id: "premier", libelle: "Suivre" }, { id: "bascule", libelle: "Dépublier" }] });
+  expect(document.activeElement).toBe(suivre);
+  // Dépublier garde le focus s'il l'avait
+  bascule.focus();
+  l.majLigne("a", { etat: "Brouillon", actions: [{ id: "premier", libelle: "Modifier" }, { id: "bascule", libelle: "Publier" }] });
+  expect(document.activeElement).toBe(bascule);
 });

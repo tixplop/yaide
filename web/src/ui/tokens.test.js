@@ -964,3 +964,15 @@ test("REQ172_AC8_largeur_du_toast_et_contrastes_dans_les_deux_themes", () => {
     }
   });
 });
+
+test("REQ197_AC6_contrastes_du_bandeau_de_suivi_msg_info_sur_bg_200_dans_les_deux_themes", () => {
+  // design-system.md (C-019) : message et « En cours : … » en --ink, « En attente d'un évènement. » en --ink-muted.
+  const paires = [["--ink", [8.15, 13.33]], ["--ink-muted", [5.01, 5.41]]];
+  THEMES.forEach((theme, k) => {
+    for (const [texte, attendu] of paires) {
+      const r = ratio(theme, texte, "--msg-info", "--bg-200");
+      expect(Math.abs(r - attendu[k]), `${texte} sur --msg-info sur --bg-200 (${theme}) : ${r}`).toBeLessThanOrEqual(0.12);
+      expect(r, `${texte} (${theme})`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});

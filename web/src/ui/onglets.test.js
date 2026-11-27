@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { bouton } from "./bouton.js";
 import { expect, test, vi } from "vitest";
 import { onglets } from "./onglets.js";
 
@@ -638,4 +639,22 @@ test("REQ103_AC9_sections_style_texte_32px_filet_actif_2px_sans_defilement", () 
 
 test("REQ103_AC9_sections_refuse_un_panneau_inconnu", () => {
   expect(() => onglets({ presentation: "sections", actif: "a", onglets: [{ id: "a", libelle: "A" }], panneaux: {} })).toThrow(/panneau/);
+});
+
+test("REQ199_AC6_boutons_a_texte_a_droite_des_onglets_avant_le_zoom_26_px_4_px_entre_eux", () => {
+  const arreter = bouton({ libelle: "Arrêter" });
+  const publier = bouton({ libelle: "Publier" });
+  const zoom = bouton({ icone: "zoom-out", variante: "discret", nomAccessible: "Zoom arrière" });
+  const r = onglets({ actif: "w", onglets: [{ id: "w", libelle: "Revue des notes", icone: "waypoints", fermable: true }], actionsDroite: [arreter, publier, zoom.enveloppe] });
+  document.body.append(r);
+  const droite = [...r.querySelector(".onglets-droite").children];
+  expect(droite.slice(0, 2).map((e) => e.textContent)).toEqual(["Arrêter", "Publier"]);
+  expect(droite[2]).toBe(zoom.enveloppe);
+  expect(zoom.getAttribute("aria-label")).toBe("Zoom arrière");
+  expect(arreter.textContent).toBe("Arrêter");
+  expect(arreter.hasAttribute("title")).toBe(false);
+  const sans = css.replace(/\s+/g, " ");
+  expect(sans).toMatch(/\.onglets-droite:has\(\.ya-btn\) \{ gap: 2px; \}/);
+  expect(sans).toMatch(/\.onglets-droite > \.ya-btn \{ height: 26px; margin-right: 2px; \}/);
+  expect(sans).toMatch(/\.onglets-droite > \.ya-btn:not\(:has\(\+ \.ya-btn\)\) \{ margin-right: 6px; \}/);
 });

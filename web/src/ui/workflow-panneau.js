@@ -20,7 +20,7 @@ const EVENEMENTS = [
 const ENTREE = "{{entree}} y est remplacé par l'entrée.";
 const CHEMIN = "Depuis la racine du projet.";
 const DECLENCHEURS = ["dossier", "planification", "appel"];
-const ACTIONS = ["agent", "shell", "claude", "fichier"];
+const ACTIONS = ["agent", "shell", "claude", "fichier", "trace"];
 let compteur = 0;
 
 /** Champs de texte de chaque type : [clé, libellé, aide, multiligne]. Les champs « Fichier » dépendent de l'opération. */
@@ -36,6 +36,8 @@ function champsDe(n) {
       return [["commande", "Commande", "Lancée dans la racine du projet. L'entrée est dans $YAIDE_ENTREE. La sortie est ce qu'elle affiche.", true]];
     case "claude":
       return [["demande", "Demande", `${ENTREE} Claude Code suit vos réglages et refuse ce qui demande une autorisation.`, true]];
+    case "trace":
+      return [["message", "Message", `${ENTREE} Le message s'écrit dans le journal des logs de Yaide. La sortie est l'entrée reçue.`, true]];
     case "fichier": {
       const op = n.reglages.operation;
       const champs = [["chemin", "Chemin", `${CHEMIN} ${ENTREE}`]];

@@ -95,7 +95,7 @@ function listeObjets({ lignes, nom }) {
   ul.addEventListener("focusin", (ev) => ev.target.scrollIntoView?.({ block: "nearest" }));
   if (texte) {
     // `majLigne(id, { etat, actions })` : le bouton de même `id` d'action est gardé (libellé et nom changés, focus gardé) ;
-    // un bouton qui part passe le focus au suivant de la ligne. `enCours(id, idAction)` : libellé en cours, les autres boutons désactivés.
+    // un bouton qui part passe le focus au premier de la ligne. `enCours(id, idAction)` : libellé en cours, les autres boutons désactivés.
     const ligne = (id) => [...ul.children].find((li) => li.dataset.id === id);
     ul.majLigne = (id, { etat, actions }) => {
       const li = ligne(id);
@@ -120,7 +120,7 @@ function listeObjets({ lignes, nom }) {
       const parti = anciens.find((x) => !garde.has(x) && x === actif);
       conteneur.replaceChildren(...nouveaux);
       if (garde.has(actif)) actif.focus();
-      else if (parti && nouveaux.length) nouveaux[Math.min(anciens.indexOf(parti), nouveaux.length - 1)].focus();
+      else if (parti && nouveaux.length) nouveaux[0].focus();
     };
     ul.enCours = (id, idAction) => {
       for (const b of ul.querySelectorAll(".ya-objet-actions button")) {
