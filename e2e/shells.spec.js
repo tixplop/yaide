@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
-import { lancerYaide, ouvrirYaide, deuxImages, fluxRecus, tailleStable, avancer, temoin, attendre } from "./aides.js";
+import { lancerYaide, ouvrirYaide, deuxImages, fluxRecus, tailleStable, avancer, temoin, attendre, nomLigne, saisir } from "./aides.js";
 import { lancerRelais } from "./relais.js";
 
 let yaide;
@@ -496,4 +496,154 @@ test("REQ019_AC1_REQ035_AC2_AC4_AC9_AC10_REQ041_AC1_AC2_AC3_AC5_AC4_AC6_aucun_sh
     await expect.poll(() => focusDansTerminal(page)).toBe(true);
     await expect.poll(() => vivant(pid)).toBe(false);
   });
+});
+
+test("REQ201_AC1_AC4_AC7_AC8_AC9_AC10_P156_changer_l_ordre_des_shells_en_les_glissant", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await ouvrirYaide(page, yaide.origine);
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await page.getByRole("button", { name: "Nouveau shell" }).click();
+  await expect(onglets(page)).toHaveText(["shell 1", "shell 2", "shell 3"]);
+  const tab = (nom) => onglets(page).filter({ hasText: nom });
+  const cellules = () => page.locator(".ya-term-tabs .onglet-cellule");
+  const ordre = () => onglets(page).allInnerTexts();
+  const focus = page.locator(".terminal:visible .xterm-helper-textarea");
+  const marques = page.locator("[data-depot]");
+  const milieu = (b) => b.y + b.height / 2;
+  const sttyDe = async (n, essai) => {
+    await taper(page, `echo "T${n}${essai}_$(stty size)_"`);
+    const re = new RegExp(`T${n}${essai}_(\\d+ \\d+)_`);
+    await expect.poll(async () => re.test(await ecran(page).innerText())).toBe(true);
+    return (await ecran(page).innerText()).match(re)[1];
+  };
+  for (const n of [1, 2, 3]) {
+    await tab(`shell ${n}`).click();
+    await taper(page, `echo MARQUE_${n}`);
+    await expect(ecran(page)).toContainText(`MARQUE_${n}`);
+  }
+  const taille3 = await sttyDe(3, "a");
+  await tab("shell 1").click();
+  await expect(focus).toBeFocused();
+  // Un fichier ouvert dans l'éditeur, pour les refus de AC-201-4.
+  await page.getByRole("tree", { name: "Fichiers" }).getByRole("treeitem", { name: nomLigne("README.md") }).click();
+  const readme = page.getByRole("tab", { name: /^README\.md/ });
+  await expect(readme).toBeVisible();
+  await tab("shell 1").click();
+  await expect(focus).toBeFocused();
+  const editeur = page.locator(".cadre-groupe").first();
+  const texteEditeur = await editeur.innerText();
+  await page.evaluate(() => {
+    window.__envois = [];
+    const envoyer = WebSocket.prototype.send;
+    WebSocket.prototype.send = function (d) {
+      window.__envois.push(typeof d === "string" ? d : "binaire");
+      return envoyer.call(this, d);
+    };
+    document.addEventListener("dragstart", (e) => (window.__types = [...e.dataTransfer.types]));
+  });
+  const zoneAvant = await page.locator(".cadre-shells").boundingBox();
+  const cellulesAvant = await cellules().evaluateAll((l) => l.map((c) => c.getBoundingClientRect().toJSON()));
+
+  // Clic sur un onglet : actif, sans se déplacer ; glisser sa croix ne déplace rien (AC-201-7).
+  await tab("shell 2").click();
+  await expect(tab("shell 2")).toHaveAttribute("aria-selected", "true");
+  expect(await ordre()).toEqual(["shell 1", "shell 2", "shell 3"]);
+  await tab("shell 1").click();
+  const croix = await page.getByRole("button", { name: "Fermer shell 2" }).boundingBox();
+  await page.mouse.move(croix.x + croix.width / 2, milieu(croix));
+  await page.mouse.down();
+  await page.mouse.move(croix.x - 150, milieu(croix) + 3, { steps: 8 });
+  await expect(marques).toHaveCount(0);
+  await page.mouse.up();
+  expect(await ordre()).toEqual(["shell 1", "shell 2", "shell 3"]);
+  await expect(tab("shell 1")).toHaveAttribute("aria-selected", "true");
+  await tab("shell 1").click();
+  await expect(focus).toBeFocused();
+
+  // Étape 1 : shell 3 glissé sur la moitié gauche de shell 1 (AC-201-8, AC-201-9, AC-201-10).
+  await saisir(page, tab("shell 3"));
+  const b1 = await cellules().first().boundingBox();
+  await page.mouse.move(b1.x + 8, milieu(b1), { steps: 8 });
+  await expect(marques).toHaveCount(1);
+  await expect(marques).toHaveAttribute("data-depot", "barre");
+  await expect(marques).toHaveAttribute("aria-hidden", "true");
+  await expect(page.locator("[data-zone-depot]")).toHaveCount(0);
+  await expect(page.locator(".ya-glisse")).toHaveText("shell 3");
+  expect(await page.evaluate(() => window.__types)).toEqual(["application/x-yaide-shell"]);
+  await expect(tab("shell 1")).toHaveAttribute("aria-selected", "true");
+  await expect(tab("shell 3")).toHaveAttribute("aria-selected", "false");
+  await expect(focus).toBeFocused();
+  const m = await marques.boundingBox();
+  const barre = await page.locator(".ya-term-tabs").boundingBox();
+  expect(m.height).toBe(22);
+  expect(Math.abs(m.x + m.width / 2 - (b1.x - 2))).toBeLessThanOrEqual(1);
+  expect(m.x).toBeGreaterThanOrEqual(barre.x);
+  expect(Math.abs(m.y - b1.y)).toBeLessThanOrEqual(1);
+  expect(await cellules().evaluateAll((l) => l.map((c) => c.getBoundingClientRect().toJSON()))).toEqual(cellulesAvant);
+  expect(await page.locator(".cadre-shells").boundingBox()).toEqual(zoneAvant);
+  expect(await page.evaluate(() => window.__envois)).toEqual([]);
+  // Sur shell 3 lui-même : plus de marque.
+  const b3 = await cellules().nth(2).boundingBox();
+  await page.mouse.move(b3.x + 20, milieu(b3), { steps: 6 });
+  await expect(marques).toHaveCount(0);
+  // Retour, puis Échap : rien ne change, le focus est où il était.
+  await page.mouse.move(b1.x + 8, milieu(b1), { steps: 6 });
+  await expect(marques).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(marques).toHaveCount(0);
+  await page.mouse.up();
+  expect(await ordre()).toEqual(["shell 1", "shell 2", "shell 3"]);
+  await expect(tab("shell 1")).toHaveAttribute("aria-selected", "true");
+  await expect(focus).toBeFocused();
+
+  // AC-201-4 : ailleurs, ou un onglet de l'éditeur sur la barre des shells, rien ne change.
+  const ailleurs = [page.getByRole("tree", { name: "Fichiers" }), editeur, page.getByRole("button", { name: "Nouveau shell" }), page.locator("footer"), page.locator(".terminal:visible").first()];
+  for (const cible of ailleurs) {
+    await saisir(page, tab("shell 3"));
+    const c = await cible.boundingBox();
+    await page.mouse.move(c.x + c.width / 2, milieu(c), { steps: 8 });
+    await expect(marques).toHaveCount(0);
+    await expect(page.locator("[data-zone-depot]")).toHaveCount(0);
+    await page.mouse.up();
+    expect(await ordre()).toEqual(["shell 1", "shell 2", "shell 3"]);
+  }
+  expect(await editeur.innerText()).toBe(texteEditeur);
+  await saisir(page, readme);
+  await page.mouse.move(b1.x + 8, milieu(b1), { steps: 8 });
+  await expect(marques).toHaveCount(0);
+  await page.mouse.up();
+  expect(await ordre()).toEqual(["shell 1", "shell 2", "shell 3"]);
+  await expect(readme).toBeVisible();
+  expect(await editeur.innerText()).toBe(texteEditeur);
+  await expect(ecran(page)).not.toContainText("shell 3");
+  expect(await page.evaluate(() => window.__envois.filter((d) => !d.startsWith("taille")))).toEqual([]);
+
+  // Étape 2 : le dépôt → shell 3, shell 1, shell 2 ; shell 3 actif, le focus dans son terminal, texte et session gardés.
+  await saisir(page, tab("shell 3"));
+  await page.mouse.move(b1.x + 8, milieu(b1), { steps: 8 });
+  await expect(marques).toHaveCount(1);
+  await page.mouse.up();
+  await expect(marques).toHaveCount(0);
+  await expect(page.locator(".ya-glisse")).toHaveCount(0);
+  await expect(onglets(page)).toHaveText(["shell 3", "shell 1", "shell 2"]);
+  await expect(tab("shell 3")).toHaveAttribute("aria-selected", "true");
+  await expect(focus).toBeFocused();
+  await expect(ecran(page)).toContainText("MARQUE_3");
+  expect(await page.evaluate(() => window.__envois.filter((d) => !d.startsWith("taille")))).toEqual([]);
+  expect(await sttyDe(3, "b")).toBe(taille3);
+  await tab("shell 1").click();
+  await expect(ecran(page)).toContainText("MARQUE_1");
+
+  // « Logs » se glisse comme un shell ; le focus va dans « Filtrer ».
+  await page.getByRole("button", { name: /^Logs/ }).click();
+  await expect(onglets(page)).toHaveText(["shell 3", "shell 1", "shell 2", "Logs"]);
+  await saisir(page, tab("Logs"));
+  await expect(page.locator(".ya-glisse")).toHaveText("Logs");
+  const b3bis = await cellules().first().boundingBox();
+  await page.mouse.move(b3bis.x + 8, milieu(b3bis), { steps: 8 });
+  await expect(marques).toHaveCount(1);
+  await page.mouse.up();
+  await expect(onglets(page)).toHaveText(["Logs", "shell 3", "shell 1", "shell 2"]);
+  await expect(tab("Logs")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByPlaceholder("Filtrer")).toBeFocused();
 });

@@ -1,4 +1,4 @@
-import { expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ecrire, lire } from "../stockage.js";
 import { vues, monter, attendre, poignees, FauxWebSocket, tailles, simulerShells, bout, onglets, actifDe, zone, terminer, simulerServeur, ligne, barreTitre, icone, aside, agentCol, boutonAgentsDe, champAgent, clavier, largeur, simulerClaude, boutonClaudeDe, ongletsClaude, avecHorloge } from "./principale.aides.js";
 
@@ -720,3 +720,202 @@ test("REQ041_AC7_coupure_croix_puis_suppr_sans_dialogue", () =>
     expect(document.activeElement).toBe(actif);
     expect(onglets(vue)).toEqual(["shell 1", "shell 2"]);
   }));
+
+// ---- T-473 : changer l'ordre des onglets de la zone des shells en les glissant (REQ-201) ----
+describe("T-473 : ordre des onglets de shells", () => {
+  // Cellules simulées : 100 px chacune, de gauche à droite.
+  const rectOriginalCellules = Element.prototype.getBoundingClientRect;
+  beforeEach(() => {
+    Element.prototype.getBoundingClientRect = function () {
+      if (this.classList?.contains("onglet-cellule") && this.closest(".ya-term-tabs")) {
+        const i = [...this.parentElement.children].filter((c) => c.classList.contains("onglet-cellule")).indexOf(this);
+        return { left: i * 100, right: i * 100 + 100, top: 0, bottom: 22, width: 100, height: 22, x: i * 100, y: 0 };
+      }
+      return rectOriginalCellules.call(this);
+    };
+  });
+  afterEach(() => {
+    Element.prototype.getBoundingClientRect = rectOriginalCellules;
+  });
+
+  const fauxTransfert = () => ({ donnees: {}, effectAllowed: "", dropEffect: "", setData(t, v) { this.donnees[t] = v; }, setDragImage: vi.fn(), get types() { return Object.keys(this.donnees); } });
+  function evenement(type, cible, { x = 0, dt = fauxTransfert() } = {}) {
+    const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: 5 });
+    e.dataTransfer = dt;
+    cible.dispatchEvent(e);
+    return e;
+  }
+  const cellules = (vue) => [...vue.querySelectorAll(".shells .onglet-cellule")];
+  const marques = (vue) => [...vue.querySelectorAll(".shells [data-depot=barre]")];
+  /** Presse puis commence à glisser l'onglet `nom` ; rend le transfert. */
+  function commencerGlisse(vue, nom) {
+    const c = cellules(vue).find((x) => x.querySelector(".onglet").textContent === nom);
+    c.querySelector(".onglet").dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    const dt = fauxTransfert();
+    evenement("dragstart", c, { dt });
+    return dt;
+  }
+  /** Glisse `nom` et le dépose à `x` sur sa barre. */
+  function glisserSur(vue, nom, x) {
+    const dt = commencerGlisse(vue, nom);
+    const barre = vue.querySelector(".shells > div");
+    evenement("dragover", cellules(vue)[Math.floor(x / 100)] ?? barre, { x, dt });
+    const depot = evenement("drop", cellules(vue)[Math.floor(x / 100)] ?? barre, { x, dt });
+    evenement("dragend", barre, { dt });
+    return depot;
+  }
+  async function troisShells() {
+    simulerShells({ ids: [1, 2, 3] });
+    const { vue } = monter();
+    await vi.waitFor(() => expect(onglets(vue)).toEqual(["shell 1", "shell 2", "shell 3"]));
+    return vue;
+  }
+
+  test("REQ201_AC1_AC8_AC9_glisser_shell_3_avant_shell_1_change_l_ordre_active_le_shell_sans_rien_envoyer", async () => {
+    const vue = await troisShells();
+    const envoyes = () => FauxWebSocket.tous.flatMap((w) => w.envoyes).length;
+    const avant = envoyes();
+    const terminal3 = vue.querySelector(".shells-corps").children[2];
+    const dt = commencerGlisse(vue, "shell 3");
+    expect(dt.types).toEqual(["application/x-yaide-shell"]);
+    expect(dt.effectAllowed).toBe("move");
+    expect(document.querySelector(".ya-glisse").textContent).toBe("shell 3");
+    expect(document.querySelector("[data-zone-depot]")).toBeNull();
+    expect(actifDe(vue)).toBe("shell 1");
+    const survol = evenement("dragover", cellules(vue)[0], { x: 10, dt });
+    expect(survol.defaultPrevented).toBe(true);
+    expect(marques(vue)).toHaveLength(1);
+    expect(onglets(vue)).toEqual(["shell 1", "shell 2", "shell 3"]);
+    expect(evenement("drop", cellules(vue)[0], { x: 10, dt }).defaultPrevented).toBe(true);
+    expect(onglets(vue)).toEqual(["shell 3", "shell 1", "shell 2"]);
+    expect(actifDe(vue)).toBe("shell 3");
+    expect(marques(vue)).toHaveLength(0);
+    expect(document.querySelector(".ya-glisse")).toBeNull();
+    expect(vue.querySelector(".shells-corps").children[2]).toBe(terminal3);
+    expect(terminal3.hidden).toBe(false);
+    expect(terminal3.contains(document.activeElement)).toBe(true);
+    expect(envoyes()).toBe(avant);
+  });
+
+  test("REQ201_AC3_AC8_place_visee_refus_sur_soi_ses_voisins_ailleurs_ou_avec_un_autre_type_et_Echap", async () => {
+    const vue = await troisShells();
+    const dt = commencerGlisse(vue, "shell 2");
+    const barre = vue.querySelector(".shells > div");
+    // Moitié gauche de shell 2, moitié droite de shell 1 et shell 2 lui-même : refus, aucune marque.
+    for (const x of [105, 95, 150, 195, 205]) {
+      const e = evenement("dragover", cellules(vue)[Math.floor(x / 100)], { x, dt });
+      expect(e.defaultPrevented).toBe(false);
+      expect(marques(vue)).toHaveLength(0);
+    }
+    // Moitié gauche de shell 1 : place 0 ; moitié droite de shell 3 : place 3 ; (moitié gauche de shell 3, x = 205, place 2 : refus plus haut).
+    expect(evenement("dragover", cellules(vue)[0], { x: 10, dt }).defaultPrevented).toBe(true);
+    expect(marques(vue)[0].dataset.bord).toBe("debut");
+    expect(evenement("dragover", cellules(vue)[2], { x: 290, dt }).defaultPrevented).toBe(true);
+    expect(marques(vue)[0].dataset.bord).toBe("apres");
+    // Ailleurs : l'éditeur, le terminal, le rail. Pas de preventDefault, rien n'arrive à la cible.
+    const recu = vi.fn();
+    for (const cible of [vue.querySelector(".shells .terminal"), vue.querySelector(".cadre-rail-commandes"), vue.querySelector("footer")]) {
+      for (const t of ["dragover", "drop"]) {
+        cible.addEventListener(t, recu);
+        expect(evenement(t, cible, { dt }).defaultPrevented).toBe(false);
+      }
+    }
+    expect(recu).not.toHaveBeenCalled();
+    expect(marques(vue)).toHaveLength(0);
+    expect(onglets(vue)).toEqual(["shell 1", "shell 2", "shell 3"]);
+    // Échap : `dragend`, rien ne change, plus d'image.
+    evenement("dragover", cellules(vue)[0], { x: 10, dt });
+    evenement("dragend", barre, { dt });
+    expect(marques(vue)).toHaveLength(0);
+    expect(document.querySelector(".ya-glisse")).toBeNull();
+    expect(onglets(vue)).toEqual(["shell 1", "shell 2", "shell 3"]);
+    expect(actifDe(vue)).toBe("shell 1");
+    // Un onglet de l'éditeur n'est pas accepté, hors d'un glissé de shell comme pendant.
+    const autre = fauxTransfert();
+    autre.setData("application/x-yaide-onglet", "1");
+    expect(evenement("dragover", cellules(vue)[0], { x: 10, dt: autre }).defaultPrevented).toBe(false);
+    expect(evenement("drop", cellules(vue)[0], { x: 10, dt: autre }).defaultPrevented).toBe(false);
+    expect(onglets(vue)).toEqual(["shell 1", "shell 2", "shell 3"]);
+  });
+
+  test("REQ201_AC3_un_seul_onglet_aucune_cible", async () => {
+    simulerShells({ ids: [1] });
+    const { vue } = monter();
+    await vi.waitFor(() => expect(onglets(vue)).toEqual(["shell 1"]));
+    const dt = commencerGlisse(vue, "shell 1");
+    for (const x of [10, 90]) {
+      expect(evenement("dragover", cellules(vue)[0], { x, dt }).defaultPrevented).toBe(false);
+      expect(evenement("drop", cellules(vue)[0], { x, dt }).defaultPrevented).toBe(false);
+    }
+    expect(marques(vue)).toHaveLength(0);
+    evenement("dragend", vue.querySelector(".shells > div"), { dt });
+  });
+
+  test("REQ201_AC7_la_croix_ne_glisse_pas_et_presser_un_onglet_inactif_ne_l_active_pas", async () => {
+    const vue = await troisShells();
+    const c = cellules(vue)[2];
+    c.querySelector(".onglet-fermer").dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    const dt = fauxTransfert();
+    expect(evenement("dragstart", c, { dt }).defaultPrevented).toBe(true);
+    expect(dt.types).toEqual([]);
+    expect(document.querySelector(".ya-glisse")).toBeNull();
+    commencerGlisse(vue, "shell 3");
+    expect(actifDe(vue)).toBe("shell 1");
+    evenement("dragend", vue.querySelector(".shells > div"));
+  });
+
+  test("REQ201_AC2_Logs_se_deplace_comme_un_shell_et_un_nouveau_shell_va_a_la_fin", async () => {
+    simulerShells({ ids: [1, 2] });
+    const { vue } = monter();
+    await vi.waitFor(() => expect(onglets(vue)).toEqual(["shell 1", "shell 2"]));
+    vue.querySelector("footer button.ya-logs").click();
+    expect(onglets(vue)).toEqual(["shell 1", "shell 2", "Logs"]);
+    glisserSur(vue, "Logs", 10);
+    expect(onglets(vue)).toEqual(["Logs", "shell 1", "shell 2"]);
+    expect(actifDe(vue)).toBe("Logs");
+    expect(document.activeElement.placeholder).toBe("Filtrer");
+    bout(vue, "Nouveau shell").click();
+    await vi.waitFor(() => expect(onglets(vue)).toEqual(["Logs", "shell 1", "shell 2", "shell 9"]));
+    expect(actifDe(vue)).toBe("shell 9");
+  });
+
+  test("REQ201_AC5_Gauche_Droite_et_le_voisin_apres_fermeture_suivent_le_nouvel_ordre", async () => {
+    const vue = await troisShells();
+    glisserSur(vue, "shell 3", 10);
+    expect(onglets(vue)).toEqual(["shell 3", "shell 1", "shell 2"]);
+    const tab = (nom) => [...vue.querySelectorAll(".shells [role=tab]")].find((t) => t.textContent === nom);
+    tab("shell 3").focus();
+    clavier(tab("shell 3"), "ArrowRight");
+    expect(actifDe(vue)).toBe("shell 1");
+    clavier(tab("shell 1"), "ArrowLeft");
+    expect(actifDe(vue)).toBe("shell 3");
+    clavier(tab("shell 3"), "ArrowLeft");
+    expect(actifDe(vue)).toBe("shell 2");
+    // Fermer shell 3, actif : le voisin de droite dans la barre est shell 1 (par numéro, ce serait shell 2).
+    tab("shell 3").click();
+    terminer(3);
+    expect(onglets(vue)).toEqual(["shell 1", "shell 2"]);
+    expect(actifDe(vue)).toBe("shell 1");
+  });
+
+  test("REQ201_AC6_REQ040_AC3_l_ordre_est_garde_et_un_shell_reduit_puis_affiche_reprend_sa_place", async () => {
+    const vue = await troisShells();
+    glisserSur(vue, "shell 3", 10);
+    expect(ecrire).toHaveBeenLastCalledWith("serveur", expect.objectContaining({ ordre: [3, 1, 2] }));
+    // Réduire shell 1 puis l'afficher : entre shell 3 et shell 2.
+    vue.querySelectorAll(".shells [role=tab]")[1].click();
+    bout(vue, "Réduire le shell").click();
+    expect(onglets(vue)).toEqual(["shell 3", "shell 2"]);
+    bout(vue, "Shells réduits").click();
+    document.querySelector("[role=menuitem]").click();
+    expect(onglets(vue)).toEqual(["shell 3", "shell 1", "shell 2"]);
+    expect(actifDe(vue)).toBe("shell 1");
+    // Rechargement : même ordre ; un id inconnu est ignoré, un shell absent va à la fin.
+    simulerShells({ ids: [1, 2, 3], precedent: { instance: "i1", nombre: 3, reduits: [], ordre: [3, 7, 1] } });
+    const apres = monter().vue;
+    await vi.waitFor(() => expect(onglets(apres)).toEqual(["shell 3", "shell 1", "shell 2"]));
+    simulerShells({ ids: [1, 2, 3], precedent: { instance: "autre", nombre: 3, reduits: [], ordre: [3, 2, 1] } });
+    const autre = monter().vue;
+    await vi.waitFor(() => expect(onglets(autre)).toEqual(["shell 1", "shell 2", "shell 3"]));
+  });
+});

@@ -82,7 +82,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - web/src/vues/depot-onglets.js — glissé des onglets de l'éditeur : couches, guides, aperçu, marque d'insertion sur une barre (REQ-200), dépôt — depotOnglets
 - web/src/vues/fichiers.js, git.js, recherche.js, ouverture.js — vues Fichiers, Git, Recherche, ouverture rapide — vueFichiers, vueGit, vueOuverture
 - web/src/vues/explorateur.js — lit les fichiers et dossiers d'un collage venu de l'explorateur du bureau (REQ-180) — lireElements
-- web/src/vues/shells.js, shells.test.js (menus « avec un environnement ») — zone des shells ; menu de « Nouveau shell », `commandesEnvironnements` partagée avec « Claude », REQ-183 ; onglet « Logs » toujours le dernier, ouvert par le bouton de la barre d'état, REQ-188 — vueShells (`ouvrirLogs`)
+- web/src/vues/shells.js, shells.test.js (menus « avec un environnement ») — zone des shells ; menu de « Nouveau shell », `commandesEnvironnements` partagée avec « Claude », REQ-183 ; onglet « Logs » ouvert en dernier par le bouton de la barre d'état, REQ-188 ; ordre des onglets changé en les glissant, gardé dans le navigateur avec les réduits, glissé et dépôt sur la barre, REQ-201 — vueShells (`ouvrirLogs`)
 - web/src/vues/agent.js, agents.js, soumission-agent.js — conversation de l'agent, panneau Agents (fiche : section « Déclencheurs », REQ-163, REQ-174), soumission de fichiers — vueAgent, vueAgents, ouvrirSoumissionAgent
 - web/src/vues/claude.js, opencode.js, sessions-opencode.js — sessions Claude et opencode — vueClaude, vueOpencode
 - web/src/vues/connaissance.js, ajout-connaissance.js — base de connaissance — vueConnaissance, ouvrirAjoutConnaissance
@@ -116,7 +116,7 @@ Une ligne par fichier ou dossier : chemin — rôle — points d'entrée (3 au p
 - REQ-171 cases à cocher de l'aperçu et du mode hybride → ui/apercu.js, ui/hybride.js, ui/zone-code.js, ui/composants.css, e2e/mise-en-forme.spec.js (P-132) ; REQ-178 listes imbriquées (retrait de 24 px et puce par niveau, aperçu et hybride : `cm-hy-liste`, `cm-hy-numero`) → ui/hybride.js, ui/composants.css, e2e/listes.spec.js (P-139)
 - REQ-012, REQ-042 à REQ-044, REQ-058, REQ-062, REQ-063, REQ-115, REQ-117 rendu markdown, aperçu HTML, hybride, couleurs → ui/apercu.js, apercu-html.js, zone-code.js, hybride.js, couleurs-markdown.js, ui/palettes.js, src/apercu.rs
 - REQ-015 à REQ-018, REQ-094 coupure, brouillons, disque → web/src/connexion.js, brouillons.js, disque.js, stockage.js
-- REQ-019 à REQ-021, REQ-035, REQ-040, REQ-041, REQ-047 shells → src/shells.rs, web/src/vues/shells.js, ui/terminal.js
+- REQ-019 à REQ-021, REQ-035, REQ-040, REQ-041, REQ-047, REQ-201 shells → src/shells.rs, web/src/vues/shells.js, ui/terminal.js
 - REQ-022 à REQ-025, REQ-039, REQ-045, REQ-086, REQ-099 git et worktrees → src/git.rs, depot.rs, web/src/vues/git.js, worktree.js, statuts.js
 - REQ-026, REQ-027 recherche et ouverture rapide → src/recherche.rs, web/src/vues/recherche.js, ouverture.js
 - REQ-028 à REQ-033, REQ-036 à REQ-038, REQ-046, REQ-048, REQ-059 disposition, design system, thèmes → web/src/ui/, vues/principale.js

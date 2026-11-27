@@ -6,6 +6,48 @@ import { fermerInfoBulleDans } from "../ui/info-bulle.js";
 
 export const TYPE_ONGLET = "application/x-yaide-onglet";
 
+/** Image du glissé (C-006) : l'icône et le nom de l'onglet, ajoutée au corps de la page ; à retirer à la fin du glissé. */
+export function imageDeGlisse(onglet) {
+  const image = document.createElement("div");
+  image.className = "ya-glisse";
+  image.setAttribute("aria-hidden", "true");
+  const texte = onglet?.querySelector(".onglet-nom")?.textContent ?? onglet?.title ?? "";
+  // Un onglet de fichier n'a pas d'icône dans la barre : l'image montre celle de son type, comme l'arborescence.
+  const svg = onglet?.querySelector("svg")?.cloneNode(true) ?? icone(iconeDe(texte).icone);
+  const i = document.createElement("span");
+  i.className = "liste-icone";
+  i.append(svg);
+  image.append(i);
+  const nom = document.createElement("span");
+  nom.className = "liste-libelle";
+  nom.textContent = texte;
+  image.append(nom);
+  document.body.append(image);
+  return image;
+}
+
+/**
+ * Presser un onglet lui donne le focus : `suivreFocusPression(dans)` note celui d'avant (`dans(cible)` : la pression vient d'une barre à suivre),
+ * `rendre()` le lui redonne au début du glissé, `arreter()` retire l'écouteur.
+ */
+export function suivreFocusPression(dans = () => true) {
+  let avant = null;
+  const noter = (ev) => {
+    avant = dans(ev.target) && ev.target.closest?.(".onglet-cellule") ? document.activeElement : null;
+  };
+  document.addEventListener("pointerdown", noter, true);
+  return {
+    rendre() {
+      const a = avant;
+      avant = null;
+      if (a === null) return;
+      if (a === document.body || !a.isConnected) document.activeElement?.blur?.();
+      else if (a !== document.activeElement) a.focus();
+    },
+    arreter: () => document.removeEventListener("pointerdown", noter, true),
+  };
+}
+
 /**
  * `groupes()` : `[{ id, barre, ids }]`, les groupes dans l'ordre de la page (`ids` : ses onglets, dans l'ordre de la barre).
  * `deplacer(id, groupe, zone, place)` : le dépôt (`zone` vaut `barre` sur une barre d'onglets, `place` est alors la place visée). `apresFin()` : le glissé est fini (une relecture reportée peut se faire).
@@ -13,31 +55,7 @@ export const TYPE_ONGLET = "application/x-yaide-onglet";
  */
 export function depotOnglets({ groupes, deplacer, apresFin }) {
   let glisse = null; // { id, source, image, trame, couches: Map(couche -> { groupe, cibles, corps, barre, rang }), zone, groupeVise, place, apercu, marque, survol }
-  let avantPression = null; // l'élément qui avait le focus avant la pression sur un onglet
-
-  const memoriserFocus = (ev) => {
-    avantPression = ev.target.closest?.(".onglet-cellule") ? document.activeElement : null;
-  };
-  document.addEventListener("pointerdown", memoriserFocus, true);
-
-  function creerImage(onglet) {
-    const image = document.createElement("div");
-    image.className = "ya-glisse";
-    image.setAttribute("aria-hidden", "true");
-    const texte = onglet?.querySelector(".onglet-nom")?.textContent ?? onglet?.title ?? "";
-    // Un onglet de fichier n'a pas d'icône dans la barre : l'image montre celle de son type, comme l'arborescence.
-    const svg = onglet?.querySelector("svg")?.cloneNode(true) ?? icone(iconeDe(texte).icone);
-    const i = document.createElement("span");
-    i.className = "liste-icone";
-    i.append(svg);
-    image.append(i);
-    const nom = document.createElement("span");
-    nom.className = "liste-libelle";
-    nom.textContent = texte;
-    image.append(nom);
-    document.body.append(image);
-    return image;
-  }
+  const focusPression = suivreFocusPression();
 
   function debuter(id, ev, source) {
     const dt = ev.dataTransfer;
@@ -45,16 +63,10 @@ export function depotOnglets({ groupes, deplacer, apresFin }) {
     finir();
     dt.effectAllowed = "move";
     dt.setData(TYPE_ONGLET, "1");
-    const image = creerImage(ev.currentTarget ?? ev.target);
+    const image = imageDeGlisse(ev.currentTarget ?? ev.target);
     dt.setDragImage?.(image, 12, 12);
     fermerInfoBulleDans(document.body);
-    // Presser un onglet lui donne le focus : il retourne à ce qui l'avait avant.
-    const avant = avantPression;
-    avantPression = null;
-    if (avant !== null) {
-      if (avant === document.body || !avant.isConnected) document.activeElement?.blur?.();
-      else if (avant !== document.activeElement) avant.focus();
-    }
+    focusPression.rendre();
     glisse = { id, source, image, trame: requestAnimationFrame(creerCouches), couches: new Map(), zone: null, groupeVise: null, place: null, apercu: null, marque: null, survol: null };
     document.addEventListener("dragenter", survol, true);
     document.addEventListener("dragover", survol, true);
@@ -189,7 +201,7 @@ export function depotOnglets({ groupes, deplacer, apresFin }) {
     enCours: () => glisse !== null,
     detruire() {
       finir();
-      document.removeEventListener("pointerdown", memoriserFocus, true);
+      focusPression.arreter();
     },
   };
 }

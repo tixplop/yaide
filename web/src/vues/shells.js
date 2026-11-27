@@ -6,7 +6,10 @@ import { dialogue } from "../ui/dialogue.js";
 import { journal } from "../ui/journal.js";
 import { menu, menuDuRail } from "../ui/menu.js";
 import { message } from "../ui/message.js";
-import { onglets } from "../ui/onglets.js";
+import { placeVisee } from "../disposition.js";
+import { imageDeGlisse, suivreFocusPression } from "./depot-onglets.js";
+import { fermerInfoBulleDans } from "../ui/info-bulle.js";
+import { TYPE_SHELL, onglets } from "../ui/onglets.js";
 import { terminal } from "../ui/terminal.js";
 
 export const PAUSE_REPRISE = 1000;
@@ -85,6 +88,9 @@ export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells =
   let vueJournal = null;
   let arreterJournal = null;
   const EST_LOGS = "logs";
+  // Ordre de la barre (REQ-201) : l'id de chaque shell, réduits compris, et « logs » s'il est ouvert. Seuls les shells sont gardés.
+  let ordre = [];
+  let glisse = null; // { id, image } pendant un glissé d'onglet
 
   const boutonNouveau = bouton({
     icone: "terminal",
@@ -112,8 +118,15 @@ export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells =
   racine.commandes = [boutonNouveau.enveloppe, boutonReduire.enveloppe, boutonReduits.enveloppe, boutonFermer.enveloppe];
 
   const parNumero = (liste) => liste.sort((a, b) => a.id - b.id);
-  const visibles = () => parNumero([...shells.values()].filter((s) => !s.reduit));
+  // Les onglets de la barre, dans l'ordre choisi : shells visibles et « Logs » s'il est ouvert.
+  const barre = () => ordre.filter((k) => (k === EST_LOGS ? logsOuvert : shells.has(k) && !shells.get(k).reduit));
+  const visibles = () => barre().filter((k) => k !== EST_LOGS).map((k) => shells.get(k));
   const reduits = () => parNumero([...shells.values()].filter((s) => s.reduit));
+  // Un nouveau shell va à la fin, juste avant « Logs » si celui-ci est le dernier onglet.
+  function placer(id) {
+    if (barre().at(-1) === EST_LOGS) ordre.splice(ordre.indexOf(EST_LOGS), 0, id);
+    else ordre.push(id);
+  }
   // Le voisin d'un shell visible : celui de droite, sinon celui de gauche.
   function voisin(id) {
     const v = visibles();
@@ -121,7 +134,7 @@ export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells =
     return (v[i + 1] ?? v[i - 1])?.id ?? null;
   }
 
-  const sauver = () => !sansShells && ecrire("serveur", { instance, nombre: shells.size, reduits: reduits().map((s) => s.id), replie });
+  const sauver = () => !sansShells && ecrire("serveur", { instance, nombre: shells.size, reduits: reduits().map((s) => s.id), ordre: ordre.filter((k) => k !== EST_LOGS), replie });
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
   function majConnecte(s) {
@@ -162,6 +175,7 @@ export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells =
     if (detruit) return;
     if (!vueJournal) creerJournal();
     else if (!logsOuvert) vueJournal.remplacer(lignesDuJournal());
+    if (!logsOuvert) ordre.push(EST_LOGS);
     logsOuvert = true;
     replie = false;
     actif = EST_LOGS;
@@ -176,6 +190,7 @@ export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells =
     const etaitActif = actif === EST_LOGS;
     const avaitLeFocus = vueJournal.contains(document.activeElement);
     logsOuvert = false;
+    ordre = ordre.filter((k) => k !== EST_LOGS);
     if (etaitActif) actif = visibles().at(-1)?.id ?? null;
     afficher();
     sauver();
@@ -214,13 +229,11 @@ export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells =
     }
     onglet = onglets({
       presentation: "shells",
-      onglets: [
-        ...vis.map((s) => ({ id: String(s.id), libelle: `shell ${s.id}`, icone: "terminal", fermable: true })),
-        ...(logsOuvert ? [{ id: EST_LOGS, libelle: "Logs", icone: "list", fermable: true }] : []),
-      ],
+      onglets: barre().map((k) => (k === EST_LOGS ? { id: EST_LOGS, libelle: "Logs", icone: "list", fermable: true } : { id: String(k), libelle: `shell ${k}`, icone: "terminal", fermable: true })),
       actif: String(actif),
       surChoix: (id) => activer(id === EST_LOGS ? id : Number(id), true),
       surFermer: (id, origine) => (id === EST_LOGS ? fermerLogs() : demanderFermeture(Number(id), origine)),
+      surGlisser: (id, ev) => debuterGlisse(id === EST_LOGS ? id : Number(id), ev),
     });
     onglet.setAttribute("aria-label", "Shells");
     entete.replaceChildren(onglet);
@@ -313,6 +326,7 @@ export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells =
     if (!s.reduit && actif === id) actif = voisin(id) ?? (logsOuvert ? EST_LOGS : null);
     const surOnglet = entete.contains(note.e);
     shells.delete(id);
+    ordre = ordre.filter((k) => k !== id);
     s.terminal.detruire();
     afficher();
     menuReduits?.retirer(`shell ${id}`);
@@ -385,6 +399,7 @@ export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells =
       s.terminal.detruire();
     }
     shells.clear();
+    ordre = logsOuvert ? [EST_LOGS] : [];
     afficher();
     replacerFocus(note);
     if (fermes > 0) dire({ texte: texteArret(fermes), variante: "info", fermable: true });
@@ -432,6 +447,7 @@ export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells =
       surTaille: (c, l) => s.ws?.readyState === 1 && s.ws.send(`taille ${c} ${l}`),
     });
     shells.set(id, s);
+    if (!ordre.includes(id)) placer(id);
     brancher(s);
   }
 
@@ -463,9 +479,85 @@ export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells =
     instance = liste.instance;
     // Les numéros repartent après un redémarrage : les réduits ne se reprennent que pour la même instance.
     replie = replieImpose ?? (precedent?.instance === liste.instance && Boolean(precedent.replie));
-    const gardes = precedent?.instance === liste.instance ? (precedent.reduits ?? []) : [];
+    const memeInstance = precedent?.instance === liste.instance;
+    const gardes = memeInstance ? (precedent.reduits ?? []) : [];
+    // Ordre gardé : un id inconnu est ignoré, un shell absent de la liste va à la fin.
+    const connus = (memeInstance && Array.isArray(precedent.ordre) ? precedent.ordre : []).filter((k, i, l) => liste.shells.includes(k) && l.indexOf(k) === i);
+    ordre = [...connus, ...(logsOuvert ? [EST_LOGS] : [])];
     for (const id of liste.shells) ajouter(id, gardes.includes(id));
     afficher();
+    sauver();
+  }
+
+  // ---- Glissé d'un onglet de la barre (REQ-201, C-010 « Glissé d'un onglet de shell »)
+  const focusPression = suivreFocusPression((cible) => entete.contains(cible));
+
+  function debuterGlisse(id, ev) {
+    const dt = ev.dataTransfer;
+    if (!dt) return;
+    finirGlisse();
+    const image = imageDeGlisse(ev.currentTarget ?? ev.target);
+    dt.setDragImage?.(image, 12, 12);
+    fermerInfoBulleDans(document.body);
+    focusPression.rendre();
+    glisse = { id, image };
+    for (const t of ["dragenter", "dragover"]) document.addEventListener(t, survolerGlisse, true);
+    document.addEventListener("drop", deposerGlisse, true);
+    document.addEventListener("dragend", finirGlisse, true);
+  }
+
+  // La place visée dans la barre, ou null : refus.
+  function viserGlisse(ev) {
+    if (!onglet || !entete.contains(ev.target)) return null;
+    const cellules = [...onglet.querySelectorAll(".onglet-cellule")].map((c) => {
+      const b = c.getBoundingClientRect();
+      return { gauche: b.left, droite: b.right };
+    });
+    return placeVisee({ x: ev.clientX, cellules, rang: barre().indexOf(glisse.id) });
+  }
+
+  // Seule la barre des shells accepte ce type ; ailleurs, rien n'arrive à l'élément survolé.
+  function survolerGlisse(ev) {
+    if (!glisse || !ev.dataTransfer?.types.includes(TYPE_SHELL)) return;
+    ev.stopPropagation();
+    const place = viserGlisse(ev);
+    onglet?.definirInsertion(place);
+    if (place === null) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "move";
+  }
+
+  function deposerGlisse(ev) {
+    if (!glisse || !ev.dataTransfer?.types.includes(TYPE_SHELL)) return;
+    ev.stopPropagation();
+    const place = viserGlisse(ev);
+    if (place === null) return;
+    ev.preventDefault();
+    const id = glisse.id;
+    // Le dépôt refait la barre : `dragend` ne lui arriverait plus.
+    finirGlisse();
+    deplacer(id, place);
+  }
+
+  function finirGlisse() {
+    if (!glisse) return;
+    glisse.image.remove();
+    glisse = null;
+    for (const t of ["dragenter", "dragover"]) document.removeEventListener(t, survolerGlisse, true);
+    document.removeEventListener("drop", deposerGlisse, true);
+    document.removeEventListener("dragend", finirGlisse, true);
+    onglet?.definirInsertion(null);
+  }
+
+  // `place` : de 0 à la longueur de la barre, avant la cellule visée ; les shells réduits gardent leur voisin.
+  function deplacer(id, place) {
+    const reste = barre().filter((k) => k !== id);
+    const cible = place > barre().indexOf(id) ? place - 1 : place;
+    ordre = ordre.filter((k) => k !== id);
+    ordre.splice(cible < reste.length ? ordre.indexOf(reste[cible]) : ordre.indexOf(reste.at(-1)) + 1, 0, id);
+    actif = id;
+    afficher();
+    activer(id, true);
     sauver();
   }
 
@@ -475,6 +567,8 @@ export function vueShells({ dire, surZone = () => {}, replieImpose, sansShells =
   };
   racine.detruire = () => {
     detruit = true;
+    finirGlisse();
+    focusPression.arreter();
     menuReduits?.fermer();
     arreterJournal?.();
     for (const s of shells.values()) {
