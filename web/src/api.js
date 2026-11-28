@@ -284,6 +284,24 @@ export async function arreterWorkflow(fichier) {
   return { cause: r.status === 409 ? "aucune" : "erreur", message: texte || `erreur ${r.status}` };
 }
 
+/**
+ * Les trois prochaines minutes d'une expression cron, à l'heure de la machine (REQ-204, DEC-130) :
+ * `{ dates }` (« AAAA-MM-JJTHH:MM »), `{ illisible: true }`, `{ aucune: true }` ou `{ indisponible: true }` (connexion perdue, erreur du serveur).
+ */
+export async function prochainesFoisCron(expression) {
+  const r = await appeler(`/api/cron?expression=${q(expression)}`);
+  if (!r || !r.ok) return { indisponible: true };
+  try {
+    const corps = await r.json();
+    if (Array.isArray(corps.dates)) return { dates: corps.dates.filter((d) => typeof d === "string") };
+    if (corps.illisible) return { illisible: true };
+    if (corps.aucune) return { aucune: true };
+  } catch {
+    // Réponse illisible : la page dit que les dates sont indisponibles.
+  }
+  return { indisponible: true };
+}
+
 /** Version de chaque chemin (`null` si le fichier n'existe plus), ou null si le serveur ne répond pas. */
 export async function versionsFichiers(chemins) {
   const r = await appeler("/api/fichiers/versions", { method: "POST", body: chemins.join("\n"), signal: AbortSignal.timeout(2000) });

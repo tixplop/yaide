@@ -733,3 +733,29 @@ test("REQ183_AC8_commande_desactivee_seule_prend_le_focus_avec_contour_entree_ne
     expect(document.querySelector(".ya-menu")).not.toBeNull();
   });
 });
+
+test("REQ204_AC7_detail_lu_avec_le_libelle_et_menu_aligne_sur_le_bord_droit_du_bouton", () => {
+  const b = bouton({ libelle: "Modèles", variante: "secondaire", ouvreMenu: true });
+  document.body.append(b);
+  b.style.cssText = "position:fixed;left:40px;top:10px;width:100px";
+  b.getBoundingClientRect = () => ({ left: 40, right: 400, top: 10, bottom: 36, width: 360, height: 26 });
+  const largeur = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => 200 });
+  const m = menu({ nom: "Modèles", ancre: b, alignement: "droite", groupes: [[{ libelle: "Chaque lundi à 9 h", detail: "0 9 * * 1", surChoix: () => {} }, { libelle: "Autre", touche: "Ctrl+X" }]], surFermeture: () => {} });
+  ouverts.push(m);
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", largeur);
+  // bord droit du menu = bord droit du bouton (400) : coin gauche à 400 - 200
+  expect(m.racine.style.left).toBe("200px");
+  const [a, autre] = m.racine.querySelectorAll('[role="menuitem"]');
+  expect(a.getAttribute("aria-label")).toBe("Chaque lundi à 9 h, 0 9 * * 1");
+  expect(a.querySelector(".menu-detail").textContent).toBe("0 9 * * 1");
+  expect(a.querySelector(".menu-detail").hasAttribute("aria-hidden")).toBe(false);
+  expect(autre.hasAttribute("aria-label")).toBe(false);
+  expect(m.racine.classList.contains("ya-menu-detail")).toBe(true);
+  expect(regle(".ya-menu-detail")).toContain("width: max-content");
+  expect(regle(".ya-menu .menu-detail")).toContain("var(--font-mono)");
+  expect(regle(".ya-menu .menu-detail")).toContain("var(--ink-muted)");
+  expect(regle(".ya-menu .menu-commande:focus .menu-detail")).toContain("var(--on-accent)");
+  // `alignement` demande une ancre
+  expect(() => menu({ nom: "x", position: { x: 0, y: 0 }, alignement: "droite", groupes: [[{ libelle: "a" }]], surFermeture: () => {} })).toThrow(/alignement/);
+});

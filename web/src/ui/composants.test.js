@@ -15,7 +15,8 @@ test("REQ028_AC3_composants_n_utilisent_que_des_tokens", () => {
   // Les règles `ya-` reprennent les tailles de bundle.css (design-system.md, Typographie) ; les autres passent par les tokens.
   const hors = css.replace(/\/\*[^]*?\*\//g, "").replace(/[^{}]*\bya-[^{}]*\{[^}]*\}/g, "");
   expect(hors).not.toMatch(/\d+px/);
-  expect(css).not.toMatch(/animation/);
+  // Seule animation continue : le liseré du nœud en cours (design-system.md, règles d'usage, REQ-197).
+  expect(css.split("\n").filter((l) => /animation/.test(l) && !/lisere/.test(l))).toEqual([]);
 });
 
 // Corps de la règle dont le sélecteur (liste exacte) est donné.

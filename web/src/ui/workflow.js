@@ -191,6 +191,10 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
       }
       if (courant && courant.id === n.id) {
         el.classList.add("ya-noeud-en-cours");
+        const lisere = document.createElement("span");
+        lisere.className = "ya-noeud-lisere";
+        lisere.setAttribute("aria-hidden", "true");
+        el.append(lisere);
         const marque = document.createElement("span");
         marque.className = "ya-noeud-etiquette";
         marque.setAttribute("aria-hidden", "true");

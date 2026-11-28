@@ -68,12 +68,14 @@ const surPerteDeFocus = () => ouvert?.fermer();
 
 // `ancre` : bouton d'en-tête qui ouvre le menu ; sans `position`, le menu s'ouvre 4 px sous lui, sur son bord gauche.
 // `zone` : élément (surface d'un whiteboard) qui porte le menu ; `position` est alors au pointeur, et le menu reste dans la zone.
+// `alignement: "droite"` (avec `ancre`) : le bord droit du menu est sur le bord droit du bouton, REQ-204.
 // `ancrage` (avec `ancre`) : menu d'une commande du rail, `rail-gauche` (à droite du bouton) ou `rail-droit` (à gauche), 4 px du bouton, à la hauteur de son haut.
-export function menu({ nom, groupes, position, ancre, ancrage, zone, surFermeture }) {
+export function menu({ nom, groupes, position, ancre, ancrage, alignement, zone, surFermeture }) {
   if (!nom) throw new Error("menu : nom requis");
   if (typeof surFermeture !== "function") throw new Error("menu : surFermeture requis");
   if (ancre !== undefined && typeof ancre.getBoundingClientRect !== "function") throw new Error("menu : ancre doit être un élément");
   if (ancrage !== undefined && (!ancre || !["rail-gauche", "rail-droit"].includes(ancrage))) throw new Error("menu : ancrage demande une ancre et vaut rail-gauche ou rail-droit");
+  if (alignement !== undefined && (!ancre || ancrage || alignement !== "droite")) throw new Error("menu : alignement vaut droite et demande une ancre sans ancrage");
   if (!ancre && (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y))) throw new Error("menu : position requise");
   const pleins = groupes.filter((g) => g.length > 0);
   for (const c of pleins.flat()) {
@@ -111,6 +113,15 @@ export function menu({ nom, groupes, position, ancre, ancrage, zone, surFermetur
       t.className = "menu-libelle";
       t.textContent = c.libelle;
       e.append(t);
+      if (c.detail) {
+        // Contrairement à `touche`, `detail` est lu avec le libellé.
+        const d = document.createElement("span");
+        d.className = "menu-detail";
+        d.textContent = c.detail;
+        e.setAttribute("aria-label", `${c.libelle}, ${c.detail}`);
+        e.append(d);
+        racine.classList.add("ya-menu-detail");
+      }
       if (c.touche) {
         const k = document.createElement("span");
         k.className = "menu-touche";
@@ -188,7 +199,7 @@ export function menu({ nom, groupes, position, ancre, ancrage, zone, surFermetur
     // Décalé vers la gauche s'il ne tient pas ; retourné au-dessus du bouton s'il manque de place dessous et qu'il en reste dessus.
     let y = r.bottom + 4;
     if (y + taille.hauteur > fenetre.hauteur && r.top - 4 - taille.hauteur >= 0) y = r.top - 4 - taille.hauteur;
-    depart = { x: Math.min(r.left, fenetre.largeur - taille.largeur), y };
+    depart = { x: alignement === "droite" ? Math.max(0, r.right - taille.largeur) : Math.min(r.left, fenetre.largeur - taille.largeur), y };
     }
   }
   let p;

@@ -255,7 +255,8 @@ test("REQ197_AC6_bandeau_de_suivi_deux_zones_status_etiquette_en_cours_et_contou
     w.maj({ lectureSeule: false });
     expect(bandeau.hidden).toBe(true);
     // CSS : contour de 2 px, étiquette en --ink sur --bg-200, bord transparent pour forced-colors
-    expect(regle(".ya-noeud-en-cours")).toMatch(/border: calc\(2px \/ var\(--zoom, 1\)\) solid var\(--ink\)/);
+    // le contour du nœud ne change pas : le liseré est un élément à part (REQ-197 AC-197-8)
+    expect(regle(".ya-noeud-en-cours")).not.toContain("border");
     const e = regle(".ya-noeud-etiquette");
     expect(e).toContain("background: var(--ink)");
     expect(e).toContain("color: var(--bg-200)");
@@ -275,4 +276,32 @@ test("REQ197_AC6_bandeau_de_suivi_deux_zones_status_etiquette_en_cours_et_contou
     expect(regle(".ya-wf-etat")).toContain("text-overflow: ellipsis");
     expect(regle(".ya-wf-lecture-message")).toContain("flex-wrap: wrap");
   });
+});
+
+test("REQ197_AC9_liseré_premier_enfant_aria_hidden_present_seulement_en_cours_et_css_du_design", () => {
+  const { w, el } = monter({ lectureSeule: true, enCours: "n2" });
+  const l = el("n2").firstElementChild;
+  expect(l.className).toBe("ya-noeud-lisere");
+  expect(l.getAttribute("aria-hidden")).toBe("true");
+  expect(l.children).toHaveLength(0);
+  expect(w.querySelectorAll(".ya-noeud-lisere")).toHaveLength(1);
+  // en cours et choisi : le liseré, l'anneau (classe) et l'étiquette
+  el("n2").dispatchEvent(Object.assign(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }), { pointerId: 1 }));
+  expect(el("n2").querySelector(".ya-noeud-lisere")).not.toBeNull();
+  expect(el("n2").querySelector(".ya-noeud-etiquette")).not.toBeNull();
+  expect(el("n2").classList.contains("ya-noeud-choisi")).toBe(true);
+  w.maj({ enCours: "n3" });
+  expect(el("n2").querySelector(".ya-noeud-lisere")).toBeNull();
+  expect(el("n3").firstElementChild.className).toBe("ya-noeud-lisere");
+  w.maj({ enCours: null });
+  expect(w.querySelector(".ya-noeud-lisere")).toBeNull();
+  // un brouillon sans exécution n'a jamais de liseré
+  expect(monter({ lectureSeule: false }).w.querySelector(".ya-noeud-lisere")).toBeNull();
+  const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
+  const r = regle(".ya-noeud-lisere");
+  for (const d of ["position: absolute", "inset: calc(-1px / var(--zoom, 1))", "border-radius: inherit", "padding: calc(2px / var(--zoom, 1))", "pointer-events: none", "conic-gradient(from var(--angle-lisere)", "animation: ya-lisere var(--duree-lisere) linear infinite", "-webkit-mask-composite: xor"]) expect(r).toContain(d);
+  expect(css).toMatch(/@property --angle-lisere \{ syntax: "<angle>"; inherits: false; initial-value: 0turn; \}/);
+  expect(css).toMatch(/@keyframes ya-lisere \{ from \{ --angle-lisere: 0turn; \} to \{ --angle-lisere: 1turn; \} \}/);
+  expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.ya-noeud-lisere \{[^}]*animation: none;[^}]*background: var\(--accent-fg\)/);
+  expect(css).toMatch(/@media \(forced-colors: active\) \{ \.ya-noeud-lisere \{[^}]*Highlight[^}]*padding: 0;[^}]*animation: none/);
 });

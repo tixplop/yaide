@@ -988,3 +988,23 @@ test("REQ200_AC11_REQ201_AC10_contrastes_de_la_marque_d_insertion_dans_les_deux_
     }
   });
 });
+
+// REQ-197 AC-197-8 : durée du liseré et contrastes des paires nouvelles (design-system.md, C-019 et C-002 `cron`).
+test("REQ197_AC8_REQ204_AC9_duree_du_lisere_et_contrastes_des_paires_nouvelles", () => {
+  for (const theme of THEMES) expect(T[theme]["--duree-lisere"]).toBe("2s");
+  const paires = [
+    ["--accent-fg", "--bg-200", [6.65, 6.31]],
+    ["--accent-fg", "--bg-300", [5.78, 6.31]],
+    ["--bg-200", "--ink", [10.26, 16.48]],
+    ["--ink", "--bg-100", [10.72, 15.52]],
+    ["--ink-muted", "--bg-100", [6.58, 6.3]],
+    ["--ink-muted", "--bg-300", [5.48, 6.69]],
+  ];
+  THEMES.forEach((theme, k) => {
+    for (const [texte, fond, v] of paires) {
+      const r = ratio(theme, texte, fond);
+      egalA(r, v[k], `${texte} sur ${fond} (${theme})`);
+      expect(r).toBeGreaterThanOrEqual(3);
+    }
+  });
+});

@@ -1,6 +1,9 @@
 import { expect, test, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { champ } from "./champ.js";
+import { champ, MODELES_CRON } from "./champ.js";
+
+const prochaines = vi.hoisted(() => vi.fn());
+vi.mock("../api.js", async (orig) => ({ ...(await orig()), prochainesFoisCron: prochaines }));
 
 const css = readFileSync("web/src/ui/composants.css", "utf8").replace(/\/\*[^]*?\*\//g, "");
 const regle = (sel) => {
@@ -456,5 +459,228 @@ test("REQ189_AC11_style_copie_par_tokens_et_contrastes_dans_les_deux_themes", ()
     expect(ratio(t["ink-muted"], t["bg-300"])).toBeGreaterThanOrEqual(4.5);
     expect(ratio(t["line-strong"], t["bg-300"])).toBeGreaterThanOrEqual(3);
     expect(ratio(t["accent-fg"], t["bg-300"])).toBeGreaterThanOrEqual(3);
+  }
+});
+
+// REQ-204 : type `cron`.
+const cron = (opts = {}) => {
+  const c = champ({ libelle: "Expression cron", type: "cron", aide: "Cinq champs.", ...opts });
+  document.body.append(c);
+  return c;
+};
+const modeles = (c) => c.querySelector("button");
+const zone = (c) => c.querySelector("[aria-live]");
+const saisirCron = (c, v) => {
+  const i = c.querySelector("input");
+  i.value = v;
+  i.dispatchEvent(new Event("input", { bubbles: true }));
+};
+const attendre = (ms) => vi.advanceTimersByTimeAsync(ms);
+const souris = (el) => el.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
+
+test("REQ204_AC8_modeles_liste_unique_bouton_et_menu_au_clavier", async () => {
+  vi.useFakeTimers();
+  prochaines.mockResolvedValue({ dates: [] });
+  try {
+    const c = cron();
+    const b = modeles(c);
+    expect(MODELES_CRON.map((m) => m.expression)).toEqual(["*/15 * * * *", "0 * * * *", "0 9 * * *", "0 9 * * 1-5", "0 9 * * 1", "0 9 1 * *"]);
+    expect(b.textContent).toContain("Modèles");
+    expect(b.getAttribute("aria-label")).toBe("Modèles d'expression cron");
+    expect(b.getAttribute("aria-haspopup")).toBe("menu");
+    expect(b.getAttribute("aria-expanded")).toBe("false");
+    expect(c.querySelector("input").nextElementSibling).toBe(b);
+    souris(b);
+    expect(b.getAttribute("aria-expanded")).toBe("true");
+    const m = document.querySelector('[role="menu"]');
+    expect(m.getAttribute("aria-label")).toBe("Modèles d'expression cron");
+    expect(b.getAttribute("aria-controls")).toBe(m.id);
+    const items = [...m.querySelectorAll('[role="menuitem"]')];
+    expect(items.map((i) => i.getAttribute("aria-label"))).toEqual([
+      "Toutes les 15 minutes, */15 * * * *",
+      "Toutes les heures, 0 * * * *",
+      "Chaque jour à 9 h, 0 9 * * *",
+      "Du lundi au vendredi à 9 h, 0 9 * * 1-5",
+      "Chaque lundi à 9 h, 0 9 * * 1",
+      "Le 1er du mois à 9 h, 0 9 1 * *",
+    ]);
+    expect(document.activeElement).toBe(items[0]);
+    // Échap ferme et rend le focus à « Modèles »
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(b);
+    expect(b.getAttribute("aria-expanded")).toBe("false");
+    // Tab aussi
+    souris(b);
+    document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(b);
+    // un choix au clavier : champ rempli, input émis, focus dans le champ, curseur à la fin
+    const vu = vi.fn();
+    c.addEventListener("input", vu);
+    souris(b);
+    document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    const i = c.querySelector("input");
+    expect(i.value).toBe("0 * * * *");
+    expect(vu).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(i);
+    expect([i.selectionStart, i.selectionEnd]).toEqual([9, 9]);
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    // la requête part aussitôt, sans attendre 300 ms
+    await attendre(0);
+    expect(prochaines).toHaveBeenLastCalledWith("0 * * * *");
+  } finally {
+    vi.useRealTimers();
+    document.body.replaceChildren();
+  }
+});
+
+test("REQ204_AC8_lecture_seule_modeles_aria_disabled_sans_ouverture", async () => {
+  vi.useFakeTimers();
+  prochaines.mockResolvedValue({ dates: [] });
+  try {
+    const c = cron({ lectureSeule: true, valeur: "0 9 * * 1" });
+    const b = modeles(c);
+    expect(c.querySelector("input").readOnly).toBe(true);
+    expect(b.getAttribute("aria-disabled")).toBe("true");
+    expect(b.disabled).toBe(false);
+    souris(b);
+    b.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(b.getAttribute("aria-expanded")).toBe("false");
+    // les prochaines fois s'affichent quand même
+    await attendre(0);
+    expect(prochaines).toHaveBeenCalledWith("0 9 * * 1");
+  } finally {
+    vi.useRealTimers();
+    document.body.replaceChildren();
+  }
+});
+
+test("REQ204_AC9_trois_dates_en_francais_liste_aria_describedby_apres_laide", async () => {
+  vi.useFakeTimers();
+  prochaines.mockResolvedValue({ dates: ["2026-11-30T09:00", "2026-12-01T09:00", "2026-12-02T09:00"] });
+  vi.setSystemTime(new Date(2026, 10, 30, 8, 59, 59));
+  try {
+    const c = cron({ valeur: "0 9 * * 1-5" });
+    await attendre(0);
+    const z = zone(c);
+    expect(z.getAttribute("aria-live")).toBe("polite");
+    expect(z.textContent.startsWith("Prochaines fois :")).toBe(true);
+    expect([...z.querySelectorAll("ul > li")].map((li) => li.textContent)).toEqual(["lundi 30 novembre 2026, 09:00", "mardi 1er décembre 2026, 09:00", "mercredi 2 décembre 2026, 09:00"]);
+    expect(z.querySelector(".ya-cron-jour").textContent).toBe("lundi 30 novembre 2026,");
+    expect(z.querySelector(".ya-cron-heure").textContent).toBe("09:00");
+    const i = c.querySelector("input");
+    expect(i.getAttribute("aria-describedby")).toBe(`${c.querySelector(".champ-aide").id} ${z.id}`);
+    expect(i.hasAttribute("aria-invalid")).toBe(false);
+    expect(c.querySelector('[role="alert"]')).toBeNull();
+    // les dates sont redemandées quand la première est passée
+    prochaines.mockClear();
+    await attendre(1400);
+    expect(prochaines).not.toHaveBeenCalled();
+    await attendre(200);
+    expect(prochaines).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+    document.body.replaceChildren();
+  }
+});
+
+test("REQ204_AC5_AC9_illisible_aucune_vide_et_echec_sans_alerte", async () => {
+  vi.useFakeTimers();
+  prochaines.mockReset();
+  try {
+    const c = cron();
+    await attendre(0);
+    // champ vide : zone vide, aucune requête
+    expect(zone(c).textContent).toBe("");
+    expect(prochaines).not.toHaveBeenCalled();
+    saisirCron(c, "   ");
+    await attendre(400);
+    expect(prochaines).not.toHaveBeenCalled();
+    // 300 ms après la dernière frappe seulement
+    prochaines.mockResolvedValue({ illisible: true });
+    saisirCron(c, "61 * * * *");
+    await attendre(299);
+    expect(prochaines).not.toHaveBeenCalled();
+    await attendre(1);
+    expect(prochaines).toHaveBeenCalledWith("61 * * * *");
+    expect(zone(c).textContent).toBe("Expression incomplète ou illisible.");
+    expect(c.querySelector(".champ-aide").textContent).toBe("Cinq champs.");
+    prochaines.mockResolvedValue({ aucune: true });
+    saisirCron(c, "0 0 30 2 *");
+    await attendre(300);
+    expect(zone(c).textContent).toBe("Aucune date prévue.");
+    expect(c.querySelector('[role="alert"]')).toBeNull();
+    expect(c.querySelector("input").hasAttribute("aria-invalid")).toBe(false);
+    // champ vidé : plus rien
+    saisirCron(c, "");
+    expect(zone(c).textContent).toBe("");
+    // échec de la requête, puis retour de la connexion sans nouvelle frappe
+    prochaines.mockResolvedValue({ indisponible: true });
+    saisirCron(c, "0 9 * * *");
+    await attendre(300);
+    expect(zone(c).textContent).toBe("Prochaines fois indisponibles pour le moment.");
+    expect(c.querySelector('[role="alert"]')).toBeNull();
+    prochaines.mockResolvedValue({ dates: ["2026-11-30T09:00"] });
+    await attendre(5100);
+    expect(zone(c).textContent).toBe("Prochaines fois :lundi 30 novembre 2026, 09:00");
+  } finally {
+    vi.useRealTimers();
+    document.body.replaceChildren();
+  }
+});
+
+test("REQ204_AC9_seule_la_derniere_reponse_sapplique", async () => {
+  vi.useFakeTimers();
+  prochaines.mockReset();
+  try {
+    const c = cron();
+    let rendre;
+    prochaines.mockImplementationOnce(() => new Promise((r) => (rendre = r)));
+    saisirCron(c, "0 * * * *");
+    await attendre(300);
+    prochaines.mockResolvedValueOnce({ aucune: true });
+    saisirCron(c, "0 0 30 2 *");
+    await attendre(300);
+    expect(zone(c).textContent).toBe("Aucune date prévue.");
+    rendre({ illisible: true });
+    await attendre(0);
+    expect(zone(c).textContent).toBe("Aucune date prévue.");
+  } finally {
+    vi.useRealTimers();
+    document.body.replaceChildren();
+  }
+});
+
+test("REQ204_AC7_erreur_de_refus_prend_la_place_de_laide_et_la_zone_reste_citee", async () => {
+  vi.useFakeTimers();
+  prochaines.mockResolvedValue({ dates: [] });
+  try {
+    const c = cron({ erreur: "Expression refusée.", aide: undefined, valeur: "x" });
+    const i = c.querySelector("input");
+    expect(i.getAttribute("aria-invalid")).toBe("true");
+    expect(i.getAttribute("aria-describedby")).toBe(`${c.querySelector(".champ-erreur").id} ${zone(c).id}`);
+  } finally {
+    vi.useRealTimers();
+    document.body.replaceChildren();
+  }
+});
+
+test("REQ204_AC9_premiere_date_lointaine_ne_boucle_pas_sur_les_requetes", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(2026, 10, 2, 10, 0, 0));
+  prochaines.mockReset();
+  prochaines.mockResolvedValue({ dates: ["2026-12-27T09:00"] });
+  try {
+    cron({ valeur: "0 9 1 * *" });
+    await attendre(0);
+    expect(prochaines).toHaveBeenCalledTimes(1);
+    await attendre(1000);
+    expect(prochaines).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+    document.body.replaceChildren();
   }
 });
