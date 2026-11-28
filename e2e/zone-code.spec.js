@@ -873,7 +873,7 @@ test("REQ159_AC5_AC8_AC13_AC14_recherche_dans_un_markdown_hybride", async ({ pag
     }
   }
 
-  // AC-159-14 : éditeur de 320 px, panneau à 4 et 16 px des bords, sans débordement ; 344 × 34 px à 1000 px.
+  // AC-159-14 : éditeur de 320 px, panneau à 4 et 16 px des bords, sans débordement ; 400 × 34 px à 1000 px.
   await monter(docB, 1000);
   const boite = () => page.evaluate(() => {
     const p = document.querySelector(".ya-recherche-fichier").getBoundingClientRect();
@@ -881,7 +881,7 @@ test("REQ159_AC5_AC8_AC13_AC14_recherche_dans_un_markdown_hybride", async ({ pag
     return { largeur: p.width, hauteur: p.height, haut: p.top - ed.top, droite: ed.right - p.right, bas: p.bottom - ed.top };
   });
   const normale = await boite();
-  expect([normale.largeur, normale.hauteur, normale.haut, normale.droite]).toEqual([344, 34, 4, 16]);
+  expect([normale.largeur, normale.hauteur, normale.haut, normale.droite]).toEqual([400, 34, 4, 16]);
   // AC-159-8 : défilé à la ligne 200, le panneau reste au même endroit ; F3 vers la ligne 12, hors écran, la ramène à l'écran.
   await page.evaluate(() => document.querySelector(".zone-code").aller(200));
   await expect.poll(() => page.evaluate(() => document.querySelector(".zone-code").vue.scrollDOM.scrollTop)).toBeGreaterThan(3000);
@@ -914,4 +914,96 @@ test("REQ159_AC5_AC8_AC13_AC14_recherche_dans_un_markdown_hybride", async ({ pag
   expect([etroit.largeur, etroit.haut, etroit.droite]).toEqual([288, 4, 16]);
   expect(await page.evaluate(() => { const ed = document.querySelector(".cm-editor"); return ed.scrollWidth <= ed.clientWidth; })).toBe(true);
   expect(await page.evaluate(() => { const p = document.querySelector(".ya-recherche-fichier"); return p.scrollWidth <= p.clientWidth; })).toBe(true);
+});
+
+// T-488 : casse, expression régulière et remplacement (REQ-206, REQ-207) : mise en page réelle du panneau.
+test("REQ206_AC8_REQ207_AC12_AC13_panneau_ctrl_f_34px_invalide_en_danger_ctrl_h_64px_et_defilement", async ({ page }) => {
+  const doc = Array.from({ length: 220 }, (_, i) => (i === 11 ? `ligne ${i + 1} salue` : `ligne ${i + 1}`)).join("\n");
+  const monter = async (largeur) => {
+    await page.evaluate(([c, w]) => {
+      document.getElementById("h").style.width = `${w}px`;
+      document.getElementById("h").replaceChildren(window.zoneCode({ contenu: c, langage: "rust", nom: "main.rs", recherche: { nom: "main.rs" } }));
+      document.querySelector(".zone-code").recherche.ouvrir();
+    }, [doc, largeur]);
+  };
+  const boite = (sel) =>
+    page.evaluate((s) => {
+      const r = document.querySelector(s).getBoundingClientRect();
+      const ed = document.querySelector(".cm-editor").getBoundingClientRect();
+      return { gauche: r.left, haut: r.top - ed.top, bas: r.bottom - ed.top, largeur: r.width, hauteur: r.height, droite: ed.right - r.right };
+    }, sel);
+  await page.goto(pathToFileURL(resolve(dossier, "index.html")).href);
+  await monter(1000);
+  const panneau = page.locator(".ya-recherche-fichier");
+  const champ = panneau.locator("input").first();
+  const compteur = panneau.locator(".ya-recherche-compteur");
+  await page.keyboard.type("salue");
+  expect((await boite(".ya-recherche-fichier")).hauteur).toBe(34);
+  // AC-206-8 : les deux boutons sont entre le champ et le compteur ; « Invalide » et le contour du champ en `--danger`.
+  expect(await page.evaluate(() => {
+    const p = document.querySelector(".ya-recherche-fichier");
+    const [c, a, b, n] = [p.querySelector("input"), p.querySelector('[aria-label="Respecter la casse"]'), p.querySelector('[aria-label="Expression régulière"]'), p.querySelector(".ya-recherche-compteur")];
+    const apres = (x, y) => Boolean(x.compareDocumentPosition(y) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return apres(c, a) && apres(a, b) && apres(b, n);
+  })).toBe(true);
+  const danger = await valeur(page, "color", "--danger");
+  const contour = await valeur(page, "borderTopColor", "--danger");
+  const couleurCompteur = () => compteur.evaluate((e) => getComputedStyle(e.firstElementChild ?? e).color);
+  const contourChamp = () => champ.evaluate((e) => getComputedStyle(e).borderTopColor);
+  await panneau.getByRole("button", { name: "Expression régulière" }).click();
+  await champ.fill("(");
+  await expect(compteur).toHaveText("Invalide");
+  expect(await couleurCompteur()).toBe(danger);
+  expect(await contourChamp()).toBe(contour);
+  await champ.fill("(salue)");
+  await expect(compteur).toHaveText("1");
+  expect(await contourChamp()).not.toBe(contour);
+  expect((await boite(".ya-recherche-fichier")).hauteur).toBe(34);
+
+  // AC-207-13 : Ctrl+H sur le panneau ouvert, la première rangée ne bouge pas ; 64 px ; champ « Remplacer » sous le champ, boutons à sa droite.
+  const avant = await boite(".ya-recherche-fichier input");
+  const haut = (await boite(".ya-recherche-fichier")).haut;
+  await page.evaluate(() => document.querySelector(".zone-code").recherche.ouvrir({ remplacement: true }));
+  const apres = await boite(".ya-recherche-fichier input");
+  expect(await boite(".ya-recherche-fichier input")).toEqual(avant);
+  expect((await boite(".ya-recherche-fichier")).haut).toBe(haut);
+  const ligne = await page.evaluate(() => {
+    const p = document.querySelector(".ya-recherche-fichier");
+    const r = (e) => e.getBoundingClientRect();
+    const [c, rem] = p.querySelectorAll("input");
+    const un = p.querySelector('[aria-label="Remplacer"]');
+    const tout = p.querySelector('[aria-label="Tout remplacer"]');
+    return { hauteur: r(p).height, gaucheChamp: r(c).left, gaucheRem: r(rem).left, largeurChamp: r(c).width, largeurRem: r(rem).width, hautChamp: r(c).bottom, hautRem: r(rem).top, droiteRem: r(rem).right, gaucheUn: r(un).left, hautUn: r(un).top, hautTout: r(tout).top, nom: p.getAttribute("aria-label") };
+  });
+  expect(ligne.hauteur).toBe(64);
+  expect(ligne.gaucheRem).toBe(ligne.gaucheChamp);
+  expect(ligne.largeurRem).toBe(ligne.largeurChamp);
+  expect(ligne.hautRem).toBeGreaterThanOrEqual(ligne.hautChamp);
+  expect(ligne.gaucheUn).toBeGreaterThan(ligne.droiteRem);
+  expect(ligne.hautUn).toBe(ligne.hautTout);
+  expect(ligne.nom).toBe("Rechercher dans main.rs");
+  expect(apres.haut).toBe(avant.haut);
+
+  // AC-207-12 : éditeur de 320 px, à 16 px du bord droit, sans débordement ; la ligne 12 sous le bas du panneau après F3.
+  await monter(320);
+  await page.evaluate(() => document.querySelector(".zone-code").recherche.ouvrir({ remplacement: true }));
+  const etroit = await boite(".ya-recherche-fichier");
+  expect([etroit.hauteur, etroit.droite, etroit.largeur]).toEqual([64, 16, 288]);
+  expect(await page.evaluate(() => { const ed = document.querySelector(".cm-editor"); return ed.scrollWidth <= ed.clientWidth; })).toBe(true);
+  expect(await page.evaluate(() => { const p = document.querySelector(".ya-recherche-fichier"); return p.scrollWidth <= p.clientWidth; })).toBe(true);
+  await page.locator(".ya-recherche-fichier input").first().fill("salue");
+  await page.evaluate(() => {
+    const v = document.querySelector(".zone-code").vue;
+    v.dispatch({ selection: { anchor: 0 } });
+    v.scrollDOM.scrollTop = v.lineBlockAt(v.state.doc.line(12).from).top;
+  });
+  await expect.poll(() => page.evaluate(() => { const v = document.querySelector(".zone-code").vue; return Math.round(v.lineBlockAt(v.state.doc.line(12).from).top - v.scrollDOM.scrollTop); })).toBe(0);
+  await page.keyboard.press("F3");
+  const courante = page.locator(".ya-occurrence-courante");
+  await expect(courante).toHaveCount(1);
+  await expect.poll(async () => {
+    const o = await boite(".ya-occurrence-courante");
+    const p = await boite(".ya-recherche-fichier");
+    return o.haut >= p.bas && o.haut >= 72;
+  }).toBe(true);
 });

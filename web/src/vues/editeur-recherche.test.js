@@ -164,6 +164,163 @@ test("REQ159_AC15_le_panneau_suit_son_onglet_et_pas_le_rechargement", async () =
   expect(document.querySelector(".ya-recherche-fichier")).toBeNull();
 });
 
+function ctrlH(cible, init = {}) {
+  const ev = new KeyboardEvent("keydown", { key: "h", ctrlKey: true, bubbles: true, cancelable: true, ...init });
+  cible.dispatchEvent(ev);
+  return ev;
+}
+const lignes = (p) => [...p.querySelectorAll("input, button")].map((x) => x.getAttribute("aria-label") ?? x.tagName);
+const champs = (chemin) => panneau(chemin).querySelectorAll("input");
+const saisir = (input, t) => {
+  input.value = t;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+};
+const REMPLACER = ["INPUT", "Respecter la casse", "Expression régulière", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche", "INPUT", "Remplacer", "Tout remplacer"];
+
+test("REQ207_AC1_ctrl_h_ouvre_avec_remplacement_sur_tout_fichier_texte_et_pas_sur_diff_ni_page_seule", () => {
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503 })));
+  const e = monter({ "README.md": README, "main.rs": "fn main() {}\n", "index.html": "<p>yaide</p>" });
+  for (const chemin of ["README.md", "main.rs"]) {
+    aller(e, chemin);
+    const z = zoneDe(chemin);
+    z.vue.focus();
+    const ev = ctrlH(z.vue.contentDOM);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(panneau(chemin).getAttribute("aria-label")).toBe(`Rechercher dans ${chemin}`);
+    expect(document.activeElement).toBe(champs(chemin)[0]);
+    expect(lignes(panneau(chemin))).toEqual(REMPLACER);
+    expect(champs(chemin)[1].getAttribute("aria-label") ?? champs(chemin)[1].labels?.[0]?.textContent).toBe("Remplacer par");
+    expect(champs(chemin)[1].placeholder).toBe("Remplacer");
+  }
+  // index.html : page seule à l'ouverture, rien ; éditeur affiché, la recherche s'ouvre.
+  aller(e, "index.html");
+  const page = zoneDe("index.html").lastElementChild;
+  expect(page.classList.contains("cm-editor")).toBe(false);
+  expect(ctrlH(page).defaultPrevented).toBe(false);
+  expect(panneau("index.html")).toBeNull();
+  expect(zoneDe("index.html").querySelector(".ya-recherche-fichier")).toBeNull();
+  document.querySelector('button[aria-label="Mode hybride"]').click();
+  const html = zoneDe("index.html");
+  expect(ctrlH(html.vue.contentDOM).defaultPrevented).toBe(true);
+  expect(lignes(panneau("index.html"))).toEqual(REMPLACER);
+  // Diff : rien.
+  e.ouvrirDiff({ chemin: "main.rs", texte: "@@ -1 +1 @@\n-a\n+b\n" });
+  const diff = document.querySelector(".zone-code:not([hidden])");
+  expect(ctrlH(diff.vue.contentDOM).defaultPrevented).toBe(false);
+  expect(diff.querySelector(".ya-recherche-fichier")).toBeNull();
+  // Aperçu de README.md : le focus n'est pas dans l'éditeur, rien.
+  aller(e, "README.md");
+  panneau("README.md").querySelector('button[aria-label="Fermer la recherche"]').click();
+  document.querySelector('button[aria-label="Aperçu"]').click();
+  const apercu = zoneDe("README.md").lastElementChild;
+  expect(apercu.classList.contains("cm-editor")).toBe(false);
+  expect(zoneDe("README.md").vue.dom.contains(apercu)).toBe(false);
+  expect(ctrlH(apercu).defaultPrevented).toBe(false);
+  expect(panneau("README.md")).toBeNull();
+});
+
+test("REQ207_AC2_REQ159_AC1_ctrl_h_sur_panneau_ouvert_ctrl_f_garde_la_ligne_et_rien_sur_main_rs", () => {
+  const e = monter({ "README.md": README, "main.rs": "fn main() {}\n" });
+  aller(e, "README.md");
+  const z = zoneDe("README.md");
+  ctrlF(z.vue.contentDOM);
+  saisir(champs("README.md")[0], "yaide");
+  expect(lignes(panneau("README.md")).length).toBe(6);
+  ctrlH(z.vue.contentDOM);
+  expect(lignes(panneau("README.md"))).toEqual(REMPLACER);
+  expect(champs("README.md")[0].value).toBe("yaide");
+  expect(panneau("README.md").querySelector(".ya-recherche-compteur").textContent).toBe("3");
+  expect(document.activeElement).toBe(champs("README.md")[1]);
+  ctrlF(champs("README.md")[1]);
+  expect(document.activeElement).toBe(champs("README.md")[0]);
+  expect(lignes(panneau("README.md"))).toEqual(REMPLACER);
+  panneau("README.md").querySelector('button[aria-label="Fermer la recherche"]').click();
+  ctrlF(z.vue.contentDOM);
+  expect(lignes(panneau("README.md")).length).toBe(6);
+  // main.rs : Ctrl+F n'ouvre rien fenêtre fermée, mais revient au champ fenêtre ouverte par Ctrl+H.
+  aller(e, "main.rs");
+  const rs = zoneDe("main.rs");
+  expect(ctrlF(rs.vue.contentDOM).defaultPrevented).toBe(false);
+  expect(panneau("main.rs")).toBeNull();
+  ctrlH(rs.vue.contentDOM);
+  champs("main.rs")[1].focus();
+  expect(ctrlF(rs.vue.contentDOM).defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(champs("main.rs")[0]);
+  expect(lignes(panneau("main.rs"))).toEqual(REMPLACER);
+});
+
+test("REQ206_AC6_REQ207_AC10_bascules_et_ligne_gardees_au_changement_d_onglet_fermees_au_rechargement", async () => {
+  stubFichiers();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const e = monter({});
+  await e.restaurer();
+  for (const [chemin, contenu] of Object.entries({ "README.md": README, "main.rs": "fn main() {}\n" })) e.ouvrir({ chemin, contenu, version: "1" });
+  aller(e, "README.md");
+  const z = zoneDe("README.md");
+  ctrlH(z.vue.contentDOM);
+  saisir(champs("README.md")[0], "Yaide");
+  saisir(champs("README.md")[1], "Zed");
+  panneau("README.md").querySelector('button[aria-label="Respecter la casse"]').click();
+  aller(e, "main.rs");
+  aller(e, "README.md");
+  expect(champs("README.md")[1].value).toBe("Zed");
+  expect(champs("README.md")[0].value).toBe("Yaide");
+  expect(panneau("README.md").querySelector('button[aria-label="Respecter la casse"]').getAttribute("aria-pressed")).toBe("true");
+  expect(panneau("README.md").querySelector(".ya-recherche-compteur").textContent).toBe("1");
+  // Échap puis Ctrl+F : bascules relâchées, champ vide, pas de ligne de remplacement.
+  champs("README.md")[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  ctrlF(z.vue.contentDOM);
+  expect(panneau("README.md").querySelector('button[aria-label="Respecter la casse"]').getAttribute("aria-pressed")).toBe("false");
+  expect(champs("README.md")[0].value).toBe("");
+  expect(champs("README.md")).toHaveLength(1);
+  // Rechargement : fenêtre fermée.
+  ctrlH(z.vue.contentDOM);
+  await vi.advanceTimersByTimeAsync(300);
+  e.detruire();
+  document.body.replaceChildren();
+  let c2 = null;
+  const e2 = vueEditeur({ dire: vi.fn(), surGroupes: (arbre, courant) => c2?.definirGroupes(arbre, courant) });
+  editeurs.push(e2);
+  c2 = cadre({ principal: { groupes: e2.groupes() } });
+  document.body.append(c2);
+  await e2.restaurer();
+  expect(zoneDe("README.md")).toBeTruthy();
+  expect(document.querySelector(".ya-recherche-fichier")).toBeNull();
+  vi.useRealTimers();
+});
+
+test("REQ207_AC3_remplacer_donne_son_point_a_l_onglet", () => {
+  const e = monter({ "README.md": README });
+  aller(e, "README.md");
+  ctrlH(zoneDe("README.md").vue.contentDOM);
+  saisir(champs("README.md")[0], "yaide");
+  saisir(champs("README.md")[1], "Zed");
+  expect(onglet("README.md").dataset.modifie).toBeUndefined();
+  panneau("README.md").querySelector('button[aria-label="Remplacer"]').click();
+  expect(onglet("README.md").dataset.modifie).toBe("true");
+});
+
+test("REQ207_AC4_tout_remplacer_marque_l_onglet_et_ctrl_s_ecrit_le_fichier_a_l_octet_pres", async () => {
+  const puts = [];
+  vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+    if (init?.method === "PUT") puts.push(init.body);
+    return { ok: true, status: 200, headers: new Headers({ "x-version": "2" }), json: async () => ({ version: "2" }), text: async () => "" };
+  }));
+  const e = monter({ "README.md": README });
+  aller(e, "README.md");
+  const z = zoneDe("README.md");
+  ctrlH(z.vue.contentDOM);
+  saisir(champs("README.md")[0], "yaide");
+  saisir(champs("README.md")[1], "Zed");
+  expect(onglet("README.md").dataset.modifie).toBeUndefined();
+  panneau("README.md").querySelector('button[aria-label="Tout remplacer"]').click();
+  expect(z.contenu()).toBe("Zed ici\nun Zed là\net Zed");
+  expect(onglet("README.md").dataset.modifie).toBe("true");
+  expect(puts).toHaveLength(0);
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(puts).toEqual(["Zed ici\nun Zed là\net Zed"]));
+});
+
 // ---- REQ-160 : recherche dans un fichier CSV ----
 const hybride = () => document.querySelector('button[aria-label="Mode hybride"]');
 const panneauCsv = () => document.querySelector(".ya-tableur-conteneur > .ya-recherche-fichier");

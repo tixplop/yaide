@@ -136,6 +136,21 @@ export function panneauRecherche({ nom, surTexte, surSuivante, surPrecedente, su
     ev.preventDefault();
     ev.stopPropagation();
   });
+  function ajouterRemplacement() {
+    if (saisieRemplacer) return;
+    const r = champ({ libelle: "Remplacer par", libelleMasque: true, indication: "Remplacer" });
+    saisieRemplacer = r.querySelector("input");
+    saisieRemplacer.setAttribute("autocomplete", "off");
+    un = bouton({ icone: "replace", nomAccessible: "Remplacer", raccourci: "Entrée", touche: "Enter", inactif: !utilisable });
+    tout = bouton({ icone: "replace-all", nomAccessible: "Tout remplacer", inactif: !utilisable });
+    un.addEventListener("click", agir(un, surRemplacer));
+    tout.addEventListener("click", agir(tout, surToutRemplacer));
+    const rangee = document.createElement("div");
+    rangee.className = "ya-recherche-commandes";
+    rangee.append(un.enveloppe, tout.enveloppe);
+    panneau.insertBefore(r, statut);
+    panneau.insertBefore(rangee, statut);
+  }
   panneau.append(c, commandes, statut);
   let utilisable = false;
   return {
@@ -148,22 +163,19 @@ export function panneauRecherche({ nom, surTexte, surSuivante, surPrecedente, su
     },
     // Ajoute la seconde rangée (une seule fois) ; le focus va dans « Remplacer », son texte sélectionné.
     montrerRemplacement() {
-      if (!saisieRemplacer) {
-        const r = champ({ libelle: "Remplacer par", libelleMasque: true, indication: "Remplacer" });
-        saisieRemplacer = r.querySelector("input");
-        saisieRemplacer.setAttribute("autocomplete", "off");
-        un = bouton({ icone: "replace", nomAccessible: "Remplacer", raccourci: "Entrée", touche: "Enter", inactif: !utilisable });
-        tout = bouton({ icone: "replace-all", nomAccessible: "Tout remplacer", inactif: !utilisable });
-        un.addEventListener("click", agir(un, surRemplacer));
-        tout.addEventListener("click", agir(tout, surToutRemplacer));
-        const rangee = document.createElement("div");
-        rangee.className = "ya-recherche-commandes";
-        rangee.append(un.enveloppe, tout.enveloppe);
-        panneau.insertBefore(r, statut);
-        panneau.insertBefore(rangee, statut);
-      }
+      ajouterRemplacement();
       saisieRemplacer.focus();
       saisieRemplacer.select();
+    },
+    // Ajoute la seconde rangée sans le focus, avec ce texte dans « Remplacer » (reprise d'un état).
+    definirRemplacement(t) {
+      ajouterRemplacement();
+      if (saisieRemplacer.value !== t) saisieRemplacer.value = t;
+    },
+    // Enfonce ou relâche les deux bascules.
+    definirOptions(o) {
+      casse.setAttribute("aria-pressed", String(Boolean(o.casse)));
+      regex.setAttribute("aria-pressed", String(Boolean(o.regex)));
     },
     // Texte du champ « Remplacer », ou `null` sans la ligne.
     remplacement: () => (saisieRemplacer ? saisieRemplacer.value : null),

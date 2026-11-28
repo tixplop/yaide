@@ -360,7 +360,7 @@ export function zoneCode({ contenu = "", langage, mode = "edition", apercu = fal
     rech.attacher(vue);
     // Sur un `.csv`, la recherche du tableur quand la grille est affichée, sinon celle du texte.
     const affichee = () => (grille && tab ? tab.recherche : rech);
-    racine.recherche = { ouvrir: () => affichee().ouvrir(), fermer: () => affichee().fermer(), etat: () => affichee().etat(), reprendre: (e) => affichee().reprendre(e) };
+    racine.recherche = { ouvrir: (o) => affichee().ouvrir(o), fermer: () => affichee().fermer(), etat: () => affichee().etat(), reprendre: (e) => affichee().reprendre(e) };
   }
   if (csv) {
     // Tous les appels de focus de l'éditeur vont à la grille quand elle est affichée.

@@ -587,7 +587,7 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
       contenu: texte ?? contenu,
       langage: langagePourFichier(nomDe(chemin)) ?? undefined,
       nom: nomDe(chemin),
-      recherche: /\.(md|markdown|csv)$/i.test(chemin) ? { nom: nomDe(chemin) } : undefined,
+      recherche: { nom: nomDe(chemin) },
       document: chemin,
       apercu,
       hybride,
@@ -1828,12 +1828,16 @@ export function vueEditeur({ chemin: cheminProjet = "", dire, ouvrirRapide = () 
   // Ctrl+S, partout sauf dans un shell : le dialogue du navigateur ne s'ouvre jamais.
   const surTouche = (e) => {
     // REQ-159 : Ctrl+F (Cmd+F sur macOS) cherche dans l'éditeur d'un onglet markdown ou CSV (REQ-160) ou dans un whiteboard lisible (REQ-161) ; ailleurs, la recherche du navigateur reste.
+    // REQ-207 : Ctrl+H (Ctrl aussi sur macOS) ouvre la recherche avec le remplacement dans tout onglet de fichier ; Ctrl+F y revient au champ quand elle est ouverte.
     const f = (estMac() ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f";
-    if (f) {
-      const z = trouver(actif)?.zone;
-      if (z?.recherche && (z.vue.dom?.contains(e.target) || z.tableurContient?.(e.target)) && !document.querySelector("[role=dialog], dialog[open]")) {
+    const h = e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "h";
+    if (f || h) {
+      const o = trouver(actif);
+      const z = o?.zone;
+      const cherchable = /\.(md|markdown|csv)$/i.test(o?.chemin ?? "") || (o && estWhiteboard(o.chemin)) || z?.recherche?.etat().ouvert;
+      if (z?.recherche && (h || cherchable) && (z.vue.dom?.contains(e.target) || z.tableurContient?.(e.target)) && !document.querySelector("[role=dialog], dialog[open]")) {
         e.preventDefault();
-        z.recherche.ouvrir();
+        z.recherche.ouvrir(h ? { remplacement: true } : undefined);
       }
       return;
     }

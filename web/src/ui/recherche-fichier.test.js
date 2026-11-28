@@ -221,7 +221,7 @@ test("REQ159_etat_reprendre_et_sans_option", () => {
   z.recherche.reprendre({ texte: "yaide", ouvert: true });
   expect(compteur(z)).toBe("3");
   expect(champ(z).value).toBe("yaide");
-  expect(z.recherche.etat()).toEqual({ texte: "yaide", ouvert: true });
+  expect(z.recherche.etat()).toEqual({ texte: "yaide", ouvert: true, casse: false, regex: false, remplacement: null });
   const nue = zoneCode({ contenu: DOC, langage: "markdown", nom: "a.md" });
   expect(nue.recherche).toBeUndefined();
 });
@@ -239,4 +239,233 @@ test("REQ159_AC12_entree_sur_la_croix_ferme_le_panneau", () => {
   expect(sel(z)).toEqual([0, 0]);
   croix.click();
   expect(panneau(z)).toBeNull();
+});
+
+// ---- REQ-206, REQ-207 : casse, expression régulière, remplacement ----
+const NOTES = "Yaide 1\nle yaide\nYaide 2";
+const bascule = (z, nom) => bt(z, nom);
+const remplacer = (z) => panneau(z).querySelectorAll("input")[1];
+const poser = (z, t) => {
+  remplacer(z).value = t;
+  remplacer(z).dispatchEvent(new Event("input", { bubbles: true }));
+};
+const ouvrirRemplacement = (z) => z.recherche.ouvrir({ remplacement: true });
+const doc = (z) => z.vue.state.doc.toString();
+const undo = (z) => z.vue.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true }));
+
+test("REQ206_AC1_la_casse_filtre_et_f3_parcourt_les_deux", () => {
+  const z = monter(NOTES);
+  z.recherche.ouvrir();
+  taper(z, "Yaide");
+  expect(compteur(z)).toBe("3");
+  bascule(z, "Respecter la casse").click();
+  expect(bascule(z, "Respecter la casse").getAttribute("aria-pressed")).toBe("true");
+  expect(compteur(z)).toBe("2");
+  expect(occurrences(z).map((o) => o.textContent)).toEqual(["Yaide", "Yaide"]);
+  touche(champ(z), "F3");
+  touche(champ(z), "F3");
+  expect(sel(z)).toEqual([17, 22]);
+  touche(champ(z), "F3");
+  expect(sel(z)).toEqual([0, 5]);
+  z.vue.dispatch({ selection: { anchor: 3 } });
+  bascule(z, "Respecter la casse").click();
+  expect(bascule(z, "Respecter la casse").getAttribute("aria-pressed")).toBe("false");
+  expect(compteur(z)).toBe("3");
+});
+
+test("REQ206_AC2_expression_reguliere_et_parties_vides", () => {
+  const z = monter(NOTES);
+  z.recherche.ouvrir();
+  bascule(z, "Expression régulière").click();
+  taper(z, "^yaide");
+  expect(compteur(z)).toBe("2");
+  taper(z, "Ya.de \\d");
+  expect(compteur(z)).toBe("2");
+  bascule(z, "Respecter la casse").click();
+  taper(z, "^yaide");
+  expect(compteur(z)).toBe("0");
+  bascule(z, "Respecter la casse").click();
+  taper(z, "z*");
+  expect(statut(z)).toBe("Aucune occurrence");
+  expect(occurrences(z)).toHaveLength(0);
+});
+
+test("REQ206_AC3_expression_invalide_puis_corrigee_et_texte_tel_quel_relache", () => {
+  const z = monter(NOTES + " (Y)");
+  z.recherche.ouvrir();
+  bascule(z, "Expression régulière").click();
+  taper(z, "(");
+  expect(occurrences(z)).toHaveLength(0);
+  expect(bt(z, "Occurrence suivante").getAttribute("aria-disabled")).toBe("true");
+  expect(champ(z).getAttribute("aria-invalid")).toBe("true");
+  expect(statut(z)).toBe("Expression régulière invalide");
+  expect(compteur(z)).toBe("Invalide");
+  taper(z, "(Y)");
+  expect(compteur(z)).toBe("4");
+  expect(champ(z).hasAttribute("aria-invalid")).toBe(false);
+  taper(z, "(");
+  bascule(z, "Expression régulière").click();
+  expect(compteur(z)).toBe("1");
+  expect(champ(z).hasAttribute("aria-invalid")).toBe(false);
+  expect(statut(z)).toBe("1 occurrence");
+});
+
+test("REQ206_AC6_etat_garde_et_relache_a_la_reouverture", () => {
+  const z = monter(NOTES);
+  z.recherche.ouvrir();
+  taper(z, "Yaide");
+  bascule(z, "Respecter la casse").click();
+  const e = z.recherche.etat();
+  expect(e).toMatchObject({ texte: "Yaide", casse: true, regex: false });
+  z.recherche.reprendre(null);
+  z.recherche.reprendre(e);
+  expect(bascule(z, "Respecter la casse").getAttribute("aria-pressed")).toBe("true");
+  expect(compteur(z)).toBe("2");
+  touche(champ(z), "Escape");
+  z.recherche.ouvrir();
+  expect(bascule(z, "Respecter la casse").getAttribute("aria-pressed")).toBe("false");
+  expect(bascule(z, "Expression régulière").getAttribute("aria-pressed")).toBe("false");
+  expect(champ(z).value).toBe("");
+});
+
+test("REQ207_AC3_remplacer_un_a_un_avec_courante_et_un_pas_d_annulation_chacun", () => {
+  const z = monter(NOTES);
+  ouvrirRemplacement(z);
+  taper(z, "yaide");
+  poser(z, "Zed");
+  z.vue.dispatch({ selection: { anchor: 0 } });
+  bt(z, "Remplacer").click();
+  expect(doc(z)).toBe("Zed 1\nle yaide\nYaide 2");
+  expect(compteur(z)).toBe("1 sur 2");
+  expect(sel(z)).toEqual([9, 14]);
+  touche(remplacer(z), "Enter");
+  expect(doc(z)).toBe("Zed 1\nle Zed\nYaide 2");
+  expect(compteur(z)).toBe("1 sur 1");
+  undo(z);
+  expect(doc(z)).toBe("Zed 1\nle yaide\nYaide 2");
+});
+
+test("REQ207_AC3_sans_courante_remplace_celle_que_f3_choisirait_et_maj_entree_ne_fait_rien", () => {
+  const z = monter(NOTES);
+  ouvrirRemplacement(z);
+  taper(z, "yaide");
+  poser(z, "Zed");
+  z.vue.dispatch({ selection: { anchor: 9 } });
+  touche(remplacer(z), "Enter", { shiftKey: true });
+  expect(doc(z)).toBe(NOTES);
+  bt(z, "Remplacer").click();
+  expect(doc(z)).toBe("Yaide 1\nle Zed\nYaide 2");
+});
+
+test("REQ207_AC4_tout_remplacer_une_transaction_un_ctrl_z_et_annonce", () => {
+  const z = monter(NOTES);
+  ouvrirRemplacement(z);
+  taper(z, "yaide");
+  poser(z, "Zed");
+  bt(z, "Tout remplacer").focus();
+  bt(z, "Tout remplacer").click();
+  expect(doc(z)).toBe("Zed 1\nle Zed\nZed 2");
+  expect(compteur(z)).toBe("0");
+  expect(statut(z)).toBe("3 occurrences remplacées");
+  expect(document.activeElement).toBe(bt(z, "Tout remplacer"));
+  undo(z);
+  expect(doc(z)).toBe(NOTES);
+  taper(z, "trois");
+  taper(z, "2");
+  bt(z, "Tout remplacer").click();
+  expect(statut(z)).toBe("1 occurrence remplacée");
+});
+
+test("REQ207_AC5_le_texte_mis_a_la_place_n_est_jamais_remplace_de_nouveau", () => {
+  const z = monter("banana");
+  ouvrirRemplacement(z);
+  taper(z, "a");
+  poser(z, "aa");
+  bt(z, "Tout remplacer").click();
+  expect(doc(z)).toBe("baanaanaa");
+  z.vue.dispatch({ changes: { from: 0, to: z.vue.state.doc.length, insert: "banana" }, selection: { anchor: 0 } });
+  for (let i = 0; i < 3; i++) bt(z, "Remplacer").click();
+  expect(doc(z)).toBe("baanaanaa");
+});
+
+test("REQ207_AC6_groupes_et_dollars", () => {
+  const z = monter("alice@ex et bob@ex");
+  ouvrirRemplacement(z);
+  bascule(z, "Expression régulière").click();
+  taper(z, "(\\w+)@(\\w+)");
+  poser(z, "$2 chez $1");
+  bt(z, "Tout remplacer").click();
+  expect(doc(z)).toBe("ex chez alice et ex chez bob");
+  undo(z);
+  poser(z, "$&!");
+  bt(z, "Tout remplacer").click();
+  expect(doc(z)).toBe("alice@ex! et bob@ex!");
+  undo(z);
+  poser(z, "$$");
+  bt(z, "Tout remplacer").click();
+  expect(doc(z)).toBe("$ et $");
+  undo(z);
+  bascule(z, "Expression régulière").click();
+  taper(z, "@");
+  poser(z, "$1");
+  bt(z, "Tout remplacer").click();
+  expect(doc(z)).toBe("alice$1ex et bob$1ex");
+  undo(z);
+  poser(z, "");
+  bt(z, "Tout remplacer").click();
+  expect(doc(z)).toBe("aliceex et bobex");
+});
+
+test("REQ207_AC9_rien_a_remplacer_ne_change_rien", () => {
+  const z = monter(NOTES);
+  ouvrirRemplacement(z);
+  for (const t of ["", "zzz"]) {
+    taper(z, t);
+    for (const n of ["Remplacer", "Tout remplacer"]) {
+      expect(bt(z, n).getAttribute("aria-disabled")).toBe("true");
+      bt(z, n).click();
+    }
+  }
+  bascule(z, "Expression régulière").click();
+  taper(z, "(");
+  expect(bt(z, "Remplacer").getAttribute("aria-disabled")).toBe("true");
+  bt(z, "Tout remplacer").click();
+  touche(remplacer(z), "Enter");
+  expect(doc(z)).toBe(NOTES);
+  expect(z.contenu()).toBe(NOTES);
+  undo(z);
+  expect(doc(z)).toBe(NOTES);
+});
+
+test("REQ207_AC14_f3_depuis_remplacer_echap_ferme_et_rend_le_focus", () => {
+  const z = monter(NOTES);
+  ouvrirRemplacement(z);
+  taper(z, "yaide");
+  poser(z, "Zed");
+  remplacer(z).focus();
+  z.vue.dispatch({ selection: { anchor: 0 } });
+  touche(remplacer(z), "F3");
+  expect(sel(z)).toEqual([0, 5]);
+  expect(doc(z)).toBe(NOTES);
+  expect(document.activeElement).toBe(remplacer(z));
+  touche(remplacer(z), "Enter", { shiftKey: true });
+  expect(doc(z)).toBe(NOTES);
+  touche(remplacer(z), "Escape");
+  expect(panneau(z)).toBeNull();
+  expect(document.activeElement).toBe(z.vue.contentDOM);
+});
+
+test("REQ207_AC10_etat_avec_ligne_de_remplacement_repris", () => {
+  const z = monter(NOTES);
+  ouvrirRemplacement(z);
+  expect(document.activeElement).toBe(champ(z));
+  taper(z, "yaide");
+  poser(z, "Zed");
+  const e = z.recherche.etat();
+  expect(e).toMatchObject({ texte: "yaide", ouvert: true, remplacement: "Zed" });
+  z.recherche.reprendre(null);
+  expect(panneau(z)).toBeNull();
+  z.recherche.reprendre(e);
+  expect(remplacer(z).value).toBe("Zed");
+  expect(compteur(z)).toBe("3");
 });
