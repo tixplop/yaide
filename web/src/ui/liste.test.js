@@ -1896,3 +1896,107 @@ test("REQ197_AC5_trois_places_suivre_nommé_arrêter_part_focus_au_premier_et_bo
   l.majLigne("a", { etat: "Brouillon", actions: [{ id: "premier", libelle: "Modifier" }, { id: "bascule", libelle: "Publier" }] });
   expect(document.activeElement).toBe(bascule);
 });
+
+// REQ-202 : case de ligne de la variante `objets` (C-006).
+const lignesCases = (cochee = "prod") => ["dev", "local", "prod"].map((id) => ({
+  id, libelle: id, dossier: "A=1", case: { libelle: "par défaut", cochee: id === cochee },
+  actions: [
+    { id: "modifier", libelle: "Modifier", nomAccessible: `Modifier ${id}`, surClic: () => {} },
+    { id: "supprimer", libelle: "Supprimer", nomAccessible: `Supprimer ${id}`, surClic: () => {} },
+  ],
+}));
+const caseDe = (l, id) => l.querySelector(`li[data-id="${id}"] .ya-objet-case input`);
+function listeCases(surCase, extra = {}) {
+  const l = liste({ variante: "objets", nom: "Environnements", lignes: lignesCases(), surCase, ...extra });
+  document.body.replaceChildren(l);
+  return l;
+}
+const attente = () => new Promise((r) => setTimeout(r, 0));
+
+test("REQ202_AC14_case_native_par_ligne_nom_accessible_cochee_sur_prod_seule", () => {
+  const l = listeCases(async () => {});
+  const cases = [...l.querySelectorAll(".ya-objet-case input")];
+  expect(cases.map((c) => c.type)).toEqual(["checkbox", "checkbox", "checkbox"]);
+  expect(cases.map((c) => c.checked)).toEqual([false, false, true]);
+  const nom = (c) => c.getAttribute("aria-labelledby").split(" ").map((i) => document.getElementById(i).textContent).join(" ");
+  expect(nom(cases[0])).toBe("dev par défaut");
+  expect(nom(cases[2])).toBe("prod par défaut");
+  expect(cases.some((c) => c.disabled || c.hasAttribute("aria-disabled"))).toBe(false);
+  expect(l.hasAttribute("aria-busy")).toBe(false);
+  expect(l.querySelector("li .ya-objet-case").nextElementSibling.className).toBe("ya-objet-actions");
+  expect(regle(".ya-objet-case")).toContain("flex: none");
+  expect(regle(".ya-objet-case")).toContain("white-space: nowrap");
+  expect(regle(".ya-objet-case")).toContain("color: var(--ink-muted)");
+  expect(regle(".ya-objet-case")).toContain("gap: var(--space-2)");
+  expect(regle(".ya-objet-case input")).toContain("width: 14px");
+  expect(regle(".ya-objet-case .ya-objet-case-cochee")).toContain("var(--ink)");
+  expect(regle(".ya-objet-case input:focus-visible")).toContain("outline: 2px solid var(--accent-fg)");
+});
+
+test("REQ202_AC14_ordre_de_tab_case_modifier_supprimer_par_ligne", () => {
+  const l = listeCases(async () => {});
+  const ordre = [...l.querySelectorAll("input, button")].map((e) => e.getAttribute("aria-label") ?? document.getElementById(e.getAttribute("aria-labelledby").split(" ")[0]).textContent + " par défaut");
+  expect(ordre.slice(0, 6)).toEqual(["dev par défaut", "Modifier dev", "Supprimer dev", "local par défaut", "Modifier local", "Supprimer local"]);
+  expect(l.querySelectorAll("[tabindex]").length).toBe(0);
+});
+
+test("REQ202_AC14_libelle_bascule_clic_ailleurs_et_entree_ne_font_rien", async () => {
+  const surCase = vi.fn(async () => {});
+  const l = listeCases(surCase);
+  l.querySelector('li[data-id="dev"] .ya-objet-case span').click();
+  await attente();
+  expect(surCase).toHaveBeenCalledWith("dev", true);
+  expect(caseDe(l, "dev").checked).toBe(true);
+  surCase.mockClear();
+  l.querySelector('li[data-id="local"] .ya-objet-nom').click();
+  l.querySelector('li[data-id="local"]').click();
+  caseDe(l, "local").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await attente();
+  expect(surCase).not.toHaveBeenCalled();
+  expect(caseDe(l, "local").checked).toBe(false);
+});
+
+test("REQ202_AC15_ecriture_en_cours_focus_garde_aria_disabled_reste_desactive_fin_rend_tout", async () => {
+  let rendre;
+  const evts = [];
+  const l = listeCases(() => new Promise((r) => { rendre = r; }), { surEcriture: (v) => evts.push(v) });
+  const dev = caseDe(l, "dev");
+  dev.focus();
+  dev.click();
+  l.cocher("prod", false);
+  expect(dev.checked).toBe(true);
+  expect(caseDe(l, "prod").checked).toBe(false);
+  expect(document.activeElement).toBe(dev);
+  expect(dev.getAttribute("aria-disabled")).toBe("true");
+  expect(dev.disabled).toBe(false);
+  expect(l.getAttribute("aria-busy")).toBe("true");
+  expect(caseDe(l, "local").disabled).toBe(true);
+  expect(caseDe(l, "prod").disabled).toBe(true);
+  expect([...l.querySelectorAll("button")].every((b) => b.disabled)).toBe(true);
+  expect(evts).toEqual([true]);
+  dev.click();
+  expect(dev.checked).toBe(true);
+  rendre();
+  await attente();
+  expect(l.querySelectorAll("[disabled], [aria-disabled], [aria-busy]").length).toBe(0);
+  expect(document.activeElement).toBe(dev);
+  expect(evts).toEqual([true, false]);
+});
+
+test("REQ202_AC15_promesse_rejetee_la_case_reprend_son_etat", async () => {
+  const l = listeCases(() => Promise.reject(new Error("Connexion perdue")));
+  const dev = caseDe(l, "dev");
+  dev.focus();
+  dev.click();
+  l.cocher("prod", false);
+  await attente();
+  expect(dev.checked).toBe(false);
+  expect(l.querySelectorAll("[disabled], [aria-disabled], [aria-busy]").length).toBe(0);
+  expect(document.activeElement).toBe(dev);
+  expect(() => l.cocher("prod", true)).not.toThrow();
+  expect(caseDe(l, "prod").checked).toBe(true);
+});
+
+test("REQ202_AC15_surCase_sans_case_refuse", () => {
+  expect(() => liste({ variante: "objets", nom: "x", lignes: [{ id: "a", libelle: "a" }], surCase: () => {} })).toThrow(/case/);
+});

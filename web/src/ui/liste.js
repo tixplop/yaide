@@ -40,8 +40,13 @@ function decouper(texte, [debut, fin]) {
 
 // Variante `objets` (C-006, V-012) : `<ul>` nommé, une `<li>` par ligne, deux boutons à icône par ligne,
 // chacun un arrêt de Tab. `lignes` : { id, libelle, dossier, fin, policeCode, actions: [{ icone, nomAccessible, infoBulle, surClic }] }.
-function listeObjets({ lignes, nom }) {
+// `case` : { libelle, cochee }, la case de la ligne (REQ-202) ; `surCase(id, cochee)` rend une promesse. Pendant elle, la case
+// changée garde le focus (`aria-disabled`), la liste est `aria-busy`, le reste est `disabled` ; rejetée, la case reprend son état.
+// `surEcriture(vrai | faux)` prévient la vue du début et de la fin de l'écriture ; `cocher(id, cochee)` change une case sans écrire.
+let compteCases = 0;
+function listeObjets({ lignes, nom, surCase, surEcriture }) {
   if (!nom) throw new Error("liste : nom requis avec objets");
+  if (surCase && !lignes.some((l) => l.case)) throw new Error("liste : surCase demande une case sur les lignes");
   const ul = document.createElement("ul");
   ul.className = "liste ya-objets";
   ul.setAttribute("aria-label", nom);
@@ -82,6 +87,22 @@ function listeObjets({ lignes, nom }) {
       f.textContent = l.fin;
       li.append(f);
     }
+    if (l.case) {
+      const n = ++compteCases;
+      t.id = `ya-objet-nom-${n}`;
+      const lab = document.createElement("label");
+      lab.className = "ya-objet-case";
+      const c = document.createElement("input");
+      c.type = "checkbox";
+      c.checked = !!l.case.cochee;
+      const txt = document.createElement("span");
+      txt.id = `ya-objet-case-${n}`;
+      txt.textContent = l.case.libelle;
+      c.setAttribute("aria-labelledby", `${t.id} ${txt.id}`);
+      txt.classList.toggle("ya-objet-case-cochee", c.checked);
+      lab.append(c, txt);
+      li.append(lab);
+    }
     const boutons = document.createElement("span");
     boutons.className = "ya-objet-actions";
     for (const a of l.actions ?? []) {
@@ -99,6 +120,48 @@ function listeObjets({ lignes, nom }) {
   }
   // Un bouton qui prend le focus est amené dans la vue de la liste, qui défile seule.
   ul.addEventListener("focusin", (ev) => ev.target.scrollIntoView?.({ block: "nearest" }));
+  const cases = () => [...ul.querySelectorAll(".ya-objet-case input")];
+  const marquer = (c) => c.nextElementSibling.classList.toggle("ya-objet-case-cochee", c.checked);
+  ul.cocher = (id, cochee) => {
+    const c = [...ul.children].find((li) => li.dataset.id === id)?.querySelector(".ya-objet-case input");
+    if (!c) throw new Error(`liste : case inconnue « ${id} »`);
+    c.checked = cochee;
+    marquer(c);
+  };
+  const occupe = (actif, vrai) => {
+    if (vrai) ul.setAttribute("aria-busy", "true");
+    else ul.removeAttribute("aria-busy");
+    for (const c of cases()) {
+      if (c === actif) {
+        if (vrai) c.setAttribute("aria-disabled", "true");
+        else c.removeAttribute("aria-disabled");
+      } else {
+        c.disabled = vrai;
+        c.closest("label").classList.toggle("ya-objet-case-inactive", vrai);
+      }
+    }
+    for (const b of ul.querySelectorAll(".ya-objet-actions button")) b.disabled = vrai;
+    surEcriture?.(vrai);
+  };
+  ul.addEventListener("click", (ev) => {
+    const c = ev.target.closest?.(".ya-objet-case input");
+    if (c && c.getAttribute("aria-disabled") === "true") ev.preventDefault();
+  });
+  ul.addEventListener("change", async (ev) => {
+    const c = ev.target.closest?.(".ya-objet-case input");
+    if (!c) return;
+    marquer(c);
+    const id = c.closest("li").dataset.id;
+    occupe(c, true);
+    try {
+      await surCase?.(id, c.checked);
+    } catch {
+      c.checked = !c.checked;
+      marquer(c);
+    } finally {
+      occupe(c, false);
+    }
+  });
   if (texte) {
     // `majLigne(id, { etat, actions })` : le bouton de même `id` d'action est gardé (libellé et nom changés, focus gardé) ;
     // un bouton qui part passe le focus au premier de la ligne. `enCours(id, idAction)` : libellé en cours, les autres boutons désactivés.
@@ -379,7 +442,7 @@ function listeGrille({ lignes, groupes, selection, nom, surActiver }) {
   return racine;
 }
 
-export function liste({ variante = "plate", lignes, groupes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, flottante = false, message, nom, focusSurListe = false, surActiver, surBasculer, surMenu, surDepot, surLien, nomElement, vide, apres, surSaisie, surRetrait }) {
+export function liste({ variante = "plate", lignes, groupes, selection, multiple = false, courante: courantePrevue, ancre: ancrePrevue, surSelection, pilotage = "focus", champ, flottante = false, message, nom, focusSurListe = false, surActiver, surBasculer, surMenu, surDepot, surCase, surEcriture, surLien, nomElement, vide, apres, surSaisie, surRetrait }) {
   if (!VARIANTES.includes(variante)) throw new Error(`liste : variante inconnue « ${variante} »`);
   if (flottante && (variante !== "plate" || pilotage !== "champ")) throw new Error("liste : flottante demande la variante « plate » et le pilotage « champ »");
   if (flottante && !nom) throw new Error("liste : nom requis avec flottante");
@@ -388,7 +451,7 @@ export function liste({ variante = "plate", lignes, groupes, selection, multiple
   if (pilotage === "champ" && !champ) throw new Error("liste : champ requis avec pilotage « champ »");
   if (variante === "elements") return listeElements({ lignes, nom, nomElement, vide, apres, surSaisie, surRetrait });
   if (variante === "grille") return listeGrille({ lignes, groupes, selection, nom, surActiver });
-  if (variante === "objets") return listeObjets({ lignes, nom });
+  if (variante === "objets") return listeObjets({ lignes, nom, surCase, surEcriture });
   if (variante === "passages") return listePassages({ lignes, nom, surLien });
   for (const l of lignes) {
     if (!l.libelle) throw new Error("liste : libelle requis");

@@ -596,6 +596,12 @@ html.poignee-glisse-horizontal, html.poignee-glisse-horizontal * { cursor: row-r
 .ya-objet-texte { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-muted); }
 .ya-objet-fin { flex: none; font: 12px/16px var(--font-sans); color: var(--ink-muted); white-space: nowrap; }
 .ya-objet-actions { flex: none; margin-left: auto; display: flex; gap: 2px; }
+/* C-006 `objets` avec `case` (REQ-202) : case native et libellé avant les boutons, jamais coupés. */
+.ya-objet-case { flex: none; display: flex; align-items: center; gap: var(--space-2); font: 12px/16px var(--font-sans); color: var(--ink-muted); white-space: nowrap; accent-color: var(--accent); }
+.ya-objet-case input { width: 14px; height: 14px; margin: 0; }
+.ya-objet-case input:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 1px; }
+.ya-objet-case .ya-objet-case-cochee { color: var(--ink); }
+.ya-objet-case-inactive { opacity: .45; }
 
 /* C-006 `objets` avec `etat` et `actions` en texte (workflows) : ligne de 32 px, état de 112 px, actions de 240 px au moins (trois places). */
 .ya-objets-texte .ya-objet { height: 32px; gap: var(--space-2); }
