@@ -450,3 +450,91 @@ fn req202_ac2_suppression_du_defaut_et_fichier_ancien_sans_marque() {
         .unwrap()
         .contains("defaut"));
 }
+
+fn defauts(s: &Serveur) -> Vec<String> {
+    fichier_json(s)["environnements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["defaut"] == true)
+        .map(|e| e["nom"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn req202_ac11_defaut_depuis_la_liste_bascule_decoche_et_garde_les_variables_d_un_autre_ecrivain() {
+    let s = lancer("req202-ac11");
+    for corps in [
+        r#"{"nom":"dev","variables":{"B":"2"}}"#,
+        r#"{"nom":"prod","variables":{"A":"1"},"defaut":true}"#,
+    ] {
+        assert_eq!(s.api("PUT", "/api/environnements", corps).0, 200);
+    }
+    assert_eq!(defauts(&s), ["prod"]);
+    let (c, v) = s.api(
+        "PUT",
+        "/api/environnements/dev/defaut",
+        r#"{"defaut":true}"#,
+    );
+    assert_eq!(c, 200, "{v}");
+    assert_eq!(v["environnements"][0]["defaut"], true);
+    assert_eq!(defauts(&s), ["dev"]);
+    let f = fichier_json(&s);
+    assert_eq!(f["environnements"][0]["variables"]["B"], "2");
+    assert_eq!(f["environnements"][1]["variables"]["A"], "1");
+    let (c, _) = s.api(
+        "PUT",
+        "/api/environnements/dev/defaut",
+        r#"{"defaut":false}"#,
+    );
+    assert_eq!(c, 200);
+    assert!(defauts(&s).is_empty());
+    // Un autre écrivain change les variables de `prod` : la marque ne les écrase pas.
+    let mut f = fichier_json(&s);
+    f["environnements"][1]["variables"] = serde_json::json!({ "A": "autre", "C": "3" });
+    std::fs::write(s.fichier(), f.to_string()).unwrap();
+    let (c, _) = s.api(
+        "PUT",
+        "/api/environnements/prod/defaut",
+        r#"{"defaut":true}"#,
+    );
+    assert_eq!(c, 200);
+    assert_eq!(defauts(&s), ["prod"]);
+    assert_eq!(fichier_json(&s)["environnements"][1]["variables"]["C"], "3");
+}
+
+#[test]
+fn req202_ac12_defaut_d_un_nom_absent_404_sans_ecriture_et_401_403() {
+    let s = lancer("req202-ac12");
+    s.api(
+        "PUT",
+        "/api/environnements",
+        r#"{"nom":"dev","variables":{}}"#,
+    );
+    let avant = std::fs::read_to_string(s.fichier()).unwrap();
+    let (c, v) = s.api(
+        "PUT",
+        "/api/environnements/prod/defaut",
+        r#"{"defaut":true}"#,
+    );
+    assert_eq!(c, 404, "{v}");
+    assert_eq!(std::fs::read_to_string(s.fichier()).unwrap(), avant);
+    assert_eq!(
+        s.api("PUT", "/api/environnements/dev/defaut", "oups").0,
+        400
+    );
+    let origine = format!("https://127.0.0.1:{}", s.port);
+    let corps = r#"{"defaut":true}"#;
+    let ch = "/api/environnements/dev/defaut";
+    assert_eq!(requete(s.port, "PUT", ch, "", &origine, corps).0, 401);
+    assert_eq!(
+        requete(s.port, "PUT", ch, &s.cookie, "https://autre.test", corps).0,
+        403
+    );
+    assert_eq!(std::fs::read_to_string(s.fichier()).unwrap(), avant);
+    // Fichier illisible : jamais réécrit.
+    std::fs::write(s.fichier(), "{ oups").unwrap();
+    let (c, _) = s.api("PUT", ch, corps);
+    assert_eq!(c, 409);
+    assert_eq!(std::fs::read_to_string(s.fichier()).unwrap(), "{ oups");
+}

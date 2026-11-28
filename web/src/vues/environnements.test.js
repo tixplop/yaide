@@ -351,15 +351,113 @@ test("REQ202_AC1_AC9_modifier_l_environnement_par_defaut_case_cochee_active_et_e
   await vi.waitFor(() => expect(m.appels).toHaveLength(2));
   expect(m.appels[1].corps).toEqual({ ancien: "dev", nom: "dev", variables: { A: "1" }, defaut: true });
   await vi.waitFor(() => expect(document.querySelector("[role=status]")).not.toBeNull());
-  expect([...document.querySelectorAll(".ya-objet-fin")].map((f) => f.closest("li").dataset.id)).toEqual(["dev"]);
+  expect(casesCochees()).toEqual(["dev"]);
 });
 
-test("REQ202_AC7_AC9_la_ligne_de_l_environnement_par_defaut_seule_finit_par_par_defaut", async () => {
-  const m = monter(liste(PROD_DEFAUT, DEV));
+const caseDe = (id) => document.querySelector(`li[data-id="${id}"] .ya-objet-case input`);
+const casesCochees = () => [...document.querySelectorAll(".ya-objet-case input")].filter((c) => c.checked).map((c) => c.closest("li").dataset.id);
+
+test("REQ202_AC7_AC9_une_case_par_ligne_cochee_sur_la_seule_ligne_par_defaut_libelle_entier_sur_ligne_longue", async () => {
+  const longue = { nom: "n".repeat(120), variables: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`VARIABLE_LONGUE_${i}`, "x"])) };
+  const m = monter(liste(PROD_DEFAUT, DEV, longue));
   await m.v.ouvrir();
-  const fins = [...document.querySelectorAll(".ya-objet-fin")];
-  expect(fins.map((f) => f.textContent)).toEqual(["par défaut"]);
-  expect(fins[0].closest("li").dataset.id).toBe("prod");
+  expect([...document.querySelectorAll(".ya-objet-case input")].map((c) => c.type)).toEqual(["checkbox", "checkbox", "checkbox"]);
+  expect(casesCochees()).toEqual(["prod"]);
+  expect(document.querySelector(".ya-objet-fin")).toBeNull();
+  const l = document.querySelector(`li[data-id="${longue.nom}"]`);
+  expect(l.querySelector(".ya-objet-case").textContent).toBe("par défaut");
+  expect(l.querySelector(".ya-objet-texte").title).toContain("VARIABLE_LONGUE_11");
+});
+
+const PROD_DEV = () => liste(PROD_DEFAUT, DEV);
+
+test("REQ202_AC11_AC13_cocher_dev_ecrit_aussitot_decoche_prod_puis_message_et_focus_sur_la_case", async () => {
+  const m = monter(PROD_DEV(), [liste(PROD, { ...DEV, defaut: true }, { nom: "zeta", variables: {} }), liste(PROD, DEV)]);
+  await m.v.ouvrir();
+  caseDe("dev").focus();
+  caseDe("dev").click();
+  expect(casesCochees()).toEqual(["dev"]);
+  await vi.waitFor(() => expect(dlg().querySelector("[role=status]")?.textContent).toBe("Environnement par défaut : dev. Il servira au prochain lancement."));
+  expect(m.appels[1]).toEqual({ url: "/api/environnements/dev/defaut", methode: "PUT", corps: { defaut: true } });
+  expect(document.activeElement).toBe(caseDe("dev"));
+  expect(casesCochees()).toEqual(["dev"]);
+  expect(caseDe("zeta")).not.toBeNull();
+  caseDe("dev").click();
+  await vi.waitFor(() => expect(dlg().querySelector("[role=status]")?.textContent).toBe("Aucun environnement par défaut."));
+  expect(m.appels[2]).toEqual({ url: "/api/environnements/dev/defaut", methode: "PUT", corps: { defaut: false } });
+  expect(casesCochees()).toEqual([]);
+  expect(document.activeElement).toBe(caseDe("dev"));
+});
+
+test("REQ202_AC15_ecriture_en_cours_tout_desactive_echap_ne_ferme_pas_puis_tout_se_rend", async () => {
+  let rendre;
+  const m = monter(PROD_DEV(), [() => new Promise((r) => { rendre = r; })]);
+  await m.v.ouvrir();
+  caseDe("dev").focus();
+  caseDe("dev").click();
+  expect(casesCochees()).toEqual(["dev"]);
+  expect(caseDe("dev").getAttribute("aria-disabled")).toBe("true");
+  expect(document.querySelector("ul").getAttribute("aria-busy")).toBe("true");
+  for (const n of ["Fermer", "Ajouter un environnement", "Modifier prod", "Supprimer dev"]) expect(parNom(n).disabled).toBe(true);
+  expect(caseDe("prod").disabled).toBe(true);
+  echap();
+  expect(m.fermetures).toEqual([]);
+  expect(dlg().hasAttribute("open")).toBe(true);
+  rendre(liste(PROD, { ...DEV, defaut: true }));
+  await vi.waitFor(() => expect(dlg().querySelector("[role=status]")).not.toBeNull());
+  expect(dlg().querySelectorAll("[disabled], [aria-disabled], [aria-busy]").length).toBe(0);
+  expect(document.activeElement).toBe(caseDe("dev"));
+  echap();
+  expect(m.fermetures).toEqual([true]);
+});
+
+test("REQ202_AC12_AC15_coupure_la_case_de_prod_est_de_nouveau_cochee_celle_de_dev_decochee", async () => {
+  const m = monter(PROD_DEV(), ["coupure"]);
+  await m.v.ouvrir();
+  caseDe("dev").focus();
+  caseDe("dev").click();
+  await vi.waitFor(() => expect(dlg().querySelector("[role=alert]")?.textContent).toBe("Connexion perdue. Réessayez au retour."));
+  expect(casesCochees()).toEqual(["prod"]);
+  expect(dlg().querySelectorAll("[disabled], [aria-disabled], [aria-busy]").length).toBe(0);
+  expect(document.activeElement).toBe(caseDe("dev"));
+  expect(m.appels).toHaveLength(2);
+});
+
+const INCONNU = () => rep({ fichier: FICHIER, cause: "inconnu", message: "Cet environnement n'est plus dans le fichier." }, 404);
+
+test("REQ202_AC12_AC15_environnement_disparu_message_liste_relue_et_focus_sur_la_case_suivante_sinon_precedente", async () => {
+  const m = monter(liste(DEV, PROD_DEFAUT, LOCAL), [INCONNU(), liste(DEV, LOCAL)]);
+  await m.v.ouvrir();
+  caseDe("prod").click();
+  await vi.waitFor(() => expect(dlg().querySelector("[role=alert]")?.textContent).toBe("L'environnement prod n'existe plus."));
+  expect(m.appels.map((a) => a.methode)).toEqual(["GET", "PUT", "GET"]);
+  expect(caseDe("prod")).toBeNull();
+  expect(document.activeElement).toBe(caseDe("local"));
+  expect(dlg().querySelectorAll("[disabled], [aria-disabled], [aria-busy]").length).toBe(0);
+});
+
+test("REQ202_AC15_disparu_en_dernier_le_focus_va_a_la_case_precedente_sinon_a_ajouter", async () => {
+  const m = monter(liste(DEV, LOCAL, PROD), [INCONNU(), liste(DEV, LOCAL)]);
+  await m.v.ouvrir();
+  caseDe("prod").click();
+  await vi.waitFor(() => expect(document.activeElement).toBe(caseDe("local")));
+  const seul = monter(liste(DEV), [INCONNU(), liste()]);
+  document.body.replaceChildren();
+  await seul.v.ouvrir();
+  caseDe("dev").click();
+  await vi.waitFor(() => expect(document.activeElement).toBe(parNom("Ajouter un environnement")));
+});
+
+test("REQ202_AC12_autre_echec_et_fichier_illisible_messages_sans_detail", async () => {
+  const m = monter(PROD_DEV(), [rep({ cause: "ecriture", message: "disque plein." }, 500), rep({ fichier: FICHIER, cause: "illisible", message: "x", detail: "expected value" }, 409)]);
+  await m.v.ouvrir();
+  caseDe("dev").click();
+  await vi.waitFor(() => expect(dlg().querySelector("[role=alert]")?.textContent).toBe("Enregistrement impossible : disque plein."));
+  expect(casesCochees()).toEqual(["prod"]);
+  caseDe("dev").click();
+  await vi.waitFor(() => expect(dlg().querySelector("[role=alert]")?.textContent).toBe(`${FICHIER} est illisible. Corrigez-le, puis rouvrez Environnements.`));
+  expect(dlg().querySelector("[role=alert]").textContent).not.toContain("expected value");
+  expect(casesCochees()).toEqual(["prod"]);
 });
 
 test("REQ202_AC10_suppression_de_l_environnement_par_defaut_ajoute_la_phrase_sinon_texte_inchange", async () => {

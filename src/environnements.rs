@@ -189,6 +189,26 @@ pub fn supprimer(fichier: &Path, nom: &str) -> Result<Vec<Environnement>, Erreur
     Ok(f.environnements)
 }
 
+/// Met `defaut` sur `nom` (et l'enlève aux autres) ou l'enlève : relit le fichier, ne change que les marques.
+/// `nom` absent : `Erreur::Inconnu`, rien n'est écrit.
+pub fn marquer_defaut(
+    fichier: &Path,
+    nom: &str,
+    defaut: bool,
+) -> Result<Vec<Environnement>, Erreur> {
+    let _verrou = ECRITURE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut f = charger(fichier)?;
+    if !f.environnements.iter().any(|e| e.nom == nom) {
+        return Err(Erreur::Inconnu);
+    }
+    for e in &mut f.environnements {
+        e.defaut = defaut && e.nom == nom;
+    }
+    ecrire(fichier, &f)?;
+    trier(&mut f.environnements);
+    Ok(f.environnements)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

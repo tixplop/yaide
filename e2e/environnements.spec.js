@@ -100,8 +100,8 @@ test("REQ202_AC3_AC8_parcours_environnement_par_defaut_cochee_dans_la_fiche_clic
   await defaut.check();
   await panneau.getByRole("button", { name: "Enregistrer" }).click();
   await expect(panneau.getByText("Environnement prod enregistré. Il servira au prochain lancement.")).toBeVisible();
-  await expect(panneau.getByText("par défaut", { exact: true })).toHaveCount(1);
-  await expect(panneau.getByRole("listitem").filter({ hasText: "prod" }).getByText("par défaut")).toBeVisible();
+  await expect(panneau.getByRole("checkbox", { name: "prod par défaut" })).toBeChecked();
+  await expect(panneau.getByRole("checkbox", { name: "dev par défaut" })).not.toBeChecked();
   await page.keyboard.press("Escape");
   await expect(panneau).toBeHidden();
 

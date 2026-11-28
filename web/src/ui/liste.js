@@ -39,7 +39,7 @@ function decouper(texte, [debut, fin]) {
 }
 
 // Variante `objets` (C-006, V-012) : `<ul>` nommé, une `<li>` par ligne, deux boutons à icône par ligne,
-// chacun un arrêt de Tab. `lignes` : { id, libelle, dossier, fin, policeCode, actions: [{ icone, nomAccessible, infoBulle, surClic }] }.
+// chacun un arrêt de Tab. `lignes` : { id, libelle, dossier, policeCode, actions: [{ icone, nomAccessible, infoBulle, surClic }] }.
 // `case` : { libelle, cochee }, la case de la ligne (REQ-202) ; `surCase(id, cochee)` rend une promesse. Pendant elle, la case
 // changée garde le focus (`aria-disabled`), la liste est `aria-busy`, le reste est `disabled` ; rejetée, la case reprend son état.
 // `surEcriture(vrai | faux)` prévient la vue du début et de la fin de l'écriture ; `cocher(id, cochee)` change une case sans écrire.
@@ -80,12 +80,6 @@ function listeObjets({ lignes, nom, surCase, surEcriture }) {
       d.textContent = l.dossier;
       d.title = l.dossier;
       li.append(d);
-    }
-    if (l.fin) {
-      const f = document.createElement("span");
-      f.className = "ya-objet-fin";
-      f.textContent = l.fin;
-      li.append(f);
     }
     if (l.case) {
       const n = ++compteCases;

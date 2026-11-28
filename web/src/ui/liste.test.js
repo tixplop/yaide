@@ -1237,33 +1237,6 @@ test("REQ096_AC17_objets_le_bouton_qui_prend_le_focus_est_amene_dans_la_vue", ()
   expect(() => liste({ variante: "objets", lignes: [] })).toThrow(/nom/);
 });
 
-test("REQ182_REQ202_objets_fin_texte_court_avant_les_boutons_jamais_coupe_ink_muted", () => {
-  const l = liste({
-    variante: "objets",
-    nom: "Environnements",
-    lignes: [
-      { id: "prod", libelle: "prod", dossier: "ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN", fin: "par défaut", actions: actionsMcp(() => {})("prod") },
-      { id: "dev", libelle: "dev", dossier: "A", actions: actionsMcp(() => {})("dev") },
-    ],
-  });
-  document.body.append(l);
-  const [prod, dev] = [...l.children];
-  expect(prod.textContent).toBe("prodANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKENpar défaut");
-  const fin = prod.querySelector(".ya-objet-fin");
-  expect(fin.textContent).toBe("par défaut");
-  // Juste avant les boutons, après le texte des variables.
-  expect(fin.nextElementSibling).toBe(prod.querySelector(".ya-objet-actions"));
-  expect(fin.previousElementSibling.classList.contains("ya-objet-texte")).toBe(true);
-  expect(dev.querySelector(".ya-objet-fin")).toBeNull();
-  expect(regle(".ya-objet-fin")).toContain("flex: none");
-  expect(regle(".ya-objet-fin")).toContain("white-space: nowrap");
-  expect(regle(".ya-objet-fin")).toContain("color: var(--ink-muted)");
-  expect(regle(".ya-objet-fin")).toContain("12px/16px");
-  expect(regle(".ya-objet-fin")).not.toContain("overflow");
-  expect(regle(".ya-objet-texte")).toContain("flex: 1 1 0");
-  expect(regle(".ya-objet-texte")).toContain("min-width: 0");
-});
-
 test("REQ096_AC17_contrastes_de_la_liste_objets_et_de_la_commande_du_rail", () => {
   const tokens = readFileSync("web/src/ui/tokens.css", "utf8");
   const jetonsDe = (theme) => {

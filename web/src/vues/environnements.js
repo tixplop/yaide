@@ -1,4 +1,4 @@
-import { enregistrerEnvironnement, lireEnvironnements, supprimerEnvironnement } from "../api.js";
+import { enregistrerEnvironnement, lireEnvironnements, marquerEnvironnementDefaut, supprimerEnvironnement } from "../api.js";
 import { bouton } from "../ui/bouton.js";
 import { champ } from "../ui/champ.js";
 import { dialogue, fiche } from "../ui/dialogue.js";
@@ -40,9 +40,10 @@ export function vueEnvironnements({ surFermeture = () => {} } = {}) {
   let environnements = [];
   let enregistrement = false;
   let fichier = null;
+  let ecritureCase = false;
 
   function fermer() {
-    if (!dlg) return;
+    if (!dlg || ecritureCase) return;
     generation++;
     dlg.fermer({ rendreFocus: false });
     dlg = null;
@@ -79,24 +80,64 @@ export function vueEnvironnements({ surFermeture = () => {} } = {}) {
   }
 
   // `focus` : environnement dont « Modifier » prend le focus ; absent ou inconnu → le premier, sinon « Ajouter un environnement ».
-  function afficherListe({ resultat, focus, focusSuppression, focusAjout = false } = {}) {
+  function afficherListe({ resultat, focus, focusSuppression, focusCase, focusAjout = false } = {}) {
     const f = bouton({ libelle: "Fermer" });
     const ajouter = bouton({ libelle: "Ajouter un environnement", variante: "principal" });
     f.addEventListener("click", fermer);
     ajouter.addEventListener("click", () => afficherFiche({ valeurs: { nom: "", variables: "", defaut: false } }));
+    let ul = null;
+    // REQ-202 : la case change aussitôt (l'ancienne est décochée), puis écrit ; un échec rejette, la liste rend les cases.
+    async function surCase(nom, cochee) {
+      dlg.definirResultat();
+      const ancienne = cochee ? environnements.find((e) => e.defaut && e.nom !== nom)?.nom : undefined;
+      if (ancienne !== undefined) ul.cocher(ancienne, false);
+      const r = await marquerEnvironnementDefaut(nom, cochee);
+      retenirFichier(r);
+      if (Array.isArray(r.environnements)) {
+        environnements = r.environnements;
+        return afficherListe({
+          resultat: message({ texte: cochee ? `Environnement par défaut : ${nom}. Il servira au prochain lancement.` : "Aucun environnement par défaut.", variante: "succes" }),
+          focusCase: nom,
+        });
+      }
+      if (r.cause === "inconnu") {
+        const rang = environnements.findIndex((e) => e.nom === nom);
+        const voisin = environnements[rang + 1] ?? environnements[rang - 1];
+        const relue = await lireEnvironnements();
+        retenirFichier(relue);
+        if (!Array.isArray(relue.environnements)) return afficherEchecLecture(relue);
+        environnements = relue.environnements;
+        return afficherListe({ resultat: message({ texte: `L'environnement ${nom} n'existe plus.`, variante: "erreur" }), focusCase: voisin?.nom, focusAjout: !voisin });
+      }
+      if (ancienne !== undefined) ul.cocher(ancienne, true);
+      dlg.definirResultat(
+        r.coupure
+          ? message({ texte: TEXTE_COUPURE, variante: "erreur" })
+          : r.cause === "illisible"
+            ? message({ texte: texteIllisible(fichier), variante: "erreur" })
+            : message({ texte: `Enregistrement impossible : ${sansPoint(r.message)}.`, variante: "erreur" }),
+      );
+      throw new Error("écriture refusée");
+    }
     const contenu =
       environnements.length === 0
         ? indication({ texte: "Aucun environnement." })
-        : liste({
+        : (ul = liste({
             variante: "objets",
             nom: "Environnements",
+            surCase,
+            surEcriture: (vrai) => {
+              ecritureCase = vrai;
+              f.disabled = vrai;
+              ajouter.disabled = vrai;
+            },
             lignes: environnements.map((e) => {
               const noms = Object.keys(e.variables ?? {});
               return {
                 id: e.nom,
                 libelle: e.nom,
                 dossier: noms.length ? noms.join(", ") : "Aucune variable",
-                ...(e.defaut ? { fin: "par défaut" } : {}),
+                case: { libelle: "par défaut", cochee: e.defaut === true },
                 policeCode: noms.length > 0,
                 actions: [
                   { icone: "sliders-horizontal", nomAccessible: `Modifier ${e.nom}`, infoBulle: "Modifier", surClic: ouvrirFiche },
@@ -104,12 +145,13 @@ export function vueEnvironnements({ surFermeture = () => {} } = {}) {
                 ],
               };
             }),
-          });
+          }));
     dlg.remplacer([contenu]);
     dlg.definirResultat(resultat);
     poserActions(f, ajouter);
     const cible =
       (focusAjout && ajouter) ||
+      (focusCase !== undefined && [...ul.children].find((li) => li.dataset.id === focusCase)?.querySelector(".ya-objet-case input")) ||
       (focusSuppression !== undefined && boutonDe(`Supprimer ${focusSuppression}`)) ||
       (focus !== undefined && boutonDe(`Modifier ${focus}`)) ||
       (environnements[0] && boutonDe(`Modifier ${environnements[0].nom}`)) ||
@@ -251,6 +293,7 @@ export function vueEnvironnements({ surFermeture = () => {} } = {}) {
       focusInitial: f,
       surAnnuler: fermer,
     });
+    ecritureCase = false;
     dlg.ouvrir();
     // Pendant le chargement, le focus est sur le dialogue.
     dlg.element.tabIndex = -1;

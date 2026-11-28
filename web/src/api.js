@@ -617,6 +617,8 @@ async function appelEnvironnements(chemin, options) {
 export const lireEnvironnements = () => appelEnvironnements("/api/environnements");
 /** `saisie` : `{ ancien?, nom, variables: { NOM: valeur } }`. Rend la liste à jour. */
 export const enregistrerEnvironnement = (saisie) => appelEnvironnements("/api/environnements", json("PUT", saisie));
+/** Marque (`defaut` vrai) ou démarque l'environnement `nom` comme environnement par défaut (REQ-202). Rend la liste à jour. */
+export const marquerEnvironnementDefaut = (nom, defaut) => appelEnvironnements(`/api/environnements/${q(nom)}/defaut`, json("PUT", { defaut }));
 export const supprimerEnvironnement = (nom) => appelEnvironnements(`/api/environnements/${q(nom)}`, { method: "DELETE" });
 
 let jetonApercuGarde = null;

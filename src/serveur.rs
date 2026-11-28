@@ -1714,6 +1714,27 @@ async fn environnements_supprimer(
     reponse_environnements(&fichier, r)
 }
 
+/// `{ defaut: true|false }`.
+async fn environnements_defaut(
+    State(etat): State<Partage>,
+    CheminUrl(nom): CheminUrl<String>,
+    corps: Bytes,
+) -> Response {
+    #[derive(serde::Deserialize)]
+    struct Corps {
+        defaut: bool,
+    }
+    let Ok(c) = serde_json::from_slice::<Corps>(&corps) else {
+        return corps_invalide();
+    };
+    let fichier = etat.config.join("environnements.json");
+    let f = fichier.clone();
+    let r = tokio::task::spawn_blocking(move || environnements::marquer_defaut(&f, &nom, c.defaut))
+        .await
+        .unwrap_or_else(|e| Err(environnements::Erreur::Systeme(e.to_string())));
+    reponse_environnements(&fichier, r)
+}
+
 fn refus_base(code: StatusCode, cause: &str, message: impl Into<String>) -> Response {
     json_rep(
         code,
@@ -2597,6 +2618,10 @@ pub async fn servir(
         .route(
             "/api/environnements/{nom}",
             delete(environnements_supprimer),
+        )
+        .route(
+            "/api/environnements/{nom}/defaut",
+            put(environnements_defaut),
         )
         .route(
             "/api/journal",
