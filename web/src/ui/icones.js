@@ -19,6 +19,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 Icônes Lucide (ISC) utilisées ici : power, panel-left-close, panel-left-open, panel-right-close, panel-bottom-close, panel-bottom-open, bot, message-square-plus, history, send-horizontal, circle-stop, circle-dashed, circle-check, circle-x, circle-arrow-up, type, users, user-plus, sliders-horizontal, text-align-start, text-align-center, text-align-end, arrow-left, asterisk, code-xml, circle-minus, brain, messages-square, server, copy, clipboard-paste, locate-fixed, square-dashed, bring-to-front, send-to-back, mouse-pointer-2, circle, diamond, baseline, workflow, move-up-right, square-plus, zoom-out, zoom-in, scan, bold, italic, underline, strikethrough, shapes.
 Icônes Lucide (ISC) de la barre « Mise en forme » (REQ-170) : heading, code, text-quote, list-ordered, square-code, table, separator-horizontal.
 Icônes Lucide (ISC) des workflows (REQ-190, REQ-191) : waypoints, folder-search, clock, webhook, bot-message-square, square-terminal, square-asterisk, file-cog ; scroll-text (REQ-195).
+Icônes Lucide (ISC) du panneau de recherche (REQ-206, REQ-207) : case-sensitive, regex, replace, replace-all.
 Dessinées pour Yaide : info, triangle-alert-plein, circle-alert-plein (REQ-187), liste-puces, couleur-texte, opacite-100, opacite-75, opacite-50, opacite-25, opacite-0, taille-petit, taille-normal, taille-grand, taille-tres-grand, epaisseur-fin, epaisseur-moyen, epaisseur-epais, position-haut, position-milieu, position-bas ; les vingt-cinq contenus `symbole-<shape>` (REQ-149) sont de Lucide (database, user-round, users-round, lock, lock-open, circle-check, circle-x, network, wifi, ethernet-port, server, cloud, monitor, smartphone, file-text, mail, settings, triangle-alert, brick-wall, hard-drive, globe, smile, meh, frown), sauf `symbole-pipe`, dessiné pour Yaide ; `forme-point` et `forme-barre` (REQ-156) sont pleins, dessinés pour Yaide.
 
 ---
@@ -94,6 +95,10 @@ const CHEMINS = {
   "layers": "<path d=\"M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z\"/><path d=\"M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12\"/><path d=\"M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17\"/>",
   "chevron": "<path d=\"m9 6 6 6-6 6\"/>",
   "chevron-down": "<path d=\"m6 9 6 6 6-6\"/>",
+  "case-sensitive": "<path d=\"m3 15 4-8 4 8\"/><path d=\"M4 13h6\"/><circle cx=\"18\" cy=\"12\" r=\"3\"/><path d=\"M21 9v6\"/>",
+  "regex": "<path d=\"M17 3v10\"/><path d=\"m12.67 5.5 8.66 5\"/><path d=\"m12.67 10.5 8.66-5\"/><path d=\"M9 17a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2z\"/>",
+  "replace": "<path d=\"M14 4a1 1 0 0 1 1-1\"/><path d=\"M15 10a1 1 0 0 1-1-1\"/><path d=\"M21 4a1 1 0 0 0-1-1\"/><path d=\"M21 9a1 1 0 0 1-1 1\"/><path d=\"m3 7 3 3 3-3\"/><path d=\"M6 10V5a2 2 0 0 1 2-2h2\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/>",
+  "replace-all": "<path d=\"M14 14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2\"/><path d=\"M14 4a2 2 0 0 1 2-2\"/><path d=\"M16 10a2 2 0 0 1-2-2\"/><path d=\"M20 14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2\"/><path d=\"M20 2a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2\"/><path d=\"m3 7 3 3 3-3\"/><path d=\"M6 10V5a2 2 0 0 1 2-2h2\"/><rect x=\"2\" y=\"14\" width=\"8\" height=\"8\" rx=\"1\"/>",
   "chevron-up": "<path d=\"m18 15-6-6-6 6\"/>",
   "chevron-right": "<path d=\"m9 18 6-6-6-6\"/>",
   "panel-left-close": "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M9 3v18\"/><path d=\"m16 15-3-3 3-3\"/>",

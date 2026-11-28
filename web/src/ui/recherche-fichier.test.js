@@ -112,7 +112,7 @@ test("REQ159_AC9_structure_et_noms", () => {
   expect(p.querySelector(`label[for="${c.id}"]`).textContent).toBe("Rechercher dans le fichier");
   expect(c.placeholder).toBe("Rechercher");
   expect(c.getAttribute("autocomplete")).toBe("off");
-  const boutons = [...p.querySelectorAll("button")];
+  const boutons = [...p.querySelectorAll("button")].slice(2);
   expect(boutons.map((b) => b.getAttribute("aria-label"))).toEqual(["Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
   expect(boutons.map((b) => b.querySelector("svg").outerHTML)).toEqual(["chevron-up", "chevron-down", "x"].map((n) => icone(n).outerHTML));
   vi.useFakeTimers();
@@ -126,7 +126,7 @@ test("REQ159_AC9_structure_et_noms", () => {
     b.parentElement.dispatchEvent(new Event("pointerleave"));
   });
   const ordre = [...p.querySelectorAll("input, .ya-recherche-compteur, button")].map((e) => e.tagName + (e.className.includes("compteur") ? "C" : ""));
-  expect(ordre).toEqual(["INPUT", "SPANC", "BUTTON", "BUTTON", "BUTTON"]);
+  expect(ordre).toEqual(["INPUT", "BUTTON", "BUTTON", "SPANC", "BUTTON", "BUTTON", "BUTTON"]);
 });
 
 test("REQ159_AC10_boutons_inactifs_et_zone_status", () => {
@@ -197,7 +197,7 @@ test("REQ159_AC12_clavier", () => {
   // Ordre de Tab : champ, précédente, suivante, fermer, puis l'éditeur
   const tabulables = [...panneau(z).querySelectorAll("input, button")];
   expect(tabulables.every((e) => e.tabIndex === 0)).toBe(true);
-  expect(tabulables.map((e) => e.getAttribute("aria-label") ?? e.tagName)).toEqual(["INPUT", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
+  expect(tabulables.map((e) => e.getAttribute("aria-label") ?? e.tagName)).toEqual(["INPUT", "Respecter la casse", "Expression régulière", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
   expect(tabulables.some((e) => e.getAttribute("tabindex") === "-1")).toBe(false);
   const contenu = z.vue.contentDOM;
   expect(contenu.getAttribute("tabindex")).not.toBe("-1");

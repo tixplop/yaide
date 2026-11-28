@@ -1008,3 +1008,17 @@ test("REQ197_AC8_REQ204_AC9_duree_du_lisere_et_contrastes_des_paires_nouvelles",
     }
   });
 });
+
+test("REQ206_AC7_REQ206_AC8_contrastes_du_bouton_presse_et_du_compteur_invalide_sur_bg_300", () => {
+  THEMES.forEach((theme, k) => {
+    const fond = jeton(theme, "--bg-300");
+    const pressee = poser(jeton(theme, "--accent-soft"), fond);
+    const presse = contraste(jeton(theme, "--accent-fg"), pressee);
+    expect(presse, `icône pressée (${theme})`).toBeGreaterThanOrEqual(3);
+    egalA(presse, [4.76, 5.26][k], `--accent-fg sur --accent-soft sur --bg-300 (${theme})`);
+    const invalide = contraste(jeton(theme, "--danger"), fond);
+    expect(invalide, `Invalide (${theme})`).toBeGreaterThanOrEqual(4.5);
+    egalA(invalide, [5.26, 6.69][k], `--danger sur --bg-300 (${theme})`);
+  });
+  expect(composants).toMatch(/\.ya-occ-invalide\s*\{[^}]*color: var\(--danger\)/);
+});

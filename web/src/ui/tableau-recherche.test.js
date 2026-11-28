@@ -274,7 +274,7 @@ test("REQ161_AC8_le_panneau_est_le_premier_enfant_nomme_et_Tab_passe_par_trois_b
   t.definirNom("autre.jdiag");
   expect(panneau().getAttribute("aria-label")).toBe("Rechercher dans autre.jdiag");
   const ordre = [...panneau().querySelectorAll("input, button")].map((e) => e.getAttribute("aria-label") ?? e.tagName);
-  expect(ordre.slice(1)).toEqual(["Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
+  expect(ordre.slice(1)).toEqual(["Respecter la casse", "Expression régulière", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
   const focalisables = [...t.element.querySelectorAll("input, button, [tabindex='0']")].filter((e) => !e.hasAttribute("disabled"));
   const dernierBouton = panneau().querySelector('button[aria-label="Fermer la recherche"]');
   expect(focalisables[focalisables.indexOf(dernierBouton) + 1]).toBe(surface());

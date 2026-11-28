@@ -277,10 +277,10 @@ test("REQ160_AC1_AC9_le_panneau_est_premier_enfant_du_conteneur_et_tab_mene_a_la
   expect(p.getAttribute("role")).toBe("search");
   expect(p.getAttribute("aria-label")).toBe("Rechercher dans clients.csv");
   const ordre = [...p.querySelectorAll("input, .ya-recherche-compteur, button")].map((x) => (x.tagName === "INPUT" ? "champ" : x.className.includes("compteur") ? "compteur" : x.getAttribute("aria-label")));
-  expect(ordre).toEqual(["champ", "compteur", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
-  // Tab : trois boutons puis la cellule active (seule cellule focalisable).
+  expect(ordre).toEqual(["champ", "Respecter la casse", "Expression régulière", "compteur", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
+  // Tab : cinq boutons puis la cellule active (seule cellule focalisable).
   const focalisables = [...t.element.querySelectorAll("input, button, [tabindex='0']")];
-  expect(focalisables.map((x) => x.tagName)).toEqual(["INPUT", "BUTTON", "BUTTON", "BUTTON", "TD"]);
+  expect(focalisables.map((x) => x.tagName)).toEqual(["INPUT", "BUTTON", "BUTTON", "BUTTON", "BUTTON", "BUTTON", "TD"]);
   expect(focalisables.at(-1)).toBe(cellule(t, 1, 1));
   const statut = p.querySelector("[role=status]");
   chercher(t, "a");

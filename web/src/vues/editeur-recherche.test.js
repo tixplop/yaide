@@ -60,7 +60,7 @@ test("REQ159_AC1_ctrl_f_ouvre_le_panneau_sur_un_markdown_seulement", async () =>
   expect(document.activeElement).toBe(p.querySelector("input"));
   // champ, compteur, flèche haut, flèche bas, croix, dans cet ordre
   const ordre = [...p.querySelectorAll("input, .ya-recherche-compteur, button")].map((x) => x.tagName === "INPUT" ? "champ" : x.className.includes("compteur") ? "compteur" : x.getAttribute("aria-label"));
-  expect(ordre).toEqual(["champ", "compteur", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
+  expect(ordre).toEqual(["champ", "Respecter la casse", "Expression régulière", "compteur", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
   // Ctrl+F panneau ouvert : focus et texte sélectionné
   const saisie = p.querySelector("input");
   saisie.value = "yaide";
@@ -279,7 +279,7 @@ test("REQ161_AC1_ctrl_f_sur_la_surface_ou_la_boite_a_outils_ouvre_le_panneau_et_
   expect(panneauWb().getAttribute("aria-label")).toBe("Rechercher dans plan.jdiag");
   expect(z.firstElementChild).toBe(panneauWb());
   expect(document.activeElement).toBe(panneauWb().querySelector("input"));
-  expect([...panneauWb().querySelectorAll("input, button")].map((x) => x.getAttribute("aria-label") ?? x.className)).toEqual(["champ-saisie ya-input", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
+  expect([...panneauWb().querySelectorAll("input, button")].map((x) => x.getAttribute("aria-label") ?? x.className)).toEqual(["champ-saisie ya-input", "Respecter la casse", "Expression régulière", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
   // Depuis la boîte à outils : de même, la fenêtre étant déjà là, le champ reprend le focus.
   panneauWb().querySelector('button[aria-label="Fermer la recherche"]').click();
   expect(panneauWb()).toBeNull();
