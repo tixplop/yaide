@@ -1440,6 +1440,21 @@ pub fn ecouter_mcp(port: u16) -> Option<TcpListener> {
     })
 }
 
+/// Route de l'aide cron (REQ-204) : les trois prochaines minutes de l'expression, à l'heure de la
+/// machine, au format `AAAA-MM-JJTHH:MM` ; `{"illisible":true}` ou `{"aucune":true}` sinon.
+async fn cron_prochaines(Query(q): Requete) -> Response {
+    let expression = q.get("expression").map_or("", String::as_str);
+    let maintenant = chrono::Local::now().naive_local();
+    let corps = match crate::agent::declencheurs::prochaines_fois(expression, maintenant, 3) {
+        None => serde_json::json!({ "illisible": true }),
+        Some(d) if d.is_empty() => serde_json::json!({ "aucune": true }),
+        Some(d) => serde_json::json!({
+            "dates": d.iter().map(|t| t.format("%Y-%m-%dT%H:%M").to_string()).collect::<Vec<_>>()
+        }),
+    };
+    json_rep(StatusCode::OK, corps)
+}
+
 /// Route du panneau : l'adresse du serveur MCP, ou les ports qui manquent.
 async fn serveur_mcp_adresse(State(etat): State<Partage>) -> Response {
     match etat.mcp {
@@ -2630,6 +2645,7 @@ pub async fn servir(
                 .delete(journal_purger),
         )
         .route("/api/serveur-mcp", get(serveur_mcp_adresse))
+        .route("/api/cron", get(cron_prochaines))
         .route("/api/opencode", get(opencode_disponible))
         .route("/api/opencode/api/{*chemin}", any(relais_opencode))
         .route(

@@ -141,6 +141,17 @@ pub fn lire_cron(expression: &str) -> Option<Cron> {
         .ok()
 }
 
+/// Les `n` prochaines minutes de l'expression après `maintenant`, à l'heure locale (REQ-204,
+/// DEC-130) : `None` si elle est illisible, liste vide si aucune date n'existe.
+pub fn prochaines_fois(
+    expression: &str,
+    maintenant: NaiveDateTime,
+    n: usize,
+) -> Option<Vec<NaiveDateTime>> {
+    let cron = lire_cron(expression)?;
+    Some(cron.iter_after(maintenant).take(n).collect())
+}
+
 /// L'évènement d'une planification atteinte à cette minute, une seule fois par minute.
 /// La minute est notée même quand l'agent est muet : une minute passée n'est jamais rattrapée.
 pub(crate) fn relever_planification(
@@ -684,6 +695,33 @@ mod tests_journal {
 mod tests_planification {
     use super::*;
     use chrono::NaiveDate;
+
+    #[test]
+    fn req204_ac1_prochaines_fois() {
+        let d = |m, j, h, mi| {
+            NaiveDate::from_ymd_opt(2026, m, j)
+                .unwrap()
+                .and_hms_opt(h, mi, 0)
+                .unwrap()
+        };
+        let depuis = d(11, 28, 10, 0);
+        assert_eq!(
+            prochaines_fois("0 9 * * 1-5", depuis, 3),
+            Some(vec![d(11, 30, 9, 0), d(12, 1, 9, 0), d(12, 2, 9, 0)])
+        );
+        assert_eq!(
+            prochaines_fois("*/15 * * * *", d(11, 28, 10, 7), 3),
+            Some(vec![
+                d(11, 28, 10, 15),
+                d(11, 28, 10, 30),
+                d(11, 28, 10, 45)
+            ])
+        );
+        for ko in ["61 * * * *", "* * *", "toutes les heures", ""] {
+            assert_eq!(prochaines_fois(ko, depuis, 3), None, "{ko}");
+        }
+        assert_eq!(prochaines_fois("0 0 30 2 *", depuis, 3), Some(vec![]));
+    }
 
     fn agent(dossier: &str, cron: &str) -> Agent {
         Agent {

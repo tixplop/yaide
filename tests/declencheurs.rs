@@ -1673,3 +1673,44 @@ fn REQ186_AC3_un_refus_ecrit_une_ligne_erreur_au_texte_du_toast() {
     let l = attendre_ligne(&s, t);
     assert!(l.contains(&("Erreur".to_string(), t.to_string(), String::new())));
 }
+
+#[test]
+fn REQ204_AC2_route_cron_dates_illisible_aucune_et_session() {
+    let racine = preparer("cron204");
+    let s = demarrer(&racine, "p");
+    let r = s.appel(
+        "GET",
+        "/api/cron?expression=0%209%20*%20*%201-5",
+        &Value::Null,
+    );
+    assert_eq!(r.code, 200);
+    let dates = r.json()["dates"].as_array().unwrap().clone();
+    assert_eq!(dates.len(), 3);
+    for d in &dates {
+        let d = d.as_str().unwrap();
+        assert_eq!(d.len(), 16, "{d}");
+        assert!(d.ends_with("T09:00"), "{d}");
+    }
+    let r = s.appel(
+        "GET",
+        "/api/cron?expression=61%20*%20*%20*%20*",
+        &Value::Null,
+    );
+    assert_eq!(r.json(), json!({ "illisible": true }));
+    let r = s.appel(
+        "GET",
+        "/api/cron?expression=0%200%2030%202%20*",
+        &Value::Null,
+    );
+    assert_eq!(r.json(), json!({ "aucune": true }));
+    let origine = format!("https://127.0.0.1:{}", s.port);
+    let sans = requete(
+        s.port,
+        "GET",
+        "/api/cron?expression=*%20*%20*%20*%20*",
+        "",
+        &origine,
+        b"",
+    );
+    assert_eq!(sans.code, 401);
+}
