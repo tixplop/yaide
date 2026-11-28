@@ -1,7 +1,7 @@
 import { undo, redo, isolateHistory } from "@codemirror/commands";
 import { lireCsv, changerCellule, insererColonne, supprimerColonne, insererRangee, supprimerRangee } from "../csv.js";
 import { champSaisie, decalageDuClic, aidesSurvol } from "./hybride.js";
-import { panneauRecherche, chercherTexte, marquerOccurrences, retirerMarques } from "./panneau-recherche.js";
+import { panneauRecherche, chercherTexte, remplacerTexte, marquerOccurrences, retirerMarques } from "./panneau-recherche.js";
 import { estMac } from "../references.js";
 
 // Tableur d'un fichier CSV (C-008 `hybride` sur un `.csv`, REQ-157, DEC-109). `vue` est l'EditorView de l'onglet,
@@ -79,35 +79,42 @@ export function tableur({ vue, nom }) {
   }
 
   // ---- Recherche dans les cellules (REQ-160) ----
-  const rech = { texte: "", ouvert: false };
+  const rech = { texte: "", ouvert: false, casse: false, regex: false };
   let courante = null; // cellule choisie par F3 : { r, c }
   let panneau = null;
 
+  const options = () => ({ casse: rech.casse, regex: rech.regex });
+
   // Cellules dont le texte affiché contient le texte cherché, rangée par rangée, de gauche à droite.
+  // `invalide` : expression régulière refusée.
   function occurrences() {
     const l = rech.ouvert && rech.texte ? lecture() : null;
-    const sortie = [];
+    const occ = [];
+    let invalide = false;
     l?.rangees.forEach((rangee, r) =>
       rangee.champs.forEach((champ, c) => {
-        if (chercherTexte(champ.texte, rech.texte).length) sortie.push({ r, c });
+        const paires = chercherTexte(champ.texte, rech.texte, options());
+        if (paires === null) invalide = true;
+        else if (paires.length) occ.push({ r, c });
       }),
     );
-    return sortie;
+    return { occ: invalide ? [] : occ, invalide };
   }
 
   // Surligne les cellules trouvées (jamais celle en saisie) et met à jour le panneau.
   function majRecherche() {
     retirerMarques(table);
     if (!rech.ouvert || !panneau) return;
-    const occ = occurrences();
+    const { occ, invalide } = occurrences();
     for (const { r, c } of occ) {
       const texte = cellule(r, c)?.querySelector(":scope > .ya-cellule-texte");
-      if (texte) marquerOccurrences(texte, rech.texte, { courante: courante?.r === r && courante?.c === c });
+      if (texte) marquerOccurrences(texte, rech.texte, { courante: courante?.r === r && courante?.c === c, ...options() });
     }
     const i = courante ? occ.findIndex((o) => o.r === courante.r && o.c === courante.c) : -1;
     if (i < 0) courante = null;
     panneau.definirTexte(rech.texte);
-    panneau.afficher(occ.length, i >= 0 ? i + 1 : undefined);
+    panneau.definirOptions(options());
+    panneau.afficher(occ.length, i >= 0 ? i + 1 : undefined, { invalide });
   }
 
   function ecarterCourante() {
@@ -118,7 +125,7 @@ export function tableur({ vue, nom }) {
 
   // Va à la cellule trouvée suivante (ou précédente) la cellule active, en bouclant ; le focus reste où il est.
   function aller(sens) {
-    const occ = occurrences();
+    const { occ } = occurrences();
     if (!occ.length) return;
     const apres = (o) => o.r > active.r || (o.r === active.r && o.c > active.c);
     const avant = (o) => o.r < active.r || (o.r === active.r && o.c < active.c);
@@ -126,6 +133,45 @@ export function tableur({ vue, nom }) {
     activer(cible.r, cible.c, false);
     courante = cible;
     majRecherche();
+  }
+
+  // Réécrit les cellules `cibles` (parties trouvées remplacées) en une seule transaction du document.
+  function appliquer(cibles, remplacement) {
+    const l = lecture();
+    if (!l) return;
+    const changes = cibles.map(({ r, c }) => {
+      const texte = l.rangees[r].champs[c].texte;
+      const paires = chercherTexte(texte, rech.texte, options());
+      return changerCellule(l, r, c, remplacerTexte(texte, paires, rech.texte, remplacement, { regex: rech.regex, casse: rech.casse }));
+    });
+    vue.dispatch({ changes, annotations: isolateHistory.of("full") });
+    courante = null;
+    rafraichir();
+  }
+
+  // Remplace la cellule courante (sinon celle que F3 choisirait), puis la suivante devient active et courante.
+  function remplacer(remplacement) {
+    validerSaisie();
+    const { occ } = occurrences();
+    if (!occ.length) return;
+    const apres = (o) => o.r > active.r || (o.r === active.r && o.c > active.c);
+    const cible = courante ?? occ.find(apres) ?? occ[0];
+    appliquer([cible], remplacement);
+    const suivantes = occurrences().occ;
+    const n = suivantes.find((o) => o.r > cible.r || (o.r === cible.r && o.c > cible.c)) ?? suivantes[0];
+    if (n) {
+      activer(n.r, n.c, false);
+      courante = n;
+    }
+    majRecherche();
+  }
+
+  function toutRemplacer(remplacement) {
+    validerSaisie();
+    const { occ } = occurrences();
+    if (!occ.length) return;
+    appliquer(occ, remplacement);
+    panneau?.annoncerRemplacees(occ.length);
   }
 
   function creerPanneau() {
@@ -136,6 +182,14 @@ export function tableur({ vue, nom }) {
         courante = null;
         majRecherche();
       },
+      surOptions: ({ casse, regex }) => {
+        rech.casse = casse;
+        rech.regex = regex;
+        courante = null;
+        majRecherche();
+      },
+      surRemplacer: remplacer,
+      surToutRemplacer: toutRemplacer,
       surSuivante: () => aller(1),
       surPrecedente: () => aller(-1),
       surFermer: () => fermer(),
@@ -143,12 +197,18 @@ export function tableur({ vue, nom }) {
     conteneur.insertBefore(panneau.element, zone);
   }
 
-  function ouvrir() {
+  // `remplacement` : avec la ligne de remplacement (Ctrl+H, REQ-207).
+  function ouvrir({ remplacement = false } = {}) {
     validerSaisie();
+    const dejaOuvert = rech.ouvert && panneau;
     rech.ouvert = true;
     if (!panneau) creerPanneau();
     majRecherche();
-    panneau.ouvrir();
+    if (remplacement && dejaOuvert) panneau.montrerRemplacement();
+    else {
+      if (remplacement) panneau.definirRemplacement("");
+      panneau.ouvrir();
+    }
   }
 
   // `focus` : le focus revient à la cellule active (pas quand le clic est ailleurs, sur « Mode hybride »).
@@ -156,6 +216,8 @@ export function tableur({ vue, nom }) {
     if (!rech.ouvert) return;
     rech.ouvert = false;
     rech.texte = "";
+    rech.casse = false;
+    rech.regex = false;
     courante = null;
     retirerMarques(table);
     panneau?.element.remove();
@@ -167,7 +229,10 @@ export function tableur({ vue, nom }) {
     if (!e?.ouvert) return fermer(false);
     rech.ouvert = true;
     rech.texte = e.texte ?? "";
+    rech.casse = Boolean(e.casse);
+    rech.regex = Boolean(e.regex);
     if (!panneau) creerPanneau();
+    if (e.remplacement != null) panneau.definirRemplacement(e.remplacement);
     majRecherche();
   }
 
@@ -239,12 +304,12 @@ export function tableur({ vue, nom }) {
         valider(voisine(l, r, c, e.shiftKey ? -1 : 1));
       } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
         valider(); // l'événement continue vers Ctrl+S de la page
-      } else if ((estMac() ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
-        // Ctrl+F : la saisie est validée d'abord, puis la recherche s'ouvre (la cellule saisie n'est plus dans la page).
+      } else if (((estMac() ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") || (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "h")) {
+        // Ctrl+F ou Ctrl+H : la saisie est validée d'abord, puis la recherche s'ouvre (la cellule saisie n'est plus dans la page).
         e.preventDefault();
         e.stopPropagation();
         valider(null, false);
-        ouvrir();
+        ouvrir({ remplacement: e.key.toLowerCase() === "h" });
       } else e.stopPropagation();
     });
     span.addEventListener("blur", () => valider(null, false));
@@ -326,7 +391,7 @@ export function tableur({ vue, nom }) {
   return {
     element: conteneur,
     zone,
-    recherche: { ouvrir, fermer, etat: () => ({ texte: rech.texte, ouvert: rech.ouvert }), reprendre },
+    recherche: { ouvrir, fermer, etat: () => ({ texte: rech.texte, ouvert: rech.ouvert, casse: rech.casse, regex: rech.regex, remplacement: panneau?.remplacement() ?? null }), reprendre },
     rafraichir,
     validerSaisie,
     activer,

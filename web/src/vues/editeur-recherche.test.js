@@ -496,3 +496,14 @@ test("REQ161_AC7_ctrl_f_pendant_la_saisie_la_finit_le_panneau_survit_au_changeme
   expect(document.querySelector("mark.ya-occurrence")).toBeNull();
   vi.useRealTimers();
 });
+
+test("REQ207_AC1_ctrl_h_sur_la_grille_ouvre_la_recherche_avec_la_ligne_de_remplacement", () => {
+  const e = monter();
+  aller(e, "clients.csv");
+  const td = zoneDe("clients.csv").querySelector("td");
+  td.focus();
+  const ev = ctrlH(td);
+  expect(ev.defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(saisieCsv());
+  expect(lignes(panneauCsv())).toEqual(REMPLACER);
+});

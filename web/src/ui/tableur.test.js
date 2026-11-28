@@ -413,5 +413,123 @@ test("REQ160_AC6_fermer_sans_focus_et_etat_repris", () => {
   expect(document.activeElement).toBe(bouton);
   t.recherche.reprendre({ texte: "a", ouvert: true });
   expect(compte(t)).toBe("3");
-  expect(t.recherche.etat()).toEqual({ texte: "a", ouvert: true });
+  expect(t.recherche.etat()).toEqual({ texte: "a", ouvert: true, casse: false, regex: false, remplacement: null });
+});
+
+// ---- Casse, expression régulière et remplacement dans les cellules (REQ-206, REQ-207) ----
+const bouton = (t, nom) => panneauDe(t).querySelector(`button[aria-label="${nom}"]`);
+const champRemplacer = (t) => panneauDe(t).querySelectorAll("input")[1];
+const remplacerPar = (t, texte) => {
+  champRemplacer(t).value = texte;
+  champRemplacer(t).dispatchEvent(new Event("input", { bubbles: true }));
+};
+const cellules = (t) => [...t.element.querySelectorAll("td, th")].map((x) => x.textContent);
+
+test("REQ206_AC4_casse_et_expression_reguliere_s_appliquent_au_texte_de_chaque_cellule", () => {
+  const { t } = monter(PAYS);
+  t.recherche.ouvrir();
+  clic(bouton(t, "Expression régulière"));
+  expect(bouton(t, "Expression régulière").getAttribute("aria-pressed")).toBe("true");
+  chercher(t, "s$");
+  expect(compte(t)).toBe("3");
+  expect(textes(t)).toEqual(["Paris", "Bob, fils", "Nantes"]);
+  chercher(t, "^[a-c]");
+  expect(compte(t)).toBe("3");
+  expect(textes(t)).toEqual(["Alice", "Bob, fils", "Chloé"]);
+  clic(bouton(t, "Respecter la casse"));
+  expect(compte(t)).toBe("0");
+  // Expression invalide : rien de surligné, flèches grisées, champ en erreur.
+  chercher(t, "(");
+  expect(compte(t)).toBe("Invalide");
+  expect(marques(t)).toHaveLength(0);
+  expect(champDe(t).getAttribute("aria-invalid")).toBe("true");
+  expect(bouton(t, "Occurrence suivante").getAttribute("aria-disabled")).toBe("true");
+  // Relâchée, l'expression `(` est cherchée telle quelle.
+  clic(bouton(t, "Expression régulière"));
+  expect(champDe(t).hasAttribute("aria-invalid")).toBe(false);
+  expect(compte(t)).toBe("0");
+});
+
+test("REQ207_AC7_remplacer_et_tout_remplacer_dans_la_grille_en_une_transaction", () => {
+  const { t, vue, transactions } = monter(PAYS);
+  t.recherche.ouvrir({ remplacement: true });
+  chercher(t, "a");
+  remplacerPar(t, "o");
+  f3(t); // Alice
+  f3(t); // Paris
+  expect(compte(t)).toBe("2 sur 3");
+  clic(bouton(t, "Remplacer"));
+  expect(cellule(t, 1, 1).textContent).toBe("Poris");
+  expect(cellule(t, 1, 1).textContent).not.toBe("Paris");
+  expect(compte(t)).toBe("2 sur 2");
+  expect(t.celluleActive()).toEqual({ r: 3, c: 1 });
+  expect(vue.state.doc.toString()).toContain("Alice,Poris,12");
+  const avant = transactions.length;
+  clic(bouton(t, "Tout remplacer"));
+  expect(transactions.length).toBe(avant + 1);
+  expect(cellules(t)).toContain("olice");
+  expect(cellules(t)).toContain("Nontes");
+  expect(compte(t)).toBe("0");
+  expect(panneauDe(t).querySelector("[role=status]").textContent).toBe("2 occurrences remplacées");
+  undo(vue);
+  t.rafraichir();
+  expect(cellules(t)).toContain("Alice");
+  expect(cellules(t)).toContain("Nantes");
+  expect(cellules(t)).toContain("Poris");
+});
+
+test("REQ207_AC7_le_fichier_est_reecrit_avec_les_guillemets_necessaires", () => {
+  const { t, vue } = monter(PAYS);
+  t.recherche.ouvrir({ remplacement: true });
+  chercher(t, "Lyon");
+  remplacerPar(t, "Lyon, Rhône");
+  touche(champRemplacer(t), "Enter");
+  expect(vue.state.doc.toString()).toContain('"Bob, fils","Lyon, Rhône","dit ""oui"""');
+});
+
+test("REQ207_AC7_regex_groupes_et_rien_a_remplacer_ne_change_rien", () => {
+  const { t, vue, transactions } = monter(PAYS);
+  t.recherche.ouvrir({ remplacement: true });
+  chercher(t, "zzz");
+  expect(bouton(t, "Remplacer").getAttribute("aria-disabled")).toBe("true");
+  expect(bouton(t, "Tout remplacer").getAttribute("aria-disabled")).toBe("true");
+  clic(bouton(t, "Tout remplacer"));
+  expect(transactions).toHaveLength(0);
+  clic(bouton(t, "Expression régulière"));
+  chercher(t, "^A(.)");
+  remplacerPar(t, "Z$1");
+  clic(bouton(t, "Tout remplacer"));
+  expect(vue.state.doc.toString()).toContain("Zlice,Paris,12");
+});
+
+test("REQ207_AC1_ctrl_h_pendant_une_saisie_la_valide_puis_ouvre_avec_la_ligne_de_remplacement", () => {
+  const { t, vue } = monter(PAYS);
+  clic(cellule(t, 1, 2));
+  taper(saisieOuverte(t), "Laval");
+  const ev = touche(saisieOuverte(t), "h", { ctrlKey: true });
+  expect(ev.defaultPrevented).toBe(true);
+  expect(vue.state.doc.toString()).toContain("Alice,Paris,Laval");
+  expect(saisieOuverte(t)).toBeNull();
+  expect(document.activeElement).toBe(champDe(t));
+  const ordre = [...panneauDe(t).querySelectorAll("input, button")].map((x) => (x.tagName === "INPUT" ? "champ" : x.getAttribute("aria-label")));
+  expect(ordre).toEqual(["champ", "Respecter la casse", "Expression régulière", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche", "champ", "Remplacer", "Tout remplacer"]);
+});
+
+test("REQ206_AC6_REQ207_AC10_etat_et_reprendre_portent_bascules_et_remplacement", () => {
+  const { t } = monter(PAYS);
+  t.recherche.ouvrir({ remplacement: true });
+  clic(bouton(t, "Respecter la casse"));
+  chercher(t, "a");
+  remplacerPar(t, "Zed");
+  const e = t.recherche.etat();
+  expect(e).toEqual({ texte: "a", ouvert: true, casse: true, regex: false, remplacement: "Zed" });
+  t.recherche.fermer(false);
+  t.recherche.reprendre(e);
+  expect(bouton(t, "Respecter la casse").getAttribute("aria-pressed")).toBe("true");
+  expect(champRemplacer(t).value).toBe("Zed");
+  expect(compte(t)).toBe("2");
+  t.recherche.fermer(false);
+  t.recherche.ouvrir();
+  expect(bouton(t, "Respecter la casse").getAttribute("aria-pressed")).toBe("false");
+  expect(panneauDe(t).querySelectorAll("input")).toHaveLength(1);
 });
