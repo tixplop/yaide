@@ -150,7 +150,7 @@ export function panneauNoeuds({ document: doc, choix = null, lectureSeule = fals
   }
 
   function champTexte(cle, libelle, aide, multi, valeur, surSaisie) {
-    const c = champ({ libelle, type: multi ? "multiligne" : "texte", valeur: valeur ?? "", aide });
+    const c = champ({ libelle, type: multi ? "multiligne" : cle === "cron" ? "cron" : "texte", valeur: valeur ?? "", aide, lectureSeule: cle === "cron" && etat.lectureSeule });
     pose(c, cle).addEventListener("input", (ev) => surSaisie(ev.target.value));
     return c;
   }

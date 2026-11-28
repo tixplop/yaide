@@ -358,7 +358,7 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
     const ligne = (d) => ({
       id: d.id,
       titre: type(d).titre,
-      champ: type(d).reglage ? { valeur: d.valeur } : undefined,
+      champ: type(d).reglage ? { valeur: d.valeur, type: type(d).reglage === "cron" ? "cron" : undefined } : undefined,
       aide: type(d).aide,
       erreur: f.erreurs.declencheurs?.[d.id],
     });

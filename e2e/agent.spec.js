@@ -1449,7 +1449,7 @@ test("REQ085_parcours_107_l_agent_attend_puis_raisonne_replie_depliable", async 
   // aria-expanded="false", et le journal par tests/agent.rs (REQ085_AC1_AC4_AC5_…_apres_redemarrage).
 });
 
-test("REQ163_AC1_AC2_AC6_AC9_parcours_128_129_declencheurs_de_la_fiche", async ({ page, browserName }) => {
+test("REQ163_AC1_AC2_AC6_AC9_REQ204_AC7_parcours_128_129_165_declencheurs_de_la_fiche", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
   const dossier = depotAgent();
   yaide = await lancerYaide({ dossier });
@@ -1544,6 +1544,57 @@ test("REQ163_AC1_AC2_AC6_AC9_parcours_128_129_declencheurs_de_la_fiche", async (
   expect(cinqLignes.defile).toBe(0);
   expect(cinqLignes.lignes).toHaveLength(5);
   for (const ecart of cinqLignes.lignes) expect(ecart).toBeLessThan(6);
+
+  // REQ204_AC7 (P-165) : l'aide cron à 240 px, au clavier, sans défilement horizontal, dates entières.
+  await ajouter.click();
+  await menu.getByRole("menuitem", { name: "Planification", exact: true }).click();
+  const cronChamp = section.getByRole("textbox", { name: "Déclencheur 6 : Planification" });
+  await expect(cronChamp).toBeFocused();
+  const modeles = section.getByRole("button", { name: "Modèles d'expression cron" });
+  await modeles.scrollIntoViewIfNeeded();
+  await expect(section.locator(".ya-cron-zone")).toHaveText("");
+  await page.keyboard.press("Tab");
+  await expect(modeles).toBeFocused();
+  await page.keyboard.press("Enter");
+  const menuModeles = page.getByRole("menu", { name: "Modèles d'expression cron" });
+  await expect(menuModeles.getByRole("menuitem")).toHaveCount(6);
+  await expect(menuModeles.getByRole("menuitem").first()).toBeFocused();
+  await expect(menuModeles.getByRole("menuitem").nth(3)).toHaveAccessibleName("Du lundi au vendredi à 9 h, 0 9 * * 1-5");
+  for (let i = 0; i < 3; i++) await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(menuModeles).toHaveCount(0);
+  await expect(cronChamp).toHaveValue("0 9 * * 1-5");
+  await expect(cronChamp).toBeFocused();
+  await expect(section.getByText("Prochaines fois :")).toBeVisible();
+  const dates = section.locator(".ya-cron-dates li");
+  await expect(dates).toHaveCount(3);
+  const zoneCron = section.locator(".ya-cron-zone");
+  await expect(zoneCron).toHaveAttribute("aria-live", "polite");
+  expect(await cronChamp.getAttribute("aria-describedby")).toContain(await zoneCron.getAttribute("id"));
+  const geo = await page.evaluate(() => {
+    const f = document.querySelector(".agents-fiche");
+    const champ = f.querySelector(".ya-cron-ligne input");
+    const bouton = f.querySelector(".ya-cron-ligne button");
+    const droite = f.getBoundingClientRect().right;
+    return {
+      fiche: f.scrollWidth <= f.clientWidth,
+      champ: champ.getBoundingClientRect().width,
+      boutonDedans: bouton.getBoundingClientRect().right <= droite + 0.5,
+      datesEntieres: [...f.querySelectorAll(".ya-cron-dates li")].every((li) => li.scrollWidth <= li.clientWidth && li.getBoundingClientRect().right <= droite + 0.5),
+    };
+  });
+  expect(geo.fiche).toBe(true);
+  expect(geo.champ).toBeGreaterThanOrEqual(100);
+  expect(geo.boutonDedans).toBe(true);
+  expect(geo.datesEntieres).toBe(true);
+  await modeles.focus();
+  await page.keyboard.press("Enter");
+  await expect(menuModeles.getByRole("menuitem").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menuModeles).toHaveCount(0);
+  await expect(modeles).toBeFocused();
+  await section.getByRole("button", { name: "Retirer le déclencheur 6" }).click();
+
   await section.getByRole("button", { name: "Retirer le déclencheur 5" }).click();
   await expect(section.getByRole("button", { name: "Retirer le déclencheur 4" })).toBeFocused();
   await section.getByRole("textbox", { name: "Déclencheur 2 : Dossier" }).fill("../x");

@@ -218,7 +218,7 @@ function actionTexte(a, l) {
 }
 
 // Variante `elements` (C-006, REQ-163) : éléments réglés dans un formulaire, ajoutés et retirés un à un.
-// `lignes` : { id, titre, champ: { valeur }, aide, erreur }. `racine.ajouter(ligne)` ajoute un élément et lui donne le focus.
+// `lignes` : { id, titre, champ: { valeur, type }, aide, erreur }. `racine.ajouter(ligne)` ajoute un élément et lui donne le focus.
 // Un retrait part sans question : le focus va au « Retirer » qui prend sa place, sinon au précédent, sinon à `apres` ;
 // `surRetrait(id)` prévient le formulaire, `surSaisie(id, valeur)` aussi à chaque frappe.
 function listeElements({ lignes, nom, nomElement, vide, apres, surSaisie, surRetrait }) {
@@ -252,7 +252,7 @@ function listeElements({ lignes, nom, nomElement, vide, apres, surSaisie, surRet
     let saisie = null;
     let corps = null;
     if (l.champ) {
-      const c = champDe({ libelle: l.titre, valeur: l.champ.valeur ?? "", aide: l.erreur ? undefined : l.aide, erreur: l.erreur });
+      const c = champDe({ libelle: l.titre, type: l.champ.type, valeur: l.champ.valeur ?? "", aide: l.erreur ? undefined : l.aide, erreur: l.erreur });
       saisie = c.querySelector("input");
       saisie.setAttribute("autocomplete", "off");
       titre = c.querySelector("label");

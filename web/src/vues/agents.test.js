@@ -1,6 +1,9 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { vueAgents } from "./agents.js";
 
+const prochaines = vi.hoisted(() => vi.fn(async () => ({ dates: [] })));
+vi.mock("../api.js", async (orig) => ({ ...(await orig()), prochainesFoisCron: prochaines }));
+
 afterEach(() => document.body.replaceChildren());
 
 const attendre = () => new Promise((r) => setTimeout(r, 0));
@@ -517,7 +520,7 @@ test("REQ174_AC1_AC163_6_planification_derniere_du_menu_champ_nomme_focus_aide_e
   expect(champ.labels[0].textContent).toBe("Déclencheur 1 : Planification");
   expect(champ.value).toBe("");
   expect(document.activeElement).toBe(champ);
-  expect(document.getElementById(champ.getAttribute("aria-describedby")).textContent).toBe(AIDES.Planification);
+  expect(document.getElementById(champ.getAttribute("aria-describedby").split(" ")[0]).textContent).toBe(AIDES.Planification);
   taper(champ, " 0 9 * * 1-5 ");
   bouton("Enregistrer").click();
   await attendre();
@@ -532,7 +535,7 @@ test("REQ174_AC2_AC6_refus_a_la_place_de_l_aide_invalid_describedby_focus_et_rie
     taper(champ(), mauvais);
     bouton("Enregistrer").click();
     await attendre();
-    const message = document.getElementById(champ().getAttribute("aria-describedby"));
+    const message = document.getElementById(champ().getAttribute("aria-describedby").split(" ")[0]);
     expect(message.textContent, mauvais).toBe(REFUS_CRON);
     expect(message.getAttribute("role")).toBe("alert");
     expect(champ().getAttribute("aria-invalid")).toBe("true");
@@ -546,4 +549,30 @@ test("REQ174_AC2_AC6_refus_a_la_place_de_l_aide_invalid_describedby_focus_et_rie
     await attendre();
     expect(api.etat.envoyes.at(-1).declencheurs).toEqual([{ type: "planification", cron: bon }]);
   }
+});
+
+test("REQ204_AC3_modele_dans_la_fiche_remplit_le_champ_focus_prochaines_fois_et_enregistrement", async () => {
+  prochaines.mockClear();
+  prochaines.mockResolvedValue({ dates: ["2026-11-30T09:00", "2026-12-01T09:00", "2026-12-02T09:00"] });
+  const { api, c, choisir, bouton } = await ficheRelecteur();
+  choisir("Planification");
+  const champ = c.querySelector("ol input");
+  const modeles = bouton("Modèles d'expression cron");
+  expect(modeles.textContent).toBe("Modèles");
+  expect(modeles.getAttribute("aria-haspopup")).toBe("menu");
+  modeles.click();
+  const item = [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].find((x) => x.getAttribute("aria-label") === "Du lundi au vendredi à 9 h, 0 9 * * 1-5");
+  item.click();
+  await attendre();
+  await attendre();
+  expect(champ.value).toBe("0 9 * * 1-5");
+  expect(document.activeElement).toBe(champ);
+  const zone = document.getElementById(champ.getAttribute("aria-describedby").split(" ").at(-1));
+  expect(zone.getAttribute("aria-live")).toBe("polite");
+  expect(zone.textContent).toContain("Prochaines fois :");
+  expect([...zone.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["lundi 30 novembre 2026, 09:00", "mardi 1er décembre 2026, 09:00", "mercredi 2 décembre 2026, 09:00"]);
+  expect(api.enregistrerAgent).not.toHaveBeenCalled();
+  bouton("Enregistrer").click();
+  await attendre();
+  expect(api.etat.envoyes[0].declencheurs).toEqual([{ type: "planification", cron: "0 9 * * 1-5" }]);
 });

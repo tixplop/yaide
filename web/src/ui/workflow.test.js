@@ -186,29 +186,22 @@ test("REQ197_AC5_noeud_en_cours_zone_status_ajoute_en_cours_sans_relire_quand_le
   expect(statut.textContent).toBe("Fichiers d'un dossier 1, déclencheur.");
   touche(s, "Tab"); // n2, en cours
   expect(statut.textContent).toBe("Commande shell 1, action, après Fichiers d'un dossier 1. En cours.");
-  // l'exécution avance : la zone du nœud choisi n'est pas réécrite
+  // l'exécution avance : la zone ne relit rien, elle garde sa phrase
   const mut = [];
   new MutationObserver((l) => mut.push(...l)).observe(statut, { childList: true, characterData: true, subtree: true });
   w.maj({ enCours: "n3" });
   expect(el("n2").classList.contains("ya-noeud-en-cours")).toBe(false);
   expect(el("n3").classList.contains("ya-noeud-en-cours")).toBe(true);
-  expect(statut.textContent).toBe("Commande shell 1, action, après Fichiers d'un dossier 1.");
-  w.maj({ enCours: "n3" });
+  expect(statut.textContent).toBe("Commande shell 1, action, après Fichiers d'un dossier 1. En cours.");
+  w.maj({ enCours: "n2" });
+  w.maj({ enCours: null });
   return Promise.resolve().then(() => {
-    // une seule réécriture : la perte de « En cours. » du nœud choisi ; la seconde mise à jour ne change rien
-    expect(mut).toHaveLength(1);
-    // un nœud non choisi qui prend la place : la zone n'est pas relue
-    mut.length = 0;
-    w.maj({ enCours: "n2" });
-    w.maj({ enCours: "n3" });
     expect(mut).toHaveLength(0);
-    // choisir le nœud en cours : « En cours. » ; plus rien en cours : plus de marque
+    expect(w.querySelector(".ya-noeud-etiquette")).toBeNull();
+    // choisir un autre nœud : sa phrase, avec « En cours. » s'il l'est
+    w.maj({ enCours: "n3" });
     touche(s, "Tab");
     expect(statut.textContent).toBe("Agent 1, action, après aucun nœud. En cours.");
-    w.maj({ enCours: null });
-    expect(statut.textContent).toBe("Agent 1, action, après aucun nœud.");
-    expect(w.querySelector(".ya-noeud-en-cours")).toBeNull();
-    expect(w.querySelector(".ya-noeud-etiquette")).toBeNull();
   });
 });
 

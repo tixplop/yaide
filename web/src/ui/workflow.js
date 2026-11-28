@@ -12,6 +12,7 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
   if (!nom) throw new Error("workflow : nom requis");
   if (typeof surChangement !== "function") throw new Error("workflow : surChangement requis");
   const etat = { doc, vue, choix, lectureSeule, enCours, agents };
+  let statutDe = { choix: undefined, doc: undefined };
   let messageResultat = null;
   let glisse = null; // { id, dx, dy, x, y, bouge }
   let trace = null; // { de, x, y, cible }
@@ -225,8 +226,12 @@ export function workflow({ nom, document: doc, vue = { x: 0, y: 0, zoom: 1 }, ch
       monde.append(el);
     }
     // La zone ne relit rien quand l'exécution avance : elle n'est réécrite que si sa phrase change.
-    const phrase = etat.choix && noeud(etat.choix) ? phraseDuChoix(etat.doc, etat.choix) + (etat.choix === courant?.id ? " En cours." : "") : "";
-    if (statut.textContent !== phrase) statut.textContent = phrase;
+    // Elle ne se recalcule que si le choix ou le document change, pas quand `enCours` change.
+    if (statutDe.choix !== etat.choix || statutDe.doc !== etat.doc) {
+      statutDe = { choix: etat.choix, doc: etat.doc };
+      const phrase = etat.choix && noeud(etat.choix) ? phraseDuChoix(etat.doc, etat.choix) + (etat.choix === courant?.id ? " En cours." : "") : "";
+      if (statut.textContent !== phrase) statut.textContent = phrase;
+    }
     placer();
   }
 

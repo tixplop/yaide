@@ -1,6 +1,10 @@
 import { expect, test, vi } from "vitest";
 import { workflow } from "./workflow.js";
 
+const prochaines = vi.hoisted(() => vi.fn(async () => ({ dates: [] })));
+vi.mock("../api.js", async (orig) => ({ ...(await orig()), prochainesFoisCron: prochaines }));
+const attendre = () => new Promise((r) => setTimeout(r, 0));
+
 const vide = () => ({ nom: "Revue des notes", publie: false, noeuds: [], liens: [] });
 const noeud = (id, type, titre, x, y, reglages = {}) => ({ id, type, titre, x, y, reglages });
 const AGENTS = [{ dossier: "agents/relecteur", nom: "Relecteur" }, { dossier: "agents/redacteur", nom: "Rédacteur" }];
@@ -300,4 +304,36 @@ test("REQ195_AC11_trace_a_son_icone_partout_est_reliee_apres_le_choix_et_prend_l
   expect(icone(m.w.querySelector(".ya-noeud-choisi"))).toBe("scroll-text");
   expect(m.docs.at(-1).liens).toEqual([{ de: "n1", vers: "n2" }]);
   expect(document.activeElement).toBe(m.champ("message"));
+});
+
+test("REQ204_AC4_modele_dans_le_panneau_remplit_l_expression_et_modifie_le_document", async () => {
+  prochaines.mockClear();
+  prochaines.mockResolvedValue({ dates: ["2026-11-28T11:00", "2026-11-28T12:00", "2026-11-28T13:00"] });
+  const m = monter();
+  m.type("Planification").click();
+  const modeles = [...m.p.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Modèles d'expression cron");
+  modeles.click();
+  [...document.querySelectorAll('[role="menuitem"]')].find((x) => x.getAttribute("aria-label") === "Toutes les heures, 0 * * * *").click();
+  await attendre();
+  await attendre();
+  expect(m.champ("cron").value).toBe("0 * * * *");
+  expect(m.docs.at(-1).noeuds[0].reglages).toEqual({ cron: "0 * * * *" });
+  expect(prochaines).toHaveBeenLastCalledWith("0 * * * *");
+  expect([...m.p.querySelectorAll(".ya-cron-dates li")]).toHaveLength(3);
+});
+
+test("REQ204_AC6_noeud_publie_modeles_desactives_et_prochaines_fois_affichees", async () => {
+  prochaines.mockClear();
+  prochaines.mockResolvedValue({ dates: ["2026-11-30T09:00", "2026-12-01T09:00", "2026-12-02T09:00"] });
+  const m = monter({ ...vide(), publie: true, noeuds: [noeud("n1", "planification", "Planification 1", 0, 0, { cron: "0 9 * * 1-5" })] }, { lectureSeule: true });
+  m.choisir(m.w.querySelector('.ya-noeud[data-id="n1"]'));
+  await attendre();
+  await attendre();
+  const modeles = [...m.p.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Modèles d'expression cron");
+  expect(modeles.getAttribute("aria-disabled")).toBe("true");
+  modeles.click();
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+  expect(m.champ("cron").readOnly).toBe(true);
+  expect(prochaines).toHaveBeenCalledWith("0 9 * * 1-5");
+  expect([...m.p.querySelectorAll(".ya-cron-dates li")]).toHaveLength(3);
 });
