@@ -66,3 +66,11 @@ test("REQ128_AC1_un_whiteboard_se_reconnait_a_l_extension_jdiag_sans_tenir_compt
   expect(["plan.jdiag", "docs/PLAN.JDIAG", "a.Jdiag"].map(estWhiteboard)).toEqual([true, true, true]);
   expect(["plan.json", "jdiag", "plan.jdiag.txt", "plan.jdiagx"].map(estWhiteboard)).toEqual([false, false, false, false]);
 });
+
+test("REQ205_AC8_l_onglet_de_la_memoire_d_un_agent_montre_son_dossier_les_autres_non", () => {
+  expect(libelles([".yaide/agents/relecteur/MEMOIRE.md", ".yaide/agents/relecteur/PERSONA.md", "MEMOIRE.md"])).toEqual([
+    { libelle: "MEMOIRE.md", detail: "relecteur" },
+    { libelle: "PERSONA.md", detail: undefined },
+    { libelle: "MEMOIRE.md", detail: undefined },
+  ]);
+});

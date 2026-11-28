@@ -1557,6 +1557,28 @@ fn REQ195_AC1_agent_seul_puis_sortie_passee_a_l_action_suivante() {
 }
 
 #[test]
+fn REQ205_AC5_l_action_agent_d_un_workflow_a_le_meta_prompt_et_la_memoire() {
+    let (adresse, recues) = faux_provider("Rien à redire.");
+    let racine = preparer("act5-memoire");
+    let s = demarrer(&racine, "p");
+    configurer(&s, &adresse, true);
+    creer_relecteur(&s);
+    std::fs::write(s.yaide().join("agents/relecteur/MEMOIRE.md"), "souvenir-45").unwrap();
+    publier_sur_notes(
+        &s,
+        "Revue des notes",
+        vec![agent_noeud()],
+        json!([{ "de": "t", "vers": "a" }]),
+    );
+    ecrire_projet(&s, "notes/a.md", "1");
+    attendre_termine(&s, "Revue des notes", 1);
+    let reqs = recues.lock().unwrap().clone();
+    let corps = reqs[0]["messages"].to_string();
+    assert!(corps.contains("Your memory (MEMOIRE.md): .yaide/agents/relecteur/MEMOIRE.md."));
+    assert!(corps.contains("souvenir-45"));
+}
+
+#[test]
 fn REQ195_AC2_refus_enregistre_et_agent_disparu() {
     let (adresse, recues) = faux_provider("ok");
     let racine = preparer("act6");

@@ -446,7 +446,7 @@ test("REQ028_AC20_AC21_seul_le_fil_defile_la_page_ne_defile_jamais", async ({ pa
   await toutes("800x480");
 });
 
-test("REQ067_parcours_28_29_deux_agents_relisent_puis_arret", async ({ page, browserName }) => {
+test("REQ067_REQ205_AC6_parcours_28_29_deux_agents_relisent_puis_arret", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
   // Parcours P-028 et P-029 : deux agents créés, une relecture à deux, un agent illisible, une couleur changée, un arrêt.
   let ouvrir5; // jamais tenue : la 5e requête reste en attente jusqu'à l'arrêt
@@ -507,6 +507,13 @@ test("REQ067_parcours_28_29_deux_agents_relisent_puis_arret", async ({ page, bro
   await page.keyboard.type("Tu relis le code avec rigueur. persona-relecteur-71");
   await page.keyboard.press("Control+s");
   await expect.poll(() => fs.readFileSync(path.join(agents, "relecteur", "PERSONA.md"), "utf8")).toContain("persona-relecteur-71");
+  // REQ205_AC6 : MEMOIRE.md est recréé vide, s'ouvre dans l'éditeur ; on tape puis Ctrl+S.
+  expect(fs.existsSync(path.join(agents, "relecteur", "MEMOIRE.md"))).toBe(false);
+  await colonne.getByRole("button", { name: "MEMOIRE.md" }).click();
+  await expect(page.getByRole("textbox", { name: /^Éditeur MEMOIRE\.md/ })).toBeFocused();
+  await page.keyboard.type("- souvenir-relecteur-72");
+  await page.keyboard.press("Control+s");
+  await expect.poll(() => fs.readFileSync(path.join(agents, "relecteur", "MEMOIRE.md"), "utf8")).toContain("souvenir-relecteur-72");
 
   // 5 : Testeur, orange, rapide (nom pris et avatar trop long : AC-064-5 et AC-064-15, agents.test.js).
   await colonne.getByRole("button", { name: "Retour aux agents" }).click();
@@ -1449,7 +1456,7 @@ test("REQ085_parcours_107_l_agent_attend_puis_raisonne_replie_depliable", async 
   // aria-expanded="false", et le journal par tests/agent.rs (REQ085_AC1_AC4_AC5_…_apres_redemarrage).
 });
 
-test("REQ163_AC1_AC2_AC6_AC9_REQ204_AC7_parcours_128_129_165_declencheurs_de_la_fiche", async ({ page, browserName }) => {
+test("REQ163_AC1_AC2_AC6_AC9_REQ204_AC7_REQ205_AC8_parcours_128_129_165_declencheurs_de_la_fiche", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "DEC-037 : Chromium seul");
   const dossier = depotAgent();
   yaide = await lancerYaide({ dossier });
@@ -1544,6 +1551,28 @@ test("REQ163_AC1_AC2_AC6_AC9_REQ204_AC7_parcours_128_129_165_declencheurs_de_la_
   expect(cinqLignes.defile).toBe(0);
   expect(cinqLignes.lignes).toHaveLength(5);
   for (const ecart of cinqLignes.lignes) expect(ecart).toBeLessThan(6);
+
+  // REQ205_AC8 : à 240 px, les trois boutons l'un sous l'autre, chacun entier, Tab de PERSONA.md à MEMOIRE.md.
+  const fichiers = colonne.locator(".agents-fichiers").getByRole("button");
+  await expect(fichiers).toHaveText(["AGENTS.md", "PERSONA.md", "MEMOIRE.md"]);
+  const cases = await fichiers.evaluateAll((bs) => {
+    const f = document.querySelector(".agents-fiche");
+    const bf = f.getBoundingClientRect();
+    return {
+      defile: f.scrollWidth - f.clientWidth,
+      rects: bs.map((b) => b.getBoundingClientRect()).map((r) => ({ haut: r.top, gauche: r.left, droite: r.right, bas: r.bottom })),
+      dedans: bs.every((b) => b.getBoundingClientRect().right <= bf.right && b.scrollWidth <= b.clientWidth),
+    };
+  });
+  expect(cases.defile).toBe(0);
+  expect(cases.dedans).toBe(true);
+  expect(cases.rects[1].haut).toBeGreaterThanOrEqual(cases.rects[0].bas);
+  expect(cases.rects[2].haut).toBeGreaterThanOrEqual(cases.rects[1].bas);
+  await colonne.getByRole("button", { name: "PERSONA.md" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(colonne.getByRole("button", { name: "MEMOIRE.md" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("tab", { name: /^MEMOIRE\.md/ })).toHaveText(/MEMOIRE\.md.*relecteur/);
 
   // REQ204_AC7 (P-165) : l'aide cron à 240 px, au clavier, sans défilement horizontal, dates entières.
   await ajouter.click();
@@ -1650,8 +1679,10 @@ test("REQ174_AC6_fiche_a_cinq_declencheurs_defilee_en_bas_le_menu_des_six_comman
   await colonne.getByRole("button", { name: "Modifier Relecteur" }).click();
   const ajouter = colonne.getByRole("button", { name: "Ajouter un déclencheur" });
   await ajouter.scrollIntoViewIfNeeded();
+  // Le 3e bouton « Fichiers » change la mise en page : on ne défile que la fiche, l'assertion est inchangée.
   await ajouter.evaluate((b) => {
-    for (let e = b.parentElement; e; e = e.parentElement) e.scrollTop = e.scrollHeight;
+    const fiche = b.closest(".agents-fiche");
+    fiche.scrollTop = fiche.scrollHeight;
   });
   await ajouter.click();
   const menu = page.getByRole("menu", { name: "Ajouter un déclencheur" });

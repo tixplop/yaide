@@ -418,6 +418,19 @@ test("REQ066_AC1_AC4_fichier_ouvert_ou_recree_puis_ouvert", async () => {
   expect(titreColonne(vue)).toBe("Agents");
 });
 
+test("REQ205_AC6_memoire_recree_vide_puis_ouverte_dans_l_editeur", async () => {
+  const chemin = ".yaide/agents/relecteur/MEMOIRE.md";
+  const appels = fauxServeur();
+  const { vue } = monter();
+  boutonAgentsDe(vue).click();
+  await vi.waitFor(() => expect(vue.querySelector("[aria-label=\"Modifier Relecteur\"]")).not.toBeNull());
+  vue.querySelector("[aria-label=\"Modifier Relecteur\"]").click();
+  [...corpsAgents(vue).querySelectorAll("button")].find((b) => b.textContent.includes("MEMOIRE.md")).click();
+  await vi.waitFor(() => expect(appels).toContain(`POST /api/fichiers/creer?chemin=${chemin}&type=fichier`));
+  await vi.waitFor(() => expect(vue.querySelector(`[aria-label="Éditeur MEMOIRE.md"]`)).not.toBeNull());
+  expect(document.activeElement.closest(".editeur-code")).not.toBeNull();
+});
+
 test("REQ066_AC1_fichier_illisible_dit_la_raison", async () => {
   fauxServeur();
   const { vue } = monter();

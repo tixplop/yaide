@@ -23,12 +23,14 @@ export function suivreRenommage(chemin, de, vers) {
   return estSous(chemin, de) ? vers + chemin.slice(de.length) : chemin;
 }
 
-/** `{ libelle, detail }` de chaque chemin : le nom, et le dossier parent si un autre onglet porte le même nom. */
+/** `{ libelle, detail }` de chaque chemin : le nom, et le dossier parent si un autre onglet porte le même nom ; le `MEMOIRE.md` d'un agent montre toujours le dossier de l'agent (REQ-205). */
 export function libelles(chemins) {
   const vus = new Map();
   for (const c of chemins) vus.set(nomDe(c), (vus.get(nomDe(c)) ?? 0) + 1);
   return chemins.map((c) => {
     const parent = dossierDe(c);
+    const agent = /^\.yaide\/agents\/([^/]+)\/MEMOIRE\.md$/.exec(c);
+    if (agent) return { libelle: "MEMOIRE.md", detail: agent[1] };
     return { libelle: nomDe(c), detail: vus.get(nomDe(c)) > 1 && parent ? parent : undefined };
   });
 }

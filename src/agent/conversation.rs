@@ -486,7 +486,8 @@ Always give file paths relative to the project root.",
     }
 
     /// Instructions d'un agent, écrites une fois (REQ-066) : lignes fixes, son nom et les
-    /// autres agents, `AGENTS.md` de la racine, son `PERSONA.md`, son `AGENTS.md`.
+    /// autres agents, `AGENTS.md` de la racine, son `PERSONA.md`, son `AGENTS.md`, puis le méta-prompt et sa mémoire
+    /// `MEMOIRE.md` (REQ-205).
     fn instructions_agent(&self, agent: &Agent, autres: &[&str]) -> String {
         let mut t = self.lignes_fixes();
         t.push_str(&format!(
@@ -512,12 +513,21 @@ Always give file paths relative to the project root.",
                 self.projet.join("AGENTS.md"),
             ),
             ("Your persona (PERSONA.md)", dossier.join("PERSONA.md")),
-            ("Your own notes (AGENTS.md)", dossier.join("AGENTS.md")),
+            ("Your instructions (AGENTS.md)", dossier.join("AGENTS.md")),
         ];
         for (titre, chemin) in parties {
             if let Some(texte) = Self::lire_texte(chemin) {
                 t.push_str(&format!("\n\n{titre}:\n{texte}"));
             }
+        }
+        t.push_str(&format!(
+            "\n\nYour memory (MEMOIRE.md): .yaide/agents/{}/MEMOIRE.md.\n\
+             Keep your memory up to date with your file tools, without being asked: note the key points of a conversation that will be useful later (a decision, a preference of the user, a lasting fact about the project), and whatever the user asks you to remember. One short line per point. Create the file if it does not exist. Keep what is already there, correct what has become wrong, and erase what the user asks you to forget. Never write a secret in it.\n\n",
+            agent.dossier
+        ));
+        match Self::lire_texte(dossier.join("MEMOIRE.md")) {
+            Some(m) => t.push_str(&m),
+            None => t.push_str("Your memory is empty."),
         }
         t
     }
@@ -2129,6 +2139,129 @@ mod tests {
         let neuve = b.envoyer_a(None, &[rel], "trois").unwrap();
         b.fini(&neuve).await;
         assert!(b.requete(2).contains("nouveau-persona"));
+    }
+
+    const LIGNE_MEMOIRE: &str = "Your memory (MEMOIRE.md): .yaide/agents/relecteur/MEMOIRE.md.";
+
+    #[tokio::test]
+    async fn REQ205_AC1_sans_memoire_meta_prompt_puis_memoire_vide_sans_creer_le_fichier() {
+        let b = banc("m205-ac1", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        b.fichier_agent(&rel, "AGENTS.md", "consigne-1");
+        b.scenario(vec![texte("ok", 1)]);
+        let id = b.envoyer_a(None, &[rel], "salut").unwrap();
+        let v = b.fini(&id).await;
+        assert_eq!(v["entrees"][1]["texte"], "ok");
+        let r = b.requete(0);
+        let pos = |t: &str| r.find(t).unwrap_or_else(|| panic!("{t} absent de {r}"));
+        assert!(pos("consigne-1") < pos(LIGNE_MEMOIRE));
+        assert!(pos(LIGNE_MEMOIRE) < pos("without being asked"));
+        assert!(pos("without being asked") < pos("Your memory is empty."));
+        for consigne in [
+            "key points of a conversation",
+            "whatever the user asks you to remember",
+            "One short line per point",
+            "Create the file if it does not exist",
+            "erase what the user asks you to forget",
+            "Never write a secret",
+        ] {
+            assert!(r.contains(consigne), "{consigne} absent");
+        }
+        assert!(!b.dir.join(".yaide/agents/relecteur/MEMOIRE.md").exists());
+    }
+
+    #[tokio::test]
+    async fn REQ205_AC2_agents_puis_meta_prompt_puis_memoire() {
+        let b = banc("m205-ac2", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        b.fichier_agent(&rel, "AGENTS.md", "memoire-44");
+        b.fichier_agent(&rel, "MEMOIRE.md", "souvenir-45");
+        b.scenario(vec![texte("a", 1)]);
+        let id = b.envoyer_a(None, &[rel], "salut").unwrap();
+        b.fini(&id).await;
+        let r = b.requete(0);
+        let pos = |t: &str| r.find(t).unwrap_or_else(|| panic!("{t} absent de {r}"));
+        assert!(pos("Your instructions (AGENTS.md):\\nmemoire-44") < pos(LIGNE_MEMOIRE));
+        assert!(pos(LIGNE_MEMOIRE) < pos("souvenir-45"));
+        assert!(!r.contains("Your memory is empty."));
+        assert!(!r.contains("Your own notes"));
+    }
+
+    #[tokio::test]
+    async fn REQ205_AC3_chacun_sa_memoire() {
+        let b = banc("m205-ac3", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        let tes = b.agent("Testeur", None);
+        b.fichier_agent(&rel, "MEMOIRE.md", "souvenir-rel");
+        b.fichier_agent(&tes, "MEMOIRE.md", "souvenir-tes");
+        b.scenario(vec![texte("a", 1), texte("b", 1)]);
+        let id = b.envoyer_a(None, &[rel, tes], "salut").unwrap();
+        b.fini(&id).await;
+        let (r0, r1) = (b.requete(0), b.requete(1));
+        assert!(r0.contains(LIGNE_MEMOIRE) && r0.contains("souvenir-rel"));
+        assert!(!r0.contains("souvenir-tes") && !r0.contains("agents/testeur"));
+        assert!(r1.contains("Your memory (MEMOIRE.md): .yaide/agents/testeur/MEMOIRE.md."));
+        assert!(r1.contains("souvenir-tes"));
+        assert!(!r1.contains("souvenir-rel") && !r1.contains("agents/relecteur"));
+    }
+
+    #[tokio::test]
+    async fn REQ205_AC4_l_agent_ecrit_sa_memoire_la_conversation_garde_la_sienne() {
+        let b = banc("m205-ac4", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        b.scenario(vec![
+            appels(&[(
+                "w1",
+                "write",
+                json!({"path": ".yaide/agents/relecteur/MEMOIRE.md",
+                       "content": "- Préfère les tests en français."}),
+            )]),
+            texte("noté", 1),
+            texte("autre", 1),
+        ]);
+        let id = b
+            .envoyer_a(None, std::slice::from_ref(&rel), "retiens")
+            .unwrap();
+        b.fini(&id).await;
+        assert_eq!(
+            std::fs::read_to_string(b.dir.join(".yaide/agents/relecteur/MEMOIRE.md")).unwrap(),
+            "- Préfère les tests en français."
+        );
+        assert!(b.requete(1).contains("Your memory is empty."));
+        let neuve = b.envoyer_a(None, &[rel], "bonjour").unwrap();
+        b.fini(&neuve).await;
+        let r = b.requete(2);
+        assert!(r.contains(LIGNE_MEMOIRE));
+        assert!(r.contains("- Préfère les tests en français."));
+        assert!(!r.contains("Your memory is empty."));
+    }
+
+    #[tokio::test]
+    async fn REQ205_AC5_pas_de_memoire_sans_agent_ni_sous_agent_mais_au_tour_declenche() {
+        let b = banc("m205-ac5", true, None).await;
+        let rel = b.agent("Relecteur", None);
+        b.fichier_agent(&rel, "MEMOIRE.md", "souvenir-45");
+        b.scenario(vec![texte("a", 1)]);
+        let id = b.envoyer(None, "salut").unwrap();
+        b.fini(&id).await;
+        assert!(!b.requete(0).contains("Your memory"));
+        b.scenario(vec![sous("cherche"), texte("trouvé", 1), texte("fin", 1)]);
+        let id = b
+            .envoyer_a(None, std::slice::from_ref(&rel), "lance")
+            .unwrap();
+        b.fini(&id).await;
+        assert!(b.requete(1).contains("Your memory (MEMOIRE.md)"));
+        assert!(
+            !b.requete(2).contains("Your memory"),
+            "le sous-agent n'a pas de mémoire"
+        );
+        assert!(b.requete(3).contains("Your memory (MEMOIRE.md)"));
+        // Tour déclenché (REQ-164) : même chemin que l'action « Agent » d'un workflow (REQ-195).
+        b.scenario(vec![texte("ok", 1)]);
+        let id = b.g.envoyer_declenche(&rel, "évènement").unwrap();
+        b.fini(&id).await;
+        let r = b.requete(4);
+        assert!(r.contains(LIGNE_MEMOIRE) && r.contains("souvenir-45"));
     }
 
     #[tokio::test]

@@ -111,6 +111,7 @@ test("REQ064_AC13_fiche_nouvel_agent", async () => {
   expect(champ("Profil").value).toBe("Profil par défaut");
   expect(bouton("AGENTS.md").disabled).toBe(true);
   expect(bouton("PERSONA.md").disabled).toBe(true);
+  expect(bouton("MEMOIRE.md").disabled).toBe(true);
   expect(c.textContent).toContain("Enregistrez l'agent pour créer ses fichiers.");
   expect(bouton("Enregistrer")).toBeTruthy();
 });
@@ -575,4 +576,17 @@ test("REQ204_AC3_modele_dans_la_fiche_remplit_le_champ_focus_prochaines_fois_et_
   bouton("Enregistrer").click();
   await attendre();
   expect(api.etat.envoyes[0].declencheurs).toEqual([{ type: "planification", cron: "0 9 * * 1-5" }]);
+});
+
+test("REQ205_AC7_trois_fichiers_dans_l_ordre_et_memoire_ouvre_son_chemin", async () => {
+  const { c, bouton, surFichier } = await ouvrir([RELECTEUR]);
+  bouton("Modifier Relecteur").click();
+  const noms = [...c.querySelectorAll(".agents-fichiers button")].map((b) => b.textContent.trim());
+  expect(noms).toEqual(["AGENTS.md", "PERSONA.md", "MEMOIRE.md"]);
+  const aide = [...c.querySelectorAll(".champ-aide")].find((a) => a.textContent === "S'ouvrent dans l'éditeur.");
+  expect(aide.previousElementSibling.className).toBe("agents-fichiers");
+  expect(bouton("MEMOIRE.md").disabled).toBe(false);
+  expect(bouton("MEMOIRE.md").querySelector("svg")).not.toBeNull();
+  bouton("MEMOIRE.md").click();
+  expect(surFichier.mock.calls).toEqual([[".yaide/agents/relecteur/MEMOIRE.md"]]);
 });

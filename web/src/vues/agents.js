@@ -327,7 +327,7 @@ export function vueAgents({ api = apiReelle, surFichier = () => {}, surDemarrer 
     legende.textContent = "Fichiers";
     const boutons = document.createElement("div");
     boutons.className = "agents-fichiers";
-    for (const nom of ["AGENTS.md", "PERSONA.md"]) {
+    for (const nom of ["AGENTS.md", "PERSONA.md", "MEMOIRE.md"]) {
       const b = bouton({ libelle: nom, icone: "md", desactive: !f.dossier });
       b.addEventListener("click", () => surFichier(`.yaide/agents/${f.dossier}/${nom}`));
       boutons.append(b.enveloppe ?? b);
