@@ -1990,7 +1990,7 @@ fn REQ085_AC10_etape_attend_raisonne_repond_puis_rien() {
             m.extend(oa_appel(
                 "c1",
                 "bash",
-                "{\"command\":\"while [ ! -e go ]; do sleep 0.05; done\"}",
+                "{\"command\":\"for i in $(seq 600); do [ -e go ] && break; sleep 0.05; done\"}",
             ));
             m.extend([M::Attendre(t3.clone()), oa_usage(5, 1), M::Fin]);
             m

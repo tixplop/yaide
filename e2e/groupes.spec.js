@@ -44,6 +44,14 @@ async function ouvrirFichiers(page, ...noms) {
   for (const nom of noms) await ligne(page, nom).click();
 }
 
+/** Comme `ouvrirFichiers`, mais attend chaque onglet avant le clic suivant : deux ouvertures en vol arrivent dans un ordre quelconque. */
+async function ouvrirFichiersEnOrdre(page, ...noms) {
+  for (const nom of noms) {
+    await ligne(page, nom).click();
+    await expect(onglet(page, new RegExp(`^${nom.replace(/\./g, "\\.")}`))).toBeVisible();
+  }
+}
+
 /** Le corps d'un groupe : sa boîte moins sa barre d'onglets. */
 async function corps(groupe) {
   const [g, barre] = await Promise.all([groupe.boundingBox(), groupe.getByRole("tablist").boundingBox()]);
@@ -646,7 +654,7 @@ test("REQ200_P155_AC1_AC4_AC6_AC7_AC8_AC9_changer_l_ordre_en_glissant_sur_une_ba
   yaide = await lancerYaide({ dossier });
   await page.setViewportSize({ width: 1700, height: 1000 });
   await ouvrirYaide(page, yaide.origine, "mdp", { shell: false });
-  await ouvrirFichiers(page, "a.rs", "b.rs", "c.rs");
+  await ouvrirFichiersEnOrdre(page, "a.rs", "b.rs", "c.rs");
   const a = onglet(page, /^a\.rs/);
   const b = onglet(page, /^b\.rs/);
   const c = onglet(page, /^c\.rs/);
@@ -694,7 +702,7 @@ test("REQ200_P155_AC1_AC4_AC6_AC7_AC8_AC9_changer_l_ordre_en_glissant_sur_une_ba
   await page.keyboard.press("Escape");
   await expect(marques).toHaveCount(0);
   await page.mouse.up();
-  expect(await ordre(groupes(page).first())).toEqual(["a.rs", "b.rs", "c.rs"]);
+  await expect.poll(() => ordre(groupes(page).first())).toEqual(["a.rs", "b.rs", "c.rs"]);
   await expect(b).toHaveAttribute("aria-selected", "true");
   await expect(texte("b.rs")).toBeFocused();
 
@@ -704,7 +712,7 @@ test("REQ200_P155_AC1_AC4_AC6_AC7_AC8_AC9_changer_l_ordre_en_glissant_sur_une_ba
   await expect(marques).toHaveCount(1);
   await page.mouse.up();
   await expect(marques).toHaveCount(0);
-  expect(await ordre(groupes(page).first())).toEqual(["c.rs", "a.rs", "b.rs"]);
+  await expect.poll(() => ordre(groupes(page).first())).toEqual(["c.rs", "a.rs", "b.rs"]);
   await expect(groupes(page)).toHaveCount(1);
   await expect(c).toHaveAttribute("aria-selected", "true");
   await expect(texte("c.rs")).toBeFocused();
@@ -716,12 +724,12 @@ test("REQ200_P155_AC1_AC4_AC6_AC7_AC8_AC9_changer_l_ordre_en_glissant_sur_une_ba
   // Étape 3 : b.rs sur le quart droit du code → deux groupes ; README.md et notes.md s'ouvrent à droite ; b.rs se ferme.
   await deposer(page, b, groupes(page).first(), "droite");
   await expect(groupes(page)).toHaveCount(2);
-  await ouvrirFichiers(page, "README.md", "notes.md");
+  await ouvrirFichiersEnOrdre(page, "README.md", "notes.md");
   await page.getByRole("button", { name: "Fermer b.rs" }).click();
   const g1 = groupeDe(page, /^c\.rs/);
   const g2 = groupeDe(page, /^README\.md/);
-  expect(await ordre(g1)).toEqual(["c.rs", "a.rs"]);
-  expect(await ordre(g2)).toEqual(["README.md", "notes.md"]);
+  await expect.poll(() => ordre(g1)).toEqual(["c.rs", "a.rs"]);
+  await expect.poll(() => ordre(g2)).toEqual(["README.md", "notes.md"]);
 
   // Étape 4 : clic sur c.rs, puis a.rs sur la moitié droite de README.md → marque entre README.md et notes.md.
   await c.click();
@@ -746,10 +754,10 @@ test("REQ200_P155_AC1_AC4_AC6_AC7_AC8_AC9_changer_l_ordre_en_glissant_sur_une_ba
   await page.mouse.up();
   await expect(marques).toHaveCount(0);
   await expect(page.locator("[data-zone-depot]")).toHaveCount(0);
-  expect(await ordre(groupeDe(page, /^README\.md/))).toEqual(["README.md", "a.rs", "notes.md"]);
+  await expect.poll(() => ordre(groupeDe(page, /^README\.md/))).toEqual(["README.md", "a.rs", "notes.md"]);
   await expect(a).toHaveAttribute("aria-selected", "true");
   await expect(texte("a.rs")).toBeFocused();
-  expect(await ordre(groupeDe(page, /^c\.rs/))).toEqual(["c.rs"]);
+  await expect.poll(() => ordre(groupeDe(page, /^c\.rs/))).toEqual(["c.rs"]);
   await expect(c).toHaveAttribute("aria-selected", "true");
 
   // Étape 6 : après un rechargement, mêmes groupes, même ordre dans chaque barre.
@@ -775,6 +783,6 @@ test("REQ200_P155_AC1_AC4_AC6_AC7_AC8_AC9_changer_l_ordre_en_glissant_sur_une_ba
   await page.reload();
   await expect(groupes(page)).toHaveCount(2);
   await expect(onglet(page, /^a\.rs/)).toBeVisible();
-  expect(await ordre(groupeDe(page, /^README\.md/))).toEqual(["README.md", "a.rs", "notes.md"]);
-  expect(await ordre(groupeDe(page, /^c\.rs/))).toEqual(["c.rs"]);
+  await expect.poll(() => ordre(groupeDe(page, /^README\.md/))).toEqual(["README.md", "a.rs", "notes.md"]);
+  await expect.poll(() => ordre(groupeDe(page, /^c\.rs/))).toEqual(["c.rs"]);
 });

@@ -41,3 +41,6 @@ opt-level = 3
 opt-level = "s"
 lto = true
 strip = true
+
+[profile.dev]
+debug = "line-tables-only"
