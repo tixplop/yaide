@@ -311,3 +311,190 @@ test("REQ161_AC12_un_changement_du_document_efface_l_occurrence_courante", () =>
   expect(courantes()).toHaveLength(0);
   expect(compte()).toBe("3");
 });
+
+const bouton = (nom) => panneau().querySelector(`button[aria-label="${nom}"]`);
+const champRemplacer = () => panneau().querySelectorAll("input")[1] ?? null;
+const texteDe = (id) => t.element.querySelector(`[data-id="${id}"]`).textContent;
+const remplacer = (texte) => {
+  champRemplacer().value = texte;
+  champRemplacer().dispatchEvent(new Event("input", { bubbles: true }));
+};
+const dernier = () => changements.at(-1);
+const boiteDoc = (d, id) => d.boxes.find((b) => b.id === id);
+
+test("REQ206_AC5_casse_et_expression_reguliere_s_appliquent_au_texte_de_chaque_boite_et_lien", () => {
+  monter();
+  ouvrir("Serveur");
+  expect(compte()).toBe("3");
+  bouton("Respecter la casse").click();
+  expect(bouton("Respecter la casse").getAttribute("aria-pressed")).toBe("true");
+  expect(compte()).toBe("1");
+  expect(marques().map((m) => m.textContent)).toEqual(["Serveur"]);
+  bouton("Respecter la casse").click();
+  bouton("Expression régulière").click();
+  chercher("serveur$");
+  expect(compte()).toBe("2");
+  expect(marques().map((m) => m.closest("[data-id]").getAttribute("data-id"))).toEqual(["b3", "l1"]);
+  // `Ser` en gras puis `veur` en italique : le texte est cherché sans ses styles.
+  const d = DOC();
+  d.boxes[1].text = "Serveur";
+  d.boxes[1].spans = [
+    { start: 0, end: 3, bold: true },
+    { start: 3, end: 7, italic: true },
+  ];
+  t.definirDocument(d);
+  chercher("^ser.eur");
+  expect(compte()).toBe("2");
+  expect(marques().filter((m) => m.closest("[data-id]").getAttribute("data-id") === "b2").map((m) => m.textContent)).toEqual(["Ser", "veur"]);
+  // Expression invalide : rien, « Invalide ».
+  chercher("(");
+  expect(compte()).toBe("Invalide");
+  expect(champ().getAttribute("aria-invalid")).toBe("true");
+  expect(marques()).toHaveLength(0);
+  expect(panneau().querySelector("[role=status]").textContent).toBe("Expression régulière invalide");
+  // Partie trouvée vide : pas une occurrence.
+  chercher("z*");
+  expect(compte()).toBe("0");
+  // Fermée puis rouverte : boutons relâchés.
+  touche(champ(), "Escape");
+  ouvrir();
+  expect(bouton("Expression régulière").getAttribute("aria-pressed")).toBe("false");
+  expect(changements).toHaveLength(0);
+});
+
+test("REQ207_AC8_Tout_remplacer_change_les_boites_et_les_liens_en_un_pas_sans_toucher_au_modele", () => {
+  monter();
+  ouvrir("serveur");
+  t.recherche.ouvrir({ remplacement: true });
+  remplacer("service");
+  bouton("Tout remplacer").click();
+  const d = dernier();
+  expect(changements).toHaveLength(1);
+  expect(d.boxes.map((b) => b.text)).toEqual(["service web", "Base de données", "Cache service"]);
+  expect(d.links[0].text).toBe("appelle le service");
+  expect(d.model).toBe("graph TD; serveur --> base");
+  expect(panneau().querySelector("[role=status]").textContent).toBe("3 occurrences remplacées");
+  expect(compte()).toBe("0");
+  expect(texteDe("b1")).toBe("service web");
+  // Un Ctrl+Z rend les trois textes.
+  touche(surface(), "z", { ctrlKey: true });
+  expect(dernier().boxes[0].text).toBe("Serveur web");
+  expect(dernier().boxes[2].text).toBe("Cache serveur");
+  expect(dernier().links[0].text).toBe("appelle le serveur");
+  expect(compte()).toBe("3");
+});
+
+test("REQ207_AC8_le_texte_mis_a_la_place_prend_les_styles_du_premier_caractere_remplace", () => {
+  const d = DOC();
+  d.boxes[1].text = "Serveur";
+  d.boxes[1].spans = [
+    { start: 0, end: 3, bold: true },
+    { start: 3, end: 7, italic: true },
+  ];
+  monter(d);
+  ouvrir("serveur");
+  t.recherche.ouvrir({ remplacement: true });
+  remplacer("service");
+  bouton("Tout remplacer").click();
+  expect(boiteDoc(dernier(), "b2")).toMatchObject({ text: "service", spans: [{ start: 0, end: 7, bold: true }] });
+  // Avec une expression régulière, `$1` reprend un groupe ; avec des caractères hors du plan de base, les styles suivent.
+  const e = DOC();
+  e.boxes[0].text = "😀 ab cd";
+  e.boxes[0].spans = [{ start: 2, end: 4, bold: true }];
+  monter(e);
+  ouvrir("");
+  bouton("Expression régulière").click();
+  chercher("(a)b");
+  t.recherche.ouvrir({ remplacement: true });
+  remplacer("$1$1!");
+  bouton("Tout remplacer").click();
+  expect(boiteDoc(dernier(), "b1")).toMatchObject({ text: "😀 aa! cd", spans: [{ start: 2, end: 5, bold: true }] });
+});
+
+test("REQ207_AC8_Remplacer_sur_le_lien_remplace_son_etiquette_et_choisit_l_occurrence_suivante", () => {
+  monter();
+  ouvrir("serveur");
+  t.recherche.ouvrir({ remplacement: true });
+  remplacer("service");
+  f3(); // « Serveur web »
+  f3(); // le lien
+  expect(choisies()).toEqual(["l1"]);
+  bouton("Remplacer").click();
+  expect(dernier().links[0].text).toBe("appelle le service");
+  expect(dernier().boxes[0].text).toBe("Serveur web");
+  expect(choisies()).toEqual(["b3"]);
+  expect(compte()).toBe("2 sur 2");
+  expect(courantes()).toHaveLength(1);
+  expect(changements).toHaveLength(1);
+  // Entrée dans « Remplacer » : « Cache serveur », puis la première.
+  touche(champRemplacer(), "Enter");
+  expect(dernier().boxes[2].text).toBe("Cache service");
+  expect(choisies()).toEqual(["b1"]);
+  expect(document.activeElement).toBe(champRemplacer());
+  // Sans courante, « Remplacer » prend celle que F3 choisirait.
+  touche(surface(), "Escape");
+  t.element.querySelector(".ya-tableau-surface svg").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  bouton("Remplacer").click();
+  expect(dernier().boxes[0].text).toBe("service web");
+  expect(dernier().model).toBe("graph TD; serveur --> base");
+});
+
+test("REQ207_AC9_rien_a_remplacer_les_boutons_sont_inactifs_et_le_clic_ne_change_rien", () => {
+  monter();
+  t.recherche.ouvrir({ remplacement: true });
+  expect(bouton("Remplacer").getAttribute("aria-disabled")).toBe("true");
+  expect(bouton("Tout remplacer").getAttribute("aria-disabled")).toBe("true");
+  chercher("zzz");
+  bouton("Tout remplacer").click();
+  bouton("Remplacer").click();
+  bouton("Expression régulière").click();
+  chercher("(");
+  expect(bouton("Remplacer").getAttribute("aria-disabled")).toBe("true");
+  bouton("Tout remplacer").click();
+  expect(changements).toHaveLength(0);
+});
+
+test("REQ207_AC1_Ctrl_H_ouvre_avec_la_ligne_de_remplacement_finit_la_saisie_et_ne_fait_rien_sur_un_whiteboard_illisible", () => {
+  monter();
+  t.ajouterBoite();
+  expect(t.element.querySelector("[role=textbox]")).not.toBeNull();
+  t.recherche.ouvrir({ remplacement: true });
+  expect(t.element.querySelector("[role=textbox]")).toBeNull();
+  expect(champ().value).toBe("");
+  expect(champRemplacer().value).toBe("");
+  expect(document.activeElement).toBe(champ());
+  expect(bouton("Remplacer")).not.toBeNull();
+  // Déjà ouverte : le texte cherché reste, le focus va dans « Remplacer ».
+  chercher("serveur");
+  t.recherche.ouvrir({ remplacement: true });
+  expect(champ().value).toBe("serveur");
+  expect(document.activeElement).toBe(champRemplacer());
+  expect(t.recherche.etat()).toMatchObject({ ouvert: true, texte: "serveur", remplacement: "" });
+  // Fermée par Échap, rouverte par Ctrl+F : sans la ligne.
+  touche(champRemplacer(), "Escape");
+  ouvrir();
+  expect(champRemplacer()).toBeNull();
+  // Illisible : rien.
+  monter(null);
+  t.recherche.ouvrir({ remplacement: true });
+  expect(panneau()).toBeNull();
+});
+
+test("REQ161_AC1_la_fenetre_a_le_champ_les_deux_bascules_le_compteur_les_fleches_et_la_croix_dans_cet_ordre", () => {
+  monter();
+  ouvrir("serveur");
+  const enfants = [...panneau().children];
+  expect(enfants[0].querySelector("input")).toBe(champ());
+  const commandes = [...enfants[1].children].map((e) => e.querySelector("button")?.getAttribute("aria-label") ?? e.className);
+  expect(commandes).toEqual(["Respecter la casse", "Expression régulière", "ya-recherche-compteur", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche"]);
+  expect(document.activeElement).toBe(champ());
+});
+
+test("REQ161_AC8_Tab_passe_par_les_cinq_boutons_puis_les_champs_de_remplacement_puis_la_surface", () => {
+  monter();
+  t.recherche.ouvrir({ remplacement: true });
+  const ordre = [...panneau().querySelectorAll("input, button")].map((e) => e.getAttribute("aria-label") ?? e.labels[0].textContent);
+  expect(ordre).toEqual(["Rechercher dans le fichier", "Respecter la casse", "Expression régulière", "Occurrence précédente", "Occurrence suivante", "Fermer la recherche", "Remplacer par", "Remplacer", "Tout remplacer"]);
+  const focalisables = [...t.element.querySelectorAll("input, button, [tabindex='0']")];
+  expect(focalisables[focalisables.indexOf(bouton("Tout remplacer")) + 1]).toBe(surface());
+});

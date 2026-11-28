@@ -26,20 +26,22 @@ export function chercherTexte(texte, cherche, { casse = false, regex = false } =
   return paires;
 }
 
-// `texte` dont les `paires` (celles de `chercherTexte`) sont remplacées. Le texte mis à la place est tel quel ; avec `regex`,
-// `$&`, `$1`, `$$` valent comme dans `String.prototype.replace`. Rien de ce qui est mis à la place n'est remplacé de nouveau.
-export function remplacerTexte(texte, paires, cherche, remplacement, { regex = false, casse = false } = {}) {
+// Le texte mis à la place de la partie [de, a] de `texte` : tel quel ; avec `regex`, `$&`, `$1`, `$$` valent comme dans
+// `String.prototype.replace`.
+export function texteRemplacant(texte, de, a, cherche, remplacement, { regex = false, casse = false } = {}) {
+  if (!regex) return remplacement;
+  const re = new RegExp(cherche, casse ? "y" : "yi");
+  re.lastIndex = de;
+  const mis = texte.replace(re, remplacement);
+  return mis.slice(de, mis.length - (texte.length - a));
+}
+
+// `texte` dont les `paires` (celles de `chercherTexte`) sont remplacées. Rien de ce qui est mis à la place n'est remplacé de nouveau.
+export function remplacerTexte(texte, paires, cherche, remplacement, options = {}) {
   let sortie = "";
   let pos = 0;
   for (const [de, a] of paires) {
-    let mis = remplacement;
-    if (regex) {
-      const re = new RegExp(cherche, casse ? "y" : "yi");
-      re.lastIndex = de;
-      mis = texte.replace(re, remplacement);
-      mis = mis.slice(de, mis.length - (texte.length - a));
-    }
-    sortie += texte.slice(pos, de) + mis;
+    sortie += texte.slice(pos, de) + texteRemplacant(texte, de, a, cherche, remplacement, options);
     pos = a;
   }
   return sortie + texte.slice(pos);

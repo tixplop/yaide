@@ -452,6 +452,34 @@ test("REQ161_AC1_ctrl_f_sur_la_surface_ou_la_boite_a_outils_ouvre_le_panneau_et_
   expect(illisible.querySelector("[role=search]")).toBeNull();
 });
 
+test("REQ207_AC1_ctrl_h_sur_la_surface_d_un_whiteboard_ouvre_la_ligne_de_remplacement_finit_la_saisie_et_ne_fait_rien_sur_un_illisible", () => {
+  const e = monterPlan({ "casse.jdiag": "pas du json" });
+  aller(e, "plan.jdiag");
+  const z = zoneWb();
+  const surface = z.querySelector("[role=application]");
+  surface.focus();
+  const ev = ctrlH(surface);
+  expect(ev.defaultPrevented).toBe(true);
+  expect(panneauWb().querySelectorAll("input")).toHaveLength(2);
+  expect(panneauWb().querySelector('button[aria-label="Remplacer"]')).not.toBeNull();
+  expect(panneauWb().querySelector('button[aria-label="Tout remplacer"]')).not.toBeNull();
+  expect(document.activeElement).toBe(panneauWb().querySelector("input"));
+  // Pendant la saisie d'une boîte : la saisie finit, la fenêtre s'ouvre.
+  panneauWb().querySelector('button[aria-label="Fermer la recherche"]').click();
+  surface.focus();
+  z.querySelector('[data-id="b1"]').dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+  const saisie = z.querySelector("[role=textbox]");
+  expect(saisie).not.toBeNull();
+  expect(ctrlH(saisie).defaultPrevented).toBe(true);
+  expect(z.querySelector("[role=textbox]")).toBeNull();
+  expect(panneauWb().querySelectorAll("input")).toHaveLength(2);
+  // Whiteboard illisible : rien.
+  aller(e, "casse.jdiag");
+  const illisible = zoneWb();
+  expect(ctrlH(illisible).defaultPrevented).toBe(false);
+  expect(illisible.querySelector("[role=search]")).toBeNull();
+});
+
 test("REQ161_AC7_ctrl_f_pendant_la_saisie_la_finit_le_panneau_survit_au_changement_d_onglet_pas_au_rechargement", async () => {
   stubFichiers();
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });

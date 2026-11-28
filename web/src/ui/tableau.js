@@ -8,7 +8,7 @@ import { depuisMermaid } from "../mermaid-jdiag.js";
 import { chargerMermaid } from "./diagramme.js";
 import { auPlan, coller, copier, rattacher } from "./tableau-edition.js";
 import { boiteOutils } from "./tableau-outils.js";
-import { chercherTexte, marquerOccurrences, panneauRecherche } from "./panneau-recherche.js";
+import { chercherTexte, marquerOccurrences, panneauRecherche, texteRemplacant } from "./panneau-recherche.js";
 import { connecteurProcheAffiche, connecteursAffiches, centrerObjet, connecteurs, dansRectangle, decalageAnneau, estFormePleine, estSymbole, geometrieLien, milieuTrace, pointSurBord, cranVoisin, extremitesFleche, rectangleFleche, toutAfficher as calculerToutAfficher, voirObjet, zoomerAutour } from "./tableau-calculs.js";
 import { basculer, colorer, decalages, etatTexte, inserer, lireTexte, pointA, rendreZone } from "./tableau-texte.js";
 import { anneauxPleines, dessinBoite, dessinConnecteurs, dessinFleche, dessinFormeProvisoire, dessinLien, dessinProvisoire, dessinRectangleSelection, poigneesBoite, poigneesFleche, poigneesLien, svg } from "./tableau-dessin.js";
@@ -93,7 +93,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
   const choix = { ...OUTILS_DEPART, ...outils };
   let barre = null;
   let menuOuvert = null; // menu « Actions sur la sélection » : { fermer }
-  const rech = { texte: "", ouvert: false }; // recherche (REQ-161)
+  const rech = { texte: "", ouvert: false, casse: false, regex: false }; // recherche (REQ-161, REQ-206)
+  let invalide = false; // expression régulière refusée
   let courante = null; // `id` de l'occurrence choisie par F3
   let panneau = null;
   let enAttente = null; // copie au format Klaxoon que `surCopie` doit écrire : { klaxoon, copie, recu }
@@ -375,13 +376,23 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
 
   // ---- Recherche dans les boîtes et les liens (REQ-161) ----
 
+  const optionsRech = () => ({ casse: rech.casse, regex: rech.regex });
   // Boîtes et liens dont le texte contient le texte cherché, de haut en bas puis de gauche à droite (coin haut gauche d'une boîte, milieu du tracé d'un lien).
+  // Expression invalide : aucune occurrence, `invalide` vrai.
   function calculerOccurrences() {
+    invalide = false;
     if (!rech.ouvert || !rech.texte) return [];
-    const occ = [...doc.boxes, ...doc.links]
-      .filter((o) => chercherTexte(o.text ?? "", rech.texte).length > 0)
-      .map((o) => ({ id: o.id, ...clePosition(o) }))
-      .sort((a, b) => a.y - b.y || a.x - b.x);
+    const occ = [];
+    for (const o of [...doc.boxes, ...doc.links]) {
+      const paires = chercherTexte(o.text ?? "", rech.texte, optionsRech());
+      if (paires === null) {
+        invalide = true;
+        courante = null;
+        return [];
+      }
+      if (paires.length > 0) occ.push({ id: o.id, ...clePosition(o) });
+    }
+    occ.sort((a, b) => a.y - b.y || a.x - b.x);
     // L'occurrence courante ne survit ni à un autre choix, ni à la perte de son texte.
     if (courante && !(choisis.length === 1 && choisis[0] === courante && occ.some((o) => o.id === courante))) courante = null;
     return occ;
@@ -393,33 +404,75 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     return { x: r.x, y: r.y };
   }
   function marquer(zone, o) {
-    if (rech.ouvert && rech.texte) marquerOccurrences(zone, rech.texte, { courante: courante === o.id });
+    if (rech.ouvert && rech.texte) marquerOccurrences(zone, rech.texte, { courante: courante === o.id, ...optionsRech() });
   }
   function afficherCompteur(occ) {
     if (!panneau) return;
     panneau.definirTexte(rech.texte);
     const i = courante ? occ.findIndex((o) => o.id === courante) : -1;
-    panneau.afficher(occ.length, i >= 0 ? i + 1 : undefined);
+    panneau.afficher(occ.length, i >= 0 ? i + 1 : undefined, { invalide });
+  }
+  // L'occurrence qui suit (sens 1) ou précède (sens -1) l'objet choisi, en bouclant.
+  function voisine(occ, sens) {
+    const ref = unique();
+    const i = occ.findIndex((o) => o.id === ref);
+    if (i >= 0) return occ[(i + sens + occ.length) % occ.length];
+    if (ref === null) return sens > 0 ? occ[0] : occ[occ.length - 1];
+    const k = clePosition(objet(ref));
+    const apres = (o) => o.y > k.y || (o.y === k.y && o.x > k.x);
+    return sens > 0 ? (occ.find(apres) ?? occ[0]) : (occ.findLast((o) => !apres(o) && (o.y !== k.y || o.x !== k.x)) ?? occ[occ.length - 1]);
   }
   // Va à l'occurrence suivante (ou précédente) de l'objet choisi, en bouclant ; le focus reste où il est.
   function aller(sens) {
     const occ = calculerOccurrences();
     if (!occ.length || doc === null) return;
     finirSaisie();
-    const ref = unique();
-    const i = occ.findIndex((o) => o.id === ref);
-    let cibleOcc;
-    if (i >= 0) cibleOcc = occ[(i + sens + occ.length) % occ.length];
-    else if (ref === null) cibleOcc = sens > 0 ? occ[0] : occ[occ.length - 1];
-    else {
-      const k = clePosition(objet(ref));
-      const apres = (o) => o.y > k.y || (o.y === k.y && o.x > k.x);
-      cibleOcc = sens > 0 ? (occ.find(apres) ?? occ[0]) : (occ.findLast((o) => !apres(o) && (o.y !== k.y || o.x !== k.x)) ?? occ[occ.length - 1]);
-    }
-    courante = cibleOcc.id;
-    choisis = [courante];
-    centrer(courante);
+    choisirOccurrence(voisine(occ, sens).id);
+  }
+  function choisirOccurrence(id) {
+    courante = id;
+    choisis = [id];
+    centrer(id);
     dessiner();
+  }
+  // Le texte de `o` dont chaque partie trouvée prend `mis` (REQ-207) ; le texte mis à la place prend les styles du premier caractère remplacé.
+  function remplacerDans(o, mis) {
+    const texte = o.text ?? "";
+    const signes = (i) => Array.from(texte.slice(0, i)).length;
+    let text = texte;
+    let spans = o.spans ?? [];
+    for (const [de, a] of [...chercherTexte(texte, rech.texte, optionsRech())].reverse()) {
+      ({ text, spans } = inserer(text, spans, signes(de), signes(a), texteRemplacant(texte, de, a, rech.texte, mis, optionsRech()), true));
+    }
+    return avecTexte(o, text, spans);
+  }
+  // Un seul pas de l'historique ; `model` n'est jamais touché.
+  function remplacerObjets(cibles, mis) {
+    const ids = new Set(cibles.map((o) => o.id));
+    const change = (x) => (ids.has(x.id) ? remplacerDans(x, mis) : x);
+    appliquer({ ...doc, boxes: doc.boxes.map(change), links: doc.links.map(change) });
+  }
+  // L'occurrence courante (sinon celle que F3 choisirait) prend le texte ; la suivante devient courante.
+  function remplacer(mis) {
+    if (doc === null) return;
+    finirSaisie();
+    const occ = calculerOccurrences();
+    if (!occ.length) return;
+    const cible = occ.find((o) => o.id === courante) ?? voisine(occ, 1);
+    remplacerObjets([cible], mis);
+    const suivantes = calculerOccurrences();
+    const n = suivantes.find((o) => o.y > cible.y || (o.y === cible.y && o.x > cible.x)) ?? suivantes[0];
+    if (n) choisirOccurrence(n.id);
+    else dessiner();
+  }
+  function toutRemplacer(mis) {
+    if (doc === null) return;
+    finirSaisie();
+    const occ = calculerOccurrences();
+    if (!occ.length) return;
+    remplacerObjets(occ, mis);
+    dessiner();
+    panneau?.annoncerRemplacees(occ.length);
   }
   // Centre l'objet si le rectangle n'est pas entier dans la zone sous le panneau, ou s'il passe sous la boîte à outils.
   function centrer(id) {
@@ -428,7 +481,8 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
     const z = element.getBoundingClientRect();
     const b = barre.element.getBoundingClientRect();
     const outils = b.width > 0 && b.height > 0 ? { x: b.left - z.left, y: b.top - z.top, width: b.width, height: b.height } : null;
-    const nv = centrerObjet(vueCourante, t, limites(id), { haut: 42, outils });
+    // Bande du haut cachée par le panneau : 4 + 34 + 4 px, 4 + 64 + 4 px avec la ligne de remplacement.
+    const nv = centrerObjet(vueCourante, t, limites(id), { haut: panneau?.remplacement() == null ? 42 : 72, outils });
     if (nv.x !== vueCourante.x || nv.y !== vueCourante.y) changerVue(nv);
   }
   function creerPanneau() {
@@ -439,24 +493,40 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
         courante = null;
         dessiner();
       },
+      surOptions: ({ casse, regex }) => {
+        rech.casse = casse;
+        rech.regex = regex;
+        courante = null;
+        dessiner();
+      },
+      surRemplacer: remplacer,
+      surToutRemplacer: toutRemplacer,
       surSuivante: () => aller(1),
       surPrecedente: () => aller(-1),
       surFermer: () => fermer(),
     });
     element.prepend(panneau.element);
   }
-  function ouvrir() {
+  // `remplacement` : avec la ligne de remplacement (Ctrl+H, REQ-207).
+  function ouvrir({ remplacement = false } = {}) {
     if (doc === null) return;
     finirSaisie();
+    const dejaOuvert = rech.ouvert && panneau;
     rech.ouvert = true;
     if (!panneau) creerPanneau();
     dessiner();
-    panneau.ouvrir();
+    if (remplacement && dejaOuvert) panneau.montrerRemplacement();
+    else {
+      if (remplacement) panneau.definirRemplacement("");
+      panneau.ouvrir();
+    }
   }
   function fermer(focus = true) {
     if (!rech.ouvert) return;
     rech.ouvert = false;
     rech.texte = "";
+    rech.casse = false;
+    rech.regex = false;
     panneau?.element.remove();
     panneau = null;
     dessiner();
@@ -1368,7 +1438,7 @@ export function tableau({ nom, document: documentInitial, vue, outils, theme, su
       const t = taille();
       nouvelleBoite(vueCourante.x + t.largeur / 2 / vueCourante.zoom, vueCourante.y + t.hauteur / 2 / vueCourante.zoom);
     },
-    recherche: { ouvrir, fermer },
+    recherche: { ouvrir, fermer, etat: () => ({ texte: rech.texte, ouvert: rech.ouvert, casse: rech.casse, regex: rech.regex, remplacement: panneau?.remplacement() ?? null }) },
     zoomAvant: () => changerZoom(1),
     zoomArriere: () => changerZoom(-1),
     toutAfficher() {

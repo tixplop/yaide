@@ -206,9 +206,10 @@ export function etatTexte(text, spans, debut, fin) {
 }
 
 // Remplace [debut, fin) par `ajout` ; le texte inséré prend les styles du caractère juste avant, sinon du caractère juste après.
-export function inserer(text, spans, debut, fin, ajout) {
+// `duPremier` (remplacement d'une recherche, REQ-207) : ceux du premier caractère remplacé, s'il y en a un.
+export function inserer(text, spans, debut, fin, ajout, duPremier = false) {
   const chars = parCaractere(text, spans);
-  const style = chars[debut - 1] ?? chars[fin] ?? {};
+  const style = (duPremier && fin > debut ? chars[debut] : (chars[debut - 1] ?? chars[fin])) ?? {};
   const neuf = Array.from(ajout).map(() => ({ ...style }));
   chars.splice(debut, Math.max(0, fin - debut), ...neuf);
   const signes = Array.from(text);
